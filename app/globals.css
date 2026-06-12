@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg-primary: #0a0a0b;
+  --color-bg-surface: #141416;
+  --color-bg-card: #18181b;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-border-default: #27272a;
+  --color-border-hover: #3f3f46;
+  --color-accent-warm: #d4a574;
+  --color-status-error: #c47a6a;
+  --focus-ring: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-accent-warm);
+  --ease-out-smooth: cubic-bezier(0.33, 1, 0.68, 1);
+  --duration-fast: 0.12s;
+  --duration-normal: 0.2s;
+  --duration-slow: 0.32s;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  --container-max: 80rem;
+  --section-py: 5rem;
+  --section-py-lg: 7rem;
+
+  --text-fluid-hero: clamp(2.5rem, 5vw + 1rem, 5rem);
+  --text-fluid-display: clamp(2rem, 4vw + 0.5rem, 3.5rem);
+  --text-fluid-h2: clamp(1.5rem, 2.5vw + 0.5rem, 2.25rem);
+  --text-fluid-body-lg: clamp(1.0625rem, 0.5vw + 0.875rem, 1.1875rem);
+  --text-fluid-sm: clamp(0.8125rem, 0.3vw + 0.75rem, 0.9375rem);
+  --text-h3: clamp(1.125rem, 1.5vw + 0.75rem, 1.5rem);
+}
+
+@theme inline {
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-surface: var(--color-bg-surface);
+  --color-bg-card: var(--color-bg-card);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-border-default: var(--color-border-default);
+  --color-border-hover: var(--color-border-hover);
+  --color-accent-warm: var(--color-accent-warm);
+  --color-status-error: var(--color-status-error);
+
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --text-fluid-hero: var(--text-fluid-hero);
+  --text-fluid-display: var(--text-fluid-display);
+  --text-fluid-h2: var(--text-fluid-h2);
+  --text-fluid-body-lg: var(--text-fluid-body-lg);
+  --text-fluid-sm: var(--text-fluid-sm);
+}
+
+body {
+  @apply min-h-screen bg-bg-primary font-sans text-text-primary antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
+}
+
+h3 {
+  font-size: var(--text-h3);
+}
+
+.eyebrow {
+  @apply font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm;
+}
+
+.link {
+  @apply text-accent-warm transition-colors duration-200;
+}
+
+.link:hover {
+  color: var(--color-text-primary);
+}
+
+.link-underline {
+  @apply text-accent-warm underline underline-offset-4 transition-colors duration-200;
+}
+
+.link-underline:hover {
+  color: var(--color-text-primary);
+}
+
+.container {
+  @apply mx-auto w-full max-w-7xl px-6 md:px-8;
+  max-width: min(100%, var(--container-max));
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: var(--container-max);
+  }
+}
+
+.input {
+  @apply w-full min-h-11 px-4 py-3 rounded-sm border border-border-default bg-bg-card text-text-primary font-sans text-base transition-colors duration-200;
+}
+
+.input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent-warm);
+  background-color: var(--color-bg-surface);
+}
+
+.input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.transition-smooth {
+  transition-timing-function: var(--ease-out-smooth);
+}
+
+.section {
+  padding-top: var(--section-py);
+  padding-bottom: var(--section-py);
+}
+
+.section-lg {
+  padding-top: var(--section-py-lg);
+  padding-bottom: var(--section-py-lg);
+}
+
+.hero-pattern {
+  background-color: var(--color-bg-primary);
+  background-image:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--color-border-default) 40%, transparent) 1px, transparent 0),
+    linear-gradient(to bottom, transparent 0%, var(--color-bg-primary) 100%);
+  background-size: 24px 24px, 100% 100%;
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity var(--duration-slow) var(--ease-out-smooth),
+    transform var(--duration-slow) var(--ease-out-smooth);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .reveal.is-visible {
+    transform: none;
+  }
+}

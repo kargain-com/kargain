@@ -1,0 +1,52 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+dist/
+.vercel
+
+# env
+.env
+.env.local
+.env.*.local
+
+# secrets
+private-key
+PRIVATE_KEY
+ponder.env
+
+# hardhat / solidity
+cache/
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+
+# ignition (deploy journals — not committed)
+ignition/deployments/
+
+# ponder
+.ponder/
+ponder/.ponder
+
+# logs / os
+*.log
+npm-debug.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# testing
+test-results
+*.tsbuildinfo
+
+# internal docs (local only)
+/docs
