@@ -11,9 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
+import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 const MAX_PHOTOS = 10;
@@ -33,6 +35,27 @@ type FormState = {
 };
 
 type FieldErrors = Partial<Record<keyof FormState | "photos", string>>;
+
+type UploadProgress =
+  | { kind: "photos"; current: number; total: number }
+  | { kind: "metadata" };
+
+type PassportMetadata = {
+  name: string;
+  description?: string;
+  make: string;
+  model: string;
+  year: number;
+  fuel_type: string;
+  body_type: string;
+  transmission: string;
+  mileage_km: number;
+  color: string;
+  vin: string;
+  photos: string[];
+  created_at: string;
+  version: "1.0";
+};
 
 function normalizeVin(raw: string): string {
   return raw
@@ -75,7 +98,7 @@ function validateStep1(form: FormState): FieldErrors {
 }
 
 export function CreatePassportWizard() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
@@ -99,6 +122,8 @@ export function CreatePassportWizard() {
   });
 
   const [photos, setPhotos] = useState<File[]>([]);
+  const [metadataUri, setMetadataUri] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const previewUrls = useMemo(
@@ -168,6 +193,7 @@ export function CreatePassportWizard() {
     }
 
     setPhase("uploading");
+    setUploadProgress(null);
 
     try {
       await ensureSiweSession({
@@ -175,17 +201,89 @@ export function CreatePassportWizard() {
         chainId,
         signMessageAsync,
       });
-
-      // TODO Phase 1.1: removed — pending @irys/web-upload
-      // TODO Phase 1.1: removed — pending new contract
-      setFormError("Passport creation is temporarily unavailable.");
-      setPhase("error");
     } catch (err) {
+      setUploadProgress(null);
       if (err instanceof Error && err.message.includes("User rejected")) {
         setFormError("Transaction cancelled.");
       } else {
         setFormError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       }
+      setPhase("error");
+      return;
+    }
+
+    try {
+      const provider =
+        (await connector?.getProvider()) ??
+        (typeof window !== "undefined" ? window.ethereum : undefined);
+
+      if (!provider) {
+        setFormError("Connect your wallet to continue");
+        setPhase("error");
+        return;
+      }
+
+      const photoUris: string[] = [];
+      for (let index = 0; index < photos.length; index += 1) {
+        setUploadProgress({
+          kind: "photos",
+          current: index + 1,
+          total: photos.length,
+        });
+        const uri = await uploadFile(
+          photos[index],
+          [
+            { name: "app", value: "kargain" },
+            { name: "type", value: "passport-photo" },
+          ],
+          provider,
+        );
+        photoUris.push(uri);
+      }
+
+      const yearNum = Number.parseInt(form.year, 10);
+      const mileageKm = form.mileage.trim()
+        ? Number.parseInt(form.mileage, 10)
+        : 0;
+
+      const metadata: PassportMetadata = {
+        name: `${form.year} ${form.make.trim()} ${form.model.trim()}`.trim(),
+        make: form.make.trim(),
+        model: form.model.trim(),
+        year: yearNum,
+        fuel_type: "",
+        body_type: "",
+        transmission: "",
+        mileage_km: mileageKm,
+        color: "",
+        vin: form.vin.trim(),
+        photos: photoUris,
+        created_at: new Date().toISOString(),
+        version: "1.0",
+      };
+
+      if (form.description.trim()) {
+        metadata.description = form.description.trim();
+      }
+
+      setUploadProgress({ kind: "metadata" });
+      const uri = await uploadJson(
+        metadata,
+        [
+          { name: "app", value: "kargain" },
+          { name: "type", value: "passport-metadata" },
+        ],
+        provider,
+      );
+
+      setMetadataUri(uri);
+      setUploadProgress(null);
+      setPhase("minting");
+
+      // TODO Phase 1.1: call mintPassport(address, uri)
+    } catch {
+      setFormError("Upload failed. Please try again.");
+      setUploadProgress(null);
       setPhase("error");
     }
   };
@@ -384,6 +482,23 @@ export function CreatePassportWizard() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {phase === "uploading" && uploadProgress && (
+            <div className="space-y-2">
+              <p className="font-sans text-sm text-text-secondary">
+                {uploadProgress.kind === "photos"
+                  ? `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
+                  : "Preparing passport…"}
+              </p>
+              <Progress
+                value={
+                  uploadProgress.kind === "photos"
+                    ? (uploadProgress.current / uploadProgress.total) * 100
+                    : 100
+                }
+              />
             </div>
           )}
 
