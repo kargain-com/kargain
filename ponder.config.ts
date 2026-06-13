@@ -19,8 +19,8 @@ export default createConfig({
       id: 84532,
       rpc:
         process.env.PONDER_RPC_URL_84532 ?? "https://sepolia.base.org",
-      maxRequestsPerSecond: 4,
-      ethGetLogsBlockRange: 10,
+      maxRequestsPerSecond: 14,
+      ethGetLogsBlockRange: 1000,
     },
   },
   contracts: {
