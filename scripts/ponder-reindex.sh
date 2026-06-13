@@ -26,8 +26,7 @@ docker compose -f "$ROOT/docker-compose.yml" exec -T postgres \
 
 echo ""
 echo "Done. Next steps:"
-echo "  1. In ponder.config.ts, swap START_BLOCK to 42800430 (comment/uncomment the two lines)."
-echo "     If you keep START_BLOCK = \"latest\", skip step 2 — publicnode is fine."
+echo "  1. In server .env set PONDER_START_BLOCK=42800430 (omit or \"latest\" to index from restart only)."
 echo "  2. Only for full backfill (42800430): set PONDER_RPC_URL_84532 to Alchemy or QuickNode."
 echo "  3. docker compose up -d ponder"
 echo "  4. Watch logs: docker compose logs -f ponder"

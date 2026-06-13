@@ -13,15 +13,24 @@ import {
  *   KarProPass: 42800433 · KarProStaking: 42800436
  *   KarPassport: 42800441 · MarketplaceEscrow: 42800447
  *
- * Toggle indexing mode (one line):
- *   "latest"  — index from restart only (production default; publicnode RPC is fine).
- *   42800430  — full history from deploy; run scripts/ponder-reindex.sql first,
- *               then switch to Alchemy/QuickNode for eth_getLogs backfill.
+ * Indexing mode via PONDER_START_BLOCK (server .env, not committed):
+ *   latest (default) — index from restart only; publicnode RPC is fine.
+ *   42800430         — full history from deploy; run scripts/ponder-reindex.sql first.
+ *                      Use Alchemy/QuickNode if publicnode rate-limits eth_getLogs.
  *
  * Obsolete: 42781255 belonged to the first testnet generation (0xe356… addresses).
  */
-const START_BLOCK = "latest" as const;
-// const START_BLOCK = 42800430;
+function resolveStartBlock(): number | "latest" {
+  const raw = process.env.PONDER_START_BLOCK?.trim();
+  if (!raw || raw === "latest") return "latest";
+  const block = Number.parseInt(raw, 10);
+  if (!Number.isFinite(block) || block < 0) {
+    throw new Error(`Invalid PONDER_START_BLOCK: ${raw}`);
+  }
+  return block;
+}
+
+const START_BLOCK = resolveStartBlock();
 
 export default createConfig({
   database: {
