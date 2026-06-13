@@ -1,10 +1,10 @@
 import { ponder } from "ponder:registry";
 import {
-  karProHolder,
   marketplaceListing,
   marketplaceSale,
   passport,
   passportRecord,
+  verifier,
 } from "ponder:schema";
 
 const ZERO_ADDRESS =
@@ -97,22 +97,69 @@ ponder.on("KarPassport:Transfer", async ({ event, context }) => {
     });
 });
 
-ponder.on("KarProPass:Transfer", async ({ event, context }) => {
-  if (event.args.from === ZERO_ADDRESS) {
-    await context.db.insert(karProHolder).values({
-      id: event.args.to.toLowerCase(),
-      address: event.args.to,
-      tokenId: event.args.tokenId.toString(),
+ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
+  const id = event.args.verifier.toLowerCase();
+  await context.db
+    .insert(verifier)
+    .values({
+      id,
+      address: event.args.verifier,
+      stakeAsset: Number(event.args.asset),
+      stakeAmount: event.args.amount.toString(),
       active: true,
-      issuedAt: event.block.timestamp,
+      joinedAt: event.block.timestamp,
+    })
+    .onConflictDoUpdate({
+      address: event.args.verifier,
+      stakeAsset: Number(event.args.asset),
+      stakeAmount: event.args.amount.toString(),
+      active: true,
+      joinedAt: event.block.timestamp,
     });
-    return;
-  }
-  if (event.args.to === ZERO_ADDRESS) {
-    await context.db
-      .update(karProHolder, { id: event.args.from.toLowerCase() })
-      .set({ active: false });
-  }
+});
+
+ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
+  await context.db
+    .update(verifier, { id: event.args.verifier.toLowerCase() })
+    .set({
+      active: false,
+      stakeAmount: "0",
+      leftAt: event.block.timestamp,
+    });
+});
+
+ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
+  const id = event.args.holder.toLowerCase();
+  await context.db
+    .insert(verifier)
+    .values({
+      id,
+      address: event.args.holder,
+      category: Number(event.args.category),
+      name: event.args.name,
+      active: true,
+    })
+    .onConflictDoUpdate({
+      address: event.args.holder,
+      category: Number(event.args.category),
+      name: event.args.name,
+      active: true,
+    });
+});
+
+ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
+  await context.db
+    .update(verifier, { id: event.args.holder.toLowerCase() })
+    .set({
+      category: Number(event.args.category),
+      name: event.args.name,
+    });
+});
+
+ponder.on("KarProPass:ProPassBurned", async ({ event, context }) => {
+  await context.db
+    .update(verifier, { id: event.args.holder.toLowerCase() })
+    .set({ active: false });
 });
 
 ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {

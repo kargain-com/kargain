@@ -1,10 +1,11 @@
-// Base Sepolia (84532) — deployed June 2025
-// KarProPass:             0x13167606ea83a213ab9e10255f09c5389e7910de
-// KarPassport:            0xe3568875db58be8e0ba6f44bf2a1178bb6777c29
-// MarketplaceEscrow impl: 0x96dc74bc1f2ecf8e2b474c2c97e13205ca924313
-// MarketplaceEscrow proxy:0x816855Ab573AfE959eBd5a5dc3A263288d194864
+// Base Sepolia (84532) — Model X, deployed June 2026
+// KarProPass:              0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1
+// KarProStaking:           0xA67aF973385E82f690e2a5170e42A620Bc82b5EE
+// KarPassport:             0x76b66eA782429f796a16671578fa5E9f941EeB6a
+// MarketplaceEscrow impl:  0x39f62fD73eB8b50A3Ea1E2503fe672e119ab8664
+// MarketplaceEscrow proxy: 0xc6C050ada9F744419495E92F603bC50062Bab6e6
 // Deployer/upgradeAuthority: 0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77
-// platformRecipient:      0xcfe194fea9727bD04dA8F78c2362680986e02dF1
+// platformRecipient:       0xcfe194fea9727bD04dA8F78c2362680986e02dF1
 
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 
@@ -12,7 +13,7 @@ export function karPassportAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0xe3568875db58be8e0ba6f44bf2a1178bb6777c29";
+    return "0x76b66eA782429f796a16671578fa5E9f941EeB6a";
   }
   return undefined;
 }
@@ -21,7 +22,7 @@ export function marketplaceAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0x816855Ab573AfE959eBd5a5dc3A263288d194864";
+    return "0xc6C050ada9F744419495E92F603bC50062Bab6e6";
   }
   return undefined;
 }
@@ -30,7 +31,16 @@ export function karProPassAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0x13167606ea83a213ab9e10255f09c5389e7910de";
+    return "0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1";
+  }
+  return undefined;
+}
+
+export function karProStakingAddress(
+  chainId?: number
+): `0x${string}` | undefined {
+  if (chainId === BASE_SEPOLIA_CHAIN_ID) {
+    return "0xA67aF973385E82f690e2a5170e42A620Bc82b5EE";
   }
   return undefined;
 }

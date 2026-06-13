@@ -3,6 +3,7 @@ import { http } from "viem";
 import {
   KarPassportAbi,
   KarProPassAbi,
+  KarProStakingAbi,
   MarketplaceEscrowAbi,
 } from "./lib/contracts/abis.generated";
 
@@ -27,19 +28,25 @@ export default createConfig({
     KarPassport: {
       chain: "baseSepolia",
       abi: KarPassportAbi,
-      address: "0xe3568875db58be8e0ba6f44bf2a1178bb6777c29",
+      address: "0x76b66eA782429f796a16671578fa5E9f941EeB6a",
       startBlock: "latest",
     },
     KarProPass: {
       chain: "baseSepolia",
       abi: KarProPassAbi,
-      address: "0x13167606ea83a213ab9e10255f09c5389e7910de",
+      address: "0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1",
+      startBlock: "latest",
+    },
+    KarProStaking: {
+      chain: "baseSepolia",
+      abi: KarProStakingAbi,
+      address: "0xA67aF973385E82f690e2a5170e42A620Bc82b5EE",
       startBlock: "latest",
     },
     MarketplaceEscrow: {
       chain: "baseSepolia",
       abi: MarketplaceEscrowAbi,
-      address: "0x816855Ab573AfE959eBd5a5dc3A263288d194864",
+      address: "0xc6C050ada9F744419495E92F603bC50062Bab6e6",
       startBlock: "latest",
     },
   },

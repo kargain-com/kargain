@@ -45,10 +45,15 @@ export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
   timestamp: t.bigint().notNull(),
 }));
 
-export const karProHolder = onchainTable("kar_pro_holder", (t) => ({
+export const verifier = onchainTable("verifier", (t) => ({
   id: t.text().primaryKey(),
   address: t.text().notNull(),
-  tokenId: t.text().notNull(),
-  active: t.boolean().notNull().default(true),
-  issuedAt: t.bigint().notNull(),
+  category: t.integer().notNull().default(5),
+  name: t.text().notNull().default(""),
+  metadataURI: t.text().notNull().default(""),
+  stakeAsset: t.integer().notNull().default(0),
+  stakeAmount: t.text().notNull().default("0"),
+  active: t.boolean().notNull().default(false),
+  joinedAt: t.bigint().notNull().default(0n),
+  leftAt: t.bigint().notNull().default(0n),
 }));

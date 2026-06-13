@@ -136,16 +136,17 @@ pnpm hardhat test       # 65 contract tests (node:test + viem)
 
 | Contract | Address |
 |----------|---------|
-| KarProPass | 0x13167606ea83a213ab9e10255f09c5389e7910de |
-| KarPassport | 0xe3568875db58be8e0ba6f44bf2a1178bb6777c29 |
-| MarketplaceEscrow (proxy) | 0x816855Ab573AfE959eBd5a5dc3A263288d194864 |
-| MarketplaceEscrow (impl) | 0x96dc74bc1f2ecf8e2b474c2c97e13205ca924313 |
+| KarProPass | 0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1 |
+| KarProStaking | 0xA67aF973385E82f690e2a5170e42A620Bc82b5EE |
+| KarPassport | 0x76b66eA782429f796a16671578fa5E9f941EeB6a |
+| MarketplaceEscrow (proxy) | 0xc6C050ada9F744419495E92F603bC50062Bab6e6 |
+| MarketplaceEscrow (impl) | 0x39f62fD73eB8b50A3Ea1E2503fe672e119ab8664 |
 
 Deployer / upgradeAuthority:
 0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77
 
 Network: Base Sepolia (chain 84532)
-Deployed: June 2025
+Deployed: June 2026 (Model X)
 
 ---
 

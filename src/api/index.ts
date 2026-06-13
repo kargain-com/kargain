@@ -1,8 +1,8 @@
 import { db } from "ponder:api";
 import {
-  karProHolder,
   marketplaceListing,
   passport,
+  verifier,
 } from "ponder:schema";
 import {
   and,
@@ -12,6 +12,7 @@ import {
   replaceBigInts,
 } from "ponder";
 import { Hono } from "hono";
+import { getAddress } from "viem";
 
 const app = new Hono();
 
@@ -171,10 +172,51 @@ app.get("/profile/:address/listings", async (c) => {
 app.get("/verifiers", async (c) => {
   const verifiers = await db
     .select()
-    .from(karProHolder)
-    .where(eq(karProHolder.active, true));
+    .from(verifier)
+    .where(eq(verifier.active, true))
+    .orderBy(desc(verifier.joinedAt));
 
   return c.json(jsonBody({ verifiers }));
+});
+
+app.get("/verifiers/:address", async (c) => {
+  const id = c.req.param("address").toLowerCase();
+  const row = await db
+    .select()
+    .from(verifier)
+    .where(eq(verifier.id, id))
+    .limit(1);
+
+  if (!row[0]) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const v = row[0];
+  const verificationRow = await db
+    .select({ total: count() })
+    .from(passport)
+    .where(eq(passport.verifier, getAddress(id)));
+
+  const verificationCount = verificationRow[0]?.total ?? 0;
+
+  return c.json(
+    jsonBody({
+      address: v.address,
+      identity: {
+        category: v.category,
+        name: v.name,
+        metadataURI: v.metadataURI,
+      },
+      stake: {
+        asset: v.stakeAsset,
+        amount: v.stakeAmount,
+        active: v.active,
+      },
+      joinedAt: v.joinedAt,
+      leftAt: v.leftAt,
+      verificationCount,
+    }),
+  );
 });
 
 export default app;
