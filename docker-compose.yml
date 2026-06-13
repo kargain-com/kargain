@@ -24,6 +24,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       PONDER_DATABASE_URL: postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder
       PONDER_RPC_URL_84532: ${PONDER_RPC_URL_84532}

@@ -30,10 +30,6 @@ function jsonBody<T>(value: T): T {
   return replaceBigInts(value, (v) => String(v)) as T;
 }
 
-app.get("/health", (c) => {
-  return c.json({ status: "ok", timestamp: Date.now() });
-});
-
 app.get("/listings", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
