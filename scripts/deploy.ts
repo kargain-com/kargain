@@ -121,14 +121,14 @@ async function main() {
       karProStaking.address,
     );
 
-    const karPassport = await deployStep(viem, "KarPassport", "KarPassport", [karProPass.address]);
+    const karPassport = await deployStep(viem, "KarPassport", "KarPassport", [karProStaking.address]);
 
     const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
       karPassport.address,
       USDC,
       NATIVE_USD_FEED,
       EUR_USD_FEED,
-      karProPass.address,
+      karProStaking.address,
       PLATFORM_RECIPIENT,
       FEE_BPS,
       PRO_FEE_BPS,

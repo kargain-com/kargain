@@ -11,6 +11,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 
+interface IKarProStaking {
+    function isActiveVerifier(address a) external view returns (bool);
+}
+
 /// @title MarketplaceEscrow
 /// @notice KarPassport escrow; seller sets fiat (USD/EUR 1e8); buyer pays native or USDC using Chainlink quotes.
 /// @dev UUPS upgradeable; timelock is the sole upgrade authority. ReentrancyGuard on external entrypoints.
@@ -25,7 +29,7 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
     uint16 public immutable platformFeeBps;
     uint256 public immutable proFeeBps;
     address public immutable platformRecipient;
-    address public immutable karProPass;
+    address public immutable karProStaking;
     uint256 public immutable maxFeedStaleness;
 
     /// @dev Set via proxy `initialize`; timelock holds upgrade authority (48h delay on scheduled upgrades).
@@ -75,7 +79,7 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
         address usdc_,
         address nativeUsdFeed_,
         address eurUsdFeed_,
-        address karProPass_,
+        address karProStaking_,
         address platformRecipient_,
         uint256 feeBps_,
         uint256 proFeeBps_,
@@ -92,7 +96,7 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
         usdc = IERC20(usdc_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
         eurUsdFeed = AggregatorV3Interface(eurUsdFeed_);
-        karProPass = karProPass_;
+        karProStaking = karProStaking_;
         platformRecipient = platformRecipient_;
         platformFeeBps = uint16(feeBps_);
         proFeeBps = proFeeBps_;
@@ -115,9 +119,9 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
     }
 
     function _feeBpsForSeller(address seller) internal view returns (uint256) {
-        if (karProPass != address(0)) {
-            try IERC721(karProPass).balanceOf(seller) returns (uint256 b) {
-                if (b > 0) return proFeeBps;
+        if (karProStaking != address(0)) {
+            try IKarProStaking(karProStaking).isActiveVerifier(seller) returns (bool active) {
+                if (active) return proFeeBps;
             } catch {}
         }
         return platformFeeBps;

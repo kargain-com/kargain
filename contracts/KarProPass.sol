@@ -29,9 +29,9 @@ contract KarProPass is ERC721, Ownable {
     error Soulbound();
     error NotHolder();
 
-    event ProPassMinted(address indexed holder, uint8 category, string name);
+    event ProPassMinted(address indexed holder, uint8 category, string name, string metadataURI);
     event ProPassBurned(address indexed holder);
-    event ProfileUpdated(address indexed holder, uint8 category, string name);
+    event ProfileUpdated(address indexed holder, uint8 category, string name, string metadataURI);
 
     /// @notice Deploys the soulbound Kar Pro pass collection.
     /// @param initialOwner Owner allowed to set the staking contract address.
@@ -61,7 +61,7 @@ contract KarProPass is ERC721, Ownable {
         issuedAt[tokenId] = block.timestamp;
         _safeMint(to, tokenId);
 
-        emit ProPassMinted(to, category, name);
+        emit ProPassMinted(to, category, name, metadataURI);
     }
 
     /// @notice Burns a KarProPass when a verifier leaves (callable only by KarProStaking).
@@ -92,7 +92,7 @@ contract KarProPass is ERC721, Ownable {
         holderName[tokenId] = name;
         holderMetadataURI[tokenId] = metadataURI;
 
-        emit ProfileUpdated(msg.sender, category, name);
+        emit ProfileUpdated(msg.sender, category, name, metadataURI);
     }
 
     /// @notice Returns on-chain profile data for a pass token.

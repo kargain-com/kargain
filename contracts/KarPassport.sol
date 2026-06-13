@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IKarProStaking {
+    function isActiveVerifier(address a) external view returns (bool);
+}
 
 /// @title KarPassport
 /// @notice ERC-721 vehicle passport with on-chain verification lifecycle and append-only records.
@@ -24,7 +27,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
         string evidenceCID;
     }
 
-    address public immutable karProPassAddress;
+    address public immutable karProStakingAddress;
 
     uint256 private _nextTokenId;
 
@@ -38,17 +41,23 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
     event PassportDisputed(uint256 indexed tokenId, address indexed disputer, string reason);
     event DisputeResolved(uint256 indexed tokenId, address indexed resolver, bool uphold);
     event PassportURIUpdated(uint256 indexed tokenId, string newURI, address indexed author);
-    event RecordAppended(uint256 indexed tokenId, address indexed author, string recordType);
+    event RecordAppended(
+        uint256 indexed tokenId,
+        address indexed author,
+        string recordType,
+        string description,
+        string evidenceCID
+    );
 
     error NonexistentToken();
     error NotOwner();
-    error NotKarProHolder();
+    error NotActiveVerifier();
     error CannotSelfVerify();
     error InvalidStatus(Status current);
     error EmptyField(string fieldName);
 
-    constructor(address karProPassAddress_) ERC721("KarPassport", "KPPT") {
-        karProPassAddress = karProPassAddress_;
+    constructor(address karProStakingAddress_) ERC721("KarPassport", "KPPT") {
+        karProStakingAddress = karProStakingAddress_;
     }
 
     /// @notice Permissionless mint of a new KarPassport NFT.
@@ -77,7 +86,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
     /// @notice KarProPass holder verifies a passport (not the token owner).
     function verifyPassport(uint256 tokenId) external nonReentrant {
         _requireExists(tokenId);
-        if (IERC721(karProPassAddress).balanceOf(msg.sender) < 1) revert NotKarProHolder();
+        if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (ownerOf(tokenId) == msg.sender) revert CannotSelfVerify();
         Status current = passportStatus[tokenId];
         if (current != Status.UNVERIFIED) revert InvalidStatus(current);
@@ -101,7 +110,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
     /// @notice KarProPass holder resolves a dispute.
     function resolveDispute(uint256 tokenId, bool uphold) external nonReentrant {
         _requireExists(tokenId);
-        if (IERC721(karProPassAddress).balanceOf(msg.sender) < 1) revert NotKarProHolder();
+        if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         Status current = passportStatus[tokenId];
         if (current != Status.DISPUTED) revert InvalidStatus(current);
         if (uphold) {
@@ -144,7 +153,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
         nonReentrant
     {
         _requireExists(tokenId);
-        if (IERC721(karProPassAddress).balanceOf(msg.sender) < 1) revert NotKarProHolder();
+        if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (bytes(description).length == 0) revert EmptyField("description");
         _appendRecord(tokenId, "attestation", description, evidenceCID, msg.sender);
     }
@@ -200,6 +209,6 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
                 evidenceCID: evidenceCID
             })
         );
-        emit RecordAppended(tokenId, author, recordType);
+        emit RecordAppended(tokenId, author, recordType, description, evidenceCID);
     }
 }
