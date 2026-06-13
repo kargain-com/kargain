@@ -14,26 +14,9 @@
 --   2. docker compose up -d ponder  (or pnpm ponder:start locally)
 --
 -- Schema: kargain (set via DATABASE_SCHEMA in docker-compose.yml)
+--
+-- Drops and recreates Ponder schemas (required when PONDER_START_BLOCK or contract
+-- config changes — truncate alone leaves a stale build_id and Ponder will refuse to start).
 
-BEGIN;
-
--- App tables (indexed passport / marketplace / verifier state)
-TRUNCATE TABLE kargain.passport CASCADE;
-TRUNCATE TABLE kargain.passport_record CASCADE;
-TRUNCATE TABLE kargain.marketplace_listing CASCADE;
-TRUNCATE TABLE kargain.marketplace_sale CASCADE;
-TRUNCATE TABLE kargain.verifier CASCADE;
-
--- Ponder internal RPC/sync cache (single-chain app — safe to wipe entirely).
-DO $$
-DECLARE
-  r RECORD;
-BEGIN
-  FOR r IN
-    SELECT tablename FROM pg_tables WHERE schemaname = 'ponder_sync'
-  LOOP
-    EXECUTE format('TRUNCATE TABLE ponder_sync.%I CASCADE', r.tablename);
-  END LOOP;
-END $$;
-
-COMMIT;
+DROP SCHEMA IF EXISTS kargain CASCADE;
+DROP SCHEMA IF EXISTS ponder_sync CASCADE;
