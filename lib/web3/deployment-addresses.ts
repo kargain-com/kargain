@@ -1,9 +1,9 @@
-// Base Sepolia (84532) — Model X, deployed June 2026
-// KarProPass:              0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1
-// KarProStaking:           0xA67aF973385E82f690e2a5170e42A620Bc82b5EE
-// KarPassport:             0x76b66eA782429f796a16671578fa5E9f941EeB6a
-// MarketplaceEscrow impl:  0x39f62fD73eB8b50A3Ea1E2503fe672e119ab8664
-// MarketplaceEscrow proxy: 0xc6C050ada9F744419495E92F603bC50062Bab6e6
+// Base Sepolia (84532) — Model X, redeployed June 2026
+// KarProPass:              0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1
+// KarProStaking:           0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31
+// KarPassport:             0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083
+// MarketplaceEscrow impl:  0x8888594b12DF2e1EF406e91CFF72d52801BCaC24
+// MarketplaceEscrow proxy: 0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F
 // Deployer/upgradeAuthority: 0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77
 // platformRecipient:       0xcfe194fea9727bD04dA8F78c2362680986e02dF1
 
@@ -13,7 +13,7 @@ export function karPassportAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0x76b66eA782429f796a16671578fa5E9f941EeB6a";
+    return "0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083";
   }
   return undefined;
 }
@@ -22,7 +22,7 @@ export function marketplaceAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0xc6C050ada9F744419495E92F603bC50062Bab6e6";
+    return "0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F";
   }
   return undefined;
 }
@@ -31,7 +31,7 @@ export function karProPassAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1";
+    return "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1";
   }
   return undefined;
 }
@@ -40,7 +40,7 @@ export function karProStakingAddress(
   chainId?: number
 ): `0x${string}` | undefined {
   if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return "0xA67aF973385E82f690e2a5170e42A620Bc82b5EE";
+    return "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31";
   }
   return undefined;
 }

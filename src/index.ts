@@ -75,12 +75,12 @@ ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
 ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   await context.db.insert(passportRecord).values({
-    id: `${tokenId}-${event.block.timestamp}-${event.args.author}`,
+    id: `${event.transaction.hash}-${event.log.logIndex}`,
     tokenId,
     author: event.args.author,
     recordType: event.args.recordType,
-    description: "",
-    evidenceCID: "",
+    description: event.args.description,
+    evidenceCID: event.args.evidenceCID,
     timestamp: event.block.timestamp,
   });
 });
@@ -137,12 +137,14 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
       address: event.args.holder,
       category: Number(event.args.category),
       name: event.args.name,
+      metadataURI: event.args.metadataURI,
       active: true,
     })
     .onConflictDoUpdate({
       address: event.args.holder,
       category: Number(event.args.category),
       name: event.args.name,
+      metadataURI: event.args.metadataURI,
       active: true,
     });
 });
@@ -153,6 +155,7 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
     .set({
       category: Number(event.args.category),
       name: event.args.name,
+      metadataURI: event.args.metadataURI,
     });
 });
 

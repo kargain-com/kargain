@@ -14,21 +14,21 @@ MIT License · Open Source · Built on Base
 
 Anyone can **permissionlessly mint** a KarPassport NFT at [`/passport/new`](/passport/new). Vehicle details and photos are stored on Arweave (via client-side Irys upload). Each passport starts **UNVERIFIED**.
 
-A **KarProPass holder** (not the token owner) can **verify** the passport on-chain. The owner may update the metadata URI only while status is UNVERIFIED.
+An **active verifier** (address with an active stake in `KarProStaking`, not the token owner) can **verify** the passport on-chain. The owner may update the metadata URI only while status is UNVERIFIED.
 
-Anyone may **dispute** a verified passport. A KarProPass holder **resolves** disputes: uphold keeps VERIFIED status; reject clears verification and returns the passport to UNVERIFIED. Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
+Anyone may **dispute** a verified passport. An active verifier **resolves** disputes: uphold keeps VERIFIED status; reject clears verification and returns the passport to UNVERIFIED. Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
 
 ### KarProPass & KarProStaking (Model X)
 
 Soulbound credential for verification professionals — **one pass per wallet**, non-transferable.
 
-Becoming a verifier is a **single permissionless action**: stake **0.05 ETH** via `KarProStaking.becomeVerifierNative` → receive a KarProPass. Stake is **fully refundable** — no slash, no delay. `leave()` burns the pass and returns the stake.
+Becoming a verifier is a **single permissionless action**: stake **0.05 ETH** via `KarProStaking.becomeVerifierNative` → receive a KarProPass. **Active stake** (`isActiveVerifier`) is the source of truth for verifier status — not KarProPass balance. Stake is **fully refundable** — no slash, no delay. `leave()` burns the pass and returns the stake.
 
 Verifier identity (category, display name, metadata URI) is stored on-chain and indexed by Ponder. Transparency is public; buyers judge verifiers by profile and history. Kargain revenue comes **only from marketplace sales** (0.1% platform fee).
 
 Verifier categories: `MECHANIC` · `GARAGE` · `INSPECTOR` · `BROKER` · `DEALER` · `OTHER`
 
-KarProPass holders verify passports, resolve disputes, and append attestations.
+Active verifiers verify passports, resolve disputes, and append attestations. Marketplace pro-fee discounts also require an active stake.
 
 ### MarketplaceEscrow
 
@@ -154,11 +154,11 @@ Network: Base Sepolia (chain **84532**) · Deployed: June 2026 (Model X)
 
 | Contract | Address |
 |----------|---------|
-| KarProPass | `0x7d2E1BAa3Cb92F5647005A666389150aF9875eA1` |
-| KarProStaking | `0xA67aF973385E82f690e2a5170e42A620Bc82b5EE` |
-| KarPassport | `0x76b66eA782429f796a16671578fa5E9f941EeB6a` |
-| MarketplaceEscrow (proxy) | `0xc6C050ada9F744419495E92F603bC50062Bab6e6` |
-| MarketplaceEscrow (impl) | `0x39f62fD73eB8b50A3Ea1E2503fe672e119ab8664` |
+| KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
+| KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
+| KarPassport | `0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083` |
+| MarketplaceEscrow (proxy) | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` |
+| MarketplaceEscrow (impl) | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` |
 | Deployer / upgradeAuthority | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
 | platformRecipient | `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` |
 
@@ -210,12 +210,11 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 - **VIN** and vehicle attributes live in Arweave metadata (not on-chain).
 - Metadata URI is editable by the owner only while status is UNVERIFIED.
 - Disputed passports can still be listed and sold; buyers see status in the UI.
-- Verifier `metadataURI` is **not emitted** in `ProPassMinted` / `ProfileUpdated` events — Ponder does not index it; the frontend reads it from chain.
+- Ponder indexes verifier `metadataURI` from `ProPassMinted` / `ProfileUpdated` and record `description` / `evidenceCID` from `RecordAppended`.
 
 ## Known technical debt
 
 - **UI wiring** — wagmi contract writes and Ponder-backed views are stubbed in several components (`TODO Phase 1.1` comments).
-- **Verifier metadataURI** — not in indexed events; frontend must read from `KarProPass` / `KarProStaking` on-chain.
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `scripts/deploy.ts` for full Model X deploys.
 
