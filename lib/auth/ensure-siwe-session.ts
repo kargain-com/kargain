@@ -15,7 +15,7 @@ export async function ensureSiweSession(params: {
     uri: window.location.origin,
     version: "1",
     statement: "Sign in to Kargain to upload files.",
-    nonce: crypto.randomUUID(),
+    nonce: crypto.randomUUID().replace(/-/g, ""),
   });
 
   const signature = await params.signMessageAsync({ message });
