@@ -20,7 +20,8 @@
     "deploy:proxy": "hardhat run scripts/deploy-proxy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",
     "postcompile": "pnpm abis:export",
-    "ponder:dev": "ponder dev"
+    "ponder:dev": "ponder dev",
+    "ponder:start": "ponder start"
   },
   "dependencies": {
     "@irys/web-upload": "^0.0.15",

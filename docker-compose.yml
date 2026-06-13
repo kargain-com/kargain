@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ponder -d kargain_ponder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_DB: kargain_ponder
+      POSTGRES_USER: ponder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kargain
+
+  ponder:
+    build:
+      context: .
+      dockerfile: Dockerfile.ponder
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PONDER_DATABASE_URL: postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder
+      PONDER_RPC_URL_84532: ${PONDER_RPC_URL_84532}
+    ports:
+      - "127.0.0.1:42069:42069"
+    networks:
+      - kargain
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - ponder
+    networks:
+      - kargain
+
+volumes:
+  postgres_data:
+
+networks:
+  kargain:
+    driver: bridge
