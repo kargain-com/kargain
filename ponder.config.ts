@@ -7,6 +7,10 @@ import {
 } from "./lib/contracts/abis.generated";
 
 export default createConfig({
+  database: {
+    kind: "postgres",
+    connectionString: process.env.DATABASE_URL,
+  },
   chains: {
     baseSepolia: {
       id: 84532,
