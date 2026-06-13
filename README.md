@@ -69,13 +69,16 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 
 | Area | Status |
 |------|--------|
-| Contracts (Model X) | Deployed on Base Sepolia, 64 tests passing |
-| Ponder indexer | Configured; production at https://ponder.kargain.com |
-| ABIs & addresses | Exported in `lib/contracts/abis.generated.ts`, `lib/web3/deployment-addresses.ts` |
-| Irys uploads | Client library integrated |
-| **UI on-chain wiring** | **In progress** — wagmi write calls and Ponder-backed views still stubbed |
+| Contracts (Model X) | Finalized on Base Sepolia, **71 tests** passing |
+| Ponder indexer | Production at https://ponder.kargain.com (realtime, final addresses) |
+| ABIs & addresses | `lib/contracts/abis.generated.ts`, `lib/web3/deployment-addresses.ts` |
+| Irys uploads | Client-side `@irys/web-upload` wired in passport wizard |
+| Passport UI | **Done** — `/passport/new` mint + marketplace detail page |
+| **UI on-chain wiring** | **In progress** — verify, marketplace, verifier flows, profiles |
 
-Remaining UI flows: `becomeVerifier`, `mintPassport`, `verify`, `dispute`, `resolve`, `list`, `delist`, `buy`, `leave`, profiles.
+Remaining UI flows: `becomeVerifier`, `verify`, `dispute`, `resolve`, `list`, `delist`, `buy`, `leave`, profiles.
+
+Internal session notes (local): `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`.
 
 ---
 
@@ -130,13 +133,13 @@ Open http://localhost:3000
 
 ### Create a passport
 
-Connect a wallet, then visit `/passport/new`. The Irys upload flow is implemented; the on-chain `mintPassport` call is pending UI wiring.
+Connect a wallet, then visit `/passport/new`. Irys upload and on-chain `mintPassport` are wired; success navigates to the passport detail page.
 
 ### Contracts (local)
 
 ```bash
 pnpm hardhat compile    # compile Solidity
-pnpm hardhat test       # 64 contract tests (node:test + viem)
+pnpm hardhat test       # 71 contract tests (node:test + viem)
 pnpm hardhat run scripts/deploy.ts --network baseSepolia   # full Model X deploy
 ```
 
@@ -175,7 +178,7 @@ Network: Base Sepolia (chain **84532**) · Deployed: June 2026 (Model X)
 
 ## Infrastructure
 
-Production indexer runs on OVH VPS via Docker Compose: **PostgreSQL + Ponder + cloudflared**.
+Production indexer runs via Docker Compose: **PostgreSQL + Ponder + cloudflared**.
 
 - Ponder API: https://ponder.kargain.com
 - RPC: publicnode (`startBlock: latest` in `ponder.config.ts`)
@@ -214,9 +217,10 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 ## Known technical debt
 
-- **UI wiring** — wagmi contract writes and Ponder-backed views are stubbed in several components (`TODO Phase 1.1` comments).
+- **UI wiring** — verify/dispute/resolve, marketplace list/buy, verifier flows, and profiles still stubbed (`TODO Phase 1.1` in several components).
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `scripts/deploy.ts` for full Model X deploys.
+- **`ProPassBurned`** — does not snapshot verifier profile (live state only).
 
 ## Contributing
 
