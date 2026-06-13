@@ -2,6 +2,7 @@ import { db } from "ponder:api";
 import {
   marketplaceListing,
   passport,
+  passportRecord,
   verifier,
 } from "ponder:schema";
 import {
@@ -144,7 +145,14 @@ app.get("/passports/:tokenId", async (c) => {
   if (!row[0]) {
     return c.json({ error: "Not found" }, 404);
   }
-  return c.json(jsonBody(row[0]));
+
+  const records = await db
+    .select()
+    .from(passportRecord)
+    .where(eq(passportRecord.tokenId, tokenId))
+    .orderBy(desc(passportRecord.timestamp));
+
+  return c.json(jsonBody({ ...row[0], records }));
 });
 
 app.get("/profile/:address/passports", async (c) => {

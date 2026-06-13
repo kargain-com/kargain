@@ -77,3 +77,25 @@ export type PonderHealthResponse = {
 };
 
 export type PonderErrorCode = "PONDER_NOT_CONFIGURED" | "PONDER_UNAVAILABLE";
+
+export type PonderPassportRecord = {
+  id: string;
+  tokenId: string;
+  author: string;
+  recordType: string;
+  description: string;
+  evidenceCID: string;
+  timestamp: string;
+};
+
+export type PonderPassportDetail = {
+  id: string;
+  owner: string;
+  status: PassportStatus;
+  verifier: string;
+  verifiedAt: string;
+  tokenUri: string;
+  createdAt: string;
+  updatedAt: string;
+  records: PonderPassportRecord[];
+};
