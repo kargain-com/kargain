@@ -9,7 +9,10 @@ import {
 export default createConfig({
   database: {
     kind: "postgres",
-    connectionString: process.env.DATABASE_URL,
+    connectionString:
+      process.env.DATABASE_URL ??
+      process.env.PONDER_DATABASE_URL ??
+      process.env.DATABASE_PRIVATE_URL,
   },
   chains: {
     baseSepolia: {
