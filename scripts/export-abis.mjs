@@ -15,6 +15,11 @@ const contracts = [
     artifactPath: "artifacts/contracts/KarProPass.sol/KarProPass.json",
   },
   {
+    exportName: "KarProStaking",
+    artifactPath:
+      "artifacts/contracts/KarProStaking.sol/KarProStaking.json",
+  },
+  {
     exportName: "MarketplaceEscrow",
     artifactPath:
       "artifacts/contracts/MarketplaceEscrow.sol/MarketplaceEscrow.json",

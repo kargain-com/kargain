@@ -58,9 +58,9 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
         returns (uint256 tokenId)
     {
         tokenId = _nextTokenId++;
+        passportStatus[tokenId] = Status.UNVERIFIED;
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
-        passportStatus[tokenId] = Status.UNVERIFIED;
         emit PassportMinted(to, tokenId, uri);
     }
 

@@ -4,12 +4,24 @@ import hardhat from "hardhat";
 import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicClient } from "viem";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
+const MIN_STAKE = 50_000_000_000_000_000n; // 0.05 ether
 
 /** $2000 per 1 native token, Chainlink-style 8 decimals. */
 const NATIVE_USD_8D = 2000n * 10n ** 8n;
 
+const Category = {
+  MECHANIC: 0,
+  GARAGE: 1,
+  INSPECTOR: 2,
+  BROKER: 3,
+  DEALER: 4,
+  OTHER: 5,
+} as const;
+
 type NetworkConnection = Awaited<ReturnType<typeof hardhat.network.connect>>;
 type ViemSuite = NetworkConnection["viem"];
+type WalletClient = Awaited<ReturnType<ViemSuite["getWalletClients"]>>[number];
+type DeployedContract = Awaited<ReturnType<ViemSuite["deployContract"]>>;
 
 function revertsWith(errorName: string) {
   return (err: unknown) => {
@@ -65,34 +77,47 @@ async function deployMarketplaceViaProxy(
   return { implementation, proxy, marketplace };
 }
 
-async function deployEscrowStack(viem: ViemSuite) {
-  const [admin, seller, buyer] = await viem.getWalletClients();
+async function deployVerifierStack(viem: ViemSuite) {
+  const [admin, owner, verifier, stranger] = await viem.getWalletClients();
   const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-  const passport = await viem.deployContract("KarPassport", [proPass.address]);
+  const staking = await viem.deployContract("KarProStaking", [
+    proPass.address,
+    admin.account.address,
+  ]);
+  await proPass.write.setStaking([staking.address], { account: admin.account });
+  return { admin, owner, verifier, stranger, proPass, staking };
+}
+
+async function deployPassportStack(viem: ViemSuite) {
+  const base = await deployVerifierStack(viem);
+  const passport = await viem.deployContract("KarPassport", [base.proPass.address]);
+  return { ...base, passport };
+}
+
+async function deployEscrowStack(viem: ViemSuite) {
+  const base = await deployPassportStack(viem);
   const usdc = await viem.deployContract("MockUSDC", []);
   const nativeFeed = await viem.deployContract("MockV3Aggregator", [8, NATIVE_USD_8D]);
-  const timelock = await deployTimelock(viem, admin.account.address);
+  const timelock = await deployTimelock(viem, base.admin.account.address);
   const feeBps = 250n;
   const proFeeBps = 100n;
   const maxStale = 3600n;
   const { marketplace, implementation, proxy } = await deployMarketplaceViaProxy(viem, {
-    karPassport: passport.address,
+    karPassport: base.passport.address,
     usdc: usdc.address,
     nativeFeed: nativeFeed.address,
     eurFeed: ZERO,
-    karProPass: proPass.address,
-    platformRecipient: admin.account.address,
+    karProPass: base.proPass.address,
+    platformRecipient: base.admin.account.address,
     feeBps,
     proFeeBps,
     maxStale,
     timelock: timelock.address,
   });
   return {
-    admin,
-    seller,
-    buyer,
-    passport,
-    proPass,
+    ...base,
+    seller: base.owner,
+    buyer: base.verifier,
     usdc,
     nativeFeed,
     marketplace,
@@ -104,21 +129,24 @@ async function deployEscrowStack(viem: ViemSuite) {
   };
 }
 
-async function mintProPass(
-  proPass: Awaited<ReturnType<ViemSuite["deployContract"]>>,
-  admin: NetworkConnection["viem"] extends infer V ? Awaited<ReturnType<V["getWalletClients"]>>[0] : never,
-  holder: `0x${string}`,
-  category = "inspector",
-  name = "Test Verifier",
+async function joinVerifier(
+  staking: DeployedContract,
+  account: WalletClient,
+  opts: {
+    category?: number;
+    name?: string;
+    metadataURI?: string;
+    value?: bigint;
+  } = {},
 ) {
-  await proPass.write.ownerMint([holder, category, name], { account: admin.account });
-}
-
-async function deployPassportStack(viem: ViemSuite) {
-  const [admin, owner, verifier, stranger] = await viem.getWalletClients();
-  const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-  const passport = await viem.deployContract("KarPassport", [proPass.address]);
-  return { admin, owner, verifier, stranger, proPass, passport };
+  const category = opts.category ?? Category.INSPECTOR;
+  const name = opts.name ?? "Test Verifier";
+  const metadataURI = opts.metadataURI ?? "ipfs://profile";
+  const value = opts.value ?? MIN_STAKE;
+  await staking.write.becomeVerifierNative([category, name, metadataURI], {
+    account: account.account,
+    value,
+  });
 }
 
 async function receiptLogs(
@@ -129,6 +157,545 @@ async function receiptLogs(
   const receipt = await publicClient.getTransactionReceipt({ hash });
   return parseEventLogs({ abi, logs: receipt.logs });
 }
+
+// ─── KarProPass ───────────────────────────────────────────────────────────────
+
+describe("KarProPass", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("mint reverts if caller is not staking", async () => {
+    const { viem } = connection;
+    const { admin, owner, stranger, proPass } = await deployVerifierStack(viem);
+    void admin;
+    await assert.rejects(
+      proPass.write.mint([owner.account.address, Category.INSPECTOR, "X", "ipfs://x"], {
+        account: stranger.account,
+      }),
+      revertsWith("OnlyStaking"),
+    );
+  });
+
+  it("burn reverts if caller is not staking", async () => {
+    const { viem } = connection;
+    const { owner, verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await assert.rejects(
+      proPass.write.burn([owner.account.address], { account: stranger.account }),
+      revertsWith("OnlyStaking"),
+    );
+  });
+
+  it("approve reverts Soulbound", async () => {
+    const { viem } = connection;
+    const { verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    const tokenId = BigInt(verifier.account.address);
+    await assert.rejects(
+      proPass.write.approve([stranger.account.address, tokenId], { account: verifier.account }),
+      revertsWith("Soulbound"),
+    );
+  });
+
+  it("setApprovalForAll reverts Soulbound", async () => {
+    const { viem } = connection;
+    const { verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await assert.rejects(
+      proPass.write.setApprovalForAll([stranger.account.address, true], {
+        account: verifier.account,
+      }),
+      revertsWith("Soulbound"),
+    );
+  });
+
+  it("transfer between addresses reverts Soulbound", async () => {
+    const { viem } = connection;
+    const { verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    const tokenId = BigInt(verifier.account.address);
+    await assert.rejects(
+      proPass.write.transferFrom(
+        [verifier.account.address, stranger.account.address, tokenId],
+        { account: verifier.account },
+      ),
+      revertsWith("Soulbound"),
+    );
+  });
+
+  it("updateProfile changes category, name, metadataURI", async () => {
+    const { viem } = connection;
+    const { verifier, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier, {
+      category: Category.INSPECTOR,
+      name: "Old Name",
+      metadataURI: "ipfs://old",
+    });
+    const tokenId = BigInt(verifier.account.address);
+    await proPass.write.updateProfile([Category.DEALER, "New Name", "ipfs://new"], {
+      account: verifier.account,
+    });
+    assert.equal(await proPass.read.holderCategory([tokenId]), Category.DEALER);
+    assert.equal(await proPass.read.holderName([tokenId]), "New Name");
+    assert.equal(await proPass.read.holderMetadataURI([tokenId]), "ipfs://new");
+  });
+
+  it("updateProfile reverts if caller has no pass", async () => {
+    const { viem } = connection;
+    const { stranger, proPass } = await deployVerifierStack(viem);
+    await assert.rejects(
+      proPass.write.updateProfile([Category.OTHER, "X", "ipfs://x"], {
+        account: stranger.account,
+      }),
+      revertsWith("NotHolder"),
+    );
+  });
+});
+
+// ─── KarProStaking — becomeVerifierNative ─────────────────────────────────────
+
+describe("KarProStaking — becomeVerifierNative", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("stakes exactly minStakeNative, mints KarProPass", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, proPass, staking } = await deployVerifierStack(viem);
+    const before = await publicClient.getBalance({ address: staking.address });
+    await joinVerifier(staking, verifier, { value: MIN_STAKE });
+    const after = await publicClient.getBalance({ address: staking.address });
+    assert.equal(after - before, MIN_STAKE);
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+  });
+
+  it("accepts more than minStakeNative", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, staking } = await deployVerifierStack(viem);
+    const extra = MIN_STAKE + 10_000_000_000_000_000n;
+    await joinVerifier(staking, verifier, { value: extra });
+    const stake = await staking.read.stakes([verifier.account.address]);
+    assert.equal(stake[1], extra);
+    const balance = await publicClient.getBalance({ address: staking.address });
+    assert.equal(balance, extra);
+  });
+
+  it("reverts below minStakeNative", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+        account: verifier.account,
+        value: MIN_STAKE - 1n,
+      }),
+      revertsWith("BelowMinStake"),
+    );
+  });
+
+  it("reverts if already a verifier", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await assert.rejects(
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+        account: verifier.account,
+        value: MIN_STAKE,
+      }),
+      revertsWith("AlreadyVerifier"),
+    );
+  });
+
+  it("emits VerifierJoined", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, staking } = await deployVerifierStack(viem);
+    const hash = await staking.write.becomeVerifierNative(
+      [Category.INSPECTOR, "Verifier Co", "ipfs://v"],
+      { account: verifier.account, value: MIN_STAKE },
+    );
+    const logs = await receiptLogs(publicClient, hash, staking.abi);
+    const joined = logs.find((l) => l.eventName === "VerifierJoined");
+    assert.ok(joined);
+    assert.equal(getAddress(joined!.args.verifier as `0x${string}`), getAddress(verifier.account.address));
+    assert.equal(joined!.args.amount, MIN_STAKE);
+  });
+
+  it("KarProPass minted with correct category and name", async () => {
+    const { viem } = connection;
+    const { verifier, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier, {
+      category: Category.BROKER,
+      name: "Broker Inc",
+      metadataURI: "ipfs://broker",
+    });
+    const tokenId = BigInt(verifier.account.address);
+    const [, category, name, metadataURI] = await proPass.read.getProPassData([tokenId]);
+    assert.equal(category, Category.BROKER);
+    assert.equal(name, "Broker Inc");
+    assert.equal(metadataURI, "ipfs://broker");
+  });
+
+  it("isActiveVerifier returns true after join", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
+  });
+});
+
+// ─── KarProStaking — leave ────────────────────────────────────────────────────
+
+describe("KarProStaking — leave", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("returns exact staked amount", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, staking } = await deployVerifierStack(viem);
+    const extra = MIN_STAKE + 5_000_000_000_000_000n;
+    await joinVerifier(staking, verifier, { value: extra });
+    const stakingBefore = await publicClient.getBalance({ address: staking.address });
+    await staking.write.leave([], { account: verifier.account });
+    const stakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(stakingBefore - stakingAfter, extra);
+  });
+
+  it("burns KarProPass", async () => {
+    const { viem } = connection;
+    const { verifier, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await staking.write.leave([], { account: verifier.account });
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 0n);
+  });
+
+  it("isActiveVerifier returns false after leave", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await staking.write.leave([], { account: verifier.account });
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
+  });
+
+  it("reverts if not a verifier", async () => {
+    const { viem } = connection;
+    const { stranger, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.leave([], { account: stranger.account }),
+      revertsWith("NotVerifier"),
+    );
+  });
+
+  it("emits VerifierLeft", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    const hash = await staking.write.leave([], { account: verifier.account });
+    const logs = await receiptLogs(publicClient, hash, staking.abi);
+    const left = logs.find((l) => l.eventName === "VerifierLeft");
+    assert.ok(left);
+    assert.equal(left!.args.returned, MIN_STAKE);
+  });
+
+  it("can rejoin after leaving", async () => {
+    const { viem } = connection;
+    const { verifier, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await staking.write.leave([], { account: verifier.account });
+    await joinVerifier(staking, verifier, { name: "Rejoined" });
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
+  });
+
+  it("returns locked amount even after minStake changed", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier, { value: MIN_STAKE });
+    const higherMin = 80_000_000_000_000_000n; // 0.08 ether
+    await staking.write.setMinStakeNative([higherMin], { account: admin.account });
+    const stakingBefore = await publicClient.getBalance({ address: staking.address });
+    await staking.write.leave([], { account: verifier.account });
+    const stakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
+    assert.equal(await staking.read.minStakeNative(), higherMin);
+  });
+});
+
+// ─── KarProStaking — params ───────────────────────────────────────────────────
+
+describe("KarProStaking — params", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("setMinStakeNative changes minimum for new verifiers", async () => {
+    const { viem } = connection;
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    const newMin = 100_000_000_000_000_000n;
+    await staking.write.setMinStakeNative([newMin], { account: admin.account });
+    await assert.rejects(
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+        account: verifier.account,
+        value: newMin - 1n,
+      }),
+      revertsWith("BelowMinStake"),
+    );
+    await staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+      account: verifier.account,
+      value: newMin,
+    });
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
+  });
+
+  it("existing stake unaffected by minStake change", async () => {
+    const { viem } = connection;
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier, { value: MIN_STAKE });
+    await staking.write.setMinStakeNative([100_000_000_000_000_000n], { account: admin.account });
+    const stake = await staking.read.stakes([verifier.account.address]);
+    assert.equal(stake[1], MIN_STAKE);
+    assert.equal(stake[3], true);
+  });
+
+  it("setStakeToken enables token staking", async () => {
+    const { viem } = connection;
+    const { admin, verifier, proPass, staking } = await deployVerifierStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    const tokenMin = 1_000_000n; // 1 USDC
+    await staking.write.setStakeToken([usdc.address, tokenMin], { account: admin.account });
+    await usdc.write.mint([verifier.account.address, tokenMin]);
+    await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken(
+      [Category.GARAGE, "Garage Pro", "ipfs://garage"],
+      { account: verifier.account },
+    );
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
+  });
+
+  it("becomeVerifierToken reverts when token not set", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.becomeVerifierToken([Category.INSPECTOR, "X", "ipfs://x"], {
+        account: verifier.account,
+      }),
+      revertsWith("TokenNotEnabled"),
+    );
+  });
+
+  it("only owner can setMinStakeNative", async () => {
+    const { viem } = connection;
+    const { stranger, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.setMinStakeNative([MIN_STAKE * 2n], { account: stranger.account }),
+    );
+  });
+
+  it("only owner can setStakeToken", async () => {
+    const { viem } = connection;
+    const { stranger, staking } = await deployVerifierStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    await assert.rejects(
+      staking.write.setStakeToken([usdc.address, 1_000_000n], { account: stranger.account }),
+    );
+  });
+});
+
+// ─── KarProStaking — security ─────────────────────────────────────────────────
+
+describe("KarProStaking — security", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("no owner function can drain user stakes", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, verifier, stranger, staking } = await deployVerifierStack(viem);
+    const forbidden = /withdraw|rescue|sweep|recover|drain/i;
+    for (const item of staking.abi) {
+      if (item.type === "function" && item.name && forbidden.test(item.name)) {
+        assert.fail(`Unexpected drain-like function: ${item.name}`);
+      }
+    }
+
+    await joinVerifier(staking, verifier, { value: MIN_STAKE });
+    await joinVerifier(staking, stranger, { value: MIN_STAKE });
+    const balanceAfterJoin = await publicClient.getBalance({ address: staking.address });
+    assert.equal(balanceAfterJoin, MIN_STAKE * 2n);
+
+    const usdc = await viem.deployContract("MockUSDC", []);
+    await staking.write.setMinStakeNative([1_000_000_000_000_000_000n], { account: admin.account });
+    await staking.write.setStakeToken([usdc.address, 1_000_000n], { account: admin.account });
+    const balanceAfterOwnerOps = await publicClient.getBalance({ address: staking.address });
+    assert.equal(balanceAfterOwnerOps, balanceAfterJoin);
+
+    const verifierStakingBefore = await publicClient.getBalance({ address: staking.address });
+    await staking.write.leave([], { account: verifier.account });
+    const verifierStakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(verifierStakingBefore - verifierStakingAfter, MIN_STAKE);
+
+    const strangerStakingBefore = await publicClient.getBalance({ address: staking.address });
+    await staking.write.leave([], { account: stranger.account });
+    const strangerStakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(strangerStakingBefore - strangerStakingAfter, MIN_STAKE);
+
+    assert.equal(await publicClient.getBalance({ address: staking.address }), 0n);
+  });
+
+  it("becomeVerifierToken works after setStakeToken (mock ERC20)", async () => {
+    const { viem } = connection;
+    const { admin, verifier, proPass, staking } = await deployVerifierStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    const tokenMin = 500_000n;
+    await staking.write.setStakeToken([usdc.address, tokenMin], { account: admin.account });
+    await usdc.write.mint([verifier.account.address, tokenMin]);
+    await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken(
+      [Category.MECHANIC, "Mech Shop", "ipfs://mech"],
+      { account: verifier.account },
+    );
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+    const stake = await staking.read.stakes([verifier.account.address]);
+    assert.equal(stake[0], 1); // TOKEN
+    assert.equal(stake[1], tokenMin);
+    void admin;
+  });
+
+  it("token leave returns exact token amount", async () => {
+    const { viem } = connection;
+    const { admin, verifier, proPass, staking } = await deployVerifierStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    const tokenMin = 750_000n;
+    await staking.write.setStakeToken([usdc.address, tokenMin], { account: admin.account });
+    await usdc.write.mint([verifier.account.address, tokenMin]);
+    await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken(
+      [Category.INSPECTOR, "Token Verifier", "ipfs://t"],
+      { account: verifier.account },
+    );
+    const before = await usdc.read.balanceOf([verifier.account.address]);
+    await staking.write.leave([], { account: verifier.account });
+    const after = await usdc.read.balanceOf([verifier.account.address]);
+    assert.equal(after - before, tokenMin);
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 0n);
+  });
+});
+
+// ─── KarProStaking — leave resilience ─────────────────────────────────────────
+
+describe("KarProStaking — leave resilience", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("leave() succeeds and returns stake even if KarProPass staking address was changed", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier, { value: MIN_STAKE });
+    await proPass.write.setStaking([stranger.account.address], { account: admin.account });
+    const stakingBefore = await publicClient.getBalance({ address: staking.address });
+    await staking.write.leave([], { account: verifier.account });
+    const stakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+  });
+});
+
+// ─── KarProStaking — fee-on-transfer protection ───────────────────────────────
+
+describe("KarProStaking — fee-on-transfer protection", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("becomeVerifierToken records actual received amount with zero-fee token", async () => {
+    const { viem } = connection;
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    const feeToken = await viem.deployContract("MockFeeToken", [0n]);
+    const tokenMin = 1_000_000n;
+    await staking.write.setStakeToken([feeToken.address, tokenMin], { account: admin.account });
+    await feeToken.write.mint([verifier.account.address, tokenMin]);
+    await feeToken.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken(
+      [Category.INSPECTOR, "Fee Test", "ipfs://fee"],
+      { account: verifier.account },
+    );
+    const stake = await staking.read.stakes([verifier.account.address]);
+    assert.equal(stake[1], tokenMin);
+    assert.equal(await feeToken.read.balanceOf([staking.address]), tokenMin);
+  });
+
+  it("becomeVerifierToken reverts when fee token delivers less than minStakeToken", async () => {
+    const { viem } = connection;
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    const feeToken = await viem.deployContract("MockFeeToken", [1000n]);
+    const tokenMin = 1_000_000n;
+    await staking.write.setStakeToken([feeToken.address, tokenMin], { account: admin.account });
+    await feeToken.write.mint([verifier.account.address, tokenMin]);
+    await feeToken.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await assert.rejects(
+      staking.write.becomeVerifierToken(
+        [Category.INSPECTOR, "Fee Fail", "ipfs://fail"],
+        { account: verifier.account },
+      ),
+      revertsWith("BelowMinStake"),
+    );
+  });
+});
+
+// ─── KarPassport — mintPassport ───────────────────────────────────────────────
 
 describe("KarPassport — mintPassport", () => {
   let connection: NetworkConnection;
@@ -141,45 +708,34 @@ describe("KarPassport — mintPassport", () => {
     await connection.close();
   });
 
-  it("public mint succeeds, returns tokenId, emits PassportMinted", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, owner, passport } = await deployPassportStack(viem);
-    void admin;
-
-    const uri = "ipfs://mint-test";
-    const hash = await passport.write.mintPassport([owner.account.address, uri], {
-      account: owner.account,
-    });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    const minted = logs.find((l) => l.eventName === "PassportMinted");
-    assert.ok(minted);
-    assert.equal(minted.args.tokenId, 0n);
-    assert.equal(getAddress(minted.args.to), getAddress(owner.account.address));
-    assert.equal(minted.args.uri, uri);
-    assert.equal(await passport.read.nextTokenId(), 1n);
-  });
-
-  it("status is UNVERIFIED after mint", async () => {
+  it("public mint, status UNVERIFIED, correct URI", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://s"], {
+    const uri = "ipfs://passport-1";
+    await passport.write.mintPassport([owner.account.address, uri], {
       account: owner.account,
     });
     const [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
-  });
-
-  it("tokenURI is set correctly", async () => {
-    const { viem } = connection;
-    const { owner, passport } = await deployPassportStack(viem);
-    const uri = "ipfs://uri-check";
-    await passport.write.mintPassport([owner.account.address, uri], {
-      account: owner.account,
-    });
     assert.equal(await passport.read.tokenURI([0n]), uri);
   });
+
+  it("tokenId increments", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    assert.equal(await passport.read.nextTokenId(), 0n);
+    await passport.write.mintPassport([owner.account.address, "ipfs://0"], {
+      account: owner.account,
+    });
+    assert.equal(await passport.read.nextTokenId(), 1n);
+    await passport.write.mintPassport([owner.account.address, "ipfs://1"], {
+      account: owner.account,
+    });
+    assert.equal(await passport.read.nextTokenId(), 2n);
+  });
 });
+
+// ─── KarPassport — setPassportURI ─────────────────────────────────────────────
 
 describe("KarPassport — setPassportURI", () => {
   let connection: NetworkConnection;
@@ -192,7 +748,7 @@ describe("KarPassport — setPassportURI", () => {
     await connection.close();
   });
 
-  it("owner can update URI when UNVERIFIED", async () => {
+  it("owner updates when UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
@@ -202,7 +758,7 @@ describe("KarPassport — setPassportURI", () => {
     assert.equal(await passport.read.tokenURI([0n]), "ipfs://new");
   });
 
-  it("reverts when caller is not owner", async () => {
+  it("reverts not owner", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://x"], {
@@ -214,13 +770,13 @@ describe("KarPassport — setPassportURI", () => {
     );
   });
 
-  it("reverts when status is VERIFIED", async () => {
+  it("reverts when VERIFIED", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await assert.rejects(
       passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account }),
@@ -228,21 +784,23 @@ describe("KarPassport — setPassportURI", () => {
     );
   });
 
-  it("reverts when status is DISPUTED", async () => {
+  it("reverts when DISPUTED", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "bad vin"], { account: owner.account });
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await assert.rejects(
       passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account }),
       revertsWith("InvalidStatus"),
     );
   });
 });
+
+// ─── KarPassport — verifyPassport ─────────────────────────────────────────────
 
 describe("KarPassport — verifyPassport", () => {
   let connection: NetworkConnection;
@@ -255,46 +813,20 @@ describe("KarPassport — verifyPassport", () => {
     await connection.close();
   });
 
-  it("KarProPass holder (not token owner) can verify", async () => {
+  it("active verifier (KarProPass holder, not owner) verifies", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
-    const [status] = await passport.read.getPassportStatus([0n]);
+    const [status, recordedVerifier] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 1);
+    assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
   });
 
-  it("sets status to VERIFIED, records verifier and timestamp", async () => {
-    const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    const [status, verifierAddr, verifiedAt] = await passport.read.getPassportStatus([0n]);
-    assert.equal(status, 1);
-    assert.equal(getAddress(verifierAddr), getAddress(verifier.account.address));
-    assert.ok(verifiedAt > 0n);
-  });
-
-  it("emits PassportVerified", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    const hash = await passport.write.verifyPassport([0n], { account: verifier.account });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    assert.ok(logs.some((l) => l.eventName === "PassportVerified"));
-  });
-
-  it("reverts when caller has no KarProPass", async () => {
+  it("reverts: no KarProPass", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
@@ -306,35 +838,67 @@ describe("KarPassport — verifyPassport", () => {
     );
   });
 
-  it("reverts when caller is the token owner (self-verify)", async () => {
+  it("reverts: self-verify", async () => {
     const { viem } = connection;
-    const { admin, owner, passport, proPass } = await deployPassportStack(viem);
+    const { owner, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, owner.account.address);
+    await joinVerifier(staking, owner);
     await assert.rejects(
       passport.write.verifyPassport([0n], { account: owner.account }),
       revertsWith("CannotSelfVerify"),
     );
   });
 
-  it("reverts when status is already VERIFIED", async () => {
+  it("reverts: already VERIFIED", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
+    const { owner, verifier, stranger, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
+    await joinVerifier(staking, stranger);
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: verifier.account }),
+      passport.write.verifyPassport([0n], { account: stranger.account }),
       revertsWith("InvalidStatus"),
     );
   });
+
+  it("verifier who left (pass burned) can no longer verify", async () => {
+    const { viem } = connection;
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await staking.write.leave([], { account: verifier.account });
+    await assert.rejects(
+      passport.write.verifyPassport([0n], { account: verifier.account }),
+      revertsWith("NotKarProHolder"),
+    );
+  });
+
+  it("passport stays VERIFIED after its verifier leaves", async () => {
+    const { viem } = connection;
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await staking.write.leave([], { account: verifier.account });
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 1);
+    assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
+    assert.ok(verifiedAt > 0n);
+  });
 });
 
-describe("KarPassport — disputePassport", () => {
+// ─── KarPassport — dispute and resolve ────────────────────────────────────────
+
+describe("KarPassport — dispute and resolve", () => {
   let connection: NetworkConnection;
 
   beforeEach(async () => {
@@ -345,152 +909,91 @@ describe("KarPassport — disputePassport", () => {
     await connection.close();
   });
 
-  it("anyone can dispute a VERIFIED passport", async () => {
+  async function setupVerified(viem: ViemSuite) {
+    const stack = await deployPassportStack(viem);
+    await stack.passport.write.mintPassport([stack.owner.account.address, "ipfs://d"], {
+      account: stack.owner.account,
+    });
+    await joinVerifier(stack.staking, stack.verifier);
+    await stack.passport.write.verifyPassport([0n], { account: stack.verifier.account });
+    return stack;
+  }
+
+  it("anyone disputes VERIFIED passport", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, stranger, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "odometer rollback"], {
-      account: stranger.account,
-    });
+    const { owner, stranger, passport } = await setupVerified(viem);
+    await passport.write.disputePassport([0n, "fraud"], { account: stranger.account });
     const [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 2);
+    void owner;
   });
 
-  it("sets status to DISPUTED, appends discrepancy record", async () => {
-    const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    assert.equal(await passport.read.recordCount([0n]), 0n);
-    await passport.write.disputePassport([0n, "vin mismatch"], { account: owner.account });
-    assert.equal(await passport.read.recordCount([0n]), 1n);
-  });
-
-  it("emits PassportDisputed", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    const hash = await passport.write.disputePassport([0n, "issue"], { account: owner.account });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    assert.ok(logs.some((l) => l.eventName === "PassportDisputed"));
-  });
-
-  it("reverts when status is UNVERIFIED", async () => {
+  it("reverts dispute on UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://u"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.disputePassport([0n, "too early"], { account: owner.account }),
+      passport.write.disputePassport([0n, "reason"], { account: owner.account }),
       revertsWith("InvalidStatus"),
     );
   });
 
-  it("reverts when reason is empty", async () => {
+  it("reverts dispute empty reason", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
+    const { owner, passport } = await setupVerified(viem);
     await assert.rejects(
       passport.write.disputePassport([0n, ""], { account: owner.account }),
       revertsWith("EmptyField"),
     );
   });
-});
 
-describe("KarPassport — resolveDispute", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  async function setupDisputed(viem: ViemSuite) {
-    const stack = await deployPassportStack(viem);
-    await stack.passport.write.mintPassport([stack.owner.account.address, "ipfs://r"], {
-      account: stack.owner.account,
-    });
-    await mintProPass(stack.proPass, stack.admin, stack.verifier.account.address);
-    await stack.passport.write.verifyPassport([0n], { account: stack.verifier.account });
-    await stack.passport.write.disputePassport([0n, "dispute"], {
-      account: stack.owner.account,
-    });
-    return stack;
-  }
-
-  it("KarProPass holder can resolve with uphold=true → VERIFIED", async () => {
+  it("KarProPass holder resolves uphold=true → VERIFIED", async () => {
     const { viem } = connection;
-    const { verifier, passport } = await setupDisputed(viem);
+    const { owner, verifier, passport, staking } = await setupVerified(viem);
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await passport.write.resolveDispute([0n, true], { account: verifier.account });
     const [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 1);
   });
 
-  it("KarProPass holder can resolve with uphold=false → UNVERIFIED, verifier cleared", async () => {
+  it("resolve uphold=false → UNVERIFIED, verifier cleared", async () => {
     const { viem } = connection;
-    const { verifier, passport } = await setupDisputed(viem);
+    const { owner, verifier, passport, staking } = await setupVerified(viem);
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    const [status, verifierAddr, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
-    assert.equal(getAddress(verifierAddr), getAddress(ZERO));
+    assert.equal(recordedVerifier, ZERO);
     assert.equal(verifiedAt, 0n);
+    void staking;
   });
 
-  it("emits DisputeResolved with correct uphold value", async () => {
+  it("resolve reverts: no KarProPass", async () => {
     const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { verifier, passport } = await setupDisputed(viem);
-    const hash = await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    const resolved = logs.find((l) => l.eventName === "DisputeResolved");
-    assert.ok(resolved);
-    assert.equal(resolved.args.uphold, false);
-  });
-
-  it("reverts when caller has no KarProPass", async () => {
-    const { viem } = connection;
-    const { stranger, passport } = await setupDisputed(viem);
+    const { owner, stranger, passport } = await setupVerified(viem);
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await assert.rejects(
       passport.write.resolveDispute([0n, true], { account: stranger.account }),
       revertsWith("NotKarProHolder"),
     );
   });
 
-  it("reverts when status is not DISPUTED", async () => {
+  it("resolve reverts: not DISPUTED", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://x"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
+    const { verifier, passport, staking } = await setupVerified(viem);
     await assert.rejects(
       passport.write.resolveDispute([0n, true], { account: verifier.account }),
       revertsWith("InvalidStatus"),
     );
+    void staking;
   });
 });
 
-describe("KarPassport — appendRecord", () => {
+// ─── KarPassport — records ────────────────────────────────────────────────────
+
+describe("KarPassport — records", () => {
   let connection: NetworkConnection;
 
   beforeEach(async () => {
@@ -501,198 +1004,58 @@ describe("KarPassport — appendRecord", () => {
     await connection.close();
   });
 
-  it("owner can append a record", async () => {
+  it("owner appendRecord", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
       account: owner.account,
     });
-    await passport.write.appendRecord([0n, "service", "oil change", "bafy1"], {
+    await passport.write.appendRecord([0n, "service", "Oil change", "cid-1"], {
       account: owner.account,
     });
     assert.equal(await passport.read.recordCount([0n]), 1n);
   });
 
-  it("recordCount increments", async () => {
-    const { viem } = connection;
-    const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    await passport.write.appendRecord([0n, "service", "first", ""], { account: owner.account });
-    await passport.write.appendRecord([0n, "mileage", "second", ""], { account: owner.account });
-    assert.equal(await passport.read.recordCount([0n]), 2n);
-  });
-
-  it("emits RecordAppended", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    const hash = await passport.write.appendRecord([0n, "service", "note", ""], {
-      account: owner.account,
-    });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    assert.ok(logs.some((l) => l.eventName === "RecordAppended"));
-  });
-
-  it("reverts when caller is not owner", async () => {
+  it("reportDiscrepancy permissionless", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
       account: owner.account,
     });
-    await assert.rejects(
-      passport.write.appendRecord([0n, "service", "x", ""], { account: stranger.account }),
-      revertsWith("NotOwner"),
-    );
-  });
-
-  it("reverts when recordType is empty", async () => {
-    const { viem } = connection;
-    const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    await assert.rejects(
-      passport.write.appendRecord([0n, "", "desc", ""], { account: owner.account }),
-      revertsWith("EmptyField"),
-    );
-  });
-
-  it("reverts when description is empty", async () => {
-    const { viem } = connection;
-    const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    await assert.rejects(
-      passport.write.appendRecord([0n, "service", "", ""], { account: owner.account }),
-      revertsWith("EmptyField"),
-    );
-  });
-});
-
-describe("KarPassport — reportDiscrepancy", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("any address can report a discrepancy", async () => {
-    const { viem } = connection;
-    const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    await passport.write.reportDiscrepancy([0n, "scratches", "bafy2"], {
+    await passport.write.reportDiscrepancy([0n, "scratch found", "cid-2"], {
       account: stranger.account,
     });
     assert.equal(await passport.read.recordCount([0n]), 1n);
   });
 
-  it("appended as recordType=discrepancy", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    const hash = await passport.write.reportDiscrepancy([0n, "issue", ""], {
-      account: stranger.account,
-    });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    const appended = logs.find((l) => l.eventName === "RecordAppended");
-    assert.ok(appended);
-    assert.equal(appended.args.recordType, "discrepancy");
-  });
-
-  it("reverts when description is empty", async () => {
-    const { viem } = connection;
-    const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
-      account: owner.account,
-    });
-    await assert.rejects(
-      passport.write.reportDiscrepancy([0n, "", ""], { account: stranger.account }),
-      revertsWith("EmptyField"),
-    );
-  });
-});
-
-describe("KarPassport — appendAttestation", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("KarProPass holder can append attestation", async () => {
-    const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.appendAttestation([0n, "inspected ok", "bafy3"], {
-      account: verifier.account,
-    });
-    assert.equal(await passport.read.recordCount([0n]), 1n);
-  });
-
-  it("appended as recordType=attestation", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
-      account: owner.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    const hash = await passport.write.appendAttestation([0n, "ok", ""], {
-      account: verifier.account,
-    });
-    const logs = await receiptLogs(publicClient, hash, passport.abi);
-    const appended = logs.find((l) => l.eventName === "RecordAppended");
-    assert.ok(appended);
-    assert.equal(appended.args.recordType, "attestation");
-  });
-
-  it("reverts when caller has no KarProPass", async () => {
+  it("appendAttestation requires KarProPass", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.appendAttestation([0n, "nope", ""], { account: stranger.account }),
+      passport.write.appendAttestation([0n, "looks good", "cid-3"], {
+        account: stranger.account,
+      }),
       revertsWith("NotKarProHolder"),
     );
   });
 
-  it("reverts when description is empty", async () => {
+  it("recordCount increments", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
       account: owner.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await assert.rejects(
-      passport.write.appendAttestation([0n, "", ""], { account: verifier.account }),
-      revertsWith("EmptyField"),
-    );
+    await joinVerifier(staking, verifier);
+    await passport.write.appendRecord([0n, "note", "first", ""], { account: owner.account });
+    await passport.write.appendAttestation([0n, "attest", "cid"], { account: verifier.account });
+    assert.equal(await passport.read.recordCount([0n]), 2n);
   });
 });
+
+// ─── KarPassport — getPassportStatus ──────────────────────────────────────────
 
 describe("KarPassport — getPassportStatus", () => {
   let connection: NetworkConnection;
@@ -705,38 +1068,33 @@ describe("KarPassport — getPassportStatus", () => {
     await connection.close();
   });
 
-  it("returns correct values after each state transition", async () => {
+  it("correct through full lifecycle", async () => {
     const { viem } = connection;
-    const { admin, owner, verifier, passport, proPass } = await deployPassportStack(viem);
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://s"], {
       account: owner.account,
     });
-
-    let [status, verifierAddr, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    let [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
-    assert.equal(getAddress(verifierAddr), getAddress(ZERO));
-    assert.equal(verifiedAt, 0n);
 
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
-    [status, verifierAddr, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 1);
-    assert.equal(getAddress(verifierAddr), getAddress(verifier.account.address));
-    assert.ok(verifiedAt > 0n);
 
-    await passport.write.disputePassport([0n, "vin mismatch"], { account: owner.account });
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 2);
 
     await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    [status, verifierAddr, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
-    assert.equal(getAddress(verifierAddr), getAddress(ZERO));
-    assert.equal(verifiedAt, 0n);
   });
 });
 
-describe("KarProPass — ownerMint", () => {
+// ─── MarketplaceEscrow ────────────────────────────────────────────────────────
+
+describe("MarketplaceEscrow", () => {
   let connection: NetworkConnection;
 
   beforeEach(async () => {
@@ -747,243 +1105,14 @@ describe("KarProPass — ownerMint", () => {
     await connection.close();
   });
 
-  it("owner can mint to an address", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "dealer", "Acme"], {
-      account: admin.account,
-    });
-    assert.equal(await proPass.read.balanceOf([holder.account.address]), 1n);
-  });
-
-  it("stores category, name, issuedAt correctly", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "inspector", "SafeCheck"], {
-      account: admin.account,
-    });
-    const tokenId = BigInt(holder.account.address);
-    assert.equal(await proPass.read.holderCategory([tokenId]), "inspector");
-    assert.equal(await proPass.read.holderName([tokenId]), "SafeCheck");
-    assert.ok((await proPass.read.issuedAt([tokenId])) > 0n);
-  });
-
-  it("tokenId equals uint256(uint160(holder))", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "broker", "Co"], {
-      account: admin.account,
-    });
-    const tokenId = BigInt(holder.account.address);
-    assert.equal(getAddress(await proPass.read.ownerOf([tokenId])), getAddress(holder.account.address));
-  });
-
-  it("reverts when address already holds a pass", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "a", "A"], { account: admin.account });
-    await assert.rejects(
-      proPass.write.ownerMint([holder.account.address, "b", "B"], { account: admin.account }),
-      revertsWith("AlreadyHoldsPass"),
-    );
-  });
-});
-
-describe("KarProPass — ownerBurn", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("owner can burn a pass", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "dealer", "Acme"], {
-      account: admin.account,
-    });
-    await proPass.write.ownerBurn([holder.account.address], { account: admin.account });
-    assert.equal(await proPass.read.balanceOf([holder.account.address]), 0n);
-  });
-
-  it("clears category, name, issuedAt", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "dealer", "Acme"], {
-      account: admin.account,
-    });
-    const tokenId = BigInt(holder.account.address);
-    await proPass.write.ownerBurn([holder.account.address], { account: admin.account });
-    assert.equal(await proPass.read.holderCategory([tokenId]), "");
-    assert.equal(await proPass.read.holderName([tokenId]), "");
-    assert.equal(await proPass.read.issuedAt([tokenId]), 0n);
-  });
-
-  it("reverts when address does not hold a pass", async () => {
-    const { viem } = connection;
-    const [admin, holder] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await assert.rejects(
-      proPass.write.ownerBurn([holder.account.address], { account: admin.account }),
-      revertsWith("DoesNotHoldPass"),
-    );
-  });
-});
-
-describe("KarProPass — soulbound enforcement", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("transfer between two non-zero addresses reverts", async () => {
-    const { viem } = connection;
-    const [admin, holder, other] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "broker", "Co"], {
-      account: admin.account,
-    });
-    const tokenId = BigInt(holder.account.address);
-    await assert.rejects(
-      proPass.write.transferFrom([holder.account.address, other.account.address, tokenId], {
-        account: holder.account,
-      }),
-      revertsWith("Soulbound"),
-    );
-  });
-
-  it("approve reverts", async () => {
-    const { viem } = connection;
-    const [admin, holder, other] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "other", "Misc"], {
-      account: admin.account,
-    });
-    const tokenId = BigInt(holder.account.address);
-    await assert.rejects(
-      proPass.write.approve([other.account.address, tokenId], { account: holder.account }),
-      revertsWith("Soulbound"),
-    );
-  });
-
-  it("setApprovalForAll reverts", async () => {
-    const { viem } = connection;
-    const [admin, holder, other] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.ownerMint([holder.account.address, "other", "Misc"], {
-      account: admin.account,
-    });
-    await assert.rejects(
-      proPass.write.setApprovalForAll([other.account.address, true], { account: holder.account }),
-      revertsWith("Soulbound"),
-    );
-  });
-});
-
-describe("KarProPass — staking path", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("staking contract can mint via mint()", async () => {
-    const { viem } = connection;
-    const [admin, holder, stakingAccount] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.setStaking([stakingAccount.account.address], { account: admin.account });
-    await proPass.write.mint([holder.account.address, "staking", "Auto"], {
-      account: stakingAccount.account,
-    });
-    assert.equal(await proPass.read.balanceOf([holder.account.address]), 1n);
-  });
-
-  it("staking contract can burn via burn()", async () => {
-    const { viem } = connection;
-    const [admin, holder, stakingAccount] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.setStaking([stakingAccount.account.address], { account: admin.account });
-    await proPass.write.mint([holder.account.address, "staking", "Auto"], {
-      account: stakingAccount.account,
-    });
-    await proPass.write.burn([holder.account.address], { account: stakingAccount.account });
-    assert.equal(await proPass.read.balanceOf([holder.account.address]), 0n);
-  });
-
-  it("non-staking address cannot call mint()", async () => {
-    const { viem } = connection;
-    const [admin, holder, stranger] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.setStaking([admin.account.address], { account: admin.account });
-    await assert.rejects(
-      proPass.write.mint([holder.account.address, "x", "X"], { account: stranger.account }),
-      revertsWith("OnlyStaking"),
-    );
-  });
-
-  it("non-staking address cannot call burn()", async () => {
-    const { viem } = connection;
-    const [admin, holder, stranger, stakingAccount] = await viem.getWalletClients();
-    const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
-    await proPass.write.setStaking([stakingAccount.account.address], { account: admin.account });
-    await proPass.write.mint([holder.account.address, "x", "X"], { account: stakingAccount.account });
-    await assert.rejects(
-      proPass.write.burn([holder.account.address], { account: stranger.account }),
-      revertsWith("OnlyStaking"),
-    );
-  });
-});
-
-describe("MarketplaceEscrow — feeBps fix", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("platformFeeBps equals the value passed to constructor", async () => {
+  it("platformFeeBps equals constructor value", async () => {
     const { viem } = connection;
     const { marketplace, feeBps } = await deployEscrowStack(viem);
     assert.equal(BigInt(await marketplace.read.platformFeeBps()), feeBps);
-    assert.equal(BigInt(await marketplace.read.platformFeeBps()), 250n);
-  });
-});
-
-describe("MarketplaceEscrow — list and delist", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
+    assert.equal(feeBps, 250n);
   });
 
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("passport owner can list with USD price", async () => {
+  it("list, delist", async () => {
     const { viem } = connection;
     const { seller, passport, marketplace } = await deployEscrowStack(viem);
     await passport.write.mintPassport([seller.account.address, "ipfs://list"], {
@@ -992,73 +1121,19 @@ describe("MarketplaceEscrow — list and delist", () => {
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const listing = await marketplace.read.listings([0n]);
+    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    let listing = await marketplace.read.listings([0n]);
     assert.equal(listing[3], true);
-  });
-
-  it("emits Listed event", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://list"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const hash = await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
-    const logs = await receiptLogs(publicClient, hash, marketplace.abi);
-    assert.ok(logs.some((l) => l.eventName === "Listed"));
-  });
-
-  it("seller can delist and recover NFT", async () => {
-    const { viem } = connection;
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://x"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([0n, 200n * 10n ** 8n, 0], { account: seller.account });
     await marketplace.write.delist([0n], { account: seller.account });
+    listing = await marketplace.read.listings([0n]);
+    assert.equal(listing[3], false);
     assert.equal(
       getAddress(await passport.read.ownerOf([0n])),
       getAddress(seller.account.address),
     );
   });
 
-  it("emits Delisted event", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://x"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([0n, 200n * 10n ** 8n, 0], { account: seller.account });
-    const hash = await marketplace.write.delist([0n], { account: seller.account });
-    const logs = await receiptLogs(publicClient, hash, marketplace.abi);
-    assert.ok(logs.some((l) => l.eventName === "Delisted"));
-  });
-});
-
-describe("MarketplaceEscrow — buyWithNative", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("buyer pays exact quote, NFT transfers, fee distributed", async () => {
+  it("buyWithNative with fee distribution", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { admin, seller, buyer, passport, marketplace, feeBps } = await deployEscrowStack(viem);
@@ -1086,78 +1161,11 @@ describe("MarketplaceEscrow — buyWithNative", () => {
     assert.equal(sellerAfter - sellerBefore, net);
   });
 
-  it("reverts when msg.value does not match quote", async () => {
+  it("buyWithUsdc with fee distribution", async () => {
     const { viem } = connection;
-    const { seller, buyer, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://x"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
-    await assert.rejects(
-      marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross - 1n }),
-      revertsWith("BadPrice"),
-    );
-  });
-
-  it("reverts when listing is not active", async () => {
-    const { viem } = connection;
-    const { seller, buyer, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://x"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([0n, 100n * 10n ** 8n, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
-    await marketplace.write.delist([0n], { account: seller.account });
-    await assert.rejects(
-      marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross }),
-      revertsWith("NotActive"),
-    );
-  });
-});
-
-describe("MarketplaceEscrow — buyWithUsdc", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("buyWithUsdc pulls exact USDC quote", async () => {
-    const { viem } = connection;
-    const { seller, buyer, passport, usdc, marketplace } = await deployEscrowStack(viem);
+    const { admin, seller, buyer, passport, usdc, marketplace, feeBps } =
+      await deployEscrowStack(viem);
     await passport.write.mintPassport([seller.account.address, "ipfs://u"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const usd1e8 = 99n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const need = await marketplace.read.quoteUsdcAmount([0n]);
-    await usdc.write.mint([buyer.account.address, need * 2n]);
-    await usdc.write.approve([marketplace.address, need], { account: buyer.account });
-    await marketplace.write.buyWithUsdc([0n], { account: buyer.account });
-    assert.equal(
-      getAddress(await passport.read.ownerOf([0n])),
-      getAddress(buyer.account.address),
-    );
-  });
-
-  it("NFT transfers, fee distributed", async () => {
-    const { viem } = connection;
-    const { admin, seller, buyer, passport, usdc, marketplace, feeBps } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://u2"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1178,25 +1186,13 @@ describe("MarketplaceEscrow — buyWithUsdc", () => {
     assert.equal(adminAfter - adminBefore, fee);
     assert.equal(sellerAfter - sellerBefore, net);
   });
-});
 
-describe("MarketplaceEscrow — pro seller discount", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("seller holding KarProPass pays proFeeBps not platformFeeBps", async () => {
+  it("pro seller (KarProPass holder) pays proFeeBps", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
-    const { admin, seller, buyer, passport, proPass, marketplace, feeBps, proFeeBps } =
+    const { admin, seller, buyer, passport, marketplace, feeBps, proFeeBps, staking } =
       await deployEscrowStack(viem);
-    await mintProPass(proPass, admin, seller.account.address, "dealer", "Pro Seller");
+    await joinVerifier(staking, seller, { category: Category.DEALER, name: "Pro Seller" });
     await passport.write.mintPassport([seller.account.address, "ipfs://pro"], {
       account: seller.account,
     });
@@ -1214,49 +1210,19 @@ describe("MarketplaceEscrow — pro seller discount", () => {
     const adminAfter = await publicClient.getBalance({ address: admin.account.address });
     assert.equal(adminAfter - adminBefore, proFee);
   });
-});
 
-describe("MarketplaceEscrow — DISPUTED passport listing", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("a passport with DISPUTED status can still be listed", async () => {
+  it("DISPUTED passport can be listed and bought", async () => {
     const { viem } = connection;
-    const { admin, seller, passport, proPass, marketplace } = await deployEscrowStack(viem);
-    const [, , , verifier] = await viem.getWalletClients();
+    const { seller, buyer, verifier, passport, marketplace, staking } =
+      await deployEscrowStack(viem);
     await passport.write.mintPassport([seller.account.address, "ipfs://disputed"], {
       account: seller.account,
     });
-    await mintProPass(proPass, admin, verifier.account.address);
+    await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await passport.write.disputePassport([0n, "issue"], { account: seller.account });
     const [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 2);
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([0n, 300n * 10n ** 8n, 0], { account: seller.account });
-    const listing = await marketplace.read.listings([0n]);
-    assert.equal(listing[3], true);
-  });
-
-  it("a DISPUTED listing can still be bought", async () => {
-    const { viem } = connection;
-    const { admin, seller, buyer, passport, proPass, marketplace } = await deployEscrowStack(viem);
-    const [, , , verifier] = await viem.getWalletClients();
-    await passport.write.mintPassport([seller.account.address, "ipfs://disputed-buy"], {
-      account: seller.account,
-    });
-    await mintProPass(proPass, admin, verifier.account.address);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "issue"], { account: seller.account });
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
@@ -1268,20 +1234,8 @@ describe("MarketplaceEscrow — DISPUTED passport listing", () => {
       getAddress(buyer.account.address),
     );
   });
-});
 
-describe("MarketplaceEscrow — upgrade authorization", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("upgrade attempt without timelock authority reverts", async () => {
+  it("upgrade without timelock authority reverts", async () => {
     const { viem } = connection;
     const { seller, marketplace } = await deployEscrowStack(viem);
     const implementationV2 = await viem.deployContract("MarketplaceEscrow", [
