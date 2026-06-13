@@ -1,11 +1,15 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
 import {
   useAccount,
   useChainId,
   useSignMessage,
   useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +19,9 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
+import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 const MAX_PHOTOS = 10;
@@ -97,11 +103,19 @@ function validateStep1(form: FormState): FieldErrors {
   return errors;
 }
 
+function isWalletRejection(err: unknown): boolean {
+  if (err instanceof UserRejectedRequestError) return true;
+  return err instanceof Error && err.message.includes("User rejected");
+}
+
 export function CreatePassportWizard() {
+  const router = useRouter();
   const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
+    useWriteContract();
 
   const chainId = DEFAULT_CHAIN_ID;
   const wc = wagmiChainId(chainId);
@@ -111,6 +125,13 @@ export function CreatePassportWizard() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [mintHash, setMintHash] = useState<Hash | undefined>();
+
+  const {
+    data: mintReceipt,
+    isLoading: isConfirming,
+    error: mintReceiptError,
+  } = useWaitForTransactionReceipt({ hash: mintHash });
 
   const [form, setForm] = useState<FormState>({
     vin: "",
@@ -168,6 +189,77 @@ export function CreatePassportWizard() {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const startMint = useCallback(
+    async (uri: string) => {
+      if (!address) {
+        setFormError("Connect your wallet to create a passport.");
+        return;
+      }
+
+      const contractAddress = karPassportAddress(walletChain);
+      if (!contractAddress) {
+        setFormError("Passport contract not available on this network");
+        setPhase("error");
+        return;
+      }
+
+      setPhase("minting");
+      setFormError(null);
+      resetWrite();
+      setMintHash(undefined);
+
+      try {
+        const hash = await writeContractAsync({
+          address: contractAddress,
+          abi: KarPassportAbi,
+          functionName: "mintPassport",
+          args: [address, uri],
+        });
+        setMintHash(hash);
+      } catch (err) {
+        if (isWalletRejection(err)) {
+          setPhase("idle");
+          setFormError("Transaction cancelled. Try again when ready.");
+        } else {
+          setPhase("error");
+          setFormError(
+            err instanceof Error ? err.message : "Mint failed. Please try again.",
+          );
+        }
+      }
+    },
+    [address, walletChain, writeContractAsync, resetWrite],
+  );
+
+  useEffect(() => {
+    if (!mintReceipt) return;
+
+    const events = parseEventLogs({
+      abi: KarPassportAbi,
+      logs: mintReceipt.logs,
+      eventName: "PassportMinted",
+    });
+    const minted = events[0];
+    if (!minted || minted.eventName !== "PassportMinted") {
+      setFormError(
+        "Mint succeeded but token ID could not be read. Check your wallet for the NFT.",
+      );
+      setPhase("error");
+      return;
+    }
+
+    setPhase("success");
+    router.push(
+      `/marketplace/${minted.args.tokenId.toString()}?chain=${walletChain}`,
+    );
+  }, [mintReceipt, router, walletChain]);
+
+  useEffect(() => {
+    if (!mintReceiptError) return;
+    setFormError("Transaction failed on-chain. Please try again.");
+    setPhase("error");
+  }, [mintReceiptError]);
+
   const onCreatePassport = async () => {
     setFormError(null);
     setErrors({});
@@ -189,6 +281,11 @@ export function CreatePassportWizard() {
     if (Object.keys(step1Errors).length > 0) {
       setErrors(step1Errors);
       setStep(1);
+      return;
+    }
+
+    if (metadataUri) {
+      await startMint(metadataUri);
       return;
     }
 
@@ -278,9 +375,7 @@ export function CreatePassportWizard() {
 
       setMetadataUri(uri);
       setUploadProgress(null);
-      setPhase("minting");
-
-      // TODO Phase 1.1: call mintPassport(address, uri)
+      await startMint(uri);
     } catch {
       setFormError("Upload failed. Please try again.");
       setUploadProgress(null);
@@ -288,7 +383,11 @@ export function CreatePassportWizard() {
     }
   };
 
-  const isBusy = phase === "uploading" || phase === "minting";
+  const isBusy =
+    phase === "uploading" ||
+    phase === "minting" ||
+    isWritePending ||
+    isConfirming;
 
   if (!isConnected) {
     return (
@@ -499,6 +598,24 @@ export function CreatePassportWizard() {
                     : 100
                 }
               />
+            </div>
+          )}
+
+          {phase === "minting" && (
+            <div className="space-y-1">
+              <p className="font-sans text-sm text-text-secondary">
+                Creating passport on-chain…
+              </p>
+              {(isWritePending || !mintHash) && (
+                <p className="font-sans text-xs text-text-tertiary">
+                  Confirm the transaction in your wallet
+                </p>
+              )}
+              {mintHash && isConfirming && (
+                <p className="font-sans text-xs text-text-tertiary">
+                  Waiting for confirmation…
+                </p>
+              )}
             </div>
           )}
 
