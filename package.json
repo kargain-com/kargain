@@ -16,8 +16,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+    "deploy:proxy": "hardhat run scripts/deploy-proxy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",
-    "postcompile": "pnpm run abis:export",
+    "postcompile": "pnpm abis:export",
     "ponder:dev": "ponder dev"
   },
   "dependencies": {

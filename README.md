@@ -106,7 +106,7 @@ See `.env.example` for the full list. Key variables:
 | `DEPLOYER_PRIVATE_KEY` | Optional — Hardhat deploy account (never commit) |
 | `ETHERSCAN_API_KEY` | Basescan API key for contract verification |
 
-Contract deployment addresses are not configured yet. After deploy, populate `lib/web3/deployment-addresses.ts` and optional `NEXT_PUBLIC_*` overrides.
+Deployed contract addresses live in `lib/web3/deployment-addresses.ts` (optional `NEXT_PUBLIC_*` overrides in `.env.local`).
 
 ### Run
 
@@ -134,13 +134,18 @@ pnpm hardhat test       # 65 contract tests (node:test + viem)
 
 ## Contracts (Base Sepolia)
 
-Contracts will be deployed to Base Sepolia before public launch. Addresses will be published here after deployment.
+| Contract | Address |
+|----------|---------|
+| KarProPass | 0x13167606ea83a213ab9e10255f09c5389e7910de |
+| KarPassport | 0xe3568875db58be8e0ba6f44bf2a1178bb6777c29 |
+| MarketplaceEscrow (proxy) | 0x816855Ab573AfE959eBd5a5dc3A263288d194864 |
+| MarketplaceEscrow (impl) | 0x96dc74bc1f2ecf8e2b474c2c97e13205ca924313 |
 
-| Contract | Notes |
-|----------|-------|
-| KarPassport | Immutable ERC-721 with verification lifecycle |
-| KarProPass | Soulbound verifier credential (KPP) |
-| MarketplaceEscrow | UUPS proxy; Chainlink fiat quotes; native + USDC settlement |
+Deployer / upgradeAuthority:
+0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77
+
+Network: Base Sepolia (chain 84532)
+Deployed: June 2025
 
 ---
 
