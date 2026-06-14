@@ -46,7 +46,11 @@ import {
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
+import {
+  getWalletUploadProvider,
+  uploadPassportMetadataJson,
+  uploadPassportPhotos,
+} from "@/lib/passport/upload-passport-metadata";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -149,35 +153,16 @@ export function EditPassportWizard({
         chainId,
         signMessageAsync,
       });
-      const provider =
-        (await connector?.getProvider()) ??
-        (typeof window !== "undefined" ? window.ethereum : undefined);
-      if (!provider) throw new Error("Connect your wallet to continue");
+      const provider = await getWalletUploadProvider(connector);
 
-      const photoUris = [...existingPhotos];
-      for (let i = 0; i < newPhotos.length; i++) {
-        const uri = await uploadFile(
-          newPhotos[i]!,
-          [{ name: "app", value: "kargain" }, { name: "type", value: "passport-photo" }],
-          provider,
-        );
-        photoUris.push(uri);
-      }
-
+      const uploadedPhotoUris = await uploadPassportPhotos(newPhotos, provider);
+      const photoUris = [...existingPhotos, ...uploadedPhotoUris];
       const createdAt =
         initialMetadata.createdAt ?? new Date().toISOString();
       const metadata = buildMetadataWireForEdit(form, photoUris, { createdAt });
 
       setPhase("uploading");
-      const uri = await uploadJson(
-        metadata,
-        [
-          { name: "app", value: "kargain" },
-          { name: "type", value: "passport-metadata" },
-          { name: "version", value: "1.1" },
-        ],
-        provider,
-      );
+      const uri = await uploadPassportMetadataJson(metadata, provider);
 
       setPhase("saving");
       const hash = await writeContractAsync({

@@ -9,7 +9,7 @@ import {
 } from "../lib/marketplace/listing-query.ts";
 
 const baseRow: EnrichedListingForFilter = {
-  status: "VERIFIED",
+  passportStatus: "VERIFIED",
   make: "Honda",
   model: "Civic",
   year: 2021,
@@ -85,10 +85,10 @@ describe("sortEnrichedListings", () => {
   it("sorts by price ascending after verified-first ordering", () => {
     const rows: EnrichedListingForFilter[] = [
       { ...baseRow, fiatPrice1e8: 20_000_000_000n, listedAt: 200n },
-      { ...baseRow, status: "UNVERIFIED", fiatPrice1e8: 10_000_000_000n, listedAt: 300n },
+      { ...baseRow, passportStatus: "UNVERIFIED", fiatPrice1e8: 10_000_000_000n, listedAt: 300n },
     ];
     const sorted = sortEnrichedListings(rows, "price_asc", true);
-    assert.equal(sorted[0]?.status, "VERIFIED");
+    assert.equal(sorted[0]?.passportStatus, "VERIFIED");
     assert.equal(sorted[0]?.fiatPrice1e8, 20_000_000_000n);
     assert.equal(sorted[1]?.fiatPrice1e8, 10_000_000_000n);
   });

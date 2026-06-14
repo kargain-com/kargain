@@ -18,7 +18,7 @@ export type ListingFilterQuery = {
 };
 
 export type PassportFilterFields = {
-  status: string;
+  passportStatus: string;
   make: string;
   model: string;
   year: number;
@@ -111,7 +111,7 @@ export function matchesListingFilters(
   if (filters.yearMin != null && row.year < filters.yearMin) return false;
   if (filters.yearMax != null && row.year > filters.yearMax) return false;
   if (filters.mileageMax != null && row.mileageKm > filters.mileageMax) return false;
-  if (filters.status && filters.status !== "all" && row.status !== filters.status) {
+  if (filters.status && filters.status !== "all" && row.passportStatus !== filters.status) {
     return false;
   }
 
@@ -143,7 +143,7 @@ export function sortEnrichedListings<T extends EnrichedListingForFilter>(
 
   copy.sort((a, b) => {
     if (verifiedFirst) {
-      const dr = rank(a.status) - rank(b.status);
+      const dr = rank(a.passportStatus) - rank(b.passportStatus);
       if (dr !== 0) return dr;
     }
 
@@ -227,8 +227,8 @@ export function computeListingFacets(
     if (row.fuelType) fuelTypes.add(row.fuelType);
     if (row.bodyType) bodyTypes.add(row.bodyType);
     if (row.transmission) transmissions.add(row.transmission);
-    if (row.status in statusCounts) {
-      statusCounts[row.status as keyof typeof statusCounts] += 1;
+    if (row.passportStatus in statusCounts) {
+      statusCounts[row.passportStatus as keyof typeof statusCounts] += 1;
     }
 
     const currency = fiatCodeToCurrency(row.fiatCurrency);

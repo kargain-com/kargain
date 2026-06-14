@@ -29,7 +29,12 @@ import {
   type PassportCreateFormErrors,
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
-import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
+import {
+  getWalletUploadProvider,
+  uploadPassportMetadataJson,
+  uploadPassportPhotos,
+  type UploadProgress,
+} from "@/lib/passport/upload-passport-metadata";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -41,10 +46,6 @@ type Phase = "idle" | "uploading" | "minting" | "success" | "error";
 type FormState = PassportCreateFormInput;
 
 type FieldErrors = PassportCreateFormErrors;
-
-type UploadProgress =
-  | { kind: "photos"; current: number; total: number }
-  | { kind: "metadata" };
 
 function isWalletRejection(err: unknown): boolean {
   if (err instanceof UserRejectedRequestError) return true;
@@ -246,46 +247,14 @@ export function CreatePassportWizard() {
     }
 
     try {
-      const provider =
-        (await connector?.getProvider()) ??
-        (typeof window !== "undefined" ? window.ethereum : undefined);
+      const provider = await getWalletUploadProvider(connector);
 
-      if (!provider) {
-        setFormError("Connect your wallet to continue");
-        setPhase("error");
-        return;
-      }
-
-      const photoUris: string[] = [];
-      for (let index = 0; index < photos.length; index += 1) {
-        setUploadProgress({
-          kind: "photos",
-          current: index + 1,
-          total: photos.length,
-        });
-        const uri = await uploadFile(
-          photos[index],
-          [
-            { name: "app", value: "kargain" },
-            { name: "type", value: "passport-photo" },
-          ],
-          provider,
-        );
-        photoUris.push(uri);
-      }
+      const photoUris = await uploadPassportPhotos(photos, provider, setUploadProgress);
 
       const metadata = buildMetadataWire(form, photoUris);
 
       setUploadProgress({ kind: "metadata" });
-      const uri = await uploadJson(
-        metadata,
-        [
-          { name: "app", value: "kargain" },
-          { name: "type", value: "passport-metadata" },
-          { name: "version", value: "1.1" },
-        ],
-        provider,
-      );
+      const uri = await uploadPassportMetadataJson(metadata, provider);
 
       setMetadataUri(uri);
       setUploadProgress(null);

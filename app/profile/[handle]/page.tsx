@@ -31,7 +31,13 @@ export default async function PublicProfilePage({
 
   let ponderErr: string | null = null;
   let passports: { tokenId: string; status: PassportStatus; vin?: string | null }[] = [];
-  let listings: { tokenId: string; status: string }[] = [];
+  let listings: {
+    tokenId: string;
+    active: boolean;
+    passportStatus: PassportStatus;
+    make?: string;
+    model?: string;
+  }[] = [];
 
   try {
     const data = await getProfileData(wallet);
@@ -44,7 +50,10 @@ export default async function PublicProfilePage({
       .filter((l) => l.active === true)
       .map((l) => ({
         tokenId: String(l.tokenId ?? l.id ?? ""),
-        status: "active",
+        active: true,
+        passportStatus: (l.passportStatus as PassportStatus) ?? "UNVERIFIED",
+        make: typeof l.make === "string" ? l.make : undefined,
+        model: typeof l.model === "string" ? l.model : undefined,
       }));
   } catch {
     ponderErr = "PONDER_UNAVAILABLE";
@@ -180,7 +189,14 @@ export default async function PublicProfilePage({
                   className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm hover:border-border-hover"
                 >
                   <span className="font-mono text-accent-warm">#{l.tokenId}</span>
-                  <span className="ml-2 text-xs text-text-secondary">{l.status}</span>
+                  <span className="ml-2">
+                    <PassportStatusBadge status={l.passportStatus} />
+                  </span>
+                  {l.make && l.model && (
+                    <span className="ml-2 text-xs text-text-secondary">
+                      {l.make} {l.model}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}

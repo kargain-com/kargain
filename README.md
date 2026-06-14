@@ -14,7 +14,7 @@ MIT License · Open Source · Built on Base
 
 Anyone can **permissionlessly mint** a KarPassport NFT at [`/passport/new`](/passport/new). Vehicle details and photos are stored on Arweave (via client-side Irys upload). Each passport starts **UNVERIFIED**.
 
-An **active verifier** (address with an active stake in `KarProStaking`, not the token owner) can **verify** the passport on-chain. The owner may update the metadata URI only while status is UNVERIFIED.
+An **active verifier** (address with an active stake in `KarProStaking`, not the token owner) can **verify** the passport on-chain. The owner may update metadata while **UNVERIFIED**, or while **VERIFIED** — anchor field changes reset verification (Variant C); cosmetic-only edits keep verified status.
 
 Anyone may **dispute** a verified passport. An active verifier **resolves** disputes: uphold keeps VERIFIED status; reject clears verification and returns the passport to UNVERIFIED. Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
 
@@ -242,7 +242,7 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 ## Architecture notes
 
 - **VIN** and vehicle attributes live in Arweave metadata (not on-chain).
-- Metadata URI is editable by the owner only while status is UNVERIFIED.
+- Metadata URI is editable by the owner when **UNVERIFIED**, or when **VERIFIED** if only cosmetic fields change; anchor edits emit `VerificationReset` and return the passport to **UNVERIFIED** (Variant C).
 - Disputed passports can still be listed and sold; buyers see status in the UI.
 - Ponder indexes verifier `metadataURI` from `ProPassMinted` / `ProfileUpdated` and record `description` / `evidenceCID` from `RecordAppended`.
 

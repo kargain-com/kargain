@@ -2,20 +2,38 @@ export type PassportStatus = "UNVERIFIED" | "VERIFIED" | "DISPUTED";
 
 export type ListingStatus = "active" | "sold";
 
-export type PassportRow = {
-  chainId: number;
-  tokenId: string;
-  owner: `0x${string}`;
+/** Denormalized passport fields shared across list/detail API rows. */
+export type PassportDenormFields = {
+  passportStatus: PassportStatus;
+  verifier: `0x${string}`;
   vin: string;
   make: string;
   model: string;
   year: number;
   mileageKm: number;
+  fuelType: string;
+  bodyType: string;
+  transmission: string;
+  tokenUri: string;
+  duplicateVin: boolean;
+  lastMetadataChangeAt: string;
+  verificationResetCount: number;
+  hadDispute: boolean;
+  lastDisputeResolvedAt: string;
+};
+
+export type PassportRow = {
+  chainId: number;
+  tokenId: string;
+  owner: `0x${string}`;
   status: PassportStatus;
   verifier: `0x${string}`;
   tokenUri: string;
   duplicateVin: boolean;
-};
+} & Pick<
+  PassportDenormFields,
+  "vin" | "make" | "model" | "year" | "mileageKm" | "fuelType" | "bodyType" | "transmission"
+>;
 
 export type ListingRow = {
   chainId: number;
@@ -24,8 +42,8 @@ export type ListingRow = {
   /** Fiat price in 1e8 units (on-chain listing price). */
   priceNative: string;
   fiatCurrency: number;
-  status: ListingStatus;
-  passportStatus: PassportStatus;
+  /** Marketplace listing lifecycle (active vs sold). */
+  listingStatus: ListingStatus;
   tokenUri: string;
   title: string;
   imageUrl: string | null;
@@ -33,10 +51,17 @@ export type ListingRow = {
   model: string | null;
   year: number | null;
   mileageKm: number | null;
-  duplicateVin: boolean;
   updatedAtBlock: string;
   listedBlockTimestamp: string;
-};
+} & Pick<
+  PassportDenormFields,
+  | "passportStatus"
+  | "verifier"
+  | "duplicateVin"
+  | "fuelType"
+  | "bodyType"
+  | "transmission"
+>;
 
 export type VerifierRow = {
   address: `0x${string}`;
@@ -53,14 +78,14 @@ export type FacetsResponse = {
   yearMax: number;
   priceMin: number;
   priceMax: number;
-  priceRanges?: {
+  priceRanges: {
     USD: { min: number; max: number };
     EUR: { min: number; max: number };
   };
   mileageMax: number;
-  fuelTypes?: string[];
-  bodyTypes?: string[];
-  transmissions?: string[];
+  fuelTypes: string[];
+  bodyTypes: string[];
+  transmissions: string[];
   fiatCurrencies: number[];
   totalActive: number;
   statusCounts: Record<PassportStatus, number>;
@@ -140,6 +165,9 @@ export type PonderPassportDetail = {
   verificationResetCount: number;
   hadDispute: boolean;
   lastDisputeResolvedAt: string;
+  fuelType: string;
+  bodyType: string;
+  transmission: string;
   createdAt: string;
   updatedAt: string;
   records: PonderPassportRecord[];
@@ -155,11 +183,15 @@ export type PonderListingDetail = {
   active: boolean;
   listedAt: string;
   passportStatus: PassportStatus;
+  verifier: string;
   vin: string;
   make: string;
   model: string;
   year: number;
   mileageKm: number;
+  fuelType: string;
+  bodyType: string;
+  transmission: string;
   tokenUri: string;
   duplicateVin: boolean;
 };

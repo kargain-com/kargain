@@ -106,9 +106,9 @@ function enrichListing(
   passportMap: Map<string, PassportDenorm>,
 ) {
   const p = passportMap.get(listing.tokenId);
+  const passportStatus = p?.status ?? "UNVERIFIED";
   return {
     ...listing,
-    status: p?.status ?? "UNVERIFIED",
     make: p?.make ?? "",
     model: p?.model ?? "",
     year: p?.year ?? 0,
@@ -116,7 +116,7 @@ function enrichListing(
     fuelType: p?.fuelType ?? "",
     bodyType: p?.bodyType ?? "",
     transmission: p?.transmission ?? "",
-    passportStatus: p?.status ?? "UNVERIFIED",
+    passportStatus,
     verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
     tokenUri: p?.tokenUri ?? "",
@@ -173,10 +173,7 @@ app.get("/listings", async (c) => {
   const enriched = allListings.map((listing) => enrichListing(listing, passportMap));
   const sorted = filterAndSortListings(enriched, filters, verifiedFirst);
   const total = sorted.length;
-  const pageRows = sorted.slice(offset, offset + limit).map((row) => ({
-    ...row,
-    passportStatus: row.status,
-  }));
+  const pageRows = sorted.slice(offset, offset + limit);
 
   return c.json(
     jsonBody({
@@ -233,10 +230,12 @@ app.get("/listings/:tokenId", async (c) => {
   }
 
   const p = await db.find(passport, { id: tokenId });
+  const row = listing[0];
   return c.json(
     jsonBody({
-      ...listing[0],
+      ...row,
       passportStatus: p?.status ?? "UNVERIFIED",
+      verifier: p?.verifier ?? "",
       vin: p?.vin ?? "",
       make: p?.make ?? "",
       model: p?.model ?? "",
@@ -345,7 +344,11 @@ app.get("/profile/:address/listings", async (c) => {
     .where(eq(marketplaceListing.seller, address))
     .orderBy(desc(marketplaceListing.listedAt));
 
-  return c.json(jsonBody({ listings }));
+  const tokenIds = [...new Set(listings.map((l) => l.tokenId))];
+  const passportMap = await loadPassportMap(tokenIds);
+  const enriched = listings.map((listing) => enrichListing(listing, passportMap));
+
+  return c.json(jsonBody({ listings: enriched }));
 });
 
 app.get("/verifiers", async (c) => {
