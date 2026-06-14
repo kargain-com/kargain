@@ -279,9 +279,19 @@ Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm h
 | KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
 | KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
 | KarPassport v1.1 | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
+| MarketplaceEscrow impl | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
 | MarketplaceEscrow proxy | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
 
 Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (gitignored manifest with per-contract blocks + `indexFromBlock`).
+
+**Basescan verify (one-time ops):**
+
+```bash
+# Requires ETHERSCAN_API_KEY (Etherscan v2, chainid=84532) in .env.local
+pnpm verify:v1.1
+```
+
+Verifies, in order: KarPassport impl, MarketplaceEscrow impl, ERC1967 proxy (with `initialize` calldata). Skips contracts already verified; pass `--force` to re-submit. Does **not** run on VPS — use a machine with the API key only.
 
 ### Ponder indexing (env-driven, no ponder.config.ts edits on deploy)
 

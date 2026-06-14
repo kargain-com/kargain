@@ -173,6 +173,7 @@ pnpm test:ponder        # Ponder G1 field + indexer unit tests
 pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
 pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
 pnpm deploy:v1.1        # Phase 5 partial redeploy (KarPassport + Marketplace on Sepolia)
+pnpm verify:v1.1        # Verify v1.1 contracts on Basescan (needs ETHERSCAN_API_KEY)
 pnpm deploy:base-sepolia # full Model X greenfield deploy on Sepolia
 ```
 
@@ -200,7 +201,9 @@ Network: Base Sepolia (chain **84532**) · v1.1 partial redeploy: June 2026
 
 **Deprecated (Model X pre-v1.1):** KarPassport `0xCfA1eAB…`, Marketplace proxy `0xcD40C83…` — not indexed after Phase 5 reindex.
 
-Deploy v1.1 (partial): `pnpm deploy:v1.1` · Full greenfield: `pnpm deploy:base-sepolia`
+Deploy v1.1 (partial): `pnpm deploy:v1.1` · Verify on Basescan: `pnpm verify:v1.1` (requires `ETHERSCAN_API_KEY` in `.env.local`) · Full greenfield: `pnpm deploy:base-sepolia`
+
+After deploy, run `pnpm verify:v1.1` locally to publish source for KarPassport, MarketplaceEscrow impl, and ERC1967 proxy on [Base Sepolia Basescan](https://sepolia.basescan.org). The script reads `deployments/84532.json` when present, otherwise falls back to committed addresses in `scripts/lib/load-deployment.ts`.
 
 ### On-chain parameters
 
