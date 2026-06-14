@@ -16,6 +16,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "test:metadata": "node --import tsx --test test/passport-metadata.test.ts",
+    "test:ponder": "node --import tsx --test test/ponder-handlers.test.ts",
+    "test:e2e": "KARGAIN_E2E_LOCAL=1 node --import tsx --test test/e2e-local.test.ts",
+    "deploy:local": "hardhat run scripts/deploy-local.ts --network localhost",
+    "deploy:v1.1": "hardhat run scripts/deploy-v1.1.ts --network baseSepolia",
     "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
     "deploy:proxy": "hardhat run scripts/deploy-proxy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",
@@ -73,6 +78,7 @@
     "ponder": "^0.16.6",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.8",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3"
   },
   "packageManager": "pnpm@10.6.5"

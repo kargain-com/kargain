@@ -20,88 +20,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
+import {
+  MAX_DESCRIPTION,
+  MAX_PHOTOS,
+  MIN_YEAR,
+} from "@/lib/passport/metadata-constants";
+import {
+  normalizeVin,
+  validateCreateFormInput,
+  type PassportCreateFormInput,
+  type PassportCreateFormErrors,
+} from "@/lib/passport/metadata-schema";
 import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
-const MAX_PHOTOS = 10;
-const MAX_DESCRIPTION = 500;
-const MIN_YEAR = 1900;
+const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
 type Step = 1 | 2;
 type Phase = "idle" | "uploading" | "minting" | "success" | "error";
 
-type FormState = {
-  vin: string;
-  make: string;
-  model: string;
-  year: string;
-  mileage: string;
-  description: string;
-};
+type FormState = PassportCreateFormInput;
 
-type FieldErrors = Partial<Record<keyof FormState | "photos", string>>;
+type FieldErrors = PassportCreateFormErrors;
 
 type UploadProgress =
   | { kind: "photos"; current: number; total: number }
   | { kind: "metadata" };
-
-type PassportMetadata = {
-  name: string;
-  description?: string;
-  make: string;
-  model: string;
-  year: number;
-  fuel_type: string;
-  body_type: string;
-  transmission: string;
-  mileage_km: number;
-  color: string;
-  vin: string;
-  photos: string[];
-  created_at: string;
-  version: "1.0";
-};
-
-function normalizeVin(raw: string): string {
-  return raw
-    .toUpperCase()
-    .replace(/[^A-HJ-NPR-Z0-9]/g, "")
-    .slice(0, 17);
-}
-
-function validateStep1(form: FormState): FieldErrors {
-  const errors: FieldErrors = {};
-  const vin = form.vin.trim();
-  const make = form.make.trim();
-  const model = form.model.trim();
-  const yearNum = Number.parseInt(form.year, 10);
-  const maxYear = new Date().getFullYear() + 1;
-
-  if (!vin) errors.vin = "VIN is required.";
-  else if (vin.length < 11) errors.vin = "Enter a valid VIN (11–17 characters).";
-
-  if (!make) errors.make = "Make is required.";
-  if (!model) errors.model = "Model is required.";
-
-  if (!form.year.trim()) errors.year = "Year is required.";
-  else if (!Number.isFinite(yearNum) || yearNum < MIN_YEAR || yearNum > maxYear) {
-    errors.year = `Year must be between ${MIN_YEAR} and ${maxYear}.`;
-  }
-
-  if (form.mileage.trim()) {
-    const mileageNum = Number.parseInt(form.mileage, 10);
-    if (!Number.isFinite(mileageNum) || mileageNum < 0) {
-      errors.mileage = "Mileage must be a non-negative whole number.";
-    }
-  }
-
-  if (form.description.length > MAX_DESCRIPTION) {
-    errors.description = `Description must be at most ${MAX_DESCRIPTION} characters.`;
-  }
-
-  return errors;
-}
 
 function isWalletRejection(err: unknown): boolean {
   if (err instanceof UserRejectedRequestError) return true;
@@ -167,7 +113,7 @@ export function CreatePassportWizard() {
   }, []);
 
   const onContinue = () => {
-    const nextErrors = validateStep1(form);
+    const nextErrors = validateCreateFormInput(form);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     setStep(2);
@@ -178,7 +124,7 @@ export function CreatePassportWizard() {
     if (!files?.length) return;
     const incoming = Array.from(files).filter((f) => f.type.startsWith("image/"));
     setPhotos((prev) => {
-      const merged = [...prev, ...incoming].slice(0, MAX_PHOTOS);
+      const merged = [...prev, ...incoming].slice(0, MAX_PHOTOS_LIMIT);
       return merged;
     });
     setErrors((prev) => ({ ...prev, photos: undefined }));
@@ -277,7 +223,7 @@ export function CreatePassportWizard() {
       return;
     }
 
-    const step1Errors = validateStep1(form);
+    const step1Errors = validateCreateFormInput(form);
     if (Object.keys(step1Errors).length > 0) {
       setErrors(step1Errors);
       setStep(1);
@@ -338,30 +284,7 @@ export function CreatePassportWizard() {
         photoUris.push(uri);
       }
 
-      const yearNum = Number.parseInt(form.year, 10);
-      const mileageKm = form.mileage.trim()
-        ? Number.parseInt(form.mileage, 10)
-        : 0;
-
-      const metadata: PassportMetadata = {
-        name: `${form.year} ${form.make.trim()} ${form.model.trim()}`.trim(),
-        make: form.make.trim(),
-        model: form.model.trim(),
-        year: yearNum,
-        fuel_type: "",
-        body_type: "",
-        transmission: "",
-        mileage_km: mileageKm,
-        color: "",
-        vin: form.vin.trim(),
-        photos: photoUris,
-        created_at: new Date().toISOString(),
-        version: "1.0",
-      };
-
-      if (form.description.trim()) {
-        metadata.description = form.description.trim();
-      }
+      const metadata = buildMetadataWire(form, photoUris);
 
       setUploadProgress({ kind: "metadata" });
       const uri = await uploadJson(
@@ -369,6 +292,7 @@ export function CreatePassportWizard() {
         [
           { name: "app", value: "kargain" },
           { name: "type", value: "passport-metadata" },
+          { name: "version", value: "1.1" },
         ],
         provider,
       );
@@ -537,7 +461,7 @@ export function CreatePassportWizard() {
       {step === 2 && (
         <div className="space-y-5">
           <div className="space-y-2">
-            <Label>Photos (1–{MAX_PHOTOS})</Label>
+            <Label>Photos (1–{MAX_PHOTOS_LIMIT})</Label>
             <input
               ref={photoInputRef}
               type="file"
@@ -546,12 +470,12 @@ export function CreatePassportWizard() {
               className="sr-only"
               id="passport-photos"
               onChange={(e) => onPhotosSelected(e.target.files)}
-              disabled={isBusy || photos.length >= MAX_PHOTOS}
+              disabled={isBusy || photos.length >= MAX_PHOTOS_LIMIT}
             />
             <Button
               type="button"
               variant="secondary"
-              disabled={isBusy || photos.length >= MAX_PHOTOS}
+              disabled={isBusy || photos.length >= MAX_PHOTOS_LIMIT}
               onClick={() => photoInputRef.current?.click()}
             >
               Add photos

@@ -7,7 +7,34 @@ export const passport = onchainTable("passport", (t) => ({
   verifier: t.text().notNull().default(""),
   verifiedAt: t.bigint().notNull().default(0n),
   tokenUri: t.text().notNull().default(""),
+  vin: t.text().notNull().default(""),
+  make: t.text().notNull().default(""),
+  model: t.text().notNull().default(""),
+  year: t.integer().notNull().default(0),
+  mileageKm: t.integer().notNull().default(0),
+  lastDisputer: t.text().notNull().default(""),
+  disputeReason: t.text().notNull().default(""),
+  disputeWithdrawnAt: t.bigint().notNull().default(0n),
+  lastVerificationResetAt: t.bigint().notNull().default(0n),
+  duplicateVin: t.boolean().notNull().default(false),
   createdAt: t.bigint().notNull(),
+  updatedAt: t.bigint().notNull(),
+}));
+
+export const passportUriHistory = onchainTable("passport_uri_history", (t) => ({
+  id: t.text().primaryKey(),
+  tokenId: t.text().notNull(),
+  previousUri: t.text().notNull().default(""),
+  newUri: t.text().notNull(),
+  author: t.text().notNull(),
+  verificationReset: t.boolean().notNull().default(false),
+  timestamp: t.bigint().notNull(),
+}));
+
+export const vinIndex = onchainTable("vin_index", (t) => ({
+  id: t.text().primaryKey(),
+  vin: t.text().notNull(),
+  tokenId: t.text().notNull(),
   updatedAt: t.bigint().notNull(),
 }));
 

@@ -1,10 +1,14 @@
 import type { Chain } from "viem/chains";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, hardhat } from "viem/chains";
+
+const enableLocalChain = process.env.NEXT_PUBLIC_ENABLE_LOCAL_CHAIN === "1";
 
 /** Default chain when unspecified. */
 export const DEFAULT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532");
 
-export const kargainChains = [baseSepolia] as const satisfies readonly Chain[];
+export const kargainChains: readonly [Chain, ...Chain[]] = enableLocalChain
+  ? [hardhat, baseSepolia]
+  : [baseSepolia];
 
 export type KargainChainId = (typeof kargainChains)[number]["id"];
 
@@ -22,6 +26,7 @@ export function getViemChain(chainId: number): Chain | undefined {
 
 /** Public RPC fallbacks — override with NEXT_PUBLIC_RPC_<chainId> or NEXT_PUBLIC_RPC_BY_CHAIN JSON. */
 const FALLBACK_RPC: Record<number, string> = {
+  31337: "http://127.0.0.1:8545",
   84532: "https://sepolia.base.org",
 };
 

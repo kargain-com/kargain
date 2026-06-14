@@ -69,14 +69,13 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 
 | Area | Status |
 |------|--------|
-| Contracts (Model X) | Finalized on Base Sepolia, **71 tests** passing |
+| Contracts (Model X) | Finalized on Base Sepolia, **71+ tests** passing |
 | Ponder indexer | Production at https://ponder.kargain.com (realtime, final addresses) |
 | ABIs & addresses | `lib/contracts/abis.generated.ts`, `lib/web3/deployment-addresses.ts` |
 | Irys uploads | Client-side `@irys/web-upload` wired in passport wizard |
-| Passport UI | **Done** — `/passport/new` mint + marketplace detail page |
-| **UI on-chain wiring** | **In progress** — verify, marketplace, verifier flows, profiles |
-
-Remaining UI flows: `becomeVerifier`, `verify`, `dispute`, `resolve`, `list`, `delist`, `buy`, `leave`, profiles.
+| Passport UI | `/passport/new` mint, edit wizard, marketplace, verifier flows |
+| **Local E2E (31337)** | **Done** — `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
+| **Sepolia v1.1 redeploy** | **Done** — `pnpm deploy:v1.1`; Ponder reindex on VPS pending |
 
 Internal session notes (local): `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`.
 
@@ -129,6 +128,32 @@ pnpm dev
 pnpm ponder:dev
 ```
 
+### Local development (chain 31337)
+
+Full Model X stack on a persistent Hardhat node with Ponder indexing and optional frontend:
+
+```bash
+# One terminal — Postgres + Hardhat node + deploy + Ponder
+./scripts/dev-local.sh
+
+# Another terminal — frontend on localhost chain
+export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1
+export NEXT_PUBLIC_CHAIN_ID=31337
+eval "$(node --import tsx scripts/lib/print-local-env.ts)"
+pnpm dev
+```
+
+Manual steps:
+
+```bash
+npx hardhat node          # terminal 1
+pnpm deploy:local         # terminal 2 (writes deployments/31337.json)
+PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK_31337=0 pnpm ponder:dev   # terminal 3
+pnpm test:e2e             # viem lifecycle (+ optional Ponder checks)
+```
+
+One-shot CI-style E2E: `./scripts/e2e-local.sh`
+
 Open http://localhost:3000
 
 ### Create a passport
@@ -139,8 +164,11 @@ Connect a wallet, then visit `/passport/new`. Irys upload and on-chain `mintPass
 
 ```bash
 pnpm hardhat compile    # compile Solidity
-pnpm hardhat test       # 71 contract tests (node:test + viem)
-pnpm hardhat run scripts/deploy.ts --network baseSepolia   # full Model X deploy
+pnpm hardhat test       # contract tests (node:test + viem)
+pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
+pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
+pnpm deploy:v1.1        # Phase 5 partial redeploy (KarPassport + Marketplace on Sepolia)
+pnpm deploy:base-sepolia # full Model X greenfield deploy on Sepolia
 ```
 
 After compile, refresh ABIs:
@@ -153,17 +181,21 @@ node scripts/export-abis.mjs
 
 ## Contracts (Base Sepolia)
 
-Network: Base Sepolia (chain **84532**) · Deployed: June 2026 (Model X)
+Network: Base Sepolia (chain **84532**) · v1.1 partial redeploy: June 2026
 
 | Contract | Address |
 |----------|---------|
 | KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
 | KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
-| KarPassport | `0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083` |
-| MarketplaceEscrow (proxy) | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` |
-| MarketplaceEscrow (impl) | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` |
+| KarPassport (v1.1) | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
+| MarketplaceEscrow (proxy) | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+| MarketplaceEscrow (impl) | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
 | Deployer / upgradeAuthority | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
 | platformRecipient | `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` |
+
+**Deprecated (Model X pre-v1.1):** KarPassport `0xCfA1eAB…`, Marketplace proxy `0xcD40C83…` — not indexed after Phase 5 reindex.
+
+Deploy v1.1 (partial): `pnpm deploy:v1.1` · Full greenfield: `pnpm deploy:base-sepolia`
 
 ### On-chain parameters
 
@@ -217,7 +249,7 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 ## Known technical debt
 
-- **UI wiring** — verify/dispute/resolve, marketplace list/buy, verifier flows, and profiles still stubbed (`TODO Phase 1.1` in several components).
+- **Sepolia deploy** — Phase 1 `VerificationReset` / Variant C `setPassportURI` live after Phase 5 redeploy; UI and Ponder handlers target v1.1 ABI now.
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `scripts/deploy.ts` for full Model X deploys.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).

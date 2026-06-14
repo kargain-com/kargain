@@ -7,10 +7,9 @@
 # For local Postgres, run the SQL directly:
 #   psql "$DATABASE_URL" -f scripts/ponder-reindex.sql
 #
-# After this script completes, edit ponder.config.ts:
-#   - Comment out startBlock: "latest"
-#   - Uncomment startBlock: BASE_SEPOLIA_DEPLOY_START_BLOCK
-# Then redeploy/restart Ponder.
+# After this script completes:
+#   eval "$(node --import tsx scripts/lib/print-ponder-env.ts)"   # if deployments/84532.json present
+#   # Paste output into server .env, then restart Ponder.
 
 set -euo pipefail
 
@@ -20,13 +19,15 @@ SQL="$ROOT/scripts/ponder-reindex.sql"
 echo "Stopping Ponder..."
 docker compose -f "$ROOT/docker-compose.yml" stop ponder
 
-echo "Truncating indexed tables and ponder_sync cache for chain 84532..."
+echo "Truncating indexed tables and ponder_sync cache..."
 docker compose -f "$ROOT/docker-compose.yml" exec -T postgres \
   psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1 < "$SQL"
 
 echo ""
 echo "Done. Next steps:"
-echo "  1. In server .env set PONDER_START_BLOCK=42800430 (omit or \"latest\" to index from restart only)."
-echo "  2. Only for full backfill (42800430): set PONDER_RPC_URL_84532 to Alchemy or QuickNode."
-echo "  3. docker compose up -d ponder"
-echo "  4. Watch logs: docker compose logs -f ponder"
+echo "  1. node --import tsx scripts/lib/print-ponder-env.ts"
+echo "  2. Paste exports into server .env (PONDER_*_ADDRESS, PONDER_START_BLOCK_84532=<indexFromBlock>)"
+echo "  3. For backfill only: set PONDER_RPC_URL_84532 to Alchemy or QuickNode"
+echo "  4. docker compose up -d ponder"
+echo "  5. After sync: PONDER_START_BLOCK_84532=latest"
+echo "  6. Watch logs: docker compose logs -f ponder"

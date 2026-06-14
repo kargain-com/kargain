@@ -1,4 +1,4 @@
-import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 
 type SpecRow = {
   label: string;
@@ -15,8 +15,23 @@ function buildRows(metadata: PassportMetadata): SpecRow[] {
   if (metadata.vin) {
     rows.push({ label: "VIN", value: metadata.vin });
   }
+  if (metadata.year != null) {
+    rows.push({ label: "Year", value: String(metadata.year) });
+  }
   if (metadata.mileageKm != null && metadata.mileageKm >= 0) {
     rows.push({ label: "Mileage", value: formatMileage(metadata.mileageKm) });
+  }
+  if (metadata.type) {
+    rows.push({ label: "Type", value: metadata.type });
+  }
+  if (metadata.modelVariant) {
+    rows.push({ label: "Variant", value: metadata.modelVariant });
+  }
+  if (metadata.colour) {
+    rows.push({ label: "Colour", value: metadata.colour });
+  }
+  if (metadata.power) {
+    rows.push({ label: "Power", value: metadata.power });
   }
   if (metadata.fuelType) {
     rows.push({ label: "Fuel", value: metadata.fuelType });

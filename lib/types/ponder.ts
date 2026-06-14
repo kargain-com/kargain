@@ -7,9 +7,14 @@ export type PassportRow = {
   tokenId: string;
   owner: `0x${string}`;
   vin: string;
+  make: string;
+  model: string;
+  year: number;
+  mileageKm: number;
   status: PassportStatus;
   verifier: `0x${string}`;
-  metadataURI: string;
+  tokenUri: string;
+  duplicateVin: boolean;
 };
 
 export type ListingRow = {
@@ -20,16 +25,25 @@ export type ListingRow = {
   priceNative: string;
   fiatCurrency: number;
   status: ListingStatus;
-  metadataURI: string;
+  passportStatus: PassportStatus;
+  tokenUri: string;
+  title: string;
+  imageUrl: string | null;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  mileageKm: number | null;
+  duplicateVin: boolean;
   updatedAtBlock: string;
   listedBlockTimestamp: string;
 };
 
 export type VerifierRow = {
   address: `0x${string}`;
-  tokenId: string;
-  category: string;
+  category: number;
   name: string;
+  metadataURI: string;
+  active: boolean;
 };
 
 export type FacetsResponse = {
@@ -40,9 +54,9 @@ export type FacetsResponse = {
   priceMin: number;
   priceMax: number;
   mileageMax: number;
-  fuelTypes: string[];
-  bodyTypes: string[];
-  transmissions: string[];
+  fiatCurrencies: number[];
+  totalActive: number;
+  statusCounts: Record<PassportStatus, number>;
 };
 
 export type PonderListingsResponse = {
@@ -88,6 +102,16 @@ export type PonderPassportRecord = {
   timestamp: string;
 };
 
+export type PonderUriHistoryEntry = {
+  id: string;
+  tokenId: string;
+  previousUri: string;
+  newUri: string;
+  author: string;
+  verificationReset: boolean;
+  timestamp: string;
+};
+
 export type PonderPassportDetail = {
   id: string;
   owner: string;
@@ -95,7 +119,47 @@ export type PonderPassportDetail = {
   verifier: string;
   verifiedAt: string;
   tokenUri: string;
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  mileageKm: number;
+  lastDisputer: string;
+  disputeReason: string;
+  disputeWithdrawnAt: string;
+  lastVerificationResetAt: string;
+  duplicateVin: boolean;
   createdAt: string;
   updatedAt: string;
   records: PonderPassportRecord[];
+  uriHistory: PonderUriHistoryEntry[];
+};
+
+export type PonderListingDetail = {
+  id: string;
+  tokenId: string;
+  seller: string;
+  fiatPrice1e8: string;
+  fiatCurrency: number;
+  active: boolean;
+  listedAt: string;
+  passportStatus: PassportStatus;
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  mileageKm: number;
+  tokenUri: string;
+  duplicateVin: boolean;
+};
+
+export type PonderVerifierDetail = {
+  address: string;
+  identity: { category: number; name: string; metadataURI: string };
+  stake: { asset: number; amount: string; active: boolean };
+  joinedAt: string;
+  leftAt: string;
+  verificationCount: number;
+  disputedPassports: PonderPassportDetail[];
+  verifiedPassports: PonderPassportDetail[];
 };

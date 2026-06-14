@@ -1,7 +1,10 @@
 import Link from "next/link";
 
+import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
+import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
+import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
@@ -17,6 +20,12 @@ type Props = {
   metadata: PassportMetadata | null;
   metadataError?: boolean;
   labels: T;
+  listing?: {
+    active: boolean;
+    fiatPrice1e8: string;
+    fiatCurrency: number;
+    seller: `0x${string}`;
+  } | null;
 };
 
 function formatChainDate(timestampSec: string, locale: string): string {
@@ -57,6 +66,7 @@ export function PassportDetailView({
   metadata,
   metadataError,
   labels: t,
+  listing = null,
 }: Props) {
   const title = buildTitle(metadata, tokenId);
   const discrepancyReason = findDiscrepancyReason(passport.records);
@@ -141,7 +151,19 @@ export function PassportDetailView({
             )}
           </section>
 
-          {/* TODO: verify / dispute / list actions */}
+          <PassportUriHistory entries={passport.uriHistory} />
+
+          <PassportActionsPanel
+            tokenId={tokenId}
+            chainId={chainId}
+            passportOwner={passport.owner as `0x${string}`}
+            status={passport.status}
+            verifier={passport.verifier}
+            lastDisputer={passport.lastDisputer}
+            disputeWithdrawnAt={passport.disputeWithdrawnAt}
+            duplicateVin={passport.duplicateVin}
+            listingActive={listing?.active}
+          />
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-24">
@@ -164,10 +186,28 @@ export function PassportDetailView({
                 {t.discrepancyNoticeTitle}
               </p>
               <p className="mt-2 font-sans text-sm text-text-secondary">
-                {discrepancyReason ?? t.discrepancyBanner}
+                {passport.disputeReason.trim() || discrepancyReason || t.discrepancyBanner}
               </p>
+              {passport.disputeWithdrawnAt !== "0" &&
+                Number.parseInt(passport.disputeWithdrawnAt, 10) > 0 && (
+                  <p className="mt-2 text-sm text-text-secondary">Dispute withdrawn</p>
+                )}
             </div>
           )}
+
+          {passport.duplicateVin && (
+            <p className="rounded-md border border-status-error/40 p-3 text-sm text-status-error">
+              Duplicate VIN warning — another passport shares this VIN in the index.
+            </p>
+          )}
+
+          <ListingDetailClientIsland
+            chainId={chainId}
+            tokenId={tokenId}
+            listing={listing}
+            passportOwner={passport.owner as `0x${string}`}
+            labels={t}
+          />
 
           <section className="space-y-3 rounded-md border border-border-default bg-bg-surface p-6">
             <h2 className="font-sans text-base font-medium text-text-primary">

@@ -6,6 +6,7 @@ import {
 import type {
   PassportStatus,
   PonderPassportDetail,
+  PonderUriHistoryEntry,
 } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -33,6 +34,35 @@ function isPassportStatus(value: string): value is PassportStatus {
   return value === "UNVERIFIED" || value === "VERIFIED" || value === "DISPUTED";
 }
 
+function parseUriHistory(raw: unknown): PonderUriHistoryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const e = entry as Record<string, unknown>;
+      const id = typeof e.id === "string" ? e.id : "";
+      const tokenId = typeof e.tokenId === "string" ? e.tokenId : "";
+      const previousUri = typeof e.previousUri === "string" ? e.previousUri : "";
+      const newUri = typeof e.newUri === "string" ? e.newUri : "";
+      const author = typeof e.author === "string" ? e.author : "";
+      const verificationReset = e.verificationReset === true;
+      const timestamp = e.timestamp != null ? String(e.timestamp) : "0";
+      if (!id || !newUri) return null;
+      return {
+        id,
+        tokenId,
+        previousUri,
+        newUri,
+        author,
+        verificationReset,
+        timestamp,
+      };
+    })
+    .filter((e): e is PonderUriHistoryEntry => e != null);
+}
+
 function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -43,6 +73,19 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const verifier = typeof obj.verifier === "string" ? obj.verifier : "";
   const verifiedAt = obj.verifiedAt != null ? String(obj.verifiedAt) : "0";
   const tokenUri = typeof obj.tokenUri === "string" ? obj.tokenUri : "";
+  const vin = typeof obj.vin === "string" ? obj.vin : "";
+  const make = typeof obj.make === "string" ? obj.make : "";
+  const model = typeof obj.model === "string" ? obj.model : "";
+  const year = typeof obj.year === "number" ? obj.year : Number(obj.year ?? 0);
+  const mileageKm =
+    typeof obj.mileageKm === "number" ? obj.mileageKm : Number(obj.mileageKm ?? 0);
+  const lastDisputer = typeof obj.lastDisputer === "string" ? obj.lastDisputer : "";
+  const disputeReason = typeof obj.disputeReason === "string" ? obj.disputeReason : "";
+  const disputeWithdrawnAt =
+    obj.disputeWithdrawnAt != null ? String(obj.disputeWithdrawnAt) : "0";
+  const lastVerificationResetAt =
+    obj.lastVerificationResetAt != null ? String(obj.lastVerificationResetAt) : "0";
+  const duplicateVin = obj.duplicateVin === true;
   const createdAt = obj.createdAt != null ? String(obj.createdAt) : "0";
   const updatedAt = obj.updatedAt != null ? String(obj.updatedAt) : "0";
 
@@ -80,9 +123,20 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
     verifier,
     verifiedAt,
     tokenUri,
+    vin,
+    make,
+    model,
+    year: Number.isFinite(year) ? year : 0,
+    mileageKm: Number.isFinite(mileageKm) ? mileageKm : 0,
+    lastDisputer,
+    disputeReason,
+    disputeWithdrawnAt,
+    lastVerificationResetAt,
+    duplicateVin,
     createdAt,
     updatedAt,
     records,
+    uriHistory: parseUriHistory(obj.uriHistory),
   };
 }
 
@@ -146,4 +200,28 @@ export async function fetchPassportDetail(
   }
 
   return { ok: true, passport, metadata: metaResult.metadata };
+}
+
+export async function fetchListingDetail(tokenId: string) {
+  try {
+    const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
+      next: { revalidate: 10 },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchVerifierDetail(address: string) {
+  try {
+    const res = await fetch(`${PONDER_URL}/verifiers/${address}`, {
+      next: { revalidate: 30 },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }

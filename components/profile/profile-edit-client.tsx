@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
+import { KarProPassAbi } from "@/lib/contracts/abis.generated";
+import { karProPassAddress } from "@/lib/web3/deployment-addresses";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function ProfileEditClient() {
   const { address } = useAccount();
   const { connect, connectors, isPending } = useConnect();
+  const { writeContractAsync, isPending: isSaving } = useWriteContract();
+  const [message, setMessage] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -135,11 +140,35 @@ export function ProfileEditClient() {
         <KarProClient embedded />
       </section>
 
-      <Button type="button" onClick={() => {}}>
+      <Button
+        type="button"
+        disabled={isSaving || !displayName.trim()}
+        onClick={() => {
+          void (async () => {
+            const karPro = karProPassAddress(DEFAULT_CHAIN_ID);
+            if (!karPro || !address) {
+              setMessage("Kar Pro pass required to persist profile on-chain.");
+              return;
+            }
+            try {
+              await writeContractAsync({
+                address: karPro,
+                abi: KarProPassAbi,
+                functionName: "updateProfile",
+                args: [5, displayName.trim(), ""],
+              });
+              setMessage("Profile updated on-chain.");
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "Save failed.");
+            }
+          })();
+        }}
+      >
         Save profile
       </Button>
       <p className="text-sm text-text-secondary">
-        Profile saving UI is ready. Decentralized profile persistence is currently disabled in this environment.
+        {message ??
+          "On-chain profile save requires a Kar Pro pass. Local fields are not persisted otherwise."}
       </p>
     </div>
   );

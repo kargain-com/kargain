@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAddress } from "viem";
 
+import { getProfileData } from "@/app/actions/marketplace-listings";
 import { ProfileFavoritesSection } from "@/components/profile/profile-favorites-section";
 import { FadeUp } from "@/components/ui/fade-up";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
@@ -28,10 +29,27 @@ export default async function PublicProfilePage({
 
   const chainId = DEFAULT_CHAIN_ID;
 
-  // TODO Phase 1.1: Profile listings and passports pending new Ponder indexer
-  const ponderErr = null;
-  const passports: { tokenId: string; status: PassportStatus; vin?: string | null }[] = [];
-  const listings: { tokenId: string; status: string }[] = [];
+  let ponderErr: string | null = null;
+  let passports: { tokenId: string; status: PassportStatus; vin?: string | null }[] = [];
+  let listings: { tokenId: string; status: string }[] = [];
+
+  try {
+    const data = await getProfileData(wallet);
+    passports = (data.passports as Array<Record<string, unknown>>).map((p) => ({
+      tokenId: String(p.id ?? ""),
+      status: (p.status as PassportStatus) ?? "UNVERIFIED",
+      vin: typeof p.vin === "string" && p.vin ? p.vin : null,
+    }));
+    listings = (data.listings as Array<Record<string, unknown>>)
+      .filter((l) => l.active === true)
+      .map((l) => ({
+        tokenId: String(l.tokenId ?? l.id ?? ""),
+        status: "active",
+      }));
+  } catch {
+    ponderErr = "PONDER_UNAVAILABLE";
+  }
+
   const karProBal = 0n;
 
   const profile: {

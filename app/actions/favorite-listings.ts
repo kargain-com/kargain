@@ -1,11 +1,18 @@
 "use server";
 
-import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
+import {
+  loadFavoriteListingCards as loadCards,
+  type MarketplaceListingRow,
+} from "@/app/actions/marketplace-listings";
 
-export async function loadFavoriteListingCards(_tokenIds: string[]): Promise<{
+export async function loadFavoriteListingCards(tokenIds: string[]): Promise<{
   listings: MarketplaceListingRow[];
   ponderError?: string;
 }> {
-  // TODO Phase 1.1: Ponder indexer pending new contracts
-  return { listings: [] };
+  try {
+    const listings = await loadCards(tokenIds);
+    return { listings };
+  } catch {
+    return { listings: [], ponderError: "PONDER_UNAVAILABLE" };
+  }
 }

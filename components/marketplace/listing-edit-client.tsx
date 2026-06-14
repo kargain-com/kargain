@@ -7,6 +7,7 @@ import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
+  useReadContracts,
   useSwitchChain,
   useWriteContract,
   useConfig,
@@ -23,8 +24,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import {
+  KarPassportAbi,
+  MarketplaceEscrowAbi,
+} from "@/lib/contracts/abis.generated";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
+import {
+  karPassportAddress,
+  marketplaceAddress,
+} from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type T = ReturnType<typeof getDetailStrings>;
@@ -78,17 +87,42 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
   const [fiatCurrency, setFiatCurrency] = useState<"0" | "1">("0");
   const [log, setLog] = useState<string | null>(null);
 
-  const passport: `0x${string}` | undefined = undefined;
-  const market: `0x${string}` | undefined = undefined;
+  const passport = karPassportAddress(chainId);
+  const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
-  const listingOnChain = undefined;
-  const refetchListing = async () => undefined;
-  const ownerOf = undefined;
-  const refetchOwner = async () => undefined;
-  const approved = undefined;
-  // TODO Phase 1.1: removed — pending new contract
+  const { data: reads, refetch: refetchReads } = useReadContracts({
+    contracts:
+      passport && market
+        ? [
+            {
+              address: passport,
+              abi: KarPassportAbi,
+              functionName: "ownerOf",
+              args: [tid],
+            },
+            {
+              address: passport,
+              abi: KarPassportAbi,
+              functionName: "getApproved",
+              args: [tid],
+            },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "listings",
+              args: [tid],
+            },
+          ]
+        : [],
+  });
+
+  const ownerOf = reads?.[0]?.result as `0x${string}` | undefined;
+  const approved = reads?.[1]?.result as `0x${string}` | undefined;
+  const listingOnChain = reads?.[2]?.result;
+  const refetchListing = refetchReads;
+  const refetchOwner = refetchReads;
 
   const row = parseListing(listingOnChain);
   const active = row?.active ?? false;
@@ -104,96 +138,105 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
   const canDelist = Boolean(active && isSeller);
   const canList = Boolean(!active && isOwner && address);
 
+  const isApproved =
+    Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
+
   const runDelist = useCallback(async () => {
-    // TODO Phase 1.1: removed — pending new contract
-    void canDelist;
-    void wrongChain;
-    void market;
-    void tid;
-    void config;
-    void wc;
-    void refetchListing;
-    void refetchOwner;
-    void switchChainAsync;
-    void writeContractAsync;
-    setLog("Listing actions are temporarily unavailable.");
-  }, [canDelist, wrongChain, market, tid, config, wc, refetchListing, refetchOwner, switchChainAsync, writeContractAsync]);
+    if (!canDelist || !market) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    setLog("Delisting…");
+    const hash = await writeContractAsync({
+      address: market,
+      abi: MarketplaceEscrowAbi,
+      functionName: "delist",
+      args: [tid],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    await refetchListing();
+    setLog("Delisted.");
+  }, [canDelist, wrongChain, market, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
 
   const runApprove = useCallback(async () => {
-    // TODO Phase 1.1: removed — pending new contract
-    void address;
-    void wrongChain;
-    void passport;
-    void market;
-    void config;
-    void wc;
-    void switchChainAsync;
-    void writeContractAsync;
-    setLog("Listing actions are temporarily unavailable.");
-  }, [address, wrongChain, passport, market, config, wc, switchChainAsync, writeContractAsync]);
+    if (!address || !passport || !market) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    setLog("Approving marketplace…");
+    const hash = await writeContractAsync({
+      address: passport,
+      abi: KarPassportAbi,
+      functionName: "approve",
+      args: [market, tid],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    await refetchOwner();
+    setLog("Marketplace approved.");
+  }, [address, wrongChain, passport, market, tid, config, wc, refetchOwner, switchChainAsync, writeContractAsync]);
 
   const runList = useCallback(async () => {
-    // TODO Phase 1.1: removed — pending new contract
-    void canList;
-    void wrongChain;
-    void priceInput;
-    void fiatCurrency;
-    void approved;
-    void market;
-    void tid;
-    void config;
-    void wc;
-    void refetchListing;
-    void refetchOwner;
-    void switchChainAsync;
-    void writeContractAsync;
-    setLog("Listing actions are temporarily unavailable.");
-  }, [
-    canList,
-    wrongChain,
-    priceInput,
-    fiatCurrency,
-    approved,
-    market,
-    tid,
-    config,
-    wc,
-    refetchListing,
-    refetchOwner,
-    switchChainAsync,
-    writeContractAsync,
-  ]);
+    if (!canList || !market) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    const amount = parseUnits(priceInput || "0", 8);
+    if (amount <= 0n) {
+      setLog("Enter a valid price.");
+      return;
+    }
+    setLog("Listing…");
+    const hash = await writeContractAsync({
+      address: market,
+      abi: MarketplaceEscrowAbi,
+      functionName: "list",
+      args: [tid, amount, Number(fiatCurrency)],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    await refetchListing();
+    setLog("Listed.");
+  }, [canList, wrongChain, market, priceInput, fiatCurrency, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
 
   const runUpdatePrice = useCallback(async () => {
-    // TODO Phase 1.1: removed — pending new contract
-    void canDelist;
-    void wrongChain;
-    void market;
-    void passport;
-    void priceInput;
-    void fiatCurrency;
-    void approved;
-    void tid;
-    void config;
-    void wc;
-    void refetchListing;
-    void refetchOwner;
-    void switchChainAsync;
-    void writeContractAsync;
-    setLog("Listing actions are temporarily unavailable.");
+    if (!canDelist || !market || !passport) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    const amount = parseUnits(priceInput || "0", 8);
+    if (amount <= 0n) {
+      setLog("Enter a valid price.");
+      return;
+    }
+    setLog("Updating price (delist + relist)…");
+    let hash = await writeContractAsync({
+      address: market,
+      abi: MarketplaceEscrowAbi,
+      functionName: "delist",
+      args: [tid],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    if (!isApproved) {
+      hash = await writeContractAsync({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "approve",
+        args: [market, tid],
+      });
+      await waitForTransactionReceipt(config, { hash });
+    }
+    hash = await writeContractAsync({
+      address: market,
+      abi: MarketplaceEscrowAbi,
+      functionName: "list",
+      args: [tid, amount, Number(fiatCurrency)],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    await refetchListing();
+    setLog("Price updated.");
   }, [
     canDelist,
     wrongChain,
-    priceInput,
-    fiatCurrency,
-    approved,
     market,
     passport,
+    priceInput,
+    fiatCurrency,
+    isApproved,
     tid,
     config,
     wc,
     refetchListing,
-    refetchOwner,
     switchChainAsync,
     writeContractAsync,
   ]);
@@ -306,12 +349,12 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
       {!active && isOwner && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">{t.relist}</h2>
-          {!approved && (
+          {!isApproved && (
             <Button type="button" variant="outline" disabled={isPending} onClick={() => void runApprove()}>
               {t.approveMarketplace}
             </Button>
           )}
-          {approved && <p className="text-xs text-accent-warm">Marketplace approved.</p>}
+          {isApproved && <p className="text-xs text-accent-warm">Marketplace approved.</p>}
           <div className="space-y-2">
             <Label htmlFor="fiat-new">List price (USD or EUR units, stored 1e8)</Label>
             <Input
@@ -334,7 +377,7 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
               </SelectContent>
             </Select>
           </div>
-          <Button type="button" disabled={isPending || !approved} onClick={() => void runList()}>
+          <Button type="button" disabled={isPending || !isApproved} onClick={() => void runList()}>
             {t.relist}
           </Button>
         </section>

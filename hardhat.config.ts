@@ -29,7 +29,7 @@ const config: HardhatUserConfig = {
       type: "http",
       url: "http://127.0.0.1:8545",
       chainId: 31337,
-      ...(deployerKey ? { accounts: [deployerKey] } : {}),
+      // Use Hardhat node default funded accounts (do not override with DEPLOYER_PRIVATE_KEY).
     },
     baseSepolia: {
       type: "http",
