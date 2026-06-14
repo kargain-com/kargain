@@ -49,4 +49,5 @@ test-results
 *.tsbuildinfo
 
 # internal docs (local only)
-/docs
+/docs/*
+!/docs/passport-v1.1-spec.md

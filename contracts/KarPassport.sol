@@ -41,6 +41,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
     event PassportDisputed(uint256 indexed tokenId, address indexed disputer, string reason);
     event DisputeResolved(uint256 indexed tokenId, address indexed resolver, bool uphold);
     event PassportURIUpdated(uint256 indexed tokenId, string newURI, address indexed author);
+    event VerificationReset(uint256 indexed tokenId, address indexed author);
     event RecordAppended(
         uint256 indexed tokenId,
         address indexed author,
@@ -55,6 +56,7 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
     error CannotSelfVerify();
     error InvalidStatus(Status current);
     error EmptyField(string fieldName);
+    error SameURI();
 
     constructor(address karProStakingAddress_) ERC721("KarPassport", "KPPT") {
         karProStakingAddress = karProStakingAddress_;
@@ -73,12 +75,26 @@ contract KarPassport is ERC721URIStorage, ReentrancyGuard {
         emit PassportMinted(to, tokenId, uri);
     }
 
-    /// @notice Owner updates metadata URI while passport is UNVERIFIED.
+    /// @notice Owner updates metadata URI. VERIFIED edits reset verification; DISPUTED edits revert.
     function setPassportURI(uint256 tokenId, string calldata newURI) external {
         _requireExists(tokenId);
         if (msg.sender != ownerOf(tokenId)) revert NotOwner();
+        if (bytes(newURI).length == 0) revert EmptyField("uri");
+
         Status current = passportStatus[tokenId];
-        if (current != Status.UNVERIFIED) revert InvalidStatus(current);
+        if (current == Status.DISPUTED) revert InvalidStatus(current);
+
+        if (keccak256(bytes(newURI)) == keccak256(bytes(tokenURI(tokenId)))) {
+            revert SameURI();
+        }
+
+        if (current == Status.VERIFIED) {
+            passportStatus[tokenId] = Status.UNVERIFIED;
+            passportVerifier[tokenId] = address(0);
+            passportVerifiedAt[tokenId] = 0;
+            emit VerificationReset(tokenId, msg.sender);
+        }
+
         _setTokenURI(tokenId, newURI);
         emit PassportURIUpdated(tokenId, newURI, msg.sender);
     }

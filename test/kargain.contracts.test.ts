@@ -770,7 +770,23 @@ describe("KarPassport — setPassportURI", () => {
     );
   });
 
-  it("reverts when VERIFIED", async () => {
+  it("updates when VERIFIED and resets verification", async () => {
+    const { viem } = connection;
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([0n]), "ipfs://new");
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 0);
+    assert.equal(getAddress(recordedVerifier), getAddress("0x0000000000000000000000000000000000000000"));
+    assert.equal(verifiedAt, 0n);
+  });
+
+  it("reverts SameURI when VERIFIED and keeps verification", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
@@ -779,8 +795,34 @@ describe("KarPassport — setPassportURI", () => {
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account }),
-      revertsWith("InvalidStatus"),
+      passport.write.setPassportURI([0n, "ipfs://v"], { account: owner.account }),
+      revertsWith("SameURI"),
+    );
+    const [status] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 1);
+  });
+
+  it("reverts SameURI when UNVERIFIED", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+      account: owner.account,
+    });
+    await assert.rejects(
+      passport.write.setPassportURI([0n, "ipfs://old"], { account: owner.account }),
+      revertsWith("SameURI"),
+    );
+  });
+
+  it("reverts empty URI", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+      account: owner.account,
+    });
+    await assert.rejects(
+      passport.write.setPassportURI([0n, ""], { account: owner.account }),
+      revertsWith("EmptyField"),
     );
   });
 
@@ -797,6 +839,68 @@ describe("KarPassport — setPassportURI", () => {
       passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account }),
       revertsWith("InvalidStatus"),
     );
+  });
+
+  it("reverts NotOwner when listed in escrow", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    await passport.write.mintPassport([seller.account.address, "ipfs://listed"], {
+      account: seller.account,
+    });
+    await passport.write.setApprovalForAll([marketplace.address, true], {
+      account: seller.account,
+    });
+    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    await assert.rejects(
+      passport.write.setPassportURI([0n, "ipfs://new"], { account: seller.account }),
+      revertsWith("NotOwner"),
+    );
+  });
+
+  it("allows edit after resolve(false) from DISPUTED", async () => {
+    const { viem } = connection;
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
+    await passport.write.resolveDispute([0n, false], { account: verifier.account });
+    await passport.write.setPassportURI([0n, "ipfs://fixed"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([0n]), "ipfs://fixed");
+    const [status] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 0);
+  });
+
+  it("UNVERIFIED update does not emit VerificationReset", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { owner, passport } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+      account: owner.account,
+    });
+    const hash = await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
+    const logs = await receiptLogs(publicClient, hash, passport.abi);
+    assert.equal(logs.some((l) => l.eventName === "VerificationReset"), false);
+    assert.equal(logs.some((l) => l.eventName === "PassportURIUpdated"), true);
+  });
+
+  it("emits VerificationReset when editing VERIFIED passport", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    const hash = await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
+    const logs = await receiptLogs(publicClient, hash, passport.abi);
+    const reset = logs.find((l) => l.eventName === "VerificationReset");
+    assert.ok(reset);
+    assert.equal(reset!.args.tokenId, 0n);
+    assert.equal(getAddress(reset!.args.author), getAddress(owner.account.address));
   });
 });
 

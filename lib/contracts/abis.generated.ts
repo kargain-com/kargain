@@ -5,7 +5,7 @@ export const KarPassportAbi = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "karProPassAddress_",
+        "name": "karProStakingAddress_",
         "type": "address"
       }
     ],
@@ -149,7 +149,7 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
-    "name": "NotKarProHolder",
+    "name": "NotActiveVerifier",
     "type": "error"
   },
   {
@@ -160,6 +160,11 @@ export const KarPassportAbi = [
   {
     "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "SameURI",
     "type": "error"
   },
   {
@@ -383,6 +388,18 @@ export const KarPassportAbi = [
         "internalType": "string",
         "name": "recordType",
         "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "evidenceCID",
+        "type": "string"
       }
     ],
     "name": "RecordAppended",
@@ -411,6 +428,25 @@ export const KarPassportAbi = [
       }
     ],
     "name": "Transfer",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "author",
+        "type": "address"
+      }
+    ],
+    "name": "VerificationReset",
     "type": "event"
   },
   {
@@ -593,7 +629,7 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
-    "name": "karProPassAddress",
+    "name": "karProStakingAddress",
     "outputs": [
       {
         "internalType": "address",
@@ -1274,6 +1310,12 @@ export const KarProPassAbi = [
         "internalType": "string",
         "name": "name",
         "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "metadataURI",
+        "type": "string"
       }
     ],
     "name": "ProPassMinted",
@@ -1298,6 +1340,12 @@ export const KarProPassAbi = [
         "indexed": false,
         "internalType": "string",
         "name": "name",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "metadataURI",
         "type": "string"
       }
     ],
@@ -2248,7 +2296,7 @@ export const MarketplaceEscrowAbi = [
       },
       {
         "internalType": "address",
-        "name": "karProPass_",
+        "name": "karProStaking_",
         "type": "address"
       },
       {
@@ -2612,7 +2660,7 @@ export const MarketplaceEscrowAbi = [
   },
   {
     "inputs": [],
-    "name": "karProPass",
+    "name": "karProStaking",
     "outputs": [
       {
         "internalType": "address",
