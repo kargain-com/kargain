@@ -6,6 +6,8 @@ import {
   filtersFromSearchParams,
   marketFiltersToApiInput,
 } from "@/lib/marketplace/filter-params";
+import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
+import type { PassportStatus } from "@/lib/types/ponder";
 
 const filterSchema = z.object({
   make: z.string().optional(),
@@ -31,6 +33,7 @@ export type MarketplaceListingRow = {
   seller: `0x${string}`;
   fiatPrice1e8: string;
   fiatCurrency: number;
+  passportStatus: PassportStatus;
   updatedAtBlock: string;
   tokenUri: string;
   title: string;
@@ -41,6 +44,7 @@ export type MarketplaceListingRow = {
   mileageKm: number | null;
   lat: number | null;
   lng: number | null;
+  duplicateVin: boolean;
   karPro: boolean;
   featured: boolean;
 };
@@ -67,8 +71,13 @@ type PonderListing = {
   fiatCurrency: number;
   active: boolean;
   listedAt: string | number;
-  soldAt: string | number;
-  buyer: string;
+  passportStatus?: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  mileageKm?: number;
+  tokenUri?: string;
+  duplicateVin?: boolean;
 };
 
 type PonderListingsResponse = {
@@ -78,26 +87,77 @@ type PonderListingsResponse = {
   limit: number;
 };
 
+function buildTitle(listing: PonderListing): string {
+  if (listing.year && listing.make && listing.model) {
+    return `${listing.year} ${listing.make} ${listing.model}`;
+  }
+  if (listing.make && listing.model) return `${listing.make} ${listing.model}`;
+  return `Vehicle #${listing.tokenId}`;
+}
+
+function photoFromUri(tokenUri: string | undefined): string | null {
+  if (!tokenUri?.startsWith("ar://")) return null;
+  return arUriToHttp(tokenUri);
+}
+
 function mapListingToRow(listing: PonderListing): MarketplaceListingRow {
+  const status = (listing.passportStatus ?? "UNVERIFIED") as PassportStatus;
   return {
     chainId: BASE_SEPOLIA_CHAIN_ID,
     tokenId: listing.tokenId,
     seller: listing.seller as `0x${string}`,
     fiatPrice1e8: String(listing.fiatPrice1e8),
     fiatCurrency: listing.fiatCurrency,
+    passportStatus: status,
     updatedAtBlock: String(listing.listedAt),
-    tokenUri: "",
-    title: `Vehicle #${listing.tokenId}`,
-    imageUrl: null,
-    make: null,
-    model: null,
-    year: null,
-    mileageKm: null,
+    tokenUri: listing.tokenUri ?? "",
+    title: buildTitle(listing),
+    imageUrl: photoFromUri(listing.tokenUri),
+    make: listing.make || null,
+    model: listing.model || null,
+    year: listing.year && listing.year > 0 ? listing.year : null,
+    mileageKm: listing.mileageKm && listing.mileageKm > 0 ? listing.mileageKm : null,
     lat: null,
     lng: null,
+    duplicateVin: listing.duplicateVin === true,
     karPro: false,
-    featured: false,
+    featured: status === "VERIFIED",
   };
+}
+
+function applyClientFilters(
+  rows: MarketplaceListingRow[],
+  p: z.infer<typeof filterSchema>,
+): MarketplaceListingRow[] {
+  return rows.filter((row) => {
+    if (p.make && row.make?.toLowerCase() !== p.make.toLowerCase()) return false;
+    if (p.model && row.model?.toLowerCase() !== p.model.toLowerCase()) return false;
+    if (p.yearMin != null && (row.year ?? 0) < p.yearMin) return false;
+    if (p.yearMax != null && (row.year ?? 0) > p.yearMax) return false;
+    if (p.mileageMax != null && (row.mileageKm ?? 0) > p.mileageMax) return false;
+    return true;
+  });
+}
+
+function applyClientSort(
+  rows: MarketplaceListingRow[],
+  sort: z.infer<typeof filterSchema>["sort"],
+): MarketplaceListingRow[] {
+  const copy = [...rows];
+  switch (sort) {
+    case "price_asc":
+      return copy.sort(
+        (a, b) => Number(a.fiatPrice1e8) - Number(b.fiatPrice1e8),
+      );
+    case "price_desc":
+      return copy.sort(
+        (a, b) => Number(b.fiatPrice1e8) - Number(a.fiatPrice1e8),
+      );
+    case "mileage_asc":
+      return copy.sort((a, b) => (a.mileageKm ?? 0) - (b.mileageKm ?? 0));
+    default:
+      return copy;
+  }
 }
 
 export async function searchMarketplaceListings(
@@ -106,8 +166,9 @@ export async function searchMarketplaceListings(
   const p = filterSchema.parse(input);
   try {
     const url = new URL(`${PONDER_URL}/listings`);
-    url.searchParams.set("page", p.page.toString());
-    url.searchParams.set("limit", p.limit.toString());
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("verifiedFirst", "true");
     if (p.status !== "all") {
       url.searchParams.set("status", p.status);
     }
@@ -123,13 +184,18 @@ export async function searchMarketplaceListings(
       };
     }
     const data = (await res.json()) as PonderListingsResponse;
-    const rows = data.listings.map(mapListingToRow);
-    const totalPages = data.total > 0 ? Math.ceil(data.total / p.limit) : 0;
+    let rows = data.listings.map(mapListingToRow);
+    rows = applyClientFilters(rows, p);
+    rows = applyClientSort(rows, p.sort);
+    const total = rows.length;
+    const offset = (p.page - 1) * p.limit;
+    const pageRows = rows.slice(offset, offset + p.limit);
+    const totalPages = total > 0 ? Math.ceil(total / p.limit) : 0;
     return {
       ok: true,
-      rows,
-      total: data.total,
-      page: data.page,
+      rows: pageRows,
+      total,
+      page: p.page,
       totalPages,
     };
   } catch {
@@ -184,4 +250,33 @@ export async function getProfileData(address: string) {
   } catch {
     return { passports: [], listings: [] };
   }
+}
+
+export async function fetchListingFacets() {
+  try {
+    const res = await fetch(`${PONDER_URL}/listings/facets`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function loadFavoriteListingCards(tokenIds: string[]) {
+  const rows: MarketplaceListingRow[] = [];
+  for (const tokenId of tokenIds) {
+    try {
+      const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
+        next: { revalidate: 30 },
+      });
+      if (!res.ok) continue;
+      const listing = (await res.json()) as PonderListing;
+      if (listing.active) rows.push(mapListingToRow(listing));
+    } catch {
+      /* skip */
+    }
+  }
+  return rows;
 }

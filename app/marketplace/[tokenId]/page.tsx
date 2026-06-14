@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
-import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
+import { fetchListingDetail, fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { getDetailStrings, pickDetailLocale } from "@/lib/i18n/marketplace-detail-locales";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
@@ -128,6 +128,20 @@ async function MarketplaceListingInner({
     notFound();
   }
 
+  const listingRaw = await fetchListingDetail(raw);
+  const listing =
+    listingRaw &&
+    typeof listingRaw === "object" &&
+    !Array.isArray(listingRaw) &&
+    (listingRaw as { active?: boolean }).active
+      ? {
+          active: true as const,
+          fiatPrice1e8: String((listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8),
+          fiatCurrency: Number((listingRaw as { fiatCurrency: number }).fiatCurrency),
+          seller: (listingRaw as { seller: string }).seller as `0x${string}`,
+        }
+      : null;
+
   return (
     <div className="min-h-dvh bg-bg-primary">
       <PassportDetailView
@@ -137,6 +151,7 @@ async function MarketplaceListingInner({
         metadata={result.metadata}
         metadataError={result.metadataError}
         labels={t}
+        listing={listing}
       />
     </div>
   );

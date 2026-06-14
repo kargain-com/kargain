@@ -4,23 +4,67 @@ import {
   marketplaceSale,
   passport,
   passportRecord,
+  passportUriHistory,
   verifier,
 } from "ponder:schema";
+
+import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
+import {
+  indexPassportMetadataFromUri,
+} from "./lib/ponder-passport-metadata";
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
 
+async function appendUriHistory(
+  context: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"],
+  params: {
+    tokenId: string;
+    previousUri: string;
+    newUri: string;
+    author: string;
+    verificationReset: boolean;
+    timestamp: bigint;
+    historyId: string;
+  },
+): Promise<void> {
+  await context.db.insert(passportUriHistory).values({
+    id: params.historyId,
+    tokenId: params.tokenId,
+    previousUri: params.previousUri,
+    newUri: params.newUri,
+    author: params.author,
+    verificationReset: params.verificationReset,
+    timestamp: params.timestamp,
+  });
+}
+
 ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const uri = event.args.uri;
+
   await context.db.insert(passport).values({
-    id: event.args.tokenId.toString(),
+    id: tokenId,
     owner: event.args.to,
     status: "UNVERIFIED",
     verifier: "",
     verifiedAt: 0n,
-    tokenUri: event.args.uri,
+    tokenUri: uri,
     createdAt: event.block.timestamp,
     updatedAt: event.block.timestamp,
   });
+
+  await appendUriHistory(context, {
+    tokenId,
+    previousUri: "",
+    newUri: uri,
+    author: event.args.to,
+    verificationReset: false,
+    timestamp: event.block.timestamp,
+    historyId: `${event.transaction.hash}-${event.log.logIndex}`,
+  });
+
+  await indexPassportMetadataFromUri(context, tokenId, uri, event.block.timestamp);
 });
 
 ponder.on("KarPassport:PassportVerified", async ({ event, context }) => {
@@ -39,6 +83,9 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
     .update(passport, { id: event.args.tokenId.toString() })
     .set({
       status: "DISPUTED",
+      lastDisputer: event.args.disputer,
+      disputeReason: event.args.reason,
+      disputeWithdrawnAt: 0n,
       updatedAt: event.block.timestamp,
     });
 });
@@ -63,13 +110,50 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
   }
 });
 
-ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
+ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
+    .set({
+      status: "UNVERIFIED",
+      verifier: "",
+      verifiedAt: 0n,
+      lastVerificationResetAt: event.block.timestamp,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const existing = await context.db.find(passport, { id: tokenId });
+  const previousUri = existing?.tokenUri ?? "";
+
+  const verificationReset =
+    existing != null &&
+    existing.lastVerificationResetAt === event.block.timestamp;
+
+  await context.db
+    .update(passport, { id: tokenId })
     .set({
       tokenUri: event.args.newURI,
       updatedAt: event.block.timestamp,
     });
+
+  await appendUriHistory(context, {
+    tokenId,
+    previousUri,
+    newUri: event.args.newURI,
+    author: event.args.author,
+    verificationReset,
+    timestamp: event.block.timestamp,
+    historyId: `${event.transaction.hash}-${event.log.logIndex}`,
+  });
+
+  await indexPassportMetadataFromUri(
+    context,
+    tokenId,
+    event.args.newURI,
+    event.block.timestamp,
+  );
 });
 
 ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
@@ -83,6 +167,22 @@ ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
     evidenceCID: event.args.evidenceCID,
     timestamp: event.block.timestamp,
   });
+
+  const row = await context.db.find(passport, { id: tokenId });
+  if (
+    row &&
+    isDisputeWithdrawnRecord(
+      event.args.recordType,
+      event.args.description,
+      event.args.author,
+      row.lastDisputer,
+    )
+  ) {
+    await context.db.update(passport, { id: tokenId }).set({
+      disputeWithdrawnAt: event.block.timestamp,
+      updatedAt: event.block.timestamp,
+    });
+  }
 });
 
 ponder.on("KarPassport:Transfer", async ({ event, context }) => {

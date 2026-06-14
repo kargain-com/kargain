@@ -32,8 +32,6 @@ export function MarketBrowse({ initialChainId }: { initialChainId: number }) {
   const parsed = rawChain ? Number.parseInt(rawChain, 10) : NaN;
   const chainId = Number.isFinite(parsed) ? parsed : initialChainId;
 
-  // TODO Phase 1.1: removed — pending new contract
-
   const apiInput = useMemo(() => marketFiltersToApiInput(filters), [filters]);
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 

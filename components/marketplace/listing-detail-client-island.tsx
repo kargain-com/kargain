@@ -22,10 +22,6 @@ type Props = {
 };
 
 export function ListingDetailClientIsland({ chainId, tokenId, listing, passportOwner, labels: t }: Props) {
-  void chainId;
-  void tokenId;
-  // TODO Phase 1.1: removed — pending new contract
-
   const contactPeer: `0x${string}` = listing?.active ? listing.seller : passportOwner;
 
   return (

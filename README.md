@@ -217,7 +217,7 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 ## Known technical debt
 
-- **UI wiring** — verify/dispute/resolve, marketplace list/buy, verifier flows, and profiles still stubbed (`TODO Phase 1.1` in several components).
+- **Sepolia deploy** — Phase 1 `VerificationReset` / Variant C `setPassportURI` live after Phase 5 redeploy; UI and Ponder handlers target v1.1 ABI now.
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `scripts/deploy.ts` for full Model X deploys.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).

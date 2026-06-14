@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
+import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 
 export function ListingCard({ row }: { row: MarketplaceListingRow }) {
@@ -34,13 +35,24 @@ export function ListingCard({ row }: { row: MarketplaceListingRow }) {
           <div className="pointer-events-none absolute inset-0 bg-bg-surface" />
           {row.featured && (
             <span className="absolute right-2 top-2 rounded border border-accent-warm/40 bg-bg-primary/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-warm">
-              Featured
+              Verified
+            </span>
+          )}
+          {row.passportStatus !== "VERIFIED" && (
+            <span className="absolute left-2 top-2 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase text-status-error">
+              {row.passportStatus === "DISPUTED" ? "Disputed" : "Unverified"}
+            </span>
+          )}
+          {row.duplicateVin && (
+            <span className="absolute bottom-2 left-2 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] text-status-error">
+              Duplicate VIN
             </span>
           )}
         </div>
         <CardContent className="space-y-2.5 p-4">
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 flex-1 text-sm font-medium leading-snug text-text-primary">{row.title}</h3>
+            <PassportStatusBadge status={row.passportStatus} />
             {row.karPro && <KarProBadge className="shrink-0" />}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">

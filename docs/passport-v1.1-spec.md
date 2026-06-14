@@ -118,7 +118,7 @@ Owner may `setPassportURI`, then request re-verification.
 |-------|-------------|
 | **1** | Spec + `setPassportURI` + tests (no deploy) |
 | **2** | Metadata schema v1.1 shared modules |
-| 3 | Ponder schema, uri_history, trust flags, UI blocks |
+| **3** | Ponder schema, uri_history, trust flags, UI blocks |
 | 4 | Localhost 31337 E2E |
 | 5 | Single Sepolia redeploy + reindex + merge to master |
 
@@ -190,3 +190,27 @@ Wire JSON must **not** include `ownerName`, `phone`, or `email`. Build path reje
 | `lib/passport/fetch-arweave-metadata.ts` | HTTP fetch + parse |
 
 Run metadata unit tests: `pnpm test:metadata`.
+
+## 12. Phase 3 checklist (Ponder + UI)
+
+### Ponder
+
+- [x] `passport_uri_history` table + `vin_index`
+- [x] Extended `passport` trust/VIN denorm fields
+- [x] `VerificationReset` handler
+- [x] D6 `disputeWithdrawnAt` on `RecordAppended`
+- [x] Metadata indexer on mint/URI update (Arweave fetch + `parseMetadataJson`)
+- [x] REST: passport detail with `uriHistory`, listings join + facets
+
+### UI blocks
+
+- [x] Passport actions (verify / dispute / resolve / withdraw / report)
+- [x] Edit passport wizard + anchor/cosmetic confirm modal
+- [x] URI history timeline
+- [x] Marketplace list / delist / buy wiring
+- [x] Browse verified-first + status badges / duplicate VIN warnings
+- [x] Profile page data from Ponder
+- [x] Kar Pro join/leave staking
+- [x] Verifier detail page (`/verifier/[address]`)
+
+Run handler unit tests: `pnpm test:ponder`.
