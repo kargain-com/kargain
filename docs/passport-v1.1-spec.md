@@ -1,8 +1,8 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5, merged to `master` June 2026)  
-Branch: merged via PR #1 (`feat/passport-v1.1`)  
-Base deploy: Base Sepolia Model X v1.1 (June 2026) — Phase 5 redeploy complete
+Status: **complete** (Phases 1–5 + polish PR5a–d, `master` June 2026)  
+Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
+Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete
 
 ## 1. Philosophy
 
@@ -121,6 +121,7 @@ Owner may `setPassportURI`, then request re-verification.
 | **3** | Ponder schema, uri_history, trust flags, UI blocks | **✅ Done** |
 | **4** | Localhost 31337 E2E | **✅ Done** |
 | **5** | Single Sepolia redeploy + reindex + merge to master | **✅ Done** |
+| **5 polish** | Record labels, attestation UI, browse chain warning, Basescan verify | **✅ Done** |
 
 ## 10. Phase 1 test matrix
 
@@ -188,8 +189,11 @@ Wire JSON must **not** include `ownerName`, `phone`, or `email`. Build path reje
 | `lib/passport/parse-metadata-json.ts` | `parseMetadataJson` (v1.0 + v1.1) |
 | `lib/passport/metadata-diff.ts` | Anchor/cosmetic diff for edit UI |
 | `lib/passport/fetch-arweave-metadata.ts` | HTTP fetch + parse |
+| `lib/passport/record-types.ts` | On-chain record → UI labels (PR5a) |
+| `lib/passport/confirm-listing-status.ts` | Ponder vs chain status drift (PR5c) |
+| `lib/passport/upload-evidence.ts` | Irys upload for attestation evidence (PR5b) |
 
-Run metadata unit tests: `pnpm test:metadata`.
+Run metadata unit tests: `pnpm test:metadata` · records: `pnpm test:records` · browse drift: `pnpm test:confirm-status`.
 
 ## 12. Phase 3 checklist (Ponder + UI)
 
@@ -205,11 +209,15 @@ Run metadata unit tests: `pnpm test:metadata`.
 
 ### UI blocks
 
-- [x] Passport actions (verify / dispute / resolve / withdraw / report)
+- [x] Passport actions (verify / dispute / resolve / withdraw / report / **attestation**)
 - [x] Edit passport wizard + anchor/cosmetic confirm modal
 - [x] URI history timeline
+- [x] **Typed records timeline** — labels, severity, owner-initiated dispute, withdrawn signal (PR5a / D1, D5)
+- [x] DISPUTED sidebar from Ponder `disputeReason` + `lastDisputer` (not record scan)
+- [x] **Verifier attestation** form with optional evidence upload (PR5b / B2)
 - [x] Marketplace list / delist / buy wiring
 - [x] Browse verified-first + status badges / duplicate VIN warnings
+- [x] **Browse chain-status sample** — up to 12 cards confirm `getPassportStatus` vs Ponder (PR5c / G4)
 - [x] **E4** BuyRiskModal — explicit risk ack before `buyWithNative`
 - [x] **G2** post-dispute re-verify banner on passport detail
 - [x] Verifier metadata diff + re-inspection hint (C2/C3)
@@ -291,7 +299,17 @@ Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (gitignored manif
 pnpm verify:v1.1
 ```
 
-Verifies, in order: KarPassport impl, MarketplaceEscrow impl, ERC1967 proxy (with `initialize` calldata). Skips contracts already verified; pass `--force` to re-submit. Does **not** run on VPS — use a machine with the API key only.
+Verifies, in order: KarPassport, MarketplaceEscrow impl, ERC1967 proxy (with `initialize` calldata). Skips contracts already verified; pass `--force` to re-submit. Loads `ETHERSCAN_API_KEY` from `.env.local` / `.env`. Does **not** run on VPS — use a machine with the API key only.
+
+**Status (June 2026):** KarPassport, MarketplaceEscrow impl, and proxy verified on [Base Sepolia Basescan](https://sepolia.basescan.org).
+
+| Contract | Basescan |
+|----------|----------|
+| KarPassport v1.1 | https://sepolia.basescan.org/address/0x6378469256907D7DC14BBfce0261ceDE22314507 |
+| MarketplaceEscrow impl | https://sepolia.basescan.org/address/0x7d37e7cbcc42308264B608429a82D03B7C3112F4 |
+| MarketplaceEscrow proxy | https://sepolia.basescan.org/address/0x4FC74e0B7eE0A741707A553D43Efff68126D198B |
+
+Run constructor-arg unit tests: `pnpm test:verify`.
 
 ### Ponder indexing (env-driven, no ponder.config.ts edits on deploy)
 
@@ -336,4 +354,19 @@ Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest
 | T10 / E5 contract tests | ✅ |
 | Resolve gating = contract (any active verifier) | ✅ documented §5 |
 
-Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) · Ponder: `pnpm test:ponder`
+Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) · Ponder: `pnpm test:ponder` · trust: `pnpm test:trust`
+
+## 16. Phase 5 polish — definition of done (June 2026)
+
+| Criterion | PR | Status |
+|-----------|-----|--------|
+| Typed record labels in timeline (not raw `recordType`) | 5a | ✅ |
+| DISPUTED banner from Ponder fields, not record scan | 5a | ✅ |
+| Owner-initiated dispute label | 5a | ✅ |
+| Verifier attestation UI (`appendAttestation` + evidence) | 5b | ✅ |
+| Browse status drift warning (sample chain confirm) | 5c | ✅ |
+| v1.1 contracts verified on Basescan | 5d | ✅ |
+
+**Tests:** `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm verify:v1.1` (ops, needs API key)
+
+**Deferred (Phase 6+):** evidence upload on report/clarification, owner service-history UI, full browse batch confirm, trust API endpoint, `buyWithUsdc` UI.

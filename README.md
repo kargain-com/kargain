@@ -36,7 +36,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 
 ### Off-chain layers
 
-- **Ponder** indexes contract events and serves listing/passport/verifier APIs ([production](https://ponder.kargain.com)).
+- **Ponder** indexes contract events and serves listing/passport/verifier APIs ([production](https://ponder.kargain.com)). Browse cards may sample `getPassportStatus` on-chain when Ponder status may be stale (G4).
 - **Nostr** powers public comments and garage favorites (NIP-51).
 - **XMTP** provides encrypted buyer–seller messaging.
 
@@ -71,13 +71,15 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 |------|--------|
 | **KarPassport v1.1 (Phases 1–5)** | **Complete** — merged to `master` |
 | **Trust / UX gap (plan A–J core)** | **Complete** — BuyRiskModal, verifier badges, G1/G2 Ponder, metadata diff, DISPUTED filter |
-| Contracts (Model X) | v1.1 on Base Sepolia; Hardhat + T10/E5 matrix |
+| **Phase 5 polish (PR5a–d)** | **Complete** — typed record timeline, attestation UI, browse chain-status warning, Basescan verify |
+| Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — **reindex required after G1 schema** ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
-| Passport UI | Mint, edit (Variant C), verify/dispute, marketplace trust gates, Kar Pro, profiles |
+| Passport UI | Mint, edit (Variant C), verify/dispute/resolve, verifier attestation, typed records timeline, marketplace trust gates, Kar Pro, profiles |
+| Browse UX | Server-side filters (fuel/body/trans/status); sample on-chain status confirm on listing cards (G4) |
 | Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
-**Tests:** `pnpm hardhat test` · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:e2e`
+**Tests:** `pnpm hardhat test` · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e`
 
 Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
@@ -170,6 +172,10 @@ pnpm hardhat test       # contract tests (node:test + viem)
 pnpm test:metadata      # metadata diff / parse / G1 helpers
 pnpm test:listing       # marketplace filter query
 pnpm test:ponder        # Ponder G1 field + indexer unit tests
+pnpm test:trust         # buy-risk and trust banner helpers
+pnpm test:records       # typed record labels (PR5a)
+pnpm test:confirm-status # browse chain vs Ponder drift helpers (PR5c)
+pnpm test:verify          # Basescan verify constructor args (PR5d)
 pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
 pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
 pnpm deploy:v1.1        # Phase 5 partial redeploy (KarPassport + Marketplace on Sepolia)
@@ -203,7 +209,15 @@ Network: Base Sepolia (chain **84532**) · v1.1 partial redeploy: June 2026
 
 Deploy v1.1 (partial): `pnpm deploy:v1.1` · Verify on Basescan: `pnpm verify:v1.1` (requires `ETHERSCAN_API_KEY` in `.env.local`) · Full greenfield: `pnpm deploy:base-sepolia`
 
-After deploy, run `pnpm verify:v1.1` locally to publish source for KarPassport, MarketplaceEscrow impl, and ERC1967 proxy on [Base Sepolia Basescan](https://sepolia.basescan.org). The script reads `deployments/84532.json` when present, otherwise falls back to committed addresses in `scripts/lib/load-deployment.ts`.
+After deploy, run `pnpm verify:v1.1` locally to publish source for KarPassport, MarketplaceEscrow impl, and ERC1967 proxy on [Base Sepolia Basescan](https://sepolia.basescan.org). The script reads `deployments/84532.json` when present, otherwise falls back to committed addresses in `scripts/lib/load-deployment.ts`. Loads `ETHERSCAN_API_KEY` from `.env.local` / `.env`.
+
+**Basescan (verified June 2026):**
+
+| Contract | Explorer |
+|----------|----------|
+| KarPassport v1.1 | https://sepolia.basescan.org/address/0x6378469256907D7DC14BBfce0261ceDE22314507 |
+| MarketplaceEscrow impl | https://sepolia.basescan.org/address/0x7d37e7cbcc42308264B608429a82D03B7C3112F4 |
+| MarketplaceEscrow proxy | https://sepolia.basescan.org/address/0x4FC74e0B7eE0A741707A553D43Efff68126D198B |
 
 ### On-chain parameters
 
@@ -253,7 +267,8 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 - **VIN** and vehicle attributes live in Arweave metadata (not on-chain).
 - Metadata URI is editable by the owner when **UNVERIFIED**, or when **VERIFIED** if only cosmetic fields change; anchor edits emit `VerificationReset` and return the passport to **UNVERIFIED** (Variant C).
-- Disputed passports can still be listed and sold; buyers see status in the UI.
+- Disputed passports can still be listed and sold; buyers see status in the UI (including buy-risk modal and typed dispute timeline).
+- Passport detail confirms on-chain status when it differs from Ponder; marketplace browse samples up to 12 visible cards per page.
 - Ponder indexes verifier `metadataURI` from `ProPassMinted` / `ProfileUpdated` and record `description` / `evidenceCID` from `RecordAppended`.
 
 ## Known technical debt
@@ -261,7 +276,7 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `pnpm deploy:v1.1` or `pnpm deploy:base-sepolia`.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).
-- **Basescan verification** — v1.1 KarPassport + Marketplace contracts not yet verified on BaseScan.
+- **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI.
 
 ## Contributing
 

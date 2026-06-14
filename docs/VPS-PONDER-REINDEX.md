@@ -17,6 +17,11 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 **Do not reindex** for frontend-only or contract-only changes that do not touch Ponder schema or indexing logic.
 
+Examples that **do not** require reindex:
+
+- Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
+- Basescan verify (`pnpm verify:v1.1`) — ops-only, no indexer impact
+
 ---
 
 ## Prerequisites
@@ -118,7 +123,7 @@ curl -s https://ponder.kargain.com/listings | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts'
 ```
 
-Replace token `0` with a known minted passport if needed.
+Replace token `0` with a known minted passport if needed. On the marketplace UI, cards may show an **On-chain** badge when sampled RPC status differs from Ponder (G4) — that is client-side and does not require reindex.
 
 ---
 
@@ -150,5 +155,6 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
+| `scripts/verify-v1.1.ts` | Basescan verify KarPassport + Marketplace (ops, not VPS) |
 | `deployments/84532.json` | v1.1 addresses + `indexFromBlock` (gitignored on VPS) |
-| `docs/passport-v1.1-spec.md` §14 | Phase 5 deploy reference |
+| `docs/passport-v1.1-spec.md` §14–§16 | Phase 5 deploy, verify, polish reference |
