@@ -73,7 +73,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Trust / UX gap (plan A–J core)** | **Complete** — BuyRiskModal, verifier badges, G1/G2 Ponder, metadata diff, DISPUTED filter |
 | **Phase 5 polish (PR5a–d)** | **Complete** — typed record timeline, attestation UI, browse chain-status warning, Basescan verify |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
-| Ponder indexer | Production at https://ponder.kargain.com — **reindex required after G1 schema** ([runbook](docs/VPS-PONDER-REINDEX.md)) |
+| Ponder indexer | Production at https://ponder.kargain.com — G1 reindex done June 2026; repeat only on schema change ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
 | Passport UI | Mint, edit (Variant C), verify/dispute/resolve, verifier attestation, typed records timeline, marketplace trust gates, Kar Pro, profiles |
 | Browse UX | Server-side filters (fuel/body/trans/status); sample on-chain status confirm on listing cards (G4) |

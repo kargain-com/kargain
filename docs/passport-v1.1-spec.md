@@ -340,6 +340,8 @@ Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from bl
 
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
 
+**Document map:** Public status lives in this spec and [README.md](../README.md). Local-only handoff (`docs/SESSION.md`, `docs/ROADMAP.md`) is gitignored — not on GitHub; keep in sync manually after major milestones.
+
 ## 15. Plan A–J core — definition of done (June 2026)
 
 | Criterion | Status |
@@ -347,7 +349,7 @@ Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest
 | E4 — buy without risk ack blocked | ✅ |
 | C5 — inactive verifier visible | ✅ |
 | C2/C3 — verifier diff + re-inspect hint | ✅ |
-| G1/G2 — Ponder fields + detail banner | ✅ (code); VPS reindex ops |
+| G1/G2 — Ponder fields + detail banner | ✅ (code + VPS reindex June 2026) |
 | DISPUTED browse filter | ✅ |
 | README Variant C truth | ✅ |
 | No dead stubs; types synced | ✅ |

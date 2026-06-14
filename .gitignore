@@ -51,7 +51,7 @@ Thumbs.db
 test-results
 *.tsbuildinfo
 
-# internal docs (local only)
+# internal docs (local only — not in git)
 /docs/*
 !/docs/passport-v1.1-spec.md
 !/docs/VPS-PONDER-REINDEX.md
