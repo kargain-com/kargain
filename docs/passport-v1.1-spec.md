@@ -2,7 +2,7 @@
 
 Status: **approved** (Phase 1 implementation)  
 Branch: `feat/passport-v1.1`  
-Base deploy: Base Sepolia Model X (June 2026) — redeploy pending Phase 5 gate
+Base deploy: Base Sepolia Model X v1.1 (June 2026) — Phase 5 redeploy complete
 
 ## 1. Philosophy
 
@@ -264,3 +264,39 @@ Requires running Hardhat node + `pnpm deploy:local` (or use `./scripts/e2e-local
 Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm hardhat test`
 
 **Note:** `localhost` Hardhat network uses the node's default funded accounts, not `DEPLOYER_PRIVATE_KEY`.
+
+## 14. Phase 5 redeploy (Base Sepolia v1.1)
+
+**Scope (partial):** new `KarPassport` + `MarketplaceEscrow` impl/proxy; **unchanged** `KarProPass` + `KarProStaking`.
+
+| Contract | Address |
+|----------|---------|
+| KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
+| KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
+| KarPassport v1.1 | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
+| MarketplaceEscrow proxy | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+
+Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (gitignored manifest with per-contract blocks + `indexFromBlock`).
+
+### Ponder indexing (env-driven, no ponder.config.ts edits on deploy)
+
+| Variable | Purpose |
+|----------|---------|
+| `PONDER_START_BLOCK_84532` | `latest` (prod) or `indexFromBlock` (one-time backfill) |
+| `PONDER_START_BLOCK_31337` | `0` for local Hardhat |
+| `PONDER_*_ADDRESS` | Override manifest addresses on VPS |
+
+Generate VPS env: `node --import tsx scripts/lib/print-ponder-env.ts`
+
+### VPS reindex runbook
+
+```bash
+docker compose stop ponder
+psql "$DATABASE_URL" -f scripts/ponder-reindex.sql
+eval "$(node --import tsx scripts/lib/print-ponder-env.ts)"   # paste into .env
+# Use Alchemy/QuickNode for PONDER_RPC_URL_84532 during backfill
+docker compose up -d ponder
+# After sync: PONDER_START_BLOCK_84532=latest
+```
+
+Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.

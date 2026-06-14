@@ -75,6 +75,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | Irys uploads | Client-side `@irys/web-upload` wired in passport wizard |
 | Passport UI | `/passport/new` mint, edit wizard, marketplace, verifier flows |
 | **Local E2E (31337)** | **Done** — `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
+| **Sepolia v1.1 redeploy** | **Done** — `pnpm deploy:v1.1`; Ponder reindex on VPS pending |
 
 Internal session notes (local): `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`.
 
@@ -147,7 +148,7 @@ Manual steps:
 ```bash
 npx hardhat node          # terminal 1
 pnpm deploy:local         # terminal 2 (writes deployments/31337.json)
-PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK=0 pnpm ponder:dev   # terminal 3
+PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK_31337=0 pnpm ponder:dev   # terminal 3
 pnpm test:e2e             # viem lifecycle (+ optional Ponder checks)
 ```
 
@@ -166,7 +167,8 @@ pnpm hardhat compile    # compile Solidity
 pnpm hardhat test       # contract tests (node:test + viem)
 pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
 pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
-pnpm hardhat run scripts/deploy.ts --network baseSepolia   # full Model X deploy (Sepolia)
+pnpm deploy:v1.1        # Phase 5 partial redeploy (KarPassport + Marketplace on Sepolia)
+pnpm deploy:base-sepolia # full Model X greenfield deploy on Sepolia
 ```
 
 After compile, refresh ABIs:
@@ -179,17 +181,21 @@ node scripts/export-abis.mjs
 
 ## Contracts (Base Sepolia)
 
-Network: Base Sepolia (chain **84532**) · Deployed: June 2026 (Model X)
+Network: Base Sepolia (chain **84532**) · v1.1 partial redeploy: June 2026
 
 | Contract | Address |
 |----------|---------|
 | KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
 | KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
-| KarPassport | `0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083` |
-| MarketplaceEscrow (proxy) | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` |
-| MarketplaceEscrow (impl) | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` |
+| KarPassport (v1.1) | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
+| MarketplaceEscrow (proxy) | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+| MarketplaceEscrow (impl) | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
 | Deployer / upgradeAuthority | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
 | platformRecipient | `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` |
+
+**Deprecated (Model X pre-v1.1):** KarPassport `0xCfA1eAB…`, Marketplace proxy `0xcD40C83…` — not indexed after Phase 5 reindex.
+
+Deploy v1.1 (partial): `pnpm deploy:v1.1` · Full greenfield: `pnpm deploy:base-sepolia`
 
 ### On-chain parameters
 

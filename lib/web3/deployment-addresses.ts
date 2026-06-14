@@ -2,15 +2,15 @@ import { getAddress } from "viem";
 
 import { DEFAULT_CHAIN_ID } from "./supported-chains";
 
-/** Base Sepolia (84532) — Model X, redeployed June 2026 */
+/** Base Sepolia (84532) — Model X v1.1 partial redeploy, June 2026 */
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 /** Hardhat localhost (persistent node) */
 export const LOCALHOST_CHAIN_ID = 31337;
 
 const SEPOLIA = {
-  karPassport: "0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083",
-  marketplace: "0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F",
+  karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
+  marketplace: "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
   karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
   karProStaking: "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

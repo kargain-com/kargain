@@ -65,6 +65,7 @@ eval "$(node --import tsx "$ROOT/scripts/lib/print-local-env.ts")"
 export PONDER_ENABLE_LOCAL=1
 export PONDER_RPC_URL_31337="${PONDER_RPC_URL_31337:-http://127.0.0.1:8545}"
 export PONDER_START_BLOCK="${PONDER_START_BLOCK:-0}"
+export PONDER_START_BLOCK_31337="${PONDER_START_BLOCK_31337:-0}"
 export PONDER_SQL_API_URL="${PONDER_SQL_API_URL:-http://localhost:42069}"
 
 echo "==> Starting Ponder (background)…"

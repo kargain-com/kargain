@@ -29,6 +29,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
       PONDER_RPC_URL_84532: ${PONDER_RPC_URL_84532}
+      PONDER_START_BLOCK_84532: ${PONDER_START_BLOCK_84532:-latest}
       PONDER_START_BLOCK: ${PONDER_START_BLOCK:-latest}
       DATABASE_SCHEMA: kargain
     ports:
