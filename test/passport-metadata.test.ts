@@ -22,6 +22,21 @@ const baseForm = {
   year: "2021",
   mileage: "45000",
   description: "Well maintained",
+  type: "",
+  vehicleType: "",
+  modelVariant: "",
+  fuelType: "Petrol",
+  bodyType: "Sedan",
+  transmission: "Manual",
+  power: "",
+  evBatteryKwh: "",
+  colour: "Blue",
+  locationLabel: "London",
+  locationLat: "",
+  locationLng: "",
+  engine: "",
+  features: "Sunroof",
+  condition: "Good",
 };
 
 describe("parseMetadataJson", () => {
@@ -103,6 +118,13 @@ describe("buildMetadataWire", () => {
     assert.equal(wire.updatedAt, "2025-01-01T00:00:00.000Z");
     assert.equal(wire.name, "2021 Honda Civic");
     assert.equal(wire.description, "Well maintained");
+    assert.equal(wire.fuelType, "Petrol");
+    assert.equal(wire.bodyType, "Sedan");
+    assert.equal(wire.transmission, "Manual");
+    assert.equal(wire.colour, "Blue");
+    assert.deepEqual(wire.location, { label: "London" });
+    assert.deepEqual(wire.features, ["Sunroof"]);
+    assert.equal(wire.condition, "Good");
     assert.equal("mileage_km" in wire, false);
   });
 });

@@ -12,25 +12,22 @@ import {
   useWriteContract,
 } from "wagmi";
 
+import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
+import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import {
-  MAX_DESCRIPTION,
-  MAX_PHOTOS,
-  MIN_YEAR,
-} from "@/lib/passport/metadata-constants";
-import {
+  emptyPassportFormInput,
   normalizeVin,
   validateCreateFormInput,
   type PassportCreateFormInput,
   type PassportCreateFormErrors,
+  type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -79,14 +76,7 @@ export function CreatePassportWizard() {
     error: mintReceiptError,
   } = useWaitForTransactionReceipt({ hash: mintHash });
 
-  const [form, setForm] = useState<FormState>({
-    vin: "",
-    make: "",
-    model: "",
-    year: "",
-    mileage: "",
-    description: "",
-  });
+  const [form, setForm] = useState<FormState>(() => emptyPassportFormInput());
 
   const [photos, setPhotos] = useState<File[]>([]);
   const [metadataUri, setMetadataUri] = useState<string | null>(null);
@@ -104,7 +94,7 @@ export function CreatePassportWizard() {
     };
   }, [previewUrls]);
 
-  const updateField = useCallback((key: keyof FormState, value: string) => {
+  const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
     setForm((prev) => ({
       ...prev,
       [key]: key === "vin" ? normalizeVin(value) : value,
@@ -360,95 +350,11 @@ export function CreatePassportWizard() {
 
       {step === 1 && (
         <div className="space-y-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="vin">VIN</Label>
-            <Input
-              id="vin"
-              name="vin"
-              value={form.vin}
-              onChange={(e) => updateField("vin", e.target.value)}
-              placeholder="17-character VIN"
-              maxLength={17}
-              autoComplete="off"
-            />
-            {errors.vin && <p className="font-sans text-sm text-status-error">{errors.vin}</p>}
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="make">Make</Label>
-              <Input
-                id="make"
-                name="make"
-                value={form.make}
-                onChange={(e) => updateField("make", e.target.value)}
-                placeholder="e.g. Toyota"
-              />
-              {errors.make && <p className="font-sans text-sm text-status-error">{errors.make}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="model">Model</Label>
-              <Input
-                id="model"
-                name="model"
-                value={form.model}
-                onChange={(e) => updateField("model", e.target.value)}
-                placeholder="e.g. Corolla"
-              />
-              {errors.model && <p className="font-sans text-sm text-status-error">{errors.model}</p>}
-            </div>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="year">Year</Label>
-              <Input
-                id="year"
-                name="year"
-                type="number"
-                inputMode="numeric"
-                value={form.year}
-                onChange={(e) => updateField("year", e.target.value)}
-                placeholder="2020"
-                min={MIN_YEAR}
-                max={new Date().getFullYear() + 1}
-              />
-              {errors.year && <p className="font-sans text-sm text-status-error">{errors.year}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="mileage">Mileage (optional)</Label>
-              <Input
-                id="mileage"
-                name="mileage"
-                type="number"
-                inputMode="numeric"
-                value={form.mileage}
-                onChange={(e) => updateField("mileage", e.target.value)}
-                placeholder="85000"
-                min={0}
-              />
-              {errors.mileage && <p className="font-sans text-sm text-status-error">{errors.mileage}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="description">Description (optional)</Label>
-            <Textarea
-              id="description"
-              name="description"
-              value={form.description}
-              onChange={(e) => updateField("description", e.target.value)}
-              placeholder="Short note about condition or history"
-              maxLength={MAX_DESCRIPTION}
-              rows={4}
-            />
-            <p className="text-xs text-text-secondary">
-              {form.description.length}/{MAX_DESCRIPTION}
-            </p>
-            {errors.description && (
-              <p className="font-sans text-sm text-status-error">{errors.description}</p>
-            )}
-          </div>
+          <PassportMetadataFields
+            form={form}
+            errors={errors}
+            onFieldChange={updateField}
+          />
 
           <div className="flex justify-end">
             <Button type="button" variant="primary" onClick={onContinue}>

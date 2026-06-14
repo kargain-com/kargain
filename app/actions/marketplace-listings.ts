@@ -42,6 +42,9 @@ export type MarketplaceListingRow = {
   model: string | null;
   year: number | null;
   mileageKm: number | null;
+  fuelType: string | null;
+  bodyType: string | null;
+  transmission: string | null;
   lat: number | null;
   lng: number | null;
   duplicateVin: boolean;
@@ -76,6 +79,9 @@ type PonderListing = {
   model?: string;
   year?: number;
   mileageKm?: number;
+  fuelType?: string;
+  bodyType?: string;
+  transmission?: string;
   tokenUri?: string;
   duplicateVin?: boolean;
 };
@@ -117,6 +123,9 @@ function mapListingToRow(listing: PonderListing): MarketplaceListingRow {
     model: listing.model || null,
     year: listing.year && listing.year > 0 ? listing.year : null,
     mileageKm: listing.mileageKm && listing.mileageKm > 0 ? listing.mileageKm : null,
+    fuelType: listing.fuelType || null,
+    bodyType: listing.bodyType || null,
+    transmission: listing.transmission || null,
     lat: null,
     lng: null,
     duplicateVin: listing.duplicateVin === true,
@@ -125,39 +134,25 @@ function mapListingToRow(listing: PonderListing): MarketplaceListingRow {
   };
 }
 
-function applyClientFilters(
-  rows: MarketplaceListingRow[],
-  p: z.infer<typeof filterSchema>,
-): MarketplaceListingRow[] {
-  return rows.filter((row) => {
-    if (p.make && row.make?.toLowerCase() !== p.make.toLowerCase()) return false;
-    if (p.model && row.model?.toLowerCase() !== p.model.toLowerCase()) return false;
-    if (p.yearMin != null && (row.year ?? 0) < p.yearMin) return false;
-    if (p.yearMax != null && (row.year ?? 0) > p.yearMax) return false;
-    if (p.mileageMax != null && (row.mileageKm ?? 0) > p.mileageMax) return false;
-    return true;
-  });
-}
-
-function applyClientSort(
-  rows: MarketplaceListingRow[],
-  sort: z.infer<typeof filterSchema>["sort"],
-): MarketplaceListingRow[] {
-  const copy = [...rows];
-  switch (sort) {
-    case "price_asc":
-      return copy.sort(
-        (a, b) => Number(a.fiatPrice1e8) - Number(b.fiatPrice1e8),
-      );
-    case "price_desc":
-      return copy.sort(
-        (a, b) => Number(b.fiatPrice1e8) - Number(a.fiatPrice1e8),
-      );
-    case "mileage_asc":
-      return copy.sort((a, b) => (a.mileageKm ?? 0) - (b.mileageKm ?? 0));
-    default:
-      return copy;
-  }
+function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
+  const url = new URL(`${PONDER_URL}/listings`);
+  url.searchParams.set("page", String(p.page));
+  url.searchParams.set("limit", String(p.limit));
+  url.searchParams.set("verifiedFirst", "true");
+  url.searchParams.set("currency", p.currency);
+  if (p.make) url.searchParams.set("make", p.make);
+  if (p.model) url.searchParams.set("model", p.model);
+  if (p.yearMin != null) url.searchParams.set("yearMin", String(p.yearMin));
+  if (p.yearMax != null) url.searchParams.set("yearMax", String(p.yearMax));
+  if (p.mileageMax != null) url.searchParams.set("mileageMax", String(p.mileageMax));
+  if (p.priceMin) url.searchParams.set("priceMin", p.priceMin);
+  if (p.priceMax) url.searchParams.set("priceMax", p.priceMax);
+  if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
+  if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
+  if (p.transmission) url.searchParams.set("transmission", p.transmission);
+  if (p.status !== "all") url.searchParams.set("status", p.status);
+  if (p.sort !== "newest") url.searchParams.set("sort", p.sort);
+  return url;
 }
 
 export async function searchMarketplaceListings(
@@ -165,14 +160,9 @@ export async function searchMarketplaceListings(
 ): Promise<MarketplaceListingsResult> {
   const p = filterSchema.parse(input);
   try {
-    const url = new URL(`${PONDER_URL}/listings`);
-    url.searchParams.set("page", "1");
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("verifiedFirst", "true");
-    if (p.status !== "all") {
-      url.searchParams.set("status", p.status);
-    }
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(buildPonderListingsUrl(p).toString(), {
+      next: { revalidate: 30 },
+    });
     if (!res.ok) {
       return {
         ok: true,
@@ -184,18 +174,13 @@ export async function searchMarketplaceListings(
       };
     }
     const data = (await res.json()) as PonderListingsResponse;
-    let rows = data.listings.map(mapListingToRow);
-    rows = applyClientFilters(rows, p);
-    rows = applyClientSort(rows, p.sort);
-    const total = rows.length;
-    const offset = (p.page - 1) * p.limit;
-    const pageRows = rows.slice(offset, offset + p.limit);
-    const totalPages = total > 0 ? Math.ceil(total / p.limit) : 0;
+    const rows = data.listings.map(mapListingToRow);
+    const totalPages = data.total > 0 ? Math.ceil(data.total / p.limit) : 0;
     return {
       ok: true,
-      rows: pageRows,
-      total,
-      page: p.page,
+      rows,
+      total: data.total,
+      page: data.page,
       totalPages,
     };
   } catch {

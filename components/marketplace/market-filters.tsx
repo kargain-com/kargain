@@ -28,9 +28,11 @@ import {
 } from "@/lib/marketplace/filter-params";
 import { cn } from "@/lib/utils";
 
-const FUEL_OPTIONS = ["Petrol", "Diesel", "Electric", "Hybrid", "Other"] as const;
-const BODY_OPTIONS = ["Sedan", "SUV", "Hatchback", "Coupe", "Van", "Truck", "Other"] as const;
-const TRANSMISSION_OPTIONS = ["Manual", "Automatic"] as const;
+import {
+  BODY_TYPE_OPTIONS,
+  FUEL_TYPE_OPTIONS,
+  TRANSMISSION_OPTIONS,
+} from "@/lib/passport/metadata-form-options";
 
 const SORT_LABELS: Record<MarketSort, string> = {
   newest: "Newest",
@@ -207,6 +209,9 @@ type FilterPanelProps = {
 function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
   const makeOptions = facets?.makes ?? [];
   const modelOptions = filters.make ? (facets?.models[filters.make] ?? []) : [];
+  const priceRange =
+    facets?.priceRanges?.[filters.currency] ??
+    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
 
   const toggleInList = (list: string[], item: string): string[] =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
@@ -293,7 +298,7 @@ function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
               id="price-min"
               type="number"
               min={0}
-              placeholder={facets ? String(facets.priceMin || "") : ""}
+              placeholder={facets ? String(priceRange.min || "") : ""}
               value={filters.priceMin}
               onChange={(e) => onPatch({ priceMin: e.target.value, page: 1 })}
               className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-primary px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -307,7 +312,7 @@ function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
               id="price-max"
               type="number"
               min={0}
-              placeholder={facets ? String(facets.priceMax || "") : ""}
+              placeholder={facets ? String(priceRange.max || "") : ""}
               value={filters.priceMax}
               onChange={(e) => onPatch({ priceMax: e.target.value, page: 1 })}
               className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-primary px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -361,7 +366,7 @@ function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
 
       <FilterSection title="Fuel">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {FUEL_OPTIONS.map((opt) => (
+          {FUEL_TYPE_OPTIONS.map((opt) => (
             <CheckboxRow
               key={opt}
               id={`fuel-${opt}`}
@@ -377,7 +382,7 @@ function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
 
       <FilterSection title="Body type">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {BODY_OPTIONS.map((opt) => (
+          {BODY_TYPE_OPTIONS.map((opt) => (
             <CheckboxRow
               key={opt}
               id={`body-${opt}`}

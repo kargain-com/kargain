@@ -13,6 +13,7 @@ import {
   useWriteContract,
 } from "wagmi";
 
+import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,31 +22,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
   buildMetadataWireForEdit,
-  type PassportEditFormInput,
+  formInputToMetadataPreview,
 } from "@/lib/passport/build-metadata-json";
 import {
   diffPassportMetadata,
   hasAnchorChanges,
 } from "@/lib/passport/metadata-diff";
-import {
-  MAX_DESCRIPTION,
-  MAX_PHOTOS,
-  MIN_YEAR,
-} from "@/lib/passport/metadata-constants";
+import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 import {
+  metadataToFormInput,
   normalizeVin,
   validateCreateFormInput,
   type PassportCreateFormErrors,
+  type PassportEditFormInput,
+  type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
@@ -59,25 +57,6 @@ type Props = {
   initialMetadata: PassportMetadata;
   existingPhotoUris: string[];
 };
-
-function metadataToForm(metadata: PassportMetadata): PassportEditFormInput {
-  return {
-    vin: metadata.vin,
-    make: metadata.make,
-    model: metadata.model,
-    year: metadata.year != null ? String(metadata.year) : "",
-    mileage:
-      metadata.mileageKm != null && metadata.mileageKm > 0
-        ? String(metadata.mileageKm)
-        : "",
-    description: metadata.description ?? "",
-    type: metadata.type ?? "",
-    colour: metadata.colour ?? "",
-    modelVariant: metadata.modelVariant ?? "",
-    power: metadata.power ?? "",
-    locationLabel: metadata.location?.label ?? "",
-  };
-}
 
 export function EditPassportWizard({
   tokenId,
@@ -96,7 +75,7 @@ export function EditPassportWizard({
   const wrongChain = isConnected && walletChain !== chainId;
 
   const [form, setForm] = useState<PassportEditFormInput>(() =>
-    metadataToForm(initialMetadata),
+    metadataToFormInput(initialMetadata),
   );
   const [existingPhotos, setExistingPhotos] = useState(existingPhotoUris);
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -123,16 +102,13 @@ export function EditPassportWizard({
     };
   }, [previewUrls]);
 
-  const updateField = useCallback(
-    (key: keyof PassportEditFormInput, value: string) => {
-      setForm((prev) => ({
-        ...prev,
-        [key]: key === "vin" ? normalizeVin(value) : value,
-      }));
-      setErrors((prev) => ({ ...prev, [key]: undefined }));
-    },
-    [],
-  );
+  const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      [key]: key === "vin" ? normalizeVin(value) : value,
+    }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }, []);
 
   const onPhotosSelected = (files: FileList | null) => {
     if (!files?.length) return;
@@ -225,9 +201,6 @@ export function EditPassportWizard({
 
   const onSubmit = () => {
     const nextErrors = validateCreateFormInput(form);
-    if (form.description.length > MAX_DESCRIPTION) {
-      nextErrors.description = `Description must be at most ${MAX_DESCRIPTION} characters.`;
-    }
     const totalPhotos = existingPhotos.length + newPhotos.length;
     if (totalPhotos < 1) {
       setErrors({ ...nextErrors, photos: "At least one photo is required." });
@@ -236,23 +209,10 @@ export function EditPassportWizard({
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const afterMetadata: PassportMetadata = {
-      version: "1.1",
-      vin: normalizeVin(form.vin),
-      make: form.make.trim(),
-      model: form.model.trim(),
-      year: Number.parseInt(form.year, 10),
-      mileageKm: form.mileage.trim() ? Number.parseInt(form.mileage, 10) : 0,
-      photos: [...existingPhotos],
-      description: form.description.trim() || undefined,
-      type: form.type.trim() || undefined,
-      colour: form.colour.trim() || undefined,
-      modelVariant: form.modelVariant.trim() || undefined,
-      power: form.power.trim() || undefined,
-      location: form.locationLabel.trim()
-        ? { label: form.locationLabel.trim() }
-        : undefined,
-    };
+    const afterMetadata = formInputToMetadataPreview(form, [...existingPhotos], {
+      createdAt: initialMetadata.createdAt,
+      updatedAt: new Date().toISOString(),
+    });
 
     const diff = diffPassportMetadata(initialMetadata, afterMetadata);
     if (hasAnchorChanges(diff) || diff.cosmetic.length > 0) {
@@ -290,55 +250,14 @@ export function EditPassportWizard({
       )}
 
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="vin">VIN</Label>
-            <Input id="vin" value={form.vin} onChange={(e) => updateField("vin", e.target.value)} disabled={isBusy} />
-            {errors.vin && <p className="text-xs text-status-error">{errors.vin}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="make">Make</Label>
-            <Input id="make" value={form.make} onChange={(e) => updateField("make", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Input id="model" value={form.model} onChange={(e) => updateField("model", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="year">Year</Label>
-            <Input id="year" type="number" min={MIN_YEAR} value={form.year} onChange={(e) => updateField("year", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="mileage">Mileage (km)</Label>
-            <Input id="mileage" value={form.mileage} onChange={(e) => updateField("mileage", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
-            <Input id="type" value={form.type} onChange={(e) => updateField("type", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="colour">Colour</Label>
-            <Input id="colour" value={form.colour} onChange={(e) => updateField("colour", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="variant">Variant</Label>
-            <Input id="variant" value={form.modelVariant} onChange={(e) => updateField("modelVariant", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="power">Power</Label>
-            <Input id="power" value={form.power} onChange={(e) => updateField("power", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="location">Location label</Label>
-            <Input id="location" value={form.locationLabel} onChange={(e) => updateField("locationLabel", e.target.value)} disabled={isBusy} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea id="description" value={form.description} onChange={(e) => updateField("description", e.target.value)} disabled={isBusy} rows={4} />
-          </div>
-        </div>
+        <PassportMetadataFields
+          form={form}
+          errors={errors}
+          disabled={isBusy}
+          onFieldChange={updateField}
+        />
 
-        <div className="space-y-2">
+        <div className="space-y-2 border-t border-border-default pt-6">
           <Label>Photos</Label>
           <div className="flex flex-wrap gap-2">
             {existingPhotos.map((uri, i) => (

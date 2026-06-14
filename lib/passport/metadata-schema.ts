@@ -7,6 +7,24 @@ import {
   MIN_YEAR,
   PII_FIELD_KEYS,
 } from "@/lib/passport/metadata-constants";
+import type {
+  PassportCreateFormErrors,
+  PassportCreateFormInput,
+  PassportEditFormInput,
+  PassportFormFieldKey,
+  PassportOptionalFormFields,
+} from "@/lib/passport/metadata-form";
+
+export {
+  emptyOptionalFormFields,
+  emptyPassportFormInput,
+  metadataToFormInput,
+  type PassportCreateFormErrors,
+  type PassportCreateFormInput,
+  type PassportEditFormInput,
+  type PassportFormFieldKey,
+  type PassportOptionalFormFields,
+} from "@/lib/passport/metadata-form";
 
 export const metadataVersionSchema = z.enum(["1.0", "1.1"]);
 
@@ -47,24 +65,38 @@ export const passportMetadataSchema = z.object({
 
 export type PassportMetadata = z.infer<typeof passportMetadataSchema>;
 
-export type PassportCreateFormInput = {
-  vin: string;
-  make: string;
-  model: string;
-  year: string;
-  mileage: string;
-  description: string;
-};
-
-export type PassportCreateFormErrors = Partial<
-  Record<keyof PassportCreateFormInput | "photos", string>
->;
-
 export function normalizeVin(raw: string): string {
   return raw
     .toUpperCase()
     .replace(/[^A-HJ-NPR-Z0-9]/g, "")
     .slice(0, MAX_VIN_LENGTH);
+}
+
+function validateOptionalNumbers(form: PassportCreateFormInput): PassportCreateFormErrors {
+  const errors: PassportCreateFormErrors = {};
+
+  if (form.evBatteryKwh.trim()) {
+    const n = Number.parseFloat(form.evBatteryKwh);
+    if (!Number.isFinite(n) || n < 0) {
+      errors.evBatteryKwh = "Battery capacity must be a non-negative number.";
+    }
+  }
+
+  if (form.locationLat.trim()) {
+    const lat = Number.parseFloat(form.locationLat);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      errors.locationLat = "Latitude must be between -90 and 90.";
+    }
+  }
+
+  if (form.locationLng.trim()) {
+    const lng = Number.parseFloat(form.locationLng);
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+      errors.locationLng = "Longitude must be between -180 and 180.";
+    }
+  }
+
+  return errors;
 }
 
 export function validateCreateFormInput(
@@ -100,6 +132,8 @@ export function validateCreateFormInput(
   if (form.description.length > MAX_DESCRIPTION) {
     errors.description = `Description must be at most ${MAX_DESCRIPTION} characters.`;
   }
+
+  Object.assign(errors, validateOptionalNumbers(form));
 
   return errors;
 }

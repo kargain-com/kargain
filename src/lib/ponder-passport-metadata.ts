@@ -84,6 +84,9 @@ export async function indexPassportMetadataFromUri(
       model: indexed.model,
       year: indexed.year,
       mileageKm: indexed.mileageKm,
+      fuelType: indexed.fuelType,
+      bodyType: indexed.bodyType,
+      transmission: indexed.transmission,
     });
   }
 }

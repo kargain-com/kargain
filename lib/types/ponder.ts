@@ -53,7 +53,14 @@ export type FacetsResponse = {
   yearMax: number;
   priceMin: number;
   priceMax: number;
+  priceRanges?: {
+    USD: { min: number; max: number };
+    EUR: { min: number; max: number };
+  };
   mileageMax: number;
+  fuelTypes?: string[];
+  bodyTypes?: string[];
+  transmissions?: string[];
   fiatCurrencies: number[];
   totalActive: number;
   statusCounts: Record<PassportStatus, number>;

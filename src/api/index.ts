@@ -17,6 +17,15 @@ import {
 import { Hono } from "hono";
 import { getAddress } from "viem";
 
+import {
+  computeListingFacets,
+  matchesListingFilters,
+  parseListingFilterQuery,
+  sortEnrichedListings,
+  type EnrichedListingForFilter,
+  type ListingFilterQuery,
+} from "../../lib/marketplace/listing-query";
+
 const app = new Hono();
 
 const STATUS_ORDER = sql`CASE ${passport.status}
@@ -47,6 +56,9 @@ type PassportDenorm = {
   model: string;
   year: number;
   mileageKm: number;
+  fuelType: string;
+  bodyType: string;
+  transmission: string;
   tokenUri: string;
   duplicateVin: boolean;
 };
@@ -66,6 +78,9 @@ async function loadPassportMap(
         model: row.model,
         year: row.year,
         mileageKm: row.mileageKm,
+        fuelType: row.fuelType,
+        bodyType: row.bodyType,
+        transmission: row.transmission,
         tokenUri: row.tokenUri,
         duplicateVin: row.duplicateVin,
       });
@@ -74,13 +89,68 @@ async function loadPassportMap(
   return map;
 }
 
+function enrichListing(
+  listing: {
+    id: string;
+    tokenId: string;
+    seller: string;
+    fiatPrice1e8: bigint;
+    fiatCurrency: number;
+    active: boolean;
+    listedAt: bigint;
+    soldAt: bigint;
+    buyer: string;
+  },
+  passportMap: Map<string, PassportDenorm>,
+) {
+  const p = passportMap.get(listing.tokenId);
+  return {
+    ...listing,
+    status: p?.status ?? "UNVERIFIED",
+    make: p?.make ?? "",
+    model: p?.model ?? "",
+    year: p?.year ?? 0,
+    mileageKm: p?.mileageKm ?? 0,
+    fuelType: p?.fuelType ?? "",
+    bodyType: p?.bodyType ?? "",
+    transmission: p?.transmission ?? "",
+    passportStatus: p?.status ?? "UNVERIFIED",
+    vin: p?.vin ?? "",
+    tokenUri: p?.tokenUri ?? "",
+    duplicateVin: p?.duplicateVin ?? false,
+  };
+}
+
+function filterAndSortListings(
+  listings: Array<EnrichedListingForFilter & Record<string, unknown>>,
+  filters: ListingFilterQuery,
+  verifiedFirst: boolean,
+) {
+  const filtered = listings.filter((row) => matchesListingFilters(row, filters));
+  return sortEnrichedListings(filtered, filters.sort ?? "newest", verifiedFirst);
+}
+
 app.get("/listings", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
   const seller = c.req.query("seller");
-  const statusFilter = c.req.query("status");
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
   const offset = (page - 1) * limit;
+  const filters = parseListingFilterQuery({
+    make: c.req.query("make"),
+    model: c.req.query("model"),
+    yearMin: c.req.query("yearMin"),
+    yearMax: c.req.query("yearMax"),
+    mileageMax: c.req.query("mileageMax"),
+    fuelType: c.req.query("fuelType"),
+    bodyType: c.req.query("bodyType"),
+    transmission: c.req.query("transmission"),
+    status: c.req.query("status"),
+    currency: c.req.query("currency"),
+    priceMin: c.req.query("priceMin"),
+    priceMax: c.req.query("priceMax"),
+    sort: c.req.query("sort"),
+  });
 
   const conditions = [eq(marketplaceListing.active, true)];
   if (seller) {
@@ -97,37 +167,13 @@ app.get("/listings", async (c) => {
   const tokenIds = [...new Set(allListings.map((l) => l.tokenId))];
   const passportMap = await loadPassportMap(tokenIds);
 
-  let enriched = allListings.map((listing) => {
-    const p = passportMap.get(listing.tokenId);
-    return {
-      ...listing,
-      passportStatus: p?.status ?? "UNVERIFIED",
-      vin: p?.vin ?? "",
-      make: p?.make ?? "",
-      model: p?.model ?? "",
-      year: p?.year ?? 0,
-      mileageKm: p?.mileageKm ?? 0,
-      tokenUri: p?.tokenUri ?? "",
-      duplicateVin: p?.duplicateVin ?? false,
-    };
-  });
-
-  if (statusFilter && statusFilter !== "all") {
-    enriched = enriched.filter((l) => l.passportStatus === statusFilter);
-  }
-
-  if (verifiedFirst) {
-    const rank = (s: string) =>
-      s === "VERIFIED" ? 0 : s === "UNVERIFIED" ? 1 : 2;
-    enriched.sort((a, b) => {
-      const dr = rank(a.passportStatus) - rank(b.passportStatus);
-      if (dr !== 0) return dr;
-      return Number(b.listedAt - a.listedAt);
-    });
-  }
-
-  const total = enriched.length;
-  const pageRows = enriched.slice(offset, offset + limit);
+  const enriched = allListings.map((listing) => enrichListing(listing, passportMap));
+  const sorted = filterAndSortListings(enriched, filters, verifiedFirst);
+  const total = sorted.length;
+  const pageRows = sorted.slice(offset, offset + limit).map((row) => ({
+    ...row,
+    passportStatus: row.status,
+  }));
 
   return c.json(
     jsonBody({
@@ -157,47 +203,17 @@ app.get("/listings/facets", async (c) => {
     .where(eq(marketplaceListing.active, true))
     .groupBy(marketplaceListing.fiatCurrency);
 
-  const makes = new Set<string>();
-  const models: Record<string, Set<string>> = {};
-  let yearMin = Number.MAX_SAFE_INTEGER;
-  let yearMax = 0;
-  let mileageMax = 0;
-  const statusCounts = { UNVERIFIED: 0, VERIFIED: 0, DISPUTED: 0 };
-
-  for (const listing of activeListings) {
-    const p = passportMap.get(listing.tokenId);
-    if (!p) continue;
-    if (p.make) {
-      makes.add(p.make);
-      if (!models[p.make]) models[p.make] = new Set();
-      if (p.model) models[p.make].add(p.model);
-    }
-    if (p.year > 0) {
-      yearMin = Math.min(yearMin, p.year);
-      yearMax = Math.max(yearMax, p.year);
-    }
-    if (p.mileageKm > 0) mileageMax = Math.max(mileageMax, p.mileageKm);
-    if (p.status in statusCounts) {
-      statusCounts[p.status as keyof typeof statusCounts] += 1;
-    }
-  }
-
-  const fiatCurrencies = fiatRows.map((row) => row.fiatCurrency);
-  const totalActive = activeListings.length;
+  const enriched = activeListings.map((listing) => enrichListing(listing, passportMap));
+  const facets = computeListingFacets(
+    enriched,
+    activeListings.length,
+    fiatRows.map((row) => row.fiatCurrency),
+  );
 
   return c.json({
-    fiatCurrencies,
-    totalActive,
-    makes: [...makes].sort(),
-    models: Object.fromEntries(
-      Object.entries(models).map(([k, v]) => [k, [...v].sort()]),
-    ),
-    yearMin: yearMin === Number.MAX_SAFE_INTEGER ? 0 : yearMin,
-    yearMax,
-    priceMin: 0,
-    priceMax: 0,
-    mileageMax,
-    statusCounts,
+    ...facets,
+    priceMin: facets.priceRanges.USD.min,
+    priceMax: facets.priceRanges.USD.max,
   });
 });
 
@@ -223,6 +239,9 @@ app.get("/listings/:tokenId", async (c) => {
       model: p?.model ?? "",
       year: p?.year ?? 0,
       mileageKm: p?.mileageKm ?? 0,
+      fuelType: p?.fuelType ?? "",
+      bodyType: p?.bodyType ?? "",
+      transmission: p?.transmission ?? "",
       tokenUri: p?.tokenUri ?? "",
       duplicateVin: p?.duplicateVin ?? false,
     }),

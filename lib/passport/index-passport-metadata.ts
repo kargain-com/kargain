@@ -6,6 +6,9 @@ export type IndexedPassportMetadata = {
   model: string;
   year: number;
   mileageKm: number;
+  fuelType: string;
+  bodyType: string;
+  transmission: string;
 };
 
 export function arUriToHttp(uri: string): string | null {
@@ -32,6 +35,9 @@ export async function fetchMetadataFromUri(
       model: parsed.model,
       year: parsed.year ?? 0,
       mileageKm: parsed.mileageKm ?? 0,
+      fuelType: parsed.fuelType ?? "",
+      bodyType: parsed.bodyType ?? "",
+      transmission: parsed.transmission ?? "",
     };
   } catch {
     return null;

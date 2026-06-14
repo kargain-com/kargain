@@ -17,6 +17,9 @@ export const passport = onchainTable("passport", (t) => ({
   disputeWithdrawnAt: t.bigint().notNull().default(0n),
   lastVerificationResetAt: t.bigint().notNull().default(0n),
   duplicateVin: t.boolean().notNull().default(false),
+  fuelType: t.text().notNull().default(""),
+  bodyType: t.text().notNull().default(""),
+  transmission: t.text().notNull().default(""),
   createdAt: t.bigint().notNull(),
   updatedAt: t.bigint().notNull(),
 }));

@@ -9,6 +9,21 @@ function formatMileage(km: number): string {
   return `${km.toLocaleString()} km`;
 }
 
+function formatLocation(metadata: PassportMetadata): string | null {
+  const { location } = metadata;
+  if (!location) return null;
+  const parts: string[] = [];
+  if (location.label) parts.push(location.label);
+  if (location.lat != null && location.lng != null) {
+    parts.push(`${location.lat}, ${location.lng}`);
+  } else if (location.lat != null) {
+    parts.push(String(location.lat));
+  } else if (location.lng != null) {
+    parts.push(String(location.lng));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function buildRows(metadata: PassportMetadata): SpecRow[] {
   const rows: SpecRow[] = [];
 
@@ -24,6 +39,9 @@ function buildRows(metadata: PassportMetadata): SpecRow[] {
   if (metadata.type) {
     rows.push({ label: "Type", value: metadata.type });
   }
+  if (metadata.vehicleType) {
+    rows.push({ label: "Vehicle type", value: metadata.vehicleType });
+  }
   if (metadata.modelVariant) {
     rows.push({ label: "Variant", value: metadata.modelVariant });
   }
@@ -33,6 +51,12 @@ function buildRows(metadata: PassportMetadata): SpecRow[] {
   if (metadata.power) {
     rows.push({ label: "Power", value: metadata.power });
   }
+  if (metadata.evBatteryKwh != null) {
+    rows.push({ label: "EV battery", value: `${metadata.evBatteryKwh} kWh` });
+  }
+  if (metadata.engine) {
+    rows.push({ label: "Engine", value: metadata.engine });
+  }
   if (metadata.fuelType) {
     rows.push({ label: "Fuel", value: metadata.fuelType });
   }
@@ -41,6 +65,16 @@ function buildRows(metadata: PassportMetadata): SpecRow[] {
   }
   if (metadata.transmission) {
     rows.push({ label: "Transmission", value: metadata.transmission });
+  }
+  if (metadata.condition) {
+    rows.push({ label: "Condition", value: metadata.condition });
+  }
+  if (metadata.features?.length) {
+    rows.push({ label: "Features", value: metadata.features.join(", ") });
+  }
+  const location = formatLocation(metadata);
+  if (location) {
+    rows.push({ label: "Location", value: location });
   }
 
   return rows;
