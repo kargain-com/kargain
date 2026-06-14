@@ -69,14 +69,12 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 
 | Area | Status |
 |------|--------|
-| Contracts (Model X) | Finalized on Base Sepolia, **71 tests** passing |
+| Contracts (Model X) | Finalized on Base Sepolia, **71+ tests** passing |
 | Ponder indexer | Production at https://ponder.kargain.com (realtime, final addresses) |
 | ABIs & addresses | `lib/contracts/abis.generated.ts`, `lib/web3/deployment-addresses.ts` |
 | Irys uploads | Client-side `@irys/web-upload` wired in passport wizard |
-| Passport UI | **Done** — `/passport/new` mint + marketplace detail page |
-| **UI on-chain wiring** | **In progress** — verify, marketplace, verifier flows, profiles |
-
-Remaining UI flows: `becomeVerifier`, `verify`, `dispute`, `resolve`, `list`, `delist`, `buy`, `leave`, profiles.
+| Passport UI | `/passport/new` mint, edit wizard, marketplace, verifier flows |
+| **Local E2E (31337)** | **Done** — `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
 Internal session notes (local): `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`.
 
@@ -129,6 +127,32 @@ pnpm dev
 pnpm ponder:dev
 ```
 
+### Local development (chain 31337)
+
+Full Model X stack on a persistent Hardhat node with Ponder indexing and optional frontend:
+
+```bash
+# One terminal — Postgres + Hardhat node + deploy + Ponder
+./scripts/dev-local.sh
+
+# Another terminal — frontend on localhost chain
+export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1
+export NEXT_PUBLIC_CHAIN_ID=31337
+eval "$(node --import tsx scripts/lib/print-local-env.ts)"
+pnpm dev
+```
+
+Manual steps:
+
+```bash
+npx hardhat node          # terminal 1
+pnpm deploy:local         # terminal 2 (writes deployments/31337.json)
+PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK=0 pnpm ponder:dev   # terminal 3
+pnpm test:e2e             # viem lifecycle (+ optional Ponder checks)
+```
+
+One-shot CI-style E2E: `./scripts/e2e-local.sh`
+
 Open http://localhost:3000
 
 ### Create a passport
@@ -139,8 +163,10 @@ Connect a wallet, then visit `/passport/new`. Irys upload and on-chain `mintPass
 
 ```bash
 pnpm hardhat compile    # compile Solidity
-pnpm hardhat test       # 71 contract tests (node:test + viem)
-pnpm hardhat run scripts/deploy.ts --network baseSepolia   # full Model X deploy
+pnpm hardhat test       # contract tests (node:test + viem)
+pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
+pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
+pnpm hardhat run scripts/deploy.ts --network baseSepolia   # full Model X deploy (Sepolia)
 ```
 
 After compile, refresh ABIs:

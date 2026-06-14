@@ -18,6 +18,8 @@
     "test": "hardhat test",
     "test:metadata": "node --import tsx --test test/passport-metadata.test.ts",
     "test:ponder": "node --import tsx --test test/ponder-handlers.test.ts",
+    "test:e2e": "KARGAIN_E2E_LOCAL=1 node --import tsx --test test/e2e-local.test.ts",
+    "deploy:local": "hardhat run scripts/deploy-local.ts --network localhost",
     "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
     "deploy:proxy": "hardhat run scripts/deploy-proxy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",

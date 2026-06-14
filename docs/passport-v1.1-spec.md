@@ -119,8 +119,8 @@ Owner may `setPassportURI`, then request re-verification.
 | **1** | Spec + `setPassportURI` + tests (no deploy) |
 | **2** | Metadata schema v1.1 shared modules |
 | **3** | Ponder schema, uri_history, trust flags, UI blocks |
-| 4 | Localhost 31337 E2E |
-| 5 | Single Sepolia redeploy + reindex + merge to master |
+| **4** | Localhost 31337 E2E |
+| **5** | Single Sepolia redeploy + reindex + merge to master |
 
 ## 10. Phase 1 test matrix
 
@@ -214,3 +214,53 @@ Run metadata unit tests: `pnpm test:metadata`.
 - [x] Verifier detail page (`/verifier/[address]`)
 
 Run handler unit tests: `pnpm test:ponder`.
+
+## 13. Local E2E (Phase 4)
+
+Local dev stack on **Hardhat chain 31337** — full passport lifecycle + optional Ponder API checks before Phase 5 Sepolia redeploy.
+
+### Dev stack
+
+| Component | Command / artifact |
+|-----------|-------------------|
+| Hardhat node | `npx hardhat node` (:8545) |
+| Deploy Model X | `pnpm deploy:local` → `deployments/31337.json` |
+| Ponder (local chain) | `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` |
+| Orchestration | `./scripts/dev-local.sh` |
+| One-shot E2E | `./scripts/e2e-local.sh` |
+
+### Env vars (local)
+
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1` | Add chain 31337 to wagmi |
+| `NEXT_PUBLIC_CHAIN_ID=31337` | Default UI chain |
+| `NEXT_PUBLIC_RPC_BY_CHAIN` | Include `"31337":"http://127.0.0.1:8545"` |
+| `PONDER_ENABLE_LOCAL=1` | Index localhost in `ponder.config.ts` |
+| `PONDER_RPC_URL_31337` | Hardhat RPC for Ponder |
+| `PONDER_START_BLOCK=0` | Full replay from local deploy |
+
+Export addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`
+
+### E2E scenario (`pnpm test:e2e`)
+
+Requires running Hardhat node + `pnpm deploy:local` (or use `./scripts/e2e-local.sh`).
+
+| Step | Action | Assert |
+|------|--------|--------|
+| 1 | `becomeVerifierNative` | verifier active |
+| 2 | `mintPassport` | UNVERIFIED, tokenId 0 |
+| 3 | `verifyPassport` | VERIFIED |
+| 4 | `setPassportURI` | `VerificationReset`, UNVERIFIED |
+| 5 | `verifyPassport` | VERIFIED |
+| 6 | `disputePassport` | DISPUTED |
+| 7 | `resolveDispute(false)` | UNVERIFIED |
+| 8 | `setPassportURI` | OK (T9) |
+| 9 | re-verify, `list` + `buyWithNative` | buyer owns NFT, listing inactive |
+| 10 | `appendRecord` on VERIFIED | status unchanged (T10) |
+
+**Ponder (optional):** poll `GET /passports/0` for `uriHistory` with `verificationReset: true`. Skipped when `PONDER_SQL_API_URL` unreachable.
+
+Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm hardhat test`
+
+**Note:** `localhost` Hardhat network uses the node's default funded accounts, not `DEPLOYER_PRIVATE_KEY`.
