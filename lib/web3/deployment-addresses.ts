@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { getAddress } from "viem";
 
 import { DEFAULT_CHAIN_ID } from "./supported-chains";
@@ -53,51 +51,12 @@ const ENV_BY_CHAIN: Record<AddressKey, string> = {
   eurFeed: "NEXT_PUBLIC_EUR_FEED_BY_CHAIN",
 };
 
-const DEPLOYMENT_FILE_KEYS: Record<AddressKey, keyof typeof SEPOLIA> = {
-  karPassport: "karPassport",
-  marketplace: "marketplace",
-  karProPass: "karProPass",
-  karProStaking: "karProStaking",
-  usdc: "usdc",
-  timelock: "timelock",
-  nativeFeed: "nativeFeed",
-  eurFeed: "eurFeed",
-};
-
-let localDeploymentCache: Partial<Record<AddressKey, `0x${string}`>> | null | undefined;
-
 function parseJsonMap(raw: string | undefined): Record<string, string> {
   if (!raw?.trim()) return {};
   try {
     return JSON.parse(raw) as Record<string, string>;
   } catch {
     return {};
-  }
-}
-
-function loadLocalDeploymentFile(): Partial<Record<AddressKey, `0x${string}`>> | null {
-  if (typeof window !== "undefined") return null;
-  if (localDeploymentCache !== undefined) return localDeploymentCache;
-
-  const path = join(process.cwd(), "deployments/31337.json");
-  if (!existsSync(path)) {
-    localDeploymentCache = null;
-    return null;
-  }
-
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, string>;
-    const out: Partial<Record<AddressKey, `0x${string}`>> = {};
-    for (const key of Object.keys(DEPLOYMENT_FILE_KEYS) as AddressKey[]) {
-      const fileKey = DEPLOYMENT_FILE_KEYS[key];
-      const value = raw[fileKey];
-      if (value) out[key] = getAddress(value as `0x${string}`);
-    }
-    localDeploymentCache = out;
-    return out;
-  } catch {
-    localDeploymentCache = null;
-    return null;
   }
 }
 
@@ -111,12 +70,6 @@ function resolveAddress(key: AddressKey, chainId?: number): `0x${string}` | unde
 
   const single = process.env[ENV_SINGLE[key] as keyof NodeJS.ProcessEnv] as string | undefined;
   if (single && cid === DEFAULT_CHAIN_ID) return getAddress(single as `0x${string}`);
-
-  if (cid === LOCALHOST_CHAIN_ID) {
-    const local = loadLocalDeploymentFile();
-    const fromFile = local?.[key];
-    if (fromFile) return fromFile;
-  }
 
   if (cid === BASE_SEPOLIA_CHAIN_ID) {
     return SEPOLIA[key];
