@@ -75,7 +75,7 @@ UNVERIFIED ──verifyPassport──► VERIFIED
 
 - `disputePassport` — heavy (VERIFIED → DISPUTED). Permissionless including self-dispute.
 - `reportDiscrepancy` — light (record only, status unchanged).
-- **Only verifier** resolves DISPUTED via `resolveDispute(uphold)`.
+- **Any active verifier** resolves DISPUTED via `resolveDispute(uphold)` (not limited to the verifier who originally verified the passport).
 
 ### D6 — Dispute withdraw (A+ convention, no extra contract fn)
 

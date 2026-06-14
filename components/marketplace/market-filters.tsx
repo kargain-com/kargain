@@ -361,6 +361,12 @@ function FilterPanel({ filters, onPatch, facets }: FilterPanelProps) {
             label="Unverified only"
             onChange={(status) => onPatch({ status, page: 1 })}
           />
+          <StatusRadio
+            value={filters.status}
+            status="DISPUTED"
+            label="Disputed only"
+            onChange={(status) => onPatch({ status, page: 1 })}
+          />
         </div>
       </FilterSection>
 

@@ -161,11 +161,15 @@ export function PassportDetailView({
             chainId={chainId}
             passportOwner={passport.owner as `0x${string}`}
             status={passport.status}
-            verifier={passport.verifier}
             lastDisputer={passport.lastDisputer}
             disputeWithdrawnAt={passport.disputeWithdrawnAt}
             duplicateVin={passport.duplicateVin}
             listingActive={listing?.active}
+            tokenUri={passport.tokenUri}
+            currentMetadata={metadata}
+            uriHistory={passport.uriHistory}
+            verificationResetCount={passport.verificationResetCount}
+            lastVerificationResetAt={passport.lastVerificationResetAt}
           />
         </div>
 

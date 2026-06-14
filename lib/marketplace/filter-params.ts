@@ -1,5 +1,5 @@
 export type MarketSort = "newest" | "price_asc" | "price_desc" | "mileage_asc";
-export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED";
+export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
 
 export type MarketFilterState = {
   make: string;
@@ -51,7 +51,9 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
       : "newest";
   const statusRaw = sp.get("status");
   const status: VerificationFilter =
-    statusRaw === "VERIFIED" || statusRaw === "UNVERIFIED" ? statusRaw : "all";
+    statusRaw === "VERIFIED" || statusRaw === "UNVERIFIED" || statusRaw === "DISPUTED"
+      ? statusRaw
+      : "all";
   const currencyRaw = sp.get("currency");
   const currency = currencyRaw === "EUR" ? "EUR" : "USD";
   const pageRaw = sp.get("page");

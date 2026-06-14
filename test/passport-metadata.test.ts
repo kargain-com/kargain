@@ -11,6 +11,8 @@ import {
 import {
   diffPassportMetadata,
   hasAnchorChanges,
+  pickMetadataDiffUris,
+  recommendsReInspection,
 } from "../lib/passport/metadata-diff.ts";
 import { parseMetadataJson } from "../lib/passport/parse-metadata-json.ts";
 import type { PassportMetadata } from "../lib/passport/metadata-schema.ts";
@@ -191,5 +193,79 @@ describe("diffPassportMetadata", () => {
 
     assert.ok(diff.anchor.some((c) => c.field === "mileageKm"));
     assert.equal(hasAnchorChanges(diff), true);
+  });
+});
+
+describe("pickMetadataDiffUris", () => {
+  it("returns previous and current URIs from latest history entry", () => {
+    const pair = pickMetadataDiffUris(
+      [
+        {
+          id: "2",
+          tokenId: "1",
+          previousUri: "ar://before",
+          newUri: "ar://after",
+          author: "0x1",
+          verificationReset: false,
+          timestamp: "200",
+        },
+      ],
+      "ar://after",
+    );
+    assert.deepEqual(pair, { beforeUri: "ar://before", afterUri: "ar://after" });
+  });
+
+  it("returns null when there is nothing to compare", () => {
+    assert.equal(
+      pickMetadataDiffUris(
+        [
+          {
+            id: "1",
+            tokenId: "1",
+            previousUri: "",
+            newUri: "ar://only",
+            author: "0x1",
+            verificationReset: false,
+            timestamp: "100",
+          },
+        ],
+        "ar://only",
+      ),
+      null,
+    );
+  });
+});
+
+describe("recommendsReInspection", () => {
+  it("is true after verification reset count", () => {
+    assert.equal(
+      recommendsReInspection({
+        verificationResetCount: 1,
+        lastVerificationResetAt: "0",
+        uriHistory: [],
+      }),
+      true,
+    );
+  });
+
+  it("is true when reset timestamp and history flag align", () => {
+    assert.equal(
+      recommendsReInspection({
+        verificationResetCount: 0,
+        lastVerificationResetAt: "100",
+        uriHistory: [
+          {
+            id: "1",
+            tokenId: "1",
+            previousUri: "ar://a",
+            newUri: "ar://b",
+            author: "0x1",
+            verificationReset: true,
+            timestamp: "100",
+          },
+        ],
+      }),
+      true,
+    );
   });
 });

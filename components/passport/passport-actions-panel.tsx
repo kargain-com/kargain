@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useAccount, useChainId, useSwitchChain, useWriteContract } from "wagmi";
 
+import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -14,8 +14,9 @@ import {
   KarPassportAbi,
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
+import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
-import type { PassportStatus } from "@/lib/types/ponder";
+import type { PassportStatus, PonderUriHistoryEntry } from "@/lib/types/ponder";
 import {
   karPassportAddress,
   karProStakingAddress,
@@ -29,11 +30,15 @@ type Props = {
   chainId: number;
   passportOwner: `0x${string}`;
   status: PassportStatus;
-  verifier: string;
   lastDisputer: string;
   disputeWithdrawnAt: string;
   duplicateVin: boolean;
   listingActive?: boolean;
+  tokenUri: string;
+  currentMetadata: PassportMetadata | null;
+  uriHistory: PonderUriHistoryEntry[];
+  verificationResetCount: number;
+  lastVerificationResetAt: string;
 };
 
 export function PassportActionsPanel({
@@ -41,11 +46,15 @@ export function PassportActionsPanel({
   chainId,
   passportOwner,
   status,
-  verifier,
   lastDisputer,
   disputeWithdrawnAt,
   duplicateVin,
   listingActive,
+  tokenUri,
+  currentMetadata,
+  uriHistory,
+  verificationResetCount,
+  lastVerificationResetAt,
 }: Props) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -53,7 +62,8 @@ export function PassportActionsPanel({
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
   const [disputeReason, setDisputeReason] = useState("");
-  const [recordText, setRecordText] = useState("");
+  const [clarificationText, setClarificationText] = useState("");
+  const [discrepancyText, setDiscrepancyText] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
@@ -80,10 +90,6 @@ export function PassportActionsPanel({
   const isOwner =
     Boolean(address) &&
     address!.toLowerCase() === passportOwner.toLowerCase();
-  const isAssignedVerifier =
-    Boolean(address) &&
-    verifier &&
-    address!.toLowerCase() === verifier.toLowerCase();
   const isLastDisputer =
     Boolean(address) &&
     lastDisputer &&
@@ -151,25 +157,34 @@ export function PassportActionsPanel({
       )}
 
       {isActiveVerifier && !isOwner && status === "UNVERIFIED" && (
-        <Button
-          type="button"
-          className="w-full"
-          disabled={isPending}
-          onClick={() =>
-            void run(
-              () =>
-                writeContractAsync({
-                  address: passport,
-                  abi: KarPassportAbi,
-                  functionName: "verifyPassport",
-                  args: [tid],
-                }),
-              "Passport verified.",
-            )
-          }
-        >
-          Verify passport
-        </Button>
+        <div className="space-y-3">
+          <MetadataDiffPanel
+            uriHistory={uriHistory}
+            currentTokenUri={tokenUri}
+            currentMetadata={currentMetadata}
+            verificationResetCount={verificationResetCount}
+            lastVerificationResetAt={lastVerificationResetAt}
+          />
+          <Button
+            type="button"
+            className="w-full"
+            disabled={isPending}
+            onClick={() =>
+              void run(
+                () =>
+                  writeContractAsync({
+                    address: passport,
+                    abi: KarPassportAbi,
+                    functionName: "verifyPassport",
+                    args: [tid],
+                  }),
+                "Passport verified.",
+              )
+            }
+          >
+            Verify passport
+          </Button>
+        </div>
       )}
 
       {status === "VERIFIED" && (
@@ -204,8 +219,11 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isAssignedVerifier && isActiveVerifier && (
+      {status === "DISPUTED" && isActiveVerifier && (
         <div className="flex flex-col gap-2">
+          <p className="text-xs text-text-secondary">
+            Any active verifier may resolve this dispute (matches on-chain rules).
+          </p>
           <Button
             type="button"
             disabled={isPending}
@@ -274,15 +292,15 @@ export function PassportActionsPanel({
           <Label htmlFor="clarification">Owner clarification</Label>
           <Textarea
             id="clarification"
-            value={recordText}
-            onChange={(e) => setRecordText(e.target.value)}
+            value={clarificationText}
+            onChange={(e) => setClarificationText(e.target.value)}
             rows={3}
           />
           <Button
             type="button"
             variant="secondary"
             className="w-full"
-            disabled={isPending || !recordText.trim()}
+            disabled={isPending || !clarificationText.trim()}
             onClick={() =>
               void run(
                 () =>
@@ -290,7 +308,7 @@ export function PassportActionsPanel({
                     address: passport,
                     abi: KarPassportAbi,
                     functionName: "appendRecord",
-                    args: [tid, "dispute-clarification", recordText.trim(), ""],
+                    args: [tid, "dispute-clarification", clarificationText.trim(), ""],
                   }),
                 "Clarification appended.",
               )
@@ -305,15 +323,15 @@ export function PassportActionsPanel({
         <Label htmlFor="discrepancy">Report discrepancy</Label>
         <Textarea
           id="discrepancy"
-          value={recordText}
-          onChange={(e) => setRecordText(e.target.value)}
+          value={discrepancyText}
+          onChange={(e) => setDiscrepancyText(e.target.value)}
           rows={2}
         />
         <Button
           type="button"
           variant="outline"
           className="w-full"
-          disabled={isPending || !recordText.trim()}
+          disabled={isPending || !discrepancyText.trim()}
           onClick={() =>
             void run(
               () =>
@@ -321,7 +339,7 @@ export function PassportActionsPanel({
                   address: passport,
                   abi: KarPassportAbi,
                   functionName: "reportDiscrepancy",
-                  args: [tid, recordText.trim(), ""],
+                  args: [tid, discrepancyText.trim(), ""],
                 }),
               "Discrepancy reported.",
             )

@@ -1,6 +1,8 @@
 import { MILEAGE_ANCHOR_DELTA_KM } from "@/lib/passport/metadata-constants";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 
+import type { PonderUriHistoryEntry } from "@/lib/types/ponder";
+
 export type FieldChange = {
   field: string;
   before: string;
@@ -93,4 +95,36 @@ export function diffPassportMetadata(
 
 export function hasAnchorChanges(diff: PassportMetadataDiff): boolean {
   return diff.anchor.length > 0;
+}
+
+export function pickMetadataDiffUris(
+  uriHistory: PonderUriHistoryEntry[],
+  currentTokenUri: string,
+): { beforeUri: string; afterUri: string } | null {
+  const sorted = [...uriHistory].sort(
+    (a, b) => Number.parseInt(b.timestamp, 10) - Number.parseInt(a.timestamp, 10),
+  );
+  const latest = sorted[0];
+  const afterUri = (latest?.newUri ?? currentTokenUri).trim();
+  if (!afterUri) return null;
+
+  let beforeUri = latest?.previousUri?.trim() ?? "";
+  if (!beforeUri && sorted.length > 1) {
+    beforeUri = sorted[1]?.newUri?.trim() ?? "";
+  }
+  if (!beforeUri || beforeUri === afterUri) return null;
+  return { beforeUri, afterUri };
+}
+
+export function recommendsReInspection(params: {
+  verificationResetCount: number;
+  lastVerificationResetAt: string;
+  uriHistory: PonderUriHistoryEntry[];
+}): boolean {
+  if (params.verificationResetCount > 0) return true;
+  const resetAt = Number.parseInt(params.lastVerificationResetAt, 10);
+  if (resetAt > 0 && params.uriHistory.some((entry) => entry.verificationReset)) {
+    return true;
+  }
+  return false;
 }
