@@ -1,7 +1,7 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **approved** (Phase 1 implementation)  
-Branch: `feat/passport-v1.1`  
+Status: **complete** (Phases 1–5, merged to `master` June 2026)  
+Branch: merged via PR #1 (`feat/passport-v1.1`)  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — Phase 5 redeploy complete
 
 ## 1. Philosophy
@@ -114,13 +114,13 @@ Owner may `setPassportURI`, then request re-verification.
 
 ## 9. Phase map
 
-| Phase | Deliverable |
-|-------|-------------|
-| **1** | Spec + `setPassportURI` + tests (no deploy) |
-| **2** | Metadata schema v1.1 shared modules |
-| **3** | Ponder schema, uri_history, trust flags, UI blocks |
-| **4** | Localhost 31337 E2E |
-| **5** | Single Sepolia redeploy + reindex + merge to master |
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **1** | Spec + `setPassportURI` + tests (no deploy) | **✅ Done** |
+| **2** | Metadata schema v1.1 shared modules | **✅ Done** |
+| **3** | Ponder schema, uri_history, trust flags, UI blocks | **✅ Done** |
+| **4** | Localhost 31337 E2E | **✅ Done** |
+| **5** | Single Sepolia redeploy + reindex + merge to master | **✅ Done** |
 
 ## 10. Phase 1 test matrix
 

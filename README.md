@@ -69,15 +69,14 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 
 | Area | Status |
 |------|--------|
-| Contracts (Model X) | Finalized on Base Sepolia, **71+ tests** passing |
-| Ponder indexer | Production at https://ponder.kargain.com (realtime, final addresses) |
-| ABIs & addresses | `lib/contracts/abis.generated.ts`, `lib/web3/deployment-addresses.ts` |
-| Irys uploads | Client-side `@irys/web-upload` wired in passport wizard |
-| Passport UI | `/passport/new` mint, edit wizard, marketplace, verifier flows |
-| **Local E2E (31337)** | **Done** — `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
-| **Sepolia v1.1 redeploy** | **Done** — `pnpm deploy:v1.1`; Ponder reindex on VPS pending |
+| **KarPassport v1.1 (Phases 1–5)** | **Complete** — merged to `master` |
+| Contracts (Model X) | v1.1 on Base Sepolia, **90** Hardhat tests |
+| Ponder indexer | Production at https://ponder.kargain.com (v1.1 addresses, reindexed) |
+| ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
+| Passport UI | Mint, edit (Variant C), verify/dispute, marketplace, Kar Pro, profiles |
+| Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
-Internal session notes (local): `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`.
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · Handoff: [docs/SESSION.md](docs/SESSION.md) (local)
 
 ---
 
@@ -249,10 +248,10 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 ## Known technical debt
 
-- **Sepolia deploy** — Phase 1 `VerificationReset` / Variant C `setPassportURI` live after Phase 5 redeploy; UI and Ponder handlers target v1.1 ABI now.
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
-- **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `scripts/deploy.ts` for full Model X deploys.
+- **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `pnpm deploy:v1.1` or `pnpm deploy:base-sepolia`.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).
+- **Basescan verification** — v1.1 KarPassport + Marketplace contracts not yet verified on BaseScan.
 
 ## Contributing
 
