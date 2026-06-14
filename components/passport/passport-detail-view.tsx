@@ -134,6 +134,7 @@ export function PassportDetailView({
             uriHistory={passport.uriHistory}
             verificationResetCount={passport.verificationResetCount}
             lastVerificationResetAt={passport.lastVerificationResetAt}
+            labels={t}
           />
         </div>
 

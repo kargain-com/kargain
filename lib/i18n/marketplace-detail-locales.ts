@@ -78,6 +78,16 @@ const DICT = {
     recordLabelOwnerInitiated: "Owner-initiated",
     disputeOpenedBy: "Opened by",
     disputeWithdrawnSignal: "Dispute withdrawn (signal only — status stays DISPUTED until a verifier resolves).",
+    attestationLabel: "Verifier attestation",
+    attestationHint:
+      "Public on-chain note from an active verifier. Does not change passport status.",
+    attestationPlaceholder: "Inspection notes, mileage confirmation, condition summary…",
+    attestationEvidenceLabel: "Evidence (optional)",
+    attestationEvidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+    attestationEvidencePlaceholder: "ar://… or https://…",
+    attestationEvidenceFileLabel: "Upload file",
+    attestationSubmit: "Append attestation",
+    attestationSuccess: "Attestation appended.",
     buyRiskTitle: "Review purchase risks",
     buyRiskDescription:
       "This passport has trust signals you should review before buying. You will inherit its on-chain status as the new owner.",
@@ -173,6 +183,17 @@ const DICT = {
     disputeOpenedBy: "Ouvert par",
     disputeWithdrawnSignal:
       "Litige retiré (signal uniquement — le statut reste CONTESTÉ jusqu’à résolution par un vérificateur).",
+    attestationLabel: "Attestation du vérificateur",
+    attestationHint:
+      "Note publique on-chain d’un vérificateur actif. Ne modifie pas le statut du passeport.",
+    attestationPlaceholder:
+      "Notes d’inspection, confirmation du kilométrage, état général…",
+    attestationEvidenceLabel: "Preuve (facultatif)",
+    attestationEvidenceHint: "Collez un lien ar:// ou https://, ou téléversez un fichier.",
+    attestationEvidencePlaceholder: "ar://… ou https://…",
+    attestationEvidenceFileLabel: "Téléverser un fichier",
+    attestationSubmit: "Ajouter l’attestation",
+    attestationSuccess: "Attestation ajoutée.",
     buyRiskTitle: "Examiner les risques d’achat",
     buyRiskDescription:
       "Ce passeport présente des signaux de confiance à examiner avant l’achat. Vous hériterez de son statut on-chain en tant que nouveau propriétaire.",

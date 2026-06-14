@@ -3,19 +3,32 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { useAccount, useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  useSignMessage,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 
+import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
   KarPassportAbi,
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
+import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
+import {
+  getWalletUploadProvider,
+} from "@/lib/passport/upload-passport-metadata";
+import { uploadEvidenceFile } from "@/lib/passport/upload-evidence";
 import type { PassportStatus, PonderUriHistoryEntry } from "@/lib/types/ponder";
 import {
   karPassportAddress,
@@ -24,6 +37,8 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useReadContracts } from "wagmi";
+
+type T = ReturnType<typeof getDetailStrings>;
 
 type Props = {
   tokenId: string;
@@ -39,6 +54,7 @@ type Props = {
   uriHistory: PonderUriHistoryEntry[];
   verificationResetCount: number;
   lastVerificationResetAt: string;
+  labels: T;
 };
 
 export function PassportActionsPanel({
@@ -55,15 +71,23 @@ export function PassportActionsPanel({
   uriHistory,
   verificationResetCount,
   lastVerificationResetAt,
+  labels,
 }: Props) {
   const router = useRouter();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
+  const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
   const [disputeReason, setDisputeReason] = useState("");
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
+  const [attestationText, setAttestationText] = useState("");
+  const [attestationEvidencePaste, setAttestationEvidencePaste] = useState("");
+  const [attestationEvidenceFile, setAttestationEvidenceFile] = useState<File | null>(
+    null,
+  );
+  const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
@@ -112,6 +136,71 @@ export function PassportActionsPanel({
     },
     [router, switchChainAsync, wc, wrongChain],
   );
+
+  const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
+    if (attestationEvidenceFile) {
+      if (!address) throw new Error("Connect your wallet to continue");
+      setIsUploadingEvidence(true);
+      try {
+        await ensureSiweSession({
+          address,
+          chainId,
+          signMessageAsync,
+        });
+        const provider = await getWalletUploadProvider(connector ?? undefined);
+        return await uploadEvidenceFile(attestationEvidenceFile, provider);
+      } finally {
+        setIsUploadingEvidence(false);
+      }
+    }
+    return attestationEvidencePaste.trim();
+  }, [
+    address,
+    attestationEvidenceFile,
+    attestationEvidencePaste,
+    chainId,
+    connector,
+    signMessageAsync,
+  ]);
+
+  const submitAttestation = useCallback(async () => {
+    const description = attestationText.trim();
+    if (!description || !passport) return;
+
+    if (wrongChain) {
+      await switchChainAsync?.({ chainId: wc });
+    }
+
+    try {
+      const evidenceCID = await resolveAttestationEvidence();
+      await writeContractAsync({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "appendAttestation",
+        args: [tid, description, evidenceCID],
+      });
+      setAttestationText("");
+      setAttestationEvidencePaste("");
+      setAttestationEvidenceFile(null);
+      setMessage(labels.attestationSuccess);
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Transaction failed.");
+    }
+  }, [
+    attestationText,
+    labels.attestationSuccess,
+    passport,
+    resolveAttestationEvidence,
+    router,
+    switchChainAsync,
+    tid,
+    wc,
+    wrongChain,
+    writeContractAsync,
+  ]);
+
+  const actionsBusy = isPending || isUploadingEvidence;
 
   if (!isConnected) {
     return (
@@ -168,7 +257,7 @@ export function PassportActionsPanel({
           <Button
             type="button"
             className="w-full"
-            disabled={isPending}
+            disabled={actionsBusy}
             onClick={() =>
               void run(
                 () =>
@@ -226,7 +315,7 @@ export function PassportActionsPanel({
           </p>
           <Button
             type="button"
-            disabled={isPending}
+            disabled={actionsBusy}
             onClick={() =>
               void run(
                 () =>
@@ -245,7 +334,7 @@ export function PassportActionsPanel({
           <Button
             type="button"
             variant="outline"
-            disabled={isPending}
+            disabled={actionsBusy}
             onClick={() =>
               void run(
                 () =>
@@ -315,6 +404,43 @@ export function PassportActionsPanel({
             }
           >
             Append clarification
+          </Button>
+        </div>
+      )}
+
+      {isActiveVerifier && !isOwner && (
+        <div className="space-y-2 border-t border-border-default pt-4">
+          <Label htmlFor="attestation-text">{labels.attestationLabel}</Label>
+          <p className="text-xs text-text-secondary">{labels.attestationHint}</p>
+          <Textarea
+            id="attestation-text"
+            value={attestationText}
+            onChange={(e) => setAttestationText(e.target.value)}
+            placeholder={labels.attestationPlaceholder}
+            rows={3}
+            disabled={actionsBusy}
+          />
+          <EvidenceInput
+            idPrefix="attestation-evidence"
+            value={attestationEvidencePaste}
+            onChange={setAttestationEvidencePaste}
+            file={attestationEvidenceFile}
+            onFileChange={setAttestationEvidenceFile}
+            disabled={actionsBusy}
+            labels={{
+              evidenceLabel: labels.attestationEvidenceLabel,
+              evidenceHint: labels.attestationEvidenceHint,
+              evidencePlaceholder: labels.attestationEvidencePlaceholder,
+              evidenceFileLabel: labels.attestationEvidenceFileLabel,
+            }}
+          />
+          <Button
+            type="button"
+            className="w-full"
+            disabled={actionsBusy || !attestationText.trim()}
+            onClick={() => void submitAttestation()}
+          >
+            {labels.attestationSubmit}
           </Button>
         </div>
       )}
