@@ -10,6 +10,13 @@ import {
 
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
 import {
+  disputeResolvedTrustFields,
+  passportDisputedTrustFields,
+  passportMintTrustFields,
+  passportUriUpdatedTrustFields,
+  verificationResetTrustFields,
+} from "./lib/ponder-g1-fields";
+import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
 
@@ -50,9 +57,7 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
     verifier: "",
     verifiedAt: 0n,
     tokenUri: uri,
-    lastMetadataChangeAt: event.block.timestamp,
-    createdAt: event.block.timestamp,
-    updatedAt: event.block.timestamp,
+    ...passportMintTrustFields(event.block.timestamp),
   });
 
   await appendUriHistory(context, {
@@ -83,35 +88,16 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
     .set({
-      status: "DISPUTED",
       lastDisputer: event.args.disputer,
       disputeReason: event.args.reason,
-      disputeWithdrawnAt: 0n,
-      hadDispute: true,
-      updatedAt: event.block.timestamp,
+      ...passportDisputedTrustFields(event.block.timestamp),
     });
 });
 
 ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
-  if (event.args.uphold) {
-    await context.db
-      .update(passport, { id: event.args.tokenId.toString() })
-      .set({
-        status: "VERIFIED",
-        lastDisputeResolvedAt: event.block.timestamp,
-        updatedAt: event.block.timestamp,
-      });
-  } else {
-    await context.db
-      .update(passport, { id: event.args.tokenId.toString() })
-      .set({
-        status: "UNVERIFIED",
-        verifier: "",
-        verifiedAt: 0n,
-        lastDisputeResolvedAt: event.block.timestamp,
-        updatedAt: event.block.timestamp,
-      });
-  }
+  await context.db
+    .update(passport, { id: event.args.tokenId.toString() })
+    .set(disputeResolvedTrustFields(event.args.uphold, event.block.timestamp));
 });
 
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
@@ -119,14 +105,7 @@ ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
   const existing = await context.db.find(passport, { id: tokenId });
   await context.db
     .update(passport, { id: tokenId })
-    .set({
-      status: "UNVERIFIED",
-      verifier: "",
-      verifiedAt: 0n,
-      lastVerificationResetAt: event.block.timestamp,
-      verificationResetCount: (existing?.verificationResetCount ?? 0) + 1,
-      updatedAt: event.block.timestamp,
-    });
+    .set(verificationResetTrustFields(existing?.verificationResetCount ?? 0, event.block.timestamp));
 });
 
 ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
@@ -142,8 +121,7 @@ ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
     .update(passport, { id: tokenId })
     .set({
       tokenUri: event.args.newURI,
-      lastMetadataChangeAt: event.block.timestamp,
-      updatedAt: event.block.timestamp,
+      ...passportUriUpdatedTrustFields(event.block.timestamp),
     });
 
   await appendUriHistory(context, {

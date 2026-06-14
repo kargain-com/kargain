@@ -54,3 +54,4 @@ test-results
 # internal docs (local only)
 /docs/*
 !/docs/passport-v1.1-spec.md
+!/docs/VPS-PONDER-REINDEX.md

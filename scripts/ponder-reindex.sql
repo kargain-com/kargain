@@ -1,9 +1,11 @@
--- Clean reindex after a contract redeploy on Base Sepolia (chain 84532).
+-- Clean reindex after a contract redeploy or ponder.schema.ts change (Base Sepolia 84532).
 --
 -- When to run:
 --   1. KarPassport and/or MarketplaceEscrow addresses changed (Phase 5 v1.1 redeploy)
---   2. You set PONDER_START_BLOCK_84532 from deployments/84532.json (indexFromBlock)
+--   2. ponder.schema.ts changed (e.g. G1 trust fields, fuel/body/trans denorm)
+--   3. You set PONDER_START_BLOCK_84532 from deployments/84532.json (indexFromBlock)
 --
+-- Full runbook: docs/VPS-PONDER-REINDEX.md
 -- Prerequisites:
 --   - Stop Ponder before running (docker compose stop ponder)
 --   - For full backfill: use Alchemy/QuickNode RPC (publicnode may rate-limit eth_getLogs)

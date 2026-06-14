@@ -1040,6 +1040,42 @@ describe("KarPassport — records", () => {
     await passport.write.appendAttestation([0n, "attest", "cid"], { account: verifier.account });
     assert.equal(await passport.read.recordCount([0n]), 2n);
   });
+
+  it("T10: appendRecord on VERIFIED leaves status unchanged", async () => {
+    const { viem } = connection;
+    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ipfs://t10"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    let [status] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 1);
+    await passport.write.appendRecord([0n, "service", "Oil change", "cid-t10"], {
+      account: owner.account,
+    });
+    [status] = await passport.read.getPassportStatus([0n]);
+    assert.equal(status, 1);
+    assert.equal(await passport.read.recordCount([0n]), 1n);
+  });
+
+  it("appendRecord reverts NotOwner when listed in escrow", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    await passport.write.mintPassport([seller.account.address, "ipfs://listed-record"], {
+      account: seller.account,
+    });
+    await passport.write.setApprovalForAll([marketplace.address, true], {
+      account: seller.account,
+    });
+    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    await assert.rejects(
+      passport.write.appendRecord([0n, "service", "while listed", ""], {
+        account: seller.account,
+      }),
+      revertsWith("NotOwner"),
+    );
+  });
 });
 
 // ─── KarPassport — getPassportStatus ──────────────────────────────────────────
@@ -1248,6 +1284,31 @@ describe("MarketplaceEscrow", () => {
     const sellerAfter = await publicClient.getBalance({ address: seller.account.address });
     assert.equal(adminAfter - adminBefore, fee);
     assert.equal(sellerAfter - sellerBefore, net);
+  });
+
+  it("E5: buyer inherits passport status after buyWithNative", async () => {
+    const { viem } = connection;
+    const { seller, buyer, verifier, passport, marketplace, staking } =
+      await deployEscrowStack(viem);
+    await passport.write.mintPassport([seller.account.address, "ipfs://e5"], {
+      account: seller.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([0n], { account: verifier.account });
+    const [statusBefore] = await passport.read.getPassportStatus([0n]);
+    assert.equal(statusBefore, 1);
+    await passport.write.setApprovalForAll([marketplace.address, true], {
+      account: seller.account,
+    });
+    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    const gross = await marketplace.read.quoteNativeWei([0n]);
+    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
+    const [statusAfter] = await passport.read.getPassportStatus([0n]);
+    assert.equal(statusAfter, statusBefore);
+    assert.equal(
+      getAddress(await passport.read.ownerOf([0n])),
+      getAddress(buyer.account.address),
+    );
   });
 
   it("buyWithUsdc with fee distribution", async () => {

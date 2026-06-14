@@ -70,13 +70,16 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | Area | Status |
 |------|--------|
 | **KarPassport v1.1 (Phases 1–5)** | **Complete** — merged to `master` |
-| Contracts (Model X) | v1.1 on Base Sepolia, **90** Hardhat tests |
-| Ponder indexer | Production at https://ponder.kargain.com (v1.1 addresses, reindexed) |
+| **Trust / UX gap (plan A–J core)** | **Complete** — BuyRiskModal, verifier badges, G1/G2 Ponder, metadata diff, DISPUTED filter |
+| Contracts (Model X) | v1.1 on Base Sepolia; Hardhat + T10/E5 matrix |
+| Ponder indexer | Production at https://ponder.kargain.com — **reindex required after G1 schema** ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
-| Passport UI | Mint, edit (Variant C), verify/dispute, marketplace, Kar Pro, profiles |
+| Passport UI | Mint, edit (Variant C), verify/dispute, marketplace trust gates, Kar Pro, profiles |
 | Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · Handoff: [docs/SESSION.md](docs/SESSION.md) (local)
+**Tests:** `pnpm hardhat test` · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:e2e`
+
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -164,6 +167,9 @@ Connect a wallet, then visit `/passport/new`. Irys upload and on-chain `mintPass
 ```bash
 pnpm hardhat compile    # compile Solidity
 pnpm hardhat test       # contract tests (node:test + viem)
+pnpm test:metadata      # metadata diff / parse / G1 helpers
+pnpm test:listing       # marketplace filter query
+pnpm test:ponder        # Ponder G1 field + indexer unit tests
 pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
 pnpm deploy:local       # deploy Model X to running Hardhat node → deployments/31337.json
 pnpm deploy:v1.1        # Phase 5 partial redeploy (KarPassport + Marketplace on Sepolia)
@@ -214,6 +220,7 @@ Production indexer runs via Docker Compose: **PostgreSQL + Ponder + cloudflared*
 - Ponder API: https://ponder.kargain.com
 - RPC: publicnode (`startBlock: latest` in `ponder.config.ts`)
 - Deploy workflow: `.github/workflows/deploy-ponder.yml`
+- **After `ponder.schema.ts` changes:** run [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) on VPS
 
 Local stack:
 

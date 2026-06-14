@@ -1,7 +1,21 @@
 import { count, eq } from "ponder";
 
+import type { IndexedPassportMetadata } from "../../lib/passport/index-passport-metadata";
 import { fetchMetadataFromUri } from "../../lib/passport/index-passport-metadata";
 import { passport, vinIndex } from "../../ponder.schema";
+
+export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
+  return {
+    vin: indexed.vin,
+    make: indexed.make,
+    model: indexed.model,
+    year: indexed.year,
+    mileageKm: indexed.mileageKm,
+    fuelType: indexed.fuelType,
+    bodyType: indexed.bodyType,
+    transmission: indexed.transmission,
+  };
+}
 
 type DbContext = {
   db: {
@@ -78,15 +92,6 @@ export async function indexPassportMetadataFromUri(
   }
 
   if (indexed) {
-    await context.db.update(passport, { id: tokenId }).set({
-      vin: indexed.vin,
-      make: indexed.make,
-      model: indexed.model,
-      year: indexed.year,
-      mileageKm: indexed.mileageKm,
-      fuelType: indexed.fuelType,
-      bodyType: indexed.bodyType,
-      transmission: indexed.transmission,
-    });
+    await context.db.update(passport, { id: tokenId }).set(passportMetadataDenorm(indexed));
   }
 }

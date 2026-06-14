@@ -197,6 +197,7 @@ Run metadata unit tests: `pnpm test:metadata`.
 
 - [x] `passport_uri_history` table + `vin_index`
 - [x] Extended `passport` trust/VIN denorm fields
+- [x] G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`
 - [x] `VerificationReset` handler
 - [x] D6 `disputeWithdrawnAt` on `RecordAppended`
 - [x] Metadata indexer on mint/URI update (Arweave fetch + `parseMetadataJson`)
@@ -209,11 +210,15 @@ Run metadata unit tests: `pnpm test:metadata`.
 - [x] URI history timeline
 - [x] Marketplace list / delist / buy wiring
 - [x] Browse verified-first + status badges / duplicate VIN warnings
-- [x] Profile page data from Ponder
+- [x] **E4** BuyRiskModal — explicit risk ack before `buyWithNative`
+- [x] **G2** post-dispute re-verify banner on passport detail
+- [x] Verifier metadata diff + re-inspection hint (C2/C3)
+- [x] DISPUTED browse filter
+- [x] Profile page data from Ponder (listings enriched)
 - [x] Kar Pro join/leave staking
-- [x] Verifier detail page (`/verifier/[address]`)
+- [x] Verifier detail page (`/verifier/[address]`) + inactive verifier badge (C5)
 
-Run handler unit tests: `pnpm test:ponder`.
+Run handler unit tests: `pnpm test:ponder` (`test/ponder-indexer.test.ts`).
 
 ## 13. Local E2E (Phase 4)
 
@@ -290,6 +295,8 @@ Generate VPS env: `node --import tsx scripts/lib/print-ponder-env.ts`
 
 ### VPS reindex runbook
 
+**Trigger:** any change to `ponder.schema.ts` or new indexed event handlers that alter row shape — deploy code, then reindex before relying on new fields in production.
+
 ```bash
 docker compose stop ponder
 psql "$DATABASE_URL" -f scripts/ponder-reindex.sql
@@ -299,4 +306,24 @@ docker compose up -d ponder
 # After sync: PONDER_START_BLOCK_84532=latest
 ```
 
+Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from block `0`, or run `pnpm test:ponder` for G1 handler unit tests.
+
+**Full runbook:** [docs/VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md)
+
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
+
+## 15. Plan A–J core — definition of done (June 2026)
+
+| Criterion | Status |
+|-----------|--------|
+| E4 — buy without risk ack blocked | ✅ |
+| C5 — inactive verifier visible | ✅ |
+| C2/C3 — verifier diff + re-inspect hint | ✅ |
+| G1/G2 — Ponder fields + detail banner | ✅ (code); VPS reindex ops |
+| DISPUTED browse filter | ✅ |
+| README Variant C truth | ✅ |
+| No dead stubs; types synced | ✅ |
+| T10 / E5 contract tests | ✅ |
+| Resolve gating = contract (any active verifier) | ✅ documented §5 |
+
+Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) · Ponder: `pnpm test:ponder`
