@@ -117,7 +117,7 @@ Owner may `setPassportURI`, then request re-verification.
 | Phase | Deliverable |
 |-------|-------------|
 | **1** | Spec + `setPassportURI` + tests (no deploy) |
-| 2 | Metadata schema v1.1 shared modules |
+| **2** | Metadata schema v1.1 shared modules |
 | 3 | Ponder schema, uri_history, trust flags, UI blocks |
 | 4 | Localhost 31337 E2E |
 | 5 | Single Sepolia redeploy + reindex + merge to master |
@@ -136,3 +136,57 @@ Owner may `setPassportURI`, then request re-verification.
 | T8 | listed (escrow owner) | revert NotOwner |
 | T9 | resolve(false) then edit | OK |
 | T10 | appendRecord on VERIFIED | status unchanged |
+
+## 11. Metadata JSON v1.1 wire schema (Phase 2)
+
+**Write path (create / edit upload):** always emit `version: "1.1"` with **camelCase** keys.
+
+### Required / core fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `version` | `"1.1"` | Wire version for new uploads |
+| `name` | string | Display title, e.g. `"2021 Honda Civic"` |
+| `vin` | string | Normalized uppercase, 11–17 chars |
+| `make`, `model` | string | Required |
+| `year` | number | Integer |
+| `mileageKm` | number | Non-negative; `0` if omitted in form |
+| `photos` | string[] | Arweave URIs (`ar://…`); min 1 on create |
+| `createdAt`, `updatedAt` | string | ISO-8601 timestamps |
+
+### Optional v1.1 fields
+
+Omit empty keys from JSON. Supported optional fields: `description`, `modelVariant`, `type`, `vehicleType`, `fuelType`, `bodyType`, `transmission`, `power`, `evBatteryKwh`, `colour`, `location` (`{ label?, lat?, lng? }`), `engine`, `features` (string[]), `condition`.
+
+### Legacy v1.0 read compatibility
+
+Existing on-chain passports (e.g. Sepolia #0) may use:
+
+- `version: "1.0"`
+- `mileage_km` instead of `mileageKm`
+- snake_case legacy keys: `fuel_type`, `body_type`, `color`, `created_at`
+- Parser normalizes to app type `PassportMetadata` (camelCase) and preserves `version: "1.0" | "1.1"`.
+
+### PII (J1)
+
+Wire JSON must **not** include `ownerName`, `phone`, or `email`. Build path rejects these keys before upload.
+
+### Anchor vs cosmetic diff (Phase 3 prep)
+
+`diffPassportMetadata` classifies changes for edit confirmation:
+
+- **Anchor:** `vin`, `make`, `model`, `year`, `type`, `photos`, and `mileageKm` when delta > **500 km**
+- **Cosmetic:** description, colour, power, and other optional fields; small mileage updates (≤ 500 km)
+
+### Shared modules
+
+| Module | Role |
+|--------|------|
+| `lib/passport/metadata-constants.ts` | Version, limits, anchor/PII keys |
+| `lib/passport/metadata-schema.ts` | Zod schema, form validation, `normalizeVin` |
+| `lib/passport/build-metadata-json.ts` | `buildMetadataWire` → v1.1 JSON |
+| `lib/passport/parse-metadata-json.ts` | `parseMetadataJson` (v1.0 + v1.1) |
+| `lib/passport/metadata-diff.ts` | Anchor/cosmetic diff for edit UI |
+| `lib/passport/fetch-arweave-metadata.ts` | HTTP fetch + parse |
+
+Run metadata unit tests: `pnpm test:metadata`.
