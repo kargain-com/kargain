@@ -48,6 +48,7 @@ export type MarketplaceListingRow = {
   lat: number | null;
   lng: number | null;
   duplicateVin: boolean;
+  verifier: string;
   karPro: boolean;
   featured: boolean;
 };
@@ -84,6 +85,7 @@ type PonderListing = {
   transmission?: string;
   tokenUri?: string;
   duplicateVin?: boolean;
+  verifier?: string;
 };
 
 type PonderListingsResponse = {
@@ -129,6 +131,7 @@ function mapListingToRow(listing: PonderListing): MarketplaceListingRow {
     lat: null,
     lng: null,
     duplicateVin: listing.duplicateVin === true,
+    verifier: listing.verifier ?? "",
     karPro: false,
     featured: status === "VERIFIED",
   };

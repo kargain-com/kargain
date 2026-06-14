@@ -50,6 +50,7 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
     verifier: "",
     verifiedAt: 0n,
     tokenUri: uri,
+    lastMetadataChangeAt: event.block.timestamp,
     createdAt: event.block.timestamp,
     updatedAt: event.block.timestamp,
   });
@@ -86,6 +87,7 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
       lastDisputer: event.args.disputer,
       disputeReason: event.args.reason,
       disputeWithdrawnAt: 0n,
+      hadDispute: true,
       updatedAt: event.block.timestamp,
     });
 });
@@ -96,6 +98,7 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
       .update(passport, { id: event.args.tokenId.toString() })
       .set({
         status: "VERIFIED",
+        lastDisputeResolvedAt: event.block.timestamp,
         updatedAt: event.block.timestamp,
       });
   } else {
@@ -105,19 +108,23 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
         status: "UNVERIFIED",
         verifier: "",
         verifiedAt: 0n,
+        lastDisputeResolvedAt: event.block.timestamp,
         updatedAt: event.block.timestamp,
       });
   }
 });
 
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const existing = await context.db.find(passport, { id: tokenId });
   await context.db
-    .update(passport, { id: event.args.tokenId.toString() })
+    .update(passport, { id: tokenId })
     .set({
       status: "UNVERIFIED",
       verifier: "",
       verifiedAt: 0n,
       lastVerificationResetAt: event.block.timestamp,
+      verificationResetCount: (existing?.verificationResetCount ?? 0) + 1,
       updatedAt: event.block.timestamp,
     });
 });
@@ -135,6 +142,7 @@ ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
     .update(passport, { id: tokenId })
     .set({
       tokenUri: event.args.newURI,
+      lastMetadataChangeAt: event.block.timestamp,
       updatedAt: event.block.timestamp,
     });
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -14,18 +14,15 @@ import {
   useConfig,
 } from "wagmi";
 
+import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
-import {
-  KarPassportAbi,
-  MarketplaceEscrowAbi,
-} from "@/lib/contracts/abis.generated";
-import {
-  karPassportAddress,
-  marketplaceAddress,
-} from "@/lib/web3/deployment-addresses";
+import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
+import type { PassportStatus } from "@/lib/types/ponder";
+import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type T = ReturnType<typeof getDetailStrings>;
@@ -34,22 +31,34 @@ type Props = {
   chainId: number;
   tokenId: string;
   listing: { seller: `0x${string}`; fiatPrice1e8: string; fiatCurrency: number };
+  passportStatus: PassportStatus;
+  duplicateVin: boolean;
+  hadDispute: boolean;
   labels: T;
 };
 
-export function ListingBuyPanel({ chainId, tokenId, listing, labels: t }: Props) {
+export function ListingBuyPanel({
+  chainId,
+  tokenId,
+  listing,
+  passportStatus,
+  duplicateVin,
+  hadDispute,
+  labels: t,
+}: Props) {
   const config = useConfig();
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
-  const [message, setMessage] = useState<string | null>(null);
+  const [riskOpen, setRiskOpen] = useState(false);
 
   const market = marketplaceAddress(chainId);
   const wc = wagmiChainId(chainId);
   const wrongChain = walletChain !== chainId;
   const tid = BigInt(tokenId);
+  const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
 
   const { data: quoteData } = useReadContracts({
     contracts: market
@@ -95,6 +104,14 @@ export function ListingBuyPanel({ chainId, tokenId, listing, labels: t }: Props)
     writeContractAsync,
   ]);
 
+  const handleBuyClick = () => {
+    if (requiresRiskAck) {
+      setRiskOpen(true);
+      return;
+    }
+    void buyNative();
+  };
+
   if (!isConnected) {
     return (
       <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
@@ -134,23 +151,44 @@ export function ListingBuyPanel({ chainId, tokenId, listing, labels: t }: Props)
   }
 
   return (
-    <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-      <div>
-        <p className="text-xs text-text-secondary">{t.price}</p>
-        <p className="text-2xl font-medium text-accent-warm">
-          {formatFiat1e8(BigInt(listing.fiatPrice1e8))}{" "}
-          {fiatCurrencyLabel(listing.fiatCurrency)}
-        </p>
-        {nativeQuote != null && (
-          <p className="mt-1 text-xs text-text-secondary">
-            ≈ {formatUnits(nativeQuote, 18)} ETH
+    <>
+      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+        <div>
+          <p className="text-xs text-text-secondary">{t.price}</p>
+          <p className="text-2xl font-medium text-accent-warm">
+            {formatFiat1e8(BigInt(listing.fiatPrice1e8))}{" "}
+            {fiatCurrencyLabel(listing.fiatCurrency)}
           </p>
-        )}
+          {nativeQuote != null && (
+            <p className="mt-1 text-xs text-text-secondary">
+              ≈ {formatUnits(nativeQuote, 18)} ETH
+            </p>
+          )}
+        </div>
+        <Button
+          type="button"
+          className="w-full"
+          disabled={isPending || nativeQuote == null}
+          onClick={handleBuyClick}
+        >
+          {t.buyNow}
+        </Button>
       </div>
-      <Button type="button" className="w-full" disabled={isPending || nativeQuote == null} onClick={() => void buyNative()}>
-        {t.buyNow}
-      </Button>
-      {message && <p className="text-sm text-text-secondary">{message}</p>}
-    </div>
+
+      <BuyRiskModal
+        open={riskOpen}
+        onOpenChange={setRiskOpen}
+        passportStatus={passportStatus}
+        duplicateVin={duplicateVin}
+        hadDispute={hadDispute}
+        tokenId={tokenId}
+        labels={t}
+        onConfirm={() => {
+          setRiskOpen(false);
+          void buyNative();
+        }}
+        isPending={isPending}
+      />
+    </>
   );
 }

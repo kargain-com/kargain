@@ -5,9 +5,11 @@ import { PassportActionsPanel } from "@/components/passport/passport-actions-pan
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
+import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -75,6 +77,7 @@ export function PassportDetailView({
     passport.status === "VERIFIED" &&
     passport.verifier.trim() &&
     passport.verifier !== "0x0000000000000000000000000000000000000000";
+  const showG2Banner = showFixedAfterDisputeBanner(passport);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-6 py-24 text-text-primary md:px-8 xl:max-w-[80rem]">
@@ -110,7 +113,7 @@ export function PassportDetailView({
             <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
           </section>
 
-          <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
+          <section id="passport-records" className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
             <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
               {t.historyRecords}
             </h2>
@@ -195,6 +198,15 @@ export function PassportDetailView({
             </div>
           )}
 
+          {showG2Banner && (
+            <div
+              className="rounded-md border border-accent-warm/40 bg-bg-surface p-4"
+              role="status"
+            >
+              <p className="font-sans text-sm text-text-primary">{t.fixedAfterDisputeBanner}</p>
+            </div>
+          )}
+
           {passport.duplicateVin && (
             <p className="rounded-md border border-status-error/40 p-3 text-sm text-status-error">
               Duplicate VIN warning — another passport shares this VIN in the index.
@@ -206,6 +218,9 @@ export function PassportDetailView({
             tokenId={tokenId}
             listing={listing}
             passportOwner={passport.owner as `0x${string}`}
+            passportStatus={passport.status}
+            duplicateVin={passport.duplicateVin}
+            hadDispute={passport.hadDispute}
             labels={t}
           />
 
@@ -231,6 +246,7 @@ export function PassportDetailView({
                     {navShortAddress(passport.verifier)}
                   </Link>
                   {verifiedDate && <> on {verifiedDate}</>}
+                  <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
                 </p>
               </div>
             )}

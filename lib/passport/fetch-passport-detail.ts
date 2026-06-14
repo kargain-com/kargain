@@ -86,6 +86,15 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const lastVerificationResetAt =
     obj.lastVerificationResetAt != null ? String(obj.lastVerificationResetAt) : "0";
   const duplicateVin = obj.duplicateVin === true;
+  const lastMetadataChangeAt =
+    obj.lastMetadataChangeAt != null ? String(obj.lastMetadataChangeAt) : "0";
+  const verificationResetCount =
+    typeof obj.verificationResetCount === "number"
+      ? obj.verificationResetCount
+      : Number(obj.verificationResetCount ?? 0);
+  const hadDispute = obj.hadDispute === true;
+  const lastDisputeResolvedAt =
+    obj.lastDisputeResolvedAt != null ? String(obj.lastDisputeResolvedAt) : "0";
   const createdAt = obj.createdAt != null ? String(obj.createdAt) : "0";
   const updatedAt = obj.updatedAt != null ? String(obj.updatedAt) : "0";
 
@@ -133,6 +142,12 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
     disputeWithdrawnAt,
     lastVerificationResetAt,
     duplicateVin,
+    lastMetadataChangeAt,
+    verificationResetCount: Number.isFinite(verificationResetCount)
+      ? verificationResetCount
+      : 0,
+    hadDispute,
+    lastDisputeResolvedAt,
     createdAt,
     updatedAt,
     records,

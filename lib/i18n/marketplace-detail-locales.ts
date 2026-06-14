@@ -69,6 +69,20 @@ const DICT = {
     listingUnavailableReason: "It may have been hidden by moderators or expired.",
     featured: "Featured",
     noRecordsHint: "Service logs, attestations, and discrepancy records will appear here over time.",
+    buyRiskTitle: "Review purchase risks",
+    buyRiskDescription:
+      "This passport has trust signals you should review before buying. You will inherit its on-chain status as the new owner.",
+    buyRiskUnverified: "Passport is unverified — no independent inspection has confirmed the metadata.",
+    buyRiskDisputed: "Passport is disputed — review discrepancy records before proceeding.",
+    buyRiskViewTimeline: "View dispute timeline",
+    buyRiskDuplicateVin: "Duplicate VIN — another passport shares this VIN in the index.",
+    buyRiskPriorDispute: "This passport had a prior dispute. Metadata may have changed since resolution.",
+    buyRiskAcceptLabel: "I accept the risk and want to proceed with purchase",
+    buyRiskCancel: "Cancel",
+    buyRiskConfirm: "Buy anyway",
+    fixedAfterDisputeBanner:
+      "Fixed after dispute — awaiting re-verification. Metadata was updated after the last dispute or reset.",
+    verifierInactive: "Verifier inactive",
   },
   fr: {
     backMarketplace: "Retour au marché",
@@ -140,6 +154,24 @@ const DICT = {
     featured: "À la une",
     noRecordsHint:
       "Les entretiens, attestations et divergences apparaîtront ici progressivement.",
+    buyRiskTitle: "Examiner les risques d’achat",
+    buyRiskDescription:
+      "Ce passeport présente des signaux de confiance à examiner avant l’achat. Vous hériterez de son statut on-chain en tant que nouveau propriétaire.",
+    buyRiskUnverified:
+      "Passeport non vérifié — aucune inspection indépendante n’a confirmé les métadonnées.",
+    buyRiskDisputed:
+      "Passeport contesté — consultez les enregistrements de divergence avant de continuer.",
+    buyRiskViewTimeline: "Voir la chronologie du litige",
+    buyRiskDuplicateVin:
+      "VIN en double — un autre passeport partage ce VIN dans l’index.",
+    buyRiskPriorDispute:
+      "Ce passeport a déjà fait l’objet d’un litige. Les métadonnées ont pu changer depuis la résolution.",
+    buyRiskAcceptLabel: "J’accepte le risque et souhaite poursuivre l’achat",
+    buyRiskCancel: "Annuler",
+    buyRiskConfirm: "Acheter quand même",
+    fixedAfterDisputeBanner:
+      "Corrigé après litige — en attente de re-vérification. Les métadonnées ont été mises à jour après le dernier litige ou reset.",
+    verifierInactive: "Vérificateur inactif",
   },
 } as const;
 

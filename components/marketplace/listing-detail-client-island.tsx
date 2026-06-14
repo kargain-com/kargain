@@ -4,6 +4,7 @@ import { FavoriteButton } from "@/components/marketplace/favorite-button";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
+import type { PassportStatus } from "@/lib/types/ponder";
 
 type T = ReturnType<typeof getDetailStrings>;
 
@@ -18,16 +19,36 @@ type Props = {
   } | null;
   /** Current passport holder (marketplace contract while listed). */
   passportOwner: `0x${string}`;
+  passportStatus: PassportStatus;
+  duplicateVin: boolean;
+  hadDispute: boolean;
   labels: T;
 };
 
-export function ListingDetailClientIsland({ chainId, tokenId, listing, passportOwner, labels: t }: Props) {
+export function ListingDetailClientIsland({
+  chainId,
+  tokenId,
+  listing,
+  passportOwner,
+  passportStatus,
+  duplicateVin,
+  hadDispute,
+  labels: t,
+}: Props) {
   const contactPeer: `0x${string}` = listing?.active ? listing.seller : passportOwner;
 
   return (
     <div className="space-y-6">
       {listing?.active ? (
-        <ListingBuyPanel chainId={chainId} tokenId={tokenId} listing={listing} labels={t} />
+        <ListingBuyPanel
+          chainId={chainId}
+          tokenId={tokenId}
+          listing={listing}
+          passportStatus={passportStatus}
+          duplicateVin={duplicateVin}
+          hadDispute={hadDispute}
+          labels={t}
+        />
       ) : (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           {t.notForSale}

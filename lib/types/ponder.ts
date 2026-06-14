@@ -136,6 +136,10 @@ export type PonderPassportDetail = {
   disputeWithdrawnAt: string;
   lastVerificationResetAt: string;
   duplicateVin: boolean;
+  lastMetadataChangeAt: string;
+  verificationResetCount: number;
+  hadDispute: boolean;
+  lastDisputeResolvedAt: string;
   createdAt: string;
   updatedAt: string;
   records: PonderPassportRecord[];

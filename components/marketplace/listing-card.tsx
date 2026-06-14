@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
+import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
@@ -53,6 +54,9 @@ export function ListingCard({ row }: { row: MarketplaceListingRow }) {
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 flex-1 text-sm font-medium leading-snug text-text-primary">{row.title}</h3>
             <PassportStatusBadge status={row.passportStatus} />
+            {row.passportStatus === "VERIFIED" && row.verifier && (
+              <VerifierInactiveBadge chainId={row.chainId} verifier={row.verifier} />
+            )}
             {row.karPro && <KarProBadge className="shrink-0" />}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">

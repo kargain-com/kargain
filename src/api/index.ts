@@ -51,6 +51,7 @@ function jsonBody<T>(value: T): T {
 
 type PassportDenorm = {
   status: string;
+  verifier: string;
   vin: string;
   make: string;
   model: string;
@@ -73,6 +74,7 @@ async function loadPassportMap(
     if (row) {
       map.set(tokenId, {
         status: row.status,
+        verifier: row.verifier,
         vin: row.vin,
         make: row.make,
         model: row.model,
@@ -115,6 +117,7 @@ function enrichListing(
     bodyType: p?.bodyType ?? "",
     transmission: p?.transmission ?? "",
     passportStatus: p?.status ?? "UNVERIFIED",
+    verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
     tokenUri: p?.tokenUri ?? "",
     duplicateVin: p?.duplicateVin ?? false,
