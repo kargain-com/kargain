@@ -69,6 +69,15 @@ const DICT = {
     listingUnavailableReason: "It may have been hidden by moderators or expired.",
     featured: "Featured",
     noRecordsHint: "Service logs, attestations, and discrepancy records will appear here over time.",
+    recordLabelService: "Service history",
+    recordLabelAttestation: "Verifier attestation",
+    recordLabelDisputeClarification: "Owner clarification",
+    recordLabelDiscrepancyReport: "Discrepancy report",
+    recordLabelDisputeOpened: "Dispute opened",
+    recordLabelDisputeWithdrawn: "Dispute withdrawn (signal)",
+    recordLabelOwnerInitiated: "Owner-initiated",
+    disputeOpenedBy: "Opened by",
+    disputeWithdrawnSignal: "Dispute withdrawn (signal only — status stays DISPUTED until a verifier resolves).",
     buyRiskTitle: "Review purchase risks",
     buyRiskDescription:
       "This passport has trust signals you should review before buying. You will inherit its on-chain status as the new owner.",
@@ -154,6 +163,16 @@ const DICT = {
     featured: "À la une",
     noRecordsHint:
       "Les entretiens, attestations et divergences apparaîtront ici progressivement.",
+    recordLabelService: "Historique d’entretien",
+    recordLabelAttestation: "Attestation du vérificateur",
+    recordLabelDisputeClarification: "Clarification du propriétaire",
+    recordLabelDiscrepancyReport: "Signalement de divergence",
+    recordLabelDisputeOpened: "Litige ouvert",
+    recordLabelDisputeWithdrawn: "Litige retiré (signal)",
+    recordLabelOwnerInitiated: "Initié par le propriétaire",
+    disputeOpenedBy: "Ouvert par",
+    disputeWithdrawnSignal:
+      "Litige retiré (signal uniquement — le statut reste CONTESTÉ jusqu’à résolution par un vérificateur).",
     buyRiskTitle: "Examiner les risques d’achat",
     buyRiskDescription:
       "Ce passeport présente des signaux de confiance à examiner avant l’achat. Vous hériterez de son statut on-chain en tant que nouveau propriétaire.",

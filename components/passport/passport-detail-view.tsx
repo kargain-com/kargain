@@ -3,12 +3,14 @@ import Link from "next/link";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
+import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
@@ -50,17 +52,6 @@ function buildTitle(metadata: PassportMetadata | null, tokenId: string): string 
   return `KarPassport #${tokenId}`;
 }
 
-function findDiscrepancyReason(
-  records: PonderPassportDetail["records"],
-): string | null {
-  for (const record of records) {
-    if (record.recordType === "discrepancy" && record.description.trim()) {
-      return record.description.trim();
-    }
-  }
-  return null;
-}
-
 export function PassportDetailView({
   tokenId,
   chainId,
@@ -71,7 +62,13 @@ export function PassportDetailView({
   listing = null,
 }: Props) {
   const title = buildTitle(metadata, tokenId);
-  const discrepancyReason = findDiscrepancyReason(passport.records);
+  const disputeBannerText = getDisputeBannerText({
+    disputeReason: passport.disputeReason,
+    fallback: t.discrepancyBanner,
+  });
+  const disputeWithdrawn =
+    passport.disputeWithdrawnAt !== "0" &&
+    Number.parseInt(passport.disputeWithdrawnAt, 10) > 0;
   const verifiedDate = formatChainDate(passport.verifiedAt, "en");
   const hasVerifier =
     passport.status === "VERIFIED" &&
@@ -113,46 +110,13 @@ export function PassportDetailView({
             <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
           </section>
 
-          <section id="passport-records" className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-            <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-              {t.historyRecords}
-            </h2>
-            {passport.records.length === 0 ? (
-              <p className="font-sans text-sm text-text-secondary">{t.noRecordsHint}</p>
-            ) : (
-              <ul className="space-y-3">
-                {passport.records.map((record) => (
-                  <li
-                    key={record.id}
-                    className="rounded-md border border-border-default bg-bg-primary/80 p-4"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-text-tertiary">
-                        {record.recordType}
-                      </p>
-                      <p className="font-mono text-xs font-normal tabular-nums text-text-secondary">
-                        {formatChainDate(record.timestamp, "en") || t.atTime}
-                      </p>
-                    </div>
-                    <p className="mt-2 font-sans text-sm text-text-secondary">
-                      {t.author}:{" "}
-                      <Link
-                        href={`/profile/${record.author}`}
-                        className="font-mono text-accent-warm hover:underline"
-                      >
-                        {navShortAddress(record.author)}
-                      </Link>
-                    </p>
-                    {record.description.trim() && (
-                      <p className="mt-2 font-sans text-sm text-text-primary">
-                        {record.description}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <PassportRecordsTimeline
+            records={passport.records}
+            passportOwner={passport.owner}
+            lastDisputer={passport.lastDisputer}
+            disputeReason={passport.disputeReason}
+            labels={t}
+          />
 
           <PassportUriHistory entries={passport.uriHistory} />
 
@@ -192,13 +156,24 @@ export function PassportDetailView({
               <p className="font-sans text-sm font-medium text-text-primary">
                 {t.discrepancyNoticeTitle}
               </p>
-              <p className="mt-2 font-sans text-sm text-text-secondary">
-                {passport.disputeReason.trim() || discrepancyReason || t.discrepancyBanner}
-              </p>
-              {passport.disputeWithdrawnAt !== "0" &&
-                Number.parseInt(passport.disputeWithdrawnAt, 10) > 0 && (
-                  <p className="mt-2 text-sm text-text-secondary">Dispute withdrawn</p>
+              <p className="mt-2 font-sans text-sm text-text-secondary">{disputeBannerText}</p>
+              {passport.lastDisputer.trim() &&
+                passport.lastDisputer !== "0x0000000000000000000000000000000000000000" && (
+                  <p className="mt-2 font-sans text-sm text-text-secondary">
+                    {t.disputeOpenedBy}{" "}
+                    <Link
+                      href={`/profile/${passport.lastDisputer}`}
+                      className="font-mono text-accent-warm hover:underline"
+                    >
+                      {navShortAddress(passport.lastDisputer)}
+                    </Link>
+                  </p>
                 )}
+              {disputeWithdrawn && (
+                <p className="mt-2 font-sans text-sm text-text-secondary">
+                  {t.disputeWithdrawnSignal}
+                </p>
+              )}
             </div>
           )}
 
