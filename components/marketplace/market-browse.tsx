@@ -19,6 +19,8 @@ import {
   useMarketFiltersFromUrl,
 } from "@/components/marketplace/market-filters";
 import { FadeUp } from "@/components/ui/fade-up";
+import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
+import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 import { filtersToSearchParams } from "@/lib/marketplace/filter-params";
 import type { MarketSort } from "@/lib/marketplace/filter-params";
 
@@ -52,6 +54,8 @@ export function MarketBrowse({ initialChainId }: { initialChainId: number }) {
     () => data?.pages.flatMap((p) => p.rows) ?? [],
     [data],
   );
+
+  const { drifts } = useListingChainStatusConfirm(rows);
 
   const total = data?.pages[0]?.total ?? 0;
   const ponderError = data?.pages[0]?.ponderError;
@@ -131,7 +135,10 @@ export function MarketBrowse({ initialChainId }: { initialChainId: number }) {
             <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {rows.map((row) => (
                 <li key={`${row.chainId}-${row.tokenId}`}>
-                  <ListingCard row={row} />
+                  <ListingCard
+                    row={row}
+                    chainStatusDrift={drifts.get(listingStatusKey(row.chainId, row.tokenId))}
+                  />
                 </li>
               ))}
             </ul>

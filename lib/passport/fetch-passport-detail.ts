@@ -3,6 +3,7 @@ import {
   fetchArweaveMetadata,
   type PassportMetadata,
 } from "@/lib/passport/fetch-arweave-metadata";
+import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import type {
   PassportStatus,
   PonderPassportDetail,
@@ -13,12 +14,6 @@ import { getPublicClient } from "@/lib/web3/public-client";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
-
-const STATUS_FROM_CHAIN: Record<number, PassportStatus> = {
-  0: "UNVERIFIED",
-  1: "VERIFIED",
-  2: "DISPUTED",
-};
 
 export type PassportDetailResult =
   | {
@@ -178,7 +173,7 @@ async function confirmStatusOnChain(
       args: [BigInt(tokenId)],
     });
 
-    const chainStatus = STATUS_FROM_CHAIN[Number(result[0])];
+    const chainStatus = passportStatusFromChainIndex(Number(result[0]));
     if (chainStatus && chainStatus !== ponderStatus) {
       return chainStatus;
     }

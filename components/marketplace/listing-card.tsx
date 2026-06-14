@@ -1,17 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 
-export function ListingCard({ row }: { row: MarketplaceListingRow }) {
+type Props = {
+  row: MarketplaceListingRow;
+  chainStatusDrift?: ListingChainStatusDrift;
+};
+
+export function ListingCard({ row, chainStatusDrift }: Props) {
   const fiat = formatFiat1e8(row.fiatPrice1e8);
   const cur = fiatCurrencyLabel(row.fiatCurrency);
+  const statusStale = Boolean(chainStatusDrift);
+  const displayStatus = chainStatusDrift?.chainStatus ?? row.passportStatus;
 
   return (
     <Link
@@ -34,14 +43,14 @@ export function ListingCard({ row }: { row: MarketplaceListingRow }) {
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 bg-bg-surface" />
-          {row.featured && (
+          {displayStatus === "VERIFIED" && !statusStale && (
             <span className="absolute right-2 top-2 rounded border border-accent-warm/40 bg-bg-primary/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-warm">
               Verified
             </span>
           )}
-          {row.passportStatus !== "VERIFIED" && (
+          {displayStatus !== "VERIFIED" && (
             <span className="absolute left-2 top-2 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase text-status-error">
-              {row.passportStatus === "DISPUTED" ? "Disputed" : "Unverified"}
+              {displayStatus === "DISPUTED" ? "Disputed" : "Unverified"}
             </span>
           )}
           {row.duplicateVin && (
@@ -53,8 +62,17 @@ export function ListingCard({ row }: { row: MarketplaceListingRow }) {
         <CardContent className="space-y-2.5 p-4">
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 flex-1 text-sm font-medium leading-snug text-text-primary">{row.title}</h3>
-            <PassportStatusBadge status={row.passportStatus} />
-            {row.passportStatus === "VERIFIED" && row.verifier && (
+            <PassportStatusBadge status={displayStatus} />
+            {statusStale && (
+              <span
+                className="inline-flex items-center gap-1 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-status-error"
+                title={`Indexer out of sync — on-chain status: ${chainStatusDrift!.chainStatus}`}
+              >
+                <AlertTriangle size={10} strokeWidth={1.5} aria-hidden />
+                On-chain
+              </span>
+            )}
+            {displayStatus === "VERIFIED" && row.verifier && (
               <VerifierInactiveBadge chainId={row.chainId} verifier={row.verifier} />
             )}
             {row.karPro && <KarProBadge className="shrink-0" />}
