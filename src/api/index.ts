@@ -140,6 +140,7 @@ app.get("/listings", async (c) => {
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
   const offset = (page - 1) * limit;
   const filters = parseListingFilterQuery({
+    search: c.req.query("search"),
     make: c.req.query("make"),
     model: c.req.query("model"),
     yearMin: c.req.query("yearMin"),

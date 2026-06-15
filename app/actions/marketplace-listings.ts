@@ -10,6 +10,7 @@ import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus } from "@/lib/types/ponder";
 
 const filterSchema = z.object({
+  search: z.string().optional(),
   make: z.string().optional(),
   model: z.string().optional(),
   yearMin: z.number().int().optional(),
@@ -143,6 +144,7 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   url.searchParams.set("limit", String(p.limit));
   url.searchParams.set("verifiedFirst", "true");
   url.searchParams.set("currency", p.currency);
+  if (p.search) url.searchParams.set("search", p.search);
   if (p.make) url.searchParams.set("make", p.make);
   if (p.model) url.searchParams.set("model", p.model);
   if (p.yearMin != null) url.searchParams.set("yearMin", String(p.yearMin));

@@ -2,6 +2,7 @@ import type { MarketSort } from "@/lib/marketplace/filter-params";
 import { priceToFiat1e8 } from "@/lib/marketplace/filter-params";
 
 export type ListingFilterQuery = {
+  search?: string;
   make?: string;
   model?: string;
   yearMin?: number;
@@ -19,6 +20,7 @@ export type ListingFilterQuery = {
 
 export type PassportFilterFields = {
   passportStatus: string;
+  vin: string;
   make: string;
   model: string;
   year: number;
@@ -75,6 +77,7 @@ export function parseListingFilterQuery(
   const currency = currencyRaw === "EUR" ? "EUR" : "USD";
 
   return {
+    search: query.search?.trim() || undefined,
     make: query.make?.trim() || undefined,
     model: query.model?.trim() || undefined,
     yearMin: parseOptionalInt(query.yearMin),
@@ -128,6 +131,12 @@ export function matchesListingFilters(
   if (!includesCsvMatch(filters.fuelTypes ?? [], row.fuelType)) return false;
   if (!includesCsvMatch(filters.bodyTypes ?? [], row.bodyType)) return false;
   if (!includesCsvMatch(filters.transmissions ?? [], row.transmission)) return false;
+
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    const haystack = [row.make, row.model, row.vin].map((s) => s.toLowerCase());
+    if (!haystack.some((s) => s.includes(q))) return false;
+  }
 
   return true;
 }

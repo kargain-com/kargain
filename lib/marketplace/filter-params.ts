@@ -2,6 +2,7 @@ export type MarketSort = "newest" | "price_asc" | "price_desc" | "mileage_asc";
 export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
 
 export type MarketFilterState = {
+  search: string;
   make: string;
   model: string;
   yearMin: string;
@@ -19,6 +20,7 @@ export type MarketFilterState = {
 };
 
 export const DEFAULT_MARKET_FILTERS: MarketFilterState = {
+  search: "",
   make: "",
   model: "",
   yearMin: "",
@@ -60,6 +62,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
   const pageN = pageRaw ? Number.parseInt(pageRaw, 10) : 1;
 
   return {
+    search: sp.get("search") ?? sp.get("q") ?? "",
     make: sp.get("make") ?? "",
     model: sp.get("model") ?? "",
     yearMin: sp.get("yearMin") ?? "",
@@ -79,6 +82,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
 
 export function filtersToSearchParams(filters: MarketFilterState): URLSearchParams {
   const sp = new URLSearchParams();
+  if (filters.search) sp.set("search", filters.search);
   if (filters.make) sp.set("make", filters.make);
   if (filters.model) sp.set("model", filters.model);
   if (filters.yearMin) sp.set("yearMin", filters.yearMin);
@@ -121,6 +125,7 @@ export function priceToFiat1e8(amount: string): string | undefined {
 
 export function marketFiltersToApiInput(filters: MarketFilterState) {
   return {
+    search: filters.search.trim() || undefined,
     make: filters.make || undefined,
     model: filters.model || undefined,
     yearMin: filters.yearMin ? Number.parseInt(filters.yearMin, 10) : undefined,

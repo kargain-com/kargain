@@ -10,6 +10,7 @@ import {
 
 const baseRow: EnrichedListingForFilter = {
   passportStatus: "VERIFIED",
+  vin: "1HGCM82633A123456",
   make: "Honda",
   model: "Civic",
   year: 2021,
@@ -78,6 +79,13 @@ describe("matchesListingFilters", () => {
       matchesListingFilters(baseRow, { status: "UNVERIFIED" }),
       false,
     );
+  });
+
+  it("matches search against make, model, and VIN substrings", () => {
+    assert.equal(matchesListingFilters(baseRow, { search: "honda" }), true);
+    assert.equal(matchesListingFilters(baseRow, { search: "civic" }), true);
+    assert.equal(matchesListingFilters(baseRow, { search: "1HGCM82633" }), true);
+    assert.equal(matchesListingFilters(baseRow, { search: "toyota" }), false);
   });
 });
 
