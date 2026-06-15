@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAddress } from "viem";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
+import { ProfileEditLink } from "@/components/profile/profile-edit-link";
 import { ProfileFavoritesSection } from "@/components/profile/profile-favorites-section";
 import { FadeUp } from "@/components/ui/fade-up";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
@@ -107,7 +107,7 @@ export default async function PublicProfilePage({
               <span className="text-text-secondary">Discord: {profile.socialLinks.discord}</span>
             )}
           </div>
-          <ButtonLink href="/profile/edit">Edit profile</ButtonLink>
+          <ProfileEditLink wallet={wallet} />
         </div>
       </div>
 
@@ -204,16 +204,5 @@ export default async function PublicProfilePage({
         </section>
       )}
     </div>
-  );
-}
-
-function ButtonLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex h-9 items-center justify-center rounded-sm border border-border-hover px-4 text-sm text-text-primary hover:bg-bg-surface"
-    >
-      {children}
-    </Link>
   );
 }

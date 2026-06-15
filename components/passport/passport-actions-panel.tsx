@@ -82,6 +82,14 @@ export function PassportActionsPanel({
   const [disputeReason, setDisputeReason] = useState("");
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
+  const [discrepancyEvidencePaste, setDiscrepancyEvidencePaste] = useState("");
+  const [discrepancyEvidenceFile, setDiscrepancyEvidenceFile] = useState<File | null>(
+    null,
+  );
+  const [clarificationEvidencePaste, setClarificationEvidencePaste] = useState("");
+  const [clarificationEvidenceFile, setClarificationEvidenceFile] = useState<File | null>(
+    null,
+  );
   const [attestationText, setAttestationText] = useState("");
   const [attestationEvidencePaste, setAttestationEvidencePaste] = useState("");
   const [attestationEvidenceFile, setAttestationEvidenceFile] = useState<File | null>(
@@ -161,6 +169,110 @@ export function PassportActionsPanel({
     chainId,
     connector,
     signMessageAsync,
+  ]);
+
+  const uploadEvidenceFromInput = useCallback(
+    async (file: File | null, paste: string): Promise<string> => {
+      if (file) {
+        if (!address) throw new Error("Connect your wallet to continue");
+        setIsUploadingEvidence(true);
+        try {
+          await ensureSiweSession({
+            address,
+            chainId,
+            signMessageAsync,
+          });
+          const provider = await getWalletUploadProvider(connector ?? undefined);
+          return await uploadEvidenceFile(file, provider);
+        } finally {
+          setIsUploadingEvidence(false);
+        }
+      }
+      return paste.trim();
+    },
+    [address, chainId, connector, signMessageAsync],
+  );
+
+  const resolveDiscrepancyEvidence = useCallback(
+    () => uploadEvidenceFromInput(discrepancyEvidenceFile, discrepancyEvidencePaste),
+    [discrepancyEvidenceFile, discrepancyEvidencePaste, uploadEvidenceFromInput],
+  );
+
+  const resolveClarificationEvidence = useCallback(
+    () => uploadEvidenceFromInput(clarificationEvidenceFile, clarificationEvidencePaste),
+    [clarificationEvidenceFile, clarificationEvidencePaste, uploadEvidenceFromInput],
+  );
+
+  const submitDiscrepancy = useCallback(async () => {
+    const description = discrepancyText.trim();
+    if (!description || !passport) return;
+
+    if (wrongChain) {
+      await switchChainAsync?.({ chainId: wc });
+    }
+
+    try {
+      const evidenceCID = await resolveDiscrepancyEvidence();
+      await writeContractAsync({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "reportDiscrepancy",
+        args: [tid, description, evidenceCID],
+      });
+      setDiscrepancyText("");
+      setDiscrepancyEvidencePaste("");
+      setDiscrepancyEvidenceFile(null);
+      setMessage("Discrepancy reported.");
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Transaction failed.");
+    }
+  }, [
+    discrepancyText,
+    passport,
+    resolveDiscrepancyEvidence,
+    router,
+    switchChainAsync,
+    tid,
+    wc,
+    wrongChain,
+    writeContractAsync,
+  ]);
+
+  const submitClarification = useCallback(async () => {
+    const description = clarificationText.trim();
+    if (!description || !passport) return;
+
+    if (wrongChain) {
+      await switchChainAsync?.({ chainId: wc });
+    }
+
+    try {
+      const evidenceCID = await resolveClarificationEvidence();
+      await writeContractAsync({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "appendRecord",
+        args: [tid, "dispute-clarification", description, evidenceCID],
+      });
+      setClarificationText("");
+      setClarificationEvidencePaste("");
+      setClarificationEvidenceFile(null);
+      setMessage("Clarification appended.");
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Transaction failed.");
+    }
+  }, [
+    clarificationText,
+    passport,
+    resolveClarificationEvidence,
+    router,
+    switchChainAsync,
+    tid,
+    wc,
+    wrongChain,
+    writeContractAsync,
   ]);
 
   const submitAttestation = useCallback(async () => {
@@ -385,23 +497,26 @@ export function PassportActionsPanel({
             onChange={(e) => setClarificationText(e.target.value)}
             rows={3}
           />
+          <EvidenceInput
+            idPrefix="clarification-evidence"
+            value={clarificationEvidencePaste}
+            onChange={setClarificationEvidencePaste}
+            file={clarificationEvidenceFile}
+            onFileChange={setClarificationEvidenceFile}
+            disabled={actionsBusy}
+            labels={{
+              evidenceLabel: "Evidence (optional)",
+              evidenceHint: labels.attestationEvidenceHint,
+              evidencePlaceholder: labels.attestationEvidencePlaceholder,
+              evidenceFileLabel: labels.attestationEvidenceFileLabel,
+            }}
+          />
           <Button
             type="button"
             variant="secondary"
             className="w-full"
-            disabled={isPending || !clarificationText.trim()}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport,
-                    abi: KarPassportAbi,
-                    functionName: "appendRecord",
-                    args: [tid, "dispute-clarification", clarificationText.trim(), ""],
-                  }),
-                "Clarification appended.",
-              )
-            }
+            disabled={actionsBusy || !clarificationText.trim()}
+            onClick={() => void submitClarification()}
           >
             Append clarification
           </Button>
@@ -453,23 +568,26 @@ export function PassportActionsPanel({
           onChange={(e) => setDiscrepancyText(e.target.value)}
           rows={2}
         />
+        <EvidenceInput
+          idPrefix="discrepancy-evidence"
+          value={discrepancyEvidencePaste}
+          onChange={setDiscrepancyEvidencePaste}
+          file={discrepancyEvidenceFile}
+          onFileChange={setDiscrepancyEvidenceFile}
+          disabled={actionsBusy}
+          labels={{
+            evidenceLabel: "Evidence (optional)",
+            evidenceHint: labels.attestationEvidenceHint,
+            evidencePlaceholder: labels.attestationEvidencePlaceholder,
+            evidenceFileLabel: labels.attestationEvidenceFileLabel,
+          }}
+        />
         <Button
           type="button"
           variant="outline"
           className="w-full"
-          disabled={isPending || !discrepancyText.trim()}
-          onClick={() =>
-            void run(
-              () =>
-                writeContractAsync({
-                  address: passport,
-                  abi: KarPassportAbi,
-                  functionName: "reportDiscrepancy",
-                  args: [tid, discrepancyText.trim(), ""],
-                }),
-              "Discrepancy reported.",
-            )
-          }
+          disabled={actionsBusy || !discrepancyText.trim()}
+          onClick={() => void submitDiscrepancy()}
         >
           Report discrepancy
         </Button>
