@@ -2,10 +2,69 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAddress } from "viem";
 
+import { getVerifierAttestations } from "@/app/actions/verifier-attestations";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
+import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+
+function formatChainDate(timestampSec: string): string {
+  const sec = Number.parseInt(timestampSec, 10);
+  if (!Number.isFinite(sec) || sec <= 0) return "";
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(sec * 1000));
+}
+
+function evidenceHref(evidenceCID: string): string | null {
+  const trimmed = evidenceCID.trim();
+  if (!trimmed) return null;
+  return (
+    arUriToHttp(trimmed) ??
+    (trimmed.startsWith("http") ? trimmed : `https://arweave.net/${trimmed}`)
+  );
+}
+
+function AttestationRow({
+  attestation,
+  chainId,
+}: {
+  attestation: PonderVerifierAttestation;
+  chainId: number;
+}) {
+  const href = evidenceHref(attestation.evidenceCID);
+  const date = formatChainDate(attestation.timestamp);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Link
+        href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
+        className="font-mono text-sm text-accent-warm hover:underline"
+      >
+        Passport #{attestation.tokenId}
+      </Link>
+      {attestation.description.trim() && (
+        <p className="line-clamp-2 font-sans text-sm text-text-primary">
+          {attestation.description.trim()}
+        </p>
+      )}
+      {date && <p className="font-mono text-xs text-text-secondary">{date}</p>}
+      {href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-sans text-xs text-accent-warm hover:underline"
+        >
+          Evidence ↗
+        </a>
+      )}
+    </div>
+  );
+}
 
 export default async function VerifierPage({
   params,
@@ -22,6 +81,8 @@ export default async function VerifierPage({
 
   const detail = await fetchVerifierDetail(address);
   if (!detail) notFound();
+
+  const attestationsResult = await getVerifierAttestations(address);
 
   const chainId = DEFAULT_CHAIN_ID;
   const identity = detail.identity as { name?: string; category?: number };
@@ -106,6 +167,23 @@ export default async function VerifierPage({
           </ul>
         </section>
       )}
+
+      <section>
+        <h2 className="mb-4 font-sans text-base font-medium text-text-primary">Attestations</h2>
+        {attestationsResult.attestations.length === 0 ? (
+          <p className="font-sans text-sm text-text-secondary">No attestations yet.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {attestationsResult.attestations.map((attestation) => (
+              <AttestationRow
+                key={`${attestation.tokenId}-${attestation.timestamp}`}
+                attestation={attestation}
+                chainId={chainId}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

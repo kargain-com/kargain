@@ -45,6 +45,13 @@ function parseLimit(raw: string | undefined): number {
   return Math.min(n, 100);
 }
 
+function parseOffset(raw: string | undefined): number {
+  const n = raw ? Number.parseInt(raw, 10) : 0;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+const ATTESTATION_RECORD_TYPE = "attestation";
+
 function jsonBody<T>(value: T): T {
   return replaceBigInts(value, (v) => String(v)) as T;
 }
@@ -353,11 +360,24 @@ app.get("/profile/:address/listings", async (c) => {
 });
 
 app.get("/verifiers", async (c) => {
-  const verifiers = await db
+  const rows = await db
     .select()
     .from(verifier)
     .where(eq(verifier.active, true))
     .orderBy(desc(verifier.joinedAt));
+
+  const verifiers = await Promise.all(
+    rows.map(async (v) => {
+      const verificationRow = await db
+        .select({ total: count() })
+        .from(passport)
+        .where(eq(passport.verifier, getAddress(v.id)));
+      return {
+        ...v,
+        verificationCount: verificationRow[0]?.total ?? 0,
+      };
+    }),
+  );
 
   return c.json(jsonBody({ verifiers }));
 });
@@ -415,6 +435,42 @@ app.get("/verifiers/:address", async (c) => {
       verificationCount,
       disputedPassports,
       verifiedPassports,
+    }),
+  );
+});
+
+app.get("/verifiers/:address/attestations", async (c) => {
+  const id = c.req.param("address").toLowerCase();
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = parseOffset(c.req.query("offset"));
+
+  const where = and(
+    eq(passportRecord.author, id),
+    eq(passportRecord.recordType, ATTESTATION_RECORD_TYPE),
+  );
+
+  const [attestations, totalRow] = await Promise.all([
+    db
+      .select({
+        tokenId: passportRecord.tokenId,
+        description: passportRecord.description,
+        evidenceCID: passportRecord.evidenceCID,
+        timestamp: passportRecord.timestamp,
+      })
+      .from(passportRecord)
+      .where(where)
+      .orderBy(desc(passportRecord.timestamp))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(passportRecord).where(where),
+  ]);
+
+  return c.json(
+    jsonBody({
+      attestations,
+      total: totalRow[0]?.total ?? 0,
+      limit,
+      offset,
     }),
   );
 });

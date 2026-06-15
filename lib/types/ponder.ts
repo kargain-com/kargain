@@ -64,11 +64,17 @@ export type ListingRow = {
 >;
 
 export type VerifierRow = {
+  id?: string;
   address: `0x${string}`;
   category: number;
   name: string;
   metadataURI: string;
+  stakeAsset?: number;
+  stakeAmount?: string;
   active: boolean;
+  joinedAt?: string;
+  leftAt?: string;
+  verificationCount: number;
 };
 
 export type FacetsResponse = {
@@ -205,4 +211,18 @@ export type PonderVerifierDetail = {
   verificationCount: number;
   disputedPassports: PonderPassportDetail[];
   verifiedPassports: PonderPassportDetail[];
+};
+
+export type PonderVerifierAttestation = {
+  tokenId: string;
+  description: string;
+  evidenceCID: string;
+  timestamp: string;
+};
+
+export type PonderVerifierAttestationsResponse = {
+  attestations: PonderVerifierAttestation[];
+  total: number;
+  limit: number;
+  offset: number;
 };

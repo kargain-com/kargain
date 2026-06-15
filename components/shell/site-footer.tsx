@@ -11,6 +11,9 @@ export function SiteFooter() {
           <Link href="/about" className="hover:text-text-primary">
             About
           </Link>
+          <Link href="/verifiers" className="hover:text-text-primary">
+            Verifiers
+          </Link>
           <Link href="/terms" className="hover:text-text-primary">
             Terms
           </Link>

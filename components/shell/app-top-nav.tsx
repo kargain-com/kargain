@@ -44,6 +44,13 @@ export function AppTopNav() {
           </span>
         </Link>
 
+        <Link
+          href="/verifiers"
+          className="shrink-0 font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          Verifiers
+        </Link>
+
         {showMarketplaceSearch && (
           <MarketplaceSearch key={urlSearch} initialSearch={urlSearch} searchParams={sp} />
         )}
