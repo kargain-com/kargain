@@ -6,6 +6,7 @@ import type { Address } from "viem";
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { proSlugForAddress } from "@/lib/web3/pro-slugs";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
@@ -31,13 +32,14 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
     verifier.verificationCount === 1
       ? "1 verification"
       : `${verifier.verificationCount} verifications`;
+  const showroomSlug = proSlugForAddress(verifier.address);
 
   return (
-    <Link
-      href={`/verifier/${verifier.address}`}
-      className="block rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:p-8"
-    >
-      <div className="flex flex-col gap-4">
+    <article className="flex flex-col rounded-md border border-border-default bg-bg-card p-6 md:p-8">
+      <Link
+        href={`/verifier/${verifier.address}`}
+        className="flex flex-col gap-4 transition-colors duration-200 hover:border-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+      >
         <div className="flex items-center gap-3">
           <EnsAvatar address={verifier.address as Address} size={40} />
           <div className="min-w-0">
@@ -61,8 +63,17 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
         <p className="font-sans text-sm text-text-secondary">{verificationLabel}</p>
 
         <VerifierStatus active={verifier.active} />
-      </div>
-    </Link>
+      </Link>
+
+      {showroomSlug && (
+        <Link
+          href={`/pro/${showroomSlug}`}
+          className="mt-4 font-sans text-sm text-accent-warm transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          View showroom →
+        </Link>
+      )}
+    </article>
   );
 }
 

@@ -6,8 +6,13 @@ import {
   filtersFromSearchParams,
   marketFiltersToApiInput,
 } from "@/lib/marketplace/filter-params";
-import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
+import {
+  mapPonderListingToRow,
+  type MarketplaceListingRow as MarketplaceListingRowType,
+} from "@/lib/marketplace/map-ponder-listing";
 import type { PassportStatus } from "@/lib/types/ponder";
+
+export type MarketplaceListingRow = MarketplaceListingRowType;
 
 const filterSchema = z.object({
   search: z.string().optional(),
@@ -28,32 +33,6 @@ const filterSchema = z.object({
   limit: z.number().int().min(1).max(48).default(20),
 });
 
-export type MarketplaceListingRow = {
-  chainId: number;
-  tokenId: string;
-  seller: `0x${string}`;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  passportStatus: PassportStatus;
-  updatedAtBlock: string;
-  tokenUri: string;
-  title: string;
-  imageUrl: string | null;
-  make: string | null;
-  model: string | null;
-  year: number | null;
-  mileageKm: number | null;
-  fuelType: string | null;
-  bodyType: string | null;
-  transmission: string | null;
-  lat: number | null;
-  lng: number | null;
-  duplicateVin: boolean;
-  verifier: string;
-  karPro: boolean;
-  featured: boolean;
-};
-
 export type MarketplaceListingsResult = {
   ok: true;
   rows: MarketplaceListingRow[];
@@ -65,8 +44,6 @@ export type MarketplaceListingsResult = {
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
-
-const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 type PonderListing = {
   id: string;
@@ -95,48 +72,6 @@ type PonderListingsResponse = {
   page: number;
   limit: number;
 };
-
-function buildTitle(listing: PonderListing): string {
-  if (listing.year && listing.make && listing.model) {
-    return `${listing.year} ${listing.make} ${listing.model}`;
-  }
-  if (listing.make && listing.model) return `${listing.make} ${listing.model}`;
-  return `Vehicle #${listing.tokenId}`;
-}
-
-function photoFromUri(tokenUri: string | undefined): string | null {
-  if (!tokenUri?.startsWith("ar://")) return null;
-  return arUriToHttp(tokenUri);
-}
-
-function mapListingToRow(listing: PonderListing): MarketplaceListingRow {
-  const status = (listing.passportStatus ?? "UNVERIFIED") as PassportStatus;
-  return {
-    chainId: BASE_SEPOLIA_CHAIN_ID,
-    tokenId: listing.tokenId,
-    seller: listing.seller as `0x${string}`,
-    fiatPrice1e8: String(listing.fiatPrice1e8),
-    fiatCurrency: listing.fiatCurrency,
-    passportStatus: status,
-    updatedAtBlock: String(listing.listedAt),
-    tokenUri: listing.tokenUri ?? "",
-    title: buildTitle(listing),
-    imageUrl: photoFromUri(listing.tokenUri),
-    make: listing.make || null,
-    model: listing.model || null,
-    year: listing.year && listing.year > 0 ? listing.year : null,
-    mileageKm: listing.mileageKm && listing.mileageKm > 0 ? listing.mileageKm : null,
-    fuelType: listing.fuelType || null,
-    bodyType: listing.bodyType || null,
-    transmission: listing.transmission || null,
-    lat: null,
-    lng: null,
-    duplicateVin: listing.duplicateVin === true,
-    verifier: listing.verifier ?? "",
-    karPro: false,
-    featured: status === "VERIFIED",
-  };
-}
 
 function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   const url = new URL(`${PONDER_URL}/listings`);
@@ -179,7 +114,7 @@ export async function searchMarketplaceListings(
       };
     }
     const data = (await res.json()) as PonderListingsResponse;
-    const rows = data.listings.map(mapListingToRow);
+    const rows = data.listings.map(mapPonderListingToRow);
     const totalPages = data.total > 0 ? Math.ceil(data.total / p.limit) : 0;
     return {
       ok: true,
@@ -293,7 +228,7 @@ export async function loadFavoriteListingCards(tokenIds: string[]) {
       });
       if (!res.ok) continue;
       const listing = (await res.json()) as PonderListing;
-      if (listing.active) rows.push(mapListingToRow(listing));
+      if (listing.active) rows.push(mapPonderListingToRow(listing));
     } catch {
       /* skip */
     }

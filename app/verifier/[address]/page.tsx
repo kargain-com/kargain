@@ -168,7 +168,7 @@ export default async function VerifierPage({
         </section>
       )}
 
-      <section>
+      <section id="attestations">
         <h2 className="mb-4 font-sans text-base font-medium text-text-primary">Attestations</h2>
         {attestationsResult.attestations.length === 0 ? (
           <p className="font-sans text-sm text-text-secondary">No attestations yet.</p>
