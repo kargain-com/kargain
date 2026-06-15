@@ -155,7 +155,7 @@ Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (Hardhat 3 requires ≥ 22.10.0)
 - pnpm
 - A wallet with Base Sepolia ETH (for on-chain testing)
   Faucet: https://faucet.quicknode.com/base/sepolia
