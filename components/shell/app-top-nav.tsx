@@ -4,18 +4,29 @@ import Link from "next/link";
 import { Inbox, PlusCircle, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
 import { ChainSelector } from "@/components/shell/chain-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function AppTopNav() {
   const path = usePathname();
   const sp = useSearchParams();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
+  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
+  const { data: isActiveVerifier } = useReadContract({
+    address: staking,
+    abi: KarProStakingAbi,
+    functionName: "isActiveVerifier",
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(isConnected && staking && address) },
+  });
+  const showBecomeKarPro = isConnected && isActiveVerifier !== true;
   const showMarketplaceSearch = path === "/";
   const urlSearch = sp.get("search") ?? sp.get("q") ?? "";
 
@@ -48,6 +59,14 @@ export function AppTopNav() {
             >
               <Inbox size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
               <XmtpUnreadBadge className="top-1.5 right-1.5" />
+            </Link>
+          )}
+          {showBecomeKarPro && (
+            <Link
+              href="/kar-pro"
+              className="hidden h-9 items-center justify-center rounded-sm bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] hover:bg-bg-surface focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
+            >
+              Become KarPro
             </Link>
           )}
           {isConnected && (
