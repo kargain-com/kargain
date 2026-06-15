@@ -1,89 +1,145 @@
 "use client";
 
-import { Car, Inbox, PlusCircle, User } from "lucide-react";
+import { Bell, Car, Inbox, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo } from "react";
+import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
+import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { cn } from "@/lib/utils";
 
-const leftItems = [
-  { href: "/", label: "Marketplace", Icon: Car, match: (p: string) => p === "/" },
-  {
-    href: "/messages",
-    label: "Messages",
-    Icon: Inbox,
-    match: (p: string) => p.startsWith("/messages"),
-    requireWallet: true as const,
-  },
-] as const;
+function NavTab({
+  href,
+  label,
+  active,
+  icon: Icon,
+  showBadge,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  icon: typeof Car;
+  showBadge?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+        "font-sans text-[10px] leading-tight transition-colors duration-200",
+        active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+      )}
+    >
+      <span className="relative flex size-6 shrink-0 items-center justify-center">
+        <Icon size={20} strokeWidth={1.5} aria-hidden />
+        {showBadge && <XmtpUnreadBadge className="-top-0.5 -right-0.5" />}
+      </span>
+      <span className="max-w-full truncate">{label}</span>
+    </Link>
+  );
+}
 
-function tabLinkClass(active: boolean, extra?: string) {
-  return cn(
-    "flex min-h-11 flex-col items-center justify-center gap-1 border-t-2 pt-0.5 font-sans text-xs transition-colors duration-200",
-    active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
-    extra,
+function ProfileNavTab({
+  active,
+  isConnected,
+  address,
+}: {
+  active: boolean;
+  isConnected: boolean;
+  address: Address | undefined;
+}) {
+  if (isConnected && address) {
+    return (
+      <Link
+        href={`/profile/${encodeURIComponent(address)}`}
+        className={cn(
+          "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+          "font-sans text-[10px] leading-tight transition-colors duration-200",
+          active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+        )}
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full">
+          <EnsAvatar address={address} size={22} className="rounded-full" />
+        </span>
+        <span className="max-w-full truncate">Profile</span>
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      href="/profile/edit"
+      className={cn(
+        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+        "font-sans text-[10px] leading-tight transition-colors duration-200",
+        active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+      )}
+    >
+      <span className="flex size-6 shrink-0 items-center justify-center">
+        <User size={20} strokeWidth={1.5} aria-hidden />
+      </span>
+      <span className="max-w-full truncate">Connect</span>
+    </Link>
   );
 }
 
 export function MobileBottomNav() {
   const path = usePathname();
   const { address, isConnected } = useAccount();
-  const profileHref = address ? `/profile/${encodeURIComponent(address)}` : "/profile/edit";
-
-  const visibleLeftItems = useMemo(
-    () => leftItems.filter((i) => !("requireWallet" in i && i.requireWallet) || isConnected),
-    [isConnected],
-  );
 
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-default bg-bg-primary pb-[env(safe-area-inset-bottom)] md:hidden"
       aria-label="Mobile primary"
     >
-      <ul className="flex h-16 items-end px-2">
-        <li className="flex flex-1 justify-around">
-          <ul className="flex w-full justify-around">
-            {visibleLeftItems.map(({ href, label, Icon, match }) => {
-              const active = match(path);
-              const isMessages = href === "/messages";
-              return (
-                <li key={href}>
-                  <Link href={href} className={tabLinkClass(active, "relative")}>
-                    <span className="relative">
-                      <Icon size={24} strokeWidth={1.5} aria-hidden />
-                      {isMessages && <XmtpUnreadBadge className="top-0 right-0" />}
-                    </span>
-                    {label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </li>
+      <div className="relative mx-auto grid h-16 max-w-lg grid-cols-5 items-end px-1">
+        <NavTab
+          href="/"
+          label="Marketplace"
+          icon={Car}
+          active={path === "/"}
+        />
 
-        <li className="flex shrink-0 items-center justify-center px-3">
+        <NavTab
+          href="/messages"
+          label="Messages"
+          icon={Inbox}
+          active={path.startsWith("/messages")}
+          showBadge={isConnected}
+        />
+
+        <div className="flex items-end justify-center">
           <Link
             href="/passport/new"
             aria-label="Create passport"
-            className="relative -mt-5 flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-bg-primary ring-4 ring-bg-primary transition-transform duration-150 active:scale-95"
+            className={cn(
+              "relative z-10 -top-3 mb-1 flex h-12 w-12 shrink-0 items-center justify-center",
+              "rounded-full border border-border-hover bg-bg-card text-accent-warm ring-2 ring-bg-primary",
+              "transition-[border-color,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
+              "hover:border-accent-warm",
+              "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+              "active:scale-95",
+            )}
           >
-            <PlusCircle size={24} strokeWidth={1.5} aria-hidden />
+            <Plus size={20} strokeWidth={1.5} aria-hidden />
           </Link>
-        </li>
+        </div>
 
-        <li className="flex flex-1 justify-end">
-          <Link
-            href={profileHref}
-            className={tabLinkClass(path.startsWith("/profile"), "px-4")}
-          >
-            <User size={24} strokeWidth={1.5} aria-hidden />
-            Profile
-          </Link>
-        </li>
-      </ul>
+        <NavTab
+          href="/notifications"
+          label="Alerts"
+          icon={Bell}
+          active={path.startsWith("/notifications")}
+        />
+
+        <ProfileNavTab
+          active={path.startsWith("/profile")}
+          isConnected={isConnected}
+          address={address}
+        />
+      </div>
     </nav>
   );
 }

@@ -99,7 +99,8 @@ export default async function PublicProfilePage({
   } | null = {};
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-24 text-text-primary md:px-8">
+    <div className="min-h-dvh bg-bg-primary text-text-primary">
+      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-24 md:px-8">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <ProfileHeaderIdentity
           wallet={wallet}
@@ -190,6 +191,7 @@ export default async function PublicProfilePage({
           ponderErr={ponderErr}
         />
       </FadeUp>
+      </div>
     </div>
   );
 }

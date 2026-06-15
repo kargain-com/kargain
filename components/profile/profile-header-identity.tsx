@@ -9,6 +9,7 @@ import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { ProfileEditLink } from "@/components/profile/profile-edit-link";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { navShortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
   wallet: Address;
@@ -70,11 +71,11 @@ export function ProfileHeaderIdentity({
           {showEnsLoading ? (
             <span className="inline-block h-4 w-32 animate-pulse rounded-sm bg-bg-surface" />
           ) : (
-            <h1 className="text-2xl font-medium tracking-tight">{headingName}</h1>
+            <h1 className="text-2xl font-medium tracking-tight text-text-primary">{headingName}</h1>
           )}
         </div>
         <span className="group inline-flex items-center gap-1.5 font-mono text-sm text-text-secondary">
-          <span title={wallet}>{displayName}</span>
+          <span title={wallet}>{navShortAddress(wallet)}</span>
           <button
             type="button"
             onClick={() => void onCopy()}

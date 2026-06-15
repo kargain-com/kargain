@@ -32,9 +32,9 @@ export function MessageInboxClient() {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
         <h1 className="text-xl font-medium text-text-primary">Messages</h1>
-        <p className="text-sm text-text-secondary">Connect a wallet to view conversations.</p>
-        <Button type="button" variant="outline">
-          Use “Connect wallet” in the top bar
+        <p className="text-sm text-text-secondary">Connect from the Profile tab or wallet menu.</p>
+        <Button type="button" variant="outline" asChild>
+          <Link href="/profile/edit">Connect wallet</Link>
         </Button>
       </div>
     );
