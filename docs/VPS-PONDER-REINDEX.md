@@ -1,8 +1,8 @@
 # VPS Ponder reindex runbook
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`).
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context) will be wrong until new on-chain events occur.
+Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context) or browse filter facets will be wrong until new on-chain events occur.
 
 ---
 
@@ -11,6 +11,7 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
+| Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute |
 | Stuck / corrupt sync | Ponder refuses to start after config change |
@@ -21,6 +22,7 @@ Examples that **do not** require reindex:
 
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Basescan verify (`pnpm verify:v1.1`) — ops-only, no indexer impact
+- Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 
 ---
 
@@ -120,10 +122,12 @@ docker compose restart ponder
 ```bash
 curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount'
 curl -s https://ponder.kargain.com/listings | jq '.total'
-curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts'
+curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts, .conditions, .vehicleTypes'
 ```
 
 Replace token `0` with a known minted passport if needed. On the marketplace UI, cards may show an **On-chain** badge when sampled RPC status differs from Ponder (G4) — that is client-side and does not require reindex.
+
+After reindex, run the browse filter smoke items in [README.md](../README.md) (top bar + drawer: status, make, condition, vehicle type, location, colour).
 
 ---
 
@@ -157,4 +161,4 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
 | `scripts/verify-v1.1.ts` | Basescan verify KarPassport + Marketplace (ops, not VPS) |
 | `deployments/84532.json` | v1.1 addresses + `indexFromBlock` (gitignored on VPS) |
-| `docs/passport-v1.1-spec.md` §14–§16 | Phase 5 deploy, verify, polish reference |
+| `docs/passport-v1.1-spec.md` §14–§17 | Deploy, verify, polish, UI complete reference |

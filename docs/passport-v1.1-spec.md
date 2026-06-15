@@ -2,10 +2,13 @@
 
 Status: **complete** (Phases 1–5 + polish PR5a–d, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
-Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete
+Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
+
+> **Multi-chain product:** Kargain is designed as a **multi-chain platform**. Base Sepolia is the current **test deployment** only. Contract logic, env configuration (`*_BY_CHAIN`), and UI chain selection must not assume a single network permanently. See [README.md](../README.md) § Multi-chain platform.
 
 ## 1. Philosophy
 
+- **Multi-chain** — Kargain is a multi-chain platform. Base Sepolia is the integration testnet for v1.1; the same Model X stack redeploys per network. Off-chain metadata (Arweave) and messaging (XMTP) stay chain-agnostic; trust state and listings are chain-scoped.
 - **Passport** = hybrid public fact registry + transferable ownership. **No burn.**
 - **Trust state** (`status`, `verifier`, `verifiedAt`) — **on-chain only**.
 - **Vehicle description** — extensible metadata JSON on Arweave (`tokenURI` pointer).
@@ -122,6 +125,7 @@ Owner may `setPassportURI`, then request re-verification.
 | **4** | Localhost 31337 E2E | **✅ Done** |
 | **5** | Single Sepolia redeploy + reindex + merge to master | **✅ Done** |
 | **5 polish** | Record labels, attestation UI, browse chain warning, Basescan verify | **✅ Done** |
+| **UI complete (June 2026)** | All contract + Ponder UI coverage; filters, shell, KarPro, showrooms | **✅ Done** |
 
 ## 10. Phase 1 test matrix
 
@@ -340,7 +344,7 @@ Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from bl
 
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
 
-**Document map:** Public status lives in this spec and [README.md](../README.md). Local-only handoff (`docs/SESSION.md`, `docs/ROADMAP.md`) is gitignored — not on GitHub; keep in sync manually after major milestones.
+**Document map:** Public status lives in this spec (§17 UI complete) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
 
 ## 15. Plan A–J core — definition of done (June 2026)
 
@@ -372,3 +376,34 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 **Tests:** `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm verify:v1.1` (ops, needs API key)
 
 **Deferred (Phase 6+):** evidence upload on report/clarification, owner service-history UI, full browse batch confirm, trust API endpoint, `buyWithUsdc` UI.
+
+## 17. UI complete — definition of done (June 2026)
+
+**Status:** All contract functions have UI coverage. All Ponder API endpoints have UI consumers.
+
+| Area | Route / component | Status |
+|------|-------------------|--------|
+| Marketplace browse + filters | `/` · `market-filter-bar` / drawer / chips | ✅ |
+| Mint + photo upload | `/passport/new` · `photo-upload-zone` | ✅ |
+| Edit (Variant C) | `/passport/[tokenId]/edit` | ✅ |
+| Verify / dispute / resolve / attestation | `passport-actions-panel` | ✅ |
+| KarPro onboarding | `/kar-pro` | ✅ |
+| Verifier directory | `/verifiers` | ✅ |
+| Verifier profile | `/verifier/[address]` | ✅ |
+| Pro showroom | `/pro/[slug]` · `PRO_SLUGS` (empty until owner adds slug) | ✅ |
+| Profile + showroom link | `/profile/[handle]` · `proSlugForAddress()` | ✅ |
+| Messages (XMTP) | `/messages` | ✅ |
+| Notifications | `/notifications` | ✅ |
+| ENS on addresses | wallet dropdown + profile displays | ✅ |
+| Mobile shell | 5-tab bottom nav; KarPro in top nav when eligible; no top/bottom duplication | ✅ |
+| KarPro credential | `proSlugForAddress()` showroom link (not `PRO_SLUGS[address]`) | ✅ |
+
+**Ponder → UI:** Full endpoint consumer map in [README.md](../README.md) § Ponder API.
+
+**Ops next steps:**
+
+1. Ponder reindex — filter schema columns on `passport` ([VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md))
+2. Stake on `/kar-pro` and add slug to `lib/web3/pro-slugs.ts`
+3. Sepolia smoke validation — [README.md](../README.md) checklist
+
+**Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for filter facets; `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`.

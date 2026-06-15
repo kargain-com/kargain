@@ -4,7 +4,26 @@ Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
 Messaging and payments without intermediaries.
 
-MIT License · Open Source · Built on Base
+**Multi-chain platform** — Kargain is designed to run on multiple networks, not a single L2. **Base Sepolia** is the current **integration testnet**; Base mainnet and additional chains follow validation. Do not treat “only Base Sepolia exists today” as a permanent product constraint when designing contracts, indexing, env config, or UI.
+
+MIT License · Open Source
+
+---
+
+## Multi-chain platform (read first)
+
+This is a **core product principle**, not a future nice-to-have.
+
+| | |
+|---|---|
+| **Vision** | One marketplace and passport protocol across chains. Users choose where their passport lives; listings and trust state are chain-scoped but the product is not. |
+| **Today** | **Base Sepolia (84532)** — contracts, Ponder indexer, and smoke validation. Optional **Hardhat (31337)** for local E2E. |
+| **Next** | **Base mainnet (8453)** after Sepolia validation, then **Ethereum mainnet (1)** as canonical trust layer (bridge: one token on one chain at a time). |
+| **Already chain-aware** | `lib/web3/deployment-addresses.ts` (`*_BY_CHAIN` env maps), `lib/web3/supported-chains.ts`, chain selector in app shell, per-chain manifests (`deployments/<chainId>.json`). |
+| **Chain-agnostic** | Passport photos and metadata on **Arweave**; Nostr comments/favorites; XMTP messaging — not tied to a single chain. |
+| **When deciding** | Prefer parameterized `chainId`, avoid hardcoding 84532 outside defaults/tests, and ask whether a feature should work on the *next* chain before shipping Base-only shortcuts. |
+
+Details: local `docs/REFERENCE.md` § Chain Architecture (gitignored)
 
 ---
 
@@ -47,8 +66,8 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | Layer | Role |
 |-------|------|
 | **Next.js frontend** | App UI, wallet auth (SIWE), client-side Arweave uploads |
-| **Ponder indexer** | Indexes Base Sepolia events; REST API (`/listings`, `/passports`, `/verifiers`, …) |
-| **Base L2 contracts** | KarPassport, KarProPass, KarProStaking (immutable); MarketplaceEscrow (UUPS proxy) |
+| **Ponder indexer** | Indexes deployed chain events (Base Sepolia today); REST API (`/listings`, `/passports`, `/verifiers`, …) — extend per chain as deployments grow |
+| **EVM contracts (per chain)** | KarPassport, KarProPass, KarProStaking (immutable); MarketplaceEscrow (UUPS proxy) — same Model X stack redeployed per network |
 | **Arweave** (via Irys) | Permanent photos and passport metadata |
 | **Nostr** | Public comments (NIP-01), favorites (NIP-51) |
 | **XMTP** | End-to-end encrypted buyer–seller messaging |
@@ -63,25 +82,72 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | Storage | Arweave via Irys (`@irys/web-upload`) |
 | Social | Nostr (NIP-01, NIP-02, NIP-51) |
 | Messaging | XMTP |
-| Chain | Base Sepolia (testnet) — mainnet after Sepolia validation |
+| Chain | **Multi-chain product** — **Base Sepolia (84532)** for testnet validation today; Base mainnet + Ethereum planned (see § Multi-chain platform above) |
 
 ## Phase status (June 2026)
 
 | Area | Status |
 |------|--------|
+| **UI complete (June 2026)** | **Complete** — all contract functions have UI coverage; all Ponder API endpoints have UI consumers |
 | **KarPassport v1.1 (Phases 1–5)** | **Complete** — merged to `master` |
 | **Trust / UX gap (plan A–J core)** | **Complete** — BuyRiskModal, verifier badges, G1/G2 Ponder, metadata diff, DISPUTED filter |
 | **Phase 5 polish (PR5a–d)** | **Complete** — typed record timeline, attestation UI, browse chain-status warning, Basescan verify |
+| **Marketplace filters & shell (June 2026)** | **Complete** — top filter bar + drawer, mobile 5-tab nav, ENS on address displays, photo upload zone |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
-| Ponder indexer | Production at https://ponder.kargain.com — G1 reindex done June 2026; repeat only on schema change ([runbook](docs/VPS-PONDER-REINDEX.md)) |
+| Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
-| Passport UI | Mint, edit (Variant C), verify/dispute/resolve, verifier attestation, typed records timeline, marketplace trust gates, Kar Pro, profiles |
-| Browse UX | Server-side filters (fuel/body/trans/status); sample on-chain status confirm on listing cards (G4) |
+| Passport UI | Mint (drag-and-drop photos), edit (Variant C), verify/dispute/resolve, attestation, records timeline, marketplace trust gates |
+| Browse UX | Top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; chain-status sample on cards (G4) |
+| KarPro & trust network | `/kar-pro`, `/verifiers`, `/verifier/[address]`, `/pro/[slug]` (dynamic showroom; `PRO_SLUGS` empty until owner adds slug after staking) |
 | Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
+
+### UI complete — June 2026
+
+All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed by the frontend.
+
+**App routes (primary):**
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Marketplace browse (filter bar + infinite scroll) |
+| `/passport/new` | Mint KarPassport (Irys upload + wizard) |
+| `/passport/[tokenId]/edit` | Edit metadata (Variant C) |
+| `/marketplace/[tokenId]` | Listing / passport detail |
+| `/marketplace/[tokenId]/edit` | Seller listing edit |
+| `/kar-pro` | KarPro onboarding + credential card |
+| `/verifiers` | Verifier directory |
+| `/verifier/[address]` | Verifier profile (empty state if never staked) |
+| `/pro/[slug]` | Professional showroom (`PRO_SLUGS` lookup; 404 if unknown slug) |
+| `/profile/[handle]` | Public wallet profile |
+| `/profile/edit` | Profile edit + connect wallet |
+| `/messages` | XMTP inbox |
+| `/messages/[conversationId]` | DM thread |
+| `/notifications` | Alerts placeholder + KarPro CTA when eligible |
+
+**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts · Profile (bottom). Desktop — Verifiers · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+
+**`PRO_SLUGS`:** `{}` (empty). After staking on `/kar-pro`, add `{ "your-slug": "0x…" }` in [`lib/web3/pro-slugs.ts`](lib/web3/pro-slugs.ts) to enable `/pro/[slug]` and profile showroom links.
+
+**Next steps:**
+
+1. Ponder reindex (schema gained `condition`, `vehicleType`, `colour`, `locationLabel` on passports) — [runbook](docs/VPS-PONDER-REINDEX.md)
+2. Stake on `/kar-pro` and add your pro slug to `PRO_SLUGS`
+3. Sepolia smoke validation (checklist below)
+
+**Sepolia smoke checklist:**
+
+- [ ] Mint passport with drag-and-drop photos → UNVERIFIED
+- [ ] Browse filters (top bar + drawer: status, make, price, condition, etc.)
+- [ ] Active verifier verify → VERIFIED
+- [ ] KarPro stake on `/kar-pro` → credential + `/verifiers` listing
+- [ ] Add slug to `PRO_SLUGS` → `/pro/[slug]` showroom loads
+- [ ] XMTP messages + wallet connect / disconnect
+- [ ] List on marketplace → buy or quote preview
+- [ ] Dispute / resolve (optional)
 
 **Tests:** `pnpm hardhat test` · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e`
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -191,9 +257,10 @@ node scripts/export-abis.mjs
 
 ---
 
-## Contracts (Base Sepolia)
+## Contracts (Base Sepolia — testnet)
 
-Network: Base Sepolia (chain **84532**) · v1.1 partial redeploy: June 2026
+Network: Base Sepolia (chain **84532**) · Model X v1.1 partial redeploy: June 2026  
+*First production testnet deployment; same contract stack will deploy to additional chains.*
 
 | Contract | Address |
 |----------|---------|
@@ -249,24 +316,27 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 
 ## Ponder API
 
-| Endpoint | Description |
+| Endpoint | UI consumer |
 |----------|-------------|
-| `GET /listings` | Active marketplace listings (paginated) |
-| `GET /listings/facets` | Filter facets (fiat currencies) |
-| `GET /listings/:tokenId` | Single listing |
-| `GET /passports` | Passports (filter by owner, status) |
-| `GET /passports/:tokenId` | Single passport |
-| `GET /profile/:address/passports` | Passports owned by address |
-| `GET /profile/:address/listings` | Listings by seller |
-| `GET /verifiers` | Active verifiers |
-| `GET /verifiers/:address` | Verifier profile + verification count |
+| `GET /listings` | `/` browse — `searchMarketplaceListings` |
+| `GET /listings/facets` | Filter bar/drawer — `useFacets`, `fetchListingFacets` |
+| `GET /listings/:tokenId` | Marketplace detail, favorites, pro showroom |
+| `GET /passports` | Verifier empty state — `getPassportsByVerifier` |
+| `GET /passports/:tokenId` | Passport/marketplace detail — `fetchPassportDetail` |
+| `GET /profile/:address/passports` | Profile page — `getProfileData` |
+| `GET /profile/:address/listings` | Profile, pro showroom — `getProfileData`, `getProShowroomData` |
+| `GET /verifiers` | `/verifiers` — `fetchVerifierDirectory` |
+| `GET /verifiers/:address` | `/verifier/[address]`, pro showroom — `fetchVerifierDetail`, `getProShowroomData` |
+| `GET /verifiers/:address/attestations` | Verifier page, pro showroom — `getVerifierAttestations` |
+
+All endpoints above are consumed by the Next.js app.
 
 ---
 
 ## Architecture notes
 
+- **Multi-chain** — Kargain is a multi-chain platform. Base Sepolia is the active test deployment; design for per-chain contract manifests, RPC maps, and eventual multi-chain Ponder indexing rather than assuming a single network forever.
 - **VIN** and vehicle attributes live in Arweave metadata (not on-chain).
-- Metadata URI is editable by the owner when **UNVERIFIED**, or when **VERIFIED** if only cosmetic fields change; anchor edits emit `VerificationReset` and return the passport to **UNVERIFIED** (Variant C).
 - Disputed passports can still be listed and sold; buyers see status in the UI (including buy-risk modal and typed dispute timeline).
 - Passport detail confirms on-chain status when it differs from Ponder; marketplace browse samples up to 12 visible cards per page.
 - Ponder indexes verifier `metadataURI` from `ProPassMinted` / `ProfileUpdated` and record `description` / `evidenceCID` from `RecordAppended`.
@@ -276,7 +346,11 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `pnpm deploy:v1.1` or `pnpm deploy:base-sepolia`.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).
+- **Desktop filter bar** — `overflow-hidden` on the filter row can clip controls around ~768px; may need wrap or scroll affordance.
+- **Ponder reindex pending** — passport filter columns (`condition`, `vehicleType`, `colour`, `locationLabel`) require VPS reindex before facets match on-chain metadata.
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI.
+
+**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup.
 
 ## Contributing
 
