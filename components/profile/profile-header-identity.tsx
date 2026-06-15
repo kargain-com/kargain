@@ -1,39 +1,54 @@
 "use client";
 
 import { Copy } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useState } from "react";
 import type { Address } from "viem";
 
 import { EnsAvatar } from "@/components/ui/ens-avatar";
-import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { ProfileEditLink } from "@/components/profile/profile-edit-link";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
+import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 
 type Props = {
   wallet: Address;
   profileDisplayName?: string | null;
   profileUsername?: string | null;
-  karProBal?: bigint;
   locationLabel?: string | null;
   bio?: string | null;
   socialLinks?: { twitter?: string; website?: string; discord?: string };
+  isActiveVerifier?: boolean;
+  verifierName?: string | null;
+  verifierCategory?: number;
+  proShowroomSlug?: string | null;
 };
 
 export function ProfileHeaderIdentity({
   wallet,
   profileDisplayName,
   profileUsername,
-  karProBal = 0n,
   locationLabel,
   bio,
   socialLinks,
+  isActiveVerifier = false,
+  verifierName,
+  verifierCategory = 5,
+  proShowroomSlug,
 }: Props) {
   const { displayName, isLoading } = useEnsProfile(wallet);
   const [copied, setCopied] = useState(false);
 
   const profileName = profileDisplayName || profileUsername;
-  const headingName = profileName || displayName;
-  const showEnsLoading = !profileName && isLoading;
+  const trimmedVerifierName = verifierName?.trim() ?? "";
+  const ensName = displayName?.trim() ?? "";
+  const useVerifierName =
+    isActiveVerifier &&
+    trimmedVerifierName.length > 0 &&
+    (isLoading || !ensName || trimmedVerifierName.toLowerCase() !== ensName.toLowerCase());
+  const headingName = useVerifierName
+    ? trimmedVerifierName
+    : profileName || displayName;
+  const showEnsLoading = !useVerifierName && !profileName && isLoading;
 
   const onCopy = useCallback(async () => {
     try {
@@ -57,7 +72,6 @@ export function ProfileHeaderIdentity({
           ) : (
             <h1 className="text-2xl font-medium tracking-tight">{headingName}</h1>
           )}
-          {karProBal > 0n && <KarProBadge />}
         </div>
         <span className="group inline-flex items-center gap-1.5 font-mono text-sm text-text-secondary">
           <span title={wallet}>{displayName}</span>
@@ -70,6 +84,19 @@ export function ProfileHeaderIdentity({
             <Copy size={14} strokeWidth={1.5} />
           </button>
         </span>
+        {isActiveVerifier && (
+          <span className="inline-block font-mono text-xs uppercase tracking-wider border border-accent-warm text-accent-warm rounded-sm px-2 py-1">
+            ✓ KarPro · {categoryIndexToLabel(verifierCategory).toUpperCase()}
+          </span>
+        )}
+        {isActiveVerifier && proShowroomSlug && (
+          <Link
+            href={`/pro/${proShowroomSlug}`}
+            className="inline-block font-sans text-sm text-accent-warm hover:underline"
+          >
+            View Pro Showroom →
+          </Link>
+        )}
         {locationLabel && <p className="text-sm text-text-secondary">{locationLabel}</p>}
         {bio && <p className="text-sm leading-relaxed text-text-primary">{bio}</p>}
         <div className="flex flex-wrap gap-3 text-sm text-accent-warm">

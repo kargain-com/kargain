@@ -264,6 +264,7 @@ app.get("/passports", async (c) => {
   const owner = c.req.query("owner");
   const status = c.req.query("status");
   const vin = c.req.query("vin")?.toUpperCase();
+  const verifierParam = c.req.query("verifier");
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
   const offset = (page - 1) * limit;
 
@@ -276,6 +277,9 @@ app.get("/passports", async (c) => {
   }
   if (vin) {
     conditions.push(eq(passport.vin, vin));
+  }
+  if (verifierParam) {
+    conditions.push(eq(passport.verifier, getAddress(verifierParam)));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

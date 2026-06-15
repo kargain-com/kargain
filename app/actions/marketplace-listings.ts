@@ -242,6 +242,36 @@ export async function getProfileData(address: string) {
   }
 }
 
+export type VerifierPassportRow = {
+  tokenId: string;
+  status: PassportStatus;
+  make: string;
+  model: string;
+  year: number;
+};
+
+export async function getPassportsByVerifier(
+  address: string,
+): Promise<VerifierPassportRow[]> {
+  try {
+    const url = new URL(`${PONDER_URL}/passports`);
+    url.searchParams.set("verifier", address);
+    url.searchParams.set("limit", "100");
+    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { passports: Array<Record<string, unknown>> };
+    return (data.passports ?? []).map((p) => ({
+      tokenId: String(p.id ?? ""),
+      status: (p.status as PassportStatus) ?? "UNVERIFIED",
+      make: typeof p.make === "string" ? p.make : "",
+      model: typeof p.model === "string" ? p.model : "",
+      year: typeof p.year === "number" ? p.year : Number(p.year ?? 0),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchListingFacets() {
   try {
     const res = await fetch(`${PONDER_URL}/listings/facets`, {
