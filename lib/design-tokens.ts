@@ -9,6 +9,7 @@ export const colors = {
   borderHover: "var(--color-border-hover)",
   accentWarm: "var(--color-accent-warm)",
   statusError: "var(--color-status-error)",
+  statusWarning: "var(--color-status-warning)",
 } as const;
 
 export const typography = {

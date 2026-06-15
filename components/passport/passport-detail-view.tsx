@@ -2,9 +2,11 @@ import Link from "next/link";
 
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
+import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
+import { PassportTrustBanner } from "@/components/passport/passport-trust-banner";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
@@ -148,6 +150,16 @@ export function PassportDetailView({
             </h1>
             <PassportStatusBadge status={passport.status} />
           </div>
+
+          <PassportTrustBanner
+            verificationResetCount={passport.verificationResetCount}
+            hadDispute={passport.hadDispute}
+          />
+          <PassportChainStatusBanner
+            tokenId={tokenId}
+            ponderStatus={passport.status}
+            chainId={chainId}
+          />
 
           {passport.status === "DISPUTED" && (
             <div
