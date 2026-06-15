@@ -13,7 +13,7 @@ import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
-import { navShortAddress } from "@/lib/web3/wallet-display";
+import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 
 type T = ReturnType<typeof getDetailStrings>;
 
@@ -162,12 +162,11 @@ export function PassportDetailView({
                 passport.lastDisputer !== "0x0000000000000000000000000000000000000000" && (
                   <p className="mt-2 font-sans text-sm text-text-secondary">
                     {t.disputeOpenedBy}{" "}
-                    <Link
+                    <EnsWalletLink
+                      address={passport.lastDisputer}
                       href={`/profile/${passport.lastDisputer}`}
                       className="font-mono text-accent-warm hover:underline"
-                    >
-                      {navShortAddress(passport.lastDisputer)}
-                    </Link>
+                    />
                   </p>
                 )}
               {disputeWithdrawn && (
@@ -208,23 +207,21 @@ export function PassportDetailView({
             <h2 className="font-sans text-base font-medium text-text-primary">
               {t.onChainOwner}
             </h2>
-            <Link
+            <EnsWalletLink
+              address={passport.owner}
               href={`/profile/${passport.owner}`}
               className="font-mono text-sm text-accent-warm hover:underline"
-            >
-              {navShortAddress(passport.owner)}
-            </Link>
+            />
 
             {hasVerifier && (
               <div className="border-t border-border-default pt-3">
                 <p className="font-sans text-sm text-text-secondary">
                   Verified by{" "}
-                  <Link
+                  <EnsWalletLink
+                    address={passport.verifier}
                     href={`/verifier/${passport.verifier}`}
                     className="font-mono text-accent-warm hover:underline"
-                  >
-                    {navShortAddress(passport.verifier)}
-                  </Link>
+                  />
                   {verifiedDate && <> on {verifiedDate}</>}
                   <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
                 </p>
