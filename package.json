@@ -59,7 +59,7 @@
     "lucide-react": "^0.503.0",
     "nanoid": "^5.1.7",
     "next": "16.2.0",
-    "nostr-tools": "2.23.3",
+    "nostr-tools": "2.23.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.72.0",
