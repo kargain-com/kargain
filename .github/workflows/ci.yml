@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_CHAIN_ID: "84532"
+      NEXT_PUBLIC_RPC_BY_CHAIN: '{"84532":"https://sepolia.base.org"}'
+      NEXT_PUBLIC_XMTP_ENV: dev
+      PONDER_SQL_API_URL: http://localhost:42069
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile contracts
+        run: pnpm compile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build Next.js
+        run: pnpm build
+
+      - name: Unit tests
+        run: |
+          pnpm test:metadata
+          pnpm test:listing
+          pnpm test:ponder
+          pnpm test:trust
+          pnpm test:records
+          pnpm test:confirm-status
+          pnpm test:verify
+
+      - name: Hardhat contract tests
+        run: pnpm test

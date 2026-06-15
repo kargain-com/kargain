@@ -1,0 +1,45 @@
+# Dependabot: security alerts (GitHub default) + scheduled version PRs.
+# Security update PRs are opened automatically when CVEs affect the lockfile.
+# Review each PR; CI (.github/workflows/ci.yml) must pass before merge.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      next-react:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "eslint-config-next"
+      web3:
+        patterns:
+          - "wagmi"
+          - "viem"
+          - "ethers"
+          - "siwe"
+      ponder:
+        patterns:
+          - "ponder"
+          - "hono"
+      hardhat:
+        patterns:
+          - "hardhat"
+          - "@nomicfoundation/*"
+          - "@openzeppelin/*"
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
