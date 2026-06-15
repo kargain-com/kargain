@@ -74,6 +74,21 @@ describe("getRecordDisplay", () => {
     assert.equal(attestation.severity, "success");
   });
 
+  it("labels owner service record types with neutral severity", () => {
+    const cases: Array<{ recordType: string; label: string }> = [
+      { recordType: "repair", label: "Repair" },
+      { recordType: "inspection", label: "Inspection" },
+      { recordType: "purchase", label: "Purchase / ownership change" },
+      { recordType: "other", label: "Other" },
+    ];
+
+    for (const { recordType, label } of cases) {
+      const display = getRecordDisplay(record({ recordType }), ctx);
+      assert.equal(display.label, label);
+      assert.equal(display.severity, "neutral");
+    }
+  });
+
   it("marks owner-initiated dispute opening", () => {
     const display = getRecordDisplay(
       record({

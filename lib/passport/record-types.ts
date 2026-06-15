@@ -7,8 +7,23 @@ import type { PonderPassportRecord } from "@/lib/types/ponder";
 
 export type RecordSeverity = "neutral" | "info" | "warn" | "success";
 
+export const OWNER_SERVICE_RECORD_TYPES = [
+  { value: "service", label: "Service / maintenance" },
+  { value: "repair", label: "Repair" },
+  { value: "inspection", label: "Inspection" },
+  { value: "purchase", label: "Purchase / ownership change" },
+  { value: "other", label: "Other" },
+] as const;
+
+export type OwnerServiceRecordType =
+  (typeof OWNER_SERVICE_RECORD_TYPES)[number]["value"];
+
 export type RecordDisplayLabels = {
   service: string;
+  repair: string;
+  inspection: string;
+  purchase: string;
+  other: string;
   attestation: string;
   disputeClarification: string;
   discrepancyReport: string;
@@ -20,6 +35,10 @@ export type RecordDisplayLabels = {
 
 export const DEFAULT_RECORD_LABELS: RecordDisplayLabels = {
   service: "Service history",
+  repair: "Repair",
+  inspection: "Inspection",
+  purchase: "Purchase / ownership change",
+  other: "Other",
   attestation: "Verifier attestation",
   disputeClarification: "Owner clarification",
   discrepancyReport: "Discrepancy report",
@@ -89,6 +108,18 @@ export function getRecordDisplay(
     severity = "info";
   } else if (record.recordType === "service") {
     label = labels.service;
+    severity = "neutral";
+  } else if (record.recordType === "repair") {
+    label = labels.repair;
+    severity = "neutral";
+  } else if (record.recordType === "inspection") {
+    label = labels.inspection;
+    severity = "neutral";
+  } else if (record.recordType === "purchase") {
+    label = labels.purchase;
+    severity = "neutral";
+  } else if (record.recordType === "other") {
+    label = labels.other;
     severity = "neutral";
   } else if (record.recordType === "attestation") {
     label = labels.attestation;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
   useChainId,
@@ -26,10 +26,15 @@ import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
 import {
+  OWNER_SERVICE_RECORD_TYPES,
+  type OwnerServiceRecordType,
+} from "@/lib/passport/record-types";
+import {
   getWalletUploadProvider,
 } from "@/lib/passport/upload-passport-metadata";
 import { uploadEvidenceFile } from "@/lib/passport/upload-evidence";
 import type { PassportStatus, PonderUriHistoryEntry } from "@/lib/types/ponder";
+import { cn } from "@/lib/utils";
 import {
   karPassportAddress,
   karProStakingAddress,
@@ -97,6 +102,12 @@ export function PassportActionsPanel({
   );
   const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [recordFormOpen, setRecordFormOpen] = useState(false);
+  const [recordType, setRecordType] = useState<OwnerServiceRecordType>("service");
+  const [recordDescription, setRecordDescription] = useState("");
+  const [recordEvidencePaste, setRecordEvidencePaste] = useState("");
+  const [recordEvidenceFile, setRecordEvidenceFile] = useState<File | null>(null);
+  const [recordAddedSuccess, setRecordAddedSuccess] = useState(false);
 
   const passport = karPassportAddress(chainId);
   const staking = karProStakingAddress(chainId);
@@ -128,6 +139,12 @@ export function PassportActionsPanel({
     address!.toLowerCase() === lastDisputer.toLowerCase();
   const disputeWithdrawn =
     disputeWithdrawnAt !== "0" && Number.parseInt(disputeWithdrawnAt, 10) > 0;
+
+  useEffect(() => {
+    if (!recordAddedSuccess) return;
+    const timer = window.setTimeout(() => setRecordAddedSuccess(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [recordAddedSuccess]);
 
   const run = useCallback(
     async (fn: () => Promise<unknown>, success: string) => {
@@ -202,6 +219,50 @@ export function PassportActionsPanel({
     () => uploadEvidenceFromInput(clarificationEvidenceFile, clarificationEvidencePaste),
     [clarificationEvidenceFile, clarificationEvidencePaste, uploadEvidenceFromInput],
   );
+
+  const resolveOwnerRecordEvidence = useCallback(
+    () => uploadEvidenceFromInput(recordEvidenceFile, recordEvidencePaste),
+    [recordEvidenceFile, recordEvidencePaste, uploadEvidenceFromInput],
+  );
+
+  const submitOwnerRecord = useCallback(async () => {
+    const description = recordDescription.trim();
+    if (description.length < 10 || !passport) return;
+
+    if (wrongChain) {
+      await switchChainAsync?.({ chainId: wc });
+    }
+
+    try {
+      const evidenceCID = await resolveOwnerRecordEvidence();
+      await writeContractAsync({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "appendRecord",
+        args: [tid, recordType, description, evidenceCID],
+      });
+      setRecordFormOpen(false);
+      setRecordType("service");
+      setRecordDescription("");
+      setRecordEvidencePaste("");
+      setRecordEvidenceFile(null);
+      setRecordAddedSuccess(true);
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Transaction failed.");
+    }
+  }, [
+    passport,
+    recordDescription,
+    recordType,
+    resolveOwnerRecordEvidence,
+    router,
+    switchChainAsync,
+    tid,
+    wc,
+    wrongChain,
+    writeContractAsync,
+  ]);
 
   const submitDiscrepancy = useCallback(async () => {
     const description = discrepancyText.trim();
@@ -520,6 +581,85 @@ export function PassportActionsPanel({
           >
             Append clarification
           </Button>
+        </div>
+      )}
+
+      {isOwner && status !== "DISPUTED" && !listingActive && (
+        <div className="space-y-2 border-t border-border-default pt-4">
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full justify-start px-0 hover:bg-transparent"
+            onClick={() => {
+              if (!recordAddedSuccess) {
+                setRecordFormOpen((open) => !open);
+              }
+            }}
+          >
+            {recordAddedSuccess ? "Record added ✓" : "Add record +"}
+          </Button>
+          {recordFormOpen && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {OWNER_SERVICE_RECORD_TYPES.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={recordType === option.value}
+                    disabled={actionsBusy}
+                    onClick={() => setRecordType(option.value)}
+                    className={cn(
+                      "font-mono text-xs uppercase tracking-wider border rounded-sm px-3 py-1.5 cursor-pointer transition-colors duration-200",
+                      recordType === option.value
+                        ? "border-accent-warm text-accent-warm"
+                        : "border-border-default text-text-secondary",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="owner-record-description">Description</Label>
+                <Textarea
+                  id="owner-record-description"
+                  value={recordDescription}
+                  onChange={(e) => setRecordDescription(e.target.value)}
+                  placeholder="Describe the service, repair, or event…"
+                  rows={3}
+                  disabled={actionsBusy}
+                />
+                {recordDescription.length > 500 && (
+                  <p className="text-xs text-text-secondary">
+                    {recordDescription.length} characters
+                  </p>
+                )}
+              </div>
+              <EvidenceInput
+                idPrefix="owner-record-evidence"
+                value={recordEvidencePaste}
+                onChange={setRecordEvidencePaste}
+                file={recordEvidenceFile}
+                onFileChange={setRecordEvidenceFile}
+                disabled={actionsBusy}
+                labels={{
+                  evidenceLabel: "Evidence (optional)",
+                  evidenceHint: labels.attestationEvidenceHint,
+                  evidencePlaceholder: labels.attestationEvidencePlaceholder,
+                  evidenceFileLabel: labels.attestationEvidenceFileLabel,
+                }}
+              />
+              <Button
+                type="button"
+                className="w-full"
+                disabled={actionsBusy || recordDescription.trim().length < 10}
+                aria-busy={actionsBusy}
+                onClick={() => void submitOwnerRecord()}
+              >
+                {actionsBusy ? "Adding record…" : "Add record"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

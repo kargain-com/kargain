@@ -48,6 +48,10 @@ function severityBorderClass(severity: RecordSeverity): string {
 function recordLabelsFromDict(t: T): RecordDisplayLabels {
   return {
     service: t.recordLabelService,
+    repair: t.recordLabelRepair,
+    inspection: t.recordLabelInspection,
+    purchase: t.recordLabelPurchase,
+    other: t.recordLabelOther,
     attestation: t.recordLabelAttestation,
     disputeClarification: t.recordLabelDisputeClarification,
     discrepancyReport: t.recordLabelDiscrepancyReport,
