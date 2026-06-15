@@ -8,10 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { exportNsec, importNsec, type WalletSigner } from "@/lib/nostr/key-manager";
-import { finalizeEvent, getPublicKey, nip19 } from "nostr-tools";
+import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { type Filter, finalizeEvent, getPublicKey, nip19 } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
-
-const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"] as const;
 
 type NostrEvent = {
   id: string;
@@ -89,10 +88,10 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
 
     const listingTag = `listing:${tokenId}`;
     const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30;
-    const filters = [{ kinds: [1, 7], "#d": [listingTag], since, limit: 500 }];
+    const filter: Filter = { kinds: [1, 7], "#d": [listingTag], since, limit: 500 };
     const sub = pool.subscribeMany(
-      RELAYS as unknown as string[],
-      filters as any,
+      [...NOSTR_RELAYS],
+      filter,
       {
         onevent: (ev: NostrEvent) => {
           if (ev.kind === 1) {
@@ -169,7 +168,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       tags,
     };
     const signed = finalizeEvent(unsigned, hexToBytes(nostrPrivateKey));
-    await Promise.any(pool.publish(RELAYS as unknown as string[], signed));
+    await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
     return signed as unknown as NostrEvent;
   };
 
@@ -266,8 +265,8 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   };
 
   return (
-    <section className="space-y-4" aria-label="Nostr comments">
-      <h2 className="text-sm font-medium text-text-primary">Nostr comments</h2>
+    <section className="space-y-4" aria-label="Comments">
+      <h2 className="font-sans text-base font-medium text-text-primary">Comments</h2>
       <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-3">
         <p className="text-xs text-text-secondary">
           Nostr identity backup (cross-browser / device) · {statusMessage}

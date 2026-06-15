@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import NostrCommentsSection from "@/components/marketplace/nostr-comments-section";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
@@ -119,6 +120,8 @@ export function PassportDetailView({
             disputeReason={passport.disputeReason}
             labels={t}
           />
+
+          <NostrCommentsSection tokenId={tokenId} />
 
           <PassportUriHistory entries={passport.uriHistory} />
 
