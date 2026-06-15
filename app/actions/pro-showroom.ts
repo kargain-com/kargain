@@ -7,6 +7,7 @@ import {
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
+import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
@@ -14,6 +15,9 @@ import type {
   VerifierRow,
 } from "@/lib/types/ponder";
 import { PRO_SLUGS } from "@/lib/web3/pro-slugs";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { getPublicClient } from "@/lib/web3/public-client";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -37,6 +41,7 @@ export type ProShowroomData = {
   recentAttestations: PonderVerifierAttestation[];
   attestationTotal: number;
   profileMetadata: { description?: string; website?: string } | null;
+  isActiveVerifier: boolean;
 };
 
 type PonderListingRaw = {
@@ -135,6 +140,21 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     return null;
   }
 
+  let isActiveVerifier = false;
+  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
+  if (staking) {
+    try {
+      isActiveVerifier = await getPublicClient(DEFAULT_CHAIN_ID).readContract({
+        address: staking,
+        abi: KarProStakingAbi,
+        functionName: "isActiveVerifier",
+        args: [address],
+      });
+    } catch {
+      /* remain false */
+    }
+  }
+
   const revalidate = { next: { revalidate: 30 } as const };
 
   let verifier: VerifierRow | null = null;
@@ -208,5 +228,6 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     recentAttestations,
     attestationTotal,
     profileMetadata,
+    isActiveVerifier,
   };
 }

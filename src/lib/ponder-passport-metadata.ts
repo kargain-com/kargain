@@ -14,6 +14,10 @@ export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
     fuelType: indexed.fuelType,
     bodyType: indexed.bodyType,
     transmission: indexed.transmission,
+    condition: indexed.condition,
+    vehicleType: indexed.vehicleType,
+    colour: indexed.colour,
+    locationLabel: indexed.locationLabel,
   };
 }
 

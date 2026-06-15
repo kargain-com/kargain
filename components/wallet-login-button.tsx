@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, ExternalLink, LogOut, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, LogOut, User, Wallet } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useState } from "react";
 import { getAddress } from "viem";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
@@ -20,8 +21,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { WalletAddress } from "@/components/ui/wallet-address";
 import { useClientMounted } from "@/hooks/use-client-mounted";
+import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { getViemChain } from "@/lib/web3/supported-chains";
 import { identiconBackground, navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,19 @@ export function WalletLoginButton() {
   const { disconnect } = useDisconnect();
   const { connect, connectors, isPending, error, variables } = useConnect();
 
+  const checksumAddress = (() => {
+    if (!address) return undefined;
+    try {
+      return getAddress(address as `0x${string}`);
+    } catch {
+      return address;
+    }
+  })();
+
+  const { displayName, isLoading: ensLoading } = useEnsProfile(
+    checksumAddress as `0x${string}` | undefined,
+  );
+
   const onCopyAddress = useCallback(async (addr: string) => {
     try {
       await navigator.clipboard.writeText(addr);
@@ -58,13 +72,9 @@ export function WalletLoginButton() {
     return <div className="h-9 w-28 rounded-sm border border-border-default" aria-hidden />;
   }
 
-  if (isConnected && address) {
-    let normalized = address;
-    try {
-      normalized = getAddress(address as `0x${string}`);
-    } catch {
-      /* keep raw */
-    }
+  if (isConnected && address && checksumAddress) {
+    const normalized = checksumAddress;
+    const hasEnsName = Boolean(!ensLoading && displayName && !displayName.startsWith("0x"));
 
     const explorer =
       getViemChain(84532)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
@@ -83,14 +93,33 @@ export function WalletLoginButton() {
             <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[220px] p-1">
+        <DropdownMenuContent align="end" className="min-w-[220px] max-w-[calc(100vw-2rem)] p-1">
           <DropdownMenuLabel className="px-3 py-2.5 font-normal">
             <div className="flex items-center gap-2.5">
               <WalletIdenticon address={normalized} className="size-8" />
-              <WalletAddress address={normalized} full className="min-w-0 text-xs text-text-secondary" />
+              <div className="min-w-0">
+                <p
+                  className="truncate font-sans text-sm font-medium text-text-primary"
+                  title={normalized}
+                >
+                  {ensLoading ? navShortAddress(normalized) : displayName}
+                </p>
+                {hasEnsName && (
+                  <p className="truncate font-mono text-xs text-text-secondary">
+                    {navShortAddress(normalized)}
+                  </p>
+                )}
+              </div>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem asChild className="hidden font-sans text-sm text-text-secondary md:flex">
+            <Link href={`/profile/${normalized}`}>
+              <User size={16} strokeWidth={1.5} aria-hidden />
+              My profile
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="hidden md:block" />
           <DropdownMenuItem asChild className="font-sans text-sm text-text-secondary">
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink size={14} strokeWidth={1.5} aria-hidden />

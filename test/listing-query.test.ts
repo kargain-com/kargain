@@ -81,6 +81,30 @@ describe("matchesListingFilters", () => {
     );
   });
 
+  it("filters by mileageMin", () => {
+    assert.equal(matchesListingFilters(baseRow, { mileageMin: 40000 }), true);
+    assert.equal(matchesListingFilters(baseRow, { mileageMin: 50000 }), false);
+    assert.equal(matchesListingFilters(baseRow, { mileageMin: 0 }), true);
+  });
+
+  it("filters by condition, vehicleType, location, and colour", () => {
+    const row = {
+      ...baseRow,
+      condition: "Good",
+      vehicleType: "Car",
+      locationLabel: "Berlin, Germany",
+      colour: "Blue",
+    };
+    assert.equal(matchesListingFilters(row, { conditions: ["Good"] }), true);
+    assert.equal(matchesListingFilters(row, { conditions: ["Excellent"] }), false);
+    assert.equal(matchesListingFilters(row, { vehicleTypes: ["Car"] }), true);
+    assert.equal(matchesListingFilters(row, { vehicleTypes: ["Truck"] }), false);
+    assert.equal(matchesListingFilters(row, { location: "berlin" }), true);
+    assert.equal(matchesListingFilters(row, { location: "Paris" }), false);
+    assert.equal(matchesListingFilters(row, { colour: "blue" }), true);
+    assert.equal(matchesListingFilters(row, { colour: "Red" }), false);
+  });
+
   it("matches search against make, model, and VIN substrings", () => {
     assert.equal(matchesListingFilters(baseRow, { search: "honda" }), true);
     assert.equal(matchesListingFilters(baseRow, { search: "civic" }), true);
@@ -127,5 +151,30 @@ describe("computeListingFacets", () => {
     assert.equal(facets.priceRanges.USD.max, 150);
     assert.equal(facets.priceRanges.EUR.min, 250);
     assert.equal(facets.priceRanges.EUR.max, 250);
+  });
+
+  it("returns conditions, vehicleTypes, and years facets", () => {
+    const facets = computeListingFacets(
+      [
+        {
+          ...baseRow,
+          year: 2021,
+          condition: "Good",
+          vehicleType: "Car",
+        },
+        {
+          ...baseRow,
+          year: 2019,
+          condition: "Excellent",
+          vehicleType: "Motorcycle",
+        },
+      ],
+      2,
+      [0],
+    );
+
+    assert.deepEqual(facets.conditions, ["Excellent", "Good"]);
+    assert.deepEqual(facets.vehicleTypes, ["Car", "Motorcycle"]);
+    assert.deepEqual(facets.years, [2019, 2021]);
   });
 });

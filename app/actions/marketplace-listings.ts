@@ -22,10 +22,15 @@ const filterSchema = z.object({
   yearMax: z.number().int().optional(),
   priceMin: z.string().optional(),
   priceMax: z.string().optional(),
+  mileageMin: z.number().int().optional(),
   mileageMax: z.number().int().optional(),
   fuelType: z.string().optional(),
   bodyType: z.string().optional(),
   transmission: z.string().optional(),
+  condition: z.string().optional(),
+  vehicleType: z.string().optional(),
+  location: z.string().optional(),
+  colour: z.string().optional(),
   status: z.enum(["all", "UNVERIFIED", "VERIFIED", "DISPUTED"]).default("all"),
   sort: z.enum(["newest", "price_asc", "price_desc", "mileage_asc"]).default("newest"),
   currency: z.enum(["USD", "EUR"]).default("USD"),
@@ -84,12 +89,17 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   if (p.model) url.searchParams.set("model", p.model);
   if (p.yearMin != null) url.searchParams.set("yearMin", String(p.yearMin));
   if (p.yearMax != null) url.searchParams.set("yearMax", String(p.yearMax));
+  if (p.mileageMin != null) url.searchParams.set("mileageMin", String(p.mileageMin));
   if (p.mileageMax != null) url.searchParams.set("mileageMax", String(p.mileageMax));
   if (p.priceMin) url.searchParams.set("priceMin", p.priceMin);
   if (p.priceMax) url.searchParams.set("priceMax", p.priceMax);
   if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
   if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
   if (p.transmission) url.searchParams.set("transmission", p.transmission);
+  if (p.condition) url.searchParams.set("condition", p.condition);
+  if (p.vehicleType) url.searchParams.set("vehicleType", p.vehicleType);
+  if (p.location) url.searchParams.set("location", p.location);
+  if (p.colour) url.searchParams.set("colour", p.colour);
   if (p.status !== "all") url.searchParams.set("status", p.status);
   if (p.sort !== "newest") url.searchParams.set("sort", p.sort);
   return url;

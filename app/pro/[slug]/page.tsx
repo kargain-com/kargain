@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Clock } from "lucide-react";
 
 import { getProShowroomData } from "@/app/actions/pro-showroom";
 import { ListingCard } from "@/components/marketplace/listing-card";
@@ -114,6 +115,12 @@ export async function generateMetadata({
   const data = await getProShowroomData(slug);
   if (!data) return { title: "Pro showroom" };
 
+  if (!data.isActiveVerifier) {
+    return {
+      title: `${slug} · Showroom coming soon · Kargain`,
+    };
+  }
+
   const name = displayName(data.verifier?.name, data.address);
   const description = data.profileMetadata?.description
     ? truncateDescription(data.profileMetadata.description, 160)
@@ -136,6 +143,48 @@ export default async function ProShowroomPage({
 
   const { address, verifier, profileMetadata } = data;
   const name = displayName(verifier?.name, address);
+
+  if (!data.isActiveVerifier) {
+    return (
+      <div className="min-h-dvh bg-bg-primary text-text-primary">
+        <section className="w-full bg-bg-primary py-16">
+          <div className={CONTAINER}>
+            <div className="flex gap-6">
+              <EnsAvatar address={address} size={80} />
+              <div className="min-w-0">
+                <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
+                  {name}
+                </h1>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="py-24 text-center">
+          <Clock
+            size={48}
+            strokeWidth={1}
+            className="mx-auto text-text-tertiary"
+            aria-hidden
+          />
+          <h2 className="mt-4 font-display text-fluid-h2 font-medium">
+            {name}&apos;s showroom
+          </h2>
+          <p className="mx-auto mt-2 max-w-sm font-sans text-sm text-text-secondary">
+            This professional showroom will be available once the verifier activates
+            their KarPro status.
+          </p>
+          <Link
+            href="/kar-pro"
+            className="mt-4 inline-block font-sans text-sm text-accent-warm hover:underline"
+          >
+            Become a KarPro verifier →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const category = verifier?.category ?? 5;
   const verificationCount = verifier?.verificationCount ?? 0;
   const displayedPassports = data.verifiedPassports.slice(0, 12);

@@ -89,7 +89,7 @@ export function ProfileHeaderIdentity({
             ✓ KarPro · {categoryIndexToLabel(verifierCategory).toUpperCase()}
           </span>
         )}
-        {isActiveVerifier && proShowroomSlug && (
+        {proShowroomSlug && (
           <Link
             href={`/pro/${proShowroomSlug}`}
             className="inline-block font-sans text-sm text-accent-warm hover:underline"

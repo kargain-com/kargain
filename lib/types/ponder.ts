@@ -82,6 +82,7 @@ export type FacetsResponse = {
   models: Record<string, string[]>;
   yearMin: number;
   yearMax: number;
+  years: number[];
   priceMin: number;
   priceMax: number;
   priceRanges: {
@@ -92,6 +93,8 @@ export type FacetsResponse = {
   fuelTypes: string[];
   bodyTypes: string[];
   transmissions: string[];
+  conditions: string[];
+  vehicleTypes: string[];
   fiatCurrencies: number[];
   totalActive: number;
   statusCounts: Record<PassportStatus, number>;

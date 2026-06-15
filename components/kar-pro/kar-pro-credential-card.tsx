@@ -30,7 +30,7 @@ import {
   karProPassAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
-import { PRO_SLUGS } from "@/lib/web3/pro-slugs";
+import { proSlugForAddress } from "@/lib/web3/pro-slugs";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProCredentialCardProps = {
@@ -134,7 +134,7 @@ export function KarProCredentialCard({
   });
 
   const stakeLabel = formatStakeEth(minStake);
-  const slug = PRO_SLUGS[address.toLowerCase()];
+  const slug = proSlugForAddress(address);
 
   useEffect(() => {
     if (!editing) return;

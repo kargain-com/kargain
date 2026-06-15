@@ -9,6 +9,10 @@ export type IndexedPassportMetadata = {
   fuelType: string;
   bodyType: string;
   transmission: string;
+  condition: string;
+  vehicleType: string;
+  colour: string;
+  locationLabel: string;
 };
 
 export function arUriToHttp(uri: string): string | null {
@@ -38,6 +42,10 @@ export async function fetchMetadataFromUri(
       fuelType: parsed.fuelType ?? "",
       bodyType: parsed.bodyType ?? "",
       transmission: parsed.transmission ?? "",
+      condition: parsed.condition ?? "",
+      vehicleType: parsed.vehicleType ?? "",
+      colour: parsed.colour ?? "",
+      locationLabel: parsed.location?.label ?? "",
     };
   } catch {
     return null;

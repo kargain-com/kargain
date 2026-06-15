@@ -20,6 +20,14 @@ const leftItems = [
   },
 ] as const;
 
+function tabLinkClass(active: boolean, extra?: string) {
+  return cn(
+    "flex min-h-11 flex-col items-center justify-center gap-1 border-t-2 pt-0.5 font-sans text-xs transition-colors duration-200",
+    active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+    extra,
+  );
+}
+
 export function MobileBottomNav() {
   const path = usePathname();
   const { address, isConnected } = useAccount();
@@ -43,19 +51,12 @@ export function MobileBottomNav() {
               const isMessages = href === "/messages";
               return (
                 <li key={href}>
-                  <Link
-                    href={href}
-                    className={cn(
-                      "relative flex min-h-11 flex-col items-center justify-center gap-1 font-sans text-[10px] text-text-secondary transition-colors duration-200",
-                      active && "text-text-primary",
-                    )}
-                    aria-label={isMessages ? "Messages" : label}
-                  >
+                  <Link href={href} className={tabLinkClass(active, "relative")}>
                     <span className="relative">
                       <Icon size={24} strokeWidth={1.5} aria-hidden />
                       {isMessages && <XmtpUnreadBadge className="top-0 right-0" />}
                     </span>
-                    {isMessages ? <span className="sr-only">Messages</span> : label}
+                    {label}
                   </Link>
                 </li>
               );
@@ -76,10 +77,7 @@ export function MobileBottomNav() {
         <li className="flex flex-1 justify-end">
           <Link
             href={profileHref}
-            className={cn(
-              "flex min-h-11 flex-col items-center justify-center gap-1 px-4 font-sans text-[10px] text-text-secondary transition-colors duration-200",
-              path.startsWith("/profile") && "text-text-primary",
-            )}
+            className={tabLinkClass(path.startsWith("/profile"), "px-4")}
           >
             <User size={24} strokeWidth={1.5} aria-hidden />
             Profile

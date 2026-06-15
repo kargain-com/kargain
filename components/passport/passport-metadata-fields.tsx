@@ -304,42 +304,14 @@ export function PassportMetadataFields({
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="locationLabel">Location label</Label>
+              <Label htmlFor="locationLabel">Location</Label>
               <Input
                 id="locationLabel"
                 value={form.locationLabel}
                 onChange={(e) => onFieldChange("locationLabel", e.target.value)}
-                placeholder="e.g. Berlin, Germany"
+                placeholder="City, region, country — e.g. Berlin, Germany"
                 disabled={disabled}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="locationLat">Latitude</Label>
-              <Input
-                id="locationLat"
-                value={form.locationLat}
-                onChange={(e) => onFieldChange("locationLat", e.target.value)}
-                placeholder="52.52"
-                disabled={disabled}
-              />
-              {errors.locationLat && (
-                <p className="text-xs text-status-error">{errors.locationLat}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="locationLng">Longitude</Label>
-              <Input
-                id="locationLng"
-                value={form.locationLng}
-                onChange={(e) => onFieldChange("locationLng", e.target.value)}
-                placeholder="13.405"
-                disabled={disabled}
-              />
-              {errors.locationLng && (
-                <p className="text-xs text-status-error">{errors.locationLng}</p>
-              )}
             </div>
           </div>
         </div>

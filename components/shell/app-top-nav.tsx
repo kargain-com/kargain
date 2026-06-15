@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Inbox, PlusCircle, Search } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { Inbox, PlusCircle } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
@@ -27,8 +26,7 @@ export function AppTopNav() {
     query: { enabled: Boolean(isConnected && staking && address) },
   });
   const showBecomeKarPro = isConnected && isActiveVerifier !== true;
-  const showMarketplaceSearch = path === "/";
-  const urlSearch = sp.get("search") ?? sp.get("q") ?? "";
+  const isMarketplaceBrowse = path === "/";
 
   const urlChain = sp.get("chain");
   const parsed = urlChain ? Number.parseInt(urlChain, 10) : NaN;
@@ -46,14 +44,10 @@ export function AppTopNav() {
 
         <Link
           href="/verifiers"
-          className="shrink-0 font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+          className="hidden shrink-0 font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
         >
           Verifiers
         </Link>
-
-        {showMarketplaceSearch && (
-          <MarketplaceSearch key={urlSearch} initialSearch={urlSearch} searchParams={sp} />
-        )}
 
         <div className="flex-1" aria-hidden />
 
@@ -62,7 +56,7 @@ export function AppTopNav() {
             <Link
               href="/messages"
               aria-label="Messages"
-              className="group relative inline-flex h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
               <Inbox size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
               <XmtpUnreadBadge className="top-1.5 right-1.5" />
@@ -86,7 +80,7 @@ export function AppTopNav() {
             </Link>
           )}
           <ChainSelector
-            syncSearchParam={showMarketplaceSearch}
+            syncSearchParam={isMarketplaceBrowse}
             expectedChainId={expectedChainId}
             className="hidden md:flex"
           />
@@ -94,47 +88,5 @@ export function AppTopNav() {
         </div>
       </div>
     </header>
-  );
-}
-
-function MarketplaceSearch({
-  initialSearch,
-  searchParams,
-}: {
-  initialSearch: string;
-  searchParams: ReturnType<typeof useSearchParams>;
-}) {
-  const router = useRouter();
-  const [search, setSearch] = useState(initialSearch);
-
-  const onSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const next = new URLSearchParams(searchParams.toString());
-    const value = search.trim();
-    if (value) next.set("search", value);
-    else next.delete("search");
-    next.delete("q");
-    const query = next.toString();
-    router.push(query ? `/?${query}` : "/");
-  };
-
-  return (
-    <form onSubmit={onSearchSubmit} className="relative hidden w-48 items-center lg:w-64 md:flex">
-      <Search
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
-        size={16}
-        strokeWidth={1.5}
-        aria-hidden
-      />
-      <input
-        id="marketplace-search"
-        name="marketplaceSearch"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search vehicles…"
-        aria-label="Search vehicles"
-        className="h-9 w-full rounded-sm border border-transparent bg-bg-surface pl-9 pr-3 font-sans text-sm text-text-primary placeholder:text-text-secondary transition-colors duration-200 focus:border-border-default focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
-      />
-    </form>
   );
 }

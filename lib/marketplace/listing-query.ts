@@ -7,10 +7,15 @@ export type ListingFilterQuery = {
   model?: string;
   yearMin?: number;
   yearMax?: number;
+  mileageMin?: number;
   mileageMax?: number;
   fuelTypes?: string[];
   bodyTypes?: string[];
   transmissions?: string[];
+  conditions?: string[];
+  vehicleTypes?: string[];
+  location?: string;
+  colour?: string;
   status?: "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
   currency?: "USD" | "EUR";
   priceMin?: string;
@@ -28,6 +33,10 @@ export type PassportFilterFields = {
   fuelType: string;
   bodyType: string;
   transmission: string;
+  condition?: string;
+  vehicleType?: string;
+  colour?: string;
+  locationLabel?: string;
 };
 
 export type ListingFilterFields = {
@@ -82,10 +91,15 @@ export function parseListingFilterQuery(
     model: query.model?.trim() || undefined,
     yearMin: parseOptionalInt(query.yearMin),
     yearMax: parseOptionalInt(query.yearMax),
+    mileageMin: parseOptionalInt(query.mileageMin),
     mileageMax: parseOptionalInt(query.mileageMax),
     fuelTypes: splitCsvFilter(query.fuelType),
     bodyTypes: splitCsvFilter(query.bodyType),
     transmissions: splitCsvFilter(query.transmission),
+    conditions: splitCsvFilter(query.condition),
+    vehicleTypes: splitCsvFilter(query.vehicleType),
+    location: query.location?.trim() || undefined,
+    colour: query.colour?.trim() || undefined,
     status,
     currency,
     priceMin: query.priceMin?.trim() || undefined,
@@ -101,6 +115,12 @@ function includesCsvMatch(selected: string[], value: string): boolean {
   return selected.some((item) => item.toLowerCase() === normalized);
 }
 
+function substringMatch(needle: string | undefined, haystack: string | undefined): boolean {
+  if (!needle) return true;
+  if (!haystack) return false;
+  return haystack.toLowerCase().includes(needle.toLowerCase());
+}
+
 export function matchesListingFilters(
   row: EnrichedListingForFilter,
   filters: ListingFilterQuery,
@@ -113,6 +133,9 @@ export function matchesListingFilters(
   }
   if (filters.yearMin != null && row.year < filters.yearMin) return false;
   if (filters.yearMax != null && row.year > filters.yearMax) return false;
+  if (filters.mileageMin != null && filters.mileageMin > 0 && row.mileageKm < filters.mileageMin) {
+    return false;
+  }
   if (filters.mileageMax != null && row.mileageKm > filters.mileageMax) return false;
   if (filters.status && filters.status !== "all" && row.passportStatus !== filters.status) {
     return false;
@@ -131,6 +154,10 @@ export function matchesListingFilters(
   if (!includesCsvMatch(filters.fuelTypes ?? [], row.fuelType)) return false;
   if (!includesCsvMatch(filters.bodyTypes ?? [], row.bodyType)) return false;
   if (!includesCsvMatch(filters.transmissions ?? [], row.transmission)) return false;
+  if (!includesCsvMatch(filters.conditions ?? [], row.condition ?? "")) return false;
+  if (!includesCsvMatch(filters.vehicleTypes ?? [], row.vehicleType ?? "")) return false;
+  if (!substringMatch(filters.location, row.locationLabel)) return false;
+  if (!substringMatch(filters.colour, row.colour)) return false;
 
   if (filters.search) {
     const q = filters.search.toLowerCase();
@@ -186,10 +213,13 @@ export type ListingFacets = {
   models: Record<string, string[]>;
   yearMin: number;
   yearMax: number;
+  years: number[];
   mileageMax: number;
   fuelTypes: string[];
   bodyTypes: string[];
   transmissions: string[];
+  conditions: string[];
+  vehicleTypes: string[];
   priceRanges: {
     USD: { min: number; max: number };
     EUR: { min: number; max: number };
@@ -213,6 +243,9 @@ export function computeListingFacets(
   const fuelTypes = new Set<string>();
   const bodyTypes = new Set<string>();
   const transmissions = new Set<string>();
+  const conditions = new Set<string>();
+  const vehicleTypes = new Set<string>();
+  const years = new Set<number>();
   let yearMin = Number.MAX_SAFE_INTEGER;
   let yearMax = 0;
   let mileageMax = 0;
@@ -229,6 +262,7 @@ export function computeListingFacets(
       if (row.model) models[row.make].add(row.model);
     }
     if (row.year > 0) {
+      years.add(row.year);
       yearMin = Math.min(yearMin, row.year);
       yearMax = Math.max(yearMax, row.year);
     }
@@ -236,6 +270,8 @@ export function computeListingFacets(
     if (row.fuelType) fuelTypes.add(row.fuelType);
     if (row.bodyType) bodyTypes.add(row.bodyType);
     if (row.transmission) transmissions.add(row.transmission);
+    if (row.condition) conditions.add(row.condition);
+    if (row.vehicleType) vehicleTypes.add(row.vehicleType);
     if (row.passportStatus in statusCounts) {
       statusCounts[row.passportStatus as keyof typeof statusCounts] += 1;
     }
@@ -260,10 +296,13 @@ export function computeListingFacets(
     ),
     yearMin: yearMin === Number.MAX_SAFE_INTEGER ? 0 : yearMin,
     yearMax,
+    years: [...years].sort((a, b) => a - b),
     mileageMax,
     fuelTypes: [...fuelTypes].sort(),
     bodyTypes: [...bodyTypes].sort(),
     transmissions: [...transmissions].sort(),
+    conditions: [...conditions].sort(),
+    vehicleTypes: [...vehicleTypes].sort(),
     priceRanges: {
       USD: normalizeRange(priceRanges.USD),
       EUR: normalizeRange(priceRanges.EUR),

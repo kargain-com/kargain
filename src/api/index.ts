@@ -67,6 +67,10 @@ type PassportDenorm = {
   fuelType: string;
   bodyType: string;
   transmission: string;
+  condition: string;
+  vehicleType: string;
+  colour: string;
+  locationLabel: string;
   tokenUri: string;
   duplicateVin: boolean;
 };
@@ -90,6 +94,10 @@ async function loadPassportMap(
         fuelType: row.fuelType,
         bodyType: row.bodyType,
         transmission: row.transmission,
+        condition: row.condition,
+        vehicleType: row.vehicleType,
+        colour: row.colour,
+        locationLabel: row.locationLabel,
         tokenUri: row.tokenUri,
         duplicateVin: row.duplicateVin,
       });
@@ -123,6 +131,10 @@ function enrichListing(
     fuelType: p?.fuelType ?? "",
     bodyType: p?.bodyType ?? "",
     transmission: p?.transmission ?? "",
+    condition: p?.condition ?? "",
+    vehicleType: p?.vehicleType ?? "",
+    colour: p?.colour ?? "",
+    locationLabel: p?.locationLabel ?? "",
     passportStatus,
     verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
@@ -152,10 +164,15 @@ app.get("/listings", async (c) => {
     model: c.req.query("model"),
     yearMin: c.req.query("yearMin"),
     yearMax: c.req.query("yearMax"),
+    mileageMin: c.req.query("mileageMin"),
     mileageMax: c.req.query("mileageMax"),
     fuelType: c.req.query("fuelType"),
     bodyType: c.req.query("bodyType"),
     transmission: c.req.query("transmission"),
+    condition: c.req.query("condition"),
+    vehicleType: c.req.query("vehicleType"),
+    location: c.req.query("location"),
+    colour: c.req.query("colour"),
     status: c.req.query("status"),
     currency: c.req.query("currency"),
     priceMin: c.req.query("priceMin"),

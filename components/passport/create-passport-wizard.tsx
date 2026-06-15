@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
 import {
   useAccount,
@@ -13,8 +13,8 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -82,18 +82,6 @@ export function CreatePassportWizard() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [metadataUri, setMetadataUri] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
-  const photoInputRef = useRef<HTMLInputElement>(null);
-
-  const previewUrls = useMemo(
-    () => photos.map((file) => URL.createObjectURL(file)),
-    [photos],
-  );
-
-  useEffect(() => {
-    return () => {
-      for (const url of previewUrls) URL.revokeObjectURL(url);
-    };
-  }, [previewUrls]);
 
   const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
     setForm((prev) => ({
@@ -111,15 +99,12 @@ export function CreatePassportWizard() {
     setFormError(null);
   };
 
-  const onPhotosSelected = (files: FileList | null) => {
-    if (!files?.length) return;
-    const incoming = Array.from(files).filter((f) => f.type.startsWith("image/"));
+  const onPhotosAdd = (files: File[]) => {
     setPhotos((prev) => {
-      const merged = [...prev, ...incoming].slice(0, MAX_PHOTOS_LIMIT);
+      const merged = [...prev, ...files].slice(0, MAX_PHOTOS_LIMIT);
       return merged;
     });
     setErrors((prev) => ({ ...prev, photos: undefined }));
-    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const removePhoto = (index: number) => {
@@ -335,53 +320,16 @@ export function CreatePassportWizard() {
 
       {step === 2 && (
         <div className="space-y-5">
-          <div className="space-y-2">
-            <Label>Photos (1–{MAX_PHOTOS_LIMIT})</Label>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              multiple
-              className="sr-only"
-              id="passport-photos"
-              onChange={(e) => onPhotosSelected(e.target.files)}
-              disabled={isBusy || photos.length >= MAX_PHOTOS_LIMIT}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isBusy || photos.length >= MAX_PHOTOS_LIMIT}
-              onClick={() => photoInputRef.current?.click()}
-            >
-              Add photos
-            </Button>
-            {errors.photos && <p className="font-sans text-sm text-status-error">{errors.photos}</p>}
-          </div>
+          <h2 className="font-display text-lg font-medium text-text-primary mb-6">Add photos</h2>
 
-          {photos.length > 0 && (
-            <div className="grid grid-cols-3 gap-2">
-              {photos.map((file, index) => (
-                <div key={`${file.name}-${index}`} className="relative aspect-square overflow-hidden rounded-md border border-border-default bg-bg-surface">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={previewUrls[index]}
-                    alt={file.name}
-                    className="h-full w-full object-cover"
-                  />
-                  {!isBusy && (
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1 rounded-sm bg-bg-primary/80 px-1.5 py-0.5 font-sans text-xs text-text-primary hover:bg-bg-primary"
-                      onClick={() => removePhoto(index)}
-                      aria-label={`Remove ${file.name}`}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <PhotoUploadZone
+            photos={photos}
+            onAdd={onPhotosAdd}
+            onRemove={removePhoto}
+            maxPhotos={MAX_PHOTOS_LIMIT}
+            error={errors.photos}
+            disabled={isBusy}
+          />
 
           {phase === "uploading" && uploadProgress && (
             <div className="space-y-2">
@@ -418,7 +366,7 @@ export function CreatePassportWizard() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="mt-6 flex items-center justify-between border-t border-border-default pt-6">
             <Button
               type="button"
               variant="ghost"

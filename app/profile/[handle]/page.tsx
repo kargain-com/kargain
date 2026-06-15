@@ -52,7 +52,7 @@ export default async function PublicProfilePage({
     ? await fetchKarProVerifierProfile(wallet)
     : null;
   const verificationCount = verifierProfile?.verificationCount ?? 0;
-  const proShowroomSlug = isActiveVerifier ? proSlugForAddress(wallet) : null;
+  const proShowroomSlug = proSlugForAddress(wallet);
 
   let ponderErr: string | null = null;
   let passports: { tokenId: string; status: PassportStatus; vin?: string | null }[] = [];

@@ -23,12 +23,20 @@ type Props = {
 };
 
 export function SellerContactButton({ peerAddress, label, listingTokenId: _listingTokenId }: Props) {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const router = useRouter();
   const { client, isInitializing, error, initialize } = useXmtpClient();
   const [busy, setBusy] = useState(false);
   const [enableOpen, setEnableOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  if (
+    address &&
+    peerAddress &&
+    address.toLowerCase() === peerAddress.toLowerCase()
+  ) {
+    return null;
+  }
 
   if (!isConnected) {
     return null;
