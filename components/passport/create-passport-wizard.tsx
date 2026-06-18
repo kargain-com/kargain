@@ -350,7 +350,7 @@ export function CreatePassportWizard() {
                   : "Preparing passport…"}
               </p>
               <p className="font-sans text-xs text-text-tertiary">
-                Your wallet may ask to fund Arweave storage (small amount of Base Sepolia ETH) before uploading.
+                Your wallet may ask to sign uploads. Standard wallets (MetaMask) may also prompt for a small storage deposit.
               </p>
               <Progress
                 value={

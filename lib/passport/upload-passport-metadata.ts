@@ -43,6 +43,12 @@ export function formatPassportUploadError(err: unknown): string {
         ? "Irys storage needs a small deposit of Base Sepolia ETH. Confirm the fund transaction in your wallet, then try again."
         : "Insufficient Irys balance for storage. Confirm the fund transaction in your wallet, then try again.";
     }
+    if (err.message.includes("not sent to any of this bundler")) {
+      return "Your wallet could not complete the Irys storage deposit (common with smart wallets). Try again, or connect a standard wallet such as MetaMask with a private-key account.";
+    }
+    if (err.message.includes("failed to post funding tx")) {
+      return "Irys storage deposit failed to confirm. Wait a minute and try again, or connect a standard wallet (not a smart wallet).";
+    }
     return err.message;
   }
   return "Upload failed. Please try again.";

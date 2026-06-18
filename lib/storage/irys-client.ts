@@ -64,7 +64,35 @@ function isDevnetEnvironment(): boolean {
 /** Extra bytes reserved for Irys bundle/manifest overhead on multi-file uploads. */
 const BUNDLE_OVERHEAD_BYTES = 16_384;
 
-async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise<void> {
+/** Gas fee multiplier passed to Irys fund() for congested testnets. */
+const FUND_FEE_MULTIPLIER = 1.2;
+
+async function isSmartContractWallet(
+  provider: Eip1193Provider,
+  address: string,
+): Promise<boolean> {
+  const code = await provider.request({
+    method: "eth_getCode",
+    params: [address, "latest"],
+  });
+  return typeof code === "string" && code !== "0x" && code.length > 2;
+}
+
+async function ensureFunded(
+  uploader: IrysUploader,
+  totalBytes: number,
+  provider?: unknown,
+): Promise<void> {
+  if (provider) {
+    const eip1193 = resolveProvider(provider);
+    const walletAddress = uploader.address;
+    if (walletAddress && (await isSmartContractWallet(eip1193, walletAddress))) {
+      // Smart wallets (e.g. Coinbase Smart Wallet) route ETH via contract calls.
+      // Irys only accepts funding txs whose top-level `to` is the bundler address.
+      return;
+    }
+  }
+
   const bytes = Math.ceil(totalBytes * 1.15) + BUNDLE_OVERHEAD_BYTES;
   const price = await uploader.getPrice(bytes);
   const balance = await uploader.getBalance();
@@ -72,7 +100,7 @@ async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise
   if (balance.lt(price)) {
     const needed = price.minus(balance).multipliedBy(1.1).integerValue(2);
     if (needed.gt(0)) {
-      await uploader.fund(needed);
+      await uploader.fund(needed, FUND_FEE_MULTIPLIER);
     }
   }
 }
@@ -144,7 +172,7 @@ export async function uploadFile(
   provider?: unknown,
 ): Promise<string> {
   const uploader = await getIrysUploader(provider);
-  await ensureFunded(uploader, file.size);
+  await ensureFunded(uploader, file.size, provider);
   const receipt = await uploader.uploadFile(file, {
     tags: mergeTags(file.type || "application/octet-stream", tags),
   });
@@ -166,7 +194,7 @@ export async function uploadFiles(
   const totalBytes =
     files.reduce((sum, file) => sum + file.size, 0) +
     (files.length > 1 ? BUNDLE_OVERHEAD_BYTES : 0);
-  await ensureFunded(uploader, totalBytes);
+  await ensureFunded(uploader, totalBytes, provider);
 
   if (files.length === 1) {
     const file = files[0]!;
@@ -202,7 +230,7 @@ export async function uploadJson(
 ): Promise<string> {
   const uploader = await getIrysUploader(provider);
   const body = JSON.stringify(data);
-  await ensureFunded(uploader, new TextEncoder().encode(body).length);
+  await ensureFunded(uploader, new TextEncoder().encode(body).length, provider);
   const receipt = await uploader.upload(body, {
     tags: mergeTags("application/json", tags),
   });
