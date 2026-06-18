@@ -21,7 +21,7 @@ const BASE_CHAIN_IDS = new Set([8453, 84532]);
 /** HTTP timeout for Irys bundler requests (large photo batches can be slow). */
 const UPLOAD_TIMEOUT_MS = 120_000;
 
-const DEFAULT_NODE_URL = "https://devnet.irys.xyz";
+const DEFAULT_NODE_URL = "https://node2.irys.xyz";
 
 /** Extra bytes reserved for bundle overhead when pre-funding multi-file uploads. */
 const BUNDLE_OVERHEAD_BYTES = 16_384;
@@ -131,15 +131,11 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
     const ethersProvider = new BrowserProvider(eip1193);
     const url = nodeUrl();
 
-    let builder = WebUploader(WebBaseEth)
+    const builder = WebUploader(WebBaseEth)
       .withAdapter(EthersV6Adapter(ethersProvider))
       .bundlerUrl(url)
       .withRpc(rpcUrlForChain(chainId))
       .timeout(UPLOAD_TIMEOUT_MS);
-
-    if (url.includes("devnet")) {
-      builder = builder.devnet();
-    }
 
     const uploader = await builder;
     cachedUploader = { provider: providerKey, uploader };
