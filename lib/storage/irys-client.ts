@@ -12,6 +12,8 @@ export type IrysUploader = BaseWebIrys;
 
 export type IrysTag = { name: string; value: string };
 
+type TaggedFile = File & { tags?: IrysTag[] };
+
 type Eip1193Provider = {
   request: (args: { method: string; params?: readonly unknown[] }) => Promise<unknown>;
 };
@@ -97,6 +99,12 @@ function mergeTags(contentType: string, tags?: IrysTag[]): IrysTag[] {
     merged.unshift({ name: "Content-Type", value: contentType });
   }
   return merged;
+}
+
+function photoUploadName(file: File, index: number): string {
+  const match = file.name.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = match?.[1]?.toLowerCase() ?? "jpg";
+  return `photo-${String(index).padStart(3, "0")}.${ext}`;
 }
 
 /**
@@ -187,6 +195,53 @@ export async function uploadFileWithUploader(
   return `ar://${receipt.id}`;
 }
 
+/**
+ * Upload multiple files with one wallet signature via an Irys nested bundle.
+ * A single file uses `uploadFile` directly.
+ */
+export async function uploadFilesWithUploader(
+  uploader: IrysUploader,
+  files: File[],
+  tags?: IrysTag[],
+): Promise<string[]> {
+  if (files.length === 0) return [];
+
+  if (files.length === 1) {
+    return [await uploadFileWithUploader(uploader, files[0]!, tags)];
+  }
+
+  const taggedFiles: TaggedFile[] = files.map((file, index) => {
+    const contentType = file.type || "image/jpeg";
+    const named = new File([file], photoUploadName(file, index), { type: contentType });
+    return Object.assign(named, {
+      tags: mergeTags(contentType, tags),
+    });
+  });
+
+  const result = await uploader.uploadFolder(taggedFiles);
+
+  return taggedFiles.map((file) => {
+    const entry = result.manifest.paths[file.name];
+    if (!entry?.id) {
+      throw new Error(`Upload succeeded but Arweave id missing for ${file.name}`);
+    }
+    return `ar://${entry.id}`;
+  });
+}
+
+export async function uploadJsonWithUploader(
+  uploader: IrysUploader,
+  data: object,
+  tags?: IrysTag[],
+): Promise<string> {
+  const body = JSON.stringify(data);
+  await ensureFunded(uploader, new TextEncoder().encode(body).length);
+  const receipt = await uploader.upload(body, {
+    tags: mergeTags("application/json", tags),
+  });
+  return `ar://${receipt.id}`;
+}
+
 /** Fund the user's Irys balance for a total byte size, then return the uploader. */
 export async function prepareUserPaidUpload(
   provider: unknown,
@@ -197,7 +252,7 @@ export async function prepareUserPaidUpload(
   return uploader;
 }
 
-/** Upload files sequentially; user funds Irys once, then signs each upload from their wallet. */
+/** User funds Irys once, then signs one batch upload (or one file) from their wallet. */
 export async function uploadFiles(
   files: File[],
   tags?: IrysTag[],
@@ -208,12 +263,7 @@ export async function uploadFiles(
   const uploader = await getIrysUploader(provider);
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   await ensureFunded(uploader, totalBytes);
-
-  const uris: string[] = [];
-  for (const file of files) {
-    uris.push(await uploadFileWithUploader(uploader, file, tags));
-  }
-  return uris;
+  return uploadFilesWithUploader(uploader, files, tags);
 }
 
 export async function uploadJson(

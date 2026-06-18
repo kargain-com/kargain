@@ -181,7 +181,7 @@ export function EditPassportWizard({
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
         .map((item) => item.file);
-      const uploadedPhotoUris = await uploadPassportPhotos(newFiles, provider);
+      const { uris: uploadedPhotoUris, uploader } = await uploadPassportPhotos(newFiles, provider);
       let uploadIndex = 0;
       const photoUris = photos.map((item) => {
         if (item.kind === "existing") return item.uri;
@@ -192,7 +192,7 @@ export function EditPassportWizard({
       const metadata = buildMetadataWireForEdit(form, photoUris, { createdAt });
 
       setPhase("uploading");
-      const uri = await uploadPassportMetadataJson(metadata, provider);
+      const uri = await uploadPassportMetadataJson(metadata, provider, undefined, uploader);
 
       setPhase("saving");
       const hash = await writeContractAsync({

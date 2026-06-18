@@ -1,15 +1,18 @@
 import {
+  getIrysUploader,
   isIrysDevnet,
   prepareUserPaidUpload,
-  uploadFileWithUploader,
+  uploadFilesWithUploader,
   uploadJson,
+  uploadJsonWithUploader,
   type IrysTag,
+  type IrysUploader,
 } from "@/lib/storage/irys-client";
 
 export type { IrysTag };
 
 export type UploadProgress =
-  | { kind: "photos"; current: number; total: number }
+  | { kind: "photos"; current: number; total: number; batch?: boolean }
   | { kind: "metadata" };
 
 const PHOTO_TAGS: IrysTag[] = [
@@ -64,29 +67,34 @@ export async function uploadPassportPhotos(
   files: File[],
   provider: unknown,
   onProgress?: (progress: UploadProgress) => void,
-): Promise<string[]> {
-  if (files.length === 0) return [];
+): Promise<{ uris: string[]; uploader: IrysUploader }> {
+  if (files.length === 0) {
+    const uploader = await getIrysUploader(provider);
+    return { uris: [], uploader };
+  }
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const uploader = await prepareUserPaidUpload(provider, totalBytes);
+  const batch = files.length > 1;
 
-  const uris: string[] = [];
-  for (let index = 0; index < files.length; index += 1) {
-    onProgress?.({ kind: "photos", current: index + 1, total: files.length });
-    const uri = await withRetry(() =>
-      uploadFileWithUploader(uploader, files[index]!, PHOTO_TAGS),
-    );
-    uris.push(uri);
-  }
-  return uris;
+  onProgress?.({ kind: "photos", current: 0, total: files.length, batch });
+
+  const uris = await withRetry(() => uploadFilesWithUploader(uploader, files, PHOTO_TAGS));
+
+  onProgress?.({ kind: "photos", current: files.length, total: files.length, batch });
+  return { uris, uploader };
 }
 
 export async function uploadPassportMetadataJson(
   metadata: Record<string, unknown>,
   provider: unknown,
   onProgress?: (progress: UploadProgress) => void,
+  uploader?: IrysUploader,
 ): Promise<string> {
   onProgress?.({ kind: "metadata" });
+  if (uploader) {
+    return withRetry(() => uploadJsonWithUploader(uploader, metadata, METADATA_TAGS));
+  }
   return withRetry(() => uploadJson(metadata, METADATA_TAGS, provider));
 }
 
@@ -102,11 +110,12 @@ export async function uploadPassportMetadataBundle(params: {
     params.provider,
     params.onProgress,
   );
-  const photoUris = [...params.existingPhotoUris, ...uploaded];
+  const photoUris = [...params.existingPhotoUris, ...uploaded.uris];
   const metadataUri = await uploadPassportMetadataJson(
     params.metadata,
     params.provider,
     params.onProgress,
+    uploaded.uploader,
   );
   return { photoUris, metadataUri };
 }

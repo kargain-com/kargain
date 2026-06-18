@@ -241,12 +241,16 @@ export function CreatePassportWizard() {
     try {
       const provider = await getWalletUploadProvider(connector);
 
-      const photoUris = await uploadPassportPhotos(photos, provider, setUploadProgress);
+      const { uris: photoUris, uploader } = await uploadPassportPhotos(
+        photos,
+        provider,
+        setUploadProgress,
+      );
 
       const metadata = buildMetadataWire(form, photoUris);
 
       setUploadProgress({ kind: "metadata" });
-      const uri = await uploadPassportMetadataJson(metadata, provider);
+      const uri = await uploadPassportMetadataJson(metadata, provider, undefined, uploader);
 
       setMetadataUri(uri);
       setUploadProgress(null);
@@ -344,11 +348,15 @@ export function CreatePassportWizard() {
             <div className="space-y-2">
               <p className="font-sans text-sm text-text-secondary">
                 {uploadProgress.kind === "photos"
-                  ? `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
+                  ? uploadProgress.batch
+                    ? uploadProgress.current >= uploadProgress.total
+                      ? `Uploaded ${uploadProgress.total} photos`
+                      : `Uploading ${uploadProgress.total} photos (one wallet signature)…`
+                    : `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
                   : "Preparing passport…"}
               </p>
               <p className="font-sans text-xs text-text-tertiary">
-                Storage fees are paid from your wallet. You may be asked to deposit a small amount of Base Sepolia ETH to Irys, then sign each upload.
+                Storage fees are paid from your wallet. You may be asked to deposit Base Sepolia ETH to Irys, then sign the photo batch and metadata.
               </p>
               <Progress
                 value={
