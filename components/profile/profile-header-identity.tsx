@@ -63,8 +63,18 @@ export function ProfileHeaderIdentity({
 
   return (
     <>
-      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md border border-border-default bg-bg-surface">
-        <EnsAvatar address={wallet} size={112} className="h-full w-full" />
+      <div
+        className={
+          isActiveVerifier
+            ? "relative h-28 w-28 shrink-0 overflow-hidden rounded-md border border-border-default"
+            : "relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-border-default"
+        }
+      >
+        <EnsAvatar
+          address={wallet}
+          shape={isActiveVerifier ? "square" : "round"}
+          fill
+        />
       </div>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
