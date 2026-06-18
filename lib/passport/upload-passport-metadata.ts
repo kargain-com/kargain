@@ -1,4 +1,4 @@
-import { uploadFile, uploadJson } from "@/lib/storage/irys-client";
+import { uploadFiles, uploadJson } from "@/lib/storage/irys-client";
 
 export type IrysTag = { name: string; value: string };
 
@@ -33,19 +33,36 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): 
   throw lastError instanceof Error ? lastError : new Error("Upload failed.");
 }
 
+export function formatPassportUploadError(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.message.includes("User rejected")) {
+      return "Wallet signature cancelled.";
+    }
+    if (err.message.includes("402 error")) {
+      return "Insufficient Irys balance for storage. Add funds and try again.";
+    }
+    return err.message;
+  }
+  return "Upload failed. Please try again.";
+}
+
 export async function uploadPassportPhotos(
   files: File[],
   provider: unknown,
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<string[]> {
-  const uris: string[] = [];
-  for (let index = 0; index < files.length; index += 1) {
-    onProgress?.({ kind: "photos", current: index + 1, total: files.length });
-    const uri = await withRetry(() =>
-      uploadFile(files[index]!, PHOTO_TAGS, provider),
-    );
-    uris.push(uri);
+  if (files.length === 0) return [];
+
+  if (files.length === 1) {
+    onProgress?.({ kind: "photos", current: 0, total: 1 });
+    const uris = await withRetry(() => uploadFiles(files, PHOTO_TAGS, provider));
+    onProgress?.({ kind: "photos", current: 1, total: 1 });
+    return uris;
   }
+
+  onProgress?.({ kind: "photos", current: 0, total: files.length });
+  const uris = await withRetry(() => uploadFiles(files, PHOTO_TAGS, provider));
+  onProgress?.({ kind: "photos", current: files.length, total: files.length });
   return uris;
 }
 

@@ -30,12 +30,14 @@ import {
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import {
+  formatPassportUploadError,
   getWalletUploadProvider,
   uploadPassportMetadataJson,
   uploadPassportPhotos,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
 import { reorderArrayItem } from "@/lib/reorder-array";
+import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -249,8 +251,9 @@ export function CreatePassportWizard() {
       setMetadataUri(uri);
       setUploadProgress(null);
       await startMint(uri);
-    } catch {
-      setFormError("Upload failed. Please try again.");
+    } catch (err) {
+      resetIrysUploaderCache();
+      setFormError(formatPassportUploadError(err));
       setUploadProgress(null);
       setPhase("error");
     }
@@ -341,13 +344,17 @@ export function CreatePassportWizard() {
             <div className="space-y-2">
               <p className="font-sans text-sm text-text-secondary">
                 {uploadProgress.kind === "photos"
-                  ? `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
+                  ? uploadProgress.current === 0 && uploadProgress.total > 1
+                    ? `Uploading ${uploadProgress.total} photos…`
+                    : `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
                   : "Preparing passport…"}
               </p>
               <Progress
                 value={
                   uploadProgress.kind === "photos"
-                    ? (uploadProgress.current / uploadProgress.total) * 100
+                    ? uploadProgress.total > 0
+                      ? (uploadProgress.current / uploadProgress.total) * 100
+                      : 0
                     : 100
                 }
               />

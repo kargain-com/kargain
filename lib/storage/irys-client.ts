@@ -16,7 +16,12 @@ type Eip1193Provider = {
 
 type IrysTag = { name: string; value: string };
 
+type TaggedFile = File & { tags?: IrysTag[] };
+
 const BASE_CHAIN_IDS = new Set([8453, 84532]);
+
+/** HTTP timeout for Irys bundler requests (large photo batches can be slow). */
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 const DEFAULT_NODE_URL = "https://devnet.irys.xyz";
 
@@ -93,7 +98,8 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
     let builder = WebUploader(WebBaseEth)
       .withAdapter(EthersV6Adapter(ethersProvider))
       .bundlerUrl(url)
-      .withRpc(rpcUrlForChain(chainId));
+      .withRpc(rpcUrlForChain(chainId))
+      .timeout(UPLOAD_TIMEOUT_MS);
 
     if (url.includes("devnet")) {
       builder = builder.devnet();
@@ -116,6 +122,17 @@ function mergeTags(contentType: string, tags?: IrysTag[]): IrysTag[] {
   return merged;
 }
 
+function photoUploadName(file: File, index: number): string {
+  const match = file.name.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = match?.[1]?.toLowerCase() ?? "jpg";
+  return `photo-${String(index).padStart(3, "0")}.${ext}`;
+}
+
+/** Drop cached uploader after a failed upload so the next attempt reconnects cleanly. */
+export function resetIrysUploaderCache(): void {
+  cachedUploader = null;
+}
+
 export async function uploadFile(
   file: File,
   tags?: IrysTag[],
@@ -127,6 +144,48 @@ export async function uploadFile(
     tags: mergeTags(file.type || "application/octet-stream", tags),
   });
   return `ar://${receipt.id}`;
+}
+
+/**
+ * Upload multiple files in one Irys nested bundle (one wallet signature for the batch).
+ * Falls back to a single `uploadFile` call when only one file is provided.
+ */
+export async function uploadFiles(
+  files: File[],
+  tags?: IrysTag[],
+  provider?: unknown,
+): Promise<string[]> {
+  if (files.length === 0) return [];
+
+  const uploader = await getIrysUploader(provider);
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  await ensureFunded(uploader, totalBytes);
+
+  if (files.length === 1) {
+    const file = files[0]!;
+    const receipt = await uploader.uploadFile(file, {
+      tags: mergeTags(file.type || "application/octet-stream", tags),
+    });
+    return [`ar://${receipt.id}`];
+  }
+
+  const taggedFiles: TaggedFile[] = files.map((file, index) => {
+    const contentType = file.type || "image/jpeg";
+    const named = new File([file], photoUploadName(file, index), { type: contentType });
+    return Object.assign(named, {
+      tags: mergeTags(contentType, tags),
+    });
+  });
+
+  const result = await uploader.uploadFolder(taggedFiles);
+
+  return taggedFiles.map((file) => {
+    const entry = result.manifest.paths[file.name];
+    if (!entry?.id) {
+      throw new Error(`Upload succeeded but Arweave id missing for ${file.name}`);
+    }
+    return `ar://${entry.id}`;
+  });
 }
 
 export async function uploadJson(
