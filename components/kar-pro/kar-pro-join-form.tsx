@@ -15,11 +15,13 @@ import {
 import {
   KarProProfileFields,
   type KarProProfileFieldValues,
+  type SlugAvailabilityStatus,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   categoryIndexToLabel,
+  SLUG_PATTERN,
   uploadKarProMetadata,
 } from "@/lib/kar-pro/kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
@@ -38,7 +40,7 @@ function formatStakeEth(wei: bigint | undefined): string {
 export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const chainId = DEFAULT_CHAIN_ID;
   const config = useConfig();
-  const { connector } = useAccount();
+  const { address, connector } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
@@ -47,9 +49,11 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const [fields, setFields] = useState<KarProProfileFieldValues>({
     categoryIndex: 0,
     name: "",
+    slug: "",
     description: "",
     website: "",
   });
+  const [slugAvailability, setSlugAvailability] = useState<SlugAvailabilityStatus>("idle");
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -72,12 +76,29 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
       setError("Enter a display name.");
       return;
     }
+    const slug = fields.slug.trim();
+    if (!slug) {
+      setError("Enter a pro URL slug.");
+      return;
+    }
+    if (!SLUG_PATTERN.test(slug)) {
+      setError("Pro URL must use lowercase letters, numbers, and hyphens only.");
+      return;
+    }
+    if (slugAvailability !== "available") {
+      setError(
+        slugAvailability === "taken"
+          ? "That pro URL is already taken."
+          : "Choose an available pro URL before continuing.",
+      );
+      return;
+    }
     setError(null);
     setStep(2);
   };
 
   const onStake = async () => {
-    if (!staking || !fields.name.trim()) return;
+    if (!staking || !fields.name.trim() || !fields.slug.trim()) return;
     setError(null);
 
     try {
@@ -89,6 +110,7 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         {
           categoryIndex: fields.categoryIndex,
           name: fields.name.trim(),
+          slug: fields.slug.trim(),
           description: fields.description.trim() || undefined,
           website: fields.website.trim() || undefined,
         },
@@ -120,7 +142,13 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   if (step === 1) {
     return (
       <div className="space-y-6">
-        <KarProProfileFields values={fields} onChange={setFields} disabled={isBusy} />
+        <KarProProfileFields
+          values={fields}
+          onChange={setFields}
+          disabled={isBusy}
+          ownerAddress={address}
+          onSlugAvailabilityChange={setSlugAvailability}
+        />
         {error && (
           <p role="alert" className="font-sans text-fluid-sm text-status-error">
             {error}
@@ -140,6 +168,9 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         <p className="mt-2 font-sans text-base font-medium text-text-primary">{fields.name.trim()}</p>
         <p className="mt-1 font-mono text-xs uppercase tracking-wider text-text-secondary">
           {categoryIndexToLabel(fields.categoryIndex)}
+        </p>
+        <p className="mt-3 font-mono text-sm text-text-secondary">
+          Your showroom: kargain.com/pro/{fields.slug.trim()}
         </p>
       </article>
 

@@ -19,6 +19,7 @@ import {
 import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
+import { indexKarProMetadataFromUri } from "./lib/ponder-kar-pro-metadata";
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
@@ -216,6 +217,7 @@ ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
 
 ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
   const id = event.args.holder.toLowerCase();
+  const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await context.db
     .insert(verifier)
     .values({
@@ -223,6 +225,7 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
       address: event.args.holder,
       category: Number(event.args.category),
       name: event.args.name,
+      slug,
       metadataURI: event.args.metadataURI,
       active: true,
     })
@@ -230,17 +233,20 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
       address: event.args.holder,
       category: Number(event.args.category),
       name: event.args.name,
+      slug,
       metadataURI: event.args.metadataURI,
       active: true,
     });
 });
 
 ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
+  const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await context.db
     .update(verifier, { id: event.args.holder.toLowerCase() })
     .set({
       category: Number(event.args.category),
       name: event.args.name,
+      slug,
       metadataURI: event.args.metadataURI,
     });
 });

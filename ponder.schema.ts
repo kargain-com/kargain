@@ -88,6 +88,7 @@ export const verifier = onchainTable("verifier", (t) => ({
   address: t.text().notNull(),
   category: t.integer().notNull().default(5),
   name: t.text().notNull().default(""),
+  slug: t.text().notNull().default(""),
   metadataURI: t.text().notNull().default(""),
   stakeAsset: t.integer().notNull().default(0),
   stakeAmount: t.text().notNull().default("0"),

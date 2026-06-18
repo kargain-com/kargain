@@ -12,7 +12,6 @@ import { FadeUp } from "@/components/ui/fade-up";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { proSlugForAddress } from "@/lib/web3/pro-slugs";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -52,7 +51,7 @@ export default async function PublicProfilePage({
     ? await fetchKarProVerifierProfile(wallet)
     : null;
   const verificationCount = verifierProfile?.verificationCount ?? 0;
-  const proShowroomSlug = proSlugForAddress(wallet);
+  const proShowroomSlug = verifierProfile?.slug?.trim() || null;
 
   let ponderErr: string | null = null;
   let passports: { tokenId: string; status: PassportStatus; vin?: string | null }[] = [];

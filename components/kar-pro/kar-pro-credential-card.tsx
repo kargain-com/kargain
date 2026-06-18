@@ -30,13 +30,13 @@ import {
   karProPassAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
-import { proSlugForAddress } from "@/lib/web3/pro-slugs";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProCredentialCardProps = {
   passId?: bigint;
   category: number;
   name: string;
+  slug?: string;
   joinedAt: number;
   verificationCount: number;
   metadataURI?: string;
@@ -63,22 +63,23 @@ function formatStakeEth(wei: bigint | undefined): string {
 
 async function fetchMetadataFields(
   metadataURI: string | undefined,
-): Promise<Pick<KarProProfileFieldValues, "description" | "website">> {
+): Promise<Pick<KarProProfileFieldValues, "slug" | "description" | "website">> {
   if (!metadataURI?.startsWith("ar://")) {
-    return { description: "", website: "" };
+    return { slug: "", description: "", website: "" };
   }
   try {
     const url = `https://arweave.net/${metadataURI.slice("ar://".length)}`;
     const res = await fetch(url);
-    if (!res.ok) return { description: "", website: "" };
+    if (!res.ok) return { slug: "", description: "", website: "" };
     const text = await res.text();
     const parsed = parseKarProMetadataJson(text);
     return {
+      slug: parsed?.slug ?? "",
       description: parsed?.description ?? "",
       website: parsed?.website ?? "",
     };
   } catch {
-    return { description: "", website: "" };
+    return { slug: "", description: "", website: "" };
   }
 }
 
@@ -86,6 +87,7 @@ export function KarProCredentialCard({
   passId,
   category,
   name,
+  slug: slugProp,
   joinedAt,
   verificationCount,
   metadataURI,
@@ -105,6 +107,7 @@ export function KarProCredentialCard({
   const [fields, setFields] = useState<KarProProfileFieldValues>({
     categoryIndex: category,
     name,
+    slug: slugProp ?? "",
     description: "",
     website: "",
   });
@@ -134,7 +137,7 @@ export function KarProCredentialCard({
   });
 
   const stakeLabel = formatStakeEth(minStake);
-  const slug = proSlugForAddress(address);
+  const showroomSlug = (slugProp ?? "").trim() || fields.slug.trim();
 
   useEffect(() => {
     if (!editing) return;
@@ -145,6 +148,7 @@ export function KarProCredentialCard({
         setFields({
           categoryIndex: category,
           name,
+          slug: extra.slug || slugProp || "",
           description: extra.description,
           website: extra.website,
         });
@@ -153,10 +157,10 @@ export function KarProCredentialCard({
     return () => {
       cancelled = true;
     };
-  }, [editing, category, name, metadataURI]);
+  }, [editing, category, name, metadataURI, slugProp]);
 
   const onSaveProfile = async () => {
-    if (!proPass || !fields.name.trim()) return;
+    if (!proPass || !fields.name.trim() || !fields.slug.trim()) return;
     setError(null);
     setLoading(true);
 
@@ -168,6 +172,7 @@ export function KarProCredentialCard({
         {
           categoryIndex: fields.categoryIndex,
           name: fields.name.trim(),
+          slug: fields.slug.trim(),
           description: fields.description.trim() || undefined,
           website: fields.website.trim() || undefined,
         },
@@ -257,9 +262,10 @@ export function KarProCredentialCard({
             values={fields}
             onChange={setFields}
             disabled={loading}
+            ownerAddress={address}
           />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={loading || !fields.name.trim()} onClick={() => void onSaveProfile()}>
+            <Button type="button" disabled={loading || !fields.name.trim() || !fields.slug.trim()} onClick={() => void onSaveProfile()}>
               {loading ? "Saving…" : "Save profile"}
             </Button>
             <Button
@@ -280,9 +286,9 @@ export function KarProCredentialCard({
           <Button type="button" variant="ghost" disabled={loading} onClick={() => setEditing(true)}>
             Update profile
           </Button>
-          {slug && (
+          {showroomSlug && (
             <Button type="button" variant="ghost" asChild>
-              <Link href={`/pro/${slug}`}>View showroom →</Link>
+              <Link href={`/pro/${showroomSlug}`}>View showroom →</Link>
             </Button>
           )}
         </div>

@@ -25,6 +25,11 @@ import {
   type EnrichedListingForFilter,
   type ListingFilterQuery,
 } from "../../lib/marketplace/listing-query";
+import {
+  SLUG_MAX_LENGTH,
+  SLUG_MIN_LENGTH,
+  SLUG_PATTERN,
+} from "../../lib/kar-pro/kar-pro-metadata";
 
 const app = new Hono();
 
@@ -403,17 +408,22 @@ app.get("/verifiers", async (c) => {
   return c.json(jsonBody({ verifiers }));
 });
 
-app.get("/verifiers/:address", async (c) => {
-  const id = c.req.param("address").toLowerCase();
+function isValidSlugParam(slug: string): boolean {
+  return (
+    slug.length >= SLUG_MIN_LENGTH &&
+    slug.length <= SLUG_MAX_LENGTH &&
+    SLUG_PATTERN.test(slug)
+  );
+}
+
+async function buildVerifierDetailResponse(id: string) {
   const row = await db
     .select()
     .from(verifier)
     .where(eq(verifier.id, id))
     .limit(1);
 
-  if (!row[0]) {
-    return c.json({ error: "Not found" }, 404);
-  }
+  if (!row[0]) return null;
 
   const v = row[0];
   const verificationRow = await db
@@ -438,26 +448,77 @@ app.get("/verifiers/:address", async (c) => {
     .orderBy(desc(passport.verifiedAt))
     .limit(20);
 
-  return c.json(
-    jsonBody({
-      address: v.address,
-      identity: {
-        category: v.category,
-        name: v.name,
-        metadataURI: v.metadataURI,
-      },
-      stake: {
-        asset: v.stakeAsset,
-        amount: v.stakeAmount,
-        active: v.active,
-      },
-      joinedAt: v.joinedAt,
-      leftAt: v.leftAt,
-      verificationCount,
-      disputedPassports,
-      verifiedPassports,
-    }),
-  );
+  return jsonBody({
+    address: v.address,
+    identity: {
+      category: v.category,
+      name: v.name,
+      slug: v.slug,
+      metadataURI: v.metadataURI,
+    },
+    stake: {
+      asset: v.stakeAsset,
+      amount: v.stakeAmount,
+      active: v.active,
+    },
+    joinedAt: v.joinedAt,
+    leftAt: v.leftAt,
+    verificationCount,
+    disputedPassports,
+    verifiedPassports,
+  });
+}
+
+app.get("/verifiers/by-slug/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const row = await db
+    .select()
+    .from(verifier)
+    .where(and(eq(verifier.slug, slug), eq(verifier.active, true)))
+    .limit(1);
+
+  if (!row[0]) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const detail = await buildVerifierDetailResponse(row[0].id);
+  if (!detail) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  return c.json(detail);
+});
+
+app.get("/verifiers/slug-available/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const ownerAddress = c.req.query("address")?.toLowerCase();
+
+  if (!isValidSlugParam(slug)) {
+    return c.json({ available: false, slug });
+  }
+
+  const rows = await db
+    .select()
+    .from(verifier)
+    .where(and(eq(verifier.slug, slug), eq(verifier.active, true)));
+
+  const takenByOther = rows.some((row) => {
+    if (!ownerAddress) return true;
+    return row.id !== ownerAddress;
+  });
+
+  return c.json({ available: !takenByOther, slug });
+});
+
+app.get("/verifiers/:address", async (c) => {
+  const id = c.req.param("address").toLowerCase();
+  const detail = await buildVerifierDetailResponse(id);
+
+  if (!detail) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  return c.json(detail);
 });
 
 app.get("/verifiers/:address/attestations", async (c) => {

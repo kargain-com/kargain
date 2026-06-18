@@ -11,6 +11,7 @@
   --color-border-hover: #3f3f46;
   --color-accent-warm: #d4a574;
   --color-status-error: #c47a6a;
+  --color-status-success: #4ade80;
   --color-status-warning: #d4a574;
   --focus-ring: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-accent-warm);
   --ease-out-smooth: cubic-bezier(0.33, 1, 0.68, 1);
@@ -54,6 +55,7 @@
   --color-border-hover: var(--color-border-hover);
   --color-accent-warm: var(--color-accent-warm);
   --color-status-error: var(--color-status-error);
+  --color-status-success: var(--color-status-success);
   --color-status-warning: var(--color-status-warning);
 
   --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;

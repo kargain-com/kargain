@@ -1,24 +1,40 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { CheckCircle, ChevronDown, Loader2, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import { checkSlugAvailability } from "@/app/actions/kar-pro-slug";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { KAR_PRO_CATEGORY_OPTIONS } from "@/lib/kar-pro/kar-pro-metadata";
+import {
+  KAR_PRO_CATEGORY_OPTIONS,
+  SLUG_PATTERN,
+  slugify,
+} from "@/lib/kar-pro/kar-pro-metadata";
 
 export type KarProProfileFieldValues = {
   categoryIndex: number;
   name: string;
+  slug: string;
   description: string;
   website: string;
 };
+
+export type SlugAvailabilityStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "taken"
+  | "invalid_format";
 
 type KarProProfileFieldsProps = {
   idPrefix?: string;
   values: KarProProfileFieldValues;
   onChange: (values: KarProProfileFieldValues) => void;
   disabled?: boolean;
+  ownerAddress?: string;
+  onSlugAvailabilityChange?: (status: SlugAvailabilityStatus) => void;
 };
 
 export function KarProProfileFields({
@@ -26,11 +42,111 @@ export function KarProProfileFields({
   values,
   onChange,
   disabled = false,
+  ownerAddress,
+  onSlugAvailabilityChange,
 }: KarProProfileFieldsProps) {
   const categoryId = `${idPrefix}-category`;
   const nameId = `${idPrefix}-name`;
+  const slugId = `${idPrefix}-slug`;
   const descriptionId = `${idPrefix}-description`;
   const websiteId = `${idPrefix}-website`;
+
+  const [slugStatus, setSlugStatus] = useState<SlugAvailabilityStatus>("idle");
+  const lastAutoSuggestion = useRef("");
+  const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateSlugStatus = (status: SlugAvailabilityStatus) => {
+    setSlugStatus(status);
+    onSlugAvailabilityChange?.(status);
+  };
+
+  useEffect(() => {
+    if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
+
+    const slug = values.slug.trim();
+    if (!slug) {
+      updateSlugStatus("idle");
+      return;
+    }
+
+    if (!SLUG_PATTERN.test(slug)) {
+      updateSlugStatus("invalid_format");
+      return;
+    }
+
+    updateSlugStatus("checking");
+    slugDebounceRef.current = setTimeout(() => {
+      void checkSlugAvailability(slug, ownerAddress).then((result) => {
+        if (!result.available) {
+          if (result.reason === "invalid_format" || result.reason === "invalid_length") {
+            updateSlugStatus("invalid_format");
+          } else if (result.reason === "error") {
+            updateSlugStatus("idle");
+          } else {
+            updateSlugStatus("taken");
+          }
+        } else {
+          updateSlugStatus("available");
+        }
+      });
+    }, 500);
+
+    return () => {
+      if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
+    };
+  }, [values.slug, ownerAddress, onSlugAvailabilityChange]);
+
+  const handleNameChange = (name: string) => {
+    const prevSuggestion = lastAutoSuggestion.current;
+    const shouldAutoSlug =
+      !values.slug.trim() ||
+      values.slug === prevSuggestion ||
+      values.slug === slugify(values.name);
+
+    let nextSlug = values.slug;
+    if (shouldAutoSlug) {
+      nextSlug = slugify(name);
+      lastAutoSuggestion.current = nextSlug;
+    }
+
+    onChange({ ...values, name, slug: nextSlug });
+  };
+
+  const slugIndicator = (() => {
+    if (slugStatus === "checking") {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-secondary">
+          <Loader2 size={14} strokeWidth={1.5} className="animate-spin" aria-hidden />
+          Checking…
+        </span>
+      );
+    }
+    if (slugStatus === "available") {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-success">
+          <CheckCircle size={14} strokeWidth={1.5} aria-hidden />
+          Available
+        </span>
+      );
+    }
+    if (slugStatus === "taken") {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
+          <XCircle size={14} strokeWidth={1.5} aria-hidden />
+          Already taken
+        </span>
+      );
+    }
+    if (slugStatus === "invalid_format") {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
+          <XCircle size={14} strokeWidth={1.5} aria-hidden />
+          Letters, numbers, hyphens only
+        </span>
+      );
+    }
+    return null;
+  })();
 
   return (
     <div className="flex flex-col gap-5">
@@ -75,8 +191,33 @@ export function KarProProfileFields({
           required
           disabled={disabled}
           value={values.name}
-          onChange={(e) => onChange({ ...values, name: e.target.value })}
+          onChange={(e) => handleNameChange(e.target.value)}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={slugId} className="font-sans text-fluid-sm text-text-secondary">
+          Pro URL
+        </Label>
+        <div className="flex flex-col gap-1.5">
+          <div className="inline-flex items-center gap-0 w-full">
+            <span className="font-mono text-sm text-text-tertiary bg-bg-surface border border-r-0 border-border-default rounded-l-sm px-3 min-h-11 flex items-center shrink-0">
+              kargain.com/pro/
+            </span>
+            <Input
+              id={slugId}
+              name="slug"
+              type="text"
+              required
+              disabled={disabled}
+              value={values.slug}
+              onChange={(e) => onChange({ ...values, slug: e.target.value.toLowerCase() })}
+              className="rounded-l-none border-border-default"
+              aria-invalid={slugStatus === "invalid_format" || slugStatus === "taken"}
+            />
+          </div>
+          {slugIndicator}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">

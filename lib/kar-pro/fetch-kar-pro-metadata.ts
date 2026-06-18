@@ -1,6 +1,7 @@
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
 
 export type KarProProfileMetadata = {
+  slug?: string;
   description?: string;
   website?: string;
 };
@@ -33,6 +34,7 @@ export async function fetchKarProMetadata(
     const parsed = parseKarProMetadataJson(text);
     if (!parsed) return null;
     const result: KarProProfileMetadata = {};
+    if (parsed.slug) result.slug = parsed.slug;
     if (parsed.description) result.description = parsed.description;
     if (parsed.website) result.website = parsed.website;
     return result;

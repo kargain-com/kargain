@@ -6,7 +6,6 @@ import type { Address } from "viem";
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
-import { proSlugForAddress } from "@/lib/web3/pro-slugs";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
@@ -32,7 +31,7 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
     verifier.verificationCount === 1
       ? "1 verification"
       : `${verifier.verificationCount} verifications`;
-  const showroomSlug = proSlugForAddress(verifier.address);
+  const showroomSlug = verifier.slug.trim();
 
   return (
     <article className="flex flex-col rounded-md border border-border-default bg-bg-card p-6 md:p-8">

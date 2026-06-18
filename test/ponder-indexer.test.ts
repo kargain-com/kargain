@@ -114,6 +114,10 @@ describe("passportMetadataDenorm", () => {
       fuelType: "Petrol",
       bodyType: "Sedan",
       transmission: "Manual",
+      condition: undefined,
+      vehicleType: undefined,
+      colour: undefined,
+      locationLabel: undefined,
     });
   });
 });

@@ -68,6 +68,7 @@ export type VerifierRow = {
   address: `0x${string}`;
   category: number;
   name: string;
+  slug: string;
   metadataURI: string;
   stakeAsset?: number;
   stakeAmount?: string;
@@ -207,7 +208,7 @@ export type PonderListingDetail = {
 
 export type PonderVerifierDetail = {
   address: string;
-  identity: { category: number; name: string; metadataURI: string };
+  identity: { category: number; name: string; slug: string; metadataURI: string };
   stake: { asset: number; amount: string; active: boolean };
   joinedAt: string;
   leftAt: string;

@@ -7,6 +7,7 @@ export type VerifierDirectoryEntry = {
   address: `0x${string}`;
   category: number;
   name: string;
+  slug: string;
   metadataURI: string;
   active: boolean;
   verificationCount: number;
@@ -22,6 +23,7 @@ type PonderVerifiersRawResponse = {
     address: string;
     category: number;
     name: string;
+    slug?: string;
     metadataURI: string;
     active: boolean;
     verificationCount: number;
@@ -37,6 +39,7 @@ function parseVerifierEntry(
     address: address as `0x${string}`,
     category: Number(row.category ?? 5),
     name: String(row.name ?? ""),
+    slug: String(row.slug ?? ""),
     metadataURI: String(row.metadataURI ?? ""),
     active: row.active === true,
     verificationCount: Number(row.verificationCount ?? 0),

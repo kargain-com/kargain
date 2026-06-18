@@ -8,9 +8,14 @@ export type KarProCategoryEnum =
   | "DEALER"
   | "OTHER";
 
+export const SLUG_MIN_LENGTH = 3;
+export const SLUG_MAX_LENGTH = 32;
+export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export type KarProMetadata = {
   version: "1.0";
   name: string;
+  slug: string;
   category: KarProCategoryEnum;
   description?: string;
   website?: string;
@@ -19,9 +24,28 @@ export type KarProMetadata = {
 export type KarProProfileFields = {
   categoryIndex: number;
   name: string;
+  slug: string;
   description?: string;
   website?: string;
 };
+
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function isValidSlug(slug: string): boolean {
+  return (
+    slug.length >= SLUG_MIN_LENGTH &&
+    slug.length <= SLUG_MAX_LENGTH &&
+    SLUG_PATTERN.test(slug)
+  );
+}
 
 export const KAR_PRO_CATEGORY_OPTIONS = [
   { index: 0, label: "Mechanic", enumLabel: "MECHANIC" as const },
@@ -50,9 +74,14 @@ export function categoryIndexToLabel(index: number): string {
 }
 
 export function buildKarProMetadataJson(fields: KarProProfileFields): string {
+  const slug = fields.slug.trim();
+  if (!isValidSlug(slug)) {
+    throw new Error("Invalid slug.");
+  }
   const metadata: KarProMetadata = {
     version: "1.0",
     name: fields.name.trim(),
+    slug,
     category: categoryIndexToEnum(fields.categoryIndex),
   };
   const description = fields.description?.trim();
@@ -71,9 +100,17 @@ export function parseKarProMetadataJson(json: string): KarProMetadata | null {
     if (typeof record.name !== "string" || !record.name.trim()) return null;
     if (typeof record.category !== "string" || !CATEGORY_ENUMS.has(record.category)) return null;
 
+    let slug = "";
+    if (typeof record.slug === "string") {
+      const trimmed = record.slug.trim();
+      if (trimmed && !isValidSlug(trimmed)) return null;
+      slug = trimmed;
+    }
+
     const metadata: KarProMetadata = {
       version: "1.0",
       name: record.name.trim(),
+      slug,
       category: record.category as KarProCategoryEnum,
     };
     if (typeof record.description === "string" && record.description.trim()) {

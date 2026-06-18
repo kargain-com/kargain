@@ -116,6 +116,7 @@ export function KarProClient({
       <KarProCredentialCard
         category={verifierProfile.category}
         name={verifierProfile.name}
+        slug={verifierProfile.slug}
         joinedAt={verifierProfile.joinedAt}
         verificationCount={verifierProfile.verificationCount}
         metadataURI={verifierProfile.metadataURI}

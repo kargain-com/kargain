@@ -14,7 +14,6 @@ import type {
   PonderVerifierDetail,
   VerifierRow,
 } from "@/lib/types/ponder";
-import { PRO_SLUGS } from "@/lib/web3/pro-slugs";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -40,7 +39,7 @@ export type ProShowroomData = {
   activeListings: MarketplaceListingRow[];
   recentAttestations: PonderVerifierAttestation[];
   attestationTotal: number;
-  profileMetadata: { description?: string; website?: string } | null;
+  profileMetadata: { slug?: string; description?: string; website?: string } | null;
   isActiveVerifier: boolean;
 };
 
@@ -80,6 +79,7 @@ function mapVerifierDetail(raw: unknown, address: `0x${string}`): VerifierRow | 
     address,
     category: Number(identity.category ?? 5),
     name: String(identity.name ?? ""),
+    slug: String(identity.slug ?? ""),
     metadataURI: String(identity.metadataURI ?? ""),
     stakeAsset: stake?.asset != null ? Number(stake.asset) : undefined,
     stakeAmount: stake?.amount != null ? String(stake.amount) : undefined,
@@ -130,12 +130,16 @@ function mapListingRaw(listing: PonderListingRaw) {
 }
 
 export async function getProShowroomData(slug: string): Promise<ProShowroomData | null> {
-  const rawAddress = PRO_SLUGS[slug];
-  if (!rawAddress) return null;
-
   let address: `0x${string}`;
   try {
-    address = getAddress(rawAddress);
+    const verifierBySlug = await fetch(
+      `${PONDER_URL}/verifiers/by-slug/${encodeURIComponent(slug)}`,
+      { next: { revalidate: 30 } },
+    );
+    if (!verifierBySlug.ok) return null;
+    const data = (await verifierBySlug.json()) as { address?: string };
+    if (!data.address) return null;
+    address = getAddress(data.address);
   } catch {
     return null;
   }
@@ -213,9 +217,12 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     /* return partial data with address */
   }
 
-  let profileMetadata: { description?: string; website?: string } | null = null;
+  let profileMetadata: { slug?: string; description?: string; website?: string } | null = null;
   if (verifier?.metadataURI) {
     profileMetadata = await fetchKarProMetadata(verifier.metadataURI);
+  }
+  if (profileMetadata && verifier?.slug && !profileMetadata.slug) {
+    profileMetadata.slug = verifier.slug;
   }
 
   return {
