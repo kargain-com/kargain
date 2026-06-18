@@ -61,18 +61,19 @@ function isDevnetEnvironment(): boolean {
   return nodeUrl().includes("devnet");
 }
 
-async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise<void> {
-  if (isDevnetEnvironment()) {
-    return;
-  }
+/** Extra bytes reserved for Irys bundle/manifest overhead on multi-file uploads. */
+const BUNDLE_OVERHEAD_BYTES = 16_384;
 
-  const price = await uploader.getPrice(totalBytes);
+async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise<void> {
+  const bytes = Math.ceil(totalBytes * 1.15) + BUNDLE_OVERHEAD_BYTES;
+  const price = await uploader.getPrice(bytes);
   const balance = await uploader.getBalance();
 
   if (balance.lt(price)) {
-    const needed = price.minus(balance);
-    const withBuffer = needed.multipliedBy(1.1);
-    await uploader.fund(withBuffer);
+    const needed = price.minus(balance).multipliedBy(1.1).integerValue(2);
+    if (needed.gt(0)) {
+      await uploader.fund(needed);
+    }
   }
 }
 
@@ -128,6 +129,10 @@ function photoUploadName(file: File, index: number): string {
   return `photo-${String(index).padStart(3, "0")}.${ext}`;
 }
 
+export function isIrysDevnet(): boolean {
+  return isDevnetEnvironment();
+}
+
 /** Drop cached uploader after a failed upload so the next attempt reconnects cleanly. */
 export function resetIrysUploaderCache(): void {
   cachedUploader = null;
@@ -158,7 +163,9 @@ export async function uploadFiles(
   if (files.length === 0) return [];
 
   const uploader = await getIrysUploader(provider);
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const totalBytes =
+    files.reduce((sum, file) => sum + file.size, 0) +
+    (files.length > 1 ? BUNDLE_OVERHEAD_BYTES : 0);
   await ensureFunded(uploader, totalBytes);
 
   if (files.length === 1) {

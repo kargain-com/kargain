@@ -349,6 +349,9 @@ export function CreatePassportWizard() {
                     : `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
                   : "Preparing passport…"}
               </p>
+              <p className="font-sans text-xs text-text-tertiary">
+                Your wallet may ask to fund Arweave storage (small amount of Base Sepolia ETH) before uploading.
+              </p>
               <Progress
                 value={
                   uploadProgress.kind === "photos"

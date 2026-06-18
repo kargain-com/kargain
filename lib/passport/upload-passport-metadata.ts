@@ -1,4 +1,4 @@
-import { uploadFiles, uploadJson } from "@/lib/storage/irys-client";
+import { isIrysDevnet, uploadFiles, uploadJson } from "@/lib/storage/irys-client";
 
 export type IrysTag = { name: string; value: string };
 
@@ -39,7 +39,9 @@ export function formatPassportUploadError(err: unknown): string {
       return "Wallet signature cancelled.";
     }
     if (err.message.includes("402 error")) {
-      return "Insufficient Irys balance for storage. Add funds and try again.";
+      return isIrysDevnet()
+        ? "Irys storage needs a small deposit of Base Sepolia ETH. Confirm the fund transaction in your wallet, then try again."
+        : "Insufficient Irys balance for storage. Confirm the fund transaction in your wallet, then try again.";
     }
     return err.message;
   }
