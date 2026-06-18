@@ -1,6 +1,12 @@
-import { isIrysDevnet, uploadFiles, uploadJson } from "@/lib/storage/irys-client";
+import {
+  isIrysDevnet,
+  prepareUserPaidUpload,
+  uploadFileWithUploader,
+  uploadJson,
+  type IrysTag,
+} from "@/lib/storage/irys-client";
 
-export type IrysTag = { name: string; value: string };
+export type { IrysTag };
 
 export type UploadProgress =
   | { kind: "photos"; current: number; total: number }
@@ -40,14 +46,14 @@ export function formatPassportUploadError(err: unknown): string {
     }
     if (err.message.includes("402 error")) {
       return isIrysDevnet()
-        ? "Irys storage needs a small deposit of Base Sepolia ETH. Confirm the fund transaction in your wallet, then try again."
-        : "Insufficient Irys balance for storage. Confirm the fund transaction in your wallet, then try again.";
+        ? "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again."
+        : "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again.";
     }
     if (err.message.includes("not sent to any of this bundler")) {
-      return "Your wallet could not complete the Irys storage deposit (common with smart wallets). Try again, or connect a standard wallet such as MetaMask with a private-key account.";
+      return "Your wallet could not deposit to Irys storage. Smart wallets often cannot send the required direct transfer — try MetaMask with a standard (EOA) account on Base Sepolia.";
     }
     if (err.message.includes("failed to post funding tx")) {
-      return "Irys storage deposit failed to confirm. Wait a minute and try again, or connect a standard wallet (not a smart wallet).";
+      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on Base Sepolia.";
     }
     return err.message;
   }
@@ -61,16 +67,17 @@ export async function uploadPassportPhotos(
 ): Promise<string[]> {
   if (files.length === 0) return [];
 
-  if (files.length === 1) {
-    onProgress?.({ kind: "photos", current: 0, total: 1 });
-    const uris = await withRetry(() => uploadFiles(files, PHOTO_TAGS, provider));
-    onProgress?.({ kind: "photos", current: 1, total: 1 });
-    return uris;
-  }
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const uploader = await prepareUserPaidUpload(provider, totalBytes);
 
-  onProgress?.({ kind: "photos", current: 0, total: files.length });
-  const uris = await withRetry(() => uploadFiles(files, PHOTO_TAGS, provider));
-  onProgress?.({ kind: "photos", current: files.length, total: files.length });
+  const uris: string[] = [];
+  for (let index = 0; index < files.length; index += 1) {
+    onProgress?.({ kind: "photos", current: index + 1, total: files.length });
+    const uri = await withRetry(() =>
+      uploadFileWithUploader(uploader, files[index]!, PHOTO_TAGS),
+    );
+    uris.push(uri);
+  }
   return uris;
 }
 

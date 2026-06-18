@@ -344,13 +344,11 @@ export function CreatePassportWizard() {
             <div className="space-y-2">
               <p className="font-sans text-sm text-text-secondary">
                 {uploadProgress.kind === "photos"
-                  ? uploadProgress.current === 0 && uploadProgress.total > 1
-                    ? `Uploading ${uploadProgress.total} photos…`
-                    : `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
+                  ? `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
                   : "Preparing passport…"}
               </p>
               <p className="font-sans text-xs text-text-tertiary">
-                Your wallet may ask to sign uploads. Standard wallets (MetaMask) may also prompt for a small storage deposit.
+                Storage fees are paid from your wallet. You may be asked to deposit a small amount of Base Sepolia ETH to Irys, then sign each upload.
               </p>
               <Progress
                 value={
