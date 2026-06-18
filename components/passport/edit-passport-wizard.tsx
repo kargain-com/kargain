@@ -112,7 +112,7 @@ export function EditPassportWizard({
     () =>
       photos.map((item) =>
         item.kind === "existing"
-          ? resolveUri(item.uri)
+          ? resolveUri(item.uri, chainId)
           : URL.createObjectURL(item.file),
       ),
     [photos],

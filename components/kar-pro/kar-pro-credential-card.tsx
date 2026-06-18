@@ -26,6 +26,7 @@ import {
   uploadKarProMetadata,
 } from "@/lib/kar-pro/kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
+import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import {
   karProPassAddress,
   karProStakingAddress,
@@ -68,7 +69,8 @@ async function fetchMetadataFields(
     return { slug: "", description: "", website: "" };
   }
   try {
-    const url = `https://arweave.net/${metadataURI.slice("ar://".length)}`;
+    const url = arUriToHttp(metadataURI);
+    if (!url) return { slug: "", description: "", website: "" };
     const res = await fetch(url);
     if (!res.ok) return { slug: "", description: "", website: "" };
     const text = await res.text();

@@ -92,6 +92,7 @@ export function PassportDetailView({
         <div className="space-y-6">
           <PassportPhotoGallery
             photos={metadata?.photos ?? []}
+            chainId={chainId}
             labels={{ galleryPrev: t.galleryPrev, galleryNext: t.galleryNext }}
           />
 

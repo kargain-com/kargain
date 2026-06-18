@@ -421,6 +421,7 @@ export function PassportActionsPanel({
       {isActiveVerifier && !isOwner && status === "UNVERIFIED" && (
         <div className="space-y-3">
           <MetadataDiffPanel
+            chainId={chainId}
             uriHistory={uriHistory}
             currentTokenUri={tokenUri}
             currentMetadata={currentMetadata}

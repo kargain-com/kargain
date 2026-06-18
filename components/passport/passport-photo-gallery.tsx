@@ -8,15 +8,16 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   photos: string[];
+  chainId: number;
   labels: {
     galleryPrev: string;
     galleryNext: string;
   };
 };
 
-export function PassportPhotoGallery({ photos, labels }: Props) {
+export function PassportPhotoGallery({ photos, chainId, labels }: Props) {
   const [selected, setSelected] = useState(0);
-  const urls = photos.map((uri) => resolveUri(uri));
+  const urls = photos.map((uri) => resolveUri(uri, chainId));
 
   const goPrev = useCallback(() => {
     setSelected((i) => (i <= 0 ? urls.length - 1 : i - 1));

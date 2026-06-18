@@ -13,6 +13,7 @@ import {
 import type { PonderUriHistoryEntry } from "@/lib/types/ponder";
 
 type Props = {
+  chainId: number;
   uriHistory: PonderUriHistoryEntry[];
   currentTokenUri: string;
   currentMetadata: PassportMetadata | null;
@@ -53,6 +54,7 @@ function DiffList({
 }
 
 export function MetadataDiffPanel({
+  chainId,
   uriHistory,
   currentTokenUri,
   currentMetadata,
@@ -82,7 +84,7 @@ export function MetadataDiffPanel({
     let cancelled = false;
     setLoadError(false);
 
-    void fetchArweaveMetadata(uriPair.beforeUri).then((result) => {
+    void fetchArweaveMetadata(uriPair.beforeUri, chainId).then((result) => {
       if (cancelled) return;
       if (!result.ok) {
         setBeforeMetadata(null);
@@ -95,7 +97,7 @@ export function MetadataDiffPanel({
     return () => {
       cancelled = true;
     };
-  }, [uriPair]);
+  }, [uriPair, chainId]);
 
   const diff = useMemo(() => {
     if (!beforeMetadata || !currentMetadata) return null;

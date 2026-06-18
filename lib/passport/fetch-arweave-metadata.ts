@@ -3,12 +3,7 @@ export { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
-
-function arUriToHttp(uri: string): string | null {
-  const u = uri.trim();
-  if (!u.startsWith("ar://")) return null;
-  return `https://arweave.net/${u.slice("ar://".length)}`;
-}
+import { arUriToHttp } from "@/lib/storage/ar-gateway";
 
 export type FetchArweaveMetadataResult =
   | { ok: true; metadata: PassportMetadata }
@@ -16,8 +11,9 @@ export type FetchArweaveMetadataResult =
 
 export async function fetchArweaveMetadata(
   tokenUri: string,
+  chainId: number,
 ): Promise<FetchArweaveMetadataResult> {
-  const url = arUriToHttp(tokenUri);
+  const url = arUriToHttp(tokenUri, chainId);
   if (!url) return { ok: false };
 
   try {

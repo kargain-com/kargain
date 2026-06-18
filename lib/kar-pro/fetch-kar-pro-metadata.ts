@@ -1,4 +1,5 @@
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
+import { arUriToHttp } from "@/lib/storage/ar-gateway";
 
 export type KarProProfileMetadata = {
   slug?: string;
@@ -6,14 +7,10 @@ export type KarProProfileMetadata = {
   website?: string;
 };
 
-const ARWEAVE_GATEWAY = (
-  process.env.ARWEAVE_GATEWAY ?? "https://arweave.net"
-).replace(/\/$/, "");
-
 function metadataUriToHttp(uri: string): string | null {
   const trimmed = uri.trim();
   if (trimmed.startsWith("ar://")) {
-    return `${ARWEAVE_GATEWAY}/${trimmed.slice("ar://".length)}`;
+    return arUriToHttp(trimmed);
   }
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed;

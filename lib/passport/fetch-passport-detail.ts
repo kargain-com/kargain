@@ -210,7 +210,7 @@ export async function fetchPassportDetail(
     return { ok: true, passport, metadata: null, metadataError: true };
   }
 
-  const metaResult = await fetchArweaveMetadata(passport.tokenUri);
+  const metaResult = await fetchArweaveMetadata(passport.tokenUri, chainId);
   if (!metaResult.ok) {
     return { ok: true, passport, metadata: null, metadataError: true };
   }

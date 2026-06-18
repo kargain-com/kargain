@@ -1,4 +1,7 @@
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
+import { arUriToHttp } from "@/lib/storage/ar-gateway";
+
+export { arUriToHttp } from "@/lib/storage/ar-gateway";
 
 export type IndexedPassportMetadata = {
   vin: string;
@@ -14,12 +17,6 @@ export type IndexedPassportMetadata = {
   colour: string;
   locationLabel: string;
 };
-
-export function arUriToHttp(uri: string): string | null {
-  const u = uri.trim();
-  if (!u.startsWith("ar://")) return null;
-  return `https://arweave.net/${u.slice("ar://".length)}`;
-}
 
 export async function fetchMetadataFromUri(
   tokenUri: string,

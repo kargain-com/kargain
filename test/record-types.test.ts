@@ -140,7 +140,7 @@ describe("getRecordDisplay", () => {
       ctx,
     );
 
-    assert.equal(display.evidenceHref, "https://arweave.net/evidence-123");
+    assert.equal(display.evidenceHref, "https://gateway.irys.xyz/evidence-123");
   });
 });
 

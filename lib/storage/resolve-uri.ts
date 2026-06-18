@@ -1,11 +1,14 @@
+import { arUriToHttp } from "@/lib/storage/ar-gateway";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+
 const IPFS_GATEWAY = (process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io/ipfs").replace(/\/$/, "");
 
 /** Map `ar://` and `ipfs://` URIs to HTTP gateway URLs for rendering. */
-export function resolveUri(uri: string): string {
+export function resolveUri(uri: string, chainId: number = DEFAULT_CHAIN_ID): string {
   const u = uri.trim();
   if (!u) return u;
   if (u.startsWith("ar://")) {
-    return `https://arweave.net/${u.slice("ar://".length)}`;
+    return arUriToHttp(u, chainId) ?? u;
   }
   if (u.startsWith("ipfs://")) {
     return `${IPFS_GATEWAY}/${u.slice("ipfs://".length)}`;
