@@ -41,7 +41,7 @@ describe("KarProPass", () => {
     const { admin, owner, stranger, proPass } = await deployVerifierStack(viem);
     void admin;
     await assert.rejects(
-      proPass.write.mint([owner.account.address, Category.INSPECTOR, "X", "ipfs://x"], {
+      proPass.write.mint([owner.account.address, Category.INSPECTOR, "X", "ar://x"], {
         account: stranger.account,
       }),
       revertsWith("OnlyStaking"),
@@ -101,22 +101,22 @@ describe("KarProPass", () => {
     await joinVerifier(staking, verifier, {
       category: Category.INSPECTOR,
       name: "Old Name",
-      metadataURI: "ipfs://old",
+      metadataURI: "ar://old",
     });
     const tokenId = BigInt(verifier.account.address);
-    await proPass.write.updateProfile([Category.DEALER, "New Name", "ipfs://new"], {
+    await proPass.write.updateProfile([Category.DEALER, "New Name", "ar://new"], {
       account: verifier.account,
     });
     assert.equal(await proPass.read.holderCategory([tokenId]), Category.DEALER);
     assert.equal(await proPass.read.holderName([tokenId]), "New Name");
-    assert.equal(await proPass.read.holderMetadataURI([tokenId]), "ipfs://new");
+    assert.equal(await proPass.read.holderMetadataURI([tokenId]), "ar://new");
   });
 
   it("updateProfile reverts if caller has no pass", async () => {
     const { viem } = connection;
     const { stranger, proPass } = await deployVerifierStack(viem);
     await assert.rejects(
-      proPass.write.updateProfile([Category.OTHER, "X", "ipfs://x"], {
+      proPass.write.updateProfile([Category.OTHER, "X", "ar://x"], {
         account: stranger.account,
       }),
       revertsWith("NotHolder"),
@@ -164,7 +164,7 @@ describe("KarProStaking — becomeVerifierNative", () => {
     const { viem } = connection;
     const { verifier, staking } = await deployVerifierStack(viem);
     await assert.rejects(
-      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ar://x"], {
         account: verifier.account,
         value: MIN_STAKE - 1n,
       }),
@@ -177,7 +177,7 @@ describe("KarProStaking — becomeVerifierNative", () => {
     const { verifier, staking } = await deployVerifierStack(viem);
     await joinVerifier(staking, verifier);
     await assert.rejects(
-      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ar://x"], {
         account: verifier.account,
         value: MIN_STAKE,
       }),
@@ -190,7 +190,7 @@ describe("KarProStaking — becomeVerifierNative", () => {
     const publicClient = await viem.getPublicClient();
     const { verifier, staking } = await deployVerifierStack(viem);
     const hash = await staking.write.becomeVerifierNative(
-      [Category.INSPECTOR, "Verifier Co", "ipfs://v"],
+      [Category.INSPECTOR, "Verifier Co", "ar://v"],
       { account: verifier.account, value: MIN_STAKE },
     );
     const logs = await receiptLogs(publicClient, hash, staking.abi);
@@ -206,13 +206,13 @@ describe("KarProStaking — becomeVerifierNative", () => {
     await joinVerifier(staking, verifier, {
       category: Category.BROKER,
       name: "Broker Inc",
-      metadataURI: "ipfs://broker",
+      metadataURI: "ar://broker",
     });
     const tokenId = BigInt(verifier.account.address);
     const [, category, name, metadataURI] = await proPass.read.getProPassData([tokenId]);
     assert.equal(category, Category.BROKER);
     assert.equal(name, "Broker Inc");
-    assert.equal(metadataURI, "ipfs://broker");
+    assert.equal(metadataURI, "ar://broker");
   });
 
   it("isActiveVerifier returns true after join", async () => {
@@ -329,13 +329,13 @@ describe("KarProStaking — params", () => {
     const newMin = 100_000_000_000_000_000n;
     await staking.write.setMinStakeNative([newMin], { account: admin.account });
     await assert.rejects(
-      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+      staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ar://x"], {
         account: verifier.account,
         value: newMin - 1n,
       }),
       revertsWith("BelowMinStake"),
     );
-    await staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ipfs://x"], {
+    await staking.write.becomeVerifierNative([Category.INSPECTOR, "X", "ar://x"], {
       account: verifier.account,
       value: newMin,
     });
@@ -361,7 +361,7 @@ describe("KarProStaking — params", () => {
     await usdc.write.mint([verifier.account.address, tokenMin]);
     await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
     await staking.write.becomeVerifierToken(
-      [Category.GARAGE, "Garage Pro", "ipfs://garage"],
+      [Category.GARAGE, "Garage Pro", "ar://garage"],
       { account: verifier.account },
     );
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
@@ -372,7 +372,7 @@ describe("KarProStaking — params", () => {
     const { viem } = connection;
     const { verifier, staking } = await deployVerifierStack(viem);
     await assert.rejects(
-      staking.write.becomeVerifierToken([Category.INSPECTOR, "X", "ipfs://x"], {
+      staking.write.becomeVerifierToken([Category.INSPECTOR, "X", "ar://x"], {
         account: verifier.account,
       }),
       revertsWith("TokenNotEnabled"),
@@ -454,7 +454,7 @@ describe("KarProStaking — security", () => {
     await usdc.write.mint([verifier.account.address, tokenMin]);
     await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
     await staking.write.becomeVerifierToken(
-      [Category.MECHANIC, "Mech Shop", "ipfs://mech"],
+      [Category.MECHANIC, "Mech Shop", "ar://mech"],
       { account: verifier.account },
     );
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
@@ -473,7 +473,7 @@ describe("KarProStaking — security", () => {
     await usdc.write.mint([verifier.account.address, tokenMin]);
     await usdc.write.approve([staking.address, tokenMin], { account: verifier.account });
     await staking.write.becomeVerifierToken(
-      [Category.INSPECTOR, "Token Verifier", "ipfs://t"],
+      [Category.INSPECTOR, "Token Verifier", "ar://t"],
       { account: verifier.account },
     );
     const before = await usdc.read.balanceOf([verifier.account.address]);
@@ -534,7 +534,7 @@ describe("KarProStaking — fee-on-transfer protection", () => {
     await feeToken.write.mint([verifier.account.address, tokenMin]);
     await feeToken.write.approve([staking.address, tokenMin], { account: verifier.account });
     await staking.write.becomeVerifierToken(
-      [Category.INSPECTOR, "Fee Test", "ipfs://fee"],
+      [Category.INSPECTOR, "Fee Test", "ar://fee"],
       { account: verifier.account },
     );
     const stake = await staking.read.stakes([verifier.account.address]);
@@ -552,7 +552,7 @@ describe("KarProStaking — fee-on-transfer protection", () => {
     await feeToken.write.approve([staking.address, tokenMin], { account: verifier.account });
     await assert.rejects(
       staking.write.becomeVerifierToken(
-        [Category.INSPECTOR, "Fee Fail", "ipfs://fail"],
+        [Category.INSPECTOR, "Fee Fail", "ar://fail"],
         { account: verifier.account },
       ),
       revertsWith("BelowMinStake"),
@@ -576,7 +576,7 @@ describe("KarPassport — mintPassport", () => {
   it("public mint, status UNVERIFIED, correct URI", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    const uri = "ipfs://passport-1";
+    const uri = "ar://passport-1";
     await passport.write.mintPassport([owner.account.address, uri], {
       account: owner.account,
     });
@@ -589,11 +589,11 @@ describe("KarPassport — mintPassport", () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     assert.equal(await passport.read.nextTokenId(), 0n);
-    await passport.write.mintPassport([owner.account.address, "ipfs://0"], {
+    await passport.write.mintPassport([owner.account.address, "ar://0"], {
       account: owner.account,
     });
     assert.equal(await passport.read.nextTokenId(), 1n);
-    await passport.write.mintPassport([owner.account.address, "ipfs://1"], {
+    await passport.write.mintPassport([owner.account.address, "ar://1"], {
       account: owner.account,
     });
     assert.equal(await passport.read.nextTokenId(), 2n);
@@ -616,21 +616,21 @@ describe("KarPassport — setPassportURI", () => {
   it("owner updates when UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+    await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
-    await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ipfs://new");
+    await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([0n]), "ar://new");
   });
 
   it("reverts not owner", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://x"], {
+    await passport.write.mintPassport([owner.account.address, "ar://x"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://hack"], { account: stranger.account }),
+      passport.write.setPassportURI([0n, "ar://hack"], { account: stranger.account }),
       revertsWith("NotOwner"),
     );
   });
@@ -638,13 +638,13 @@ describe("KarPassport — setPassportURI", () => {
   it("updates when VERIFIED and resets verification", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ipfs://new");
+    await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([0n]), "ar://new");
     const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
     assert.equal(getAddress(recordedVerifier), getAddress("0x0000000000000000000000000000000000000000"));
@@ -654,13 +654,13 @@ describe("KarPassport — setPassportURI", () => {
   it("reverts SameURI when VERIFIED and keeps verification", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://v"], { account: owner.account }),
+      passport.write.setPassportURI([0n, "ar://v"], { account: owner.account }),
       revertsWith("SameURI"),
     );
     const [status] = await passport.read.getPassportStatus([0n]);
@@ -670,11 +670,11 @@ describe("KarPassport — setPassportURI", () => {
   it("reverts SameURI when UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+    await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://old"], { account: owner.account }),
+      passport.write.setPassportURI([0n, "ar://old"], { account: owner.account }),
       revertsWith("SameURI"),
     );
   });
@@ -682,7 +682,7 @@ describe("KarPassport — setPassportURI", () => {
   it("reverts empty URI", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+    await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
     await assert.rejects(
@@ -694,14 +694,14 @@ describe("KarPassport — setPassportURI", () => {
   it("reverts when DISPUTED", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
+    await passport.write.mintPassport([owner.account.address, "ar://d"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account }),
+      passport.write.setPassportURI([0n, "ar://new"], { account: owner.account }),
       revertsWith("InvalidStatus"),
     );
   });
@@ -709,7 +709,7 @@ describe("KarPassport — setPassportURI", () => {
   it("reverts NotOwner when listed in escrow", async () => {
     const { viem } = connection;
     const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://listed"], {
+    await passport.write.mintPassport([seller.account.address, "ar://listed"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -717,7 +717,7 @@ describe("KarPassport — setPassportURI", () => {
     });
     await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ipfs://new"], { account: seller.account }),
+      passport.write.setPassportURI([0n, "ar://new"], { account: seller.account }),
       revertsWith("NotOwner"),
     );
   });
@@ -725,15 +725,15 @@ describe("KarPassport — setPassportURI", () => {
   it("allows edit after resolve(false) from DISPUTED", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://d"], {
+    await passport.write.mintPassport([owner.account.address, "ar://d"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
     await passport.write.disputePassport([0n, "issue"], { account: owner.account });
     await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    await passport.write.setPassportURI([0n, "ipfs://fixed"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ipfs://fixed");
+    await passport.write.setPassportURI([0n, "ar://fixed"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([0n]), "ar://fixed");
     const [status] = await passport.read.getPassportStatus([0n]);
     assert.equal(status, 0);
   });
@@ -742,10 +742,10 @@ describe("KarPassport — setPassportURI", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://old"], {
+    await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
-    const hash = await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
+    const hash = await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
     const logs = await receiptLogs(publicClient, hash, passport.abi);
     assert.equal(logs.some((l) => l.eventName === "VerificationReset"), false);
     assert.equal(logs.some((l) => l.eventName === "PassportURIUpdated"), true);
@@ -755,12 +755,12 @@ describe("KarPassport — setPassportURI", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([0n], { account: verifier.account });
-    const hash = await passport.write.setPassportURI([0n, "ipfs://new"], { account: owner.account });
+    const hash = await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
     const logs = await receiptLogs(publicClient, hash, passport.abi);
     const reset = logs.find((l) => l.eventName === "VerificationReset");
     assert.ok(reset);
@@ -785,7 +785,7 @@ describe("KarPassport — verifyPassport", () => {
   it("active verifier (not owner) verifies", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -798,7 +798,7 @@ describe("KarPassport — verifyPassport", () => {
   it("reverts: not active verifier", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await assert.rejects(
@@ -810,7 +810,7 @@ describe("KarPassport — verifyPassport", () => {
   it("reverts: self-verify", async () => {
     const { viem } = connection;
     const { owner, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, owner);
@@ -823,7 +823,7 @@ describe("KarPassport — verifyPassport", () => {
   it("reverts: already VERIFIED", async () => {
     const { viem } = connection;
     const { owner, verifier, stranger, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -839,7 +839,7 @@ describe("KarPassport — verifyPassport", () => {
     const { viem } = connection;
     const { admin, owner, verifier, stranger, passport, proPass, staking } =
       await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -856,7 +856,7 @@ describe("KarPassport — verifyPassport", () => {
   it("verifier who left (pass burned) can no longer verify", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -870,7 +870,7 @@ describe("KarPassport — verifyPassport", () => {
   it("passport stays VERIFIED after its verifier leaves", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://v"], {
+    await passport.write.mintPassport([owner.account.address, "ar://v"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -898,7 +898,7 @@ describe("KarPassport — dispute and resolve", () => {
 
   async function setupVerified(viem: ViemSuite) {
     const stack = await deployPassportStack(viem);
-    await stack.passport.write.mintPassport([stack.owner.account.address, "ipfs://d"], {
+    await stack.passport.write.mintPassport([stack.owner.account.address, "ar://d"], {
       account: stack.owner.account,
     });
     await joinVerifier(stack.staking, stack.verifier);
@@ -918,7 +918,7 @@ describe("KarPassport — dispute and resolve", () => {
   it("reverts dispute on UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://u"], {
+    await passport.write.mintPassport([owner.account.address, "ar://u"], {
       account: owner.account,
     });
     await assert.rejects(
@@ -994,7 +994,7 @@ describe("KarPassport — records", () => {
   it("owner appendRecord", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
+    await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
     await passport.write.appendRecord([0n, "service", "Oil change", "cid-1"], {
@@ -1006,7 +1006,7 @@ describe("KarPassport — records", () => {
   it("reportDiscrepancy permissionless", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
+    await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
     await passport.write.reportDiscrepancy([0n, "scratch found", "cid-2"], {
@@ -1018,7 +1018,7 @@ describe("KarPassport — records", () => {
   it("appendAttestation requires active verifier", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
+    await passport.write.mintPassport([owner.account.address, "ar://a"], {
       account: owner.account,
     });
     await assert.rejects(
@@ -1032,7 +1032,7 @@ describe("KarPassport — records", () => {
   it("recordCount increments", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
+    await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -1044,7 +1044,7 @@ describe("KarPassport — records", () => {
   it("T10: appendRecord on VERIFIED leaves status unchanged", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://t10"], {
+    await passport.write.mintPassport([owner.account.address, "ar://t10"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -1062,7 +1062,7 @@ describe("KarPassport — records", () => {
   it("appendRecord reverts NotOwner when listed in escrow", async () => {
     const { viem } = connection;
     const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://listed-record"], {
+    await passport.write.mintPassport([seller.account.address, "ar://listed-record"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1094,7 +1094,7 @@ describe("KarPassport — getPassportStatus", () => {
   it("correct through full lifecycle", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://s"], {
+    await passport.write.mintPassport([owner.account.address, "ar://s"], {
       account: owner.account,
     });
     let [status] = await passport.read.getPassportStatus([0n]);
@@ -1132,7 +1132,7 @@ describe("Event completeness (G1/G2/G3)", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { verifier, proPass, staking } = await deployVerifierStack(viem);
-    const metadataURI = "ipfs://mint-meta";
+    const metadataURI = "ar://mint-meta";
     const hash = await staking.write.becomeVerifierNative(
       [Category.BROKER, "Broker Inc", metadataURI],
       { account: verifier.account, value: MIN_STAKE },
@@ -1147,8 +1147,8 @@ describe("Event completeness (G1/G2/G3)", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { verifier, proPass, staking } = await deployVerifierStack(viem);
-    await joinVerifier(staking, verifier, { metadataURI: "ipfs://old" });
-    const newURI = "ipfs://updated-profile";
+    await joinVerifier(staking, verifier, { metadataURI: "ar://old" });
+    const newURI = "ar://updated-profile";
     const hash = await proPass.write.updateProfile([Category.DEALER, "New Name", newURI], {
       account: verifier.account,
     });
@@ -1162,7 +1162,7 @@ describe("Event completeness (G1/G2/G3)", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
+    await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
     const hash = await passport.write.appendRecord(
@@ -1181,7 +1181,7 @@ describe("Event completeness (G1/G2/G3)", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, stranger, passport } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://r"], {
+    await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
     const hash = await passport.write.reportDiscrepancy(
@@ -1200,7 +1200,7 @@ describe("Event completeness (G1/G2/G3)", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, verifier, passport, staking } = await deployPassportStack(viem);
-    await passport.write.mintPassport([owner.account.address, "ipfs://a"], {
+    await passport.write.mintPassport([owner.account.address, "ar://a"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
@@ -1240,7 +1240,7 @@ describe("MarketplaceEscrow", () => {
   it("list, delist", async () => {
     const { viem } = connection;
     const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://list"], {
+    await passport.write.mintPassport([seller.account.address, "ar://list"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1262,7 +1262,7 @@ describe("MarketplaceEscrow", () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { admin, seller, buyer, passport, marketplace, feeBps } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://buy"], {
+    await passport.write.mintPassport([seller.account.address, "ar://buy"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1290,7 +1290,7 @@ describe("MarketplaceEscrow", () => {
     const { viem } = connection;
     const { seller, buyer, verifier, passport, marketplace, staking } =
       await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://e5"], {
+    await passport.write.mintPassport([seller.account.address, "ar://e5"], {
       account: seller.account,
     });
     await joinVerifier(staking, verifier);
@@ -1315,7 +1315,7 @@ describe("MarketplaceEscrow", () => {
     const { viem } = connection;
     const { admin, seller, buyer, passport, usdc, marketplace, feeBps } =
       await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://u"], {
+    await passport.write.mintPassport([seller.account.address, "ar://u"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1343,7 +1343,7 @@ describe("MarketplaceEscrow", () => {
     const { admin, seller, buyer, passport, marketplace, feeBps, proFeeBps, staking } =
       await deployEscrowStack(viem);
     await joinVerifier(staking, seller, { category: Category.DEALER, name: "Pro Seller" });
-    await passport.write.mintPassport([seller.account.address, "ipfs://pro"], {
+    await passport.write.mintPassport([seller.account.address, "ar://pro"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1367,7 +1367,7 @@ describe("MarketplaceEscrow", () => {
     const { admin, seller, buyer, passport, marketplace, feeBps, proFeeBps, staking } =
       await deployEscrowStack(viem);
     await joinVerifier(staking, seller, { category: Category.DEALER, name: "Pro Seller" });
-    await passport.write.mintPassport([seller.account.address, "ipfs://pro-left"], {
+    await passport.write.mintPassport([seller.account.address, "ar://pro-left"], {
       account: seller.account,
     });
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1392,7 +1392,7 @@ describe("MarketplaceEscrow", () => {
     const { viem } = connection;
     const { seller, buyer, verifier, passport, marketplace, staking } =
       await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ipfs://disputed"], {
+    await passport.write.mintPassport([seller.account.address, "ar://disputed"], {
       account: seller.account,
     });
     await joinVerifier(staking, verifier);

@@ -179,9 +179,7 @@ See `.env.example` for the full list. Key variables:
 | `NEXT_PUBLIC_CHAIN_ID` | Default chain — `84532` for Base Sepolia |
 | `NEXT_PUBLIC_XMTP_ENV` | XMTP environment — `dev` or `production` |
 | `NEXT_PUBLIC_RPC_BY_CHAIN` | JSON map of chain ID → RPC URL |
-| `NEXT_PUBLIC_IRYS_NODE_URL` | Irys node for client-side Arweave uploads |
 | `PONDER_SQL_API_URL` | Ponder REST API (local: `http://localhost:42069`) |
-| `IPFS_GATEWAY_URL` | HTTP gateway for resolving `ipfs://` URIs in metadata |
 | `BASE_SEPOLIA_RPC_URL` | RPC for Hardhat `baseSepolia` network |
 | `DEPLOYER_PRIVATE_KEY` | Optional — Hardhat deploy account (never commit) |
 | `ETHERSCAN_API_KEY` | Basescan API key for contract verification |

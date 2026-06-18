@@ -4,7 +4,7 @@ const PAGES = {
   en: {
     aboutTitle: "About Kargain",
     aboutBody:
-      "Kargain is a decentralized marketplace for vehicle history and ownership, built on Base with on-chain KarPassport NFTs, IPFS metadata, and escrowed listings.",
+      "Kargain is a decentralized marketplace for vehicle history and ownership, built on Base with on-chain KarPassport NFTs, permanent Arweave metadata, and escrowed listings.",
     termsTitle: "Terms of use",
     termsBody:
       "This MVP is provided as-is. Blockchain transactions are irreversible. You are responsible for compliance with local laws. Fees and smart contract rules apply as deployed on-chain.",
@@ -41,7 +41,7 @@ const PAGES = {
   fr: {
     aboutTitle: "À propos de Kargain",
     aboutBody:
-      "Kargain est une place de marché décentralisée pour l’historique et la propriété des véhicules, sur Base avec NFT KarPassport, métadonnées IPFS et annonces en séquestre.",
+      "Kargain est une place de marché décentralisée pour l’historique et la propriété des véhicules, sur Base avec NFT KarPassport, métadonnées Arweave permanentes et annonces en séquestre.",
     termsTitle: "Conditions d’utilisation",
     termsBody:
       "Ce MVP est fourni tel quel. Les transactions blockchain sont irréversibles. Vous devez respecter la loi locale. Frais et règles du contrat déployé s’appliquent.",

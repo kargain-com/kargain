@@ -11,9 +11,9 @@ import {
 import { requireLocalDeployment } from "../scripts/lib/load-deployment.js";
 
 const TOKEN_ID = 0n;
-const URI_MINT = "ipfs://e2e-mint";
-const URI_EDIT_1 = "ipfs://e2e-edit-1";
-const URI_POST_DISPUTE = "ipfs://e2e-post-dispute";
+const URI_MINT = "ar://e2e-mint";
+const URI_EDIT_1 = "ar://e2e-edit-1";
+const URI_POST_DISPUTE = "ar://e2e-post-dispute";
 const PONDER_URL = process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 const PONDER_POLL_MS = 1500;
 const PONDER_TIMEOUT_MS = 60_000;
@@ -111,7 +111,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       await joinVerifier(staking, verifier, {
         category: Category.INSPECTOR,
         name: "E2E Verifier",
-        metadataURI: "ipfs://e2e-verifier",
+        metadataURI: "ar://e2e-verifier",
       });
       assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
 
@@ -182,7 +182,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
 
       // 10 — appendRecord on VERIFIED (T10 — status unchanged)
       await passport.write.appendRecord(
-        [TOKEN_ID, "service", "E2E oil change", "ipfs://e2e-record"],
+        [TOKEN_ID, "service", "E2E oil change", "ar://e2e-record"],
         { account: buyer.account },
       );
       await assertChainStatus(passport, 1);

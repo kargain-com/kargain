@@ -171,7 +171,7 @@ export async function joinVerifier(
 ) {
   const category = opts.category ?? Category.INSPECTOR;
   const name = opts.name ?? "Test Verifier";
-  const metadataURI = opts.metadataURI ?? "ipfs://profile";
+  const metadataURI = opts.metadataURI ?? "ar://profile";
   const value = opts.value ?? MIN_STAKE;
   await staking.write.becomeVerifierNative([category, name, metadataURI], {
     account: account.account,
