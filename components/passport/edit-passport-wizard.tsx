@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { nanoid } from "nanoid";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserRejectedRequestError } from "viem";
@@ -14,6 +15,7 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,8 +53,18 @@ import {
   uploadPassportMetadataJson,
   uploadPassportPhotos,
 } from "@/lib/passport/upload-passport-metadata";
+import { reorderArrayItem } from "@/lib/reorder-array";
+import { resolveUri } from "@/lib/storage/resolve-uri";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+
+type EditPhotoItem =
+  | { id: string; kind: "existing"; uri: string }
+  | { id: string; kind: "new"; file: File };
+
+function initialEditPhotos(uris: string[]): EditPhotoItem[] {
+  return uris.map((uri) => ({ id: uri, kind: "existing", uri }));
+}
 
 type Props = {
   tokenId: string;
@@ -81,8 +93,9 @@ export function EditPassportWizard({
   const [form, setForm] = useState<PassportEditFormInput>(() =>
     metadataToFormInput(initialMetadata),
   );
-  const [existingPhotos, setExistingPhotos] = useState(existingPhotoUris);
-  const [newPhotos, setNewPhotos] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<EditPhotoItem[]>(() =>
+    initialEditPhotos(existingPhotoUris),
+  );
   const [errors, setErrors] = useState<PassportCreateFormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -95,16 +108,23 @@ export function EditPassportWizard({
 
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
 
-  const previewUrls = useMemo(
-    () => newPhotos.map((file) => URL.createObjectURL(file)),
-    [newPhotos],
+  const previewSrcs = useMemo(
+    () =>
+      photos.map((item) =>
+        item.kind === "existing"
+          ? resolveUri(item.uri)
+          : URL.createObjectURL(item.file),
+      ),
+    [photos],
   );
 
   useEffect(() => {
     return () => {
-      for (const url of previewUrls) URL.revokeObjectURL(url);
+      for (const [index, item] of photos.entries()) {
+        if (item.kind === "new") URL.revokeObjectURL(previewSrcs[index]!);
+      }
     };
-  }, [previewUrls]);
+  }, [photos, previewSrcs]);
 
   const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
     setForm((prev) => ({
@@ -117,22 +137,25 @@ export function EditPassportWizard({
   const onPhotosSelected = (files: FileList | null) => {
     if (!files?.length) return;
     const incoming = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    setNewPhotos((prev) => {
-      const total = existingPhotos.length + prev.length + incoming.length;
+    setPhotos((prev) => {
+      const total = prev.length + incoming.length;
       if (total > MAX_PHOTOS) {
         setFormError(`Maximum ${MAX_PHOTOS} photos allowed.`);
         return prev;
       }
-      return [...prev, ...incoming];
+      return [
+        ...prev,
+        ...incoming.map((file) => ({ id: nanoid(), kind: "new" as const, file })),
+      ];
     });
   };
 
-  const removeExistingPhoto = (index: number) => {
-    setExistingPhotos((prev) => prev.filter((_, i) => i !== index));
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const removeNewPhoto = (index: number) => {
-    setNewPhotos((prev) => prev.filter((_, i) => i !== index));
+  const reorderPhoto = (fromIndex: number, toIndex: number) => {
+    setPhotos((prev) => reorderArrayItem(prev, fromIndex, toIndex));
   };
 
   const executeSave = async () => {
@@ -155,8 +178,15 @@ export function EditPassportWizard({
       });
       const provider = await getWalletUploadProvider(connector);
 
-      const uploadedPhotoUris = await uploadPassportPhotos(newPhotos, provider);
-      const photoUris = [...existingPhotos, ...uploadedPhotoUris];
+      const newFiles = photos
+        .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
+        .map((item) => item.file);
+      const uploadedPhotoUris = await uploadPassportPhotos(newFiles, provider);
+      let uploadIndex = 0;
+      const photoUris = photos.map((item) => {
+        if (item.kind === "existing") return item.uri;
+        return uploadedPhotoUris[uploadIndex++]!;
+      });
       const createdAt =
         initialMetadata.createdAt ?? new Date().toISOString();
       const metadata = buildMetadataWireForEdit(form, photoUris, { createdAt });
@@ -186,15 +216,17 @@ export function EditPassportWizard({
 
   const onSubmit = () => {
     const nextErrors = validateCreateFormInput(form);
-    const totalPhotos = existingPhotos.length + newPhotos.length;
-    if (totalPhotos < 1) {
+    if (photos.length < 1) {
       setErrors({ ...nextErrors, photos: "At least one photo is required." });
       return;
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const afterMetadata = formInputToMetadataPreview(form, [...existingPhotos], {
+    const previewPhotoUris = photos.map((item) =>
+      item.kind === "existing" ? item.uri : `new:${item.id}`,
+    );
+    const afterMetadata = formInputToMetadataPreview(form, previewPhotoUris, {
       createdAt: initialMetadata.createdAt,
       updatedAt: new Date().toISOString(),
     });
@@ -244,27 +276,25 @@ export function EditPassportWizard({
 
         <div className="space-y-2 border-t border-border-default pt-6">
           <Label>Photos</Label>
-          <div className="flex flex-wrap gap-2">
-            {existingPhotos.map((uri, i) => (
-              <div key={uri} className="relative">
-                <span className="block max-w-[8rem] truncate font-mono text-xs">{uri.slice(0, 20)}…</span>
-                <Button type="button" size="sm" variant="ghost" disabled={isBusy} onClick={() => removeExistingPhoto(i)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
-            {previewUrls.map((url, i) => (
-              <div key={url} className="relative h-16 w-16 overflow-hidden rounded border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" className="h-full w-full object-cover" />
-                <Button type="button" size="sm" variant="ghost" disabled={isBusy} onClick={() => removeNewPhoto(i)}>
-                  ×
-                </Button>
-              </div>
-            ))}
-          </div>
+          {photos.length > 0 && (
+            <>
+              <p className="font-mono text-xs text-text-tertiary">
+                First photo is the cover. Use arrows to reorder.
+              </p>
+              <PhotoThumbGrid
+                items={photos.map((item, index) => ({
+                  id: item.id,
+                  src: previewSrcs[index]!,
+                  alt: item.kind === "existing" ? "Existing photo" : item.file.name,
+                }))}
+                disabled={isBusy}
+                onRemove={removePhoto}
+                onReorder={reorderPhoto}
+              />
+            </>
+          )}
           <input ref={photoInputRef} type="file" accept="image/*" multiple className="sr-only" onChange={(e) => onPhotosSelected(e.target.files)} disabled={isBusy} />
-          <Button type="button" variant="secondary" disabled={isBusy} onClick={() => photoInputRef.current?.click()}>
+          <Button type="button" variant="secondary" disabled={isBusy || photos.length >= MAX_PHOTOS} onClick={() => photoInputRef.current?.click()}>
             Add photos
           </Button>
           {errors.photos && <p className="text-xs text-status-error">{errors.photos}</p>}

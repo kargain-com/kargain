@@ -35,6 +35,7 @@ import {
   uploadPassportPhotos,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
+import { reorderArrayItem } from "@/lib/reorder-array";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -109,6 +110,10 @@ export function CreatePassportWizard() {
 
   const removePhoto = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const reorderPhoto = (fromIndex: number, toIndex: number) => {
+    setPhotos((prev) => reorderArrayItem(prev, fromIndex, toIndex));
   };
 
   const startMint = useCallback(
@@ -326,6 +331,7 @@ export function CreatePassportWizard() {
             photos={photos}
             onAdd={onPhotosAdd}
             onRemove={removePhoto}
+            onReorder={reorderPhoto}
             maxPhotos={MAX_PHOTOS_LIMIT}
             error={errors.photos}
             disabled={isBusy}

@@ -1,14 +1,16 @@
 "use client";
 
-import { Upload, X } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { cn } from "@/lib/utils";
 
 type PhotoUploadZoneProps = {
   photos: File[];
   onAdd: (files: File[]) => void;
   onRemove: (index: number) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   maxPhotos: number;
   error?: string;
   disabled?: boolean;
@@ -18,6 +20,7 @@ export function PhotoUploadZone({
   photos,
   onAdd,
   onRemove,
+  onReorder,
   maxPhotos,
   error,
   disabled,
@@ -129,30 +132,20 @@ export function PhotoUploadZone({
       )}
 
       {photos.length > 0 && (
-        <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3", canAddMore && "mt-4")}>
-          {photos.map((file, index) => (
-            <div
-              key={`${file.name}-${index}`}
-              className="relative aspect-square overflow-hidden rounded-md border border-border-default bg-bg-surface"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewUrls[index]}
-                alt={file.name}
-                className="h-full w-full object-cover"
-              />
-              {!disabled && (
-                <button
-                  type="button"
-                  className="absolute right-1.5 top-1.5 rounded-sm bg-bg-primary/80 p-1 transition-colors hover:bg-bg-primary"
-                  onClick={() => onRemove(index)}
-                  aria-label="Remove photo"
-                >
-                  <X size={14} strokeWidth={2} aria-hidden />
-                </button>
-              )}
-            </div>
-          ))}
+        <div className={canAddMore ? "mt-4 space-y-2" : "space-y-2"}>
+          <p className="font-mono text-xs text-text-tertiary">
+            First photo is the cover. Use arrows to reorder.
+          </p>
+          <PhotoThumbGrid
+            items={photos.map((file, index) => ({
+              id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+              src: previewUrls[index]!,
+              alt: file.name,
+            }))}
+            disabled={disabled}
+            onRemove={onRemove}
+            onReorder={onReorder}
+          />
         </div>
       )}
 
