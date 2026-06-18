@@ -1,4 +1,4 @@
-import { count, eq } from "ponder";
+import { eq, type ReadonlyDrizzle } from "ponder";
 
 import type { IndexedPassportMetadata } from "../../lib/passport/index-passport-metadata";
 import { fetchMetadataFromUri } from "../../lib/passport/index-passport-metadata";
@@ -21,35 +21,43 @@ export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
   };
 }
 
-type DbContext = {
+/** Ponder 0.16 indexing `context` — use `db.find` / `db.sql`, not `db.select`. */
+type IndexerContext = {
   db: {
+    find: (
+      table: typeof vinIndex,
+      key: { id: string },
+    ) => Promise<{ vin: string } | null>;
+    insert: (table: typeof vinIndex) => {
+      values: (values: {
+        id: string;
+        vin: string;
+        tokenId: string;
+        updatedAt: bigint;
+      }) => {
+        onConflictDoUpdate: (values: {
+          vin: string;
+          updatedAt: bigint;
+        }) => Promise<unknown>;
+      };
+    };
     update: (
       table: typeof passport,
-      where: { id: string },
-    ) => { set: (values: Record<string, unknown>) => Promise<unknown> };
-    insert: (table: typeof vinIndex) => {
-      values: (values: Record<string, unknown>) => {
-        onConflictDoUpdate: (values: Record<string, unknown>) => Promise<unknown>;
-      };
+      key: { id: string },
+    ) => {
+      set: (values: Record<string, unknown>) => Promise<unknown>;
     };
-    delete: (
-      table: typeof vinIndex,
-      where: { id: string },
-    ) => Promise<unknown>;
-    select: (fields?: Record<string, unknown>) => {
-      from: (table: typeof vinIndex) => {
-        where: (condition: unknown) => Promise<Array<{ tokenId?: string; vin?: string }>>;
-      };
-    };
+    delete: (table: typeof vinIndex, key: { id: string }) => Promise<boolean>;
+    sql: ReadonlyDrizzle;
   };
 };
 
 export async function recomputeDuplicateVin(
-  context: DbContext,
+  context: IndexerContext,
   vin: string,
 ): Promise<void> {
   if (!vin) return;
-  const rows = await context.db
+  const rows = await context.db.sql
     .select({ tokenId: vinIndex.tokenId })
     .from(vinIndex)
     .where(eq(vinIndex.vin, vin));
@@ -61,18 +69,15 @@ export async function recomputeDuplicateVin(
 }
 
 export async function indexPassportMetadataFromUri(
-  context: DbContext,
+  context: IndexerContext,
   tokenId: string,
   tokenUri: string,
   timestamp: bigint,
 ): Promise<void> {
   const indexed = await fetchMetadataFromUri(tokenUri);
 
-  const existingRows = await context.db
-    .select({ vin: vinIndex.vin })
-    .from(vinIndex)
-    .where(eq(vinIndex.id, tokenId));
-  const oldVin = existingRows[0]?.vin ?? "";
+  const existing = await context.db.find(vinIndex, { id: tokenId });
+  const oldVin = existing?.vin ?? "";
 
   if (oldVin && oldVin !== (indexed?.vin ?? "")) {
     await context.db.delete(vinIndex, { id: tokenId });
