@@ -21,7 +21,8 @@ const BASE_CHAIN_IDS = new Set([8453, 84532]);
 /** HTTP timeout for Irys bundler requests (large photo batches can be slow). */
 const UPLOAD_TIMEOUT_MS = 120_000;
 
-const DEFAULT_NODE_URL = "https://node2.irys.xyz";
+const DEVNET_NODE_URL = "https://devnet.irys.xyz";
+const MAINNET_NODE_URL = "https://node2.irys.xyz";
 
 /** Extra bytes reserved for bundle overhead when pre-funding multi-file uploads. */
 const BUNDLE_OVERHEAD_BYTES = 16_384;
@@ -78,12 +79,16 @@ async function readChainId(provider: Eip1193Provider): Promise<number> {
   throw new Error("Unable to read wallet chain ID");
 }
 
-function nodeUrl(): string {
-  return process.env.NEXT_PUBLIC_IRYS_NODE_URL?.trim() || DEFAULT_NODE_URL;
+function irysNodeUrl(chainId: number): string {
+  // Base mainnet and Ethereum mainnet use node2.irys.xyz
+  // All testnets use devnet.irys.xyz
+  const MAINNET_CHAIN_IDS = new Set([1, 8453]);
+  return MAINNET_CHAIN_IDS.has(chainId) ? MAINNET_NODE_URL : DEVNET_NODE_URL;
 }
 
-function isDevnetEnvironment(): boolean {
-  return nodeUrl().includes("devnet");
+function isDevnet(chainId: number): boolean {
+  const MAINNET_CHAIN_IDS = new Set([1, 8453]);
+  return !MAINNET_CHAIN_IDS.has(chainId);
 }
 
 function mergeTags(contentType: string, tags?: IrysTag[]): IrysTag[] {
@@ -129,13 +134,17 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
     }
 
     const ethersProvider = new BrowserProvider(eip1193);
-    const url = nodeUrl();
+    const url = irysNodeUrl(chainId);
 
-    const builder = WebUploader(WebBaseEth)
+    let builder = WebUploader(WebBaseEth)
       .withAdapter(EthersV6Adapter(ethersProvider))
       .bundlerUrl(url)
       .withRpc(rpcUrlForChain(chainId))
       .timeout(UPLOAD_TIMEOUT_MS);
+
+    if (isDevnet(chainId)) {
+      builder = builder.devnet();
+    }
 
     const uploader = await builder;
     cachedUploader = { provider: providerKey, uploader };
@@ -147,7 +156,9 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
 }
 
 export function isIrysDevnet(): boolean {
-  return isDevnetEnvironment();
+  // Check configured default chain — Base Sepolia (84532) uses devnet
+  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532");
+  return isDevnet(chainId);
 }
 
 /** Drop cached uploader after a failed upload so the next attempt reconnects cleanly. */
