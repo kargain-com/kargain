@@ -56,7 +56,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 ### Off-chain layers
 
 - **Ponder** indexes contract events and serves listing/passport/verifier APIs ([production](https://ponder.kargain.com)). Browse cards may sample `getPassportStatus` on-chain when Ponder status may be stale (G4).
-- **Nostr** powers public comments and garage favorites (NIP-51).
+- **Nostr** powers public comments and garage favorites (NIP-51). Identity is wallet-derived (`kargain-nostr-v1` / `kargain-aes-v1`); comments tag authors with `["evm", address]`.
 - **XMTP** provides encrypted buyer–seller messaging.
 
 ---
@@ -94,6 +94,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Phase 5 polish (PR5a–d)** | **Complete** — typed record timeline, attestation UI, browse chain-status warning, Basescan verify |
 | **Marketplace filters & shell (June 2026)** | **Complete** — top filter bar + drawer, mobile 5-tab nav, ENS on address displays, photo upload zone |
 | **Passport Irys upload (June 2026)** | **Complete** — batch `uploadFolder`, chain-aware `ar://` gateway, smart-wallet pre-check, unified create/edit flow |
+| **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
@@ -149,6 +150,20 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 
 **Deferred:** browser E2E (Playwright + mock wallet) for upload UX — separate task; unit tests cover compatibility detection today.
 
+### Passport detail page UX (June 2026)
+
+`/marketplace/[tokenId]` — identity-first layout, hardened Nostr, and guest-readable discussion.
+
+| Topic | Implementation |
+|-------|----------------|
+| **Nostr identity** | Wallet-derived keys only — no nsec export/import UI; canonical `kargain-nostr-v1` / `kargain-aes-v1` salts; auto-init on connect (`lib/nostr/key-manager.ts`) |
+| **Layout** | Zone A header (title, status, owner) first; mobile identity before gallery; verifier in main column; no duplicate owner block |
+| **Actions** | `PassportActionsPanel` connect CTA for guests; dispute/report require wallet; seller contact disabled when disconnected |
+| **Trust** | `PassportTrustBanner` — reset → dispute → unverified (`ShieldOff`, "Find a verifier →") → null |
+| **Addresses** | `shortAddress()` / `navShortAddress` in `lib/web3/wallet-display.ts` — single `·`-separated formatter app-wide |
+| **URI history** | `PassportUriHistory` collapsed by default; clickable `ar://` via `arUriToHttp()`; author links to profile |
+| **Comments** | EVM tag authors; legacy → "Kargain user"; guests read-only (no relay jargon in copy) |
+
 ---
 
 **Next steps:**
@@ -174,7 +189,7 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 
 **Tests:** `pnpm hardhat test` · `node --import tsx --test test/*.test.ts` (app unit tests, incl. Irys) · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e` (localhost 31337 only)
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -379,7 +394,7 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check.
+**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 

@@ -1,6 +1,6 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening, `master` June 2026)  
+Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
 
@@ -348,7 +348,7 @@ Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from bl
 
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
 
-**Document map:** Public status lives in this spec (§17 UI complete) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
+**Document map:** Public status lives in this spec (§17 UI complete · §19 passport detail UX) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
 
 ## 15. Plan A–J core — definition of done (June 2026)
 
@@ -391,6 +391,7 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Mint + photo upload | `/passport/new` · `photo-upload-zone` | ✅ |
 | Edit (Variant C) | `/passport/[tokenId]/edit` | ✅ |
 | Verify / dispute / resolve / attestation | `passport-actions-panel` | ✅ |
+| Marketplace detail + trust | `/marketplace/[tokenId]` · `passport-detail-view`, `PassportTrustBanner`, `PassportUriHistory` | ✅ (§19 polish June 2026) |
 | KarPro onboarding | `/kar-pro` | ✅ |
 | Verifier directory | `/verifiers` | ✅ |
 | Verifier profile | `/verifier/[address]` | ✅ |
@@ -482,3 +483,72 @@ Run: `node --import tsx --test test/*.test.ts`
 - **Browser E2E** (Playwright + mock `eth_getCode`) — separate QA task; unit tests sufficient for merge
 - **Smart-wallet storage** — product decision: keep EOA requirement vs server-side upload vs alternative storage
 - **Attestation evidence** — still uses separate `upload-evidence.ts` path (same Irys client)
+
+## 19. Passport detail page UX — definition of done (June 2026)
+
+**Status:** Passport/marketplace detail restructured for identity-first mobile layout, hardened Nostr identity, role-based actions, trust banners, canonical address formatting, and guest-readable discussion.
+
+### Nostr identity hardening
+
+| Change | Detail |
+|--------|--------|
+| UI removed | `exportNsec` / `importNsec` — no user-facing key export/import |
+| Dead code | `exportNsec` / `importNsec` removed from `lib/nostr/key-manager.ts` |
+| `originTag()` | Removed from key derivation and AES encryption |
+| Canonical message | `kargain-nostr-v1:${address.toLowerCase()}` |
+| Canonical AES key | `kargain-aes-v1:${address.toLowerCase()}` |
+| Init | Nostr identity initializes automatically on wallet connect |
+
+### `passport-detail-view.tsx` layout
+
+| Zone | Behavior |
+|------|----------|
+| **Zone A (identity header)** | Title + status + owner — always first |
+| **Mobile** | Identity visible before photo gallery |
+| **Verifier block** | Main column (unique info, not duplicated elsewhere) |
+| **Owner** | Single display — duplication removed |
+
+### Role-based actions
+
+| Component | Behavior |
+|-----------|----------|
+| `PassportActionsPanel` | Guest sees connect CTA, not empty block |
+| Open dispute / Report discrepancy | Guarded with `isConnected` |
+| `SellerContactButton` | Disabled (not hidden) when no wallet |
+
+### Trust zone (`PassportTrustBanner`)
+
+| Branch | UI |
+|--------|-----|
+| Reset warning | Metadata updated after verification |
+| Dispute | Active dispute state |
+| **UNVERIFIED** | `ShieldOff` icon · "Not yet verified" + explanation · "Find a verifier →" link |
+| Logic order | reset warning → dispute → unverified → null |
+
+### Address formatting
+
+| Item | Detail |
+|------|--------|
+| Canonical formatter | `shortAddress()` in `lib/web3/wallet-display.ts` — `·` separator |
+| Alias | `navShortAddress = shortAddress` (backward compatible) |
+| Consolidation | Local copies removed from `EnsWalletLink`, `use-ens-profile`, `xmtp/helpers` |
+| Removed | `WalletAddress` dead component |
+
+### Metadata history (`PassportUriHistory`)
+
+| Feature | Detail |
+|---------|--------|
+| Default state | Collapsed; shows entry count |
+| `ar://` URIs | Clickable via `arUriToHttp()` gateway |
+| Author | Linked to `/profile/{address}` |
+| Props | `chainId` added for gateway resolution |
+
+### Discussion (`NostrCommentsSection`)
+
+| Topic | Behavior |
+|-------|----------|
+| Author display | EVM address from `["evm", address]` tag |
+| Legacy comments | No tag → "Kargain user" |
+| Removed | `npubLink`, `shortPk`, nip19, njump.me links |
+| Guest | Reply/Like disabled; composer disabled; feed readable |
+| Copy | Relay terminology removed from UI |
