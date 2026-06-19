@@ -183,6 +183,7 @@ export function PassportDetailView({
           <PassportTrustBanner
             verificationResetCount={passport.verificationResetCount}
             hadDispute={passport.hadDispute}
+            status={passport.status}
           />
           <PassportChainStatusBanner
             tokenId={tokenId}
