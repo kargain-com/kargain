@@ -1,19 +1,12 @@
 "use client";
 
-import { getAddress, type Address } from "viem";
+import { type Address } from "viem";
 import { mainnet } from "viem/chains";
 import { useEnsAvatar, useEnsName } from "wagmi";
 
-export const ENS_CHAIN_ID = mainnet.id;
+import { shortAddress } from "@/lib/web3/wallet-display";
 
-function shortAddress(address: Address): string {
-  try {
-    const normalized = getAddress(address);
-    return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
-  } catch {
-    return address.length > 10 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
-  }
-}
+export const ENS_CHAIN_ID = mainnet.id;
 
 export function useEnsProfile(address: Address | undefined): {
   displayName: string;

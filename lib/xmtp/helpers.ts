@@ -3,10 +3,7 @@
 import { IdentifierKind, isText, type Client, type DecodedMessage } from "@xmtp/client";
 import { getAddress } from "viem";
 
-export function shortAddress(address: string): string {
-  if (address.length < 10) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
+export { shortAddress } from "@/lib/web3/wallet-display";
 
 export function truncatePreview(text: string, max = 60): string {
   const trimmed = text.trim();

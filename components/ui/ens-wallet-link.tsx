@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getAddress, type Address } from "viem";
 
 import { useEnsProfile } from "@/hooks/use-ens-profile";
+import { shortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
 function checksumAddress(address: string): string {
@@ -11,15 +12,6 @@ function checksumAddress(address: string): string {
     return getAddress(address as Address);
   } catch {
     return address;
-  }
-}
-
-function shortAddress(address: string): string {
-  try {
-    const normalized = getAddress(address as Address);
-    return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
-  } catch {
-    return address.length > 10 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
   }
 }
 

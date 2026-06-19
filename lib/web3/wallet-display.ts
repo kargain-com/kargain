@@ -1,14 +1,18 @@
 import { getAddress } from "viem";
 
-/** Nav-style address: `0x1a2b·ef3d` */
-export function navShortAddress(address: string): string {
+/** Short address: `0x1a2b·ef3d` */
+export function shortAddress(address: string): string {
   try {
     const normalized = getAddress(address as `0x${string}`);
     return `${normalized.slice(0, 6)}·${normalized.slice(-4)}`;
   } catch {
-    return address.length > 10 ? `${address.slice(0, 6)}·${address.slice(-4)}` : address;
+    return address.length > 10
+      ? `${address.slice(0, 6)}·${address.slice(-4)}`
+      : address;
   }
 }
+
+export const navShortAddress = shortAddress;
 
 /** Deterministic identicon hue from wallet address (0–359). */
 export function identiconHue(address: string): number {
