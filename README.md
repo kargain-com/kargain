@@ -68,7 +68,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Next.js frontend** | App UI, wallet auth (SIWE), client-side Arweave uploads |
 | **Ponder indexer** | Indexes deployed chain events (Base Sepolia today); REST API (`/listings`, `/passports`, `/verifiers`, …) — extend per chain as deployments grow |
 | **EVM contracts (per chain)** | KarPassport, KarProPass, KarProStaking (immutable); MarketplaceEscrow (UUPS proxy) — same Model X stack redeployed per network |
-| **Arweave** (via Irys) | Permanent photos and passport metadata |
+| **Arweave** (via Irys, user-pays in browser) | Permanent photos and passport metadata — chain-agnostic `ar://` URIs; gateway resolution is chain-aware |
 | **Nostr** | Public comments (NIP-01), favorites (NIP-51) |
 | **XMTP** | End-to-end encrypted buyer–seller messaging |
 
@@ -93,6 +93,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Trust / UX gap (plan A–J core)** | **Complete** — BuyRiskModal, verifier badges, G1/G2 Ponder, metadata diff, DISPUTED filter |
 | **Phase 5 polish (PR5a–d)** | **Complete** — typed record timeline, attestation UI, browse chain-status warning, Basescan verify |
 | **Marketplace filters & shell (June 2026)** | **Complete** — top filter bar + drawer, mobile 5-tab nav, ENS on address displays, photo upload zone |
+| **Passport Irys upload (June 2026)** | **Complete** — batch `uploadFolder`, chain-aware `ar://` gateway, smart-wallet pre-check, unified create/edit flow |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
@@ -128,24 +129,50 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 
 **`PRO_SLUGS`:** `{}` (empty). After staking on `/kar-pro`, add `{ "your-slug": "0x…" }` in [`lib/web3/pro-slugs.ts`](lib/web3/pro-slugs.ts) to enable `/pro/[slug]` and profile showroom links.
 
+### Passport storage & Irys upload (June 2026)
+
+Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user’s wallet pays Irys storage (deposit + upload signatures). No server upload API for passports.
+
+| Topic | Implementation |
+|-------|----------------|
+| **Batch photos** | `uploadFolder` — one wallet signature for all photos on create or edit |
+| **Single session** | `uploadPassportToIrys()` — wallet check → photos → metadata JSON on one uploader |
+| **Create / edit parity** | Both wizards use the same upload helper, progress panel, and error formatting |
+| **Smart wallet block** | `eth_getCode` pre-check before any Irys `fund()` — EIP-7702 and contract accounts get a clear message; no tx sent |
+| **Metadata-only edit** | Changing fields without new photos still runs wallet check + metadata upload (may trigger `fund()`) |
+| **Gateway (multichain)** | Base Sepolia / testnets → `https://gateway.irys.xyz/{id}`; Base + Ethereum mainnet → `https://arweave.net/{id}` via `lib/storage/ar-gateway.ts` |
+| **Bundler node** | Selected from **connected wallet chain ID** — devnet for 84532, `node2.irys.xyz` for 8453/1 (`lib/storage/irys-client.ts`) |
+
+**Wallet requirement for mint/edit upload:** standard **EOA** (MetaMask classic account, Rabby, Rainbow, etc.). Smart Account / EIP-7702 wallets are blocked before upload with instructions to switch accounts.
+
+**Tests:** `test/irys-compatibility.test.ts` · `test/passport-upload.test.ts` · `test/ar-gateway.test.ts` (run with `node --import tsx --test test/*.test.ts`)
+
+**Deferred:** browser E2E (Playwright + mock wallet) for upload UX — separate task; unit tests cover compatibility detection today.
+
+---
+
 **Next steps:**
 
 1. Ponder reindex (schema gained `condition`, `vehicleType`, `colour`, `locationLabel` on passports) — [runbook](docs/VPS-PONDER-REINDEX.md)
 2. Stake on `/kar-pro` and add your pro slug to `PRO_SLUGS`
-3. Sepolia smoke validation (checklist below)
+3. Sepolia smoke validation (checklist below) — use an **EOA** wallet for passport photo upload
+4. Deploy latest frontend to Vercel after Irys commits land on `master`
+5. **Multi-chain:** Base mainnet (8453) contract deploy + env/manifests after Sepolia sign-off; extend Ponder per chain (see [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) §18)
 
 **Sepolia smoke checklist:**
 
-- [ ] Mint passport with drag-and-drop photos → UNVERIFIED
+- [ ] Mint passport with drag-and-drop photos (EOA wallet) → UNVERIFIED; photos load via Irys devnet gateway
 - [ ] Browse filters (top bar + drawer: status, make, price, condition, etc.)
 - [ ] Active verifier verify → VERIFIED
 - [ ] KarPro stake on `/kar-pro` → credential + `/verifiers` listing
 - [ ] Add slug to `PRO_SLUGS` → `/pro/[slug]` showroom loads
 - [ ] XMTP messages + wallet connect / disconnect
 - [ ] List on marketplace → buy or quote preview
+- [ ] Edit passport metadata only (no new photos) → new `ar://` URI on-chain
+- [ ] Edit with new photos → interleaved photo order preserved in metadata
 - [ ] Dispute / resolve (optional)
 
-**Tests:** `pnpm hardhat test` · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e`
+**Tests:** `pnpm hardhat test` · `node --import tsx --test test/*.test.ts` (app unit tests, incl. Irys) · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e` (localhost 31337 only)
 
 Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
@@ -176,6 +203,7 @@ See `.env.example` for the full list. Key variables:
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_APP_URL` | App origin (default `http://localhost:3000`) |
+| `SIWE_SESSION_SECRET` | HMAC secret for SIWE session cookies — **required in production** |
 | `NEXT_PUBLIC_CHAIN_ID` | Default chain — `84532` for Base Sepolia |
 | `NEXT_PUBLIC_XMTP_ENV` | XMTP environment — `dev` or `production` |
 | `NEXT_PUBLIC_RPC_BY_CHAIN` | JSON map of chain ID → RPC URL |
@@ -333,22 +361,39 @@ All endpoints above are consumed by the Next.js app.
 
 ## Architecture notes
 
-- **Multi-chain** — Kargain is a multi-chain platform. Base Sepolia is the active test deployment; design for per-chain contract manifests, RPC maps, and eventual multi-chain Ponder indexing rather than assuming a single network forever.
+- **Multi-chain** — Kargain is a multi-chain platform. Base Sepolia is the active test deployment; design for per-chain contract manifests, RPC maps, Ponder indexing, and chain-aware Irys/gateway config rather than assuming a single network forever.
+- **Arweave metadata** — `ar://` URIs are identical on every chain; only HTTP gateway and Irys bundler selection vary by network.
 - **VIN** and vehicle attributes live in Arweave metadata (not on-chain).
 - Disputed passports can still be listed and sold; buyers see status in the UI (including buy-risk modal and typed dispute timeline).
 - Passport detail confirms on-chain status when it differs from Ponder; marketplace browse samples up to 12 visible cards per page.
 - Ponder indexes verifier `metadataURI` from `ProPassMinted` / `ProfileUpdated` and record `description` / `evidenceCID` from `RecordAppended`.
 
-## Known technical debt
+## Known limitations & technical debt
 
+- **Smart wallets + Irys** — EIP-7702 and contract accounts cannot send the direct ETH transfer Irys `fund()` requires. App detects via `eth_getCode` and blocks before upload. Workaround: EOA on the target chain. A server-side or AA-compatible storage path is a future product decision.
 - **upgradeAuthority** — currently the deployer EOA, not a timelock.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `pnpm deploy:v1.1` or `pnpm deploy:base-sepolia`.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).
 - **Desktop filter bar** — `overflow-hidden` on the filter row can clip controls around ~768px; may need wrap or scroll affordance.
 - **Ponder reindex pending** — passport filter columns (`condition`, `vehicleType`, `colour`, `locationLabel`) require VPS reindex before facets match on-chain metadata.
-- **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI.
+- **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
+- **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup.
+**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check.
+
+## Future work (multi-chain platform)
+
+| Priority | Task | Notes |
+|----------|------|-------|
+| **Ops** | Ponder VPS reindex for filter facets | [runbook](docs/VPS-PONDER-REINDEX.md) |
+| **Ops** | Sepolia smoke validation | EOA wallet for Irys; checklist above |
+| **Ops** | First pro slug in `PRO_SLUGS` | After KarPro stake |
+| **Chain 1** | Base mainnet (8453) deploy | Same Model X stack; update `deployments/8453.json`, env maps, Irys mainnet node |
+| **Chain 2** | Ethereum mainnet (1) | Canonical trust layer; burn/mint bridge — one token on one chain at a time |
+| **Indexer** | Per-chain Ponder (or multi-chain config) | Extend `ponder.config.ts` / manifests as networks go live |
+| **Storage** | Validate Irys on each new chain | Extend `BASE_CHAIN_IDS` / gateway maps in `irys-client.ts` and `ar-gateway.ts` |
+| **QA** | Playwright E2E + mock wallet | Smart-wallet block message, upload progress, edit metadata-only |
+| **Product** | Smart-wallet storage path | Optional server-side or alternative permanent storage if EOA requirement is unacceptable |
 
 ## Contributing
 

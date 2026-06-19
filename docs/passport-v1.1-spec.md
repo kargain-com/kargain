@@ -1,6 +1,6 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5 + polish PR5a–d, `master` June 2026)  
+Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
 
@@ -126,6 +126,7 @@ Owner may `setPassportURI`, then request re-verification.
 | **5** | Single Sepolia redeploy + reindex + merge to master | **✅ Done** |
 | **5 polish** | Record labels, attestation UI, browse chain warning, Basescan verify | **✅ Done** |
 | **UI complete (June 2026)** | All contract + Ponder UI coverage; filters, shell, KarPro, showrooms | **✅ Done** |
+| **Irys upload hardening (June 2026)** | Batch upload, chain gateway, smart-wallet block, create/edit parity | **✅ Done** |
 
 ## 10. Phase 1 test matrix
 
@@ -195,7 +196,10 @@ Wire JSON must **not** include `ownerName`, `phone`, or `email`. Build path reje
 | `lib/passport/fetch-arweave-metadata.ts` | HTTP fetch + parse |
 | `lib/passport/record-types.ts` | On-chain record → UI labels (PR5a) |
 | `lib/passport/confirm-listing-status.ts` | Ponder vs chain status drift (PR5c) |
+| `lib/passport/upload-passport-metadata.ts` | `uploadPassportToIrys`, wallet check, batch photos, metadata JSON |
 | `lib/passport/upload-evidence.ts` | Irys upload for attestation evidence (PR5b) |
+| `lib/storage/irys-client.ts` | `@irys/web-upload` — fund, batch folder, chain-aware bundler |
+| `lib/storage/ar-gateway.ts` | Chain-aware `ar://` → HTTP gateway (devnet vs mainnet) |
 
 Run metadata unit tests: `pnpm test:metadata` · records: `pnpm test:records` · browse drift: `pnpm test:confirm-status`.
 
@@ -406,4 +410,75 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 2. Stake on `/kar-pro` and add slug to `lib/web3/pro-slugs.ts`
 3. Sepolia smoke validation — [README.md](../README.md) checklist
 
-**Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for filter facets; `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`.
+**Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for filter facets; `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`; smart wallets cannot fund Irys client-side (EOA required for upload).
+
+## 18. Irys / Arweave upload — definition of done (June 2026)
+
+**Status:** Client-side user-pays upload is production-ready on Base Sepolia for **EOA wallets**. Create and edit wizards share one code path.
+
+### Architecture (chain-agnostic metadata, chain-aware Irys node + gateway)
+
+| Layer | Behavior |
+|-------|----------|
+| **On-chain** | `tokenURI` = `ar://{txId}` — same URI format on every chain |
+| **Upload payment** | User wallet funds Irys balance on the **connected chain** (84532 devnet today; 8453/1 mainnet nodes when live) |
+| **Photo batch** | `uploadFolder` — one signature for N photos |
+| **Metadata** | Same Irys session as photos; `ensureFunded` for JSON size |
+| **HTTP display** | `resolveUri(uri, chainId)` — testnet chains → `gateway.irys.xyz`; mainnet chains → `arweave.net` |
+
+### Shared modules
+
+| Module | Role |
+|--------|------|
+| `lib/passport/upload-passport-metadata.ts` | `uploadPassportToIrys`, `checkWalletForIrysUpload`, `formatPassportUploadError`, `PassportIrysWalletBlockedError` |
+| `lib/storage/irys-client.ts` | `checkIrysCompatibility`, `prepareUserPaidUpload`, `uploadFilesWithUploader`, bundler URL from wallet `chainId` |
+| `lib/storage/ar-gateway.ts` | `arweaveGateway(chainId)`, `arUriToHttp` |
+| `components/passport/passport-upload-progress.tsx` | Shared progress UI (create + edit) |
+| `components/passport/create-passport-wizard.tsx` | Mint flow → `uploadPassportToIrys` → `mintPassport` |
+| `components/passport/edit-passport-wizard.tsx` | Edit flow → `uploadPassportToIrys` (interleaved existing/new photos) → `setPassportURI` |
+
+### Wallet compatibility
+
+| Account type | `eth_getCode` | Upload |
+|--------------|---------------|--------|
+| EOA | `0x` / `0x0` | ✅ Allowed |
+| EIP-7702 smart EOA | `0xef0100…` | ❌ Blocked before `fund()` — user message with EOA instructions |
+| Contract / ERC-4337 | other bytecode | ❌ Blocked before `fund()` |
+| RPC detection failure | — | Fail-open; Irys error surfaced via `formatPassportUploadError` |
+
+Pre-check runs on **every** save (including metadata-only edits) because metadata JSON upload may call `fund()`.
+
+### Commits (June 2026, `master`)
+
+| Commit | Summary |
+|--------|---------|
+| `a5b9895` | Batch photos via `uploadFolder` |
+| `add8818` | Chain-aware `ar://` gateway (devnet → `gateway.irys.xyz`) |
+| `03a177b` | Remove IPFS from env/code |
+| `d26ede0` | Smart-account detection + unified error handling |
+| `c377776` | `uploadPassportToIrys` + edit/create parity + unit tests |
+
+### Tests
+
+| File | Coverage |
+|------|----------|
+| `test/irys-compatibility.test.ts` | `checkIrysCompatibility`, `checkWalletForIrysUpload`, fail-open |
+| `test/passport-upload.test.ts` | `uploadPassportToIrys` wallet block, `formatPassportUploadError` |
+| `test/ar-gateway.test.ts` | Gateway selection by chain ID |
+
+Run: `node --import tsx --test test/*.test.ts`
+
+### Multichain checklist (when adding a chain)
+
+1. Deploy Model X contracts → `deployments/{chainId}.json`
+2. Add chain to `lib/web3/supported-chains.ts` and `deployment-addresses.ts`
+3. Extend `BASE_CHAIN_IDS` in `irys-client.ts` if Irys supports that chain’s payment token
+4. Extend `MAINNET_CHAIN_IDS` in `ar-gateway.ts` if chain uses `arweave.net` gateway
+5. Add Ponder RPC + contract addresses for the chain
+6. Smoke: mint + edit passport with EOA on the new network
+
+### Deferred
+
+- **Browser E2E** (Playwright + mock `eth_getCode`) — separate QA task; unit tests sufficient for merge
+- **Smart-wallet storage** — product decision: keep EOA requirement vs server-side upload vs alternative storage
+- **Attestation evidence** — still uses separate `upload-evidence.ts` path (same Irys client)
