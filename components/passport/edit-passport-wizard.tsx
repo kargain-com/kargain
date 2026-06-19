@@ -14,6 +14,7 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -48,11 +48,10 @@ import {
 } from "@/lib/passport/metadata-schema";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
-  checkWalletForIrysUpload,
   formatPassportUploadError,
   getWalletUploadProvider,
-  uploadPassportMetadataJson,
-  uploadPassportPhotos,
+  uploadPassportToIrys,
+  type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
@@ -105,6 +104,7 @@ export function EditPassportWizard({
     typeof diffPassportMetadata
   > | null>(null);
   const [phase, setPhase] = useState<"idle" | "uploading" | "saving">("idle");
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,6 +170,7 @@ export function EditPassportWizard({
 
     setPhase("uploading");
     setFormError(null);
+    setUploadProgress(null);
 
     try {
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
@@ -180,29 +181,27 @@ export function EditPassportWizard({
       });
       const provider = await getWalletUploadProvider(connector);
 
-      const walletError = await checkWalletForIrysUpload(provider, address);
-      if (walletError) {
-        setFormError(walletError);
-        setPhase("idle");
-        return;
-      }
-
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
         .map((item) => item.file);
-      const { uris: uploadedPhotoUris, uploader } = await uploadPassportPhotos(newFiles, provider);
-      let uploadIndex = 0;
-      const photoUris = photos.map((item) => {
-        if (item.kind === "existing") return item.uri;
-        return uploadedPhotoUris[uploadIndex++]!;
+      const createdAt = initialMetadata.createdAt ?? new Date().toISOString();
+
+      const uri = await uploadPassportToIrys({
+        newPhotoFiles: newFiles,
+        buildMetadata: (uploadedNewPhotoUris) => {
+          let uploadIndex = 0;
+          const photoUris = photos.map((item) => {
+            if (item.kind === "existing") return item.uri;
+            return uploadedNewPhotoUris[uploadIndex++]!;
+          });
+          return buildMetadataWireForEdit(form, photoUris, { createdAt });
+        },
+        provider,
+        address,
+        onProgress: setUploadProgress,
       });
-      const createdAt =
-        initialMetadata.createdAt ?? new Date().toISOString();
-      const metadata = buildMetadataWireForEdit(form, photoUris, { createdAt });
 
-      setPhase("uploading");
-      const uri = await uploadPassportMetadataJson(metadata, provider, undefined, uploader);
-
+      setUploadProgress(null);
       setPhase("saving");
       const hash = await writeContractAsync({
         address: passport,
@@ -215,6 +214,7 @@ export function EditPassportWizard({
     } catch (err) {
       resetIrysUploaderCache();
       setFormError(formatPassportUploadError(err));
+      setUploadProgress(null);
       setPhase("idle");
       resetWrite();
     }
@@ -272,6 +272,25 @@ export function EditPassportWizard({
         </p>
       )}
 
+      {wrongChain && (
+        <p className="rounded-md border border-border-hover bg-bg-surface p-3 text-sm text-text-secondary">
+          Switch to Base Sepolia to save.{" "}
+          <button
+            type="button"
+            className="link-underline"
+            onClick={() => void switchChainAsync?.({ chainId: wc })}
+          >
+            Switch network
+          </button>
+        </p>
+      )}
+
+      {formError && (
+        <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
+          {formError}
+        </p>
+      )}
+
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
         <PassportMetadataFields
           form={form}
@@ -306,16 +325,23 @@ export function EditPassportWizard({
           {errors.photos && <p className="text-xs text-status-error">{errors.photos}</p>}
         </div>
 
-        {phase === "uploading" && <Progress value={50} className="h-1" />}
+        {phase === "uploading" &&
+          (uploadProgress ? (
+            <PassportUploadProgressPanel uploadProgress={uploadProgress} />
+          ) : (
+            <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
+          ))}
 
-        {formError && (
-          <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
-            {formError}
-          </p>
+        {phase === "saving" && (
+          <p className="font-sans text-sm text-text-secondary">Saving on-chain…</p>
         )}
 
         <Button type="button" className="w-full" disabled={isBusy} onClick={onSubmit}>
-          {isBusy ? "Saving…" : "Save changes"}
+          {phase === "uploading"
+            ? "Uploading…"
+            : phase === "saving"
+              ? "Saving…"
+              : "Save changes"}
         </Button>
       </div>
 

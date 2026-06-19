@@ -29,6 +29,14 @@ const METADATA_TAGS: IrysTag[] = [
 
 const DEFAULT_ATTEMPTS = 3;
 
+/** Thrown when eth_getCode detects a wallet incompatible with Irys fund(). */
+export class PassportIrysWalletBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PassportIrysWalletBlockedError";
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -44,6 +52,9 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): 
 }
 
 export function formatPassportUploadError(err: unknown): string {
+  if (err instanceof PassportIrysWalletBlockedError) {
+    return err.message;
+  }
   if (err instanceof Error) {
     if (err.message.includes("User rejected")) {
       return "Wallet signature cancelled.";
@@ -99,6 +110,7 @@ export async function uploadPassportPhotos(
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<{ uris: string[]; uploader: IrysUploader }> {
   if (files.length === 0) {
+    onProgress?.({ kind: "metadata" });
     const uploader = await getIrysUploader(provider);
     return { uris: [], uploader };
   }
@@ -128,26 +140,34 @@ export async function uploadPassportMetadataJson(
   return withRetry(() => uploadJson(metadata, METADATA_TAGS, provider));
 }
 
-export async function uploadPassportMetadataBundle(params: {
-  existingPhotoUris: string[];
+/**
+ * Wallet check, photo upload (batch), and metadata JSON upload on one Irys session.
+ * `buildMetadata` receives URIs for newly uploaded files only (in upload order).
+ */
+export async function uploadPassportToIrys(params: {
   newPhotoFiles: File[];
-  metadata: Record<string, unknown>;
+  buildMetadata: (uploadedNewPhotoUris: string[]) => Record<string, unknown>;
   provider: unknown;
+  address: string;
   onProgress?: (progress: UploadProgress) => void;
-}): Promise<{ photoUris: string[]; metadataUri: string }> {
-  const uploaded = await uploadPassportPhotos(
+}): Promise<string> {
+  const walletError = await checkWalletForIrysUpload(params.provider, params.address);
+  if (walletError) {
+    throw new PassportIrysWalletBlockedError(walletError);
+  }
+
+  const { uris: uploadedNewUris, uploader } = await uploadPassportPhotos(
     params.newPhotoFiles,
     params.provider,
     params.onProgress,
   );
-  const photoUris = [...params.existingPhotoUris, ...uploaded.uris];
-  const metadataUri = await uploadPassportMetadataJson(
-    params.metadata,
+  const metadata = params.buildMetadata(uploadedNewUris);
+  return uploadPassportMetadataJson(
+    metadata,
     params.provider,
     params.onProgress,
-    uploaded.uploader,
+    uploader,
   );
-  return { photoUris, metadataUri };
 }
 
 export async function getWalletUploadProvider(

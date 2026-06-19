@@ -13,9 +13,9 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -30,11 +30,9 @@ import {
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import {
-  checkWalletForIrysUpload,
   formatPassportUploadError,
   getWalletUploadProvider,
-  uploadPassportMetadataJson,
-  uploadPassportPhotos,
+  uploadPassportToIrys,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
 import { reorderArrayItem } from "@/lib/reorder-array";
@@ -230,11 +228,7 @@ export function CreatePassportWizard() {
       });
     } catch (err) {
       setUploadProgress(null);
-      if (err instanceof Error && err.message.includes("User rejected")) {
-        setFormError("Transaction cancelled.");
-      } else {
-        setFormError(err instanceof Error ? err.message : "Something went wrong. Try again.");
-      }
+      setFormError(formatPassportUploadError(err));
       setPhase("error");
       return;
     }
@@ -242,24 +236,13 @@ export function CreatePassportWizard() {
     try {
       const provider = await getWalletUploadProvider(connector);
 
-      const walletError = await checkWalletForIrysUpload(provider, address);
-      if (walletError) {
-        setFormError(walletError);
-        setUploadProgress(null);
-        setPhase("error");
-        return;
-      }
-
-      const { uris: photoUris, uploader } = await uploadPassportPhotos(
-        photos,
+      const uri = await uploadPassportToIrys({
+        newPhotoFiles: photos,
+        buildMetadata: (photoUris) => buildMetadataWire(form, photoUris),
         provider,
-        setUploadProgress,
-      );
-
-      const metadata = buildMetadataWire(form, photoUris);
-
-      setUploadProgress({ kind: "metadata" });
-      const uri = await uploadPassportMetadataJson(metadata, provider, undefined, uploader);
+        address,
+        onProgress: setUploadProgress,
+      });
 
       setMetadataUri(uri);
       setUploadProgress(null);
@@ -353,31 +336,12 @@ export function CreatePassportWizard() {
             disabled={isBusy}
           />
 
-          {phase === "uploading" && uploadProgress && (
-            <div className="space-y-2">
-              <p className="font-sans text-sm text-text-secondary">
-                {uploadProgress.kind === "photos"
-                  ? uploadProgress.batch
-                    ? uploadProgress.current >= uploadProgress.total
-                      ? `Uploaded ${uploadProgress.total} photos`
-                      : `Uploading ${uploadProgress.total} photos (one wallet signature)…`
-                    : `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}…`
-                  : "Preparing passport…"}
-              </p>
-              <p className="font-sans text-xs text-text-tertiary">
-                Storage fees are paid from your wallet. You may be asked to deposit Base Sepolia ETH to Irys, then sign the photo batch and metadata.
-              </p>
-              <Progress
-                value={
-                  uploadProgress.kind === "photos"
-                    ? uploadProgress.total > 0
-                      ? (uploadProgress.current / uploadProgress.total) * 100
-                      : 0
-                    : 100
-                }
-              />
-            </div>
-          )}
+          {phase === "uploading" &&
+            (uploadProgress ? (
+              <PassportUploadProgressPanel uploadProgress={uploadProgress} />
+            ) : (
+              <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
+            ))}
 
           {phase === "minting" && (
             <div className="space-y-1">
