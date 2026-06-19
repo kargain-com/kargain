@@ -88,6 +88,26 @@ export function PassportDetailView({
         ← {t.backMarketplace}
       </Link>
 
+      <div className="mt-8 flex flex-col gap-2 lg:flex lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
+          <p className="font-mono text-xs uppercase tracking-widest text-text-tertiary">
+            {t.passport} #{tokenId}
+          </p>
+          <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
+            {title}
+          </h1>
+          <PassportStatusBadge status={passport.status} />
+        </div>
+        <p className="font-sans text-sm text-text-secondary">
+          {t.onChainOwner}{" "}
+          <EnsWalletLink
+            address={passport.owner}
+            href={`/profile/${passport.owner}`}
+            className="font-mono text-accent-warm hover:underline"
+          />
+        </p>
+      </div>
+
       <div className="mt-8 space-y-8 lg:grid lg:grid-cols-[1fr_22rem] lg:items-start lg:gap-12 lg:space-y-0">
         <div className="space-y-6">
           <PassportPhotoGallery
@@ -122,9 +142,20 @@ export function PassportDetailView({
             labels={t}
           />
 
-          <NostrCommentsSection tokenId={tokenId} />
-
-          <PassportUriHistory entries={passport.uriHistory} />
+          {hasVerifier && (
+            <section className="space-y-3 rounded-md border border-border-default bg-bg-surface p-6">
+              <p className="font-sans text-sm text-text-secondary">
+                Verified by{" "}
+                <EnsWalletLink
+                  address={passport.verifier}
+                  href={`/verifier/${passport.verifier}`}
+                  className="font-mono text-accent-warm hover:underline"
+                />
+                {verifiedDate && <> on {verifiedDate}</>}
+                <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
+              </p>
+            </section>
+          )}
 
           <PassportActionsPanel
             tokenId={tokenId}
@@ -142,19 +173,13 @@ export function PassportDetailView({
             lastVerificationResetAt={passport.lastVerificationResetAt}
             labels={t}
           />
+
+          <NostrCommentsSection tokenId={tokenId} />
+
+          <PassportUriHistory entries={passport.uriHistory} />
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-24">
-          <div className="space-y-3">
-            <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
-              {t.passport} #{tokenId}
-            </p>
-            <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
-              {title}
-            </h1>
-            <PassportStatusBadge status={passport.status} />
-          </div>
-
           <PassportTrustBanner
             verificationResetCount={passport.verificationResetCount}
             hadDispute={passport.hadDispute}
@@ -218,32 +243,6 @@ export function PassportDetailView({
             hadDispute={passport.hadDispute}
             labels={t}
           />
-
-          <section className="space-y-3 rounded-md border border-border-default bg-bg-surface p-6">
-            <h2 className="font-sans text-base font-medium text-text-primary">
-              {t.onChainOwner}
-            </h2>
-            <EnsWalletLink
-              address={passport.owner}
-              href={`/profile/${passport.owner}`}
-              className="font-mono text-sm text-accent-warm hover:underline"
-            />
-
-            {hasVerifier && (
-              <div className="border-t border-border-default pt-3">
-                <p className="font-sans text-sm text-text-secondary">
-                  Verified by{" "}
-                  <EnsWalletLink
-                    address={passport.verifier}
-                    href={`/verifier/${passport.verifier}`}
-                    className="font-mono text-accent-warm hover:underline"
-                  />
-                  {verifiedDate && <> on {verifiedDate}</>}
-                  <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
-                </p>
-              </div>
-            )}
-          </section>
         </aside>
       </div>
     </div>
