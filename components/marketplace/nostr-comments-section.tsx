@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart, Loader2, MessageCircle } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
@@ -8,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
-import { type Filter, finalizeEvent, getPublicKey, nip19 } from "nostr-tools";
+import { shortAddress } from "@/lib/web3/wallet-display";
+import { type Filter, finalizeEvent, getPublicKey } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 
 type NostrEvent = {
@@ -26,19 +28,6 @@ type CommentNode = {
   optimistic?: boolean;
 };
 
-function shortPk(pk: string) {
-  return `${pk.slice(0, 8)}...${pk.slice(-6)}`;
-}
-
-function npubLink(pubkey: string) {
-  try {
-    const npub = nip19.npubEncode(pubkey);
-    return `https://njump.me/${npub}`;
-  } catch {
-    return `https://njump.me/${pubkey}`;
-  }
-}
-
 function parseParentId(ev: NostrEvent): string | null {
   const reply = ev.tags.find((t) => t[0] === "e" && t[3] === "reply");
   if (reply?.[1]) return reply[1];
@@ -47,7 +36,7 @@ function parseParentId(ev: NostrEvent): string | null {
 }
 
 function NostrCommentsSection({ tokenId }: { tokenId: string }) {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { nostrPrivateKey, loading } = useNostrKey();
   const [events, setEvents] = useState<Record<string, CommentNode>>({});
   const [likesByTarget, setLikesByTarget] = useState<Record<string, Set<string>>>({});
@@ -104,7 +93,9 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
         oneose: () => setFeedLoading(false),
         onclose: (reasons: string[]) => {
           setFeedLoading(false);
-          if (reasons.length > 0) setFeedError(`Relay closed: ${reasons[0]}`);
+          if (reasons.length > 0) {
+            setFeedError("Could not load comments. Please refresh the page.");
+          }
         },
       },
     );
@@ -142,6 +133,9 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   const publish = async (kind: 1 | 7, content: string, parentEventId?: string) => {
     if (!nostrPrivateKey || !pubkey) throw new Error("Identity not ready.");
     const tags: string[][] = [["d", `listing:${tokenId}`]];
+    if (kind === 1 && address) {
+      tags.push(["evm", address.toLowerCase()]);
+    }
     if (kind === 1 && parentEventId) {
       const target = events[parentEventId]?.event;
       tags.push(["e", parentEventId, "", "reply"]);
@@ -170,13 +164,20 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     setPosting(true);
     setSendingError(null);
     const tempId = `temp-${Date.now()}`;
+    const optimisticTags: string[][] = [["d", `listing:${tokenId}`]];
+    if (address) {
+      optimisticTags.push(["evm", address.toLowerCase()]);
+    }
+    if (replyTo) {
+      optimisticTags.push(["e", replyTo, "", "reply"]);
+    }
     const optimistic: NostrEvent = {
       id: tempId,
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
       kind: 1,
       content: text,
-      tags: replyTo ? [["e", replyTo, "", "reply"], ["d", `listing:${tokenId}`]] : [["d", `listing:${tokenId}`]],
+      tags: optimisticTags,
     };
     setEvents((prev) => ({ ...prev, [tempId]: { event: optimistic, parentId: replyTo, optimistic: true } }));
     setMessage("");
@@ -191,7 +192,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
         return next;
       });
     } catch {
-      setSendingError("Could not publish your comment to relays. Please retry.");
+      setSendingError("Could not post your comment. Please try again.");
       setEvents((prev) => {
         const next = { ...prev };
         delete next[tempId];
@@ -229,7 +230,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
 
       {feedLoading && (
-        <p className="font-sans text-xs text-text-secondary">Loading comments from public relays...</p>
+        <p className="font-sans text-xs text-text-secondary">Loading discussion...</p>
       )}
       {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
       {!feedLoading && roots.length === 0 && (
@@ -238,52 +239,81 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
         </p>
       )}
       <ul className="space-y-3">
-        {roots.map((root) => (
-          <li key={root.event.id} className="rounded-md border border-border-default bg-bg-surface p-3">
-            <p className="font-sans text-xs text-text-secondary">
-              <a
-                href={npubLink(root.event.pubkey)}
-                target="_blank"
-                rel="noreferrer"
-                className="underline-offset-2 hover:text-text-primary hover:underline"
-              >
-                {shortPk(root.event.pubkey)}
-              </a>{" "}
-              {root.optimistic ? "• sending..." : ""}
-            </p>
-            <p className="mt-1 font-sans text-sm text-text-primary">{root.event.content}</p>
-            <div className="mt-2 flex items-center gap-3 font-sans text-xs">
-              <button type="button" className="inline-flex items-center gap-1 text-text-secondary" onClick={() => setReplyTo(root.event.id)}>
-                <MessageCircle className="h-3.5 w-3.5" /> Reply
-              </button>
-              <button type="button" className="inline-flex items-center gap-1 text-text-secondary" onClick={() => void like(root.event.id)}>
-                <Heart className="h-3.5 w-3.5" /> {likesByTarget[root.event.id]?.size ?? 0}
-              </button>
-            </div>
-            {(byParent[root.event.id] ?? []).length > 0 && (
-              <ul className="mt-3 space-y-2 border-l border-border-default pl-3">
-                {(byParent[root.event.id] ?? []).map((child) => (
-                  <li key={child.event.id}>
-                    <p className="font-sans text-xs text-text-secondary">
-                      <a
-                        href={npubLink(child.event.pubkey)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline-offset-2 hover:text-text-primary hover:underline"
-                      >
-                        {shortPk(child.event.pubkey)}
-                      </a>
-                    </p>
-                    <p className="font-sans text-sm text-text-primary">{child.event.content}</p>
-                    <button type="button" className="mt-1 inline-flex items-center gap-1 font-sans text-xs text-text-secondary" onClick={() => void like(child.event.id)}>
-                      <Heart className="h-3 w-3" /> {likesByTarget[child.event.id]?.size ?? 0}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
+        {roots.map((root) => {
+          const evmAddress = root.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
+          return (
+            <li key={root.event.id} className="rounded-md border border-border-default bg-bg-surface p-3">
+              <p className="font-sans text-xs text-text-secondary">
+                {evmAddress ? (
+                  <Link
+                    href={`/profile/${evmAddress}`}
+                    className="font-mono text-xs text-accent-warm hover:underline"
+                  >
+                    {shortAddress(evmAddress as `0x${string}`)}
+                  </Link>
+                ) : (
+                  <span className="font-mono text-xs text-text-tertiary">
+                    Kargain user
+                  </span>
+                )}{" "}
+                {root.optimistic ? "• sending..." : ""}
+              </p>
+              <p className="mt-1 font-sans text-sm text-text-primary">{root.event.content}</p>
+              <div className="mt-2 flex items-center gap-3 font-sans text-xs">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
+                  disabled={!isConnected}
+                  onClick={() => setReplyTo(root.event.id)}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> Reply
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
+                  disabled={!isConnected}
+                  onClick={() => void like(root.event.id)}
+                >
+                  <Heart className="h-3.5 w-3.5" /> {likesByTarget[root.event.id]?.size ?? 0}
+                </button>
+              </div>
+              {(byParent[root.event.id] ?? []).length > 0 && (
+                <ul className="mt-3 space-y-2 border-l border-border-default pl-3">
+                  {(byParent[root.event.id] ?? []).map((child) => {
+                    const childEvmAddress = child.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
+                    return (
+                      <li key={child.event.id}>
+                        <p className="font-sans text-xs text-text-secondary">
+                          {childEvmAddress ? (
+                            <Link
+                              href={`/profile/${childEvmAddress}`}
+                              className="font-mono text-xs text-accent-warm hover:underline"
+                            >
+                              {shortAddress(childEvmAddress as `0x${string}`)}
+                            </Link>
+                          ) : (
+                            <span className="font-mono text-xs text-text-tertiary">
+                              Kargain user
+                            </span>
+                          )}
+                        </p>
+                        <p className="font-sans text-sm text-text-primary">{child.event.content}</p>
+                        <button
+                          type="button"
+                          className="mt-1 inline-flex items-center gap-1 font-sans text-xs text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
+                          disabled={!isConnected}
+                          onClick={() => void like(child.event.id)}
+                        >
+                          <Heart className="h-3 w-3" /> {likesByTarget[child.event.id]?.size ?? 0}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       <div className="space-y-3 border-t border-border-default pt-4">
