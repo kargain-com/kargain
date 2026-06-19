@@ -30,6 +30,7 @@ import {
   SLUG_MIN_LENGTH,
   SLUG_PATTERN,
 } from "../../lib/kar-pro/kar-pro-metadata";
+import { buildNotificationFeed } from "./notifications-query";
 
 const app = new Hono();
 
@@ -53,6 +54,11 @@ function parseLimit(raw: string | undefined): number {
 function parseOffset(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : 0;
   return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function parseIdList(raw: string | undefined, max = 50): string[] {
+  if (!raw?.trim()) return [];
+  return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))].slice(0, max);
 }
 
 const ATTESTATION_RECORD_TYPE = "attestation";
@@ -326,6 +332,49 @@ app.get("/passports", async (c) => {
       passports,
       total,
       page,
+      limit,
+    }),
+  );
+});
+
+app.get("/passports/batch", async (c) => {
+  const ids = parseIdList(c.req.query("ids"));
+  if (ids.length === 0) {
+    return c.json(jsonBody({ passports: [] }));
+  }
+
+  const rows = await Promise.all(ids.map((id) => db.find(passport, { id })));
+  const passports = rows.filter((row): row is NonNullable<typeof row> => row != null);
+
+  return c.json(jsonBody({ passports }));
+});
+
+app.get("/listings/batch", async (c) => {
+  const ids = parseIdList(c.req.query("ids"));
+  if (ids.length === 0) {
+    return c.json(jsonBody({ listings: [] }));
+  }
+
+  const rows = await Promise.all(ids.map((id) => db.find(marketplaceListing, { id })));
+  const listingsFound = rows.filter((row): row is NonNullable<typeof row> => row != null);
+  const passportMap = await loadPassportMap(ids);
+  const listings = listingsFound.map((listing) => enrichListing(listing, passportMap));
+
+  return c.json(jsonBody({ listings }));
+});
+
+app.get("/notifications/:address", async (c) => {
+  const address = c.req.param("address").toLowerCase();
+  const sinceRaw = c.req.query("since") ?? "0";
+  const since = BigInt(sinceRaw);
+  const limit = parseLimit(c.req.query("limit"));
+
+  const items = await buildNotificationFeed(db, address, since, limit);
+
+  return c.json(
+    jsonBody({
+      items,
+      since: String(since),
       limit,
     }),
   );

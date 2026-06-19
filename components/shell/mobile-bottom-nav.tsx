@@ -1,11 +1,13 @@
 "use client";
 
-import { Bookmark, Car, Inbox, Plus, User } from "lucide-react";
+import { Bell, Car, Inbox, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
 import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { cn } from "@/lib/utils";
@@ -15,13 +17,13 @@ function NavTab({
   label,
   active,
   icon: Icon,
-  showBadge,
+  badge,
 }: {
   href: string;
   label: string;
   active: boolean;
   icon: typeof Car;
-  showBadge?: boolean;
+  badge?: ReactNode;
 }) {
   return (
     <Link
@@ -34,7 +36,7 @@ function NavTab({
     >
       <span className="relative flex size-6 shrink-0 items-center justify-center">
         <Icon size={20} strokeWidth={1.5} aria-hidden />
-        {showBadge && <XmtpUnreadBadge className="-top-0.5 -right-0.5" />}
+        {badge}
       </span>
       <span className="max-w-full truncate">{label}</span>
     </Link>
@@ -107,7 +109,7 @@ export function MobileBottomNav() {
           label="Messages"
           icon={Inbox}
           active={path.startsWith("/messages")}
-          showBadge={isConnected}
+          badge={isConnected ? <XmtpUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
         />
 
         <div className="flex items-end justify-center">
@@ -129,9 +131,10 @@ export function MobileBottomNav() {
 
         <NavTab
           href="/notifications"
-          label="Watchlist"
-          icon={Bookmark}
+          label="Alerts"
+          icon={Bell}
           active={path.startsWith("/notifications")}
+          badge={isConnected ? <NotificationsUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
         />
 
         <ProfileNavTab

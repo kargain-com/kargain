@@ -147,6 +147,34 @@ async function decryptPrivateKey(address: `0x${string}`, blob: StoredEncrypted):
   return normalizeHex32(bytesToHex(new Uint8Array(plain)));
 }
 
+export async function encryptAppPayload(
+  address: `0x${string}`,
+  plaintextUtf8: string,
+): Promise<{ ivHex: string; cipherHex: string }> {
+  const key = await deriveAesKey(address);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(plaintextUtf8);
+  const cipher = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+  return {
+    ivHex: bytesToHex(iv),
+    cipherHex: bytesToHex(new Uint8Array(cipher)),
+  };
+}
+
+export async function decryptAppPayload(
+  address: `0x${string}`,
+  ivHex: string,
+  cipherHex: string,
+): Promise<string> {
+  const key = await deriveAesKey(address);
+  const plain = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: new Uint8Array(hexToBytes(ivHex as `0x${string}`)) },
+    key,
+    new Uint8Array(hexToBytes(cipherHex as `0x${string}`)),
+  );
+  return new TextDecoder().decode(plain);
+}
+
 let pendingKeyPromise: Promise<`0x${string}`> | null = null;
 let pendingWalletAddress: string | null = null;
 

@@ -22,7 +22,7 @@ function ListingCardSkeleton() {
   );
 }
 
-export function WatchlistClient() {
+export function WatchlistClient({ embedded = false }: { embedded?: boolean }) {
   const { isConnected } = useAccount();
   const { watchedIds, isLoading } = useWatchlist();
 
@@ -36,8 +36,10 @@ export function WatchlistClient() {
   const listings = listingData?.listings ?? [];
 
   return (
-    <div className="mx-auto max-w-7xl xl:max-w-[80rem]">
-      <h1 className="font-display text-fluid-h2 font-medium text-text-primary">Watchlist</h1>
+    <div className={embedded ? undefined : "mx-auto max-w-7xl xl:max-w-[80rem]"}>
+      {!embedded && (
+        <h1 className="font-display text-fluid-h2 font-medium text-text-primary">Watchlist</h1>
+      )}
 
       {!isConnected && (
         <div className="mt-8 space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
@@ -49,7 +51,7 @@ export function WatchlistClient() {
       )}
 
       {isConnected && listingsLoading && (
-        <ul className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className={embedded ? "mt-0 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3" : "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"}>
           {Array.from({ length: Math.max(watchedIds.length, 3) }).map((_, i) => (
             <li key={i}>
               <ListingCardSkeleton />
@@ -59,7 +61,7 @@ export function WatchlistClient() {
       )}
 
       {isConnected && !listingsLoading && watchedIds.length === 0 && (
-        <div className="mt-8 py-8 text-center">
+        <div className={embedded ? "py-8 text-center" : "mt-8 py-8 text-center"}>
           <Bookmark
             size={48}
             strokeWidth={1}
@@ -76,7 +78,7 @@ export function WatchlistClient() {
       )}
 
       {isConnected && !listingsLoading && watchedIds.length > 0 && (
-        <div className="mt-8 space-y-6">
+        <div className={embedded ? "space-y-6" : "mt-8 space-y-6"}>
           {listingData?.ponderError && (
             <p className="rounded-sm border border-border-default bg-bg-surface p-3 font-sans text-sm text-text-secondary">
               Indexer unavailable. Start the Ponder indexer to load saved listings.

@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
-import { WatchlistClient } from "@/components/watchlist/watchlist-client";
+import { NotificationsShell } from "@/components/notifications/notifications-shell";
 
 export const metadata: Metadata = {
-  title: "Watchlist",
+  title: "Notifications",
 };
 
 export default function NotificationsPage() {
   return (
     <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
-      <WatchlistClient />
+      <Suspense fallback={null}>
+        <NotificationsShell />
+      </Suspense>
     </div>
   );
 }

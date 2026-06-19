@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { createStandaloneWagmiConfig } from "@/lib/web3/wagmi-standalone-config";
+import { NotificationsProvider } from "@/hooks/use-notification-state";
 import { NostrKeyInitializer } from "@/components/providers/nostr-key-initializer";
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -31,7 +32,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={standaloneWagmiConfig as never}>
         <NostrKeyInitializer />
-        {children}
+        <NotificationsProvider>{children}</NotificationsProvider>
       </WagmiProvider>
     </QueryClientProvider>
   );

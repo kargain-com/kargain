@@ -1,0 +1,75 @@
+"use client";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback } from "react";
+
+import { NotificationsClient } from "@/components/notifications/notifications-client";
+import { WatchlistClient } from "@/components/watchlist/watchlist-client";
+import { cn } from "@/lib/utils";
+
+type TabId = "alerts" | "watchlist";
+
+function tabFromSearchParams(searchParams: URLSearchParams): TabId {
+  return searchParams.get("tab") === "watchlist" ? "watchlist" : "alerts";
+}
+
+export function NotificationsShell() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = tabFromSearchParams(searchParams);
+
+  const setTab = useCallback(
+    (tab: TabId) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (tab === "watchlist") {
+        params.set("tab", "watchlist");
+      } else {
+        params.delete("tab");
+      }
+      const query = params.toString();
+      router.replace(query ? `/notifications?${query}` : "/notifications");
+    },
+    [router, searchParams],
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl xl:max-w-[80rem]">
+      <h1 className="font-display text-fluid-h2 font-medium text-text-primary">Notifications</h1>
+
+      <div className="mt-8 border-b border-border-default">
+        <nav className="flex gap-6" aria-label="Notifications sections">
+          <button
+            type="button"
+            onClick={() => setTab("alerts")}
+            className={cn(
+              "border-b-2 pb-3 font-sans text-sm transition-colors duration-150",
+              activeTab === "alerts"
+                ? "border-text-primary font-medium text-text-primary"
+                : "border-transparent font-normal text-text-secondary hover:text-text-primary",
+            )}
+          >
+            Alerts
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("watchlist")}
+            className={cn(
+              "border-b-2 pb-3 font-sans text-sm transition-colors duration-150",
+              activeTab === "watchlist"
+                ? "border-text-primary font-medium text-text-primary"
+                : "border-transparent font-normal text-text-secondary hover:text-text-primary",
+            )}
+          >
+            Watchlist
+          </button>
+        </nav>
+      </div>
+
+      {activeTab === "alerts" ? (
+        <NotificationsClient />
+      ) : (
+        <WatchlistClient embedded />
+      )}
+    </div>
+  );
+}

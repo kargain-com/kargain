@@ -1,0 +1,99 @@
+"use client";
+
+import {
+  AlertTriangle,
+  BadgeCheck,
+  Banknote,
+  Bookmark,
+  CornerDownRight,
+  FileText,
+  Heart,
+  MessageSquare,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  type LucideIcon,
+} from "lucide-react";
+import Link from "next/link";
+
+import { formatRelativeTime } from "@/lib/xmtp/helpers";
+import type { NotificationItem, NotificationType } from "@/lib/notifications/types";
+import { cn } from "@/lib/utils";
+
+const ICON_BY_TYPE: Record<NotificationType, LucideIcon> = {
+  "passport.verified": ShieldCheck,
+  "passport.dispute_opened": ShieldAlert,
+  "passport.dispute_resolved": Shield,
+  "passport.record_appended": FileText,
+  "passport.attestation_received": BadgeCheck,
+  "listing.sold": Banknote,
+  "verifier.dispute_on_verified": AlertTriangle,
+  "watchlist.status_changed": Bookmark,
+  "watchlist.listing_deactivated": Bookmark,
+  "watchlist.price_changed": Bookmark,
+  "watchlist.dispute_opened": Bookmark,
+  "nostr.comment_on_passport": MessageSquare,
+  "nostr.reply_to_comment": CornerDownRight,
+  "nostr.like_on_comment": Heart,
+};
+
+type NotificationRowProps = {
+  item: NotificationItem;
+  isLast?: boolean;
+};
+
+export function NotificationRow({ item, isLast = false }: NotificationRowProps) {
+  const Icon = ICON_BY_TYPE[item.type];
+
+  return (
+    <li>
+      <Link
+        href={item.href}
+        className={cn(
+          "flex items-start gap-3 px-4 py-3 rounded-none hover:bg-bg-surface transition-colors duration-150",
+          !isLast && "border-b border-border-default",
+          !item.read && "border-l-2 border-accent-warm",
+        )}
+      >
+        <Icon size={18} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "font-sans text-sm",
+              item.read ? "text-text-secondary" : "text-text-primary",
+            )}
+          >
+            {item.body}
+          </p>
+          <p className="mt-1 font-sans text-xs text-text-tertiary">
+            {formatRelativeTime(new Date(item.timestamp * 1000))}
+          </p>
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+function NotificationRowSkeleton() {
+  return (
+    <li className="animate-pulse border-b border-border-default px-4 py-3">
+      <div className="flex items-start gap-3">
+        <div className="size-[18px] rounded bg-bg-surface" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-3/4 rounded bg-bg-surface" />
+          <div className="h-3 w-1/4 rounded bg-bg-surface" />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+export function NotificationRowSkeletonList({ count = 3 }: { count?: number }) {
+  return (
+    <ul className="overflow-hidden rounded-md border border-border-default bg-bg-card">
+      {Array.from({ length: count }).map((_, index) => (
+        <NotificationRowSkeleton key={index} />
+      ))}
+    </ul>
+  );
+}

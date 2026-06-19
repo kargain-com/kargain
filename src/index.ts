@@ -167,6 +167,7 @@ ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
   ) {
     await context.db.update(passport, { id: tokenId }).set({
       disputeWithdrawnAt: event.block.timestamp,
+      disputeOpenedAt: 0n,
       updatedAt: event.block.timestamp,
     });
   }

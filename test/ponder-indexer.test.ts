@@ -68,6 +68,14 @@ describe("ponder G1 trust fields", () => {
     const fields = passportDisputedTrustFields(200n);
     assert.equal(fields.hadDispute, true);
     assert.equal(fields.status, "DISPUTED");
+    assert.equal(fields.disputeOpenedAt, 200n);
+  });
+
+  it("clears disputeOpenedAt on resolve", () => {
+    const reject = disputeResolvedTrustFields(false, 300n);
+    assert.equal(reject.disputeOpenedAt, 0n);
+    const uphold = disputeResolvedTrustFields(true, 300n);
+    assert.equal(uphold.disputeOpenedAt, 0n);
   });
 
   it("keeps hadDispute sticky after resolve", () => {

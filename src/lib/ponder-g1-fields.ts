@@ -16,13 +16,18 @@ export function passportDisputedTrustFields(timestamp: bigint) {
   return {
     status: "DISPUTED" as const,
     disputeWithdrawnAt: 0n,
+    disputeOpenedAt: timestamp,
     hadDispute: true,
     updatedAt: timestamp,
   };
 }
 
 export function disputeResolvedTrustFields(uphold: boolean, timestamp: bigint) {
-  const resolved = { lastDisputeResolvedAt: timestamp, updatedAt: timestamp };
+  const resolved = {
+    lastDisputeResolvedAt: timestamp,
+    disputeOpenedAt: 0n,
+    updatedAt: timestamp,
+  };
   if (uphold) {
     return { status: "VERIFIED" as const, ...resolved };
   }
