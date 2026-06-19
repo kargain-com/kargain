@@ -1,6 +1,6 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX, `master` June 2026)  
+Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX + notifications/watchlist, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
 
@@ -348,7 +348,7 @@ Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from bl
 
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
 
-**Document map:** Public status lives in this spec (§17 UI complete · §19 passport detail UX) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
+**Document map:** Public status lives in this spec (§17 UI complete · §19 passport detail UX · §20 notifications + watchlist) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
 
 ## 15. Plan A–J core — definition of done (June 2026)
 
@@ -398,7 +398,7 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Pro showroom | `/pro/[slug]` · `PRO_SLUGS` (empty until owner adds slug) | ✅ |
 | Profile + showroom link | `/profile/[handle]` · `proSlugForAddress()` | ✅ |
 | Messages (XMTP) | `/messages` | ✅ |
-| Notifications | `/notifications` | ✅ |
+| Notifications | `/notifications` · `notifications-shell` (Alerts + Watchlist tabs) | ✅ |
 | ENS on addresses | wallet dropdown + profile displays | ✅ |
 | Mobile shell | 5-tab bottom nav; KarPro in top nav when eligible; no top/bottom duplication | ✅ |
 | KarPro credential | `proSlugForAddress()` showroom link (not `PRO_SLUGS[address]`) | ✅ |
@@ -407,11 +407,11 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 
 **Ops next steps:**
 
-1. Ponder reindex — filter schema columns on `passport` ([VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md))
+1. Ponder reindex — `disputeOpenedAt` + filter schema columns on `passport` ([VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md))
 2. Stake on `/kar-pro` and add slug to `lib/web3/pro-slugs.ts`
 3. Sepolia smoke validation — [README.md](../README.md) checklist
 
-**Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for filter facets; `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`; smart wallets cannot fund Irys client-side (EOA required for upload).
+**Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for `disputeOpenedAt` + filter facets; notifications Phase 2 (`ownedTokenIds`, feed N+1, tx grouping); `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`; smart wallets cannot fund Irys client-side (EOA required for upload).
 
 ## 18. Irys / Arweave upload — definition of done (June 2026)
 
@@ -552,3 +552,53 @@ Run: `node --import tsx --test test/*.test.ts`
 | Removed | `npubLink`, `shortPk`, nip19, njump.me links |
 | Guest | Reply/Like disabled; composer disabled; feed readable |
 | Copy | Relay terminology removed from UI |
+
+## 20. Notifications + watchlist — definition of done (June 2026)
+
+**Status:** Full notifications stack and watchlist tab shipped on `/notifications`.
+
+### Watchlist (NIP-51)
+
+| Item | Detail |
+|------|--------|
+| Rename | "Garage" → **Watchlist** across UI |
+| Hook | `hooks/use-watchlist.ts` — load/add/remove with optimistic toggle |
+| Detail | `WatchlistButton` on passport detail (aside column) |
+| Tab | `WatchlistClient` — grid of active listings from watched token IDs at `?tab=watchlist` |
+
+### Notifications (full stack)
+
+| Layer | Detail |
+|-------|--------|
+| Schema | `disputeOpenedAt` on `passport` in `ponder.schema.ts` (**VPS reindex required**) |
+| Read state | `lib/nostr/notification-state.ts` — NIP-78 kind 30078; encrypted via `encryptAppPayload` / `decryptAppPayload` in `key-manager.ts`; `lastSeenAt` per channel; merge via `max()` |
+| Ponder API | `GET /passports/batch`, `/listings/batch`, `/notifications/:address`; builder in `src/api/notifications-query.ts` |
+| Hooks | `NotificationsProvider` → `usePonderNotifications` (30s poll) + `useWatchlistNotifications` (60s poll + IDB snapshot diff) + `useNostrNotificationsSub` (live `#p` + `#d`) |
+| UI | Alerts tab (default) + Watchlist tab; mobile nav tab 4: **Alerts** / Bell + unread dot |
+
+### Key modules
+
+| File | Role |
+|------|------|
+| `lib/nostr/notification-state.ts` | NIP-78 load/save/merge |
+| `lib/notifications/types.ts` | `NotificationItem`, enums |
+| `src/api/notifications-query.ts` | Ponder feed builder |
+| `hooks/use-notification-state.tsx` | Provider + NIP-78 + `markRead` |
+| `hooks/use-notifications-feed.ts` | Context consumer |
+| `hooks/use-unread-notifications-count.ts` | Nav badge count |
+| `components/notifications/notifications-shell.tsx` | Tab shell |
+| `components/notifications/notifications-client.tsx` | Alerts inbox |
+| `components/notifications/notification-row.tsx` | Row UI |
+
+### Technical debt
+
+- `ownedTokenIds: []` for Nostr `#d` subscription — Phase 2 needs profile query for owned passport IDs
+- VPS reindex required for `disputeOpenedAt` on historical rows
+- N+1 query in `buildNotificationFeed` — batch SQL in Phase 2
+
+### Remaining (not blocking)
+
+- VPS reindex — [VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md)
+- Nostr `#d` subscription for owned passports (Phase 2)
+- Tx-level record grouping in notification rows (Phase 2)
+- Playwright E2E for notifications flow

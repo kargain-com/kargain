@@ -1,8 +1,8 @@
 # VPS Ponder reindex runbook
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`).
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context) or browse filter facets will be wrong until new on-chain events occur.
+Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, or **notifications feed** (`disputeOpenedAt` for dispute-open events) will be wrong until new on-chain events occur.
 
 ---
 
@@ -12,6 +12,7 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
+| Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute |
 | Stuck / corrupt sync | Ponder refuses to start after config change |
@@ -121,7 +122,7 @@ docker compose restart ponder
 ### 8. Smoke checks
 
 ```bash
-curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount'
+curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount, .disputeOpenedAt'
 curl -s https://ponder.kargain.com/listings | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts, .conditions, .vehicleTypes'
 ```

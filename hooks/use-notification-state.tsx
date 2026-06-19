@@ -30,6 +30,9 @@ const DEFAULT_STATE: NotificationState = {
   lastSeenAt: { ponder: 0, nostr: 0, watchlist: 0 },
 };
 
+/** Phase 1: no owned-passport #d filters yet — stable ref for effect deps */
+const OWNED_TOKEN_IDS_V1: string[] = [];
+
 type NotificationStateContextValue = {
   state: NotificationState;
   isLoading: boolean;
@@ -149,7 +152,7 @@ function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const { state, isLoading: stateLoading, markRead } = useNotificationState();
   const ponder = usePonderNotifications();
   const watchlist = useWatchlistNotifications();
-  const nostr = useNostrNotificationsSub([]);
+  const nostr = useNostrNotificationsSub(OWNED_TOKEN_IDS_V1);
 
   const items = useMemo(() => {
     const byId = new Map<string, NotificationItem>();

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Inbox, PlusCircle } from "lucide-react";
+import { Bell, Inbox, PlusCircle } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
+import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { ChainSelector } from "@/components/shell/chain-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -43,6 +44,14 @@ export function AppTopNav() {
         <div className="flex-1" aria-hidden />
 
         <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/notifications"
+            aria-label="Alerts"
+            className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
+          >
+            <Bell size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
+            {isConnected ? <NotificationsUnreadBadge className="top-1.5 right-1.5" /> : null}
+          </Link>
           {isConnected && (
             <Link
               href="/messages"

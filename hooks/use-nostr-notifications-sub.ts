@@ -52,10 +52,11 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   );
 
   const ready = isConnected && Boolean(nostrPrivateKey) && Boolean(pubkey);
+  const ownedTokenIdsKey = ownedTokenIds.join("\0");
 
   useEffect(() => {
     if (!ready || !pubkey) {
-      setEvents([]);
+      setEvents((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
@@ -98,7 +99,7 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
         }
       }
     };
-  }, [ready, pubkey, state.lastSeenAt.nostr, ownedTokenIds]);
+  }, [ready, pubkey, state.lastSeenAt.nostr, ownedTokenIdsKey]);
 
   const items = useMemo(() => {
     if (!pubkey) return [];

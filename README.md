@@ -56,7 +56,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 ### Off-chain layers
 
 - **Ponder** indexes contract events and serves listing/passport/verifier APIs ([production](https://ponder.kargain.com)). Browse cards may sample `getPassportStatus` on-chain when Ponder status may be stale (G4).
-- **Nostr** powers public comments and garage favorites (NIP-51). Identity is wallet-derived (`kargain-nostr-v1` / `kargain-aes-v1`); comments tag authors with `["evm", address]`.
+- **Nostr** powers public comments (NIP-01), watchlist favorites (kind 30000 replaceable list), and notification read-state sync (NIP-78 kind 30078). Identity is wallet-derived (`kargain-nostr-v1` / `kargain-aes-v1`); comments tag authors with `["evm", address]`.
 - **XMTP** provides encrypted buyer–seller messaging.
 
 ---
@@ -69,7 +69,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Ponder indexer** | Indexes deployed chain events (Base Sepolia today); REST API (`/listings`, `/passports`, `/verifiers`, …) — extend per chain as deployments grow |
 | **EVM contracts (per chain)** | KarPassport, KarProPass, KarProStaking (immutable); MarketplaceEscrow (UUPS proxy) — same Model X stack redeployed per network |
 | **Arweave** (via Irys, user-pays in browser) | Permanent photos and passport metadata — chain-agnostic `ar://` URIs; gateway resolution is chain-aware |
-| **Nostr** | Public comments (NIP-01), favorites (NIP-51) |
+| **Nostr** | Public comments (NIP-01), watchlist (NIP-51), notification read-state (NIP-78) |
 | **XMTP** | End-to-end encrypted buyer–seller messaging |
 
 ## Tech stack
@@ -80,7 +80,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | Indexer | Ponder 0.16, PostgreSQL |
 | Contracts | Solidity 0.8.28, Hardhat 3, OpenZeppelin 5 |
 | Storage | Arweave via Irys (`@irys/web-upload`) |
-| Social | Nostr (NIP-01, NIP-02, NIP-51) |
+| Social | Nostr (NIP-01, NIP-51, NIP-78) |
 | Messaging | XMTP |
 | Chain | **Multi-chain product** — **Base Sepolia (84532)** for testnet validation today; Base mainnet + Ethereum planned (see § Multi-chain platform above) |
 
@@ -95,8 +95,9 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Marketplace filters & shell (June 2026)** | **Complete** — top filter bar + drawer, mobile 5-tab nav, ENS on address displays, photo upload zone |
 | **Passport Irys upload (June 2026)** | **Complete** — batch `uploadFolder`, chain-aware `ar://` gateway, smart-wallet pre-check, unified create/edit flow |
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
+| **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
-| Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
+| Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after `disputeOpenedAt` + filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
 | Passport UI | Mint (drag-and-drop photos), edit (Variant C), verify/dispute/resolve, attestation, records timeline, marketplace trust gates |
 | Browse UX | Top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; chain-status sample on cards (G4) |
@@ -124,9 +125,25 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/profile/edit` | Profile edit + connect wallet |
 | `/messages` | XMTP inbox |
 | `/messages/[conversationId]` | DM thread |
-| `/notifications` | Alerts placeholder + KarPro CTA when eligible |
+| `/notifications` | Alerts inbox + watchlist tab (`?tab=watchlist`) |
 
-**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts · Profile (bottom). Desktop — Verifiers · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts (unread dot) · Profile (bottom). Desktop — Verifiers · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+
+### Notifications + watchlist (June 2026)
+
+Full notifications stack: Ponder on-chain events, watchlist snapshot diffs, and Nostr replies/likes. Cross-device read state via encrypted NIP-78 (kind 30078).
+
+| Topic | Implementation |
+|-------|----------------|
+| **Watchlist** | `hooks/use-watchlist.ts` — Nostr kind 30000 list (`kargain-favorites`); `WatchlistButton` on passport detail; `WatchlistClient` grid at `/notifications?tab=watchlist` |
+| **Read state** | `lib/nostr/notification-state.ts` — NIP-78 `#d: kargain-notifications-v1`; AES-GCM via `encryptAppPayload` / `decryptAppPayload`; `lastSeenAt` per channel (`ponder`, `nostr`, `watchlist`); merge via `max()` |
+| **Ponder feed** | `GET /notifications/:address`, `/passports/batch`, `/listings/batch`; builder in `src/api/notifications-query.ts`; `disputeOpenedAt` on `passport` (reindex required) |
+| **Hook tree** | `NotificationsProvider` → `usePonderNotifications` (30s poll) + `useWatchlistNotifications` (60s poll + IDB snapshot diff) + `useNostrNotificationsSub` (live `#p` subscription) |
+| **UI** | `/notifications` — Alerts tab (default) + Watchlist tab; mobile nav tab 4: **Alerts** / Bell + unread dot |
+
+**Key modules:** `lib/notifications/types.ts` · `hooks/use-notification-state.tsx` · `components/notifications/notifications-shell.tsx` · `components/notifications/notifications-client.tsx`
+
+**Phase 2 / ops:** Nostr `#d` subscription for owned passport comments (`ownedTokenIds` currently `[]`); VPS reindex for `disputeOpenedAt`; batch SQL for record queries in feed builder.
 
 **`PRO_SLUGS`:** `{}` (empty). After staking on `/kar-pro`, add `{ "your-slug": "0x…" }` in [`lib/web3/pro-slugs.ts`](lib/web3/pro-slugs.ts) to enable `/pro/[slug]` and profile showroom links.
 
@@ -168,7 +185,7 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 
 **Next steps:**
 
-1. Ponder reindex (schema gained `condition`, `vehicleType`, `colour`, `locationLabel` on passports) — [runbook](docs/VPS-PONDER-REINDEX.md)
+1. Ponder reindex (`disputeOpenedAt`, filter columns `condition`, `vehicleType`, `colour`, `locationLabel`) — [runbook](docs/VPS-PONDER-REINDEX.md)
 2. Stake on `/kar-pro` and add your pro slug to `PRO_SLUGS`
 3. Sepolia smoke validation (checklist below) — use an **EOA** wallet for passport photo upload
 4. Deploy latest frontend to Vercel after Irys commits land on `master`
@@ -186,10 +203,11 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 - [ ] Edit passport metadata only (no new photos) → new `ar://` URI on-chain
 - [ ] Edit with new photos → interleaved photo order preserved in metadata
 - [ ] Dispute / resolve (optional)
+- [ ] Notifications — Alerts inbox, mark read, mobile unread dot; Watchlist tab (`?tab=watchlist`)
 
 **Tests:** `pnpm hardhat test` · `node --import tsx --test test/*.test.ts` (app unit tests, incl. Irys) · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e` (localhost 31337 only)
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX · §20 notifications) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -364,6 +382,9 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 | `GET /listings/:tokenId` | Marketplace detail, favorites, pro showroom |
 | `GET /passports` | Verifier empty state — `getPassportsByVerifier` |
 | `GET /passports/:tokenId` | Passport/marketplace detail — `fetchPassportDetail` |
+| `GET /passports/batch` | Watchlist + notifications — `fetchPassportBatch` |
+| `GET /listings/batch` | Watchlist snapshot diff — `fetchListingBatch` |
+| `GET /notifications/:address` | Alerts feed — `fetchNotificationFeed` |
 | `GET /profile/:address/passports` | Profile page — `getProfileData` |
 | `GET /profile/:address/listings` | Profile, pro showroom — `getProfileData`, `getProShowroomData` |
 | `GET /verifiers` | `/verifiers` — `fetchVerifierDirectory` |
@@ -390,7 +411,8 @@ All endpoints above are consumed by the Next.js app.
 - **`scripts/deploy-proxy.ts`** — references a stale MarketplaceEscrow impl; use `pnpm deploy:v1.1` or `pnpm deploy:base-sepolia`.
 - **`ProPassBurned`** — does not snapshot verifier profile (live state only).
 - **Desktop filter bar** — `overflow-hidden` on the filter row can clip controls around ~768px; may need wrap or scroll affordance.
-- **Ponder reindex pending** — passport filter columns (`condition`, `vehicleType`, `colour`, `locationLabel`) require VPS reindex before facets match on-chain metadata.
+- **Ponder reindex pending** — `disputeOpenedAt` + passport filter columns require VPS reindex before notifications feed and facets are accurate on historical rows.
+- **Notifications Phase 2** — `ownedTokenIds: []` for Nostr `#d` subscription (owned passport comments); N+1 record queries in feed builder; tx-level record grouping in UI.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
@@ -400,14 +422,15 @@ All endpoints above are consumed by the Next.js app.
 
 | Priority | Task | Notes |
 |----------|------|-------|
-| **Ops** | Ponder VPS reindex for filter facets | [runbook](docs/VPS-PONDER-REINDEX.md) |
+| **Ops** | Ponder VPS reindex (`disputeOpenedAt` + filter facets) | [runbook](docs/VPS-PONDER-REINDEX.md) |
 | **Ops** | Sepolia smoke validation | EOA wallet for Irys; checklist above |
 | **Ops** | First pro slug in `PRO_SLUGS` | After KarPro stake |
 | **Chain 1** | Base mainnet (8453) deploy | Same Model X stack; update `deployments/8453.json`, env maps, Irys mainnet node |
 | **Chain 2** | Ethereum mainnet (1) | Canonical trust layer; burn/mint bridge — one token on one chain at a time |
 | **Indexer** | Per-chain Ponder (or multi-chain config) | Extend `ponder.config.ts` / manifests as networks go live |
 | **Storage** | Validate Irys on each new chain | Extend `BASE_CHAIN_IDS` / gateway maps in `irys-client.ts` and `ar-gateway.ts` |
-| **QA** | Playwright E2E + mock wallet | Smart-wallet block message, upload progress, edit metadata-only |
+| **QA** | Playwright E2E for notifications + watchlist flows | Alerts inbox, mark read, badge |
+| **QA** | Playwright E2E + mock wallet for passport upload | Smart-wallet block message, upload progress, edit metadata-only |
 | **Product** | Smart-wallet storage path | Optional server-side or alternative permanent storage if EOA requirement is unacceptable |
 
 ## Contributing
