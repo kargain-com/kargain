@@ -176,7 +176,7 @@ export function PassportDetailView({
 
           <NostrCommentsSection tokenId={tokenId} />
 
-          <PassportUriHistory entries={passport.uriHistory} />
+          <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-24">
