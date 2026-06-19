@@ -1,5 +1,8 @@
 "use client";
 
+import { MessageCircle } from "lucide-react";
+import { useAccount } from "wagmi";
+
 import { FavoriteButton } from "@/components/marketplace/favorite-button";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
@@ -35,7 +38,11 @@ export function ListingDetailClientIsland({
   hadDispute,
   labels: t,
 }: Props) {
+  const { address, isConnected } = useAccount();
   const contactPeer: `0x${string}` = listing?.active ? listing.seller : passportOwner;
+  const isSelf =
+    Boolean(address) &&
+    address!.toLowerCase() === contactPeer.toLowerCase();
 
   return (
     <div className="space-y-6">
@@ -57,11 +64,25 @@ export function ListingDetailClientIsland({
 
       <div className="flex flex-wrap gap-2">
         <FavoriteButton chainId={chainId} tokenId={tokenId} />
-        <SellerContactButton
-          peerAddress={contactPeer}
-          label={t.contactSeller}
-          listingTokenId={listing?.active ? tokenId : null}
-        />
+        {contactPeer && !isSelf && (
+          isConnected ? (
+            <SellerContactButton
+              peerAddress={contactPeer}
+              label={t.contactSeller}
+              listingTokenId={listing?.active ? tokenId : null}
+            />
+          ) : (
+            <button
+              type="button"
+              disabled
+              aria-label="Message seller"
+              className="inline-flex items-center justify-center gap-2 min-h-11 w-full px-7 py-3.5 rounded-sm border border-border-default bg-transparent text-text-secondary font-sans text-sm font-medium opacity-50 cursor-not-allowed disabled:pointer-events-none"
+            >
+              <MessageCircle size={16} strokeWidth={1.5} aria-hidden />
+              Message seller
+            </button>
+          )
+        )}
       </div>
     </div>
   );

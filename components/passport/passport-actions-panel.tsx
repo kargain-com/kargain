@@ -375,22 +375,22 @@ export function PassportActionsPanel({
 
   const actionsBusy = isPending || isUploadingEvidence;
 
-  if (!isConnected) {
-    return (
-      <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="text-sm text-text-secondary">Connect wallet for on-chain actions.</p>
-        <WalletLoginButton />
-      </div>
-    );
-  }
-
-  if (!passport) {
-    return (
-      <p className="text-sm text-text-secondary">Passport contract not configured.</p>
-    );
-  }
-
   return (
+    <>
+      {!isConnected && (
+        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
+          <p className="font-sans text-sm text-text-secondary">
+            Connect your wallet to verify, dispute, or interact with this passport.
+          </p>
+          <WalletLoginButton />
+        </div>
+      )}
+
+      {isConnected && !passport && (
+        <p className="text-sm text-text-secondary">Passport contract not configured.</p>
+      )}
+
+      {(!isConnected || passport) && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
       <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
 
@@ -450,7 +450,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "VERIFIED" && (
+      {isConnected && status === "VERIFIED" && (
         <div className="space-y-2">
           <Label htmlFor="dispute-reason">Dispute reason</Label>
           <Textarea
@@ -701,6 +701,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
+      {isConnected && (
       <div className="space-y-2 border-t border-border-default pt-4">
         <Label htmlFor="discrepancy">Report discrepancy</Label>
         <Textarea
@@ -733,6 +734,7 @@ export function PassportActionsPanel({
           Report discrepancy
         </Button>
       </div>
+      )}
 
       {isOwner && marketplaceAddress(chainId) && (
         <Button asChild variant="secondary" className="w-full">
@@ -748,5 +750,7 @@ export function PassportActionsPanel({
         </p>
       )}
     </section>
+      )}
+    </>
   );
 }
