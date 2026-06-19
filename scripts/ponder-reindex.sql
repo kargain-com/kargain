@@ -8,13 +8,13 @@
 -- Full runbook: docs/VPS-PONDER-REINDEX.md
 -- Prerequisites:
 --   - Stop Ponder before running (docker compose stop ponder)
---   - For full backfill: use Alchemy/QuickNode RPC (publicnode may rate-limit eth_getLogs)
+--   - PONDER_RPC_URL_84532=https://sepolia.base.org on VPS (PublicNode without token → 403 on archive eth_getLogs)
 --   - Generate env: node --import tsx scripts/lib/print-ponder-env.ts
 --
 -- After this script:
---   1. Paste print-ponder-env output into server .env (PONDER_*_ADDRESS + PONDER_START_BLOCK_84532)
---   2. docker compose up -d ponder  (or pnpm ponder:start locally)
---   3. After sync completes → PONDER_START_BLOCK_84532=latest
+--   1. Paste print-ponder-env output into server .env (PONDER_*_ADDRESS + numeric PONDER_START_BLOCK_84532)
+--   2. docker compose up -d --force-recreate ponder
+--   3. After sync: keep the same numeric start block (do not switch to latest on Ponder 0.16)
 --
 -- Schema: kargain (set via DATABASE_SCHEMA in docker-compose.yml)
 --

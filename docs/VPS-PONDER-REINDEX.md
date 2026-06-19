@@ -6,6 +6,57 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 ---
 
+## Production RPC and start block (VPS — June 2026)
+
+Validated on Base Sepolia production VPS.
+
+### RPC — use `sepolia.base.org`
+
+| RPC | Ponder backfill / catch-up | Live indexing |
+|-----|----------------------------|---------------|
+| **`https://sepolia.base.org`** | ✅ Recommended (official Base Sepolia public endpoint) | ✅ |
+| **`https://base-sepolia.publicnode.com`** (no token) | ❌ **403** on archive `eth_getLogs` | ⚠️ Fails on restart if Ponder must catch up historical blocks |
+
+PublicNode requires a [personal token](https://www.allnodes.com/publicnode) for archive log queries. That affects **full backfill** and **crash-recovery catch-up** (even a 0.1% gap at 99.9% sync).
+
+**Recommended VPS `.env` (steady state):**
+
+```bash
+PONDER_RPC_URL_84532=https://sepolia.base.org
+PONDER_START_BLOCK_84532=<indexFromBlock or checkpoint block used at backfill>
+```
+
+Optional alternatives: PublicNode **with** token, Alchemy, QuickNode.
+
+### Start block — keep the numeric value after sync
+
+**Do not** switch `PONDER_START_BLOCK_84532` to `latest` after backfill on Ponder **0.16**.
+
+Ponder embeds contract `startBlock` in the app `build_id`. Changing `42990588` → `latest` changes `build_id` and triggers:
+
+```
+MigrationError: Schema "kargain" was previously used by a different Ponder app.
+```
+
+After backfill reaches chain head, **leave the same numeric start block**. Ponder uses crash recovery and continues **live indexing** (`Started live indexing` in logs).
+
+| When | `PONDER_START_BLOCK_84532` |
+|------|----------------------------|
+| One-time backfill after `ponder-reindex.sql` | `indexFromBlock` from `deployments/84532.json`, or a **checkpoint** block (e.g. just before a known test mint) |
+| Steady production (after sync) | **Same numeric value** — do not set `latest` |
+| Fresh deploy after schema wipe | Set back to `indexFromBlock` only when running `ponder-reindex.sql` again |
+
+### Deploy new Ponder code (schema change)
+
+1. `docker compose stop ponder`
+2. `ponder-reindex.sql` — **before** starting the new image
+3. Backfill with `sepolia.base.org` + numeric start block
+4. After 100% sync, keep the same start block and RPC
+
+**Restart without code/image change:** `docker compose stop ponder` → edit `.env` (RPC only) → `docker compose up -d ponder` (no `--build` unless the image changed).
+
+---
+
 ## When to reindex
 
 | Trigger | Example |
@@ -16,6 +67,7 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute |
 | Stuck / corrupt sync | Ponder refuses to start after config change |
+| `MigrationError` after deploy | New `ponder.schema.ts` in Docker image without `ponder-reindex.sql` |
 
 **Do not reindex** for frontend-only or contract-only changes that do not touch Ponder schema or indexing logic.
 
@@ -25,6 +77,7 @@ Examples that **do not** require reindex:
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
 - Basescan verify (`pnpm verify:v1.1`) — ops-only, no indexer impact
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
+- Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
 
 ---
 
@@ -32,7 +85,7 @@ Examples that **do not** require reindex:
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
 - `deployments/84532.json` on the server (or known v1.1 addresses + `indexFromBlock`)
-- A reliable RPC for backfill (Alchemy / QuickNode recommended; public RPC may rate-limit `eth_getLogs`)
+- **`PONDER_RPC_URL_84532=https://sepolia.base.org`** for backfill and production (see above)
 
 ---
 
@@ -45,7 +98,7 @@ Run from the repository root on the server.
 ```bash
 git pull origin master
 pnpm install   # if dependencies changed
-# Rebuild / restart ponder image if your deploy workflow requires it
+docker compose build ponder   # only when indexer code / schema changed
 ```
 
 ### 2. Stop Ponder
@@ -82,49 +135,35 @@ node --import tsx scripts/lib/print-ponder-env.ts
 Paste the output into the server `.env`:
 
 - `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ESCROW_ADDRESS`, …
-- `PONDER_START_BLOCK_84532=<indexFromBlock>` from `deployments/84532.json` for **backfill**
+- `PONDER_RPC_URL_84532=https://sepolia.base.org`
+- `PONDER_START_BLOCK_84532=<indexFromBlock>` from `deployments/84532.json` for **full** backfill, **or** a checkpoint block if you only need events from that height (e.g. preserve a known test mint without replaying from genesis)
 
-For G1 schema-only updates (same contract addresses), keep existing addresses; still set start block to manifest `indexFromBlock` for a full replay.
+For G1 schema-only updates (same contract addresses), keep existing addresses; still set start block to manifest `indexFromBlock` for a full replay unless you intentionally use a higher checkpoint.
 
-### 5. Use a fast RPC during backfill (recommended)
-
-In `.env` on VPS:
-
-```bash
-PONDER_RPC_URL_84532=https://base-sepolia.g.alchemy.com/v2/YOUR_KEY
-```
-
-Revert to public RPC after sync if desired.
-
-### 6. Start Ponder
+### 5. Start Ponder and wait for sync
 
 ```bash
-docker compose up -d ponder
+docker compose up -d --force-recreate ponder
+
+docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532
 docker compose logs -f ponder
 ```
 
-Wait until logs show sync caught up to chain head (no repeated errors).
+Wait until logs show:
 
-### 7. Switch to realtime mode
+- `Completed backfill indexing` (or `Detected crash recovery` then a short catch-up)
+- `Started live indexing`
+- No repeated `403` / `MigrationError`
 
-After backfill completes, set in `.env`:
+**Do not** change `PONDER_START_BLOCK_84532` to `latest` after sync (see above).
 
-```bash
-PONDER_START_BLOCK_84532=latest
-```
-
-Restart Ponder:
-
-```bash
-docker compose restart ponder
-```
-
-### 8. Smoke checks
+### 6. Smoke checks
 
 ```bash
 curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount, .disputeOpenedAt'
 curl -s https://ponder.kargain.com/listings | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts, .conditions, .vehicleTypes'
+curl -s https://ponder.kargain.com/health
 ```
 
 Replace token `0` with a known minted passport if needed. On the marketplace UI, cards may show an **On-chain** badge when sampled RPC status differs from Ponder (G4) — that is client-side and does not require reindex.
@@ -147,10 +186,14 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 
 | Symptom | Action |
 |---------|--------|
+| `403` / "Archive requests require a personal token" on `eth_getLogs` | Set `PONDER_RPC_URL_84532=https://sepolia.base.org` (or PublicNode with token); `docker compose up -d --force-recreate ponder` |
+| `MigrationError` / "different Ponder app" | Run `ponder-reindex.sql`, then backfill again. **If data already synced:** do not switch start block to `latest` — revert to the numeric block used at backfill |
+| `MigrationError` immediately after `git pull` + new image | Expected when `ponder.schema.ts` changed — run step 3 (SQL) before starting new container |
 | Ponder exits on start (“build_id”) | Run full `ponder-reindex.sql`, not table truncate only |
-| Slow / stalled sync | Switch to Alchemy/QuickNode RPC |
+| Slow / stalled sync on `sepolia.base.org` | Retry; optional Alchemy/QuickNode for backfill only |
 | Empty `fuelType` on old rows | Expected until metadata URIs are re-fetched during replay; ensure Arweave reachable from VPS |
 | API 404 for passport | Token minted on deprecated pre-v1.1 contract — not in current index |
+| Env change ignored | Use `docker compose up -d --force-recreate ponder` (not `restart` alone) after editing `.env` |
 
 ---
 
@@ -161,6 +204,7 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
+| `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
 | `scripts/verify-v1.1.ts` | Basescan verify KarPassport + Marketplace (ops, not VPS) |
 | `deployments/84532.json` | v1.1 addresses + `indexFromBlock` (gitignored on VPS) |
 | `docs/passport-v1.1-spec.md` §14–§17 | Deploy, verify, polish, UI complete reference |

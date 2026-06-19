@@ -323,7 +323,8 @@ Run constructor-arg unit tests: `pnpm test:verify`.
 
 | Variable | Purpose |
 |----------|---------|
-| `PONDER_START_BLOCK_84532` | `latest` (prod) or `indexFromBlock` (one-time backfill) |
+| `PONDER_RPC_URL_84532` | **`https://sepolia.base.org`** on VPS (June 2026). PublicNode without token returns 403 on archive `eth_getLogs`. |
+| `PONDER_START_BLOCK_84532` | Numeric `indexFromBlock` or checkpoint for backfill; **keep the same value** after sync (do not set `latest` on Ponder 0.16 — changes `build_id`) |
 | `PONDER_START_BLOCK_31337` | `0` for local Hardhat |
 | `PONDER_*_ADDRESS` | Override manifest addresses on VPS |
 
@@ -331,15 +332,16 @@ Generate VPS env: `node --import tsx scripts/lib/print-ponder-env.ts`
 
 ### VPS reindex runbook
 
-**Trigger:** any change to `ponder.schema.ts` or new indexed event handlers that alter row shape — deploy code, then reindex before relying on new fields in production.
+**Trigger:** any change to `ponder.schema.ts` or new indexed event handlers that alter row shape — deploy code, run `ponder-reindex.sql`, then backfill before relying on new fields in production.
 
 ```bash
 docker compose stop ponder
 psql "$DATABASE_URL" -f scripts/ponder-reindex.sql
 eval "$(node --import tsx scripts/lib/print-ponder-env.ts)"   # paste into .env
-# Use Alchemy/QuickNode for PONDER_RPC_URL_84532 during backfill
-docker compose up -d ponder
-# After sync: PONDER_START_BLOCK_84532=latest
+# PONDER_RPC_URL_84532=https://sepolia.base.org
+# PONDER_START_BLOCK_84532=<indexFromBlock or checkpoint>
+docker compose up -d --force-recreate ponder
+# After sync: keep numeric start block; live indexing continues via crash recovery
 ```
 
 Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from block `0`, or run `pnpm test:ponder` for G1 handler unit tests.

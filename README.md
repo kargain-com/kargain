@@ -97,7 +97,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
-| Ponder indexer | Production at https://ponder.kargain.com — **reindex required** after `disputeOpenedAt` + filter schema columns ([runbook](docs/VPS-PONDER-REINDEX.md)) |
+| Ponder indexer | Production at https://ponder.kargain.com — VPS uses `sepolia.base.org` RPC; reindex after schema changes ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
 | Passport UI | Mint (drag-and-drop photos), edit (Variant C), verify/dispute/resolve, attestation, records timeline, marketplace trust gates |
 | Browse UX | Top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; chain-status sample on cards (G4) |
@@ -361,9 +361,10 @@ After deploy, run `pnpm verify:v1.1` locally to publish source for KarPassport, 
 Production indexer runs via Docker Compose: **PostgreSQL + Ponder + cloudflared**.
 
 - Ponder API: https://ponder.kargain.com
-- RPC: publicnode (`startBlock: latest` in `ponder.config.ts`)
+- **Ponder RPC (VPS):** `https://sepolia.base.org` — see [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (PublicNode without token returns 403 on archive `eth_getLogs`)
+- **Start block:** keep numeric `PONDER_START_BLOCK_84532` after sync — do **not** switch to `latest` on Ponder 0.16 (changes `build_id` → `MigrationError`)
 - Deploy workflow: `.github/workflows/deploy-ponder.yml`
-- **After `ponder.schema.ts` changes:** run [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) on VPS
+- **After `ponder.schema.ts` changes:** run [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) on VPS before starting the new image
 
 Local stack:
 

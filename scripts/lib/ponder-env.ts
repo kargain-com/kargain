@@ -75,7 +75,7 @@ export function buildPonderRuntime() {
   const chains: Record<string, { id: number; rpc: string; maxRequestsPerSecond?: number }> = {
     baseSepolia: {
       id: SEPOLIA_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_84532 ?? "https://base-sepolia.publicnode.com",
+      rpc: process.env.PONDER_RPC_URL_84532 ?? "https://sepolia.base.org",
       maxRequestsPerSecond: 10,
     },
   };
