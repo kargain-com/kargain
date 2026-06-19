@@ -3,7 +3,6 @@
 import { MessageCircle } from "lucide-react";
 import { useAccount } from "wagmi";
 
-import { FavoriteButton } from "@/components/marketplace/favorite-button";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
@@ -62,10 +61,9 @@ export function ListingDetailClientIsland({
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <FavoriteButton chainId={chainId} tokenId={tokenId} />
-        {contactPeer && !isSelf && (
-          isConnected ? (
+      {(contactPeer && !isSelf) && (
+        <div className="flex flex-wrap gap-2">
+          {isConnected ? (
             <SellerContactButton
               peerAddress={contactPeer}
               label={t.contactSeller}
@@ -81,9 +79,9 @@ export function ListingDetailClientIsland({
               <MessageCircle size={16} strokeWidth={1.5} aria-hidden />
               Message seller
             </button>
-          )
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

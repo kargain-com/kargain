@@ -68,7 +68,7 @@ export function NotificationsShell() {
       {activeTab === "alerts" ? (
         <NotificationsClient />
       ) : (
-        <WatchlistClient embedded />
+        <WatchlistClient />
       )}
     </div>
   );

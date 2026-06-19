@@ -157,7 +157,7 @@ export default async function PublicProfilePage({
             <article className="rounded-md border border-border-default bg-bg-surface p-4">
               <h3 className="text-sm font-medium text-text-primary">Saved</h3>
               <p className="mt-1 text-xs text-text-secondary">
-                Garage favorites published to Nostr relays.
+                Watchlist items published to Nostr relays.
               </p>
               <p className="mt-3 text-sm text-text-secondary">
                 Visible in Saved tab when this wallet has saved listings.
