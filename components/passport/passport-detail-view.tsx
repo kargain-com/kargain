@@ -10,6 +10,7 @@ import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportTrustBanner } from "@/components/passport/passport-trust-banner";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
+import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
@@ -233,6 +234,8 @@ export function PassportDetailView({
               Duplicate VIN warning — another passport shares this VIN in the index.
             </p>
           )}
+
+          <WatchlistButton tokenId={tokenId} />
 
           <ListingDetailClientIsland
             chainId={chainId}

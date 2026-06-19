@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Car, Inbox, Plus, User } from "lucide-react";
+import { Bookmark, Car, Inbox, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Address } from "viem";
@@ -129,8 +129,8 @@ export function MobileBottomNav() {
 
         <NavTab
           href="/notifications"
-          label="Alerts"
-          icon={Bell}
+          label="Watchlist"
+          icon={Bookmark}
           active={path.startsWith("/notifications")}
         />
 
