@@ -1,13 +1,12 @@
 "use client";
 
-import { Heart, Loader2, MessageCircle, Send } from "lucide-react";
+import { Heart, Loader2, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hexToBytes } from "viem";
-import { useWalletClient } from "wagmi";
+import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useNostrKey } from "@/hooks/use-nostr-key";
-import { exportNsec, importNsec, type WalletSigner } from "@/lib/nostr/key-manager";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 import { type Filter, finalizeEvent, getPublicKey, nip19 } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
@@ -48,8 +47,8 @@ function parseParentId(ev: NostrEvent): string | null {
 }
 
 function NostrCommentsSection({ tokenId }: { tokenId: string }) {
-  const { nostrPrivateKey, loading, error: keyError, statusMessage, refresh, storageBackend } = useNostrKey();
-  const { data: walletClient } = useWalletClient();
+  const { isConnected } = useAccount();
+  const { nostrPrivateKey, loading } = useNostrKey();
   const [events, setEvents] = useState<Record<string, CommentNode>>({});
   const [likesByTarget, setLikesByTarget] = useState<Record<string, Set<string>>>({});
   const [message, setMessage] = useState("");
@@ -58,10 +57,6 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   const [feedError, setFeedError] = useState<string | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
   const [sendingError, setSendingError] = useState<string | null>(null);
-  const [nsecExport, setNsecExport] = useState("");
-  const [nsecImportValue, setNsecImportValue] = useState("");
-  const [nsecBusy, setNsecBusy] = useState(false);
-  const [nsecError, setNsecError] = useState<string | null>(null);
 
   const pool = useMemo(() => new SimplePool(), []);
   const mountedRef = useRef(true);
@@ -69,17 +64,12 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     () => (nostrPrivateKey ? getPublicKey(hexToBytes(nostrPrivateKey)) : null),
     [nostrPrivateKey],
   );
-  const signer = useMemo<WalletSigner | null>(() => {
-    const addr = walletClient?.account?.address;
-    if (!walletClient || !addr) return null;
-    return {
-      address: addr,
-      signMessage: async (message) => {
-        const sig = await walletClient.signMessage({ message });
-        return sig as `0x${string}`;
-      },
-    };
-  }, [walletClient]);
+  const canPost = isConnected && Boolean(nostrPrivateKey) && !loading;
+  const composerPlaceholder = canPost
+    ? replyTo
+      ? "Write a reply..."
+      : "Share your thoughts..."
+    : "Connect wallet to join the discussion";
 
   useEffect(() => {
     mountedRef.current = true;
@@ -150,7 +140,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   }, [ordered]);
 
   const publish = async (kind: 1 | 7, content: string, parentEventId?: string) => {
-    if (!nostrPrivateKey || !pubkey) throw new Error("No Nostr key.");
+    if (!nostrPrivateKey || !pubkey) throw new Error("Identity not ready.");
     const tags: string[][] = [["d", `listing:${tokenId}`]];
     if (kind === 1 && parentEventId) {
       const target = events[parentEventId]?.event;
@@ -234,106 +224,23 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     }
   };
 
-  const handleExportNsec = async () => {
-    if (!signer) return;
-    setNsecBusy(true);
-    setNsecError(null);
-    try {
-      const nsec = await exportNsec(signer);
-      setNsecExport(nsec);
-    } catch (e) {
-      setNsecError(e instanceof Error ? e.message : "Failed to export nsec.");
-    } finally {
-      setNsecBusy(false);
-    }
-  };
-
-  const handleImportNsec = async () => {
-    if (!signer || !nsecImportValue.trim()) return;
-    setNsecBusy(true);
-    setNsecError(null);
-    try {
-      await importNsec(signer, nsecImportValue.trim());
-      await refresh();
-      setNsecImportValue("");
-      setNsecExport("");
-    } catch (e) {
-      setNsecError(e instanceof Error ? e.message : "Failed to import nsec.");
-    } finally {
-      setNsecBusy(false);
-    }
-  };
-
   return (
-    <section className="space-y-4" aria-label="Comments">
-      <h2 className="font-sans text-base font-medium text-text-primary">Comments</h2>
-      <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-3">
-        <p className="text-xs text-text-secondary">
-          Nostr identity backup (cross-browser / device) · {statusMessage}
-          {storageBackend ? ` · storage: ${storageBackend}` : ""}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={!signer || nsecBusy} onClick={() => void handleExportNsec()}>
-            Export nsec
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={!signer || nsecBusy || !nsecImportValue.trim()} onClick={() => void handleImportNsec()}>
-            Import nsec
-          </Button>
-        </div>
-        {nsecExport && (
-          <Input
-            value={nsecExport}
-            readOnly
-            onFocus={(e) => e.currentTarget.select()}
-            className="font-mono text-xs"
-            aria-label="Exported Nostr private key (nsec)"
-          />
-        )}
-        <Input
-          placeholder="Paste nsec to import"
-          value={nsecImportValue}
-          onChange={(e) => setNsecImportValue(e.target.value)}
-          disabled={!signer || nsecBusy}
-          className="font-mono text-xs"
-          aria-label="Import Nostr private key (nsec)"
-        />
-        {nsecError && <p className="text-xs text-status-error">{nsecError}</p>}
-        {keyError && <p className="text-xs text-status-error">{keyError}</p>}
-      </div>
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder={loading ? "Unlocking Nostr key..." : replyTo ? "Write a reply..." : "Write a comment..."}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          disabled={loading || !nostrPrivateKey}
-        />
-        <Button type="button" onClick={() => void postComment()} disabled={!nostrPrivateKey || posting || !message.trim()}>
-          {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
-      </div>
-      {sendingError && <p className="text-xs text-status-error">{sendingError}</p>}
-      {replyTo && (
-        <p className="text-xs text-text-secondary">
-          Replying to {replyTo.slice(0, 8)}...
-          <button className="ml-2 text-accent-warm" onClick={() => setReplyTo(null)} type="button">
-            cancel
-          </button>
-        </p>
-      )}
+    <section className="space-y-4" aria-label="Discussion">
+      <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
 
       {feedLoading && (
-        <p className="text-xs text-text-secondary">Loading comments from public relays...</p>
+        <p className="font-sans text-xs text-text-secondary">Loading comments from public relays...</p>
       )}
-      {feedError && <p className="text-xs text-status-error">{feedError}</p>}
+      {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
       {!feedLoading && roots.length === 0 && (
-        <p className="rounded-md border border-border-default bg-bg-surface px-3 py-3 text-sm text-text-secondary">
+        <p className="rounded-md border border-border-default bg-bg-surface px-3 py-3 font-sans text-sm text-text-secondary">
           No comments yet. Be the first to share context or ask a question.
         </p>
       )}
       <ul className="space-y-3">
         {roots.map((root) => (
           <li key={root.event.id} className="rounded-md border border-border-default bg-bg-surface p-3">
-            <p className="text-xs text-text-secondary">
+            <p className="font-sans text-xs text-text-secondary">
               <a
                 href={npubLink(root.event.pubkey)}
                 target="_blank"
@@ -344,8 +251,8 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
               </a>{" "}
               {root.optimistic ? "• sending..." : ""}
             </p>
-            <p className="mt-1 text-sm text-text-primary">{root.event.content}</p>
-            <div className="mt-2 flex items-center gap-3 text-xs">
+            <p className="mt-1 font-sans text-sm text-text-primary">{root.event.content}</p>
+            <div className="mt-2 flex items-center gap-3 font-sans text-xs">
               <button type="button" className="inline-flex items-center gap-1 text-text-secondary" onClick={() => setReplyTo(root.event.id)}>
                 <MessageCircle className="h-3.5 w-3.5" /> Reply
               </button>
@@ -357,7 +264,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
               <ul className="mt-3 space-y-2 border-l border-border-default pl-3">
                 {(byParent[root.event.id] ?? []).map((child) => (
                   <li key={child.event.id}>
-                    <p className="text-xs text-text-secondary">
+                    <p className="font-sans text-xs text-text-secondary">
                       <a
                         href={npubLink(child.event.pubkey)}
                         target="_blank"
@@ -367,8 +274,8 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
                         {shortPk(child.event.pubkey)}
                       </a>
                     </p>
-                    <p className="text-sm text-text-primary">{child.event.content}</p>
-                    <button type="button" className="mt-1 inline-flex items-center gap-1 text-xs text-text-secondary" onClick={() => void like(child.event.id)}>
+                    <p className="font-sans text-sm text-text-primary">{child.event.content}</p>
+                    <button type="button" className="mt-1 inline-flex items-center gap-1 font-sans text-xs text-text-secondary" onClick={() => void like(child.event.id)}>
                       <Heart className="h-3 w-3" /> {likesByTarget[child.event.id]?.size ?? 0}
                     </button>
                   </li>
@@ -378,6 +285,42 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
           </li>
         ))}
       </ul>
+
+      <div className="space-y-3 border-t border-border-default pt-4">
+        <Textarea
+          placeholder={composerPlaceholder}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          disabled={!canPost}
+          rows={3}
+          className="min-h-[5rem] resize-y"
+        />
+        {replyTo && (
+          <p className="font-sans text-xs text-text-secondary">
+            Replying to {replyTo.slice(0, 8)}...
+            <button className="ml-2 text-accent-warm" onClick={() => setReplyTo(null)} type="button">
+              cancel
+            </button>
+          </p>
+        )}
+        <div className="flex justify-end">
+          <Button type="button" onClick={() => void postComment()} disabled={!canPost || posting || !message.trim()}>
+            {posting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Posting...
+              </>
+            ) : (
+              "Post comment"
+            )}
+          </Button>
+        </div>
+        {sendingError && <p className="font-sans text-xs text-status-error">{sendingError}</p>}
+      </div>
+
+      <p className="font-sans text-xs text-text-tertiary">
+        Comments are public and stored on decentralized relays. They cannot be deleted by the owner.
+      </p>
     </section>
   );
 }

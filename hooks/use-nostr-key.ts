@@ -19,12 +19,23 @@ type UseNostrKeyState = {
   refresh: () => Promise<void>;
 };
 
+function isSignatureRejection(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("reject") ||
+    msg.includes("denied") ||
+    msg.includes("cancel") ||
+    msg.includes("refused") ||
+    msg.includes("user denied")
+  );
+}
+
 export function useNostrKey(): UseNostrKeyState {
   const { isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [nostrPrivateKey, setNostrPrivateKey] = useState<`0x${string}` | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<UseNostrKeyState["status"]>("idle");
   const [storageBackend, setStorageBackend] = useState<UseNostrKeyState["storageBackend"]>(null);
 
@@ -47,12 +58,10 @@ export function useNostrKey(): UseNostrKeyState {
       return;
     }
     setLoading(true);
-    setError(null);
     setStatus("restoring");
     try {
       setStorageBackend(await getNostrStorageBackendName());
-      const existing = await loadDecryptedKey(signer);
-      let key = existing;
+      let key = await loadDecryptedKey(signer);
       if (!key) {
         setStatus("creating");
         key = await getOrCreateNostrKey(signer);
@@ -60,9 +69,8 @@ export function useNostrKey(): UseNostrKeyState {
       setNostrPrivateKey(key);
       setStatus("ready");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load Nostr key.");
       setNostrPrivateKey(null);
-      setStatus("error");
+      setStatus(isSignatureRejection(e) ? "idle" : "error");
     } finally {
       setLoading(false);
     }
@@ -72,18 +80,13 @@ export function useNostrKey(): UseNostrKeyState {
     void refresh();
   }, [refresh]);
 
-  const statusMessage =
-    status === "idle"
-      ? "Connect wallet to initialize Nostr identity."
-      : status === "connecting_wallet"
-        ? "Wallet connected. Preparing signer..."
-        : status === "restoring"
-          ? "Restoring Nostr identity..."
-          : status === "creating"
-            ? "Creating your Nostr identity. A one-time wallet signature may be requested."
-            : status === "ready"
-              ? "Nostr identity ready."
-              : "Nostr key failed to initialize.";
-
-  return { nostrPrivateKey, loading, error, status, statusMessage, storageBackend, refresh };
+  return {
+    nostrPrivateKey,
+    loading,
+    error: null,
+    status,
+    statusMessage: "",
+    storageBackend,
+    refresh,
+  };
 }

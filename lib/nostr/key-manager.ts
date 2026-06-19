@@ -1,7 +1,6 @@
 "use client";
 
 import { bytesToHex, hexToBytes, keccak256, toHex } from "viem";
-import { nip19 } from "nostr-tools";
 
 const DB_NAME = "kargain_nostr";
 const STORE_NAME = "secure";
@@ -34,17 +33,12 @@ function requireBrowser() {
   }
 }
 
-function originTag(): string {
-  requireBrowser();
-  return window.location.origin;
-}
-
 function nostrLinkMessage(address: `0x${string}`): string {
-  return `kargain-nostr-link-v1:${originTag()}:${address.toLowerCase()}`;
+  return `kargain-nostr-v1:${address.toLowerCase()}`;
 }
 
 function aesLinkMessage(address: `0x${string}`): string {
-  return `kargain-nostr-aes-link-v1:${originTag()}:${address.toLowerCase()}`;
+  return `kargain-aes-v1:${address.toLowerCase()}`;
 }
 
 function normalizeHex32(v: string): `0x${string}` {
@@ -153,8 +147,10 @@ async function decryptPrivateKey(address: `0x${string}`, blob: StoredEncrypted):
   return normalizeHex32(bytesToHex(new Uint8Array(plain)));
 }
 
-export async function getOrCreateNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
-  requireBrowser();
+let pendingKeyPromise: Promise<`0x${string}`> | null = null;
+let pendingWalletAddress: string | null = null;
+
+async function createOrRestoreNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
   const storage = await getStorageBackend();
   const existing = await storage.get();
   if (existing && existing.address.toLowerCase() === wallet.address.toLowerCase()) {
@@ -173,6 +169,20 @@ export async function getOrCreateNostrKey(wallet: WalletSigner): Promise<`0x${st
   return privateKeyHex;
 }
 
+export async function getOrCreateNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
+  requireBrowser();
+  const addressKey = wallet.address.toLowerCase();
+  if (pendingKeyPromise && pendingWalletAddress === addressKey) {
+    return pendingKeyPromise;
+  }
+  pendingWalletAddress = addressKey;
+  pendingKeyPromise = createOrRestoreNostrKey(wallet).finally(() => {
+    pendingKeyPromise = null;
+    pendingWalletAddress = null;
+  });
+  return pendingKeyPromise;
+}
+
 export async function loadDecryptedKey(wallet: WalletSigner): Promise<`0x${string}` | null> {
   requireBrowser();
   const storage = await getStorageBackend();
@@ -184,23 +194,6 @@ export async function loadDecryptedKey(wallet: WalletSigner): Promise<`0x${strin
   } catch {
     return null;
   }
-}
-
-export async function exportNsec(wallet: WalletSigner): Promise<string> {
-  const sk = await getOrCreateNostrKey(wallet);
-  return nip19.nsecEncode(new Uint8Array(hexToBytes(sk)));
-}
-
-export async function importNsec(wallet: WalletSigner, nsec: string): Promise<`0x${string}`> {
-  const storage = await getStorageBackend();
-  const decoded = nip19.decode(nsec);
-  if (decoded.type !== "nsec" || !(decoded.data instanceof Uint8Array)) {
-    throw new Error("Invalid nsec.");
-  }
-  const privateKeyHex = normalizeHex32(bytesToHex(decoded.data));
-  const encrypted = await encryptPrivateKey(wallet.address, privateKeyHex);
-  await storage.set(encrypted);
-  return privateKeyHex;
 }
 
 export async function getNostrStorageBackendName(): Promise<"indexeddb" | "localstorage"> {
