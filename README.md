@@ -127,7 +127,7 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/messages/[conversationId]` | DM thread |
 | `/notifications` | Alerts inbox + watchlist tab (`?tab=watchlist`) |
 
-**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts (unread dot) · Profile (bottom). Desktop — Verifiers · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts (unread dot) · Profile (bottom). Desktop — Verifiers · Alerts · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
 
 ### Notifications + watchlist (June 2026)
 
