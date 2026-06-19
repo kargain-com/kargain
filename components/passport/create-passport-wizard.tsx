@@ -30,6 +30,7 @@ import {
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
 import {
+  checkWalletForIrysUpload,
   formatPassportUploadError,
   getWalletUploadProvider,
   uploadPassportMetadataJson,
@@ -241,6 +242,14 @@ export function CreatePassportWizard() {
     try {
       const provider = await getWalletUploadProvider(connector);
 
+      const walletError = await checkWalletForIrysUpload(provider, address);
+      if (walletError) {
+        setFormError(walletError);
+        setUploadProgress(null);
+        setPhase("error");
+        return;
+      }
+
       const { uris: photoUris, uploader } = await uploadPassportPhotos(
         photos,
         provider,
@@ -309,7 +318,7 @@ export function CreatePassportWizard() {
       )}
 
       {(formError) && (
-        <p className="font-sans text-sm text-status-error" role="alert">
+        <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
           {formError}
         </p>
       )}

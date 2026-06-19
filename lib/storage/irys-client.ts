@@ -81,6 +81,40 @@ async function readChainId(provider: Eip1193Provider): Promise<number> {
   throw new Error("Unable to read wallet chain ID");
 }
 
+/**
+ * Check whether the connected account is a plain EOA compatible with Irys fund().
+ * Smart Accounts (EIP-7702 delegated or ERC-4337 contract) route fund() through
+ * DelegationManager — Irys rejects the deposit.
+ *
+ * Returns null if compatible (clean EOA), or an error string if not.
+ */
+export async function checkIrysCompatibility(
+  provider: unknown,
+  address: string,
+): Promise<string | null> {
+  try {
+    const eip1193 = resolveProvider(provider);
+    const code = await eip1193.request({
+      method: "eth_getCode",
+      params: [address, "latest"],
+    }) as string;
+
+    if (!code || code === "0x" || code === "0x0") {
+      return null; // clean EOA — compatible
+    }
+
+    if (code.startsWith("0xef0100")) {
+      // EIP-7702 delegated smart EOA
+      return "eip7702";
+    }
+
+    // ERC-4337 or other contract account
+    return "contract";
+  } catch {
+    return null; // if detection fails, allow upload and let fund() surface the real error
+  }
+}
+
 function irysNodeUrl(chainId: number): string {
   // Base mainnet and Ethereum mainnet use node2.irys.xyz
   // All testnets use devnet.irys.xyz

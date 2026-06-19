@@ -4,7 +4,6 @@ import Link from "next/link";
 import { nanoid } from "nanoid";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { UserRejectedRequestError } from "viem";
 import {
   useAccount,
   useChainId,
@@ -49,11 +48,14 @@ import {
 } from "@/lib/passport/metadata-schema";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
+  checkWalletForIrysUpload,
+  formatPassportUploadError,
   getWalletUploadProvider,
   uploadPassportMetadataJson,
   uploadPassportPhotos,
 } from "@/lib/passport/upload-passport-metadata";
 import { reorderArrayItem } from "@/lib/reorder-array";
+import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -178,6 +180,13 @@ export function EditPassportWizard({
       });
       const provider = await getWalletUploadProvider(connector);
 
+      const walletError = await checkWalletForIrysUpload(provider, address);
+      if (walletError) {
+        setFormError(walletError);
+        setPhase("idle");
+        return;
+      }
+
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
         .map((item) => item.file);
@@ -204,11 +213,8 @@ export function EditPassportWizard({
       setTxHash(hash);
       router.push(`/marketplace/${tokenId}?chain=${chainId}`);
     } catch (err) {
-      if (err instanceof UserRejectedRequestError) {
-        setFormError("Transaction cancelled.");
-      } else {
-        setFormError(err instanceof Error ? err.message : "Save failed.");
-      }
+      resetIrysUploaderCache();
+      setFormError(formatPassportUploadError(err));
       setPhase("idle");
       resetWrite();
     }
@@ -302,7 +308,11 @@ export function EditPassportWizard({
 
         {phase === "uploading" && <Progress value={50} className="h-1" />}
 
-        {formError && <p className="text-sm text-status-error">{formError}</p>}
+        {formError && (
+          <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
+            {formError}
+          </p>
+        )}
 
         <Button type="button" className="w-full" disabled={isBusy} onClick={onSubmit}>
           {isBusy ? "Saving…" : "Save changes"}
