@@ -5,8 +5,8 @@ import { Loader2 } from "lucide-react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
@@ -20,30 +20,9 @@ function parsePeerAddress(raw: string): `0x${string}` | undefined {
   }
 }
 
-function PeerAvatar({
-  address,
-  avatarUrl,
-}: {
-  address: `0x${string}` | undefined;
-  avatarUrl: string | null;
-}) {
-  if (avatarUrl) {
-    return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={avatarUrl}
-        alt=""
-        className="h-8 w-8 shrink-0 rounded-full object-cover"
-      />
-    );
-  }
-
-  return <EnsAvatar address={address as Address | undefined} size={32} />;
-}
-
 function ConversationInboxRow({ conversation }: { conversation: ConversationSummary }) {
   const peerAddress = parsePeerAddress(conversation.peerAddress);
-  const { displayName, avatarUrl, isKarPro, isLoading } = usePeerIdentity(peerAddress);
+  const { displayName, isKarPro, isLoading } = usePeerIdentity(peerAddress);
 
   return (
     <li>
@@ -53,7 +32,7 @@ function ConversationInboxRow({ conversation }: { conversation: ConversationSumm
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <PeerAvatar address={peerAddress} avatarUrl={avatarUrl} />
+            <IdentityAvatar address={peerAddress as Address | undefined} size={32} />
             <div className="min-w-0">
               <p className="truncate font-sans text-sm font-medium text-text-primary">
                 {isLoading ? shortAddress(conversation.peerAddress) : displayName}

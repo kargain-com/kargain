@@ -3,10 +3,9 @@
 import { ChevronDown, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Address } from "viem";
 
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
@@ -27,52 +26,6 @@ function displayName(name: string, address: `0x${string}`): string {
   return trimmed.length > 0 ? trimmed : navShortAddress(address);
 }
 
-function cardInitials(name: string, address: `0x${string}`): string {
-  const trimmed = name.trim();
-  if (trimmed.length >= 2) return trimmed.slice(0, 2).toUpperCase();
-  return navShortAddress(address).slice(0, 2).toUpperCase();
-}
-
-function InitialsAvatar({ initials }: { initials: string }) {
-  return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border-default bg-bg-card font-mono text-xs text-text-secondary">
-      {initials}
-    </div>
-  );
-}
-
-function VerifierCardAvatar({
-  address,
-  name,
-  nostrPicture,
-}: {
-  address: `0x${string}`;
-  name: string;
-  nostrPicture: string | null;
-}) {
-  const [pictureFailed, setPictureFailed] = useState(false);
-  const alt = displayName(name, address);
-  const initials = cardInitials(name, address);
-
-  if (nostrPicture && !pictureFailed) {
-    return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={nostrPicture}
-        alt={alt}
-        className="h-12 w-12 shrink-0 rounded-full object-cover"
-        onError={() => setPictureFailed(true)}
-      />
-    );
-  }
-
-  if (nostrPicture && pictureFailed) {
-    return <InitialsAvatar initials={initials} />;
-  }
-
-  return <EnsAvatar address={address as Address} size={48} />;
-}
-
 function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
   const showroomSlug = verifier.slug.trim();
   const showroomHref = showroomSlug
@@ -82,10 +35,10 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
   return (
     <article className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover">
       <div className="flex items-center gap-3">
-        <VerifierCardAvatar
+        <IdentityAvatar
           address={verifier.address}
-          name={verifier.name}
-          nostrPicture={verifier.nostrPicture}
+          size={48}
+          alt={displayName(verifier.name, verifier.address)}
         />
         <div className="min-w-0">
           <p className="truncate font-sans text-sm font-medium text-text-primary">

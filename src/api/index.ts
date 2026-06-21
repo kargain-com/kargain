@@ -11,6 +11,7 @@ import {
   count,
   desc,
   eq,
+  inArray,
   replaceBigInts,
   sql,
 } from "ponder";
@@ -91,10 +92,16 @@ async function loadPassportMap(
 ): Promise<Map<string, PassportDenorm>> {
   const map = new Map<string, PassportDenorm>();
   if (tokenIds.length === 0) return map;
-  for (const tokenId of tokenIds) {
-    const row = await db.find(passport, { id: tokenId });
-    if (row) {
-      map.set(tokenId, {
+
+  const chunkSize = 500;
+  for (let i = 0; i < tokenIds.length; i += chunkSize) {
+    const chunk = tokenIds.slice(i, i + chunkSize);
+    const rows = await db
+      .select()
+      .from(passport)
+      .where(inArray(passport.id, chunk));
+    for (const row of rows) {
+      map.set(row.id, {
         status: row.status,
         verifier: row.verifier,
         vin: row.vin,
@@ -115,6 +122,47 @@ async function loadPassportMap(
     }
   }
   return map;
+}
+
+async function loadActiveListingFacetRows(): Promise<EnrichedListingForFilter[]> {
+  const rows = await db
+    .select({
+      fiatPrice1e8: marketplaceListing.fiatPrice1e8,
+      fiatCurrency: marketplaceListing.fiatCurrency,
+      listedAt: marketplaceListing.listedAt,
+      make: passport.make,
+      model: passport.model,
+      year: passport.year,
+      mileageKm: passport.mileageKm,
+      fuelType: passport.fuelType,
+      bodyType: passport.bodyType,
+      transmission: passport.transmission,
+      condition: passport.condition,
+      vehicleType: passport.vehicleType,
+      passportStatus: passport.status,
+    })
+    .from(marketplaceListing)
+    .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
+    .where(eq(marketplaceListing.active, true));
+
+  return rows.map((row) => ({
+    fiatPrice1e8: row.fiatPrice1e8,
+    fiatCurrency: row.fiatCurrency,
+    listedAt: row.listedAt,
+    passportStatus: row.passportStatus ?? "UNVERIFIED",
+    vin: "",
+    make: row.make ?? "",
+    model: row.model ?? "",
+    year: row.year ?? 0,
+    mileageKm: row.mileageKm ?? 0,
+    fuelType: row.fuelType ?? "",
+    bodyType: row.bodyType ?? "",
+    transmission: row.transmission ?? "",
+    condition: row.condition ?? "",
+    vehicleType: row.vehicleType ?? "",
+    colour: "",
+    locationLabel: "",
+  }));
 }
 
 function enrichListing(
@@ -221,28 +269,55 @@ app.get("/listings", async (c) => {
   );
 });
 
+app.get("/listings/stats", async (c) => {
+  const [totalRow, statusRows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(marketplaceListing)
+      .where(eq(marketplaceListing.active, true)),
+    db
+      .select({
+        status: passport.status,
+        total: count(),
+      })
+      .from(marketplaceListing)
+      .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
+      .where(eq(marketplaceListing.active, true))
+      .groupBy(passport.status),
+  ]);
+
+  const statusCounts = { UNVERIFIED: 0, VERIFIED: 0, DISPUTED: 0 };
+  for (const row of statusRows) {
+    const status = row.status ?? "UNVERIFIED";
+    if (status in statusCounts) {
+      statusCounts[status as keyof typeof statusCounts] += Number(row.total);
+    }
+  }
+
+  return c.json(
+    jsonBody({
+      totalActive: Number(totalRow[0]?.total ?? 0),
+      statusCounts,
+    }),
+  );
+});
+
 app.get("/listings/facets", async (c) => {
-  const activeListings = await db
-    .select()
-    .from(marketplaceListing)
-    .where(eq(marketplaceListing.active, true));
+  const [facetRows, fiatRows] = await Promise.all([
+    loadActiveListingFacetRows(),
+    db
+      .select({
+        fiatCurrency: marketplaceListing.fiatCurrency,
+        count: count(),
+      })
+      .from(marketplaceListing)
+      .where(eq(marketplaceListing.active, true))
+      .groupBy(marketplaceListing.fiatCurrency),
+  ]);
 
-  const tokenIds = [...new Set(activeListings.map((l) => l.tokenId))];
-  const passportMap = await loadPassportMap(tokenIds);
-
-  const fiatRows = await db
-    .select({
-      fiatCurrency: marketplaceListing.fiatCurrency,
-      count: count(),
-    })
-    .from(marketplaceListing)
-    .where(eq(marketplaceListing.active, true))
-    .groupBy(marketplaceListing.fiatCurrency);
-
-  const enriched = activeListings.map((listing) => enrichListing(listing, passportMap));
   const facets = computeListingFacets(
-    enriched,
-    activeListings.length,
+    facetRows,
+    facetRows.length,
     fiatRows.map((row) => row.fiatCurrency),
   );
 
@@ -435,24 +510,28 @@ app.get("/profile/:address/listings", async (c) => {
 });
 
 app.get("/verifiers", async (c) => {
-  const rows = await db
-    .select()
-    .from(verifier)
-    .where(eq(verifier.active, true))
-    .orderBy(desc(verifier.joinedAt));
+  const [rows, verificationRows] = await Promise.all([
+    db
+      .select()
+      .from(verifier)
+      .where(eq(verifier.active, true))
+      .orderBy(desc(verifier.joinedAt)),
+    db
+      .select({ verifier: passport.verifier, total: count() })
+      .from(passport)
+      .groupBy(passport.verifier),
+  ]);
 
-  const verifiers = await Promise.all(
-    rows.map(async (v) => {
-      const verificationRow = await db
-        .select({ total: count() })
-        .from(passport)
-        .where(eq(passport.verifier, getAddress(v.id)));
-      return {
-        ...v,
-        verificationCount: verificationRow[0]?.total ?? 0,
-      };
-    }),
-  );
+  const verificationCountByVerifier = new Map<string, number>();
+  for (const row of verificationRows) {
+    if (!row.verifier) continue;
+    verificationCountByVerifier.set(getAddress(row.verifier), Number(row.total));
+  }
+
+  const verifiers = rows.map((v) => ({
+    ...v,
+    verificationCount: verificationCountByVerifier.get(getAddress(v.id)) ?? 0,
+  }));
 
   return c.json(jsonBody({ verifiers }));
 });

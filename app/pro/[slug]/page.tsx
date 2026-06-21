@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { Clock } from "lucide-react";
 
 import { getProShowroomData } from "@/app/actions/pro-showroom";
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
@@ -150,7 +150,7 @@ export default async function ProShowroomPage({
         <section className="w-full bg-bg-primary py-16">
           <div className={CONTAINER}>
             <div className="flex gap-6">
-              <EnsAvatar address={address} size={80} />
+              <IdentityAvatar address={address} size={80} />
               <div className="min-w-0">
                 <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                   {name}
@@ -198,7 +198,7 @@ export default async function ProShowroomPage({
         <div className={CONTAINER}>
           <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex gap-6">
-              <EnsAvatar address={address} size={80} />
+              <IdentityAvatar address={address} size={80} />
               <div className="min-w-0 space-y-4">
                 <span className="inline-block font-mono text-xs uppercase tracking-wider border border-accent-warm text-accent-warm rounded-sm px-2 py-1">
                   {categoryIndexToLabel(category).toUpperCase()}

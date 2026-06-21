@@ -4,8 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEnsName, useReadContract } from "wagmi";
 
 import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
-import { ENS_CHAIN_ID, useEnsProfile } from "@/hooks/use-ens-profile";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -13,7 +12,6 @@ import { navShortAddress } from "@/lib/web3/wallet-display";
 
 export type PeerIdentity = {
   displayName: string;
-  avatarUrl: string | null;
   isKarPro: boolean;
   profileHref: string;
   isLoading: boolean;
@@ -21,15 +19,12 @@ export type PeerIdentity = {
 
 const EMPTY_PEER_IDENTITY: PeerIdentity = {
   displayName: "",
-  avatarUrl: null,
   isKarPro: false,
   profileHref: "/messages",
   isLoading: false,
 };
 
 export function usePeerIdentity(peerAddress: `0x${string}` | undefined): PeerIdentity {
-  const { profile: nostrProfile } = useNostrProfile(peerAddress);
-  const { avatarUrl: ensAvatarUrl } = useEnsProfile(peerAddress);
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: peerAddress,
     chainId: ENS_CHAIN_ID,
@@ -56,12 +51,9 @@ export function usePeerIdentity(peerAddress: `0x${string}` | undefined): PeerIde
   }
 
   const trimmedKarProName = verifierProfile?.name?.trim() ?? "";
-  const nostrPicture = nostrProfile?.picture?.trim();
-  const avatarUrl = nostrPicture || ensAvatarUrl || null;
 
   return {
     displayName: trimmedKarProName || ensName?.trim() || navShortAddress(peerAddress),
-    avatarUrl,
     isKarPro: isActiveVerifier === true,
     profileHref: `/profile/${peerAddress}`,
     isLoading: trimmedKarProName.length === 0 && ensNameLoading,

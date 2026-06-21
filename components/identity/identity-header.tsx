@@ -6,11 +6,10 @@ import { useCallback, useState, type ReactNode } from "react";
 import { type Address } from "viem";
 import { useAccount, useEnsName } from "wagmi";
 
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
-import { ENS_CHAIN_ID, useEnsProfile } from "@/hooks/use-ens-profile";
+import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -25,10 +24,6 @@ export interface IdentityHeaderProps {
   showVerifierLink?: boolean;
   showProfileLink?: boolean;
   showEditButton?: boolean;
-}
-
-function addressInitials(wallet: Address): string {
-  return wallet.slice(2, 4).toUpperCase();
 }
 
 function formatMemberSince(stakeActiveSince: number): string {
@@ -70,8 +65,6 @@ export function IdentityHeader({
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
-  const { profile: nostrProfile } = useNostrProfile(wallet);
-  const { avatarUrl } = useEnsProfile(wallet);
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: wallet,
     chainId: ENS_CHAIN_ID,
@@ -82,10 +75,6 @@ export function IdentityHeader({
   const headingName =
     trimmedKarProName || ensName?.trim() || navShortAddress(wallet);
   const showEnsSkeleton = trimmedKarProName.length === 0 && ensNameLoading;
-
-  const nostrPicture = nostrProfile?.picture?.trim();
-  const showNostrAvatar = Boolean(nostrPicture);
-  const showEnsAvatar = !showNostrAvatar && Boolean(avatarUrl);
 
   const onCopy = useCallback(async () => {
     try {
@@ -101,20 +90,7 @@ export function IdentityHeader({
     <div className="flex flex-col gap-4">
       {/* Zone 1 — Avatar */}
       <div className="size-14 shrink-0 overflow-hidden rounded-full border border-border-default md:size-[4.5rem]">
-        {showNostrAvatar && nostrPicture ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={nostrPicture}
-            alt=""
-            className="h-full w-full rounded-full object-cover"
-          />
-        ) : showEnsAvatar ? (
-          <EnsAvatar address={wallet} fill className="h-full w-full" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center rounded-full bg-bg-card font-mono text-sm uppercase text-text-secondary">
-            {addressInitials(wallet)}
-          </div>
-        )}
+        <IdentityAvatar address={wallet} fill />
       </div>
 
       {/* Zone 2 — Name */}

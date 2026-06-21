@@ -6,8 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { Input } from "@/components/ui/input";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
@@ -28,27 +28,6 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
   }
 }
 
-function PeerAvatar({
-  address,
-  avatarUrl,
-}: {
-  address: `0x${string}` | undefined;
-  avatarUrl: string | null;
-}) {
-  if (avatarUrl) {
-    return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={avatarUrl}
-        alt=""
-        className="h-8 w-8 shrink-0 rounded-full object-cover"
-      />
-    );
-  }
-
-  return <EnsAvatar address={address as Address | undefined} size={32} />;
-}
-
 export function ConversationThreadClient({ conversationId }: Props) {
   const { isConnected } = useAccount();
   const { client, isInitializing, error, initialize } = useXmtpClient();
@@ -63,7 +42,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
     [conversations, conversationId],
   );
   const peerAddress = parsePeerAddress(peerAddressRaw);
-  const { displayName, avatarUrl, isKarPro, profileHref } = usePeerIdentity(peerAddress);
+  const { displayName, isKarPro, profileHref } = usePeerIdentity(peerAddress);
 
   useEffect(() => {
     setLastSeen(conversationId);
@@ -125,7 +104,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
         </Button>
         <div className="flex min-w-0 items-center gap-2">
           <Link href={profileHref} className="shrink-0">
-            <PeerAvatar address={peerAddress} avatarUrl={avatarUrl} />
+            <IdentityAvatar address={peerAddress as Address | undefined} size={32} />
           </Link>
           <div className="min-w-0">
             <Link

@@ -217,6 +217,18 @@ export async function getPassportsByVerifier(
   }
 }
 
+export async function fetchMarketplaceStats() {
+  try {
+    const res = await fetch(`${PONDER_URL}/listings/stats`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchListingFacets() {
   try {
     const res = await fetch(`${PONDER_URL}/listings/facets`, {

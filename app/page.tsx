@@ -1,7 +1,7 @@
-import { fetchListingFacets } from "@/app/actions/marketplace-listings";
-import { getVerifierDirectory } from "@/app/actions/verifier-directory";
+import { fetchMarketplaceStats } from "@/app/actions/marketplace-listings";
+import { fetchActiveVerifierCount } from "@/app/actions/verifier-directory";
 import { MarketBrowse } from "@/components/marketplace/market-browse";
-import type { FacetsResponse } from "@/lib/types/ponder";
+import type { MarketplaceStatsResponse } from "@/lib/types/ponder";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 export default async function HomePage({
@@ -17,14 +17,14 @@ export default async function HomePage({
   let activeVerifiers = 0;
 
   try {
-    const [facetsRaw, directory] = await Promise.all([
-      fetchListingFacets(),
-      getVerifierDirectory(),
+    const [statsRaw, verifierCount] = await Promise.all([
+      fetchMarketplaceStats(),
+      fetchActiveVerifierCount(),
     ]);
-    const facets = facetsRaw as FacetsResponse | null;
-    activeListings = facets?.totalActive ?? 0;
-    activeVerifiers = directory.verifiers.length;
-    verifiedCount = facets?.statusCounts?.VERIFIED ?? 0;
+    const stats = statsRaw as MarketplaceStatsResponse | null;
+    activeListings = stats?.totalActive ?? 0;
+    activeVerifiers = verifierCount;
+    verifiedCount = stats?.statusCounts?.VERIFIED ?? 0;
   } catch {
     // stats default to 0 — page still renders
   }

@@ -101,6 +101,11 @@ export type FacetsResponse = {
   statusCounts: Record<PassportStatus, number>;
 };
 
+export type MarketplaceStatsResponse = {
+  totalActive: number;
+  statusCounts: Record<PassportStatus, number>;
+};
+
 export type PonderListingsResponse = {
   listings: ListingRow[];
   total: number;
