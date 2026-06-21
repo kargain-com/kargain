@@ -123,6 +123,7 @@ export default async function PublicProfilePage({
           passports={passports}
           listings={listings}
           verifiedPassports={verifiedPassports}
+          disputedPassports={verifierProfile?.disputedPassports ?? []}
           attestations={attestations}
           ponderErr={ponderErr}
         />

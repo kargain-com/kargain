@@ -1,6 +1,12 @@
 "use server";
 
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
+import type { PassportStatus } from "@/lib/types/ponder";
+
+export type DisputedPassportRow = {
+  tokenId: string;
+  status: PassportStatus;
+};
 
 export type KarProVerifierProfile = {
   address: string;
@@ -11,6 +17,7 @@ export type KarProVerifierProfile = {
   active: boolean;
   joinedAt: number;
   verificationCount: number;
+  disputedPassports: DisputedPassportRow[];
 };
 
 export async function fetchKarProVerifierProfile(
@@ -26,6 +33,8 @@ export async function fetchKarProVerifierProfile(
     metadataURI?: string;
   };
   const stake = detail.stake as { active?: boolean };
+  const disputedRaw =
+    (detail.disputedPassports as Array<{ id?: string; status?: string }> | undefined) ?? [];
 
   return {
     address: String(detail.address ?? address),
@@ -36,5 +45,9 @@ export async function fetchKarProVerifierProfile(
     active: stake.active === true,
     joinedAt: Number(detail.joinedAt ?? 0),
     verificationCount: Number(detail.verificationCount ?? 0),
+    disputedPassports: disputedRaw.map((p) => ({
+      tokenId: String(p.id ?? ""),
+      status: (p.status as PassportStatus) ?? "DISPUTED",
+    })),
   };
 }

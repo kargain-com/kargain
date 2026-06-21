@@ -36,7 +36,7 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
   return (
     <article className="flex flex-col rounded-md border border-border-default bg-bg-card p-6 md:p-8">
       <Link
-        href={`/verifier/${verifier.address}`}
+        href={`/profile/${verifier.address}`}
         className="flex flex-col gap-4 transition-colors duration-200 hover:border-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
       >
         <div className="flex items-center gap-3">

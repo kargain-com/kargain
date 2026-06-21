@@ -101,7 +101,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
 | Passport UI | Mint (drag-and-drop photos), edit (Variant C), verify/dispute/resolve, attestation, records timeline, marketplace trust gates |
 | Browse UX | Top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; chain-status sample on cards (G4) |
-| KarPro & trust network | `/kar-pro`, `/verifiers`, `/verifier/[address]`, `/pro/[slug]` (dynamic showroom; `PRO_SLUGS` empty until owner adds slug after staking) |
+| KarPro & trust network | `/kar-pro`, `/verifiers`, `/profile/[address]` (canonical verifier profile), `/verifier/[address]` (redirects to profile), `/pro/[slug]` (dynamic showroom; slug set when staking on `/kar-pro`) |
 | Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
 ### UI complete — June 2026
@@ -119,9 +119,9 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
 | `/kar-pro` | KarPro onboarding + credential card |
 | `/verifiers` | Verifier directory |
-| `/verifier/[address]` | Verifier profile (empty state if never staked) |
-| `/pro/[slug]` | Professional showroom (`PRO_SLUGS` lookup; 404 if unknown slug) |
-| `/profile/[handle]` | Public wallet profile |
+| `/verifier/[address]` | Permanent redirect to `/profile/[address]` |
+| `/pro/[slug]` | Professional showroom (slug from KarPro staking / Ponder; 404 if unknown slug) |
+| `/profile/[handle]` | Public wallet profile (verifier tabs: verified, disputes, attestations) |
 | `/profile/edit` | Profile edit + connect wallet |
 | `/messages` | XMTP inbox |
 | `/messages/[conversationId]` | DM thread |
@@ -145,7 +145,7 @@ Full notifications stack: Ponder on-chain events, watchlist snapshot diffs, and 
 
 **Phase 2 / ops:** Nostr `#d` subscription for owned passport comments (`ownedTokenIds` currently `[]`); VPS reindex for `disputeOpenedAt`; batch SQL for record queries in feed builder.
 
-**`PRO_SLUGS`:** `{}` (empty). After staking on `/kar-pro`, add `{ "your-slug": "0x…" }` in [`lib/web3/pro-slugs.ts`](lib/web3/pro-slugs.ts) to enable `/pro/[slug]` and profile showroom links.
+**Pro slug:** Set when staking on `/kar-pro` (stored in on-chain metadata and indexed by Ponder). Enables `/pro/[slug]` and profile showroom links via `verifierProfile.slug`.
 
 ### Passport storage & Irys upload (June 2026)
 
@@ -186,7 +186,7 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 **Next steps:**
 
 1. Ponder reindex (`disputeOpenedAt`, filter columns `condition`, `vehicleType`, `colour`, `locationLabel`) — [runbook](docs/VPS-PONDER-REINDEX.md)
-2. Stake on `/kar-pro` and add your pro slug to `PRO_SLUGS`
+2. Stake on `/kar-pro` and set your pro slug during onboarding
 3. Sepolia smoke validation (checklist below) — use an **EOA** wallet for passport photo upload
 4. Deploy latest frontend to Vercel after Irys commits land on `master`
 5. **Multi-chain:** Base mainnet (8453) contract deploy + env/manifests after Sepolia sign-off; extend Ponder per chain (see [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) §18)
@@ -197,7 +197,7 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 - [ ] Browse filters (top bar + drawer: status, make, price, condition, etc.)
 - [ ] Active verifier verify → VERIFIED
 - [ ] KarPro stake on `/kar-pro` → credential + `/verifiers` listing
-- [ ] Add slug to `PRO_SLUGS` → `/pro/[slug]` showroom loads
+- [ ] Stake on `/kar-pro` with a slug → `/pro/[slug]` showroom loads
 - [ ] XMTP messages + wallet connect / disconnect
 - [ ] List on marketplace → buy or quote preview
 - [ ] Edit passport metadata only (no new photos) → new `ar://` URI on-chain
@@ -389,8 +389,8 @@ docker compose up -d   # postgres + ponder (+ optional tunnel)
 | `GET /profile/:address/passports` | Profile page — `getProfileData` |
 | `GET /profile/:address/listings` | Profile, pro showroom — `getProfileData`, `getProShowroomData` |
 | `GET /verifiers` | `/verifiers` — `fetchVerifierDirectory` |
-| `GET /verifiers/:address` | `/verifier/[address]`, pro showroom — `fetchVerifierDetail`, `getProShowroomData` |
-| `GET /verifiers/:address/attestations` | Verifier page, pro showroom — `getVerifierAttestations` |
+| `GET /verifiers/:address` | `/profile/[address]`, pro showroom — `fetchVerifierDetail`, `fetchKarProVerifierProfile`, `getProShowroomData` |
+| `GET /verifiers/:address/attestations` | Profile attestations tab, pro showroom — `getVerifierAttestations` |
 
 All endpoints above are consumed by the Next.js app.
 
@@ -417,7 +417,7 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `proSlugForAddress()` instead of incorrect `PRO_SLUGS[address]` lookup. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
+**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 
@@ -425,7 +425,7 @@ All endpoints above are consumed by the Next.js app.
 |----------|------|-------|
 | **Ops** | Ponder VPS reindex (`disputeOpenedAt` + filter facets) | [runbook](docs/VPS-PONDER-REINDEX.md) |
 | **Ops** | Sepolia smoke validation | EOA wallet for Irys; checklist above |
-| **Ops** | First pro slug in `PRO_SLUGS` | After KarPro stake |
+| **Ops** | First KarPro slug via `/kar-pro` stake | Enables `/pro/[slug]` showroom |
 | **Chain 1** | Base mainnet (8453) deploy | Same Model X stack; update `deployments/8453.json`, env maps, Irys mainnet node |
 | **Chain 2** | Ethereum mainnet (1) | Canonical trust layer; burn/mint bridge — one token on one chain at a time |
 | **Indexer** | Per-chain Ponder (or multi-chain config) | Extend `ponder.config.ts` / manifests as networks go live |

@@ -149,7 +149,7 @@ export function PassportDetailView({
                 Verified by{" "}
                 <EnsWalletLink
                   address={passport.verifier}
-                  href={`/verifier/${passport.verifier}`}
+                  href={`/profile/${passport.verifier}`}
                   className="font-mono text-accent-warm hover:underline"
                 />
                 {verifiedDate && <> on {verifiedDate}</>}

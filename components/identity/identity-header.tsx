@@ -173,7 +173,7 @@ export function IdentityHeader({
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {proSlug && <CrossLink href={`/pro/${proSlug}`}>View pro showroom</CrossLink>}
           {showVerifierLink && (
-            <CrossLink href={`/verifier/${wallet}`}>View verifier page</CrossLink>
+            <CrossLink href={`/profile/${wallet}`}>View verifier page</CrossLink>
           )}
           {showProfileLink && <CrossLink href={`/profile/${wallet}`}>View profile</CrossLink>}
         </div>

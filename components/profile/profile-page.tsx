@@ -1,12 +1,12 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
+import { CheckCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import type { Address } from "viem";
 
-import type { KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
+import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
@@ -30,7 +30,7 @@ export type ProfileListing = {
   model?: string;
 };
 
-type TabId = "passports" | "listings" | "saved" | "verified" | "attestations";
+type TabId = "passports" | "listings" | "saved" | "verified" | "disputes" | "attestations";
 
 export type ProfilePageProps = {
   wallet: Address;
@@ -40,6 +40,7 @@ export type ProfilePageProps = {
   passports: ProfileOwnedPassport[];
   listings: ProfileListing[];
   verifiedPassports: VerifierPassportRow[];
+  disputedPassports: DisputedPassportRow[];
   attestations: PonderVerifierAttestation[];
   ponderErr: string | null;
 };
@@ -54,6 +55,7 @@ function buildTabList(isOwner: boolean, isActiveVerifier: boolean): { id: TabId;
   }
   if (isActiveVerifier) {
     tabs.push({ id: "verified", label: "Verified" });
+    tabs.push({ id: "disputes", label: "Disputes" });
     tabs.push({ id: "attestations", label: "Attestations" });
   }
   return tabs;
@@ -179,6 +181,7 @@ export function ProfilePage({
   passports,
   listings,
   verifiedPassports,
+  disputedPassports,
   attestations,
   ponderErr,
 }: ProfilePageProps) {
@@ -398,6 +401,46 @@ export function ProfilePage({
                     </li>
                   ))}
                 </ul>
+              )}
+            </section>
+          )}
+
+          {activeTab === "disputes" && isActiveVerifier && (
+            <section
+              role="tabpanel"
+              id="profile-panel-disputes"
+              aria-labelledby="profile-tab-disputes"
+            >
+              {disputedPassports.length === 0 ? (
+                <div className="py-8 text-center">
+                  <CheckCircle
+                    size={32}
+                    strokeWidth={1.5}
+                    className="mx-auto mb-3 text-text-tertiary"
+                    aria-hidden
+                  />
+                  <p className="text-sm text-text-secondary">No open disputes</p>
+                </div>
+              ) : (
+                <div>
+                  {disputedPassports.map((p) => (
+                    <div
+                      key={p.tokenId}
+                      className="border-b border-border-default py-4 last:border-0"
+                    >
+                      <div className="flex items-center justify-between">
+                        <Link
+                          href={`/marketplace/${p.tokenId}`}
+                          className="text-sm text-text-primary transition-colors duration-150 hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                        >
+                          Passport #{p.tokenId}
+                        </Link>
+                        <PassportStatusBadge status="DISPUTED" />
+                      </div>
+                      <p className="mt-1 text-xs text-text-secondary">Awaiting resolution</p>
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
           )}

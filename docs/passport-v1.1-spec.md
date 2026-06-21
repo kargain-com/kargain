@@ -232,7 +232,7 @@ Run metadata unit tests: `pnpm test:metadata` · records: `pnpm test:records` ·
 - [x] DISPUTED browse filter
 - [x] Profile page data from Ponder (listings enriched)
 - [x] Kar Pro join/leave staking
-- [x] Verifier detail page (`/verifier/[address]`) + inactive verifier badge (C5)
+- [x] Verifier profile on `/profile/[address]` (verified, disputes, attestations tabs); `/verifier/[address]` redirects (C5)
 
 Run handler unit tests: `pnpm test:ponder` (`test/ponder-indexer.test.ts`).
 
@@ -396,21 +396,21 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Marketplace detail + trust | `/marketplace/[tokenId]` · `passport-detail-view`, `PassportTrustBanner`, `PassportUriHistory` | ✅ (§19 polish June 2026) |
 | KarPro onboarding | `/kar-pro` | ✅ |
 | Verifier directory | `/verifiers` | ✅ |
-| Verifier profile | `/verifier/[address]` | ✅ |
-| Pro showroom | `/pro/[slug]` · `PRO_SLUGS` (empty until owner adds slug) | ✅ |
-| Profile + showroom link | `/profile/[handle]` · `proSlugForAddress()` | ✅ |
+| Verifier profile | `/profile/[address]` (verified, disputes, attestations tabs) | ✅ |
+| Pro showroom | `/pro/[slug]` · slug from KarPro metadata / Ponder | ✅ |
+| Profile + showroom link | `/profile/[handle]` · `verifierProfile.slug` | ✅ |
 | Messages (XMTP) | `/messages` | ✅ |
 | Notifications | `/notifications` · `notifications-shell` (Alerts + Watchlist tabs) | ✅ |
 | ENS on addresses | wallet dropdown + profile displays | ✅ |
 | Mobile shell | 5-tab bottom nav; KarPro in top nav when eligible; no top/bottom duplication | ✅ |
-| KarPro credential | `proSlugForAddress()` showroom link (not `PRO_SLUGS[address]`) | ✅ |
+| KarPro credential | Showroom link from Ponder slug (`verifierProfile.slug`) | ✅ |
 
 **Ponder → UI:** Full endpoint consumer map in [README.md](../README.md) § Ponder API.
 
 **Ops next steps:**
 
 1. Ponder reindex — `disputeOpenedAt` + filter schema columns on `passport` ([VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md))
-2. Stake on `/kar-pro` and add slug to `lib/web3/pro-slugs.ts`
+2. Stake on `/kar-pro` and set slug during onboarding
 3. Sepolia smoke validation — [README.md](../README.md) checklist
 
 **Tech debt (documented):** desktop filter bar `overflow-hidden` ~768px; Ponder reindex pending for `disputeOpenedAt` + filter facets; notifications Phase 2 (`ownedTokenIds`, feed N+1, tx grouping); `upgradeAuthority` = deployer EOA; stale `deploy-proxy.ts`; smart wallets cannot fund Irys client-side (EOA required for upload).

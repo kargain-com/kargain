@@ -255,7 +255,7 @@ export default async function ProShowroomPage({
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <SellerContactButton peerAddress={address} label="Contact verifier" />
             <Link
-              href={`/verifier/${address}`}
+              href={`/profile/${address}`}
               className="font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary"
             >
               View verification history →
@@ -311,7 +311,7 @@ export default async function ProShowroomPage({
               </div>
               {data.verifiedPassportTotal > 12 && (
                 <Link
-                  href={`/verifier/${address}`}
+                  href={`/profile/${address}`}
                   className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
                 >
                   View all {data.verifiedPassportTotal} →
@@ -357,7 +357,7 @@ export default async function ProShowroomPage({
 
             {data.attestationTotal > 5 && (
               <Link
-                href={`/verifier/${address}#attestations`}
+                href={`/profile/${address}?tab=attestations`}
                 className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
               >
                 View all attestations →
