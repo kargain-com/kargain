@@ -13,6 +13,8 @@ import {
 } from "@/lib/kar-pro/kar-pro-metadata";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
+import { VerificationRequestButton } from "./verification-request-button";
+
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
 const CATEGORY_CHIPS = ["All", ...CATEGORY_LABELS] as const;
 
@@ -116,14 +118,10 @@ function VerifierCard({ verifier }: { verifier: VerifierDirectoryEntry }) {
         >
           View showroom →
         </Link>
-        <button
-          type="button"
-          disabled
-          aria-label="Request verification (coming soon)"
-          className="inline-flex items-center justify-center min-h-11 px-4 py-2 rounded-sm bg-transparent text-text-secondary font-sans text-sm font-medium transition-colors duration-200 hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-        >
-          Request verification
-        </button>
+        <VerificationRequestButton
+          verifierAddress={verifier.address}
+          verifierName={displayName(verifier.name, verifier.address)}
+        />
       </div>
     </article>
   );
