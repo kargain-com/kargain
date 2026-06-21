@@ -207,4 +207,4 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
 | `scripts/verify-v1.1.ts` | Basescan verify KarPassport + Marketplace (ops, not VPS) |
 | `deployments/84532.json` | v1.1 addresses + `indexFromBlock` (gitignored on VPS) |
-| `docs/passport-v1.1-spec.md` §14–§17 | Deploy, verify, polish, UI complete reference |
+| `docs/passport-v1.1-spec.md` §13 | Sepolia deploy addresses + Basescan verify |

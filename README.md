@@ -66,7 +66,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Nostr** | Comments, watchlist, notification sync |
 | **XMTP** | End-to-end encrypted messaging |
 
-**Documentation:** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (product & contract spec) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
+**Documentation:** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (contract spec) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
 
 ## Tech stack
 
