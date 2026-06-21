@@ -1,6 +1,6 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX + notifications/watchlist + profile unified + /verifiers redesign + nav + marketplace /, `master` June 2026)  
+Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX + notifications/watchlist + profile unified + /verifiers redesign + nav + marketplace / + messages/notifications redesign, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
 
@@ -350,7 +350,7 @@ Local check after schema change: `PONDER_ENABLE_LOCAL=1 pnpm ponder:dev` from bl
 
 Resolver: `scripts/lib/ponder-env.ts` · Per-contract start blocks from manifest when backfilling.
 
-**Document map:** Public status lives in this spec (§17 UI complete · §19 passport detail UX · §20 notifications + watchlist) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
+**Document map:** Public status lives in this spec (§17 UI complete · §19 passport detail UX · §20 notifications + watchlist · §23 messages + notifications redesign) and [README.md](../README.md). Local-only (gitignored): `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md` — sync manually after major milestones.
 
 ## 15. Plan A–J core — definition of done (June 2026)
 
@@ -399,8 +399,8 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Verifier profile | `/profile/[address]` (verified, disputes, attestations tabs) | ✅ |
 | Pro showroom | `/pro/[slug]` · slug from KarPro metadata / Ponder | ✅ |
 | Profile + showroom link | `/profile/[handle]` · `verifierProfile.slug` | ✅ |
-| Messages (XMTP) | `/messages` | ✅ |
-| Notifications | `/notifications` · `notifications-shell` (Alerts + Watchlist tabs) | ✅ |
+| Messages (XMTP) | `/messages` · peer identity in inbox rows; own/peer bubbles in thread | ✅ |
+| Notifications | `/notifications` · `notifications-shell` (Alerts + Watchlist tabs); explicit mark-read | ✅ |
 | ENS on addresses | wallet dropdown + profile displays | ✅ |
 | Mobile shell | 5-tab bottom nav; KarPro in top nav when eligible; no top/bottom duplication | ✅ |
 | KarPro credential | Showroom link from Ponder slug (`verifierProfile.slug`) | ✅ |
@@ -576,7 +576,7 @@ Run: `node --import tsx --test test/*.test.ts`
 | Read state | `lib/nostr/notification-state.ts` — NIP-78 kind 30078; encrypted via `encryptAppPayload` / `decryptAppPayload` in `key-manager.ts`; `lastSeenAt` per channel; merge via `max()` |
 | Ponder API | `GET /passports/batch`, `/listings/batch`, `/notifications/:address`; builder in `src/api/notifications-query.ts` |
 | Hooks | `NotificationsProvider` → `usePonderNotifications` (30s poll) + `useWatchlistNotifications` (60s poll + IDB snapshot diff) + `useNostrNotificationsSub` (live `#p` + `#d`) |
-| UI | Alerts tab (default) + Watchlist tab; mobile nav tab 4: **Alerts** / Bell + unread dot |
+| UI | Alerts tab (default) + Watchlist tab; mobile nav tab 4: **Alerts** / Bell + unread dot; explicit mark-read (row click + "Mark all read"; no auto mark-read on mount) |
 
 ### Key modules
 
@@ -589,8 +589,8 @@ Run: `node --import tsx --test test/*.test.ts`
 | `hooks/use-notifications-feed.ts` | Context consumer |
 | `hooks/use-unread-notifications-count.ts` | Nav badge count |
 | `components/notifications/notifications-shell.tsx` | Tab shell |
-| `components/notifications/notifications-client.tsx` | Alerts inbox |
-| `components/notifications/notification-row.tsx` | Row UI |
+| `components/notifications/notifications-client.tsx` | Alerts inbox; "Mark all read" when unread |
+| `components/notifications/notification-row.tsx` | Row UI; `onRead` per item |
 
 ### Technical debt
 
@@ -603,7 +603,8 @@ Run: `node --import tsx --test test/*.test.ts`
 - VPS reindex — [VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md)
 - Nostr `#d` subscription for owned passports (Phase 2)
 - Tx-level record grouping in notification rows (Phase 2)
-- Playwright E2E for notifications flow
+- Playwright E2E for notifications + messages flows
+- Footer redesign, KIP system (KIP-000–004) — separate sessions
 
 ## 21. Profile unified — definition of done (June 2026)
 
@@ -730,3 +731,45 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 | components/marketplace/listing-card.tsx | VERIFIED border + verifier attribution |
 
 Spec: [README.md](../README.md) § /verifiers redesign + nav + marketplace / · [HANDOFF.md](./HANDOFF.md)
+
+## 23. /messages + /notifications redesign — definition of done (June 2026)
+
+**Status:** Complete. Peer identity in XMTP UI, differentiated message bubbles, explicit notifications mark-read, compact notifications page layout.
+
+### /messages (Iterations M1–M3)
+
+| File | Change |
+|------|--------|
+| hooks/use-peer-identity.ts | Created — KarPro name → ENS → navShortAddress; Nostr picture → ENS avatar; isKarPro on-chain |
+| components/messaging/message-inbox-client.tsx | Peer identity in inbox rows (avatar + displayName + KarPro badge) |
+| components/messaging/conversation-thread-client.tsx | Thread header with identity + profile link; isMine bubble bg-white text-bg-primary; peer bubble bg-bg-surface; sender label deleted; timestamps aligned |
+| app/messages/[conversationId]/page.tsx | Disconnected guard: redirect to `/messages` |
+
+### /notifications (Iterations N1–N2)
+
+| File | Change |
+|------|--------|
+| components/notifications/notifications-client.tsx | Auto mark-read (500ms setTimeout) deleted; "Mark all read" button added (visible when unreadCount > 0) |
+| components/notifications/notification-row.tsx | onRead prop — marks channel by item.source up to item.timestamp on click |
+| app/notifications/page.tsx | Layout: py-24 → pt-8 md:pt-12 pb-16 |
+| components/notifications/notifications-shell.tsx | Compact "Notifications" heading above tabs |
+
+### Technical debt added
+
+None.
+
+### Remaining frontend tasks
+
+- Footer redesign (separate session)
+- KIP system (separate session — kips/KIP-000 through KIP-004)
+- Sepolia smoke validation checklist — [README.md](../README.md)
+
+### Key modules
+
+| File | Role |
+|------|------|
+| hooks/use-peer-identity.ts | Shared peer display name, avatar, KarPro badge |
+| components/messaging/message-inbox-client.tsx | Inbox with peer identity rows |
+| components/messaging/conversation-thread-client.tsx | Thread header + differentiated bubbles |
+| components/notifications/notifications-client.tsx | Alerts inbox + manual mark-read |
+| components/notifications/notification-row.tsx | Per-row onRead callback |

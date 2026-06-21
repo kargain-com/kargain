@@ -51,7 +51,7 @@ export function NotificationsClient() {
   return (
     <div className="mt-8 space-y-4">
       <div className="flex items-center justify-between">
-        {isConnected && unreadCount > 0 && (
+        {unreadCount > 0 && (
           <button
             type="button"
             className="ml-auto font-sans text-xs text-text-secondary transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"

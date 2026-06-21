@@ -99,6 +99,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Passport Irys upload (June 2026)** | **Complete** — batch `uploadFolder`, chain-aware `ar://` gateway, smart-wallet pre-check, unified create/edit flow |
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
+| **Messages + notifications redesign (June 2026)** | **Complete** — peer identity in XMTP UI, own/peer bubbles, explicit mark-read, compact notifications layout |
 | **Profile unified (June 2026)** | **Complete** — single `/profile/[handle]` page; verifier content absorbed; `/verifier/[address]` → 308 redirect |
 | **Verifiers redesign + nav (June 2026)** | **Complete** — intent banner, filters, XMTP verification request; shared NOSTR_RELAYS; Verifiers secondary nav button |
 | **Marketplace homepage (June 2026)** | **Complete** — compact stats above filter bar; VERIFIED listing card border and verifier attribution |
@@ -129,29 +130,39 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/pro/[slug]` | Professional showroom (slug from KarPro staking / Ponder; 404 if unknown slug) |
 | `/profile/[handle]` | Public wallet profile (verifier tabs: verified, disputes, attestations) |
 | `/profile/edit` | Profile edit + connect wallet |
-| `/messages` | XMTP inbox |
-| `/messages/[conversationId]` | DM thread |
+| `/messages` | XMTP inbox — peer avatar, display name, KarPro badge per row |
+| `/messages/[conversationId]` | DM thread — identity header, own/peer bubble styling |
 | `/notifications` | Alerts inbox + watchlist tab (`?tab=watchlist`) |
 
-**Shell:** Mobile — logo · Verifiers (bordered icon) · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts · Profile (bottom). Desktop — Verifiers (secondary button) · Alerts · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+**Shell:** Mobile — logo · Verifiers (bordered icon) · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts · Profile (bottom). Desktop — Verifiers (secondary button) · Alerts · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile. Messages show peer identity (not raw address); notifications mark-read is explicit (row click or "Mark all read").
 
-### Notifications + watchlist (June 2026)
+### /messages + /notifications redesign — June 2026 — COMPLETE
 
-Full notifications stack: Ponder on-chain events, watchlist snapshot diffs, and Nostr replies/likes. Cross-device read state via encrypted NIP-78 (kind 30078).
+#### /messages (Iterations M1–M3)
 
-| Topic | Implementation |
-|-------|----------------|
-| **Watchlist** | `hooks/use-watchlist.ts` — Nostr kind 30000 list (`kargain-favorites`); `WatchlistButton` on passport detail; `WatchlistClient` grid at `/notifications?tab=watchlist` |
-| **Read state** | `lib/nostr/notification-state.ts` — NIP-78 `#d: kargain-notifications-v1`; AES-GCM via `encryptAppPayload` / `decryptAppPayload`; `lastSeenAt` per channel (`ponder`, `nostr`, `watchlist`); merge via `max()` |
-| **Ponder feed** | `GET /notifications/:address`, `/passports/batch`, `/listings/batch`; builder in `src/api/notifications-query.ts`; `disputeOpenedAt` on `passport` (reindex required) |
-| **Hook tree** | `NotificationsProvider` → `usePonderNotifications` (30s poll) + `useWatchlistNotifications` (60s poll + IDB snapshot diff) + `useNostrNotificationsSub` (live `#p` subscription) |
-| **UI** | `/notifications` — Alerts tab (default) + Watchlist tab; mobile nav tab 4: **Alerts** / Bell + unread dot |
+| File | Change |
+|------|--------|
+| hooks/use-peer-identity.ts | Created — KarPro name → ENS → navShortAddress; Nostr picture → ENS avatar; isKarPro on-chain |
+| components/messaging/message-inbox-client.tsx | Peer identity in inbox rows (avatar + displayName + KarPro badge) |
+| components/messaging/conversation-thread-client.tsx | Thread header with identity + profile link; isMine bubble bg-white text-bg-primary; peer bubble bg-bg-surface; sender label deleted; timestamps aligned |
+| app/messages/[conversationId]/page.tsx | Disconnected guard: redirect to `/messages` |
 
-**Key modules:** `lib/notifications/types.ts` · `hooks/use-notification-state.tsx` · `components/notifications/notifications-shell.tsx` · `components/notifications/notifications-client.tsx`
+#### /notifications (Iterations N1–N2)
 
-**Phase 2 / ops:** Nostr `#d` subscription for owned passport comments (`ownedTokenIds` currently `[]`); VPS reindex for `disputeOpenedAt`; batch SQL for record queries in feed builder.
+| File | Change |
+|------|--------|
+| components/notifications/notifications-client.tsx | Auto mark-read (500ms setTimeout) deleted; "Mark all read" button added (visible when unreadCount > 0) |
+| components/notifications/notification-row.tsx | onRead prop — marks channel by item.source up to item.timestamp on click |
+| app/notifications/page.tsx | Layout: py-24 → pt-8 md:pt-12 pb-16 |
+| components/notifications/notifications-shell.tsx | Compact "Notifications" heading above tabs |
 
-**Pro slug:** Set when staking on `/kar-pro` (stored in on-chain metadata and indexed by Ponder). Enables `/pro/[slug]` and profile showroom links via `verifierProfile.slug`.
+**Technical debt added:** None.
+
+**Stack (unchanged from initial notifications ship):** NIP-78 read-state (`lib/nostr/notification-state.ts`); Ponder feed (`GET /notifications/:address`); watchlist NIP-51 (`hooks/use-watchlist.ts`); hook tree `NotificationsProvider` → Ponder (30s) + watchlist (60s + IDB diff) + Nostr sub.
+
+**Key modules:** `hooks/use-peer-identity.ts` · `hooks/use-notification-state.tsx` · `components/notifications/notifications-shell.tsx` · `components/notifications/notifications-client.tsx`
+
+**Phase 2 / ops (not blocking):** Nostr `#d` for owned passport comments (`ownedTokenIds` currently `[]`); VPS reindex for `disputeOpenedAt`; batch SQL in feed builder.
 
 ### Profile unified — June 2026
 
@@ -258,13 +269,17 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 
 ---
 
-**Next steps:**
+**Remaining frontend tasks:**
+
+- Footer redesign (separate session)
+- KIP system (separate session — kips/KIP-000 through KIP-004)
+- Sepolia smoke validation checklist (below)
+
+**Ops next steps:**
 
 1. Ponder reindex (`disputeOpenedAt`, filter columns `condition`, `vehicleType`, `colour`, `locationLabel`) — [runbook](docs/VPS-PONDER-REINDEX.md)
 2. Stake on `/kar-pro` and set your pro slug during onboarding
-3. Sepolia smoke validation (checklist below) — use an **EOA** wallet for passport photo upload
-4. Deploy latest frontend to Vercel after Irys commits land on `master`
-5. **Multi-chain:** Base mainnet (8453) contract deploy + env/manifests after Sepolia sign-off; extend Ponder per chain (see [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) §18)
+3. **Multi-chain:** Base mainnet (8453) contract deploy + env/manifests after Sepolia sign-off; extend Ponder per chain (see [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) §18)
 
 **Sepolia smoke checklist:**
 
@@ -273,16 +288,16 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 - [ ] Active verifier verify → VERIFIED
 - [ ] KarPro stake on `/kar-pro` → credential + `/verifiers` listing
 - [ ] Stake on `/kar-pro` with a slug → `/pro/[slug]` showroom loads
-- [ ] XMTP messages + wallet connect / disconnect
+- [ ] XMTP messages — peer identity in inbox + thread; own/peer bubbles; disconnected thread → `/messages`
 - [ ] List on marketplace → buy or quote preview
 - [ ] Edit passport metadata only (no new photos) → new `ar://` URI on-chain
 - [ ] Edit with new photos → interleaved photo order preserved in metadata
 - [ ] Dispute / resolve (optional)
-- [ ] Notifications — Alerts inbox, mark read, mobile unread dot; Watchlist tab (`?tab=watchlist`)
+- [ ] Notifications — Alerts inbox, row click + "Mark all read" (no auto mark-read), mobile unread dot; Watchlist tab (`?tab=watchlist`); compact page header
 
 **Tests:** `pnpm hardhat test` · `node --import tsx --test test/*.test.ts` (app unit tests, incl. Irys) · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e` (localhost 31337 only)
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX · §20 notifications · §21 profile unified) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX · §20 notifications · §21 profile unified · §23 messages + notifications redesign) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -492,13 +507,15 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. /verifiers redesign + nav — intent banner, filters, XMTP verification request, shared NOSTR_RELAYS, Verifiers secondary nav button. Marketplace `/` — compact stats above filter bar; VERIFIED listing card border and verifier attribution. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
+**Fixed (June 2026):** Messages + notifications redesign — peer identity in XMTP UI, own/peer bubbles, explicit mark-read, compact notifications layout. Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. /verifiers redesign + nav — intent banner, filters, XMTP verification request, shared NOSTR_RELAYS, Verifiers secondary nav button. Marketplace `/` — compact stats above filter bar; VERIFIED listing card border and verifier attribution. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 
 | Priority | Task | Notes |
 |----------|------|-------|
 | **Ops** | Ponder VPS reindex (`disputeOpenedAt` + filter facets) | [runbook](docs/VPS-PONDER-REINDEX.md) |
+| **Frontend** | Footer redesign | Separate session |
+| **Frontend** | KIP system (KIP-000 through KIP-004) | Separate session |
 | **Ops** | Sepolia smoke validation | EOA wallet for Irys; checklist above |
 | **Ops** | First KarPro slug via `/kar-pro` stake | Enables `/pro/[slug]` showroom |
 | **Chain 1** | Base mainnet (8453) deploy | Same Model X stack; update `deployments/8453.json`, env maps, Irys mainnet node |
