@@ -109,7 +109,7 @@ export function IdentityHeader({
             className="h-full w-full rounded-full object-cover"
           />
         ) : showEnsAvatar ? (
-          <EnsAvatar address={wallet} fill shape="round" className="h-full w-full rounded-full" />
+          <EnsAvatar address={wallet} fill className="h-full w-full" />
         ) : (
           <div className="flex h-full w-full items-center justify-center rounded-full bg-bg-card font-mono text-sm uppercase text-text-secondary">
             {addressInitials(wallet)}
