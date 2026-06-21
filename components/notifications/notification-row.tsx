@@ -40,15 +40,17 @@ const ICON_BY_TYPE: Record<NotificationType, LucideIcon> = {
 type NotificationRowProps = {
   item: NotificationItem;
   isLast?: boolean;
+  onRead?: () => void;
 };
 
-export function NotificationRow({ item, isLast = false }: NotificationRowProps) {
+export function NotificationRow({ item, isLast = false, onRead }: NotificationRowProps) {
   const Icon = ICON_BY_TYPE[item.type];
 
   return (
     <li>
       <Link
         href={item.href}
+        onClick={() => onRead?.()}
         className={cn(
           "flex items-start gap-3 px-4 py-3 rounded-none hover:bg-bg-surface transition-colors duration-150",
           !isLast && "border-b border-border-default",

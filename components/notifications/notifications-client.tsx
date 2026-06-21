@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useAccount } from "wagmi";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
@@ -22,7 +22,6 @@ function groupLabel(groupKey: string, items: NotificationItem[]) {
 export function NotificationsClient() {
   const { isConnected } = useAccount();
   const { items, unreadCount, isLoading, markRead } = useNotificationsFeed();
-  const markedOnMountRef = useRef(false);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, typeof items>();
@@ -38,18 +37,6 @@ export function NotificationsClient() {
     }));
   }, [items]);
 
-  useEffect(() => {
-    if (!isConnected || items.length === 0 || markedOnMountRef.current) return;
-
-    const timer = window.setTimeout(() => {
-      const maxTimestamp = Math.max(...items.map((item) => item.timestamp));
-      markRead(["ponder", "nostr"], maxTimestamp);
-      markedOnMountRef.current = true;
-    }, 500);
-
-    return () => window.clearTimeout(timer);
-  }, [isConnected, items, markRead]);
-
   if (!isConnected) {
     return (
       <div className="mt-8 space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
@@ -63,17 +50,19 @@ export function NotificationsClient() {
 
   return (
     <div className="mt-8 space-y-4">
-      {unreadCount > 0 && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        {isConnected && unreadCount > 0 && (
           <button
             type="button"
-            className="font-sans text-sm text-text-secondary transition-colors duration-150 hover:text-text-primary"
-            onClick={() => markRead(["ponder", "nostr", "watchlist"], Math.floor(Date.now() / 1000))}
+            className="ml-auto font-sans text-xs text-text-secondary transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+            onClick={() =>
+              markRead(["ponder", "nostr", "watchlist"], Math.floor(Date.now() / 1000))
+            }
           >
             Mark all read
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {isLoading && <NotificationRowSkeletonList count={3} />}
 
@@ -100,6 +89,7 @@ export function NotificationsClient() {
                     key={item.id}
                     item={item}
                     isLast={index === groupItems.length - 1}
+                    onRead={() => markRead([item.source], item.timestamp)}
                   />
                 ))}
               </ul>
