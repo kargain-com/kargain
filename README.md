@@ -100,6 +100,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
 | **Profile unified (June 2026)** | **Complete** — single `/profile/[handle]` page; verifier content absorbed; `/verifier/[address]` → 308 redirect |
+| **Verifiers redesign (June 2026)** | **Complete** — hero, intent banner, filters, XMTP verification request with lazy passport pre-fill |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — VPS uses `sepolia.base.org` RPC; reindex after schema changes ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
@@ -122,7 +123,7 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/marketplace/[tokenId]` | Listing / passport detail |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
 | `/kar-pro` | KarPro onboarding + credential card |
-| `/verifiers` | Verifier directory |
+| `/verifiers` | Verifier directory — hero, intent banner, filters, XMTP request |
 | `/verifier/[address]` | Permanent redirect to `/profile/[address]` |
 | `/pro/[slug]` | Professional showroom (slug from KarPro staking / Ponder; 404 if unknown slug) |
 | `/profile/[handle]` | Public wallet profile (verifier tabs: verified, disputes, attestations) |
@@ -175,6 +176,25 @@ Single canonical profile page. All verifier content absorbed.
 **Slug architecture:** stored in Arweave JSON (canonical) + Ponder `verifier.slug` (denormalized); on-chain `metadataURI` pointer only (slug not a contract field); API `GET /verifiers/by-slug/:slug` → `/pro/[slug]` page. Static `PRO_SLUGS` file never existed — was stale documentation only.
 
 **Key modules:** `components/profile/profile-page.tsx` · `components/identity/identity-header.tsx` · `app/actions/kar-pro-verifier.ts` · `lib/nostr/profile.ts`
+
+### Verifiers redesign — June 2026
+
+Full redesign of verifier directory page. Five iterations.
+
+| Iter | Deliverable |
+|------|-------------|
+| 1 | `app/actions/verifier-directory.ts` — added joinedAt, nostrPicture (batch server-side Nostr fetch) to VerifierDirectoryEntry |
+| 1b | `lib/nostr/fetch-profile-server.ts` — server-safe Nostr helper (NIP-39 #i lookup, no browser APIs) |
+| 2 | `components/verifier/verifier-directory.tsx` — full rewrite: enriched cards (Nostr avatar, KarPro name, category eyebrow, verificationCount stat, member since, slug-first routing, disabled XMTP placeholder) |
+| 3 | `components/verifier/verifiers-intent-banner.tsx` — wallet-aware personalization (KarPro / unverified passports / neutral states) |
+| 3 | `app/verifiers/page.tsx` — hero-pattern Zone A + #verifier-grid section anchor |
+| 4 | Filter bar inside VerifierDirectory — search, category chips (from KAR_PRO_CATEGORY_OPTIONS), sort (most verified / newest), clear filters, filtered empty state |
+| 5 | `components/verifier/verification-request-button.tsx` — XMTP contact with lazy passport pre-fill; follows SellerContactButton pattern (getCachedXmtpClient, dm.sendText, case-insensitive address guard) |
+| 5 | VerifierCard wired: disabled placeholder replaced with VerificationRequestButton |
+
+**Architecture decisions:** Nostr avatars server-batched via `fetchNostrProfileServer` (NIP-39 `ethereum:#i` tag). Avatar priority: `nostrPicture` (server) → `EnsAvatar` (client ENS/identicon). Routing: slug non-empty → `/pro/{slug}`; else → `/profile/{address}`. Filter state: local `useState` in VerifierDirectory (no URL sync). XMTP pre-fill: lazy `getProfileData` on click.
+
+**Key modules:** `components/verifier/verifier-directory.tsx` · `components/verifier/verifiers-intent-banner.tsx` · `components/verifier/verification-request-button.tsx` · `app/actions/verifier-directory.ts` · `lib/nostr/fetch-profile-server.ts`
 
 ### Passport storage & Irys upload (June 2026)
 
@@ -446,7 +466,7 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
+**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. Verifiers redesign — `/verifiers` hero, intent banner, filters, XMTP verification request. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 

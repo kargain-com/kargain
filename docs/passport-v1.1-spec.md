@@ -395,7 +395,7 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Verify / dispute / resolve / attestation | `passport-actions-panel` | ✅ |
 | Marketplace detail + trust | `/marketplace/[tokenId]` · `passport-detail-view`, `PassportTrustBanner`, `PassportUriHistory` | ✅ (§19 polish June 2026) |
 | KarPro onboarding | `/kar-pro` | ✅ |
-| Verifier directory | `/verifiers` | ✅ |
+| Verifier directory | `/verifiers` · hero, intent banner, filters, XMTP request | ✅ |
 | Verifier profile | `/profile/[address]` (verified, disputes, attestations tabs) | ✅ |
 | Pro showroom | `/pro/[slug]` · slug from KarPro metadata / Ponder | ✅ |
 | Profile + showroom link | `/profile/[handle]` · `verifierProfile.slug` | ✅ |
@@ -668,3 +668,39 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 | `app/actions/kar-pro-verifier.ts` | Verifier profile + disputed passports |
 | `lib/nostr/profile.ts` | Nostr kind 0 fetch/publish |
 | `app/verifier/[address]/page.tsx` | `permanentRedirect` to profile |
+
+## 22. Verifiers redesign — definition of done (June 2026)
+
+**Status:** Complete. Full redesign of `/verifiers` directory in five iterations.
+
+| Iter | Deliverable | Status |
+|------|-------------|--------|
+| 1 | `VerifierDirectoryEntry` enriched (joinedAt, nostrPicture) + batch server Nostr fetch | ✅ |
+| 1b | `lib/nostr/fetch-profile-server.ts` — server-safe NIP-39 #i lookup | ✅ |
+| 2 | Enriched verifier cards (avatar, category, stats, slug-first routing) | ✅ |
+| 3 | `VerifiersIntentBanner` + hero-pattern page layout | ✅ |
+| 4 | In-directory filters (search, category chips, sort, clear) | ✅ |
+| 5 | `VerificationRequestButton` — XMTP + lazy passport pre-fill | ✅ |
+
+### Architecture decisions (confirmed)
+
+| Topic | Decision |
+|-------|----------|
+| Nostr avatars | Server-batched via `fetchNostrProfileServer` (NIP-39 `ethereum:#i` tag) |
+| Avatar priority | `nostrPicture` (server) → `EnsAvatar` (client ENS/identicon) |
+| Routing | Slug non-empty → `/pro/{slug}`; else → `/profile/{address}` |
+| Filter state | Local `useState` in VerifierDirectory (no URL sync) |
+| XMTP pre-fill | Lazy `getProfileData` on click — no per-card render fetch |
+
+### Key modules
+
+| File | Role |
+|------|------|
+| `app/actions/verifier-directory.ts` | Ponder fetch + Nostr picture batch |
+| `lib/nostr/fetch-profile-server.ts` | Server-safe Nostr avatar lookup |
+| `app/verifiers/page.tsx` | Hero zone + `#verifier-grid` |
+| `components/verifier/verifier-directory.tsx` | Cards, filters, sort |
+| `components/verifier/verifiers-intent-banner.tsx` | Wallet-aware hero banner |
+| `components/verifier/verification-request-button.tsx` | XMTP request + passport pre-fill |
+
+Spec: [README.md](../README.md) § Verifiers redesign · [HANDOFF.md](./HANDOFF.md)
