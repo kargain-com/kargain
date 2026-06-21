@@ -1,6 +1,6 @@
 # KarPassport v1.1 — Product & Contract Spec
 
-Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX + notifications/watchlist, `master` June 2026)  
+Status: **complete** (Phases 1–5 + polish PR5a–d + Irys upload hardening + passport detail UX + notifications/watchlist + profile unified, `master` June 2026)  
 Branch: merged via PR #1 (`feat/passport-v1.1`) + follow-up polish on `master`  
 Base deploy: Base Sepolia Model X v1.1 (June 2026) — redeploy + Basescan verify complete  
 
@@ -604,3 +604,67 @@ Run: `node --import tsx --test test/*.test.ts`
 - Nostr `#d` subscription for owned passports (Phase 2)
 - Tx-level record grouping in notification rows (Phase 2)
 - Playwright E2E for notifications flow
+
+## 21. Profile unified — definition of done (June 2026)
+
+**Status:** Single canonical profile page. All verifier content absorbed.
+
+### What shipped
+
+| Iter | Deliverable |
+|------|-------------|
+| 1 | `lib/nostr/profile.ts` — `fetchNostrProfile`, `publishNostrProfile` (NIP-39 kind 0) |
+| 1 | `hooks/use-nostr-profile.ts` — `useNostrProfile` |
+| 2 | `components/identity/identity-header.tsx` — unified header (avatar, name, KarPro badge, links, actions) |
+| 2 | `hooks/use-is-profile-owner.ts` — `useIsProfileOwner` |
+| 3 | `/profile/edit` — Nostr kind 0 personal edit (avatar, name, bio, website) + KarPro read-only summary |
+| 4 | `/profile/[handle]` — unified profile (absorbs verifier content); adaptive tabs by role |
+| 5 | `/verifier/[address]` → 308 permanent redirect to `/profile/[address]` |
+| 5 | Disputes tab on ProfilePage (KarPro only) |
+| 5 | All internal `/verifier/` links updated to `/profile/` |
+| 5 | README + this spec: `PRO_SLUGS` / `proSlugForAddress` stale refs removed |
+
+### Identity data priority (confirmed)
+
+| Field | Priority |
+|-------|----------|
+| Display name | KarProPass.name → ENS name → `navShortAddress` |
+| Avatar | Nostr kind 0 picture → ENS avatar → initials fallback |
+| Bio | Nostr kind 0 about |
+| Website | Nostr kind 0 website (personal) / Arweave metadata (KarPro pro) |
+
+### Editing surfaces (confirmed)
+
+| Route | Scope |
+|-------|-------|
+| `/profile/edit` | Nostr kind 0 (all users): avatar, name, bio, website |
+| `/kar-pro` | On-chain + Arweave (KarPro only): displayName, category, slug, pro description |
+
+### Slug architecture (confirmed)
+
+| Layer | Detail |
+|-------|--------|
+| Stored | Arweave JSON (canonical) + Ponder `verifier.slug` (denormalized) |
+| On-chain | `metadataURI` pointer only — slug not a contract field |
+| API | `GET /verifiers/by-slug/:slug` → `/pro/[slug]` page |
+| Static `PRO_SLUGS` file | Never existed — was stale documentation only |
+
+### Profile tabs (KarPro active verifier)
+
+Guest or connected: Passports · Listings · Verified · Disputes · Attestations
+
+Owner: Passports · Listings · Saved · Verified · Disputes · Attestations
+
+Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarProVerifierProfile`.
+
+### Key modules
+
+| File | Role |
+|------|------|
+| `app/profile/[handle]/page.tsx` | Server fetch + `ProfilePage` |
+| `components/profile/profile-page.tsx` | URL-synced tabs, disputes panel |
+| `components/profile/profile-edit-client.tsx` | Nostr personal edit + KarPro summary |
+| `components/identity/identity-header.tsx` | Shared identity header |
+| `app/actions/kar-pro-verifier.ts` | Verifier profile + disputed passports |
+| `lib/nostr/profile.ts` | Nostr kind 0 fetch/publish |
+| `app/verifier/[address]/page.tsx` | `permanentRedirect` to profile |

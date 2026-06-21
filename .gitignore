@@ -52,6 +52,7 @@ test-results
 *.tsbuildinfo
 
 # internal docs (local only — not in git)
+/AGENTS.md
 /docs/*
 !/docs/passport-v1.1-spec.md
 !/docs/VPS-PONDER-REINDEX.md

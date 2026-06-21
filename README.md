@@ -72,6 +72,9 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Nostr** | Public comments (NIP-01), watchlist (NIP-51), notification read-state (NIP-78) |
 | **XMTP** | End-to-end encrypted buyer–seller messaging |
 
+**Docs (git):** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)  
+**Local only (gitignored):** [AGENTS.md](AGENTS.md) (Cursor agent instructions) · `docs/HANDOFF.md`, `docs/SESSION.md`, `docs/REFERENCE.md`, `docs/ROADMAP.md`, `docs/design-spec.md`
+
 ## Tech stack
 
 | Layer | Technology |
@@ -96,6 +99,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Passport Irys upload (June 2026)** | **Complete** — batch `uploadFolder`, chain-aware `ar://` gateway, smart-wallet pre-check, unified create/edit flow |
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
+| **Profile unified (June 2026)** | **Complete** — single `/profile/[handle]` page; verifier content absorbed; `/verifier/[address]` → 308 redirect |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — VPS uses `sepolia.base.org` RPC; reindex after schema changes ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
@@ -146,6 +150,31 @@ Full notifications stack: Ponder on-chain events, watchlist snapshot diffs, and 
 **Phase 2 / ops:** Nostr `#d` subscription for owned passport comments (`ownedTokenIds` currently `[]`); VPS reindex for `disputeOpenedAt`; batch SQL for record queries in feed builder.
 
 **Pro slug:** Set when staking on `/kar-pro` (stored in on-chain metadata and indexed by Ponder). Enables `/pro/[slug]` and profile showroom links via `verifierProfile.slug`.
+
+### Profile unified — June 2026
+
+Single canonical profile page. All verifier content absorbed.
+
+| Iter | Deliverable |
+|------|-------------|
+| 1 | `lib/nostr/profile.ts` — `fetchNostrProfile`, `publishNostrProfile` (NIP-39 kind 0) |
+| 1 | `hooks/use-nostr-profile.ts` — `useNostrProfile` |
+| 2 | `components/identity/identity-header.tsx` — unified header (avatar, name, KarPro badge, links, actions) |
+| 2 | `hooks/use-is-profile-owner.ts` — `useIsProfileOwner` |
+| 3 | `/profile/edit` — Nostr kind 0 personal edit (avatar, name, bio, website) + KarPro read-only summary |
+| 4 | `/profile/[handle]` — unified profile (absorbs verifier content); adaptive tabs by role |
+| 5 | `/verifier/[address]` → 308 permanent redirect to `/profile/[address]` |
+| 5 | Disputes tab on ProfilePage (KarPro only) |
+| 5 | All internal `/verifier/` links updated to `/profile/` |
+| 5 | README + passport-v1.1-spec.md: `PRO_SLUGS` / `proSlugForAddress` stale refs removed |
+
+**Identity data priority:** display name — KarProPass.name → ENS name → `navShortAddress`; avatar — Nostr kind 0 picture → ENS avatar → initials; bio — Nostr kind 0 about; website — Nostr kind 0 website (personal) / Arweave metadata (KarPro pro).
+
+**Editing surfaces:** `/profile/edit` → Nostr kind 0 (all users): avatar, name, bio, website. `/kar-pro` → on-chain + Arweave (KarPro only): displayName, category, slug, pro description.
+
+**Slug architecture:** stored in Arweave JSON (canonical) + Ponder `verifier.slug` (denormalized); on-chain `metadataURI` pointer only (slug not a contract field); API `GET /verifiers/by-slug/:slug` → `/pro/[slug]` page. Static `PRO_SLUGS` file never existed — was stale documentation only.
+
+**Key modules:** `components/profile/profile-page.tsx` · `components/identity/identity-header.tsx` · `app/actions/kar-pro-verifier.ts` · `lib/nostr/profile.ts`
 
 ### Passport storage & Irys upload (June 2026)
 
@@ -207,7 +236,7 @@ Photos and metadata JSON upload **client-side** via `@irys/web-upload`. The user
 
 **Tests:** `pnpm hardhat test` · `node --import tsx --test test/*.test.ts` (app unit tests, incl. Irys) · `pnpm test:metadata` · `pnpm test:listing` · `pnpm test:ponder` · `pnpm test:trust` · `pnpm test:records` · `pnpm test:confirm-status` · `pnpm test:verify` · `pnpm test:e2e` (localhost 31337 only)
 
-Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX · §20 notifications) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+Spec: [docs/passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (§17 UI complete · §19 passport detail UX · §20 notifications · §21 profile unified) · Ponder reindex: [docs/VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
 
 ---
 
@@ -417,7 +446,7 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
+**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 
