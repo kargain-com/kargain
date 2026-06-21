@@ -100,13 +100,13 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Passport detail UX (June 2026)** | **Complete** — identity-first layout, Nostr hardening, role-based actions, trust banners, `shortAddress`, guest-readable comments |
 | **Notifications + watchlist (June 2026)** | **Complete** — NIP-78 read-state, Ponder feed API, alerts inbox, watchlist tab, nav badge |
 | **Profile unified (June 2026)** | **Complete** — single `/profile/[handle]` page; verifier content absorbed; `/verifier/[address]` → 308 redirect |
-| **Verifiers redesign + nav (June 2026)** | **Complete** — hero, intent banner, filters, XMTP verification request; shared NOSTR_RELAYS; mobile ShieldCheck nav |
-| **Marketplace homepage (June 2026)** | **Complete** — Zone A hero + stats; VERIFIED listing card border and verifier attribution |
+| **Verifiers redesign + nav (June 2026)** | **Complete** — intent banner, filters, XMTP verification request; shared NOSTR_RELAYS; Verifiers secondary nav button |
+| **Marketplace homepage (June 2026)** | **Complete** — compact stats above filter bar; VERIFIED listing card border and verifier attribution |
 | Contracts (Model X) | v1.1 on Base Sepolia; verified on [Basescan](https://sepolia.basescan.org); Hardhat + T10/E5 matrix |
 | Ponder indexer | Production at https://ponder.kargain.com — VPS uses `sepolia.base.org` RPC; reindex after schema changes ([runbook](docs/VPS-PONDER-REINDEX.md)) |
 | ABIs & addresses | `lib/web3/deployment-addresses.ts` + `deployments/84532.json` manifest |
 | Passport UI | Mint (drag-and-drop photos), edit (Variant C), verify/dispute/resolve, attestation, records timeline, marketplace trust gates |
-| Browse UX | Homepage Zone A hero + stats; top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; VERIFIED card accent border + verifier attribution; chain-status sample on cards (G4) |
+| Browse UX | Compact homepage stats above filter bar; top filter bar + drawer (status, price, make, fuel, year, mileage, body, condition, vehicle type, location, colour); server-side facets; VERIFIED card accent border + verifier attribution; chain-status sample on cards (G4) |
 | KarPro & trust network | `/kar-pro`, `/verifiers`, `/profile/[address]` (canonical verifier profile), `/verifier/[address]` (redirects to profile), `/pro/[slug]` (dynamic showroom; slug set when staking on `/kar-pro`) |
 | Local E2E (31337) | `pnpm deploy:local`, `pnpm test:e2e`, `./scripts/dev-local.sh` |
 
@@ -118,13 +118,13 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Marketplace browse — Zone A hero + stats; filter bar + infinite scroll (`#listings`) |
+| `/` | Marketplace browse — compact stats line + filter bar + infinite scroll |
 | `/passport/new` | Mint KarPassport (Irys upload + wizard) |
 | `/passport/[tokenId]/edit` | Edit metadata (Variant C) |
 | `/marketplace/[tokenId]` | Listing / passport detail |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
 | `/kar-pro` | KarPro onboarding + credential card |
-| `/verifiers` | Verifier directory — hero, intent banner, filters, XMTP request |
+| `/verifiers` | Verifier directory — intent banner, filters, XMTP request |
 | `/verifier/[address]` | Permanent redirect to `/profile/[address]` |
 | `/pro/[slug]` | Professional showroom (slug from KarPro staking / Ponder; 404 if unknown slug) |
 | `/profile/[handle]` | Public wallet profile (verifier tabs: verified, disputes, attestations) |
@@ -133,7 +133,7 @@ All contract functions exposed in the app UI. All Ponder HTTP endpoints consumed
 | `/messages/[conversationId]` | DM thread |
 | `/notifications` | Alerts inbox + watchlist tab (`?tab=watchlist`) |
 
-**Shell:** Mobile — logo · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts (unread dot) · Profile (bottom). Desktop — Verifiers · Alerts · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
+**Shell:** Mobile — logo · Verifiers (bordered icon) · KarPro (when eligible) · wallet (top); Marketplace · Messages · Create FAB · Alerts · Profile (bottom). Desktop — Verifiers (secondary button) · Alerts · Messages · Become KarPro · Create passport · chain · wallet. No duplicated actions between top and bottom nav on mobile.
 
 ### Notifications + watchlist (June 2026)
 
@@ -191,19 +191,20 @@ Single canonical profile page. All verifier content absorbed.
 | components/verifier/verifier-directory.tsx | Full rewrite: enriched cards, filter bar, category chips, sort |
 | components/verifier/verifiers-intent-banner.tsx | Created — role-aware personalization (KarPro / unverified / neutral) |
 | components/verifier/verification-request-button.tsx | Created — XMTP contact with lazy passport pre-fill |
-| app/verifiers/page.tsx | Zone A hero-pattern + #verifier-grid anchor |
+| app/verifiers/page.tsx | VerifiersIntentBanner + `#verifier-grid` (no hero band) |
 
 #### Navigation
 
 | File | Change |
 |------|--------|
-| components/shell/app-top-nav.tsx | Mobile ShieldCheck icon (inline-flex md:hidden) + desktop active state on Verifiers |
+| components/shell/app-top-nav.tsx | Verifiers secondary button in right cluster (ShieldCheck + label on desktop; bordered icon on mobile; accent when active) |
 
 #### Marketplace /
 
 | File | Change |
 |------|--------|
-| app/page.tsx | Zone A: headline, subtitle, stats (totalActive + statusCounts.VERIFIED + verifiers.length), CTAs; MarketBrowse wrapped in div#listings |
+| app/page.tsx | Server-fetches stats; passes `activeListings`, `verifiedCount`, `activeVerifiers` to MarketBrowse |
+| components/marketplace/market-browse.tsx | Compact ambient stats line above filter bar (`text-text-tertiary`, mono tabular-nums) |
 | components/marketplace/listing-card.tsx | Verifier attribution (ShieldCheck + profile link on VERIFIED); semantic border-accent-warm for VERIFIED; hover border fixed (border-border-hover, not accent) |
 
 #### Architecture decisions
@@ -212,14 +213,14 @@ Single canonical profile page. All verifier content absorbed.
 - UNVERIFIED listing card: border-border-default, hover → border-border-hover
 - Verifier attribution: row.verifier address only (no name/slug in listing row — links to /profile/{address})
 - Stats source: fetchListingFacets() → totalActive + statusCounts.VERIFIED; getVerifierDirectory() → .length
-- Zone A: Server Component — zero client fetches above fold
+- Homepage stats: `fetchListingFacets()` + `getVerifierDirectory()` in `app/page.tsx` (Server Component); passed as props to MarketBrowse; compact line above filter bar
 - Nostr avatars: server-batched via fetchNostrProfileServer (NIP-39 ethereum:#i tag)
 - Avatar priority: nostrPicture (server) → EnsAvatar (client ENS/identicon)
 - Routing: slug non-empty → /pro/{slug}; else → /profile/{address}
 - Filter state: local useState in VerifierDirectory (no URL sync — list is small)
 - XMTP pre-fill: lazy getProfileData on click — no per-card render fetch
 
-**Key modules:** `app/page.tsx` · `components/marketplace/listing-card.tsx` · `components/verifier/verifier-directory.tsx` · `components/verifier/verifiers-intent-banner.tsx` · `components/verifier/verification-request-button.tsx` · `components/shell/app-top-nav.tsx` · `lib/nostr/relays.ts`
+**Key modules:** `app/page.tsx` · `components/marketplace/market-browse.tsx` · `components/marketplace/listing-card.tsx` · `components/verifier/verifier-directory.tsx` · `components/verifier/verifiers-intent-banner.tsx` · `components/verifier/verification-request-button.tsx` · `components/shell/app-top-nav.tsx` · `lib/nostr/relays.ts`
 
 ### Passport storage & Irys upload (June 2026)
 
@@ -491,7 +492,7 @@ All endpoints above are consumed by the Next.js app.
 - **Multi-chain indexing** — Ponder today indexes Base Sepolia only; each new chain needs deployment manifest + indexer config (see spec §18).
 - **Deferred (Phase 6+):** owner service-history UI, evidence upload on report/clarification forms, full browse N-chain confirm, `GET /passports/:id/trust`, `buyWithUsdc` UI, Playwright browser E2E for passport upload flows.
 
-**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. /verifiers redesign + nav — hero, intent banner, filters, XMTP verification request, shared NOSTR_RELAYS, mobile ShieldCheck nav. Marketplace `/` — Zone A hero + stats; VERIFIED listing card border and verifier attribution. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
+**Fixed (June 2026):** Profile unified — single `/profile/[handle]` page; `/verifier/[address]` redirects; disputes tab. /verifiers redesign + nav — intent banner, filters, XMTP verification request, shared NOSTR_RELAYS, Verifiers secondary nav button. Marketplace `/` — compact stats above filter bar; VERIFIED listing card border and verifier attribution. `kar-pro-credential-card` showroom link uses `verifierProfile.slug` from Ponder. **Irys:** batch photo upload, devnet gateway routing, IPFS removed from env/code, create/edit upload parity, smart-wallet pre-check. **Passport detail:** identity-first layout, Nostr key hardening (no nsec UI), canonical `shortAddress`, guest-readable comments.
 
 ## Future work (multi-chain platform)
 

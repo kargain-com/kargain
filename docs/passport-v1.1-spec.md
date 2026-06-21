@@ -395,7 +395,7 @@ Contract tests: `pnpm hardhat test` (T10, E5, listed `appendRecord` NotOwner) ·
 | Verify / dispute / resolve / attestation | `passport-actions-panel` | ✅ |
 | Marketplace detail + trust | `/marketplace/[tokenId]` · `passport-detail-view`, `PassportTrustBanner`, `PassportUriHistory` | ✅ (§19 polish June 2026) |
 | KarPro onboarding | `/kar-pro` | ✅ |
-| Verifier directory | `/verifiers` · hero, intent banner, filters, XMTP request | ✅ |
+| Verifier directory | `/verifiers` · intent banner, filters, XMTP request | ✅ |
 | Verifier profile | `/profile/[address]` (verified, disputes, attestations tabs) | ✅ |
 | Pro showroom | `/pro/[slug]` · slug from KarPro metadata / Ponder | ✅ |
 | Profile + showroom link | `/profile/[handle]` · `verifierProfile.slug` | ✅ |
@@ -671,7 +671,7 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 
 ## 22. /verifiers redesign + nav + marketplace / — definition of done (June 2026)
 
-**Status:** Complete. Verifier directory redesign, shared Nostr relays, nav polish, homepage Zone A, VERIFIED listing card treatment.
+**Status:** Complete. Verifier directory redesign, shared Nostr relays, nav polish, compact homepage stats, VERIFIED listing card treatment.
 
 ### /verifiers (Iterations 1–5 + 1b + relay refactor)
 
@@ -684,19 +684,20 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 | components/verifier/verifier-directory.tsx | Enriched cards, filter bar, category chips, sort |
 | components/verifier/verifiers-intent-banner.tsx | Role-aware personalization |
 | components/verifier/verification-request-button.tsx | XMTP + lazy passport pre-fill |
-| app/verifiers/page.tsx | Zone A hero-pattern + #verifier-grid |
+| app/verifiers/page.tsx | VerifiersIntentBanner + `#verifier-grid` (no hero band) |
 
 ### Navigation
 
 | File | Change |
 |------|--------|
-| components/shell/app-top-nav.tsx | Mobile ShieldCheck icon + desktop Verifiers active state |
+| components/shell/app-top-nav.tsx | Verifiers secondary button in right cluster (ShieldCheck + label on desktop; accent when active) |
 
 ### Marketplace /
 
 | File | Change |
 |------|--------|
-| app/page.tsx | Zone A hero, stats (totalActive + statusCounts.VERIFIED + verifiers.length), CTAs; div#listings |
+| app/page.tsx | Server-fetches stats; passes props to MarketBrowse |
+| components/marketplace/market-browse.tsx | Compact ambient stats line above filter bar |
 | components/marketplace/listing-card.tsx | Verifier attribution; VERIFIED border-accent-warm; UNVERIFIED hover border-border-hover |
 
 ### Architecture decisions (confirmed)
@@ -706,8 +707,7 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 | VERIFIED card border | `border-accent-warm` (permanent, not hover) |
 | UNVERIFIED card hover | `border-border-hover` (not accent) |
 | Verifier attribution | `row.verifier` address only → `/profile/{address}` |
-| Homepage stats | `fetchListingFacets()` + `getVerifierDirectory()` |
-| Zone A | Server Component — zero client fetches above fold |
+| Homepage stats | Server-fetched in `app/page.tsx`; passed as props; compact mono line above filter bar in MarketBrowse |
 | Nostr avatars | Server-batched via fetchNostrProfileServer (NIP-39 ethereum:#i tag) |
 | Avatar priority | nostrPicture (server) → EnsAvatar (client ENS/identicon) |
 | Routing | Slug non-empty → /pro/{slug}; else → /profile/{address} |
@@ -720,12 +720,13 @@ Disputes data: `GET /verifiers/:address` → `disputedPassports` via `fetchKarPr
 |------|------|
 | lib/nostr/relays.ts | Shared relay list |
 | app/actions/verifier-directory.ts | Ponder fetch + Nostr picture batch |
-| app/verifiers/page.tsx | Hero zone + #verifier-grid |
+| app/verifiers/page.tsx | VerifiersIntentBanner + `#verifier-grid` |
 | components/verifier/verifier-directory.tsx | Cards, filters, sort |
-| components/verifier/verifiers-intent-banner.tsx | Wallet-aware hero banner |
+| components/verifier/verifiers-intent-banner.tsx | Wallet-aware intent banner |
 | components/verifier/verification-request-button.tsx | XMTP request + passport pre-fill |
-| components/shell/app-top-nav.tsx | Verifiers nav (mobile icon + active state) |
-| app/page.tsx | Homepage Zone A + stats |
+| components/shell/app-top-nav.tsx | Verifiers nav (secondary button, right cluster) |
+| app/page.tsx | Server stats fetch + MarketBrowse props |
+| components/marketplace/market-browse.tsx | Compact stats line above filter bar |
 | components/marketplace/listing-card.tsx | VERIFIED border + verifier attribution |
 
 Spec: [README.md](../README.md) § /verifiers redesign + nav + marketplace / · [HANDOFF.md](./HANDOFF.md)

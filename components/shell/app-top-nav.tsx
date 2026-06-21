@@ -35,37 +35,26 @@ export function AppTopNav() {
           </span>
         </Link>
 
-        <Link
-          href="/verifiers"
-          aria-label="Verifiers"
-          className={cn(
-            "inline-flex md:hidden items-center justify-center h-9 w-9 rounded-sm",
-            "transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-            path === "/verifiers"
-              ? "text-text-primary"
-              : "text-text-secondary hover:text-text-primary"
-          )}
-        >
-          <ShieldCheck size={20} strokeWidth={1.5} aria-hidden />
-        </Link>
-
-        <Link
-          href="/verifiers"
-          className={cn(
-            "hidden shrink-0 font-sans text-sm transition-colors duration-200",
-            "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-            "md:inline-flex",
-            path === "/verifiers"
-              ? "text-text-primary"
-              : "text-text-secondary hover:text-text-primary"
-          )}
-        >
-          Verifiers
-        </Link>
-
         <div className="flex-1" aria-hidden />
 
         <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/verifiers"
+            aria-label="Verifiers"
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border min-h-9",
+              "font-sans text-sm font-medium transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
+              "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+              "h-9 w-9 md:w-auto md:px-4",
+              path === "/verifiers"
+                ? "border-accent-warm bg-bg-surface text-accent-warm"
+                : "border-border-hover bg-transparent text-text-primary hover:border-accent-warm hover:text-accent-warm",
+            )}
+          >
+            <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 md:hidden" aria-hidden />
+            <ShieldCheck size={16} strokeWidth={1.5} className="hidden shrink-0 md:block" aria-hidden />
+            <span className="hidden md:inline">Verifiers</span>
+          </Link>
           <Link
             href="/notifications"
             aria-label="Alerts"
