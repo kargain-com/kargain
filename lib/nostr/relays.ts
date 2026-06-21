@@ -1,4 +1,3 @@
-/** Default public relays — same set as listing comments. */
 export const NOSTR_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.nostr.band",

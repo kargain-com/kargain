@@ -46,7 +46,7 @@ export default async function HomePage({
           </h1>
 
           <p className="font-sans text-fluid-body-lg font-normal leading-[1.55] text-text-secondary mt-4 max-w-xl">
-            Every vehicle has a verified passport on Base.
+            Every vehicle has a verified passport on blockchain.
             Browse certified listings or get your car verified by a KarPro professional.
           </p>
 
