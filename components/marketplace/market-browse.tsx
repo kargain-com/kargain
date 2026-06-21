@@ -18,7 +18,19 @@ import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
-export function MarketBrowse({ initialChainId: _initialChainId }: { initialChainId: number }) {
+type MarketBrowseProps = {
+  initialChainId: number;
+  activeListings?: number;
+  verifiedCount?: number;
+  activeVerifiers?: number;
+};
+
+export function MarketBrowse({
+  initialChainId: _initialChainId,
+  activeListings = 0,
+  verifiedCount = 0,
+  activeVerifiers = 0,
+}: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
 
   const apiInput = useMemo(() => marketFiltersToApiInput(filters), [filters]);
@@ -55,6 +67,17 @@ export function MarketBrowse({ initialChainId: _initialChainId }: { initialChain
 
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
+      {(activeListings > 0 || verifiedCount > 0 || activeVerifiers > 0) && (
+        <div className="mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8 pt-4 pb-0">
+          <p className="font-mono text-xs text-text-tertiary tabular-nums">
+            {activeListings > 0 ? `${activeListings} listings` : null}
+            {activeListings > 0 && verifiedCount > 0 ? " · " : null}
+            {verifiedCount > 0 ? `${verifiedCount} verified` : null}
+            {(activeListings > 0 || verifiedCount > 0) && activeVerifiers > 0 ? " · " : null}
+            {activeVerifiers > 0 ? `${activeVerifiers} active verifiers` : null}
+          </p>
+        </div>
+      )}
       <MarketFilterBar />
       <MarketFilterChips />
 
