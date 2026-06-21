@@ -31,8 +31,10 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
     >
       <Card
         className={cn(
-          "h-full overflow-hidden bg-bg-card transition-colors duration-300 hover:border-accent-warm group-focus-visible:border-accent-warm",
-          displayStatus === "VERIFIED" ? "border-accent-warm" : "border-border-default",
+          "h-full overflow-hidden bg-bg-card transition-colors duration-300",
+          displayStatus === "VERIFIED"
+            ? "border-accent-warm group-focus-visible:border-accent-warm"
+            : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
         )}
       >
         <div className="relative aspect-[16/10] w-full bg-bg-surface">
