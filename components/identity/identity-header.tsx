@@ -24,6 +24,7 @@ export interface IdentityHeaderProps {
   proSlug?: string;
   showVerifierLink?: boolean;
   showProfileLink?: boolean;
+  showEditButton?: boolean;
 }
 
 function addressInitials(wallet: Address): string {
@@ -65,6 +66,7 @@ export function IdentityHeader({
   proSlug,
   showVerifierLink = false,
   showProfileLink = false,
+  showEditButton = true,
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
@@ -180,7 +182,7 @@ export function IdentityHeader({
       {/* Zone 7 — Action row */}
       {(isOwner || (!isOwner && isConnected) || (isActiveVerifier && !isOwner)) && (
         <div className="mt-2 flex flex-wrap gap-3">
-          {isOwner && (
+          {isOwner && showEditButton && (
             <Button variant="secondary" size="sm" asChild>
               <Link href="/profile/edit">Edit profile</Link>
             </Button>
