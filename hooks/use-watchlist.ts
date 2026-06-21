@@ -5,10 +5,10 @@ import { useAccount } from "wagmi";
 
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { addFavorite, loadFavorites, removeFavorite } from "@/lib/nostr/favorites";
-import { nostrPubkeyFromPrivateKey, publishEthereumIdentityLink } from "@/lib/nostr/nostr-client";
+import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 
 export function useWatchlist(tokenId?: string) {
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const { nostrPrivateKey, loading: keyLoading } = useNostrKey();
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,9 +65,6 @@ export function useWatchlist(tokenId?: string) {
         await removeFavorite(tokenId, nostrPrivateKey);
       } else {
         await addFavorite(tokenId, nostrPrivateKey);
-        if (address) {
-          void publishEthereumIdentityLink(nostrPrivateKey, address);
-        }
       }
     } catch (err) {
       console.error("useWatchlist toggle failed", err);
@@ -77,7 +74,7 @@ export function useWatchlist(tokenId?: string) {
     } finally {
       setIsToggling(false);
     }
-  }, [tokenId, nostrPrivateKey, watchedIds, address]);
+  }, [tokenId, nostrPrivateKey, watchedIds]);
 
   return { watchedIds, isWatched, isLoading, isToggling, toggle };
 }

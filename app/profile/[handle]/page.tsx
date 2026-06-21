@@ -88,32 +88,18 @@ export default async function PublicProfilePage({
     ponderErr = "PONDER_UNAVAILABLE";
   }
 
-  const profile: {
-    avatarCid?: string | null;
-    displayName?: string | null;
-    username?: string | null;
-    locationLabel?: string | null;
-    bio?: string | null;
-    socialLinks?: { twitter?: string; website?: string; discord?: string };
-  } | null = {};
-
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
       <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-24 md:px-8">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <ProfileHeaderIdentity
           wallet={wallet}
-          profileDisplayName={profile?.displayName}
-          profileUsername={profile?.username}
-          locationLabel={profile?.locationLabel}
-          bio={profile?.bio}
-          socialLinks={profile?.socialLinks}
           isActiveVerifier={isActiveVerifier}
           verifierName={verifierProfile?.name}
           verifierCategory={verifierProfile?.category}
+          verificationCount={verificationCount}
+          stakeActiveSince={verifierProfile?.joinedAt}
           proShowroomSlug={proShowroomSlug}
         />
-      </div>
 
       {ponderErr && (
         <div className="rounded-sm border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">

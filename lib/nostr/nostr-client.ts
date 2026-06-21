@@ -1,7 +1,7 @@
 "use client";
 
 import { hexToBytes } from "viem";
-import { finalizeEvent, getPublicKey } from "nostr-tools";
+import { getPublicKey } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 
 /** Default public relays — same set as listing comments. */
@@ -54,21 +54,18 @@ export async function resolveNostrPubkeyForEthereumAddress(
   }
 }
 
-/** Publish a kind:0 identity link so other users can resolve address → pubkey. */
+/**
+ * Publish kind:0 identity tag via publishNostrProfileWithPrivateKey.
+ * Internal-only — no direct external callers; identity publishing moves to /profile/edit (iteration 3).
+ * Called only by publishNostrProfile via delegation.
+ */
 export async function publishEthereumIdentityLink(
   privateKeyHex: string,
   address: `0x${string}`,
 ): Promise<void> {
   try {
-    const unsigned = {
-      kind: 0,
-      created_at: Math.floor(Date.now() / 1000),
-      content: "",
-      tags: [["i", `ethereum:${address.toLowerCase()}`]],
-    };
-    const signed = finalizeEvent(unsigned, hexToBytes(normalizePrivateKeyHex(privateKeyHex)));
-    const pool = getNostrPool();
-    await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+    const { publishNostrProfileWithPrivateKey } = await import("@/lib/nostr/profile");
+    await publishNostrProfileWithPrivateKey({}, address, privateKeyHex);
   } catch (err) {
     console.error("publishEthereumIdentityLink failed", err);
   }
