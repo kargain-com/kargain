@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
-import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
+import { cn } from "@/lib/utils";
+import { shortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
   row: MarketplaceListingRow;
@@ -27,7 +29,12 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
       href={`/marketplace/${row.tokenId}?chain=${row.chainId}`}
       className="group block focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
     >
-      <Card className="h-full overflow-hidden border-border-default bg-bg-card transition-colors duration-300 hover:border-accent-warm group-focus-visible:border-accent-warm">
+      <Card
+        className={cn(
+          "h-full overflow-hidden bg-bg-card transition-colors duration-300 hover:border-accent-warm group-focus-visible:border-accent-warm",
+          displayStatus === "VERIFIED" ? "border-accent-warm" : "border-border-default",
+        )}
+      >
         <div className="relative aspect-[16/10] w-full bg-bg-surface">
           {row.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -83,6 +90,22 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             {row.year != null && <span>{row.year}</span>}
             {row.mileageKm != null && <span>{row.mileageKm.toLocaleString()} km</span>}
           </div>
+          {displayStatus === "VERIFIED" && row.verifier.trim() !== "" && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <ShieldCheck size={12} strokeWidth={1.5} className="text-accent-warm shrink-0" aria-hidden />
+              <p className="font-sans text-xs text-text-secondary truncate">
+                Verified by{" "}
+                <Link
+                  href={`/profile/${row.verifier}`}
+                  className="text-text-primary hover:text-accent-warm transition-colors duration-200
+                             focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {shortAddress(row.verifier)}
+                </Link>
+              </p>
+            </div>
+          )}
           <p className="text-lg font-medium text-accent-warm transition-colors duration-200 group-hover:text-accent-warm group-focus-visible:text-accent-warm">
             {fiat} <span className="text-xs font-normal text-text-secondary">{cur}</span>
           </p>
