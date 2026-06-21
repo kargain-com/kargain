@@ -121,27 +121,29 @@ export function IdentityHeader({
           )}
         </div>
 
-        <span className="group inline-flex items-center gap-1.5 font-mono text-sm text-text-secondary">
-          <span title={wallet}>{navShortAddress(wallet)}</span>
-          <button
-            type="button"
-            onClick={() => void onCopy()}
-            className="rounded-sm opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-            aria-label={copied ? "Copied" : "Copy address"}
-          >
-            {copied ? (
-              <CheckCheck size={14} strokeWidth={1.5} />
-            ) : (
-              <Copy size={14} strokeWidth={1.5} />
-            )}
-          </button>
-        </span>
-
-        {isActiveVerifier && (
-          <span className="inline-block rounded-sm border border-accent-warm px-2 py-1 font-mono text-xs uppercase tracking-wider text-accent-warm">
-            KarPro · {categoryIndexToLabel(karProCategory ?? 5)}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="group inline-flex items-center gap-1.5 font-mono text-sm text-text-secondary">
+            <span title={wallet}>{navShortAddress(wallet)}</span>
+            <button
+              type="button"
+              onClick={() => void onCopy()}
+              className="rounded-sm opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              aria-label={copied ? "Copied" : "Copy address"}
+            >
+              {copied ? (
+                <CheckCheck size={14} strokeWidth={1.5} />
+              ) : (
+                <Copy size={14} strokeWidth={1.5} />
+              )}
+            </button>
           </span>
-        )}
+
+          {isActiveVerifier && (
+            <span className="inline-block shrink-0 rounded-sm border border-accent-warm px-2 py-1 font-mono text-xs uppercase tracking-wider text-accent-warm">
+              KarPro · {categoryIndexToLabel(karProCategory ?? 5)}
+            </span>
+          )}
+        </div>
 
         {proSlug && (
           <CrossLink href={`/pro/${proSlug}`}>View pro showroom</CrossLink>
