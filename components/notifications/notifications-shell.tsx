@@ -34,9 +34,11 @@ export function NotificationsShell() {
 
   return (
     <div className="mx-auto max-w-7xl xl:max-w-[80rem]">
-      <h1 className="font-display text-fluid-h2 font-medium text-text-primary">Notifications</h1>
+      <h1 className="mb-6 font-display text-fluid-h2 font-medium tracking-[-0.015em] leading-[1.15] text-text-primary">
+        Notifications
+      </h1>
 
-      <div className="mt-8 border-b border-border-default">
+      <div className="border-b border-border-default">
         <nav className="flex gap-6" aria-label="Notifications sections">
           <button
             type="button"

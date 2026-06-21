@@ -9,10 +9,12 @@ export const metadata: Metadata = {
 
 export default function NotificationsPage() {
   return (
-    <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
-      <Suspense fallback={null}>
-        <NotificationsShell />
-      </Suspense>
+    <div className="min-h-dvh bg-bg-primary text-text-primary">
+      <div className="mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8 pt-8 md:pt-12 pb-16">
+        <Suspense fallback={null}>
+          <NotificationsShell />
+        </Suspense>
+      </div>
     </div>
   );
 }
