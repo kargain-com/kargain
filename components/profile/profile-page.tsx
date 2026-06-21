@@ -211,15 +211,9 @@ export function ProfilePage({
   );
 
   const about = profile?.about?.trim() ?? "";
-  const memberSinceYear =
-    verifierProfile?.joinedAt != null && verifierProfile.joinedAt > 0
-      ? new Date(verifierProfile.joinedAt * 1000).toLocaleDateString("en", {
-          year: "numeric",
-        })
-      : null;
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16 text-text-primary">
+    <div className="mx-auto max-w-2xl pt-0 pb-16 text-text-primary">
       <div className="flex flex-col gap-8">
         <IdentityHeader
           wallet={wallet}
@@ -236,25 +230,6 @@ export function ProfilePage({
 
         {about.length > 0 && (
           <p className="text-base leading-relaxed text-text-secondary">{about}</p>
-        )}
-
-        {isActiveVerifier && (
-          <div className="flex flex-wrap gap-8 border-y border-border-default py-6">
-            <div>
-              <p className="font-mono text-fluid-h2 font-medium tabular-nums text-text-primary">
-                {verifierProfile?.verificationCount ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-text-secondary">verifications</p>
-            </div>
-            {memberSinceYear && (
-              <div>
-                <p className="font-mono text-fluid-h2 font-medium tabular-nums text-text-primary">
-                  {memberSinceYear}
-                </p>
-                <p className="mt-1 text-xs text-text-secondary">member since</p>
-              </div>
-            )}
-          </div>
         )}
 
         {ponderErr && (
