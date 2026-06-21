@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Inbox, PlusCircle } from "lucide-react";
+import { Bell, Inbox, PlusCircle, ShieldCheck } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 
@@ -11,6 +11,7 @@ import { ChainSelector } from "@/components/shell/chain-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
+import { cn } from "@/lib/utils";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function AppTopNav() {
@@ -36,7 +37,28 @@ export function AppTopNav() {
 
         <Link
           href="/verifiers"
-          className="hidden shrink-0 font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
+          aria-label="Verifiers"
+          className={cn(
+            "inline-flex md:hidden items-center justify-center h-9 w-9 rounded-sm",
+            "transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+            path === "/verifiers"
+              ? "text-text-primary"
+              : "text-text-secondary hover:text-text-primary"
+          )}
+        >
+          <ShieldCheck size={20} strokeWidth={1.5} aria-hidden />
+        </Link>
+
+        <Link
+          href="/verifiers"
+          className={cn(
+            "hidden shrink-0 font-sans text-sm transition-colors duration-200",
+            "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+            "md:inline-flex",
+            path === "/verifiers"
+              ? "text-text-primary"
+              : "text-text-secondary hover:text-text-primary"
+          )}
         >
           Verifiers
         </Link>
