@@ -4,14 +4,9 @@ import { hexToBytes } from "viem";
 import { getPublicKey } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 
-/** Default public relays — same set as listing comments. */
-export const NOSTR_RELAYS = [
-  "wss://relay.damus.io",
-  "wss://relay.nostr.band",
-  "wss://nos.lol",
-  "wss://relay.snort.social",
-  "wss://relay.primal.net",
-] as const;
+import { NOSTR_RELAYS } from "@/lib/nostr/relays";
+
+export { NOSTR_RELAYS };
 
 let poolInstance: SimplePool | null = null;
 

@@ -1,5 +1,7 @@
 "use server";
 
+import { fetchNostrProfileServer } from "@/lib/nostr/fetch-profile-server";
+
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
@@ -11,11 +13,15 @@ export type VerifierDirectoryEntry = {
   metadataURI: string;
   active: boolean;
   verificationCount: number;
+  joinedAt: number;
+  nostrPicture: string | null;
 };
 
 export type VerifierDirectoryResult = {
   verifiers: VerifierDirectoryEntry[];
 };
+
+type ParsedVerifierDirectoryEntry = Omit<VerifierDirectoryEntry, "nostrPicture">;
 
 type PonderVerifiersRawResponse = {
   verifiers: Array<{
@@ -27,12 +33,13 @@ type PonderVerifiersRawResponse = {
     metadataURI: string;
     active: boolean;
     verificationCount: number;
+    joinedAt?: string | number;
   }>;
 };
 
 function parseVerifierEntry(
   row: PonderVerifiersRawResponse["verifiers"][number],
-): VerifierDirectoryEntry | null {
+): ParsedVerifierDirectoryEntry | null {
   const address = (row.address || row.id || "").trim();
   if (!address.startsWith("0x")) return null;
   return {
@@ -43,6 +50,7 @@ function parseVerifierEntry(
     metadataURI: String(row.metadataURI ?? ""),
     active: row.active === true,
     verificationCount: Number(row.verificationCount ?? 0),
+    joinedAt: Number(row.joinedAt ?? 0),
   };
 }
 
@@ -55,8 +63,24 @@ export async function getVerifierDirectory(): Promise<VerifierDirectoryResult> {
     const data = (await res.json()) as PonderVerifiersRawResponse;
     const verifiers = (data.verifiers ?? [])
       .map(parseVerifierEntry)
-      .filter((v): v is VerifierDirectoryEntry => v != null);
-    return { verifiers };
+      .filter((v): v is ParsedVerifierDirectoryEntry => v != null);
+
+    const nostrSettled = await Promise.allSettled(
+      verifiers.map((v) => fetchNostrProfileServer(v.address)),
+    );
+
+    const nostrResults = nostrSettled.map((result) =>
+      result.status === "fulfilled"
+        ? result.value.picture?.trim() || null
+        : null,
+    );
+
+    return {
+      verifiers: verifiers.map((entry, i) => ({
+        ...entry,
+        nostrPicture: nostrResults[i] ?? null,
+      })),
+    };
   } catch {
     return { verifiers: [] };
   }
