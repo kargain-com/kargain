@@ -4,19 +4,14 @@ import { type Address, hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
 import { getOrCreateNostrKey, loadDecryptedKey } from "@/lib/nostr/key-manager";
+import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import {
   getNostrPool,
   NOSTR_RELAYS,
   nostrPubkeyFromPrivateKey,
-  resolveNostrPubkeyForEthereumAddress,
 } from "@/lib/nostr/nostr-client";
 
-export type NostrProfileData = {
-  name?: string;
-  about?: string;
-  picture?: string;
-  website?: string;
-};
+export type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
 function toWalletAddress(address: Address): `0x${string}` {
   return address as `0x${string}`;
@@ -27,33 +22,38 @@ function toPrivateKeyBytes(privateKey: string): Uint8Array {
   return hexToBytes(hex as `0x${string}`);
 }
 
-function parseProfileContent(content: string): NostrProfileData | null {
-  if (!content.trim()) return {};
-  try {
-    const raw: unknown = JSON.parse(content);
-    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
-    const obj = raw as Record<string, unknown>;
-    const result: NostrProfileData = {};
-    if (typeof obj.name === "string") result.name = obj.name;
-    if (typeof obj.about === "string") result.about = obj.about;
-    if (typeof obj.picture === "string") result.picture = obj.picture;
-    if (typeof obj.website === "string") result.website = obj.website;
-    return result;
-  } catch {
-    return {};
-  }
+function parseProfileContentOrEmpty(content: string): NostrProfileData {
+  return parseProfileContent(content) ?? {};
 }
 
-async function resolvePubkeyForAddress(walletAddress: Address): Promise<string | null> {
-  const address = toWalletAddress(walletAddress);
-  const storedKey = await loadDecryptedKey({
-    address,
-    signMessage: async () => "" as `0x${string}`,
-  });
-  if (storedKey) {
-    return nostrPubkeyFromPrivateKey(storedKey);
-  }
-  return resolveNostrPubkeyForEthereumAddress(address);
+async function fetchKind0ByAuthor(pubkey: string, maxWait: number): Promise<NostrProfileData | null> {
+  const pool = getNostrPool();
+  const events = await pool.querySync(
+    [...NOSTR_RELAYS],
+    { kinds: [0], authors: [pubkey], limit: 1 },
+    { maxWait },
+  );
+  if (events.length === 0) return null;
+  const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+  if (!latest) return null;
+  return parseProfileContentOrEmpty(latest.content);
+}
+
+async function fetchKind0ByEthereumTag(
+  address: `0x${string}`,
+  maxWait: number,
+): Promise<NostrProfileData | null> {
+  const pool = getNostrPool();
+  const tag = `ethereum:${address.toLowerCase()}`;
+  const events = await pool.querySync(
+    [...NOSTR_RELAYS],
+    { kinds: [0], "#i": [tag], limit: 20 },
+    { maxWait },
+  );
+  if (events.length === 0) return null;
+  const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+  if (!latest) return null;
+  return parseProfileContentOrEmpty(latest.content);
 }
 
 /** Fetch kind:0 profile for a wallet address from relays. Never throws. */
@@ -61,21 +61,17 @@ export async function fetchNostrProfile(
   walletAddress: Address,
 ): Promise<NostrProfileData | null> {
   try {
-    const pubkey = await resolvePubkeyForAddress(walletAddress);
-    if (!pubkey) return null;
-
-    const pool = getNostrPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], authors: [pubkey], limit: 1 },
-      { maxWait: 5000 },
-    );
-    if (events.length === 0) return null;
-
-    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-    if (!latest) return null;
-
-    return parseProfileContent(latest.content);
+    const address = toWalletAddress(walletAddress);
+    const storedKey = await loadDecryptedKey({
+      address,
+      signMessage: async () => "" as `0x${string}`,
+    });
+    if (storedKey) {
+      const pubkey = nostrPubkeyFromPrivateKey(storedKey);
+      const byAuthor = await fetchKind0ByAuthor(pubkey, 2500);
+      if (byAuthor) return byAuthor;
+    }
+    return fetchKind0ByEthereumTag(address, 3000);
   } catch {
     return null;
   }

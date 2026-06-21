@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, ShieldCheck } from "lucide-react";
+import { CheckCircle, Globe, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
@@ -13,6 +13,7 @@ import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ export type ProfilePageProps = {
   chainId: number;
   isActiveVerifier: boolean;
   verifierProfile: KarProVerifierProfile | null;
+  initialNostrProfile: NostrProfileData | null;
   passports: ProfileOwnedPassport[];
   listings: ProfileListing[];
   verifiedPassports: VerifierPassportRow[];
@@ -95,6 +97,50 @@ function evidenceHref(evidenceCID: string): string | null {
   return (
     arUriToHttp(trimmed) ??
     (trimmed.startsWith("http") ? trimmed : `https://arweave.net/${trimmed}`)
+  );
+}
+
+function normalizeWebsiteHref(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function formatWebsiteLabel(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    return new URL(withProtocol).hostname.replace(/^www\./, "");
+  } catch {
+    return trimmed.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  }
+}
+
+function ProfileBio({ about, website }: { about: string; website: string }) {
+  const href = website ? normalizeWebsiteHref(website) : null;
+  const label = website ? formatWebsiteLabel(website) : "";
+
+  if (!about && !href) return null;
+
+  return (
+    <div className="-mt-2 flex flex-col gap-2 sm:pl-[8.5rem]">
+      {about && (
+        <p className="font-sans text-sm leading-relaxed text-text-secondary">{about}</p>
+      )}
+      {href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-fit items-center gap-1.5 text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          <Globe size={14} strokeWidth={1.5} aria-hidden />
+          {label}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -178,6 +224,7 @@ export function ProfilePage({
   chainId,
   isActiveVerifier,
   verifierProfile,
+  initialNostrProfile,
   passports,
   listings,
   verifiedPassports,
@@ -188,7 +235,7 @@ export function ProfilePage({
   const router = useRouter();
   const searchParams = useSearchParams();
   const isOwner = useIsProfileOwner(wallet);
-  const { profile } = useNostrProfile(wallet);
+  const { profile } = useNostrProfile(wallet, initialNostrProfile);
 
   const tabs = useMemo(
     () => buildTabList(isOwner, isActiveVerifier),
@@ -211,6 +258,7 @@ export function ProfilePage({
   );
 
   const about = profile?.about?.trim() ?? "";
+  const website = profile?.website?.trim() ?? "";
   const memberSinceYear =
     verifierProfile?.joinedAt != null && verifierProfile.joinedAt > 0
       ? new Date(verifierProfile.joinedAt * 1000).toLocaleDateString("en", {
@@ -226,17 +274,11 @@ export function ProfilePage({
           karProName={verifierProfile?.name}
           karProCategory={verifierProfile?.category}
           isActiveVerifier={isActiveVerifier}
-          verificationCount={verifierProfile?.verificationCount}
-          stakeActiveSince={verifierProfile?.joinedAt}
           proSlug={verifierProfile?.slug}
-          showVerifierLink={false}
-          showProfileLink={false}
           showEditButton={isOwner}
         />
 
-        {about.length > 0 && (
-          <p className="text-base leading-relaxed text-text-secondary">{about}</p>
-        )}
+        <ProfileBio about={about} website={website} />
 
         {isActiveVerifier && (
           <div className="flex flex-wrap gap-8 border-y border-border-default py-6">

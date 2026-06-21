@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import { getAddress } from "viem";
 
 import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
@@ -11,11 +11,14 @@ import {
 import { getVerifierAttestations } from "@/app/actions/verifier-attestations";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { fetchNostrProfileServerFull } from "@/lib/nostr/fetch-profile-server";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+
+const getCachedVerifierProfile = cache(fetchKarProVerifierProfile);
 
 function parseProfileWallet(raw: string): `0x${string}` | null {
   const handle = decodeURIComponent(raw);
@@ -24,6 +27,24 @@ function parseProfileWallet(raw: string): `0x${string}` | null {
     return getAddress(handle);
   } catch {
     return null;
+  }
+}
+
+async function readIsActiveVerifier(
+  chainId: number,
+  wallet: `0x${string}`,
+): Promise<boolean> {
+  const staking = karProStakingAddress(chainId);
+  if (!staking) return false;
+  try {
+    return await getPublicClient(chainId).readContract({
+      address: staking,
+      abi: KarProStakingAbi,
+      functionName: "isActiveVerifier",
+      args: [wallet],
+    });
+  } catch {
+    return false;
   }
 }
 
@@ -36,7 +57,7 @@ export async function generateMetadata({
   const wallet = parseProfileWallet(raw);
   if (!wallet) return { title: "Profile" };
 
-  const verifierProfile = await fetchKarProVerifierProfile(wallet);
+  const verifierProfile = await getCachedVerifierProfile(wallet);
   const name = verifierProfile?.name?.trim() || navShortAddress(wallet);
   return { title: `${name} — Kargain` };
 }
@@ -52,20 +73,11 @@ export default async function PublicProfilePage({
 
   const chainId = DEFAULT_CHAIN_ID;
 
-  const staking = karProStakingAddress(chainId);
-  let isActiveVerifier = false;
-  if (staking) {
-    try {
-      isActiveVerifier = await getPublicClient(chainId).readContract({
-        address: staking,
-        abi: KarProStakingAbi,
-        functionName: "isActiveVerifier",
-        args: [wallet],
-      });
-    } catch {
-      /* remain false */
-    }
-  }
+  const [isActiveVerifier, profileData, initialNostrProfile] = await Promise.all([
+    readIsActiveVerifier(chainId, wallet),
+    getProfileData(wallet),
+    fetchNostrProfileServerFull(wallet),
+  ]);
 
   let ponderErr: string | null = null;
   let passports: {
@@ -84,9 +96,8 @@ export default async function PublicProfilePage({
   let attestations: Awaited<ReturnType<typeof getVerifierAttestations>>["attestations"] = [];
 
   try {
-    const [verifier, data, verified, attestationsResult] = await Promise.all([
-      isActiveVerifier ? fetchKarProVerifierProfile(wallet) : Promise.resolve(null),
-      getProfileData(wallet),
+    const [verifier, verified, attestationsResult] = await Promise.all([
+      isActiveVerifier ? getCachedVerifierProfile(wallet) : Promise.resolve(null),
       isActiveVerifier ? getPassportsByVerifier(wallet) : Promise.resolve([]),
       isActiveVerifier ? getVerifierAttestations(wallet) : Promise.resolve(null),
     ]);
@@ -95,12 +106,12 @@ export default async function PublicProfilePage({
     verifiedPassports = verified;
     attestations = attestationsResult?.attestations ?? [];
 
-    passports = (data.passports as Array<Record<string, unknown>>).map((p) => ({
+    passports = (profileData.passports as Array<Record<string, unknown>>).map((p) => ({
       tokenId: String(p.id ?? ""),
       status: (p.status as PassportStatus) ?? "UNVERIFIED",
       vin: typeof p.vin === "string" && p.vin ? p.vin : null,
     }));
-    listings = (data.listings as Array<Record<string, unknown>>)
+    listings = (profileData.listings as Array<Record<string, unknown>>)
       .filter((l) => l.active === true)
       .map((l) => ({
         tokenId: String(l.tokenId ?? l.id ?? ""),
@@ -120,6 +131,7 @@ export default async function PublicProfilePage({
           chainId={chainId}
           isActiveVerifier={isActiveVerifier}
           verifierProfile={verifierProfile}
+          initialNostrProfile={initialNostrProfile}
           passports={passports}
           listings={listings}
           verifiedPassports={verifiedPassports}

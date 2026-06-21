@@ -1,6 +1,12 @@
 import { SimplePool } from "nostr-tools/pool";
 
+import {
+  parseProfileContent,
+  type NostrProfileData,
+} from "@/lib/nostr/parse-profile-content";
 import { NOSTR_RELAYS } from "@/lib/nostr/relays";
+
+const SERVER_NOSTR_MAX_WAIT_MS = 3000;
 
 let poolInstance: SimplePool | null = null;
 
@@ -11,32 +17,28 @@ function getPool(): SimplePool {
   return poolInstance;
 }
 
-function parsePicture(content: string): string | null {
-  if (!content.trim()) return null;
-  try {
-    const raw: unknown = JSON.parse(content);
-    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const picture = (raw as Record<string, unknown>).picture;
-    return typeof picture === "string" ? picture : null;
-  } catch {
-    return null;
-  }
+async function fetchKind0ByEthereumTag(
+  address: `0x${string}`,
+): Promise<NostrProfileData | null> {
+  const pool = getPool();
+  const tag = `ethereum:${address.toLowerCase()}`;
+  const events = await pool.querySync(
+    [...NOSTR_RELAYS],
+    { kinds: [0], "#i": [tag], limit: 20 },
+    { maxWait: SERVER_NOSTR_MAX_WAIT_MS },
+  );
+  if (events.length === 0) return null;
+  const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+  if (!latest) return null;
+  return parseProfileContent(latest.content);
 }
 
-async function resolvePubkeyForAddress(
+/** Fetch kind:0 profile for a wallet address from relays (server). Never throws. */
+export async function fetchNostrProfileServerFull(
   address: `0x${string}`,
-): Promise<string | null> {
+): Promise<NostrProfileData | null> {
   try {
-    const pool = getPool();
-    const tag = `ethereum:${address.toLowerCase()}`;
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], "#i": [tag], limit: 20 },
-      { maxWait: 4500 },
-    );
-    if (events.length === 0) return null;
-    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-    return latest?.pubkey ?? null;
+    return await fetchKind0ByEthereumTag(address);
   } catch {
     return null;
   }
@@ -47,22 +49,9 @@ export async function fetchNostrProfileServer(
   address: `0x${string}`,
 ): Promise<{ picture: string | null }> {
   try {
-    const pubkey = await resolvePubkeyForAddress(address);
-    if (!pubkey) return { picture: null };
-
-    const pool = getPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], authors: [pubkey], limit: 1 },
-      { maxWait: 5000 },
-    );
-    if (events.length === 0) return { picture: null };
-
-    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-    if (!latest) return { picture: null };
-
-    const picture = parsePicture(latest.content);
-    return { picture: picture?.trim() || null };
+    const profile = await fetchKind0ByEthereumTag(address);
+    const picture = profile?.picture?.trim();
+    return { picture: picture || null };
   } catch {
     return { picture: null };
   }

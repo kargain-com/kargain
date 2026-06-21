@@ -13,16 +13,14 @@ import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
+const headerActionClassName = "min-h-9 h-9 px-3 py-1.5 text-xs";
+
 export interface IdentityHeaderProps {
   wallet: Address;
   karProName?: string;
   karProCategory?: number;
   isActiveVerifier?: boolean;
-  verificationCount?: number;
-  stakeActiveSince?: number;
   proSlug?: string;
-  showVerifierLink?: boolean;
-  showProfileLink?: boolean;
   showEditButton?: boolean;
 }
 
@@ -50,8 +48,6 @@ export function IdentityHeader({
   karProCategory,
   isActiveVerifier = false,
   proSlug,
-  showVerifierLink = false,
-  showProfileLink = false,
   showEditButton = true,
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
@@ -77,23 +73,51 @@ export function IdentityHeader({
     }
   }, [wallet]);
 
+  const showActions =
+    isOwner || (!isOwner && isConnected) || (isActiveVerifier && !isOwner);
+
   return (
     <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
       <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-border-default">
         <IdentityAvatar address={wallet} fill />
       </div>
 
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {showEnsSkeleton ? (
-            <span
-              className="inline-block h-6 w-32 animate-pulse rounded-sm bg-bg-card"
-              aria-hidden
-            />
-          ) : (
-            <h1 className="font-display text-2xl font-medium tracking-tight text-text-primary">
-              {headingName}
-            </h1>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {showEnsSkeleton ? (
+              <span
+                className="inline-block h-6 w-32 animate-pulse rounded-sm bg-bg-card"
+                aria-hidden
+              />
+            ) : (
+              <h1 className="font-display text-2xl font-medium tracking-tight text-text-primary">
+                {headingName}
+              </h1>
+            )}
+          </div>
+
+          {showActions && (
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {isOwner && showEditButton && (
+                <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
+                  <Link href="/profile/edit">Edit profile</Link>
+                </Button>
+              )}
+              {!isOwner && isConnected && (
+                <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
+                  <Link href="/messages">
+                    <MessageSquare size={14} strokeWidth={1.5} aria-hidden />
+                    Message
+                  </Link>
+                </Button>
+              )}
+              {isActiveVerifier && !isOwner && (
+                <Button variant="primary" size="sm" className={headerActionClassName} asChild>
+                  <Link href="/messages">Get verified</Link>
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -119,37 +143,8 @@ export function IdentityHeader({
           </span>
         )}
 
-        {(proSlug || showVerifierLink || showProfileLink) && (
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {proSlug && <CrossLink href={`/pro/${proSlug}`}>View pro showroom</CrossLink>}
-            {showVerifierLink && (
-              <CrossLink href={`/profile/${wallet}`}>View verifier page</CrossLink>
-            )}
-            {showProfileLink && <CrossLink href={`/profile/${wallet}`}>View profile</CrossLink>}
-          </div>
-        )}
-
-        {(isOwner || (!isOwner && isConnected) || (isActiveVerifier && !isOwner)) && (
-          <div className="flex flex-wrap gap-3 pt-1">
-            {isOwner && showEditButton && (
-              <Button variant="secondary" size="sm" asChild>
-                <Link href="/profile/edit">Edit profile</Link>
-              </Button>
-            )}
-            {!isOwner && isConnected && (
-              <Button variant="secondary" size="sm" asChild>
-                <Link href="/messages">
-                  <MessageSquare size={16} strokeWidth={1.5} aria-hidden />
-                  Message
-                </Link>
-              </Button>
-            )}
-            {isActiveVerifier && !isOwner && (
-              <Button variant="primary" size="sm" asChild>
-                <Link href="/messages">Get verified</Link>
-              </Button>
-            )}
-          </div>
+        {proSlug && (
+          <CrossLink href={`/pro/${proSlug}`}>View pro showroom</CrossLink>
         )}
       </div>
     </div>

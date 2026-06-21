@@ -140,11 +140,7 @@ export function ProfileEditClient() {
         karProName={verifierProfile?.name}
         karProCategory={verifierProfile?.category}
         isActiveVerifier={isActiveVerifier === true}
-        verificationCount={verifierProfile?.verificationCount}
-        stakeActiveSince={verifierProfile?.joinedAt}
         proSlug={verifierProfile?.slug}
-        showVerifierLink={false}
-        showProfileLink={false}
         showEditButton={false}
       />
 

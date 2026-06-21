@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { type Address } from "viem";
 
 import { fetchNostrProfile, type NostrProfileData } from "@/lib/nostr/profile";
@@ -14,51 +15,33 @@ export interface UseNostrProfileReturn {
 
 const noop = () => {};
 
-export function useNostrProfile(walletAddress: Address | undefined): UseNostrProfileReturn {
-  const [profile, setProfile] = useState<NostrProfileData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const [fetchCount, setFetchCount] = useState(0);
-  const isInitialAttemptRef = useRef(true);
-  const mountedRef = useRef(true);
+export function useNostrProfile(
+  walletAddress: Address | undefined,
+  initialProfile?: NostrProfileData | null,
+): UseNostrProfileReturn {
+  const serverPrefetched = initialProfile !== undefined;
 
-  const refetch = useCallback(() => {
-    setError(false);
-    setFetchCount((n) => n + 1);
-  }, []);
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ["nostr-profile", walletAddress],
+    queryFn: () => fetchNostrProfile(walletAddress!),
+    enabled: Boolean(walletAddress),
+    initialData: serverPrefetched ? (initialProfile ?? undefined) : undefined,
+    staleTime: serverPrefetched ? 5 * 60 * 1000 : 60 * 1000,
+    refetchOnMount: !serverPrefetched,
+  });
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!walletAddress) {
-      setProfile(null);
-      setLoading(false);
-      setError(false);
-      isInitialAttemptRef.current = true;
-      return;
-    }
-
-    setLoading(true);
-
-    void fetchNostrProfile(walletAddress).then((result) => {
-      if (!mountedRef.current) return;
-      setProfile(result);
-      if (result === null && isInitialAttemptRef.current) {
-        setError(true);
-      }
-      setLoading(false);
-      isInitialAttemptRef.current = false;
-    });
-  }, [walletAddress, fetchCount]);
+  const refetchProfile = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
   if (!walletAddress) {
     return { profile: null, loading: false, error: false, refetch: noop };
   }
 
-  return { profile, loading, error, refetch };
+  return {
+    profile: data ?? null,
+    loading: isPending && data == null,
+    error: isError,
+    refetch: refetchProfile,
+  };
 }
