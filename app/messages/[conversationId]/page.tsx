@@ -32,7 +32,7 @@ function ConversationBody() {
 
   useEffect(() => {
     if (!mounted) return;
-    if (!isConnected) router.replace("/");
+    if (!isConnected) router.replace("/messages");
   }, [mounted, isConnected, router]);
 
   if (!mounted || !isConnected) {
