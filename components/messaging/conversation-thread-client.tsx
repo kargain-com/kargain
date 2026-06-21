@@ -2,19 +2,52 @@
 
 import Link from "next/link";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { Input } from "@/components/ui/input";
+import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpMessages } from "@/hooks/use-xmtp-messages";
 import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
-import { formatRelativeTime, setLastSeen, shortAddress } from "@/lib/xmtp/helpers";
+import { formatRelativeTime, setLastSeen } from "@/lib/xmtp/helpers";
 
 type Props = {
   conversationId: string;
 };
+
+function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
+  if (!raw) return undefined;
+  try {
+    return getAddress(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function PeerAvatar({
+  address,
+  avatarUrl,
+}: {
+  address: `0x${string}` | undefined;
+  avatarUrl: string | null;
+}) {
+  if (avatarUrl) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={avatarUrl}
+        alt=""
+        className="h-8 w-8 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+
+  return <EnsAvatar address={address as Address | undefined} size={32} />;
+}
 
 export function ConversationThreadClient({ conversationId }: Props) {
   const { isConnected } = useAccount();
@@ -25,9 +58,12 @@ export function ConversationThreadClient({ conversationId }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const peerAddress =
-    conversations.find((conversation) => conversation.id === conversationId)?.peerAddress ??
-    "Unknown peer";
+  const peerAddressRaw = useMemo(
+    () => conversations.find((conversation) => conversation.id === conversationId)?.peerAddress,
+    [conversations, conversationId],
+  );
+  const peerAddress = parsePeerAddress(peerAddressRaw);
+  const { displayName, avatarUrl, isKarPro, profileHref } = usePeerIdentity(peerAddress);
 
   useEffect(() => {
     setLastSeen(conversationId);
@@ -87,9 +123,22 @@ export function ConversationThreadClient({ conversationId }: Props) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
-          <p className="font-mono text-sm text-accent-warm">{shortAddress(peerAddress)}</p>
-          <p className="text-[10px] text-text-secondary">End-to-end encrypted</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <Link href={profileHref} className="shrink-0">
+            <PeerAvatar address={peerAddress} avatarUrl={avatarUrl} />
+          </Link>
+          <div className="min-w-0">
+            <Link
+              href={profileHref}
+              className="block truncate font-sans text-sm font-medium text-text-primary transition-colors hover:text-accent-warm"
+            >
+              {displayName || "Unknown peer"}
+            </Link>
+            {isKarPro && (
+              <span className="font-mono text-[10px] uppercase text-accent-warm">KarPro</span>
+            )}
+            <p className="text-[10px] text-text-secondary">End-to-end encrypted</p>
+          </div>
         </div>
       </header>
 
@@ -111,17 +160,15 @@ export function ConversationThreadClient({ conversationId }: Props) {
             >
               <div
                 className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
-                  message.isMine
-                    ? "bg-bg-surface text-text-primary"
-                    : "bg-bg-surface text-text-primary"
+                  message.isMine ? "bg-white text-bg-primary" : "bg-bg-surface text-text-primary"
                 }`}
               >
-                <p className="mb-1 font-mono text-[10px] text-text-secondary">
-                  {shortAddress(message.senderAddress)}
-                </p>
                 <p className="whitespace-pre-wrap break-words">{message.content}</p>
               </div>
-              <time className="text-[10px] text-text-secondary" dateTime={message.sentAt.toISOString()}>
+              <time
+                className={`text-xs text-text-tertiary ${message.isMine ? "text-right" : "text-left"}`}
+                dateTime={message.sentAt.toISOString()}
+              >
                 {formatRelativeTime(message.sentAt)}
               </time>
             </li>

@@ -2,12 +2,92 @@
 
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { EnsAvatar } from "@/components/ui/ens-avatar";
+import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
-import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
+import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
 import { formatRelativeTime, getClientEthereumAddress, shortAddress } from "@/lib/xmtp/helpers";
+
+function parsePeerAddress(raw: string): `0x${string}` | undefined {
+  try {
+    return getAddress(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function PeerAvatar({
+  address,
+  avatarUrl,
+}: {
+  address: `0x${string}` | undefined;
+  avatarUrl: string | null;
+}) {
+  if (avatarUrl) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={avatarUrl}
+        alt=""
+        className="h-8 w-8 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+
+  return <EnsAvatar address={address as Address | undefined} size={32} />;
+}
+
+function ConversationInboxRow({ conversation }: { conversation: ConversationSummary }) {
+  const peerAddress = parsePeerAddress(conversation.peerAddress);
+  const { displayName, avatarUrl, isKarPro, isLoading } = usePeerIdentity(peerAddress);
+
+  return (
+    <li>
+      <Link
+        href={`/messages/${conversation.id}`}
+        className="block rounded-md border border-border-default bg-bg-surface p-4 transition-colors hover:border-border-hover"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <PeerAvatar address={peerAddress} avatarUrl={avatarUrl} />
+            <div className="min-w-0">
+              <p className="truncate font-sans text-sm font-medium text-text-primary">
+                {isLoading ? shortAddress(conversation.peerAddress) : displayName}
+              </p>
+              {isKarPro && (
+                <span className="font-mono text-[10px] uppercase text-accent-warm">KarPro</span>
+              )}
+            </div>
+          </div>
+          {conversation.lastMessageAt && (
+            <time
+              className="shrink-0 text-[10px] text-text-secondary"
+              dateTime={conversation.lastMessageAt.toISOString()}
+            >
+              {formatRelativeTime(conversation.lastMessageAt)}
+            </time>
+          )}
+        </div>
+        <p
+          className={`mt-2 line-clamp-2 text-sm ${
+            conversation.lastMessage ? "text-text-secondary" : "italic text-text-secondary"
+          }`}
+        >
+          {conversation.lastMessage ?? "No messages yet"}
+        </p>
+        {conversation.unreadCount > 0 && (
+          <span className="mt-2 inline-flex min-w-5 items-center justify-center rounded-full bg-accent-warm px-1.5 py-0.5 text-[10px] font-medium text-white">
+            {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+          </span>
+        )}
+      </Link>
+    </li>
+  );
+}
 
 function InboxSkeleton() {
   return (
@@ -83,36 +163,7 @@ export function MessageInboxClient() {
             </li>
           )}
           {conversations.map((conversation) => (
-            <li key={conversation.id}>
-              <Link
-                href={`/messages/${conversation.id}`}
-                className="block rounded-md border border-border-default bg-bg-surface p-4 transition-colors hover:border-border-hover"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-mono text-xs text-accent-warm">{shortAddress(conversation.peerAddress)}</p>
-                  {conversation.lastMessageAt && (
-                    <time
-                      className="shrink-0 text-[10px] text-text-secondary"
-                      dateTime={conversation.lastMessageAt.toISOString()}
-                    >
-                      {formatRelativeTime(conversation.lastMessageAt)}
-                    </time>
-                  )}
-                </div>
-                <p
-                  className={`mt-2 line-clamp-2 text-sm ${
-                    conversation.lastMessage ? "text-text-secondary" : "italic text-text-secondary"
-                  }`}
-                >
-                  {conversation.lastMessage ?? "No messages yet"}
-                </p>
-                {conversation.unreadCount > 0 && (
-                  <span className="mt-2 inline-flex min-w-5 items-center justify-center rounded-full bg-accent-warm px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
-                  </span>
-                )}
-              </Link>
-            </li>
+            <ConversationInboxRow key={conversation.id} conversation={conversation} />
           ))}
         </ul>
       )}
