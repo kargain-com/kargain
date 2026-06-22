@@ -21,7 +21,7 @@ export function SiteFooter() {
             Privacy
           </Link>
         </nav>
-        <p className="text-center text-xs text-text-secondary">© {new Date().getFullYear()} Kargain · Urban mobility for the next generation</p>
+        <p className="text-center text-xs text-text-secondary">© {new Date().getFullYear()} Kargain · Decentralized used-car marketplace</p>
       </div>
     </footer>
   );

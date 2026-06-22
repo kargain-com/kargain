@@ -6,7 +6,7 @@ Status: **complete** (Phases 1–5 + Basescan verify, `master` June 2026)
 
 **Scope:** On-chain behavior, metadata wire format (`tokenURI`), contract tests, deploy addresses.
 
-**Not in this file:** UI, Nostr/XMTP, iteration logs — see [DOCUMENTATION.md](./DOCUMENTATION.md) (local) for the full doc map.
+**Not in this file:** UI layout and component patterns — see [design-spec.md](./design-spec.md). Nostr/XMTP integration lives in app code under `lib/nostr/` and `lib/xmtp/`.
 
 ## 1. Philosophy
 

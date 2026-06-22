@@ -13,7 +13,6 @@ export const colors = {
 } as const;
 
 export const typography = {
-  fluidHero: "var(--text-fluid-hero)",
   fluidDisplay: "var(--text-fluid-display)",
   fluidH2: "var(--text-fluid-h2)",
   fluidBodyLg: "var(--text-fluid-body-lg)",

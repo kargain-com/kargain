@@ -66,7 +66,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Nostr** | Comments, watchlist, notification sync |
 | **XMTP** | End-to-end encrypted messaging |
 
-**Documentation:** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (contract spec) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
+**Documentation:** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (contract spec) · [design-spec.md](docs/design-spec.md) (UI patterns) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
 
 ## Tech stack
 
@@ -256,10 +256,24 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 
 ---
 
+## Governance and proposals
+
+Protocol standards and process live in a separate repo:
+[kargain-com/kips](https://github.com/kargain-com/kips).
+
+| Change type | Where to start |
+|-------------|----------------|
+| Protocol / standard (metadata, staking rules, interoperability) | Read [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md), then open a PR in `kips` |
+| App code (UI, indexer consumer, contracts in this repo) | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Contract behavior (implemented today) | [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) |
+| UI layout and tokens | [design-spec.md](docs/design-spec.md) |
+
+---
+
 ## Contributing
 
-This project is MIT licensed. PRs welcome.
-Open an issue before starting significant work.
+This project is MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, scope, and the KIP vs code split.
+Open an issue before significant work.
 
 ## License
 
