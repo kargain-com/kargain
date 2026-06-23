@@ -9,7 +9,7 @@ import { useAccount } from "wagmi";
 
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
-import { EnsAvatar } from "@/components/ui/ens-avatar";
+import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { cn } from "@/lib/utils";
 
 function NavTab({
@@ -63,7 +63,7 @@ function ProfileNavTab({
         )}
       >
         <span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full">
-          <EnsAvatar address={address} size={22} className="rounded-full" />
+          <IdentityAvatar address={address} size={22} className="rounded-full" />
         </span>
         <span className="max-w-full truncate">Profile</span>
       </Link>

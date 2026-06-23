@@ -73,8 +73,7 @@ export function IdentityHeader({
     }
   }, [wallet]);
 
-  const showActions =
-    isOwner || (!isOwner && isConnected) || (isActiveVerifier && !isOwner);
+  const showActions = isOwner || (!isOwner && isConnected);
 
   return (
     <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
@@ -112,9 +111,9 @@ export function IdentityHeader({
                   </Link>
                 </Button>
               )}
-              {isActiveVerifier && !isOwner && (
+              {!isOwner && isConnected && isActiveVerifier && (
                 <Button variant="primary" size="sm" className={headerActionClassName} asChild>
-                  <Link href="/messages">Get verified</Link>
+                  <Link href="/messages">Request verification</Link>
                 </Button>
               )}
             </div>
