@@ -25,7 +25,7 @@ Design principles (enforced in tokens): dark-first, flat surfaces (no shadows), 
 
 **Platform:** Kargain is a **multi-chain** product. Base Sepolia is the integration testnet — UI and flows should remain chain-aware (see [README.md](../README.md) § Multi-chain platform). Do not hardcode single-network assumptions in new components.
 
-**Locales:** English-first UI (`<html lang="en">`). Copy helpers in `lib/i18n/app-locales.ts` and `lib/i18n/marketplace-detail-locales.ts` select strings from `Accept-Language` on a few static pages (`/about`, `/terms`, `/privacy`). There is no `[locale]` route segment yet.
+**Locales:** English-first UI (`<html lang="en">`). Static pages `/about`, `/terms`, and `/privacy` use hardcoded English copy in their route modules. `lib/i18n/app-locales.ts` was removed (inconsistent MVP i18n). There is no `[locale]` route segment yet.
 
 **Public assets** (`public/`):
 
@@ -246,7 +246,7 @@ Implementation: [`components/shell/mobile-bottom-nav.tsx`](../components/shell/m
 | Messages | `Inbox` | `/messages` | Always visible; dot badge when wallet connected and unread |
 | FAB (center) | `Plus` | `/passport/new` | `h-12 w-12 rounded-full bg-bg-card border border-border-hover`, accent plus, `ring-2 ring-bg-primary`, `-mt-3`; icon-only |
 | Alerts | `Bell` | `/notifications` | Unread dot via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx); default tab = Alerts inbox |
-| Profile | avatar or `User` | `/profile/{address}` or `/profile/edit` | EnsAvatar when connected; "Connect" when disconnected |
+| Profile | avatar or `User` | `/profile/{address}` or `/profile/edit` | [`IdentityAvatar`](../components/identity/identity-avatar.tsx) when connected (Nostr → ENS → identicon); "Connect" when disconnected |
 
 Bar: `fixed bottom-0`, `border-t border-border-default`, `h-16`, safe-area inset padding, `grid-cols-5`.
 
@@ -313,21 +313,25 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 ### 4.11 Profile
 
-Implementation: [`components/identity/identity-header.tsx`](../components/identity/identity-header.tsx), [`components/ui/ens-avatar.tsx`](../components/ui/ens-avatar.tsx), [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx).
+Implementation: [`components/identity/identity-header.tsx`](../components/identity/identity-header.tsx), [`components/identity/identity-avatar.tsx`](../components/identity/identity-avatar.tsx), [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx), [`components/profile/profile-action-banner.tsx`](../components/profile/profile-action-banner.tsx), [`components/profile/karpro-status-widget.tsx`](../components/profile/karpro-status-widget.tsx).
 
 | Rule | Value |
 |------|-------|
 | Shape | **Always round** (`rounded-full`) for all users — private and KarPro |
-| Container | `h-28 w-28` (112px), `border border-border-default`, `overflow-hidden` |
+| Container | `h-24 w-24` (96px), `border border-border-default`, `overflow-hidden` |
 | Layout | Horizontal identity row: `flex-col gap-6 sm:flex-row sm:items-start`; compact owner/guest actions top-right of name row (`min-h-9 h-9 px-3 py-1.5 text-xs`) |
 | Address row | `navShortAddress` + copy button in a `group` (`gap-1.5`); KarPro pill inline on same row when active verifier — parent `flex flex-wrap items-center gap-x-3 gap-y-1` |
 | Copy visibility | Always visible on mobile; `sm:opacity-0 sm:group-hover:opacity-100` on desktop |
+| Guest actions | "Message" and **Request verification** only when visitor wallet is connected; disconnected guests see no header actions |
 | Personal copy | Nostr **about** and **website** render in `ProfileBio` on `profile-page.tsx` only — aligned with text column via `sm:pl-[8.5rem]`; not inside `IdentityHeader` |
-| Source priority | Nostr kind 0 `picture` → ENS avatar → address initials on `bg-bg-card` |
-| KarPro stats | Verifications count + member-since year in a border-y band on `profile-page.tsx` (KarPro active verifier only) |
-| KarPro distinction | Inline badge + stats band + tabs + pro showroom link — **not** avatar shape |
+| Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
+| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier only): verifications · active since · `0.05 ETH` staked (owner only) |
+| Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
+| KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
+| Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier (visible to all visitors); **Disputes** owner + active verifier only |
+| Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
-Do not vary avatar shape by role. **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, and mobile bottom nav.
+Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
 
 ---
 
@@ -338,6 +342,7 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Element | Rule |
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
+| `?to=` pre-fill | `/messages?to={address}` opens existing DM or creates a new conversation; URL param stripped on mount; invalid address, self, or disconnected wallet → normal inbox |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
@@ -368,8 +373,24 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx).
 
 - Page shell: `py-24`, `max-w-7xl`
-- Trust banner, actions panel, URI history (collapsed default), Nostr comments
-- Mobile: identity block before gallery
+- **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`
+- `PassportActionsPanel` wrapped with `id="passport-actions"` and `scroll-mt-24` for dispute anchor
+- Trust banner, URI history (collapsed default), Nostr comments
+- Mobile: identity block before gallery when not disputed; disputed layout leads with dispute section then gallery
+
+---
+
+### 4.15 Site footer
+
+Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-footer.tsx).
+
+| Property | Value |
+|----------|-------|
+| Layout | Compact one-liner: `py-6`, `border-t border-border-default` |
+| Copyright | `© {year} Kargain · MIT License` (mono `text-xs text-text-tertiary`) |
+| Links | About · Terms · Privacy · GitHub ↗ (`text-sm text-text-secondary`) |
+| Omitted | Verifiers (in top nav); no "Built on Base" tagline (multichain product) |
+| Mobile | `pb-20` on footer to clear bottom nav; `md:pb-0` on desktop |
 
 ---
 
@@ -432,7 +453,7 @@ Decorative icons: `aria-hidden="true"`. Meaningful icons-only controls: `aria-la
 - **Focus rings:** Visible on `:focus-visible` only. Use `--focus-ring` (2px accent-warm ring with 2px offset against `bg-primary`). Never remove focus outlines without a replacement.
 - **Contrast:** `text-text-primary` on `bg-bg-primary` must meet **WCAG 2.1 AA** (4.5:1 body, 3:1 large text). Secondary text on primary background must still meet 4.5:1 for body-sized copy; use `text-text-secondary` only for non-essential supporting text at `text-sm` or larger when contrast allows.
 - **Reduced motion:** All Framer Motion sequences must call `useReducedMotion()` and skip or shorten transforms.
-- **Language:** `lang="en"` on `<html>` in [`app/layout.tsx`](../app/layout.tsx). French copy on `/about`, `/terms`, `/privacy` via `lib/i18n/app-locales.ts` without locale routing.
+- **Language:** `lang="en"` on `<html>` in [`app/layout.tsx`](../app/layout.tsx). Static `/about`, `/terms`, `/privacy` are hardcoded English (no locale routing; `app-locales.ts` deleted).
 - **Images:** Meaningful `alt` text; decorative images `alt=""`. Brand logo uses CSS mask (`KargainLogo`), not `next/image`. Favicon is SVG (`/kargain-logo.svg`); OG image via `app/opengraph-image.tsx`.
 
 ---
