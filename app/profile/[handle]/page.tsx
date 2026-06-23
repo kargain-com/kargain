@@ -11,7 +11,6 @@ import {
 import { getVerifierAttestations } from "@/app/actions/verifier-attestations";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import { fetchNostrProfileServerFull } from "@/lib/nostr/fetch-profile-server";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -73,10 +72,9 @@ export default async function PublicProfilePage({
 
   const chainId = DEFAULT_CHAIN_ID;
 
-  const [isActiveVerifier, profileData, initialNostrProfile] = await Promise.all([
+  const [isActiveVerifier, profileData] = await Promise.all([
     readIsActiveVerifier(chainId, wallet),
     getProfileData(wallet),
-    fetchNostrProfileServerFull(wallet),
   ]);
 
   let ponderErr: string | null = null;
@@ -131,7 +129,7 @@ export default async function PublicProfilePage({
           chainId={chainId}
           isActiveVerifier={isActiveVerifier}
           verifierProfile={verifierProfile}
-          initialNostrProfile={initialNostrProfile}
+          initialNostrProfile={null}
           passports={passports}
           listings={listings}
           verifiedPassports={verifiedPassports}

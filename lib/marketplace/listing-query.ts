@@ -130,6 +130,28 @@ function parseOptionalInt(raw: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** True when /listings can use indexed SQL pagination instead of loading all rows. */
+export function isDefaultListingsBrowse(
+  filters: ListingFilterQuery,
+  seller?: string | null,
+): boolean {
+  if (seller) return false;
+  if (filters.search) return false;
+  if (filters.make || filters.model) return false;
+  if (filters.yearMin != null || filters.yearMax != null) return false;
+  if (filters.mileageMin != null || filters.mileageMax != null) return false;
+  if (filters.priceMin || filters.priceMax) return false;
+  if (filters.fuelTypes && filters.fuelTypes.length > 0) return false;
+  if (filters.bodyTypes && filters.bodyTypes.length > 0) return false;
+  if (filters.transmissions && filters.transmissions.length > 0) return false;
+  if (filters.conditions && filters.conditions.length > 0) return false;
+  if (filters.vehicleTypes && filters.vehicleTypes.length > 0) return false;
+  if (filters.location || filters.colour) return false;
+  if (filters.status && filters.status !== "all") return false;
+  if (filters.sort && filters.sort !== "newest") return false;
+  return true;
+}
+
 export function parseListingFilterQuery(
   query: Record<string, string | undefined>,
 ): ListingFilterQuery {

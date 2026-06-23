@@ -247,18 +247,20 @@ export async function fetchListingFacets() {
 }
 
 export async function loadFavoriteListingCards(tokenIds: string[]) {
-  const rows: MarketplaceListingRow[] = [];
-  for (const tokenId of tokenIds) {
-    try {
-      const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
-        next: { revalidate: 30 },
-      });
-      if (!res.ok) continue;
-      const listing = (await res.json()) as PonderListing;
-      if (listing.active) rows.push(mapPonderListingToRow(listing));
-    } catch {
-      /* skip */
-    }
-  }
-  return rows;
+  const rows = await Promise.all(
+    tokenIds.map(async (tokenId) => {
+      try {
+        const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
+          next: { revalidate: 30 },
+        });
+        if (!res.ok) return null;
+        const listing = (await res.json()) as PonderListing;
+        if (!listing.active) return null;
+        return mapPonderListingToRow(listing);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return rows.filter((row): row is MarketplaceListingRow => row != null);
 }

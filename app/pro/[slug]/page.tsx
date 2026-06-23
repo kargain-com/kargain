@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { Clock } from "lucide-react";
 
 import { getProShowroomData } from "@/app/actions/pro-showroom";
@@ -16,6 +17,8 @@ import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const CONTAINER =
   "mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8";
+
+const loadProShowroom = cache(getProShowroomData);
 
 function formatChainDate(timestampSec: string): string {
   const sec = Number.parseInt(timestampSec, 10);
@@ -112,7 +115,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getProShowroomData(slug);
+  const data = await loadProShowroom(slug);
   if (!data) return { title: "Pro showroom" };
 
   if (!data.isActiveVerifier) {
@@ -138,7 +141,7 @@ export default async function ProShowroomPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await getProShowroomData(slug);
+  const data = await loadProShowroom(slug);
   if (!data) notFound();
 
   const { address, verifier, profileMetadata } = data;

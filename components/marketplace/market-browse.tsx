@@ -21,16 +21,10 @@ import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
 type MarketBrowseProps = {
   initialChainId: number;
-  activeListings?: number;
-  verifiedCount?: number;
-  activeVerifiers?: number;
 };
 
 export function MarketBrowse({
   initialChainId: _initialChainId,
-  activeListings = 0,
-  verifiedCount = 0,
-  activeVerifiers = 0,
 }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
   const { ethUsd, eurUsd } = useDisplayCurrency();
@@ -85,17 +79,6 @@ export function MarketBrowse({
 
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
-      {(activeListings > 0 || verifiedCount > 0 || activeVerifiers > 0) && (
-        <div className="mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8 pt-4 pb-0">
-          <p className="font-mono text-xs text-text-tertiary tabular-nums">
-            {activeListings > 0 ? `${activeListings} listings` : null}
-            {activeListings > 0 && verifiedCount > 0 ? " · " : null}
-            {verifiedCount > 0 ? `${verifiedCount} verified` : null}
-            {(activeListings > 0 || verifiedCount > 0) && activeVerifiers > 0 ? " · " : null}
-            {activeVerifiers > 0 ? `${activeVerifiers} active verifiers` : null}
-          </p>
-        </div>
-      )}
       <MarketFilterBar />
       <MarketFilterChips />
 

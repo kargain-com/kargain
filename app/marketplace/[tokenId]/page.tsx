@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
-import { fetchListingDetail, fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
+import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 export async function generateMetadata({
@@ -16,7 +16,7 @@ export async function generateMetadata({
   const { tokenId: raw } = await params;
   if (!/^\d+$/.test(raw)) return { title: "Listing" };
 
-  const result = await fetchPassportDetail(raw, parseChainParam(undefined));
+  const result = await fetchPassportDetailCached(raw, parseChainParam(undefined));
   if (result.ok && result.metadata?.name) {
     return { title: result.metadata.name };
   }
@@ -69,7 +69,10 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const result = await fetchPassportDetail(raw, chainId);
+  const [result, listingRaw] = await Promise.all([
+    fetchPassportDetailCached(raw, chainId),
+    fetchListingDetail(raw),
+  ]);
 
   if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
     return (
@@ -123,7 +126,6 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const listingRaw = await fetchListingDetail(raw);
   const listingActive =
     listingRaw &&
     typeof listingRaw === "object" &&

@@ -22,6 +22,7 @@ import {
   computeListingFacets,
   matchesListingFilters,
   parseListingFilterQuery,
+  isDefaultListingsBrowse,
   sortEnrichedListings,
   type EnrichedListingForFilter,
   type ListingFilterQuery,
@@ -216,6 +217,89 @@ function filterAndSortListings(
   return sortEnrichedListings(filtered, filters.sort ?? "newest", verifiedFirst, rates);
 }
 
+async function loadDefaultBrowsePage(
+  limit: number,
+  offset: number,
+  verifiedFirst: boolean,
+) {
+  const orderBy = verifiedFirst
+    ? [STATUS_ORDER, desc(marketplaceListing.listedAt)]
+    : [desc(marketplaceListing.listedAt)];
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        id: marketplaceListing.id,
+        tokenId: marketplaceListing.tokenId,
+        seller: marketplaceListing.seller,
+        fiatPrice1e8: marketplaceListing.fiatPrice1e8,
+        fiatCurrency: marketplaceListing.fiatCurrency,
+        active: marketplaceListing.active,
+        listedAt: marketplaceListing.listedAt,
+        soldAt: marketplaceListing.soldAt,
+        buyer: marketplaceListing.buyer,
+        status: passport.status,
+        verifier: passport.verifier,
+        vin: passport.vin,
+        make: passport.make,
+        model: passport.model,
+        year: passport.year,
+        mileageKm: passport.mileageKm,
+        fuelType: passport.fuelType,
+        bodyType: passport.bodyType,
+        transmission: passport.transmission,
+        condition: passport.condition,
+        vehicleType: passport.vehicleType,
+        colour: passport.colour,
+        locationLabel: passport.locationLabel,
+        tokenUri: passport.tokenUri,
+        coverPhotoUri: passport.coverPhotoUri,
+        duplicateVin: passport.duplicateVin,
+      })
+      .from(marketplaceListing)
+      .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
+      .where(eq(marketplaceListing.active, true))
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(marketplaceListing)
+      .where(eq(marketplaceListing.active, true)),
+  ]);
+
+  const listings = rows.map((row) => ({
+    id: row.id,
+    tokenId: row.tokenId,
+    seller: row.seller,
+    fiatPrice1e8: row.fiatPrice1e8,
+    fiatCurrency: row.fiatCurrency,
+    active: row.active,
+    listedAt: row.listedAt,
+    soldAt: row.soldAt,
+    buyer: row.buyer,
+    passportStatus: row.status ?? "UNVERIFIED",
+    verifier: row.verifier ?? "",
+    vin: row.vin ?? "",
+    make: row.make ?? "",
+    model: row.model ?? "",
+    year: row.year ?? 0,
+    mileageKm: row.mileageKm ?? 0,
+    fuelType: row.fuelType ?? "",
+    bodyType: row.bodyType ?? "",
+    transmission: row.transmission ?? "",
+    condition: row.condition ?? "",
+    vehicleType: row.vehicleType ?? "",
+    colour: row.colour ?? "",
+    locationLabel: row.locationLabel ?? "",
+    tokenUri: row.tokenUri ?? "",
+    coverPhotoUri: row.coverPhotoUri ?? "",
+    duplicateVin: row.duplicateVin ?? false,
+  }));
+
+  return { listings, total: Number(totalRow[0]?.total ?? 0) };
+}
+
 app.get("/listings", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
@@ -245,6 +329,18 @@ app.get("/listings", async (c) => {
     ethUsdRate: c.req.query("ethUsdRate"),
     sort: c.req.query("sort"),
   });
+
+  if (isDefaultListingsBrowse(filters, seller)) {
+    const { listings, total } = await loadDefaultBrowsePage(limit, offset, verifiedFirst);
+    return c.json(
+      jsonBody({
+        listings,
+        total,
+        page,
+        limit,
+      }),
+    );
+  }
 
   const conditions = [eq(marketplaceListing.active, true)];
   if (seller) {

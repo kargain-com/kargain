@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
   fetchArweaveMetadata,
@@ -206,20 +208,28 @@ export async function fetchPassportDetail(
   const parsed = parsePonderPassport(raw);
   if (!parsed) return { ok: false, error: "PONDER_UNAVAILABLE" };
 
-  const status = await confirmStatusOnChain(tokenId, chainId, parsed.status);
+  const tokenUri = parsed.tokenUri.trim();
+  const [status, metaResult] = await Promise.all([
+    confirmStatusOnChain(tokenId, chainId, parsed.status),
+    tokenUri
+      ? fetchArweaveMetadata(tokenUri, chainId)
+      : Promise.resolve({ ok: false as const }),
+  ]);
   const passport: PonderPassportDetail = { ...parsed, status };
 
-  if (!passport.tokenUri.trim()) {
+  if (!tokenUri) {
     return { ok: true, passport, metadata: null, metadataError: true };
   }
 
-  const metaResult = await fetchArweaveMetadata(passport.tokenUri, chainId);
   if (!metaResult.ok) {
     return { ok: true, passport, metadata: null, metadataError: true };
   }
 
   return { ok: true, passport, metadata: metaResult.metadata };
 }
+
+/** Per-request dedupe for generateMetadata + page render. */
+export const fetchPassportDetailCached = cache(fetchPassportDetail);
 
 export async function fetchListingDetail(tokenId: string) {
   try {

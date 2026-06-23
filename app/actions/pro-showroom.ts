@@ -146,23 +146,10 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     return null;
   }
 
-  let isActiveVerifier = false;
   const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
-  if (staking) {
-    try {
-      isActiveVerifier = await getPublicClient(DEFAULT_CHAIN_ID).readContract({
-        address: staking,
-        abi: KarProStakingAbi,
-        functionName: "isActiveVerifier",
-        args: [address],
-      });
-    } catch {
-      /* remain false */
-    }
-  }
-
   const revalidate = { next: { revalidate: 30 } as const };
 
+  let isActiveVerifier = false;
   let verifier: VerifierRow | null = null;
   let verifiedPassports: ProShowroomPassport[] = [];
   let verifiedPassportTotal = 0;
@@ -171,18 +158,25 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   let attestationTotal = 0;
 
   try {
-    const [verifierRes, passportsRes, listingsRes, attestationsRes] = await Promise.all([
-      fetch(`${PONDER_URL}/verifiers/${address}`, revalidate),
-      fetch(
-        `${PONDER_URL}/passports?verifier=${address}&limit=100`,
-        revalidate,
-      ),
-      fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
-      fetch(
-        `${PONDER_URL}/verifiers/${address}/attestations?limit=100`,
-        revalidate,
-      ),
-    ]);
+    const [activeOnChain, verifierRes, passportsRes, listingsRes, attestationsRes] =
+      await Promise.all([
+        staking
+          ? getPublicClient(DEFAULT_CHAIN_ID)
+              .readContract({
+                address: staking,
+                abi: KarProStakingAbi,
+                functionName: "isActiveVerifier",
+                args: [address],
+              })
+              .catch(() => false)
+          : Promise.resolve(false),
+        fetch(`${PONDER_URL}/verifiers/${address}`, revalidate),
+        fetch(`${PONDER_URL}/passports?verifier=${address}&limit=100`, revalidate),
+        fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
+        fetch(`${PONDER_URL}/verifiers/${address}/attestations?limit=100`, revalidate),
+      ]);
+
+    isActiveVerifier = activeOnChain === true;
 
     if (verifierRes.ok) {
       const raw = (await verifierRes.json()) as unknown;

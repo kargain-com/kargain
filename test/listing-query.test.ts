@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   computeListingFacets,
+  isDefaultListingsBrowse,
   matchesListingFilters,
   sortEnrichedListings,
   type EnrichedListingForFilter,
@@ -256,5 +257,17 @@ describe("computeListingFacets", () => {
     assert.deepEqual(facets.conditions, ["Excellent", "Good"]);
     assert.deepEqual(facets.vehicleTypes, ["Car", "Motorcycle"]);
     assert.deepEqual(facets.years, [2019, 2021]);
+  });
+});
+
+describe("isDefaultListingsBrowse", () => {
+  it("is true for unfiltered newest browse", () => {
+    assert.equal(isDefaultListingsBrowse({ sort: "newest", status: "all" }), true);
+  });
+
+  it("is false when filters or seller are set", () => {
+    assert.equal(isDefaultListingsBrowse({ sort: "newest", status: "all", make: "Honda" }), false);
+    assert.equal(isDefaultListingsBrowse({ sort: "price_asc", status: "all" }), false);
+    assert.equal(isDefaultListingsBrowse({ sort: "newest", status: "all" }, "0xabc"), false);
   });
 });
