@@ -18,6 +18,7 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
+import { shortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = {
   tokenId: string;
@@ -255,6 +256,46 @@ function AttestationRow({
   );
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function formatVehicleLabel(year: number, make: string, model: string): string {
+  const parts: string[] = [];
+  if (year > 0) parts.push(String(year));
+  const makeTrimmed = make.trim();
+  const modelTrimmed = model.trim();
+  if (makeTrimmed) parts.push(makeTrimmed);
+  if (modelTrimmed) parts.push(modelTrimmed);
+  return parts.join(" ");
+}
+
+function formatRelativeDisputeTime(timestampSec: number): string {
+  if (!Number.isFinite(timestampSec) || timestampSec <= 0) return "";
+
+  const date = new Date(timestampSec * 1000);
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  if (diffMs < 0) return "just now";
+
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(date);
+}
+
+function isNonemptyDisputer(address: string): boolean {
+  const trimmed = address.trim();
+  return trimmed.length > 0 && trimmed.toLowerCase() !== ZERO_ADDRESS;
+}
+
 function DisputeCard({
   dispute,
   chainId,
@@ -262,6 +303,11 @@ function DisputeCard({
   dispute: DisputedPassportRow;
   chainId: number;
 }) {
+  const vehicleLabel = formatVehicleLabel(dispute.year, dispute.make, dispute.model);
+  const reason = dispute.disputeReason.trim();
+  const openedLabel = formatRelativeDisputeTime(dispute.disputeOpenedAt);
+  const showDisputer = isNonemptyDisputer(dispute.lastDisputer);
+
   return (
     <div className="space-y-3 rounded-sm border border-border-default p-4">
       <div className="flex items-start justify-between gap-3">
@@ -276,6 +322,29 @@ function DisputeCard({
         </div>
         <span className="font-mono text-xs text-text-tertiary">#{dispute.tokenId}</span>
       </div>
+
+      {vehicleLabel && (
+        <p className="font-sans text-sm text-text-primary">{vehicleLabel}</p>
+      )}
+
+      {reason && (
+        <p className="line-clamp-2 font-sans text-sm text-text-secondary">
+          &ldquo;{reason}&rdquo;
+        </p>
+      )}
+
+      {(openedLabel || showDisputer) && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {openedLabel && (
+            <span className="font-mono text-xs text-text-tertiary">{openedLabel}</span>
+          )}
+          {showDisputer && (
+            <span className="font-mono text-xs text-text-secondary">
+              Disputed by {shortAddress(dispute.lastDisputer)}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3 border-t border-border-default pt-1">
         <Link
