@@ -281,4 +281,4 @@ Indexer env and VPS reindex after schema changes: [VPS-PONDER-REINDEX.md](./VPS-
 
 Contract tests: `pnpm hardhat test` · trust helpers: `pnpm test:trust` · Ponder handler unit tests (indexer): `pnpm test:ponder`
 
-**Deferred (contract / product, Phase 6+):** `buyWithUsdc` UI; on-chain evidence requirements for `reportDiscrepancy`.
+**Deferred (contract / product, Phase 6+):** on-chain evidence requirements for `reportDiscrepancy`. (`buyWithUsdc` UI shipped June 2026 — see AGENTS milestone.)

@@ -289,6 +289,12 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **State:** URL-synced via [`use-market-filters.ts`](../hooks/use-market-filters.ts). Facets from `GET /listings/facets` (Ponder).
 
+**Display currency:** Global preference (USD / EUR / ETH) via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + Chainlink feeds (`use-chainlink-rates.ts`) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards. Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip).
+
+**Price filter + sort (FX):** User-entered min/max use the active display currency at apply time; `priceCurrency` is persisted in the URL when bounds are set (e.g. `?priceMin=4&priceCurrency=ETH`). Live Chainlink rates (`eurUsdRate`, `ethUsdRate`) are sent per-request to Ponder — not stored in URL. Shared normalization in [`price-normalize.ts`](../lib/marketplace/price-normalize.ts); filter/sort logic in [`listing-query.ts`](../lib/marketplace/listing-query.ts). Non-USD price apply and price-asc/desc sort are gated until rates load.
+
+**Price chip labels:** Active filter chips use URL `priceCurrency`, not the live display preference — so bookmarked filters keep semantic meaning if display currency changes.
+
 **Removed:** `market-filters.tsx` sidebar, `marketplace-filter-controls.tsx` — do not reintroduce duplicate filter UIs.
 
 **Known issue:** Desktop filter row uses `overflow-hidden`; controls may clip around ~768px — prefer wrap or horizontal scroll if extending.
@@ -391,6 +397,23 @@ Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-fo
 | Links | About · Terms · Privacy · GitHub ↗ (`text-sm text-text-secondary`) |
 | Omitted | Verifiers (in top nav); no "Built on Base" tagline (multichain product) |
 | Mobile | `pb-20` on footer to clear bottom nav; `md:pb-0` on desktop |
+
+---
+
+### 4.16 Marketplace listing detail
+
+Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx).
+
+| Rule | Value |
+|------|-------|
+| Buy panel | Price in seller fiat + optional display-currency hint; ETH / USDC payment toggle |
+| Disclosure | Bordered panel: seller receives, you pay, rate at settlement, platform fee — method-specific rows |
+| USDC buy | ERC-20 `approve` then `buyWithUsdc`; disabled when USDC not configured on chain |
+| Seller delist | Ghost button with Trash2 icon; seller-only when listing active; phases: Confirm in wallet → Delisting… |
+| Seller manage | Link to `/marketplace/{tokenId}/edit` when viewer is seller |
+| Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
+
+Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 
 ---
 
