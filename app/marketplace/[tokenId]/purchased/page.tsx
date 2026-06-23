@@ -1,10 +1,8 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
-import { getDetailStrings, pickDetailLocale } from "@/lib/i18n/marketplace-detail-locales";
 import { DEFAULT_CHAIN_ID, getViemChain } from "@/lib/web3/supported-chains";
 
 function PurchasedFallback() {
@@ -45,8 +43,6 @@ async function MarketplacePurchasedInner({
     notFound();
   }
 
-  const h = await headers();
-  const t = getDetailStrings(pickDetailLocale(h.get("accept-language")));
   const scan = tx
     ? `${getViemChain(DEFAULT_CHAIN_ID)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
     : null;
@@ -54,8 +50,10 @@ async function MarketplacePurchasedInner({
   return (
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
       <div className="mx-auto max-w-md space-y-6 text-center">
-        <h1 className="text-2xl font-medium text-accent-warm">{t.purchasedTitle}</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">{t.purchasedSubtitle}</p>
+        <h1 className="text-2xl font-medium text-accent-warm">You own this passport</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          The NFT is in your wallet. Passport history will update as the indexer catches up.
+        </p>
         {scan && (
           <p>
             <a
@@ -70,10 +68,10 @@ async function MarketplacePurchasedInner({
         )}
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-center">
           <Button asChild>
-            <Link href={`/marketplace/${tokenId}`}>{t.viewPassport}</Link>
+            <Link href={`/marketplace/${tokenId}`}>View passport</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/">{t.backMarketplace}</Link>
+            <Link href="/">Back to marketplace</Link>
           </Button>
         </div>
       </div>

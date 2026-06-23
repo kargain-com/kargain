@@ -14,13 +14,10 @@ import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
-
-type T = ReturnType<typeof getDetailStrings>;
 
 type Props = {
   tokenId: string;
@@ -28,7 +25,6 @@ type Props = {
   passport: PonderPassportDetail;
   metadata: PassportMetadata | null;
   metadataError?: boolean;
-  labels: T;
   listing?: {
     active: boolean;
     fiatPrice1e8: string;
@@ -68,14 +64,12 @@ type DisputeStatusSectionProps = {
   disputeBannerText: string;
   lastDisputer: string;
   disputeWithdrawn: boolean;
-  labels: T;
 };
 
 function DisputeStatusSection({
   disputeBannerText,
   lastDisputer,
   disputeWithdrawn,
-  labels: t,
 }: DisputeStatusSectionProps) {
   const hasDisputer = isValidWalletAddress(lastDisputer);
 
@@ -114,7 +108,7 @@ function DisputeStatusSection({
           {hasDisputer && (
             <div className="flex flex-col gap-1.5">
               <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
-                {t.disputeOpenedBy}
+                Opened by
               </p>
               <EnsWalletLink
                 address={lastDisputer}
@@ -133,7 +127,7 @@ function DisputeStatusSection({
                 <Info size={20} strokeWidth={1.5} aria-hidden />
               </div>
               <p className="font-sans text-sm font-normal leading-[1.5] text-text-secondary">
-                {t.disputeWithdrawnSignal}
+                Dispute withdrawn (signal only — status stays DISPUTED until a verifier resolves).
               </p>
             </div>
           )}
@@ -154,7 +148,7 @@ function DisputeStatusSection({
                     href="#passport-records"
                     className="text-accent-warm link-underline"
                   >
-                    {t.buyRiskViewTimeline}
+                    View dispute timeline
                   </Link>
                 </p>
               </div>
@@ -196,14 +190,14 @@ export function PassportDetailView({
   passport,
   metadata,
   metadataError,
-  labels: t,
   listing = null,
 }: Props) {
   const title = buildTitle(metadata, tokenId);
   const isDisputed = passport.status === "DISPUTED";
   const disputeBannerText = getDisputeBannerText({
     disputeReason: passport.disputeReason,
-    fallback: t.discrepancyBanner,
+    fallback:
+      "Community review in progress: one or more discrepancy reports were submitted for this passport. Please review records and evidence below.",
   });
   const disputeWithdrawn =
     passport.disputeWithdrawnAt !== "0" &&
@@ -219,7 +213,6 @@ export function PassportDetailView({
     <PassportPhotoGallery
       photos={metadata?.photos ?? []}
       chainId={chainId}
-      labels={{ galleryPrev: t.galleryPrev, galleryNext: t.galleryNext }}
     />
   );
 
@@ -227,7 +220,7 @@ export function PassportDetailView({
     <div className="mt-8 flex flex-col gap-2 lg:flex lg:flex-row lg:items-end lg:justify-between">
       <div className="space-y-3">
         <p className="font-mono text-xs uppercase tracking-widest text-text-tertiary">
-          {t.passport} #{tokenId}
+          Passport #{tokenId}
         </p>
         <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
           {title}
@@ -235,7 +228,7 @@ export function PassportDetailView({
         <PassportStatusBadge status={passport.status} />
       </div>
       <p className="font-sans text-sm text-text-secondary">
-        {t.onChainOwner}{" "}
+        On-chain owner{" "}
         <EnsWalletLink
           address={passport.owner}
           href={`/profile/${passport.owner}`}
@@ -251,7 +244,7 @@ export function PassportDetailView({
         href={`/?chain=${chainId}`}
         className="font-sans text-sm text-accent-warm link-underline"
       >
-        ← {t.backMarketplace}
+        ← Back to marketplace
       </Link>
 
       {isDisputed && (
@@ -259,7 +252,6 @@ export function PassportDetailView({
           disputeBannerText={disputeBannerText}
           lastDisputer={passport.lastDisputer}
           disputeWithdrawn={disputeWithdrawn}
-          labels={t}
         />
       )}
 
@@ -274,7 +266,7 @@ export function PassportDetailView({
           {metadata?.description && (
             <section className="space-y-2">
               <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-                {t.description}
+                Description
               </h2>
               <p className="font-sans text-base font-normal leading-[1.6] text-text-primary">
                 {metadata.description}
@@ -284,7 +276,7 @@ export function PassportDetailView({
 
           <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
             <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-              {t.attributes}
+              Attributes
             </h2>
             <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
           </section>
@@ -294,7 +286,6 @@ export function PassportDetailView({
             passportOwner={passport.owner}
             lastDisputer={passport.lastDisputer}
             disputeReason={passport.disputeReason}
-            labels={t}
           />
 
           {hasVerifier && (
@@ -327,7 +318,6 @@ export function PassportDetailView({
               uriHistory={passport.uriHistory}
               verificationResetCount={passport.verificationResetCount}
               lastVerificationResetAt={passport.lastVerificationResetAt}
-              labels={t}
             />
           </div>
 
@@ -353,7 +343,10 @@ export function PassportDetailView({
               className="rounded-md border border-accent-warm/40 bg-bg-surface p-4"
               role="status"
             >
-              <p className="font-sans text-sm text-text-primary">{t.fixedAfterDisputeBanner}</p>
+              <p className="font-sans text-sm text-text-primary">
+                Fixed after dispute — awaiting re-verification. Metadata was updated after the last
+                dispute or reset.
+              </p>
             </div>
           )}
 
@@ -373,7 +366,6 @@ export function PassportDetailView({
             passportStatus={passport.status}
             duplicateVin={passport.duplicateVin}
             hadDispute={passport.hadDispute}
-            labels={t}
           />
         </aside>
       </div>

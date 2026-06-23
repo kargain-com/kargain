@@ -1,9 +1,7 @@
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { ListingEditClient } from "@/components/marketplace/listing-edit-client";
-import { getDetailStrings, pickDetailLocale } from "@/lib/i18n/marketplace-detail-locales";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 function EditFallback() {
@@ -45,12 +43,9 @@ async function MarketplaceListingEditInner({
     notFound();
   }
 
-  const h = await headers();
-  const t = getDetailStrings(pickDetailLocale(h.get("accept-language")));
-
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
-      <ListingEditClient tokenId={tokenId} chainId={chainId} labels={t} />
+      <ListingEditClient tokenId={tokenId} chainId={chainId} />
     </div>
   );
 }

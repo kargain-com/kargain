@@ -5,10 +5,7 @@ import { useAccount } from "wagmi";
 
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportStatus } from "@/lib/types/ponder";
-
-type T = ReturnType<typeof getDetailStrings>;
 
 type Props = {
   chainId: number;
@@ -24,7 +21,6 @@ type Props = {
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
-  labels: T;
 };
 
 export function ListingDetailClientIsland({
@@ -35,7 +31,6 @@ export function ListingDetailClientIsland({
   passportStatus,
   duplicateVin,
   hadDispute,
-  labels: t,
 }: Props) {
   const { address, isConnected } = useAccount();
   const contactPeer: `0x${string}` = listing?.active ? listing.seller : passportOwner;
@@ -53,11 +48,10 @@ export function ListingDetailClientIsland({
           passportStatus={passportStatus}
           duplicateVin={duplicateVin}
           hadDispute={hadDispute}
-          labels={t}
         />
       ) : (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-          {t.notForSale}
+          Not currently listed
         </p>
       )}
 
@@ -66,7 +60,7 @@ export function ListingDetailClientIsland({
           {isConnected ? (
             <SellerContactButton
               peerAddress={contactPeer}
-              label={t.contactSeller}
+              label="Message seller"
               listingTokenId={listing?.active ? tokenId : null}
             />
           ) : (

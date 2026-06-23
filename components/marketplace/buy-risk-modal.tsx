@@ -13,10 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportStatus } from "@/lib/types/ponder";
-
-type T = ReturnType<typeof getDetailStrings>;
 
 type Props = {
   open: boolean;
@@ -25,7 +22,6 @@ type Props = {
   duplicateVin: boolean;
   hadDispute: boolean;
   tokenId: string;
-  labels: T;
   onConfirm: () => void;
   isPending: boolean;
 };
@@ -37,7 +33,6 @@ export function BuyRiskModal({
   duplicateVin,
   hadDispute,
   tokenId,
-  labels: t,
   onConfirm,
   isPending,
 }: Props) {
@@ -52,36 +47,39 @@ export function BuyRiskModal({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showClose className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t.buyRiskTitle}</DialogTitle>
-          <DialogDescription>{t.buyRiskDescription}</DialogDescription>
+          <DialogTitle>Review purchase risks</DialogTitle>
+          <DialogDescription>
+            This passport has trust signals you should review before buying. You will inherit its
+            on-chain status as the new owner.
+          </DialogDescription>
         </DialogHeader>
 
         <ul className="space-y-2 text-sm text-text-secondary">
           {passportStatus === "UNVERIFIED" && (
             <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
-              {t.buyRiskUnverified}
+              Passport is unverified — no independent inspection has confirmed the metadata.
             </li>
           )}
           {passportStatus === "DISPUTED" && (
             <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
-              {t.buyRiskDisputed}{" "}
+              Passport is disputed — review discrepancy records before proceeding.{" "}
               <Link
                 href="#passport-records"
                 className="font-medium text-accent-warm underline-offset-2 hover:underline"
                 onClick={() => onOpenChange(false)}
               >
-                {t.buyRiskViewTimeline}
+                View dispute timeline
               </Link>
             </li>
           )}
           {duplicateVin && (
             <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
-              {t.buyRiskDuplicateVin}
+              Duplicate VIN — another passport shares this VIN in the index.
             </li>
           )}
           {hadDispute && passportStatus === "UNVERIFIED" && (
             <li className="rounded-md border border-border-default p-3 text-text-secondary">
-              {t.buyRiskPriorDispute}
+              This passport had a prior dispute. Metadata may have changed since resolution.
             </li>
           )}
         </ul>
@@ -93,13 +91,13 @@ export function BuyRiskModal({
             onCheckedChange={(v) => setAccepted(v === true)}
           />
           <Label htmlFor="buy-risk-accept" className="text-sm leading-snug text-text-primary">
-            {t.buyRiskAcceptLabel}
+            I accept the risk and want to proceed with purchase
           </Label>
         </div>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-            {t.buyRiskCancel}
+            Cancel
           </Button>
           <Button
             type="button"
@@ -109,7 +107,7 @@ export function BuyRiskModal({
               setAccepted(false);
             }}
           >
-            {t.buyRiskConfirm}
+            Buy anyway
           </Button>
         </div>
 

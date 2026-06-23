@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 import { AlertTriangle } from "lucide-react";
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
-import { getDetailStrings, pickDetailLocale } from "@/lib/i18n/marketplace-detail-locales";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 export async function generateMetadata({
@@ -71,9 +69,6 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const h = await headers();
-  const t = getDetailStrings(pickDetailLocale(h.get("accept-language")));
-
   const result = await fetchPassportDetail(raw, chainId);
 
   if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
@@ -98,7 +93,7 @@ async function MarketplaceListingInner({
             href={`/?chain=${chainId}`}
             className="font-sans text-sm text-accent-warm link-underline"
           >
-            ← {t.backMarketplace}
+            ← Back to marketplace
           </Link>
         </div>
       </div>
@@ -117,7 +112,7 @@ async function MarketplaceListingInner({
             href={`/?chain=${chainId}`}
             className="mt-6 inline-block font-sans text-sm text-accent-warm hover:underline"
           >
-            ← {t.backMarketplace}
+            ← Back to marketplace
           </Link>
         </div>
       </div>
@@ -150,7 +145,6 @@ async function MarketplaceListingInner({
         passport={result.passport}
         metadata={result.metadata}
         metadataError={result.metadataError}
-        labels={t}
         listing={listing}
       />
     </div>

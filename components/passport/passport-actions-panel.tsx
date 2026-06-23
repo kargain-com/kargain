@@ -22,7 +22,6 @@ import {
   KarPassportAbi,
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
 import {
@@ -43,8 +42,6 @@ import {
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useReadContracts } from "wagmi";
 
-type T = ReturnType<typeof getDetailStrings>;
-
 type Props = {
   tokenId: string;
   chainId: number;
@@ -59,7 +56,6 @@ type Props = {
   uriHistory: PonderUriHistoryEntry[];
   verificationResetCount: number;
   lastVerificationResetAt: string;
-  labels: T;
 };
 
 export function PassportActionsPanel({
@@ -76,7 +72,6 @@ export function PassportActionsPanel({
   uriHistory,
   verificationResetCount,
   lastVerificationResetAt,
-  labels,
 }: Props) {
   const router = useRouter();
   const { address, isConnected, connector } = useAccount();
@@ -355,14 +350,13 @@ export function PassportActionsPanel({
       setAttestationText("");
       setAttestationEvidencePaste("");
       setAttestationEvidenceFile(null);
-      setMessage(labels.attestationSuccess);
+      setMessage("Attestation appended.");
       router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
     attestationText,
-    labels.attestationSuccess,
     passport,
     resolveAttestationEvidence,
     router,
@@ -568,9 +562,9 @@ export function PassportActionsPanel({
             disabled={actionsBusy}
             labels={{
               evidenceLabel: "Evidence (optional)",
-              evidenceHint: labels.attestationEvidenceHint,
-              evidencePlaceholder: labels.attestationEvidencePlaceholder,
-              evidenceFileLabel: labels.attestationEvidenceFileLabel,
+              evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+              evidencePlaceholder: "ar://… or https://…",
+              evidenceFileLabel: "Upload file",
             }}
           />
           <Button
@@ -645,9 +639,9 @@ export function PassportActionsPanel({
                 disabled={actionsBusy}
                 labels={{
                   evidenceLabel: "Evidence (optional)",
-                  evidenceHint: labels.attestationEvidenceHint,
-                  evidencePlaceholder: labels.attestationEvidencePlaceholder,
-                  evidenceFileLabel: labels.attestationEvidenceFileLabel,
+                  evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+                  evidencePlaceholder: "ar://… or https://…",
+                  evidenceFileLabel: "Upload file",
                 }}
               />
               <Button
@@ -666,13 +660,15 @@ export function PassportActionsPanel({
 
       {isActiveVerifier && !isOwner && (
         <div className="space-y-2 border-t border-border-default pt-4">
-          <Label htmlFor="attestation-text">{labels.attestationLabel}</Label>
-          <p className="text-xs text-text-secondary">{labels.attestationHint}</p>
+          <Label htmlFor="attestation-text">Verifier attestation</Label>
+          <p className="text-xs text-text-secondary">
+            Public on-chain note from an active verifier. Does not change passport status.
+          </p>
           <Textarea
             id="attestation-text"
             value={attestationText}
             onChange={(e) => setAttestationText(e.target.value)}
-            placeholder={labels.attestationPlaceholder}
+            placeholder="Inspection notes, mileage confirmation, condition summary…"
             rows={3}
             disabled={actionsBusy}
           />
@@ -684,10 +680,10 @@ export function PassportActionsPanel({
             onFileChange={setAttestationEvidenceFile}
             disabled={actionsBusy}
             labels={{
-              evidenceLabel: labels.attestationEvidenceLabel,
-              evidenceHint: labels.attestationEvidenceHint,
-              evidencePlaceholder: labels.attestationEvidencePlaceholder,
-              evidenceFileLabel: labels.attestationEvidenceFileLabel,
+              evidenceLabel: "Evidence (optional)",
+              evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+              evidencePlaceholder: "ar://… or https://…",
+              evidenceFileLabel: "Upload file",
             }}
           />
           <Button
@@ -696,7 +692,7 @@ export function PassportActionsPanel({
             disabled={actionsBusy || !attestationText.trim()}
             onClick={() => void submitAttestation()}
           >
-            {labels.attestationSubmit}
+            Append attestation
           </Button>
         </div>
       )}
@@ -719,9 +715,9 @@ export function PassportActionsPanel({
           disabled={actionsBusy}
           labels={{
             evidenceLabel: "Evidence (optional)",
-            evidenceHint: labels.attestationEvidenceHint,
-            evidencePlaceholder: labels.attestationEvidencePlaceholder,
-            evidenceFileLabel: labels.attestationEvidenceFileLabel,
+            evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+            evidencePlaceholder: "ar://… or https://…",
+            evidenceFileLabel: "Upload file",
           }}
         />
         <Button

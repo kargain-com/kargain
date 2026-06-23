@@ -9,13 +9,9 @@ import { cn } from "@/lib/utils";
 type Props = {
   photos: string[];
   chainId: number;
-  labels: {
-    galleryPrev: string;
-    galleryNext: string;
-  };
 };
 
-export function PassportPhotoGallery({ photos, chainId, labels }: Props) {
+export function PassportPhotoGallery({ photos, chainId }: Props) {
   const [selected, setSelected] = useState(0);
   const urls = photos.map((uri) => resolveUri(uri, chainId));
 
@@ -52,7 +48,7 @@ export function PassportPhotoGallery({ photos, chainId, labels }: Props) {
               type="button"
               onClick={goPrev}
               className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-              aria-label={labels.galleryPrev}
+              aria-label="Previous image"
             >
               <ChevronLeft size={20} strokeWidth={1.5} aria-hidden />
             </button>
@@ -60,7 +56,7 @@ export function PassportPhotoGallery({ photos, chainId, labels }: Props) {
               type="button"
               onClick={goNext}
               className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-              aria-label={labels.galleryNext}
+              aria-label="Next image"
             >
               <ChevronRight size={20} strokeWidth={1.5} aria-hidden />
             </button>

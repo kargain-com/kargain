@@ -2,24 +2,19 @@
 
 import Link from "next/link";
 
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import {
   getRecordDisplay,
-  type RecordDisplayLabels,
   type RecordSeverity,
 } from "@/lib/passport/record-types";
 import type { PonderPassportRecord } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
-type T = ReturnType<typeof getDetailStrings>;
-
 type Props = {
   records: PonderPassportRecord[];
   passportOwner: string;
   lastDisputer: string;
   disputeReason: string;
-  labels: T;
   locale?: string;
 };
 
@@ -45,51 +40,33 @@ function severityBorderClass(severity: RecordSeverity): string {
   }
 }
 
-function recordLabelsFromDict(t: T): RecordDisplayLabels {
-  return {
-    service: t.recordLabelService,
-    repair: t.recordLabelRepair,
-    inspection: t.recordLabelInspection,
-    purchase: t.recordLabelPurchase,
-    other: t.recordLabelOther,
-    attestation: t.recordLabelAttestation,
-    disputeClarification: t.recordLabelDisputeClarification,
-    discrepancyReport: t.recordLabelDiscrepancyReport,
-    disputeOpened: t.recordLabelDisputeOpened,
-    disputeWithdrawn: t.recordLabelDisputeWithdrawn,
-    ownerInitiated: t.recordLabelOwnerInitiated,
-    unknownType: t.onChainRecord,
-  };
-}
-
 export function PassportRecordsTimeline({
   records,
   passportOwner,
   lastDisputer,
   disputeReason,
-  labels: t,
   locale = "en",
 }: Props) {
-  const recordLabels = recordLabelsFromDict(t);
-
   return (
     <section
       id="passport-records"
       className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6"
     >
       <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-        {t.historyRecords}
+        History & records
       </h2>
       {records.length === 0 ? (
-        <p className="font-sans text-sm text-text-secondary">{t.noRecordsHint}</p>
+        <p className="font-sans text-sm text-text-secondary">
+          Service logs, attestations, and discrepancy records will appear here over time.
+        </p>
       ) : (
         <ul className="space-y-3">
           {records.map((record) => {
-            const display = getRecordDisplay(
-              record,
-              { passportOwner, lastDisputer, disputeReason },
-              recordLabels,
-            );
+            const display = getRecordDisplay(record, {
+              passportOwner,
+              lastDisputer,
+              disputeReason,
+            });
 
             return (
               <li
@@ -114,11 +91,11 @@ export function PassportRecordsTimeline({
                     ))}
                   </div>
                   <p className="font-mono text-xs font-normal tabular-nums text-text-secondary">
-                    {formatChainDate(record.timestamp, locale) || t.atTime}
+                    {formatChainDate(record.timestamp, locale) || "Time"}
                   </p>
                 </div>
                 <p className="mt-2 font-sans text-sm text-text-secondary">
-                  {t.author}:{" "}
+                  Author:{" "}
                   <Link
                     href={`/profile/${record.author}`}
                     className="font-mono text-accent-warm hover:underline"
@@ -139,7 +116,7 @@ export function PassportRecordsTimeline({
                       rel="noopener noreferrer"
                       className="font-sans text-sm text-accent-warm link-underline"
                     >
-                      {t.openEvidence}
+                      View evidence
                     </a>
                   </p>
                 )}

@@ -29,19 +29,15 @@ import {
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import {
   karPassportAddress,
   marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-type T = ReturnType<typeof getDetailStrings>;
-
 type Props = {
   tokenId: string;
   chainId: number;
-  labels: T;
 };
 
 function parseListing(raw: unknown): {
@@ -76,7 +72,7 @@ function parseListing(raw: unknown): {
   return null;
 }
 
-export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
+export function ListingEditClient({ tokenId, chainId }: Props) {
   const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
@@ -244,7 +240,7 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
   if (!isConnected) {
     return (
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-        <p className="text-sm text-text-secondary">{t.connectToBuy}</p>
+        <p className="text-sm text-text-secondary">Connect wallet to buy</p>
         <WalletLoginButton />
       </div>
     );
@@ -253,9 +249,9 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
   if (wrongChain) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-text-secondary">{t.wrongNetwork}</p>
+        <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
         <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
-          {t.wrongNetwork}
+          Switch to Base Sepolia
         </Button>
       </div>
     );
@@ -276,9 +272,9 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
   return (
     <div className="mx-auto max-w-lg space-y-8 px-4 py-10">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-medium text-text-primary">{t.editListing}</h1>
+        <h1 className="text-xl font-medium text-text-primary">Manage listing</h1>
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>← {t.backMarketplace}</Link>
+          <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>← Back to marketplace</Link>
         </Button>
       </div>
 
@@ -287,19 +283,19 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
         <p className="font-mono text-sm text-text-primary">#{tokenId}</p>
         {active ? (
           <>
-            <p className="text-xs text-text-secondary pt-2">{t.price}</p>
+            <p className="text-xs text-text-secondary pt-2">Price</p>
             <p className="text-lg font-medium text-accent-warm">
               {formatFiat1e8(fiatPrice1e8)} {fiatCurrencyLabel(listedFiat)}
             </p>
           </>
         ) : (
-          <p className="text-sm text-text-secondary">{t.notForSale}</p>
+          <p className="text-sm text-text-secondary">Not currently listed</p>
         )}
       </section>
 
       {active && isSeller && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-          <h2 className="text-sm font-medium text-text-primary">{t.delist}</h2>
+          <h2 className="text-sm font-medium text-text-primary">Delist</h2>
           <Button
             type="button"
             variant="outline"
@@ -307,7 +303,7 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
             disabled={isPending}
             onClick={() => void runDelist()}
           >
-            {t.delist}
+            Delist
           </Button>
         </section>
       )}
@@ -341,17 +337,17 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
             </Select>
           </div>
           <Button type="button" disabled={isPending} onClick={() => void runUpdatePrice()}>
-            {t.relist}
+            List for sale
           </Button>
         </section>
       )}
 
       {!active && isOwner && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-          <h2 className="text-sm font-medium text-text-primary">{t.relist}</h2>
+          <h2 className="text-sm font-medium text-text-primary">List for sale</h2>
           {!isApproved && (
             <Button type="button" variant="outline" disabled={isPending} onClick={() => void runApprove()}>
-              {t.approveMarketplace}
+              Approve marketplace
             </Button>
           )}
           {isApproved && <p className="text-xs text-accent-warm">Marketplace approved.</p>}
@@ -378,7 +374,7 @@ export function ListingEditClient({ tokenId, chainId, labels: t }: Props) {
             </Select>
           </div>
           <Button type="button" disabled={isPending || !isApproved} onClick={() => void runList()}>
-            {t.relist}
+            List for sale
           </Button>
         </section>
       )}

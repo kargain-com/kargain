@@ -18,14 +18,11 @@ import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
-import type { getDetailStrings } from "@/lib/i18n/marketplace-detail-locales";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-
-type T = ReturnType<typeof getDetailStrings>;
 
 type Props = {
   chainId: number;
@@ -34,7 +31,6 @@ type Props = {
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
-  labels: T;
 };
 
 export function ListingBuyPanel({
@@ -44,7 +40,6 @@ export function ListingBuyPanel({
   passportStatus,
   duplicateVin,
   hadDispute,
-  labels: t,
 }: Props) {
   const config = useConfig();
   const router = useRouter();
@@ -115,7 +110,7 @@ export function ListingBuyPanel({
   if (!isConnected) {
     return (
       <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="text-sm text-text-secondary">{t.connectToBuy}</p>
+        <p className="text-sm text-text-secondary">Connect wallet to buy</p>
         <WalletLoginButton />
       </div>
     );
@@ -124,12 +119,12 @@ export function ListingBuyPanel({
   if (isSeller) {
     return (
       <p className="text-sm text-text-secondary">
-        {t.youAreSeller}{" "}
+        You listed this vehicle.{" "}
         <Link
           href={`/marketplace/${tokenId}/edit?chain=${chainId}`}
           className="font-medium text-accent-warm underline-offset-2 hover:underline"
         >
-          {t.editListing}
+          Manage listing
         </Link>
       </p>
     );
@@ -138,7 +133,7 @@ export function ListingBuyPanel({
   if (wrongChain) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-text-secondary">{t.wrongNetwork}</p>
+        <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
         <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
           Switch network
         </Button>
@@ -154,7 +149,7 @@ export function ListingBuyPanel({
     <>
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
         <div>
-          <p className="text-xs text-text-secondary">{t.price}</p>
+          <p className="text-xs text-text-secondary">Price</p>
           <p className="text-2xl font-medium text-accent-warm">
             {formatFiat1e8(BigInt(listing.fiatPrice1e8))}{" "}
             {fiatCurrencyLabel(listing.fiatCurrency)}
@@ -171,7 +166,7 @@ export function ListingBuyPanel({
           disabled={isPending || nativeQuote == null}
           onClick={handleBuyClick}
         >
-          {t.buyNow}
+          Buy now
         </Button>
       </div>
 
@@ -182,7 +177,6 @@ export function ListingBuyPanel({
         duplicateVin={duplicateVin}
         hadDispute={hadDispute}
         tokenId={tokenId}
-        labels={t}
         onConfirm={() => {
           setRiskOpen(false);
           void buyNative();
