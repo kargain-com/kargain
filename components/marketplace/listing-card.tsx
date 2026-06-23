@@ -51,7 +51,6 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
               No image
             </div>
           )}
-          <div className="pointer-events-none absolute inset-0 bg-bg-surface" />
           {displayStatus === "VERIFIED" && !statusStale && (
             <span className="absolute right-2 top-2 rounded border border-accent-warm/40 bg-bg-primary/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-warm">
               Verified

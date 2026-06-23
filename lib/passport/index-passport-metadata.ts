@@ -16,6 +16,7 @@ export type IndexedPassportMetadata = {
   vehicleType: string;
   colour: string;
   locationLabel: string;
+  coverPhotoUri: string;
 };
 
 export async function fetchMetadataFromUri(
@@ -43,6 +44,7 @@ export async function fetchMetadataFromUri(
       vehicleType: parsed.vehicleType ?? "",
       colour: parsed.colour ?? "",
       locationLabel: parsed.location?.label ?? "",
+      coverPhotoUri: parsed.photos[0] ?? "",
     };
   } catch {
     return null;

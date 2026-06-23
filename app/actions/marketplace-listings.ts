@@ -69,6 +69,7 @@ type PonderListing = {
   bodyType?: string;
   transmission?: string;
   tokenUri?: string;
+  coverPhotoUri?: string;
   duplicateVin?: boolean;
   verifier?: string;
 };

@@ -85,6 +85,7 @@ type PassportDenorm = {
   colour: string;
   locationLabel: string;
   tokenUri: string;
+  coverPhotoUri: string;
   duplicateVin: boolean;
 };
 
@@ -118,6 +119,7 @@ async function loadPassportMap(
         colour: row.colour,
         locationLabel: row.locationLabel,
         tokenUri: row.tokenUri,
+        coverPhotoUri: row.coverPhotoUri,
         duplicateVin: row.duplicateVin,
       });
     }
@@ -199,6 +201,7 @@ function enrichListing(
     verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
     tokenUri: p?.tokenUri ?? "",
+    coverPhotoUri: p?.coverPhotoUri ?? "",
     duplicateVin: p?.duplicateVin ?? false,
   };
 }
@@ -360,6 +363,7 @@ app.get("/listings/:tokenId", async (c) => {
       bodyType: p?.bodyType ?? "",
       transmission: p?.transmission ?? "",
       tokenUri: p?.tokenUri ?? "",
+      coverPhotoUri: p?.coverPhotoUri ?? "",
       duplicateVin: p?.duplicateVin ?? false,
     }),
   );

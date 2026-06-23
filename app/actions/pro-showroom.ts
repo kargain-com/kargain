@@ -60,6 +60,7 @@ type PonderListingRaw = {
   bodyType?: string;
   transmission?: string;
   tokenUri?: string;
+  coverPhotoUri?: string;
   duplicateVin?: boolean;
   verifier?: string;
 };
@@ -124,6 +125,7 @@ function mapListingRaw(listing: PonderListingRaw) {
     bodyType: listing.bodyType,
     transmission: listing.transmission,
     tokenUri: listing.tokenUri,
+    coverPhotoUri: listing.coverPhotoUri,
     duplicateVin: listing.duplicateVin,
     verifier: listing.verifier,
   });

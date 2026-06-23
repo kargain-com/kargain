@@ -1,5 +1,5 @@
-import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus } from "@/lib/types/ponder";
+import { resolveUri } from "@/lib/storage/resolve-uri";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export type PonderListingInput = {
@@ -19,6 +19,7 @@ export type PonderListingInput = {
   bodyType?: string;
   transmission?: string;
   tokenUri?: string;
+  coverPhotoUri?: string;
   duplicateVin?: boolean;
   verifier?: string;
 };
@@ -57,9 +58,9 @@ function buildTitle(listing: PonderListingInput): string {
   return `Vehicle #${listing.tokenId}`;
 }
 
-function photoFromUri(tokenUri: string | undefined): string | null {
-  if (!tokenUri?.startsWith("ar://")) return null;
-  return arUriToHttp(tokenUri);
+function coverPhotoUrl(coverPhotoUri: string | undefined): string | null {
+  if (!coverPhotoUri?.trim()) return null;
+  return resolveUri(coverPhotoUri);
 }
 
 export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceListingRow {
@@ -74,7 +75,7 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     updatedAtBlock: String(listing.listedAt),
     tokenUri: listing.tokenUri ?? "",
     title: buildTitle(listing),
-    imageUrl: photoFromUri(listing.tokenUri),
+    imageUrl: coverPhotoUrl(listing.coverPhotoUri),
     make: listing.make || null,
     model: listing.model || null,
     year: listing.year && listing.year > 0 ? listing.year : null,

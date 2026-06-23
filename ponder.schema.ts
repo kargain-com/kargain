@@ -7,6 +7,7 @@ export const passport = onchainTable("passport", (t) => ({
   verifier: t.text().notNull().default(""),
   verifiedAt: t.bigint().notNull().default(0n),
   tokenUri: t.text().notNull().default(""),
+  coverPhotoUri: t.text().notNull().default(""),
   vin: t.text().notNull().default(""),
   make: t.text().notNull().default(""),
   model: t.text().notNull().default(""),

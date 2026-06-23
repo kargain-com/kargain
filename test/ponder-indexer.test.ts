@@ -112,6 +112,11 @@ describe("passportMetadataDenorm", () => {
       fuelType: "Petrol",
       bodyType: "Sedan",
       transmission: "Manual",
+      condition: "",
+      vehicleType: "",
+      colour: "",
+      locationLabel: "",
+      coverPhotoUri: "ar://cover-tx",
     };
     assert.deepEqual(passportMetadataDenorm(indexed), {
       vin: "1HGBH41JXMN109186",
@@ -122,10 +127,11 @@ describe("passportMetadataDenorm", () => {
       fuelType: "Petrol",
       bodyType: "Sedan",
       transmission: "Manual",
-      condition: undefined,
-      vehicleType: undefined,
-      colour: undefined,
-      locationLabel: undefined,
+      condition: "",
+      vehicleType: "",
+      colour: "",
+      locationLabel: "",
+      coverPhotoUri: "ar://cover-tx",
     });
   });
 });
