@@ -1,5 +1,4 @@
 import type { MarketSort } from "@/lib/marketplace/filter-params";
-import { priceToFiat1e8 } from "@/lib/marketplace/filter-params";
 
 export type ListingFilterQuery = {
   search?: string;
@@ -17,7 +16,6 @@ export type ListingFilterQuery = {
   location?: string;
   colour?: string;
   status?: "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
-  currency?: "USD" | "EUR";
   priceMin?: string;
   priceMax?: string;
   sort?: MarketSort;
@@ -55,12 +53,24 @@ export function splitCsvFilter(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-export function currencyToFiatCode(currency: "USD" | "EUR"): number {
-  return currency === "EUR" ? 1 : 0;
-}
-
 export function fiatCodeToCurrency(code: number): "USD" | "EUR" {
   return code === 1 ? "EUR" : "USD";
+}
+
+/** Scale a plain display price (e.g. "15000") to USD 1e8 for comparison. */
+function displayPriceToUsd1e8(amount: string): bigint | undefined {
+  const trimmed = amount.trim();
+  if (!trimmed) return undefined;
+  const n = Number.parseFloat(trimmed);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return BigInt(Math.round(n * 100_000_000));
+}
+
+// TODO: inject eurUsd rate from Chainlink event cache for accurate cross-currency sort/filter
+/** Normalize listing price to USD 1e8; EUR rows use EUR ≈ USD fallback when no live rate. */
+export function listingUsd1e8(row: ListingFilterFields): bigint {
+  if (row.fiatCurrency === 0) return row.fiatPrice1e8;
+  return row.fiatPrice1e8;
 }
 
 function parseOptionalInt(raw: string | undefined): number | undefined {
@@ -82,8 +92,6 @@ export function parseListingFilterQuery(
     sortRaw === "price_asc" || sortRaw === "price_desc" || sortRaw === "mileage_asc"
       ? sortRaw
       : "newest";
-  const currencyRaw = query.currency;
-  const currency = currencyRaw === "EUR" ? "EUR" : "USD";
 
   return {
     search: query.search?.trim() || undefined,
@@ -101,7 +109,6 @@ export function parseListingFilterQuery(
     location: query.location?.trim() || undefined,
     colour: query.colour?.trim() || undefined,
     status,
-    currency,
     priceMin: query.priceMin?.trim() || undefined,
     priceMax: query.priceMax?.trim() || undefined,
     sort,
@@ -141,15 +148,11 @@ export function matchesListingFilters(
     return false;
   }
 
-  if (filters.currency) {
-    const code = currencyToFiatCode(filters.currency);
-    if (row.fiatCurrency !== code) return false;
-  }
-
-  const minRaw = filters.priceMin ? priceToFiat1e8(filters.priceMin) : undefined;
-  const maxRaw = filters.priceMax ? priceToFiat1e8(filters.priceMax) : undefined;
-  if (minRaw != null && row.fiatPrice1e8 < BigInt(minRaw)) return false;
-  if (maxRaw != null && row.fiatPrice1e8 > BigInt(maxRaw)) return false;
+  const rowUsd1e8 = listingUsd1e8(row);
+  const minUsd1e8 = filters.priceMin ? displayPriceToUsd1e8(filters.priceMin) : undefined;
+  const maxUsd1e8 = filters.priceMax ? displayPriceToUsd1e8(filters.priceMax) : undefined;
+  if (minUsd1e8 != null && rowUsd1e8 < minUsd1e8) return false;
+  if (maxUsd1e8 != null && rowUsd1e8 > maxUsd1e8) return false;
 
   if (!includesCsvMatch(filters.fuelTypes ?? [], row.fuelType)) return false;
   if (!includesCsvMatch(filters.bodyTypes ?? [], row.bodyType)) return false;
@@ -184,14 +187,20 @@ export function sortEnrichedListings<T extends EnrichedListingForFilter>(
     }
 
     switch (sort) {
-      case "price_asc":
-        if (a.fiatPrice1e8 < b.fiatPrice1e8) return -1;
-        if (a.fiatPrice1e8 > b.fiatPrice1e8) return 1;
+      case "price_asc": {
+        const aUsd = listingUsd1e8(a);
+        const bUsd = listingUsd1e8(b);
+        if (aUsd < bUsd) return -1;
+        if (aUsd > bUsd) return 1;
         break;
-      case "price_desc":
-        if (a.fiatPrice1e8 < b.fiatPrice1e8) return 1;
-        if (a.fiatPrice1e8 > b.fiatPrice1e8) return -1;
+      }
+      case "price_desc": {
+        const aUsd = listingUsd1e8(a);
+        const bUsd = listingUsd1e8(b);
+        if (aUsd < bUsd) return 1;
+        if (aUsd > bUsd) return -1;
         break;
+      }
       case "mileage_asc":
         return a.mileageKm - b.mileageKm;
       default:

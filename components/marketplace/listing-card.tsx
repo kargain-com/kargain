@@ -8,7 +8,7 @@ import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-b
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
-import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -19,8 +19,8 @@ type Props = {
 };
 
 export function ListingCard({ row, chainStatusDrift }: Props) {
-  const fiat = formatFiat1e8(row.fiatPrice1e8);
-  const cur = fiatCurrencyLabel(row.fiatCurrency);
+  const { convertPrice } = useDisplayCurrency();
+  const price = convertPrice(BigInt(row.fiatPrice1e8), row.fiatCurrency as 0 | 1);
   const statusStale = Boolean(chainStatusDrift);
   const displayStatus = chainStatusDrift?.chainStatus ?? row.passportStatus;
 
@@ -109,7 +109,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             </div>
           )}
           <p className="text-lg font-medium text-accent-warm transition-colors duration-200 group-hover:text-accent-warm group-focus-visible:text-accent-warm">
-            {fiat} <span className="text-xs font-normal text-text-secondary">{cur}</span>
+            {price}
           </p>
           <p className="truncate font-mono text-[10px] text-text-secondary">
             #{row.tokenId} · ch {row.chainId}

@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import {
   clearFilterChip,
   countActiveFilters,
@@ -12,11 +13,12 @@ import {
 
 export function MarketFilterChips() {
   const { filters, pushFilters, clearAll } = useMarketFilterNavigation();
+  const { displayCurrency } = useDisplayCurrency();
   const activeCount = countActiveFilters(filters);
 
   if (activeCount === 0) return null;
 
-  const chips = getFilterChips(filters);
+  const chips = getFilterChips(filters, displayCurrency);
 
   const removeChip = (key: FilterChipKey) => {
     pushFilters(clearFilterChip(filters, key));

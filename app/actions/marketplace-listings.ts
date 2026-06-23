@@ -33,7 +33,6 @@ const filterSchema = z.object({
   colour: z.string().optional(),
   status: z.enum(["all", "UNVERIFIED", "VERIFIED", "DISPUTED"]).default("all"),
   sort: z.enum(["newest", "price_asc", "price_desc", "mileage_asc"]).default("newest"),
-  currency: z.enum(["USD", "EUR"]).default("USD"),
   page: z.number().int().min(1).default(1),
   limit: z.number().int().min(1).max(48).default(20),
 });
@@ -83,7 +82,6 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   url.searchParams.set("page", String(p.page));
   url.searchParams.set("limit", String(p.limit));
   url.searchParams.set("verifiedFirst", "true");
-  url.searchParams.set("currency", p.currency);
   if (p.search) url.searchParams.set("search", p.search);
   if (p.make) url.searchParams.set("make", p.make);
   if (p.model) url.searchParams.set("model", p.model);

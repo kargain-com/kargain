@@ -20,11 +20,13 @@ import {
 } from "@/components/ui/select";
 import { useFacets } from "@/hooks/use-facets";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import {
   countActiveFilters,
   countDrawerActiveFilters,
   formatMultiValueChipLabel,
   formatPriceChipLabel,
+  priceFilterPlaceholder,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
@@ -93,6 +95,7 @@ function FilterSearchInput({
 export function MarketFilterBar() {
   const { facets } = useFacets();
   const { filters, patchFilters } = useMarketFilterNavigation();
+  const { displayCurrency } = useDisplayCurrency();
   const [searchInput, setSearchInput] = useState(filters.search);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
@@ -101,7 +104,6 @@ export function MarketFilterBar() {
   const [priceDraft, setPriceDraft] = useState({
     priceMin: filters.priceMin,
     priceMax: filters.priceMax,
-    currency: filters.currency,
   });
 
   const debouncedSearch = useDebouncedValue(searchInput, 300);
@@ -121,10 +123,9 @@ export function MarketFilterBar() {
       setPriceDraft({
         priceMin: filters.priceMin,
         priceMax: filters.priceMax,
-        currency: filters.currency,
       });
     }
-  }, [priceOpen, filters.priceMin, filters.priceMax, filters.currency]);
+  }, [priceOpen, filters.priceMin, filters.priceMax]);
 
   const activeCount = countActiveFilters(filters);
   const drawerCount = countDrawerActiveFilters(filters);
@@ -137,7 +138,7 @@ export function MarketFilterBar() {
 
   const priceActive = Boolean(filters.priceMin || filters.priceMax);
   const priceLabel = priceActive
-    ? formatPriceChipLabel(filters.priceMin, filters.priceMax, filters.currency)
+    ? formatPriceChipLabel(filters.priceMin, filters.priceMax, displayCurrency)
     : "Price";
 
   const makeActive = Boolean(filters.make);
@@ -149,8 +150,13 @@ export function MarketFilterBar() {
     : "Fuel";
 
   const priceRange =
-    facets?.priceRanges?.[filters.currency] ??
-    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
+    displayCurrency === "EUR"
+      ? (facets?.priceRanges?.EUR ??
+        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
+      : (facets?.priceRanges?.USD ??
+        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
+
+  const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
 
   const toggleFuel = (opt: string) => {
     const next = filters.fuelTypes.includes(opt)
@@ -242,23 +248,6 @@ export function MarketFilterBar() {
                 </FilterTrigger>
               </PopoverTrigger>
               <PopoverContent className="w-64 space-y-3">
-                <div className="flex gap-1">
-                  {(["USD", "EUR"] as const).map((cur) => (
-                    <button
-                      key={cur}
-                      type="button"
-                      onClick={() => setPriceDraft((d) => ({ ...d, currency: cur }))}
-                      className={cn(
-                        "rounded-sm border px-2 py-1 font-mono text-xs transition-colors",
-                        priceDraft.currency === cur
-                          ? "border-accent-warm bg-bg-surface text-accent-warm"
-                          : "border-border-default bg-transparent text-text-secondary hover:text-text-primary",
-                      )}
-                    >
-                      {cur}
-                    </button>
-                  ))}
-                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="bar-price-min" className="font-sans text-xs text-text-secondary">
@@ -268,7 +257,7 @@ export function MarketFilterBar() {
                       id="bar-price-min"
                       type="number"
                       min={0}
-                      placeholder={facets ? String(priceRange.min || "") : ""}
+                      placeholder={facets ? String(priceRange.min || "") : pricePlaceholder}
                       value={priceDraft.priceMin}
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMin: e.target.value }))
@@ -284,7 +273,7 @@ export function MarketFilterBar() {
                       id="bar-price-max"
                       type="number"
                       min={0}
-                      placeholder={facets ? String(priceRange.max || "") : ""}
+                      placeholder={facets ? String(priceRange.max || "") : pricePlaceholder}
                       value={priceDraft.priceMax}
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMax: e.target.value }))
@@ -302,7 +291,6 @@ export function MarketFilterBar() {
                     patchFilters({
                       priceMin: priceDraft.priceMin,
                       priceMax: priceDraft.priceMax,
-                      currency: priceDraft.currency,
                       page: 1,
                     });
                     setPriceOpen(false);

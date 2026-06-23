@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/sheet";
 import { useFacets } from "@/hooks/use-facets";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import {
   DEFAULT_MARKET_FILTERS,
+  priceFilterPlaceholder,
   type MarketFilterState,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
@@ -87,6 +89,7 @@ type Props = {
 export function MarketFilterDrawer({ open, onOpenChange }: Props) {
   const { facets } = useFacets();
   const { filters, pushFilters } = useMarketFilterNavigation();
+  const { displayCurrency } = useDisplayCurrency();
   const [draft, setDraft] = useState<MarketFilterState>(filters);
 
   useEffect(() => {
@@ -110,8 +113,13 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
     : "";
 
   const priceRange =
-    facets?.priceRanges?.[draft.currency] ??
-    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
+    displayCurrency === "EUR"
+      ? (facets?.priceRanges?.EUR ??
+        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
+      : (facets?.priceRanges?.USD ??
+        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
+
+  const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -135,53 +143,34 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
           </DrawerSection>
 
           <DrawerSection title="Price">
-            <div className="space-y-3">
-              <div className="flex gap-1">
-                {(["USD", "EUR"] as const).map((cur) => (
-                  <button
-                    key={cur}
-                    type="button"
-                    onClick={() => patchDraft({ currency: cur })}
-                    className={cn(
-                      "rounded-sm border px-2 py-1 font-mono text-xs transition-colors",
-                      draft.currency === cur
-                        ? "border-accent-warm bg-bg-surface text-accent-warm"
-                        : "border-border-default bg-transparent text-text-secondary hover:text-text-primary",
-                    )}
-                  >
-                    {cur}
-                  </button>
-                ))}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="drawer-price-min" className="font-sans text-xs text-text-secondary">
+                  Min
+                </Label>
+                <input
+                  id="drawer-price-min"
+                  type="number"
+                  min={0}
+                  placeholder={facets ? String(priceRange.min || "") : pricePlaceholder}
+                  value={draft.priceMin}
+                  onChange={(e) => patchDraft({ priceMin: e.target.value })}
+                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="drawer-price-min" className="font-sans text-xs text-text-secondary">
-                    Min price
-                  </Label>
-                  <input
-                    id="drawer-price-min"
-                    type="number"
-                    min={0}
-                    placeholder={facets ? String(priceRange.min || "") : ""}
-                    value={draft.priceMin}
-                    onChange={(e) => patchDraft({ priceMin: e.target.value })}
-                    className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="drawer-price-max" className="font-sans text-xs text-text-secondary">
-                    Max price
-                  </Label>
-                  <input
-                    id="drawer-price-max"
-                    type="number"
-                    min={0}
-                    placeholder={facets ? String(priceRange.max || "") : ""}
-                    value={draft.priceMax}
-                    onChange={(e) => patchDraft({ priceMax: e.target.value })}
-                    className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="drawer-price-max" className="font-sans text-xs text-text-secondary">
+                  Max
+                </Label>
+                <input
+                  id="drawer-price-max"
+                  type="number"
+                  min={0}
+                  placeholder={facets ? String(priceRange.max || "") : pricePlaceholder}
+                  value={draft.priceMax}
+                  onChange={(e) => patchDraft({ priceMax: e.target.value })}
+                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                />
               </div>
             </div>
           </DrawerSection>

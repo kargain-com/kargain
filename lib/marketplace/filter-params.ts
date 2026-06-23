@@ -20,7 +20,6 @@ export type MarketFilterState = {
   colour: string;
   status: VerificationFilter;
   sort: MarketSort;
-  currency: "USD" | "EUR";
   page: number;
 };
 
@@ -43,7 +42,6 @@ export const DEFAULT_MARKET_FILTERS: MarketFilterState = {
   colour: "",
   status: "all",
   sort: "newest",
-  currency: "USD",
   page: 1,
 };
 
@@ -72,8 +70,6 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
     statusRaw === "VERIFIED" || statusRaw === "UNVERIFIED" || statusRaw === "DISPUTED"
       ? statusRaw
       : "all";
-  const currencyRaw = sp.get("currency");
-  const currency = currencyRaw === "EUR" ? "EUR" : "USD";
   const pageRaw = sp.get("page");
   const pageN = pageRaw ? Number.parseInt(pageRaw, 10) : 1;
 
@@ -96,7 +92,6 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
     colour: sp.get("colour") ?? "",
     status,
     sort,
-    currency,
     page: Number.isFinite(pageN) && pageN >= 1 ? pageN : 1,
   };
 }
@@ -121,7 +116,6 @@ export function filtersToSearchParams(filters: MarketFilterState): URLSearchPara
   if (filters.colour) sp.set("colour", filters.colour);
   if (filters.status !== "all") sp.set("status", filters.status);
   if (filters.sort !== "newest") sp.set("sort", filters.sort);
-  if (filters.currency !== "USD") sp.set("currency", filters.currency);
   if (filters.page > 1) sp.set("page", String(filters.page));
   return sp;
 }
@@ -159,34 +153,57 @@ export function countDrawerActiveFilters(filters: MarketFilterState): number {
   return n;
 }
 
-function formatCompactPrice(amount: string, currency: "USD" | "EUR"): string {
+type PriceDisplayCurrency = "USD" | "EUR" | "ETH";
+
+function formatCompactPrice(amount: string, displayCurrency: PriceDisplayCurrency): string {
   const n = Number.parseFloat(amount);
   if (!Number.isFinite(n)) return amount;
-  const symbol = currency === "EUR" ? "€" : "$";
+  if (displayCurrency === "ETH") {
+    return `${n} ETH`;
+  }
+  const symbol = displayCurrency === "EUR" ? "€" : "$";
   if (n >= 1000 && n % 1000 === 0) {
     return `${symbol}${n / 1000}k`;
   }
   return `${symbol}${n.toLocaleString("en-US")}`;
 }
 
+export function priceFilterPlaceholder(displayCurrency: PriceDisplayCurrency): string {
+  switch (displayCurrency) {
+    case "EUR":
+      return "e.g. 15 000 €";
+    case "ETH":
+      return "e.g. 4 ETH";
+    default:
+      return "e.g. 15 000 $";
+  }
+}
+
 export function formatPriceChipLabel(
   priceMin: string,
   priceMax: string,
-  currency: "USD" | "EUR",
+  displayCurrency: PriceDisplayCurrency = "USD",
 ): string {
-  const symbol = currency === "EUR" ? "€" : "$";
   if (priceMin && priceMax) {
     const minN = Number.parseFloat(priceMin);
     const maxN = Number.parseFloat(priceMax);
     if (Number.isFinite(minN) && Number.isFinite(maxN) && minN >= 1000 && maxN >= 1000) {
-      return `${formatCompactPrice(priceMin, currency)}–${formatCompactPrice(priceMax, currency)}`;
+      return `${formatCompactPrice(priceMin, displayCurrency)}–${formatCompactPrice(priceMax, displayCurrency)}`;
     }
+    if (displayCurrency === "ETH") {
+      return `${priceMin}–${priceMax} ETH`;
+    }
+    const symbol = displayCurrency === "EUR" ? "€" : "$";
     return `${symbol}${Number(priceMin).toLocaleString("en-US")}–${symbol}${Number(priceMax).toLocaleString("en-US")}`;
   }
   if (priceMin) {
+    if (displayCurrency === "ETH") return `From ${priceMin} ETH`;
+    const symbol = displayCurrency === "EUR" ? "€" : "$";
     return `From ${symbol}${Number(priceMin).toLocaleString("en-US")}`;
   }
   if (priceMax) {
+    if (displayCurrency === "ETH") return `Up to ${priceMax} ETH`;
+    const symbol = displayCurrency === "EUR" ? "€" : "$";
     return `Up to ${symbol}${Number(priceMax).toLocaleString("en-US")}`;
   }
   return "";
@@ -225,15 +242,6 @@ export function formatMultiValueChipLabel(values: string[]): string {
   return values.join(" · ");
 }
 
-/** Convert display currency amounts to on-chain 1e8 units. */
-export function priceToFiat1e8(amount: string): string | undefined {
-  const trimmed = amount.trim();
-  if (!trimmed) return undefined;
-  const n = Number.parseFloat(trimmed);
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  return BigInt(Math.round(n * 100_000_000)).toString();
-}
-
 export function marketFiltersToApiInput(filters: MarketFilterState) {
   return {
     search: filters.search.trim() || undefined,
@@ -241,8 +249,8 @@ export function marketFiltersToApiInput(filters: MarketFilterState) {
     model: filters.model || undefined,
     yearMin: filters.yearMin ? Number.parseInt(filters.yearMin, 10) : undefined,
     yearMax: filters.yearMax ? Number.parseInt(filters.yearMax, 10) : undefined,
-    priceMin: priceToFiat1e8(filters.priceMin),
-    priceMax: priceToFiat1e8(filters.priceMax),
+    priceMin: filters.priceMin.trim() || undefined,
+    priceMax: filters.priceMax.trim() || undefined,
     mileageMin: filters.mileageMin ? Number.parseInt(filters.mileageMin, 10) : undefined,
     mileageMax: filters.mileageMax ? Number.parseInt(filters.mileageMax, 10) : undefined,
     fuelType: filters.fuelTypes.length ? filters.fuelTypes.join(",") : undefined,
@@ -254,7 +262,6 @@ export function marketFiltersToApiInput(filters: MarketFilterState) {
     colour: filters.colour.trim() || undefined,
     status: filters.status,
     sort: filters.sort,
-    currency: filters.currency,
     page: filters.page,
     limit: 20,
   };
@@ -280,7 +287,10 @@ export type FilterChip = {
   label: string;
 };
 
-export function getFilterChips(filters: MarketFilterState): FilterChip[] {
+export function getFilterChips(
+  filters: MarketFilterState,
+  displayCurrency: PriceDisplayCurrency = "USD",
+): FilterChip[] {
   const chips: FilterChip[] = [];
 
   if (filters.make) chips.push({ key: "make", label: filters.make });
@@ -291,7 +301,7 @@ export function getFilterChips(filters: MarketFilterState): FilterChip[] {
   if (filters.priceMin || filters.priceMax) {
     chips.push({
       key: "price",
-      label: formatPriceChipLabel(filters.priceMin, filters.priceMax, filters.currency),
+      label: formatPriceChipLabel(filters.priceMin, filters.priceMax, displayCurrency),
     });
   }
   if (filters.yearMin || filters.yearMax) {
