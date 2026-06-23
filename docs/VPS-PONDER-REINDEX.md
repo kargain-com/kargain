@@ -1,8 +1,8 @@
 # VPS Ponder reindex runbook
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`; **June 2026 listing cards:** `coverPhotoUri` on `passport` — first metadata photo indexed at URI replay).
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, or **notifications feed** (`disputeOpenedAt` for dispute-open events) will be wrong until new on-chain events occur.
+Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, **listing card cover photos**, or **notifications feed** (`disputeOpenedAt` for dispute-open events) will be wrong until new on-chain events occur.
 
 ---
 
@@ -161,7 +161,7 @@ Wait until logs show:
 
 ```bash
 curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount, .disputeOpenedAt'
-curl -s https://ponder.kargain.com/listings | jq '.total'
+curl -s https://ponder.kargain.com/listings | jq '.listings[0].coverPhotoUri, .total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts, .conditions, .vehicleTypes'
 curl -s https://ponder.kargain.com/health
 ```

@@ -289,7 +289,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **State:** URL-synced via [`use-market-filters.ts`](../hooks/use-market-filters.ts). Facets from `GET /listings/facets` (Ponder).
 
-**Display currency:** Global preference (USD / EUR / ETH) via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + Chainlink feeds (`use-chainlink-rates.ts`) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards. Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip).
+**Display currency:** Global preference (USD / EUR / ETH) via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + Chainlink feeds ([`use-chainlink-rates.ts`](../lib/marketplace/use-chainlink-rates.ts) — always reads feeds on `DEFAULT_CHAIN_ID`, not wallet chain) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards. Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip).
 
 **Price filter + sort (FX):** User-entered min/max use the active display currency at apply time; `priceCurrency` is persisted in the URL when bounds are set (e.g. `?priceMin=4&priceCurrency=ETH`). Live Chainlink rates (`eurUsdRate`, `ethUsdRate`) are sent per-request to Ponder — not stored in URL. Shared normalization in [`price-normalize.ts`](../lib/marketplace/price-normalize.ts); filter/sort logic in [`listing-query.ts`](../lib/marketplace/listing-query.ts). Non-USD price apply and price-asc/desc sort are gated until rates load.
 
@@ -305,11 +305,11 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 - Title: "Marketplace unavailable"
 - Hint: `pnpm ponder:dev` in `<code>` — **never** expose env variable names (`PONDER_SQL_API_URL`, etc.) in UI copy
 
-**Homepage stats (`/`):** [`app/page.tsx`](../app/page.tsx) server-fetches stats and passes `activeListings`, `verifiedCount`, `activeVerifiers` to [`market-browse.tsx`](../components/marketplace/market-browse.tsx). Compact ambient line above [`market-filter-bar.tsx`](../components/marketplace/market-filter-bar.tsx): `font-mono text-xs text-text-tertiary tabular-nums` (e.g. `42 listings · 12 verified · 5 active verifiers`). Hidden when all stats are 0.
+**Homepage stats (`/`):** [`MarketplaceStatsLine`](../components/marketplace/marketplace-stats-line.tsx) in [`app/page.tsx`](../app/page.tsx) inside `Suspense` (sibling to [`market-browse.tsx`](../components/marketplace/market-browse.tsx)). Stats fetch does not block filter bar or listing grid shell. Compact ambient line above [`market-filter-bar.tsx`](../components/marketplace/market-filter-bar.tsx): `font-mono text-xs text-text-tertiary tabular-nums` (e.g. `42 listings · 12 verified · 5 active verifiers`). Hidden when all stats are 0.
 
-**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container; [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` section.
+**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback.
 
-**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`.
+**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — cover photo from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
 
 **Photo upload (mint wizard):** [`photo-upload-zone.tsx`](../components/passport/photo-upload-zone.tsx) — drag-and-drop zone with file picker fallback; used on `/passport/new`.
 
@@ -331,6 +331,7 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Guest actions | "Message" and **Request verification** only when visitor wallet is connected; disconnected guests see no header actions |
 | Personal copy | Nostr **about** and **website** render in `ProfileBio` on `profile-page.tsx` only — aligned with text column via `sm:pl-[8.5rem]`; not inside `IdentityHeader` |
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
+| Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | KarPro stats | Compact mono line on `profile-page.tsx` (active verifier only): verifications · active since · `0.05 ETH` staked (owner only) |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
 | KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |

@@ -232,7 +232,7 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /listings` | Marketplace browse and search (optional: `priceCurrency`, `eurUsdRate`, `ethUsdRate` for cross-currency filter/sort) |
+| `GET /listings` | Marketplace browse and search (optional: `priceCurrency`, `eurUsdRate`, `ethUsdRate` for cross-currency filter/sort). Unfiltered default browse uses SQL pagination in Ponder (not full-table scan). |
 | `GET /listings/facets` | Filter facets (make, price, status, …) |
 | `GET /listings/:tokenId` | Listing detail |
 | `GET /passports/:tokenId` | Passport detail |
