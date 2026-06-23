@@ -77,7 +77,7 @@ export function IdentityHeader({
 
   return (
     <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-border-default">
+      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-border-default">
         <IdentityAvatar address={wallet} fill />
       </div>
 
