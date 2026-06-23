@@ -22,6 +22,7 @@ import {
   type MarketFilterState,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
+import { fiat1e8ToEthWei, FIAT_SCALE } from "@/lib/marketplace/price-normalize";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
@@ -89,7 +90,7 @@ type Props = {
 export function MarketFilterDrawer({ open, onOpenChange }: Props) {
   const { facets } = useFacets();
   const { filters, pushFilters } = useMarketFilterNavigation();
-  const { displayCurrency } = useDisplayCurrency();
+  const { displayCurrency, ethUsd, eurUsd, isRatesLoading } = useDisplayCurrency();
   const [draft, setDraft] = useState<MarketFilterState>(filters);
 
   useEffect(() => {
@@ -112,14 +113,34 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
     ? facets.mileageMax.toLocaleString("en-US")
     : "";
 
-  const priceRange =
+  const fiatPriceRange =
     displayCurrency === "EUR"
       ? (facets?.priceRanges?.EUR ??
         ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
       : (facets?.priceRanges?.USD ??
         ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
 
+  const usdRangeForEth =
+    facets?.priceRanges?.USD ??
+    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
+
+  const priceRange =
+    displayCurrency === "ETH" && ethUsd != null
+      ? {
+          min: usdRangeForEth.min
+            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.min * Number(FIAT_SCALE))), ethUsd)
+            : 0,
+          max: usdRangeForEth.max
+            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.max * Number(FIAT_SCALE))), ethUsd)
+            : 0,
+        }
+      : fiatPriceRange;
+
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
+  const draftHasPriceBounds = Boolean(draft.priceMin || draft.priceMax);
+  const showResultsNeedsRates = draftHasPriceBounds && displayCurrency !== "USD";
+  const showResultsDisabled =
+    showResultsNeedsRates && (isRatesLoading || ethUsd == null || eurUsd == null);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -386,8 +407,15 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
             type="button"
             variant="primary"
             className="flex-1"
+            disabled={showResultsDisabled}
+            title={showResultsDisabled ? "Waiting for exchange rates…" : undefined}
             onClick={() => {
-              pushFilters({ ...draft, page: 1 });
+              const hasPriceBounds = Boolean(draft.priceMin || draft.priceMax);
+              pushFilters({
+                ...draft,
+                priceCurrency: hasPriceBounds ? displayCurrency : "",
+                page: 1,
+              });
               onOpenChange(false);
             }}
           >

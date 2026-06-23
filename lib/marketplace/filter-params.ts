@@ -1,3 +1,9 @@
+import {
+  isPriceCurrency,
+  parseFxRates,
+  type PriceCurrency,
+} from "@/lib/marketplace/price-normalize";
+
 export type MarketSort = "newest" | "price_asc" | "price_desc" | "mileage_asc";
 export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
 
@@ -9,6 +15,7 @@ export type MarketFilterState = {
   yearMax: string;
   priceMin: string;
   priceMax: string;
+  priceCurrency: PriceCurrency | "";
   mileageMin: string;
   mileageMax: string;
   fuelTypes: string[];
@@ -31,6 +38,7 @@ export const DEFAULT_MARKET_FILTERS: MarketFilterState = {
   yearMax: "",
   priceMin: "",
   priceMax: "",
+  priceCurrency: "",
   mileageMin: "",
   mileageMax: "",
   fuelTypes: [],
@@ -72,6 +80,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
       : "all";
   const pageRaw = sp.get("page");
   const pageN = pageRaw ? Number.parseInt(pageRaw, 10) : 1;
+  const priceCurrencyRaw = sp.get("priceCurrency") ?? "";
 
   return {
     search: sp.get("search") ?? sp.get("q") ?? "",
@@ -81,6 +90,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
     yearMax: sp.get("yearMax") ?? "",
     priceMin: sp.get("priceMin") ?? "",
     priceMax: sp.get("priceMax") ?? "",
+    priceCurrency: isPriceCurrency(priceCurrencyRaw) ? priceCurrencyRaw : "",
     mileageMin: sp.get("mileageMin") ?? "",
     mileageMax: sp.get("mileageMax") ?? "",
     fuelTypes: splitCsv(sp.get("fuelType")),
@@ -105,6 +115,9 @@ export function filtersToSearchParams(filters: MarketFilterState): URLSearchPara
   if (filters.yearMax) sp.set("yearMax", filters.yearMax);
   if (filters.priceMin) sp.set("priceMin", filters.priceMin);
   if (filters.priceMax) sp.set("priceMax", filters.priceMax);
+  if (filters.priceMin || filters.priceMax) {
+    if (filters.priceCurrency) sp.set("priceCurrency", filters.priceCurrency);
+  }
   if (filters.mileageMin) sp.set("mileageMin", filters.mileageMin);
   if (filters.mileageMax) sp.set("mileageMax", filters.mileageMax);
   if (filters.fuelTypes.length) sp.set("fuelType", filters.fuelTypes.join(","));
@@ -153,9 +166,7 @@ export function countDrawerActiveFilters(filters: MarketFilterState): number {
   return n;
 }
 
-type PriceDisplayCurrency = "USD" | "EUR" | "ETH";
-
-function formatCompactPrice(amount: string, displayCurrency: PriceDisplayCurrency): string {
+function formatCompactPrice(amount: string, displayCurrency: PriceCurrency): string {
   const n = Number.parseFloat(amount);
   if (!Number.isFinite(n)) return amount;
   if (displayCurrency === "ETH") {
@@ -168,7 +179,7 @@ function formatCompactPrice(amount: string, displayCurrency: PriceDisplayCurrenc
   return `${symbol}${n.toLocaleString("en-US")}`;
 }
 
-export function priceFilterPlaceholder(displayCurrency: PriceDisplayCurrency): string {
+export function priceFilterPlaceholder(displayCurrency: PriceCurrency): string {
   switch (displayCurrency) {
     case "EUR":
       return "e.g. 15 000 €";
@@ -182,7 +193,7 @@ export function priceFilterPlaceholder(displayCurrency: PriceDisplayCurrency): s
 export function formatPriceChipLabel(
   priceMin: string,
   priceMax: string,
-  displayCurrency: PriceDisplayCurrency = "USD",
+  displayCurrency: PriceCurrency = "USD",
 ): string {
   if (priceMin && priceMax) {
     const minN = Number.parseFloat(priceMin);
@@ -242,7 +253,27 @@ export function formatMultiValueChipLabel(values: string[]): string {
   return values.join(" · ");
 }
 
-export function marketFiltersToApiInput(filters: MarketFilterState) {
+export type MarketApiRates = {
+  eurUsdRate?: string;
+  ethUsdRate?: string;
+};
+
+function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
+  if (filters.priceCurrency) return filters.priceCurrency;
+  if (filters.priceMin.trim() || filters.priceMax.trim()) return "USD";
+  return "USD";
+}
+
+export function marketFiltersToApiInput(
+  filters: MarketFilterState,
+  rates?: MarketApiRates,
+) {
+  const hasPriceBounds = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
+  const parsedRates =
+    rates?.eurUsdRate && rates?.ethUsdRate
+      ? parseFxRates(rates.eurUsdRate, rates.ethUsdRate)
+      : null;
+
   return {
     search: filters.search.trim() || undefined,
     make: filters.make || undefined,
@@ -251,6 +282,9 @@ export function marketFiltersToApiInput(filters: MarketFilterState) {
     yearMax: filters.yearMax ? Number.parseInt(filters.yearMax, 10) : undefined,
     priceMin: filters.priceMin.trim() || undefined,
     priceMax: filters.priceMax.trim() || undefined,
+    priceCurrency: hasPriceBounds ? effectivePriceCurrency(filters) : undefined,
+    eurUsdRate: parsedRates ? rates?.eurUsdRate : undefined,
+    ethUsdRate: parsedRates ? rates?.ethUsdRate : undefined,
     mileageMin: filters.mileageMin ? Number.parseInt(filters.mileageMin, 10) : undefined,
     mileageMax: filters.mileageMax ? Number.parseInt(filters.mileageMax, 10) : undefined,
     fuelType: filters.fuelTypes.length ? filters.fuelTypes.join(",") : undefined,
@@ -287,10 +321,7 @@ export type FilterChip = {
   label: string;
 };
 
-export function getFilterChips(
-  filters: MarketFilterState,
-  displayCurrency: PriceDisplayCurrency = "USD",
-): FilterChip[] {
+export function getFilterChips(filters: MarketFilterState): FilterChip[] {
   const chips: FilterChip[] = [];
 
   if (filters.make) chips.push({ key: "make", label: filters.make });
@@ -301,7 +332,11 @@ export function getFilterChips(
   if (filters.priceMin || filters.priceMax) {
     chips.push({
       key: "price",
-      label: formatPriceChipLabel(filters.priceMin, filters.priceMax, displayCurrency),
+      label: formatPriceChipLabel(
+        filters.priceMin,
+        filters.priceMax,
+        effectivePriceCurrency(filters),
+      ),
     });
   }
   if (filters.yearMin || filters.yearMax) {
@@ -346,7 +381,7 @@ export function clearFilterChip(
     case "status":
       return { ...filters, status: "all", page: 1 };
     case "price":
-      return { ...filters, priceMin: "", priceMax: "", page: 1 };
+      return { ...filters, priceMin: "", priceMax: "", priceCurrency: "", page: 1 };
     case "year":
       return { ...filters, yearMin: "", yearMax: "", page: 1 };
     case "mileage":

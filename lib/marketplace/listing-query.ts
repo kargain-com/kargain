@@ -1,4 +1,11 @@
 import type { MarketSort } from "@/lib/marketplace/filter-params";
+import {
+  displayAmountToUsd1e8,
+  listingToUsd1e8,
+  parseFxRates,
+  type FxRates,
+  type PriceCurrency,
+} from "@/lib/marketplace/price-normalize";
 
 export type ListingFilterQuery = {
   search?: string;
@@ -18,6 +25,9 @@ export type ListingFilterQuery = {
   status?: "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
   priceMin?: string;
   priceMax?: string;
+  priceCurrency?: PriceCurrency;
+  eurUsdRate?: string;
+  ethUsdRate?: string;
   sort?: MarketSort;
 };
 
@@ -57,20 +67,61 @@ export function fiatCodeToCurrency(code: number): "USD" | "EUR" {
   return code === 1 ? "EUR" : "USD";
 }
 
-/** Scale a plain display price (e.g. "15000") to USD 1e8 for comparison. */
-function displayPriceToUsd1e8(amount: string): bigint | undefined {
-  const trimmed = amount.trim();
-  if (!trimmed) return undefined;
-  const n = Number.parseFloat(trimmed);
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  return BigInt(Math.round(n * 100_000_000));
+function parsePriceCurrency(raw: string | undefined): PriceCurrency | undefined {
+  if (raw === "USD" || raw === "EUR" || raw === "ETH") return raw;
+  return undefined;
 }
 
-// TODO: inject eurUsd rate from Chainlink event cache for accurate cross-currency sort/filter
-/** Normalize listing price to USD 1e8; EUR rows use EUR ≈ USD fallback when no live rate. */
-export function listingUsd1e8(row: ListingFilterFields): bigint {
+function resolveRowUsd1e8(
+  row: ListingFilterFields,
+  rates: FxRates | null,
+): bigint | null {
   if (row.fiatCurrency === 0) return row.fiatPrice1e8;
-  return row.fiatPrice1e8;
+  if (rates == null) return null;
+  return listingToUsd1e8(row.fiatPrice1e8, 1, rates.eurUsd);
+}
+
+type PriceBoundsUsd1e8 = {
+  min?: bigint;
+  max?: bigint;
+};
+
+function resolveFilterBoundsUsd1e8(
+  filters: ListingFilterQuery,
+  rates: FxRates | null,
+): PriceBoundsUsd1e8 | null {
+  const hasMin = Boolean(filters.priceMin?.trim());
+  const hasMax = Boolean(filters.priceMax?.trim());
+  if (!hasMin && !hasMax) return null;
+
+  const priceCurrency = filters.priceCurrency ?? "USD";
+  const needsRates = priceCurrency !== "USD";
+  if (needsRates && rates == null) return null;
+
+  const min = hasMin
+    ? displayAmountToUsd1e8(filters.priceMin!, priceCurrency, rates)
+    : undefined;
+  const max = hasMax
+    ? displayAmountToUsd1e8(filters.priceMax!, priceCurrency, rates)
+    : undefined;
+
+  if (hasMin && min == null) return null;
+  if (hasMax && max == null) return null;
+
+  return { min, max };
+}
+
+function compareUsd1e8ForSort(
+  a: bigint | null,
+  b: bigint | null,
+  direction: "asc" | "desc",
+): number | null {
+  if (a == null && b == null) return null;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  if (a < b) return direction === "asc" ? -1 : 1;
+  if (a > b) return direction === "asc" ? 1 : -1;
+  return 0;
 }
 
 function parseOptionalInt(raw: string | undefined): number | undefined {
@@ -111,6 +162,9 @@ export function parseListingFilterQuery(
     status,
     priceMin: query.priceMin?.trim() || undefined,
     priceMax: query.priceMax?.trim() || undefined,
+    priceCurrency: parsePriceCurrency(query.priceCurrency),
+    eurUsdRate: query.eurUsdRate?.trim() || undefined,
+    ethUsdRate: query.ethUsdRate?.trim() || undefined,
     sort,
   };
 }
@@ -148,11 +202,14 @@ export function matchesListingFilters(
     return false;
   }
 
-  const rowUsd1e8 = listingUsd1e8(row);
-  const minUsd1e8 = filters.priceMin ? displayPriceToUsd1e8(filters.priceMin) : undefined;
-  const maxUsd1e8 = filters.priceMax ? displayPriceToUsd1e8(filters.priceMax) : undefined;
-  if (minUsd1e8 != null && rowUsd1e8 < minUsd1e8) return false;
-  if (maxUsd1e8 != null && rowUsd1e8 > maxUsd1e8) return false;
+  const rates = parseFxRates(filters.eurUsdRate, filters.ethUsdRate);
+  const bounds = resolveFilterBoundsUsd1e8(filters, rates);
+  if (bounds) {
+    const rowUsd = resolveRowUsd1e8(row, rates);
+    if (rowUsd == null) return false;
+    if (bounds.min != null && rowUsd < bounds.min) return false;
+    if (bounds.max != null && rowUsd > bounds.max) return false;
+  }
 
   if (!includesCsvMatch(filters.fuelTypes ?? [], row.fuelType)) return false;
   if (!includesCsvMatch(filters.bodyTypes ?? [], row.bodyType)) return false;
@@ -175,6 +232,7 @@ export function sortEnrichedListings<T extends EnrichedListingForFilter>(
   rows: T[],
   sort: MarketSort,
   verifiedFirst: boolean,
+  rates: FxRates | null = null,
 ): T[] {
   const copy = [...rows];
   const rank = (status: string) =>
@@ -188,17 +246,21 @@ export function sortEnrichedListings<T extends EnrichedListingForFilter>(
 
     switch (sort) {
       case "price_asc": {
-        const aUsd = listingUsd1e8(a);
-        const bUsd = listingUsd1e8(b);
-        if (aUsd < bUsd) return -1;
-        if (aUsd > bUsd) return 1;
+        const cmp = compareUsd1e8ForSort(
+          resolveRowUsd1e8(a, rates),
+          resolveRowUsd1e8(b, rates),
+          "asc",
+        );
+        if (cmp != null && cmp !== 0) return cmp;
         break;
       }
       case "price_desc": {
-        const aUsd = listingUsd1e8(a);
-        const bUsd = listingUsd1e8(b);
-        if (aUsd < bUsd) return 1;
-        if (aUsd > bUsd) return -1;
+        const cmp = compareUsd1e8ForSort(
+          resolveRowUsd1e8(a, rates),
+          resolveRowUsd1e8(b, rates),
+          "desc",
+        );
+        if (cmp != null && cmp !== 0) return cmp;
         break;
       }
       case "mileage_asc":

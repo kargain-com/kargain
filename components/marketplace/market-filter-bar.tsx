@@ -29,6 +29,7 @@ import {
   priceFilterPlaceholder,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
+import { fiat1e8ToEthWei, FIAT_SCALE } from "@/lib/marketplace/price-normalize";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
 import { cn } from "@/lib/utils";
 
@@ -95,7 +96,7 @@ function FilterSearchInput({
 export function MarketFilterBar() {
   const { facets } = useFacets();
   const { filters, patchFilters } = useMarketFilterNavigation();
-  const { displayCurrency } = useDisplayCurrency();
+  const { displayCurrency, ethUsd, eurUsd, isRatesLoading } = useDisplayCurrency();
   const [searchInput, setSearchInput] = useState(filters.search);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
@@ -137,8 +138,9 @@ export function MarketFilterBar() {
   const statusActive = filters.status !== "all";
 
   const priceActive = Boolean(filters.priceMin || filters.priceMax);
+  const priceChipCurrency = filters.priceCurrency || displayCurrency;
   const priceLabel = priceActive
-    ? formatPriceChipLabel(filters.priceMin, filters.priceMax, displayCurrency)
+    ? formatPriceChipLabel(filters.priceMin, filters.priceMax, priceChipCurrency)
     : "Price";
 
   const makeActive = Boolean(filters.make);
@@ -149,14 +151,34 @@ export function MarketFilterBar() {
       : `${filters.fuelTypes.slice(0, 2).join(", ")} (+${filters.fuelTypes.length - 2})`
     : "Fuel";
 
-  const priceRange =
+  const fiatPriceRange =
     displayCurrency === "EUR"
       ? (facets?.priceRanges?.EUR ??
         ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
       : (facets?.priceRanges?.USD ??
         ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
 
+  const usdRangeForEth =
+    facets?.priceRanges?.USD ??
+    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
+
+  const priceRange =
+    displayCurrency === "ETH" && ethUsd != null
+      ? {
+          min: usdRangeForEth.min
+            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.min * Number(FIAT_SCALE))), ethUsd)
+            : 0,
+          max: usdRangeForEth.max
+            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.max * Number(FIAT_SCALE))), ethUsd)
+            : 0,
+        }
+      : fiatPriceRange;
+
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
+  const priceDraftHasBounds = Boolean(priceDraft.priceMin || priceDraft.priceMax);
+  const priceApplyNeedsRates = priceDraftHasBounds && displayCurrency !== "USD";
+  const priceApplyDisabled =
+    priceApplyNeedsRates && (isRatesLoading || ethUsd == null || eurUsd == null);
 
   const toggleFuel = (opt: string) => {
     const next = filters.fuelTypes.includes(opt)
@@ -287,10 +309,14 @@ export function MarketFilterBar() {
                   variant="primary"
                   size="sm"
                   className="w-full"
+                  disabled={priceApplyDisabled}
+                  title={priceApplyDisabled ? "Waiting for exchange rates…" : undefined}
                   onClick={() => {
+                    const hasBounds = Boolean(priceDraft.priceMin || priceDraft.priceMax);
                     patchFilters({
                       priceMin: priceDraft.priceMin,
                       priceMax: priceDraft.priceMax,
+                      priceCurrency: hasBounds ? displayCurrency : "",
                       page: 1,
                     });
                     setPriceOpen(false);

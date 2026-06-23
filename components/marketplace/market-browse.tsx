@@ -3,7 +3,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInView } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   searchMarketplaceListings,
@@ -15,6 +15,7 @@ import { MarketFilterChips } from "@/components/marketplace/market-filter-chips"
 import { FadeUp } from "@/components/ui/fade-up";
 import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
@@ -32,8 +33,24 @@ export function MarketBrowse({
   activeVerifiers = 0,
 }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
+  const { ethUsd, eurUsd } = useDisplayCurrency();
 
-  const apiInput = useMemo(() => marketFiltersToApiInput(filters), [filters]);
+  const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
+  const effectivePriceCurrency = filters.priceCurrency || "USD";
+  const needsRatesForFilter = hasPriceFilter && effectivePriceCurrency !== "USD";
+  const needsRatesForSort =
+    filters.sort === "price_asc" || filters.sort === "price_desc";
+  const needsRates = needsRatesForFilter || needsRatesForSort;
+  const ratesReady = ethUsd != null && eurUsd != null;
+
+  const apiInput = useMemo(
+    () =>
+      marketFiltersToApiInput(filters, {
+        eurUsdRate: eurUsd?.toString(),
+        ethUsdRate: ethUsd?.toString(),
+      }),
+    [filters, ethUsd, eurUsd],
+  );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending, isError, error } =
@@ -47,6 +64,7 @@ export function MarketBrowse({
         if (last.page < last.totalPages) return last.page + 1;
         return undefined;
       },
+      enabled: !needsRates || ratesReady,
     });
 
   const rows: MarketplaceListingRow[] = useMemo(
@@ -106,7 +124,12 @@ export function MarketBrowse({
           </div>
         )}
 
-        {isPending && (
+        {isPending && needsRates && !ratesReady && (
+          <div className="mb-4 rounded-md border border-border-default bg-bg-surface p-4" role="status" aria-live="polite">
+            <p className="text-sm text-text-primary">Loading exchange rates…</p>
+          </div>
+        )}
+        {isPending && (!needsRates || ratesReady) && (
           <div className="mb-4 rounded-md border border-border-default bg-bg-surface p-4" role="status" aria-live="polite">
             <p className="text-sm text-text-primary">Loading listings…</p>
           </div>

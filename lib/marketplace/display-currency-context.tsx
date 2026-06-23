@@ -10,13 +10,18 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  ETH_SCALE,
+  FIAT_SCALE,
+  listingToEur1e8,
+  listingToUsd1e8,
+  type PriceCurrency,
+} from "@/lib/marketplace/price-normalize";
 import { useChainlinkRates } from "@/lib/marketplace/use-chainlink-rates";
 
-export type DisplayCurrency = "USD" | "EUR" | "ETH";
+export type DisplayCurrency = PriceCurrency;
 
 const STORAGE_KEY = "kargain_display_currency";
-const FIAT_SCALE = 100_000_000n;
-const ETH_SCALE = 1_000_000_000_000_000_000n;
 
 const DISPLAY_CURRENCIES: DisplayCurrency[] = ["USD", "EUR", "ETH"];
 
@@ -54,23 +59,13 @@ function formatEthWei(ethWei: bigint): string {
   return `${neg ? `-${core}` : core} ETH`;
 }
 
-function toUsd1e8(fiatPrice1e8: bigint, fiatCurrency: 0 | 1, eurUsd: bigint | null): bigint | null {
-  if (fiatCurrency === 0) return fiatPrice1e8;
-  if (eurUsd == null) return null;
-  return (fiatPrice1e8 * eurUsd) / FIAT_SCALE;
-}
-
-function toEur1e8(fiatPrice1e8: bigint, fiatCurrency: 0 | 1, eurUsd: bigint | null): bigint | null {
-  if (fiatCurrency === 1) return fiatPrice1e8;
-  if (eurUsd == null) return null;
-  return (fiatPrice1e8 * FIAT_SCALE) / eurUsd;
-}
-
 type DisplayCurrencyContextValue = {
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (currency: DisplayCurrency) => void;
   convertPrice: (fiatPrice1e8: bigint, fiatCurrency: 0 | 1) => string;
   isRatesLoading: boolean;
+  ethUsd: bigint | null;
+  eurUsd: bigint | null;
 };
 
 const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>(null);
@@ -98,8 +93,7 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
           return formatFiat1e8(fiatPrice1e8, "$");
         }
         if (isRatesLoading || eurUsd == null) return "—";
-        const usd1e8 = toUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
-        if (usd1e8 == null) return "—";
+        const usd1e8 = listingToUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
         return formatFiat1e8(usd1e8, "$");
       }
 
@@ -108,14 +102,12 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
           return formatFiat1e8(fiatPrice1e8, "€");
         }
         if (isRatesLoading || eurUsd == null) return "—";
-        const eur1e8 = toEur1e8(fiatPrice1e8, fiatCurrency, eurUsd);
-        if (eur1e8 == null) return "—";
+        const eur1e8 = listingToEur1e8(fiatPrice1e8, fiatCurrency, eurUsd);
         return formatFiat1e8(eur1e8, "€");
       }
 
-      if (isRatesLoading || ethUsd == null) return "—";
-      const usd1e8 = toUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
-      if (usd1e8 == null) return "—";
+      if (isRatesLoading || ethUsd == null || eurUsd == null) return "—";
+      const usd1e8 = listingToUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
       const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
       return formatEthWei(ethWei);
     },
@@ -128,8 +120,10 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       setDisplayCurrency,
       convertPrice,
       isRatesLoading,
+      ethUsd,
+      eurUsd,
     }),
-    [convertPrice, displayCurrency, isRatesLoading, setDisplayCurrency],
+    [convertPrice, displayCurrency, ethUsd, eurUsd, isRatesLoading, setDisplayCurrency],
   );
 
   return (

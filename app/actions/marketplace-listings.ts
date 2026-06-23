@@ -22,6 +22,9 @@ const filterSchema = z.object({
   yearMax: z.number().int().optional(),
   priceMin: z.string().optional(),
   priceMax: z.string().optional(),
+  priceCurrency: z.enum(["USD", "EUR", "ETH"]).optional(),
+  eurUsdRate: z.string().optional(),
+  ethUsdRate: z.string().optional(),
   mileageMin: z.number().int().optional(),
   mileageMax: z.number().int().optional(),
   fuelType: z.string().optional(),
@@ -91,6 +94,9 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   if (p.mileageMax != null) url.searchParams.set("mileageMax", String(p.mileageMax));
   if (p.priceMin) url.searchParams.set("priceMin", p.priceMin);
   if (p.priceMax) url.searchParams.set("priceMax", p.priceMax);
+  if (p.priceCurrency) url.searchParams.set("priceCurrency", p.priceCurrency);
+  if (p.eurUsdRate) url.searchParams.set("eurUsdRate", p.eurUsdRate);
+  if (p.ethUsdRate) url.searchParams.set("ethUsdRate", p.ethUsdRate);
   if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
   if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
   if (p.transmission) url.searchParams.set("transmission", p.transmission);

@@ -23,6 +23,9 @@ const baseRow: EnrichedListingForFilter = {
   listedAt: 100n,
 };
 
+const ETH_USD = 300_000_000_000n;
+const EUR_USD = 108_000_000n;
+
 describe("matchesListingFilters", () => {
   it("matches fuel, body, and transmission csv filters", () => {
     assert.equal(
@@ -39,10 +42,10 @@ describe("matchesListingFilters", () => {
     );
   });
 
-  it("filters by currency and price bounds", () => {
+  it("filters by USD price bounds without rates", () => {
     assert.equal(
       matchesListingFilters(baseRow, {
-        currency: "USD",
+        priceCurrency: "USD",
         priceMin: "100",
         priceMax: "200",
       }),
@@ -50,16 +53,72 @@ describe("matchesListingFilters", () => {
     );
     assert.equal(
       matchesListingFilters(baseRow, {
-        currency: "EUR",
+        priceCurrency: "USD",
+        priceMin: "200",
+      }),
+      false,
+    );
+  });
+
+  it("filters ETH min against USD listing using Chainlink rate", () => {
+    const usdListing: EnrichedListingForFilter = {
+      ...baseRow,
+      fiatPrice1e8: 4_500_000_000_000n,
+      fiatCurrency: 0,
+    };
+    const rates = { ethUsd: ETH_USD, eurUsd: EUR_USD };
+
+    assert.equal(
+      matchesListingFilters(usdListing, {
+        priceCurrency: "ETH",
+        priceMin: "4",
+        ethUsdRate: String(rates.ethUsd),
+        eurUsdRate: String(rates.eurUsd),
+      }),
+      true,
+    );
+    assert.equal(
+      matchesListingFilters(usdListing, {
+        priceCurrency: "ETH",
+        priceMin: "20",
+        ethUsdRate: String(rates.ethUsd),
+        eurUsdRate: String(rates.eurUsd),
+      }),
+      false,
+    );
+  });
+
+  it("excludes EUR listings from USD price filter when rates unavailable", () => {
+    const eurListing: EnrichedListingForFilter = {
+      ...baseRow,
+      fiatPrice1e8: 15_000_000_000_000n,
+      fiatCurrency: 1,
+    };
+    assert.equal(
+      matchesListingFilters(eurListing, {
+        priceCurrency: "USD",
+        priceMin: "100",
+        priceMax: "200000",
       }),
       false,
     );
     assert.equal(
       matchesListingFilters(baseRow, {
-        currency: "USD",
-        priceMin: "200",
+        priceCurrency: "USD",
+        priceMin: "100",
+        priceMax: "200000",
       }),
-      false,
+      true,
+    );
+  });
+
+  it("skips EUR price filter when rates unavailable", () => {
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "EUR",
+        priceMin: "200000",
+      }),
+      true,
     );
   });
 
@@ -123,6 +182,27 @@ describe("sortEnrichedListings", () => {
     assert.equal(sorted[0]?.passportStatus, "VERIFIED");
     assert.equal(sorted[0]?.fiatPrice1e8, 20_000_000_000n);
     assert.equal(sorted[1]?.fiatPrice1e8, 10_000_000_000n);
+  });
+
+  it("sorts mixed USD and EUR listings by USD-equivalent price", () => {
+    const rates = { ethUsd: ETH_USD, eurUsd: EUR_USD };
+    const rows: EnrichedListingForFilter[] = [
+      {
+        ...baseRow,
+        fiatPrice1e8: 20_000_000_000_000n,
+        fiatCurrency: 1,
+        listedAt: 200n,
+      },
+      {
+        ...baseRow,
+        fiatPrice1e8: 18_000_000_000_000n,
+        fiatCurrency: 0,
+        listedAt: 100n,
+      },
+    ];
+    const sorted = sortEnrichedListings(rows, "price_asc", false, rates);
+    assert.equal(sorted[0]?.fiatCurrency, 0);
+    assert.equal(sorted[1]?.fiatCurrency, 1);
   });
 });
 

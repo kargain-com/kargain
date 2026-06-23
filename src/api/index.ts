@@ -26,6 +26,7 @@ import {
   type EnrichedListingForFilter,
   type ListingFilterQuery,
 } from "../../lib/marketplace/listing-query";
+import { parseFxRates } from "../../lib/marketplace/price-normalize";
 import {
   SLUG_MAX_LENGTH,
   SLUG_MIN_LENGTH,
@@ -207,8 +208,9 @@ function filterAndSortListings(
   filters: ListingFilterQuery,
   verifiedFirst: boolean,
 ) {
+  const rates = parseFxRates(filters.eurUsdRate, filters.ethUsdRate);
   const filtered = listings.filter((row) => matchesListingFilters(row, filters));
-  return sortEnrichedListings(filtered, filters.sort ?? "newest", verifiedFirst);
+  return sortEnrichedListings(filtered, filters.sort ?? "newest", verifiedFirst, rates);
 }
 
 app.get("/listings", async (c) => {
@@ -233,9 +235,11 @@ app.get("/listings", async (c) => {
     location: c.req.query("location"),
     colour: c.req.query("colour"),
     status: c.req.query("status"),
-    currency: c.req.query("currency"),
     priceMin: c.req.query("priceMin"),
     priceMax: c.req.query("priceMax"),
+    priceCurrency: c.req.query("priceCurrency"),
+    eurUsdRate: c.req.query("eurUsdRate"),
+    ethUsdRate: c.req.query("ethUsdRate"),
     sort: c.req.query("sort"),
   });
 
