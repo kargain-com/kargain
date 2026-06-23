@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, type ReactNode } from "react";
 import type { Address } from "viem";
-import { useAccount, useReadContract } from "wagmi";
-
 import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
@@ -16,13 +14,9 @@ import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
 export type ProfileOwnedPassport = {
@@ -308,16 +302,6 @@ export function ProfilePage({
   const searchParams = useSearchParams();
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
-  const { address: viewerAddress, isConnected } = useAccount();
-
-  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
-  const { data: viewerIsActiveVerifier } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "isActiveVerifier",
-    args: viewerAddress ? [viewerAddress] : undefined,
-    query: { enabled: Boolean(staking && viewerAddress) },
-  });
 
   const tabs = useMemo(
     () =>
@@ -360,8 +344,6 @@ export function ProfilePage({
     verifierProfile?.joinedAt != null && verifierProfile.joinedAt > 0
       ? new Date(verifierProfile.joinedAt * 1000).getFullYear()
       : null;
-  const subjectName = verifierProfile?.name?.trim() || navShortAddress(wallet);
-
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-text-primary">
       <div className="flex flex-col gap-8">
@@ -413,11 +395,7 @@ export function ProfilePage({
 
         <ProfileActionBanner
           isOwner={isOwner}
-          isConnected={isConnected}
-          isActiveVerifier={viewerIsActiveVerifier === true}
           subjectIsKarPro={isActiveVerifier}
-          subjectName={subjectName}
-          subjectWallet={wallet}
           openDisputeCount={disputedPassports.length}
           onTabChange={(tab) => setTab(tab as TabId)}
         />

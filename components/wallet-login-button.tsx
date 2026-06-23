@@ -150,7 +150,6 @@ export function WalletLoginButton() {
     <>
       <button
         type="button"
-        data-wallet-trigger
         onClick={() => setConnectOpen(true)}
         className="inline-flex h-9 items-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 hover:border-accent-warm hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
       >
