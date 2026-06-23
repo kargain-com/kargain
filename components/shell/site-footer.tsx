@@ -1,8 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 
-import { KargainLogo } from "@/components/ui/kargain-logo";
-
 const linkClassName =
   "font-sans text-sm text-text-secondary transition-colors hover:text-text-primary";
 
@@ -16,14 +14,9 @@ export function SiteFooter() {
     >
       <div className="mx-auto w-full max-w-7xl px-6 py-6 md:px-8 xl:max-w-[80rem]">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <KargainLogo size={24} />
-            <span className="font-sans text-sm font-medium text-text-primary">Kargain</span>
-            <span className="font-mono text-xs text-text-tertiary" aria-hidden>
-              ·
-            </span>
-            <span className="font-mono text-xs text-text-tertiary">MIT License</span>
-          </div>
+          <p className="font-mono text-xs text-text-tertiary">
+            © {year} Kargain · MIT License
+          </p>
 
           <nav
             className="flex flex-wrap items-center gap-x-4 gap-y-2"
@@ -49,10 +42,6 @@ export function SiteFooter() {
             </a>
           </nav>
         </div>
-
-        <p className="mt-4 text-center font-mono text-xs text-text-tertiary">
-          © {year} Kargain · Decentralized marketplace for used vehicles
-        </p>
       </div>
     </footer>
   );
