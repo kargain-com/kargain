@@ -124,18 +124,21 @@ async function MarketplaceListingInner({
   }
 
   const listingRaw = await fetchListingDetail(raw);
-  const listing =
+  const listingActive =
     listingRaw &&
     typeof listingRaw === "object" &&
     !Array.isArray(listingRaw) &&
-    (listingRaw as { active?: boolean }).active
-      ? {
-          active: true as const,
-          fiatPrice1e8: String((listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8),
-          fiatCurrency: Number((listingRaw as { fiatCurrency: number }).fiatCurrency),
-          seller: (listingRaw as { seller: string }).seller as `0x${string}`,
-        }
-      : null;
+    Boolean((listingRaw as { active?: boolean | string }).active);
+  const listing = listingActive
+    ? {
+        active: true as const,
+        fiatPrice1e8: String(
+          (listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8,
+        ),
+        fiatCurrency: Number((listingRaw as { fiatCurrency: number }).fiatCurrency),
+        seller: (listingRaw as { seller: string }).seller as `0x${string}`,
+      }
+    : null;
 
   return (
     <div className="min-h-dvh bg-bg-primary">
