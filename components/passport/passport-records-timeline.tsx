@@ -15,13 +15,12 @@ type Props = {
   passportOwner: string;
   lastDisputer: string;
   disputeReason: string;
-  locale?: string;
 };
 
-function formatChainDate(timestampSec: string, locale: string): string {
+function formatChainDate(timestampSec: string): string {
   const sec = Number.parseInt(timestampSec, 10);
   if (!Number.isFinite(sec) || sec <= 0) return "";
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(sec * 1000));
@@ -45,7 +44,6 @@ export function PassportRecordsTimeline({
   passportOwner,
   lastDisputer,
   disputeReason,
-  locale = "en",
 }: Props) {
   return (
     <section
@@ -91,7 +89,7 @@ export function PassportRecordsTimeline({
                     ))}
                   </div>
                   <p className="font-mono text-xs font-normal tabular-nums text-text-secondary">
-                    {formatChainDate(record.timestamp, locale) || "Time"}
+                    {formatChainDate(record.timestamp) || "Time"}
                   </p>
                 </div>
                 <p className="mt-2 font-sans text-sm text-text-secondary">

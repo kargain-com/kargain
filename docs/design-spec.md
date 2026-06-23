@@ -25,7 +25,7 @@ Design principles (enforced in tokens): dark-first, flat surfaces (no shadows), 
 
 **Platform:** Kargain is a **multi-chain** product. Base Sepolia is the integration testnet — UI and flows should remain chain-aware (see [README.md](../README.md) § Multi-chain platform). Do not hardcode single-network assumptions in new components.
 
-**Locales:** English-first UI (`<html lang="en">`). Static pages `/about`, `/terms`, and `/privacy` use hardcoded English copy in their route modules. `lib/i18n/app-locales.ts` was removed (inconsistent MVP i18n). There is no `[locale]` route segment yet.
+**Locales:** English-only UI (`<html lang="en">`). All user-facing copy is hardcoded English in route and component modules. The `lib/i18n/` directory was removed entirely. There is no `[locale]` route segment.
 
 **Public assets** (`public/`):
 
@@ -453,7 +453,7 @@ Decorative icons: `aria-hidden="true"`. Meaningful icons-only controls: `aria-la
 - **Focus rings:** Visible on `:focus-visible` only. Use `--focus-ring` (2px accent-warm ring with 2px offset against `bg-primary`). Never remove focus outlines without a replacement.
 - **Contrast:** `text-text-primary` on `bg-bg-primary` must meet **WCAG 2.1 AA** (4.5:1 body, 3:1 large text). Secondary text on primary background must still meet 4.5:1 for body-sized copy; use `text-text-secondary` only for non-essential supporting text at `text-sm` or larger when contrast allows.
 - **Reduced motion:** All Framer Motion sequences must call `useReducedMotion()` and skip or shorten transforms.
-- **Language:** `lang="en"` on `<html>` in [`app/layout.tsx`](../app/layout.tsx). Static `/about`, `/terms`, `/privacy` are hardcoded English (no locale routing; `app-locales.ts` deleted).
+- **Language:** `lang="en"` on `<html>` in [`app/layout.tsx`](../app/layout.tsx). English-only copy throughout (no locale routing or `lib/i18n/`).
 - **Images:** Meaningful `alt` text; decorative images `alt=""`. Brand logo uses CSS mask (`KargainLogo`), not `next/image`. Favicon is SVG (`/kargain-logo.svg`); OG image via `app/opengraph-image.tsx`.
 
 ---
