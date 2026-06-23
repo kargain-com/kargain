@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
+import type { Dm } from "@xmtp/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
@@ -13,7 +14,7 @@ import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpMessages } from "@/hooks/use-xmtp-messages";
 import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
-import { formatRelativeTime, setLastSeen } from "@/lib/xmtp/helpers";
+import { ethereumAddressFromInboxState, formatRelativeTime, setLastSeen } from "@/lib/xmtp/helpers";
 
 type Props = {
   conversationId: string;
@@ -41,8 +42,41 @@ export function ConversationThreadClient({ conversationId }: Props) {
     () => conversations.find((conversation) => conversation.id === conversationId)?.peerAddress,
     [conversations, conversationId],
   );
-  const peerAddress = parsePeerAddress(peerAddressRaw);
+  const listPeerAddress = parsePeerAddress(peerAddressRaw);
+  const [resolvedPeerAddress, setResolvedPeerAddress] = useState<`0x${string}` | undefined>();
+  const peerAddress = listPeerAddress ?? resolvedPeerAddress;
   const { displayName, isKarPro, profileHref } = usePeerIdentity(peerAddress);
+
+  useEffect(() => {
+    if (listPeerAddress) {
+      setResolvedPeerAddress(listPeerAddress);
+      return;
+    }
+
+    if (!client || !conversationId) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const conversation = await client.conversations.getConversationById(conversationId);
+        if (!conversation || cancelled) return;
+
+        const peerInboxId = await (conversation as Dm).peerInboxId();
+        const states = await client.preferences.getInboxStates([peerInboxId]);
+        const resolved = ethereumAddressFromInboxState(states[0]);
+        if (!cancelled && resolved) {
+          setResolvedPeerAddress(resolved);
+        }
+      } catch {
+        // Peer lookup failed — header falls back to unknown peer.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, conversationId, listPeerAddress]);
 
   useEffect(() => {
     setLastSeen(conversationId);

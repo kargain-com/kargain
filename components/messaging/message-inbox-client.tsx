@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
+import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
+import { openDmWithPeer } from "@/lib/xmtp/open-dm";
 import { formatRelativeTime, getClientEthereumAddress, shortAddress } from "@/lib/xmtp/helpers";
 
 function parsePeerAddress(raw: string): `0x${string}` | undefined {
@@ -18,6 +21,20 @@ function parsePeerAddress(raw: string): `0x${string}` | undefined {
   } catch {
     return undefined;
   }
+}
+
+function findConversationByPeer(
+  conversations: ConversationSummary[],
+  peer: `0x${string}`,
+): ConversationSummary | undefined {
+  const normalized = peer.toLowerCase();
+  return conversations.find((conversation) => {
+    try {
+      return getAddress(conversation.peerAddress).toLowerCase() === normalized;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function ConversationInboxRow({ conversation }: { conversation: ConversationSummary }) {
@@ -82,10 +99,94 @@ function InboxSkeleton() {
 }
 
 export function MessageInboxClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { address, isConnected } = useAccount();
   const { client, isInitializing, error, initialize } = useXmtpClient();
   const { conversations, isLoading } = useXmtpConversations(client);
   const myAddress = client ? getClientEthereumAddress(client) : address;
+
+  const initialToRef = useRef<string | null | undefined>(undefined);
+  if (initialToRef.current === undefined) {
+    initialToRef.current = searchParams.get("to");
+  }
+  const strippedRef = useRef(false);
+  const handledToRef = useRef(false);
+  const [openingPeer, setOpeningPeer] = useState(false);
+
+  useEffect(() => {
+    if (strippedRef.current) return;
+    if (!initialToRef.current) return;
+    strippedRef.current = true;
+    router.replace("/messages");
+  }, [router]);
+
+  useEffect(() => {
+    if (handledToRef.current) return;
+
+    const raw = initialToRef.current;
+    if (!raw) {
+      handledToRef.current = true;
+      return;
+    }
+
+    let peer: `0x${string}`;
+    try {
+      peer = getAddress(raw);
+    } catch {
+      handledToRef.current = true;
+      return;
+    }
+
+    if (!isConnected) {
+      handledToRef.current = true;
+      return;
+    }
+
+    if (address && peer.toLowerCase() === address.toLowerCase()) {
+      handledToRef.current = true;
+      return;
+    }
+
+    const activeClient = client ?? getCachedXmtpClient();
+    if (!activeClient) {
+      if (!isInitializing) {
+        void initialize();
+      }
+      return;
+    }
+
+    if (isLoading) return;
+
+    handledToRef.current = true;
+    setOpeningPeer(true);
+
+    void (async () => {
+      try {
+        const existing = findConversationByPeer(conversations, peer);
+        if (existing) {
+          router.push(`/messages/${existing.id}`);
+          return;
+        }
+
+        const dm = await openDmWithPeer(activeClient, peer);
+        router.push(`/messages/${dm.id}`);
+      } catch {
+        // Stay on inbox when the conversation cannot be opened.
+      } finally {
+        setOpeningPeer(false);
+      }
+    })();
+  }, [
+    address,
+    client,
+    conversations,
+    initialize,
+    isConnected,
+    isInitializing,
+    isLoading,
+    router,
+  ]);
 
   if (!isConnected) {
     return (
@@ -107,6 +208,13 @@ export function MessageInboxClient() {
           <p className="font-mono text-xs text-text-secondary">{shortAddress(myAddress)}</p>
         )}
       </div>
+
+      {openingPeer && (
+        <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Opening conversation…
+        </p>
+      )}
 
       {!client && (
         <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">

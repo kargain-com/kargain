@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Address } from "viem";
+import { useAccount } from "wagmi";
 import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
@@ -18,7 +19,7 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
-import { shortAddress } from "@/lib/web3/wallet-display";
+import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = {
   tokenId: string;
@@ -373,6 +374,7 @@ export function ProfilePage({
   ponderErr,
 }: ProfilePageProps) {
   const searchParams = useSearchParams();
+  const { isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
 
@@ -431,6 +433,7 @@ export function ProfilePage({
     verifierProfile?.joinedAt != null && verifierProfile.joinedAt > 0
       ? new Date(verifierProfile.joinedAt * 1000).getFullYear()
       : null;
+  const subjectName = verifierProfile?.name?.trim() || navShortAddress(wallet);
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-text-primary">
       <div className="flex flex-col gap-8">
@@ -482,7 +485,10 @@ export function ProfilePage({
 
         <ProfileActionBanner
           isOwner={isOwner}
+          isConnected={isConnected}
           subjectIsKarPro={isActiveVerifier}
+          subjectName={subjectName}
+          subjectWallet={wallet}
           openDisputeCount={disputedPassports.length}
           onTabChange={(tab) => setTab(tab as TabId)}
         />
