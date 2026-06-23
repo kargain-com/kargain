@@ -2,8 +2,8 @@
 
 import { AlertTriangle, ArrowRight, CheckCircle, Globe, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
@@ -94,6 +94,11 @@ function tabFromSearchParams(
   const ids = new Set(tabs.map((t) => t.id));
   if (raw && ids.has(raw as TabId)) return raw as TabId;
   return "passports";
+}
+
+function profileTabUrl(wallet: Address, tab: TabId): string {
+  if (tab === "passports") return `/profile/${wallet}`;
+  return `/profile/${wallet}?tab=${tab}`;
 }
 
 function tabButtonClass(active: boolean): string {
@@ -298,7 +303,6 @@ export function ProfilePage({
   attestations,
   ponderErr,
 }: ProfilePageProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
@@ -322,20 +326,34 @@ export function ProfilePage({
       disputedPassports.length,
     ],
   );
-  const activeTab = tabFromSearchParams(searchParams, tabs);
+
+  const [activeTab, setActiveTab] = useState<TabId>(() =>
+    tabFromSearchParams(searchParams, tabs),
+  );
+
+  useEffect(() => {
+    const ids = new Set(tabs.map((t) => t.id));
+    if (!ids.has(activeTab)) {
+      setActiveTab("passports");
+    }
+  }, [tabs, activeTab]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActiveTab(
+        tabFromSearchParams(new URLSearchParams(window.location.search), tabs),
+      );
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [tabs]);
 
   const setTab = useCallback(
     (tab: TabId) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (tab === "passports") {
-        params.delete("tab");
-      } else {
-        params.set("tab", tab);
-      }
-      const query = params.toString();
-      router.replace(query ? `/profile/${wallet}?${query}` : `/profile/${wallet}`);
+      setActiveTab(tab);
+      window.history.replaceState(null, "", profileTabUrl(wallet, tab));
     },
-    [router, searchParams, wallet],
+    [wallet],
   );
 
   const about = profile?.about?.trim() ?? "";
