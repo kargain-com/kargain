@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { useChainId, useReadContracts } from "wagmi";
+import { useReadContracts } from "wagmi";
 
 import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
 } from "@/lib/web3/deployment-addresses";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -42,7 +43,9 @@ export function useChainlinkRates(): {
   eurUsd: bigint | null;
   isLoading: boolean;
 } {
-  const chainId = useChainId();
+  // Always read feeds on the marketplace chain — not the wallet's active chain.
+  // Wallet on Ethereum mainnet (or other networks) has no feed addresses configured.
+  const chainId = DEFAULT_CHAIN_ID;
   const nativeFeed = chainlinkNativeUsdFeed(chainId);
   const eurFeed = chainlinkEurUsdFeed(chainId);
 
