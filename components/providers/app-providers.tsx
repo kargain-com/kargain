@@ -4,9 +4,10 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { createStandaloneWagmiConfig } from "@/lib/web3/wagmi-standalone-config";
-import { NotificationsProvider } from "@/hooks/use-notification-state";
 import { NostrKeyInitializer } from "@/components/providers/nostr-key-initializer";
+import { NotificationsProvider } from "@/hooks/use-notification-state";
+import { DisplayCurrencyProvider } from "@/lib/marketplace/display-currency-context";
+import { createStandaloneWagmiConfig } from "@/lib/web3/wagmi-standalone-config";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -31,8 +32,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={standaloneWagmiConfig as never}>
-        <NostrKeyInitializer />
-        <NotificationsProvider>{children}</NotificationsProvider>
+        <DisplayCurrencyProvider>
+          <NostrKeyInitializer />
+          <NotificationsProvider>{children}</NotificationsProvider>
+        </DisplayCurrencyProvider>
       </WagmiProvider>
     </QueryClientProvider>
   );

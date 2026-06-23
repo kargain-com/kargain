@@ -8,6 +8,7 @@ import { useAccount } from "wagmi";
 import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { ChainSelector } from "@/components/shell/chain-selector";
+import { CurrencySelector } from "@/components/shell/currency-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
@@ -38,6 +39,7 @@ export function AppTopNav() {
         <div className="flex-1" aria-hidden />
 
         <div className="flex shrink-0 items-center gap-2">
+          <CurrencySelector />
           <Link
             href="/verifiers"
             aria-label="Verifiers"
