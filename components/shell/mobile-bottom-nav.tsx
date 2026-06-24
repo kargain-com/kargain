@@ -96,7 +96,12 @@ export function MobileBottomNav() {
       className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-default bg-bg-primary pb-[env(safe-area-inset-bottom)] md:hidden"
       aria-label="Mobile primary"
     >
-      <div className="relative mx-auto grid h-16 max-w-lg grid-cols-5 items-end px-1">
+      <div
+        className={cn(
+          "relative mx-auto grid h-16 max-w-lg items-end px-1",
+          isConnected ? "grid-cols-5" : "grid-cols-4",
+        )}
+      >
         <NavTab
           href="/"
           label="Marketplace"
@@ -129,13 +134,15 @@ export function MobileBottomNav() {
           </Link>
         </div>
 
-        <NavTab
-          href="/notifications"
-          label="Alerts"
-          icon={Bell}
-          active={path.startsWith("/notifications")}
-          badge={isConnected ? <NotificationsUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
-        />
+        {isConnected ? (
+          <NavTab
+            href="/notifications"
+            label="Alerts"
+            icon={Bell}
+            active={path.startsWith("/notifications")}
+            badge={<NotificationsUnreadBadge className="-top-0.5 -right-0.5" />}
+          />
+        ) : null}
 
         <ProfileNavTab
           active={path.startsWith("/profile")}

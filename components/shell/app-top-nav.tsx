@@ -57,14 +57,16 @@ export function AppTopNav() {
             <ShieldCheck size={16} strokeWidth={1.5} className="hidden shrink-0 md:block" aria-hidden />
             <span className="hidden md:inline">Verifiers</span>
           </Link>
-          <Link
-            href="/notifications"
-            aria-label="Alerts"
-            className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
-          >
-            <Bell size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
-            {isConnected ? <NotificationsUnreadBadge className="top-1.5 right-1.5" /> : null}
-          </Link>
+          {isConnected && (
+            <Link
+              href="/notifications"
+              aria-label="Alerts"
+              className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
+            >
+              <Bell size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
+              <NotificationsUnreadBadge className="top-1.5 right-1.5" />
+            </Link>
+          )}
           {isConnected && (
             <Link
               href="/messages"
