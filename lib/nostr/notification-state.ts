@@ -3,7 +3,7 @@
 import { hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
-import { decryptAppPayload, encryptAppPayload } from "@/lib/nostr/key-manager";
+import { decryptAppPayloadV1, encryptAppPayloadV1 } from "@/lib/nostr/key-manager-crypto";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 
 export type NotificationLastSeenAt = {
@@ -108,7 +108,7 @@ export async function loadNotificationState(
     const envelope = parseContentEnvelope(latest.content);
     if (!envelope) return DEFAULT_STATE;
 
-    const plaintext = await decryptAppPayload(address, envelope.iv, envelope.cipher);
+    const plaintext = await decryptAppPayloadV1(address, envelope.iv, envelope.cipher);
     const parsed = JSON.parse(plaintext) as unknown;
     return mergeNotificationStates(DEFAULT_STATE, normalizeState(parsed));
   } catch (err) {
@@ -127,7 +127,7 @@ export async function saveNotificationState(
     if (!privateKey.trim()) return;
 
     const normalized = normalizeState(state);
-    const { ivHex, cipherHex } = await encryptAppPayload(address, JSON.stringify(normalized));
+    const { ivHex, cipherHex } = await encryptAppPayloadV1(address, JSON.stringify(normalized));
     const content = JSON.stringify({ v: 1, iv: ivHex, cipher: cipherHex });
 
     const unsigned = {

@@ -37,7 +37,7 @@ function parseParentId(ev: NostrEvent): string | null {
 
 function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   const { isConnected, address } = useAccount();
-  const { nostrPrivateKey, loading } = useNostrKey();
+  const { nostrPrivateKey, loading, ensureNostrKey } = useNostrKey();
   const [events, setEvents] = useState<Record<string, CommentNode>>({});
   const [likesByTarget, setLikesByTarget] = useState<Record<string, Set<string>>>({});
   const [message, setMessage] = useState("");
@@ -49,11 +49,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
 
   const pool = useMemo(() => new SimplePool(), []);
   const mountedRef = useRef(true);
-  const pubkey = useMemo(
-    () => (nostrPrivateKey ? getPublicKey(hexToBytes(nostrPrivateKey)) : null),
-    [nostrPrivateKey],
-  );
-  const canPost = isConnected && Boolean(nostrPrivateKey) && !loading;
+  const canPost = isConnected && !loading;
   const composerPlaceholder = canPost
     ? replyTo
       ? "Write a reply..."
@@ -130,8 +126,13 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     return map;
   }, [ordered]);
 
-  const publish = async (kind: 1 | 7, content: string, parentEventId?: string) => {
-    if (!nostrPrivateKey || !pubkey) throw new Error("Identity not ready.");
+  const publish = async (
+    kind: 1 | 7,
+    content: string,
+    privateKey: `0x${string}`,
+    parentEventId?: string,
+  ) => {
+    const authorPubkey = getPublicKey(hexToBytes(privateKey));
     const tags: string[][] = [["d", `listing:${tokenId}`]];
     if (kind === 1 && address) {
       tags.push(["evm", address.toLowerCase()]);
@@ -151,15 +152,18 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       content,
       tags,
     };
-    const signed = finalizeEvent(unsigned, hexToBytes(nostrPrivateKey));
+    const signed = finalizeEvent(unsigned, hexToBytes(privateKey));
     await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
     return signed as unknown as NostrEvent;
   };
 
   const postComment = async () => {
     const text = message.trim();
-    if (!text || posting) return;
-    if (!nostrPrivateKey || !pubkey) return;
+    if (!text || posting || !isConnected) return;
+
+    const key = nostrPrivateKey ?? (await ensureNostrKey());
+    if (!key) return;
+    const authorPubkey = getPublicKey(hexToBytes(key));
 
     setPosting(true);
     setSendingError(null);
@@ -173,7 +177,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     }
     const optimistic: NostrEvent = {
       id: tempId,
-      pubkey,
+      pubkey: authorPubkey,
       created_at: Math.floor(Date.now() / 1000),
       kind: 1,
       content: text,
@@ -184,7 +188,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     setReplyTo(null);
 
     try {
-      const published = await publish(1, text, optimistic.tags.find((t) => t[0] === "e")?.[1]);
+      const published = await publish(1, text, key, optimistic.tags.find((t) => t[0] === "e")?.[1]);
       setEvents((prev) => {
         const next = { ...prev };
         delete next[tempId];
@@ -204,21 +208,24 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   };
 
   const like = async (eventId: string) => {
-    if (!nostrPrivateKey || !pubkey) return;
+    if (!isConnected) return;
+    const key = nostrPrivateKey ?? (await ensureNostrKey());
+    if (!key) return;
+    const authorPubkey = getPublicKey(hexToBytes(key));
     setLikesByTarget((prev) => {
       const next = { ...prev };
       const current = new Set(next[eventId] ?? []);
-      current.add(pubkey);
+      current.add(authorPubkey);
       next[eventId] = current;
       return next;
     });
     try {
-      await publish(7, "+", eventId);
+      await publish(7, "+", key, eventId);
     } catch {
       setLikesByTarget((prev) => {
         const next = { ...prev };
         const current = new Set(next[eventId] ?? []);
-        current.delete(pubkey);
+        current.delete(authorPubkey);
         next[eventId] = current;
         return next;
       });

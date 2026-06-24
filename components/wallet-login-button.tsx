@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useClientMounted } from "@/hooks/use-client-mounted";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
+import { endWalletSession } from "@/lib/auth/end-wallet-session";
 import { getViemChain } from "@/lib/web3/supported-chains";
 import { identiconBackground, navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -136,7 +137,7 @@ export function WalletLoginButton() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="font-sans text-sm text-red-400 focus:bg-red-400/10 focus:text-red-400"
-            onSelect={() => disconnect()}
+            onSelect={() => void endWalletSession(disconnect)}
           >
             <LogOut size={14} strokeWidth={1.5} aria-hidden />
             Disconnect

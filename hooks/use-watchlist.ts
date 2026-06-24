@@ -9,7 +9,7 @@ import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 
 export function useWatchlist(tokenId?: string) {
   const { isConnected } = useAccount();
-  const { nostrPrivateKey, loading: keyLoading } = useNostrKey();
+  const { nostrPrivateKey, loading: keyLoading, ensureNostrKey } = useNostrKey();
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -49,7 +49,10 @@ export function useWatchlist(tokenId?: string) {
   }, [isConnected, pubkey, keyLoading]);
 
   const toggle = useCallback(async () => {
-    if (!tokenId || !nostrPrivateKey) return;
+    if (!tokenId) return;
+
+    const key = nostrPrivateKey ?? (await ensureNostrKey());
+    if (!key) return;
 
     const wasWatched = watchedIds.includes(tokenId);
     setIsToggling(true);
@@ -62,9 +65,9 @@ export function useWatchlist(tokenId?: string) {
 
     try {
       if (wasWatched) {
-        await removeFavorite(tokenId, nostrPrivateKey);
+        await removeFavorite(tokenId, key);
       } else {
-        await addFavorite(tokenId, nostrPrivateKey);
+        await addFavorite(tokenId, key);
       }
     } catch (err) {
       console.error("useWatchlist toggle failed", err);
@@ -74,7 +77,7 @@ export function useWatchlist(tokenId?: string) {
     } finally {
       setIsToggling(false);
     }
-  }, [tokenId, nostrPrivateKey, watchedIds]);
+  }, [tokenId, nostrPrivateKey, ensureNostrKey, watchedIds]);
 
   return { watchedIds, isWatched, isLoading, isToggling, toggle };
 }

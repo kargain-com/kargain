@@ -66,6 +66,20 @@ export function useXmtpClient(): {
     }
   }, [isConnected]);
 
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    const key = address.toLowerCase();
+    if (store.client && store.walletKey && store.walletKey !== key) {
+      store.client.close();
+      setStore({
+        client: null,
+        isInitializing: false,
+        error: null,
+        walletKey: null,
+      });
+    }
+  }, [address, isConnected]);
+
   const initialize = useCallback(async () => {
     if (!isConnected || !address || !walletClient) {
       setStore({ client: null, error: null, walletKey: null });

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import {
-  getNostrStorageBackendName,
   getOrCreateNostrKey,
   loadDecryptedKey,
   type WalletSigner,
@@ -12,10 +11,9 @@ import {
 type UseNostrKeyState = {
   nostrPrivateKey: `0x${string}` | null;
   loading: boolean;
-  error: string | null;
   status: "idle" | "connecting_wallet" | "restoring" | "creating" | "ready" | "error";
-  statusMessage: string;
-  storageBackend: "indexeddb" | "localstorage" | null;
+  /** Restore a stored key or create one on demand (prompts wallet signature when new). */
+  ensureNostrKey: () => Promise<`0x${string}` | null>;
   refresh: () => Promise<void>;
 };
 
@@ -37,7 +35,6 @@ export function useNostrKey(): UseNostrKeyState {
   const [nostrPrivateKey, setNostrPrivateKey] = useState<`0x${string}` | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<UseNostrKeyState["status"]>("idle");
-  const [storageBackend, setStorageBackend] = useState<UseNostrKeyState["storageBackend"]>(null);
 
   const signer = useMemo<WalletSigner | null>(() => {
     const addr = walletClient?.account?.address;
@@ -60,14 +57,9 @@ export function useNostrKey(): UseNostrKeyState {
     setLoading(true);
     setStatus("restoring");
     try {
-      setStorageBackend(await getNostrStorageBackendName());
-      let key = await loadDecryptedKey(signer);
-      if (!key) {
-        setStatus("creating");
-        key = await getOrCreateNostrKey(signer);
-      }
+      const key = await loadDecryptedKey(signer);
       setNostrPrivateKey(key);
-      setStatus("ready");
+      setStatus(key ? "ready" : "idle");
     } catch (e) {
       setNostrPrivateKey(null);
       setStatus(isSignatureRejection(e) ? "idle" : "error");
@@ -76,6 +68,26 @@ export function useNostrKey(): UseNostrKeyState {
     }
   }, [isConnected, signer]);
 
+  const ensureNostrKey = useCallback(async (): Promise<`0x${string}` | null> => {
+    if (!isConnected || !signer) return null;
+    if (nostrPrivateKey) return nostrPrivateKey;
+
+    setLoading(true);
+    setStatus("creating");
+    try {
+      const key = await getOrCreateNostrKey(signer);
+      setNostrPrivateKey(key);
+      setStatus("ready");
+      return key;
+    } catch (e) {
+      setNostrPrivateKey(null);
+      setStatus(isSignatureRejection(e) ? "idle" : "error");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [isConnected, nostrPrivateKey, signer]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -83,10 +95,8 @@ export function useNostrKey(): UseNostrKeyState {
   return {
     nostrPrivateKey,
     loading,
-    error: null,
     status,
-    statusMessage: "",
-    storageBackend,
+    ensureNostrKey,
     refresh,
   };
 }

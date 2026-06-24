@@ -22,6 +22,7 @@
     "test:trust": "node --import tsx --test test/trust-signals.test.ts",
     "test:records": "node --import tsx --test test/record-types.test.ts",
     "test:confirm-status": "node --import tsx --test test/confirm-listing-status.test.ts",
+    "test:nostr": "node --import tsx --test test/nostr-key-manager.test.ts",
     "test:verify": "node --import tsx --test test/verify-constructor-args.test.ts",
     "test:e2e": "KARGAIN_E2E_LOCAL=1 node --import tsx --test test/e2e-local.test.ts",
     "deploy:local": "hardhat run scripts/deploy-local.ts --network localhost",

@@ -1,24 +1,26 @@
 "use client";
 
-import { bytesToHex, hexToBytes, keccak256, toHex } from "viem";
+import {
+  decryptPrivateKeyV1,
+  decryptPrivateKeyV2,
+  deriveNostrSkFromSignature,
+  encryptPrivateKeyV2,
+  isV2Blob,
+  nostrLinkMessage,
+  skMatchesSignature,
+  type StoredEncrypted,
+  type StoredEncryptedV1,
+  type StoredEncryptedV2,
+} from "@/lib/nostr/key-manager-crypto";
 
 const DB_NAME = "kargain_nostr";
 const STORE_NAME = "secure";
 const BLOB_KEY = "kargain_nostr_key_encrypted";
 const LS_FALLBACK_KEY = "kargain_nostr_key_encrypted_fallback";
-const NOSTR_SALT = "kargain-nostr-v1-salt";
-const AES_SALT = "kargain-nostr-aes-v1-salt";
 
 type WalletSigner = {
   address: `0x${string}`;
   signMessage: (message: string) => Promise<`0x${string}`>;
-};
-
-type StoredEncrypted = {
-  address: `0x${string}`;
-  ivHex: string;
-  cipherHex: string;
-  createdAt: number;
 };
 
 type StorageBackend = {
@@ -31,22 +33,6 @@ function requireBrowser() {
   if (typeof window === "undefined" || !window.indexedDB || !window.crypto?.subtle) {
     throw new Error("Nostr key manager requires browser Web Crypto + IndexedDB.");
   }
-}
-
-function nostrLinkMessage(address: `0x${string}`): string {
-  return `kargain-nostr-v1:${address.toLowerCase()}`;
-}
-
-function aesLinkMessage(address: `0x${string}`): string {
-  return `kargain-aes-v1:${address.toLowerCase()}`;
-}
-
-function normalizeHex32(v: string): `0x${string}` {
-  const x = v.startsWith("0x") ? v : `0x${v}`;
-  if (hexToBytes(x as `0x${string}`).length !== 32) {
-    throw new Error("Expected 32-byte key.");
-  }
-  return x as `0x${string}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -111,68 +97,53 @@ async function getStorageBackend(): Promise<StorageBackend> {
   }
 }
 
-async function deriveAesKey(address: `0x${string}`): Promise<CryptoKey> {
-  const seed = keccak256(toHex(`${aesLinkMessage(address)}${AES_SALT}`));
-  const raw = new Uint8Array(hexToBytes(seed));
-  return await window.crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+async function signCanonicalMessage(wallet: WalletSigner): Promise<`0x${string}`> {
+  return wallet.signMessage(nostrLinkMessage(wallet.address));
 }
 
-function deriveNostrSkFromSignature(signature: `0x${string}`): `0x${string}` {
-  return normalizeHex32(keccak256(toHex(`${signature}${NOSTR_SALT}`)));
+async function persistV2Blob(
+  wallet: WalletSigner,
+  signature: `0x${string}`,
+  privateKeyHex: `0x${string}`,
+): Promise<void> {
+  const storage = await getStorageBackend();
+  const encrypted = await encryptPrivateKeyV2(signature, wallet.address, privateKeyHex);
+  await storage.set(encrypted);
 }
 
-async function encryptPrivateKey(address: `0x${string}`, privateKeyHex: `0x${string}`): Promise<StoredEncrypted> {
-  const key = await deriveAesKey(address);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const plain = new Uint8Array(hexToBytes(privateKeyHex));
-  const cipher = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
-  return {
-    address,
-    ivHex: bytesToHex(iv),
-    cipherHex: bytesToHex(new Uint8Array(cipher)),
-    createdAt: Date.now(),
-  };
+async function restoreFromV2Blob(
+  wallet: WalletSigner,
+  existing: StoredEncryptedV2,
+  signature: `0x${string}`,
+): Promise<`0x${string}`> {
+  const derived = deriveNostrSkFromSignature(signature);
+  let privateKeyHex = derived;
+  try {
+    const decrypted = await decryptPrivateKeyV2(signature, existing);
+    privateKeyHex = skMatchesSignature(decrypted, signature) ? decrypted : derived;
+  } catch {
+    // Corrupted v2 blob: use deterministic derive.
+  }
+
+  await persistV2Blob(wallet, signature, privateKeyHex);
+  return privateKeyHex;
 }
 
-async function decryptPrivateKey(address: `0x${string}`, blob: StoredEncrypted): Promise<`0x${string}`> {
-  const key = await deriveAesKey(address);
-  const plain = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(hexToBytes(blob.ivHex as `0x${string}`)) },
-    key,
-    new Uint8Array(hexToBytes(blob.cipherHex as `0x${string}`)),
-  );
-  return normalizeHex32(bytesToHex(new Uint8Array(plain)));
-}
+async function migrateV1Blob(
+  wallet: WalletSigner,
+  existing: StoredEncryptedV1,
+): Promise<`0x${string}`> {
+  const privateKeyHex = await decryptPrivateKeyV1(wallet.address, existing);
+  const signature = await signCanonicalMessage(wallet);
 
-export async function encryptAppPayload(
-  address: `0x${string}`,
-  plaintextUtf8: string,
-): Promise<{ ivHex: string; cipherHex: string }> {
-  const key = await deriveAesKey(address);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const plain = new TextEncoder().encode(plaintextUtf8);
-  const cipher = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
-  return {
-    ivHex: bytesToHex(iv),
-    cipherHex: bytesToHex(new Uint8Array(cipher)),
-  };
-}
+  if (!skMatchesSignature(privateKeyHex, signature)) {
+    const derived = deriveNostrSkFromSignature(signature);
+    await persistV2Blob(wallet, signature, derived);
+    return derived;
+  }
 
-export async function decryptAppPayload(
-  address: `0x${string}`,
-  ivHex: string,
-  cipherHex: string,
-): Promise<string> {
-  const key = await deriveAesKey(address);
-  const plain = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(hexToBytes(ivHex as `0x${string}`)) },
-    key,
-    new Uint8Array(hexToBytes(cipherHex as `0x${string}`)),
-  );
-  return new TextDecoder().decode(plain);
+  await persistV2Blob(wallet, signature, privateKeyHex);
+  return privateKeyHex;
 }
 
 let pendingKeyPromise: Promise<`0x${string}`> | null = null;
@@ -181,19 +152,23 @@ let pendingWalletAddress: string | null = null;
 async function createOrRestoreNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
   const storage = await getStorageBackend();
   const existing = await storage.get();
+
   if (existing && existing.address.toLowerCase() === wallet.address.toLowerCase()) {
+    if (isV2Blob(existing)) {
+      const signature = await signCanonicalMessage(wallet);
+      return restoreFromV2Blob(wallet, existing, signature);
+    }
+
     try {
-      return await decryptPrivateKey(wallet.address, existing);
+      return await migrateV1Blob(wallet, existing);
     } catch {
-      // Corrupted local blob: deterministic re-link and overwrite below.
+      // Corrupted v1 blob: deterministic re-link below.
     }
   }
 
-  const msg = nostrLinkMessage(wallet.address);
-  const signature = await wallet.signMessage(msg);
+  const signature = await signCanonicalMessage(wallet);
   const privateKeyHex = deriveNostrSkFromSignature(signature);
-  const encrypted = await encryptPrivateKey(wallet.address, privateKeyHex);
-  await storage.set(encrypted);
+  await persistV2Blob(wallet, signature, privateKeyHex);
   return privateKeyHex;
 }
 
@@ -217,16 +192,13 @@ export async function loadDecryptedKey(wallet: WalletSigner): Promise<`0x${strin
   const existing = await storage.get();
   if (!existing) return null;
   if (existing.address.toLowerCase() !== wallet.address.toLowerCase()) return null;
+  if (isV2Blob(existing)) return null;
+
   try {
-    return await decryptPrivateKey(wallet.address, existing);
+    return await decryptPrivateKeyV1(wallet.address, existing);
   } catch {
     return null;
   }
-}
-
-export async function getNostrStorageBackendName(): Promise<"indexeddb" | "localstorage"> {
-  const storage = await getStorageBackend();
-  return storage.name;
 }
 
 export type { WalletSigner };

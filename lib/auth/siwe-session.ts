@@ -39,14 +39,47 @@ export function buildSiweSessionCookie(address: string, chainId: number): {
   return {
     name: SIWE_SESSION_COOKIE,
     value: `${payload}.${sig}`,
-    options: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: SESSION_TTL_SEC,
-    },
+    options: siweCookieOptions(SESSION_TTL_SEC),
   };
+}
+
+type SiweSessionCookieOptions = {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "lax";
+  path: string;
+  maxAge: number;
+};
+
+function siweCookieOptions(maxAge: number): SiweSessionCookieOptions {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  };
+}
+
+export function buildClearSiweSessionCookie(): {
+  name: string;
+  value: string;
+  options: SiweSessionCookieOptions;
+} {
+  return {
+    name: SIWE_SESSION_COOKIE,
+    value: "",
+    options: siweCookieOptions(0),
+  };
+}
+
+export function siweSessionMatches(
+  session: SiweSession | null,
+  address: string,
+  chainId: number,
+): boolean {
+  if (!session) return false;
+  return session.address === address.toLowerCase() && session.chainId === chainId;
 }
 
 export function parseSiweSessionCookie(raw: string | undefined | null): SiweSession | null {

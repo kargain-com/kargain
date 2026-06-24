@@ -36,7 +36,10 @@ const OWNED_TOKEN_IDS_V1: string[] = [];
 type NotificationStateContextValue = {
   state: NotificationState;
   isLoading: boolean;
-  markRead: (channels: Array<keyof NotificationLastSeenAt>, upToTimestamp: number) => void;
+  markRead: (
+    channels: Array<keyof NotificationLastSeenAt>,
+    upToTimestamp: number,
+  ) => void | Promise<void>;
 };
 
 const NotificationStateContext = createContext<NotificationStateContextValue | null>(null);
@@ -45,7 +48,10 @@ type NotificationsFeedContextValue = {
   items: NotificationItem[];
   unreadCount: number;
   isLoading: boolean;
-  markRead: (channels: Array<keyof NotificationLastSeenAt>, upToTimestamp: number) => void;
+  markRead: (
+    channels: Array<keyof NotificationLastSeenAt>,
+    upToTimestamp: number,
+  ) => void | Promise<void>;
   state: NotificationState;
 };
 
@@ -61,7 +67,7 @@ export function useNotificationState(): NotificationStateContextValue {
 
 function NotificationStateProvider({ children }: { children: ReactNode }) {
   const { isConnected, address } = useAccount();
-  const { nostrPrivateKey } = useNostrKey();
+  const { nostrPrivateKey, ensureNostrKey } = useNostrKey();
   const [state, setState] = useState<NotificationState>(DEFAULT_STATE);
   const [isLoading, setIsLoading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,8 +117,11 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markRead = useCallback(
-    (channels: Array<keyof NotificationLastSeenAt>, upToTimestamp: number) => {
-      if (!address || !nostrPrivateKey) return;
+    async (channels: Array<keyof NotificationLastSeenAt>, upToTimestamp: number) => {
+      if (!address) return;
+
+      const key = nostrPrivateKey ?? (await ensureNostrKey());
+      if (!key) return;
 
       setState((prev) => {
         const nextLastSeen = { ...prev.lastSeenAt };
@@ -129,11 +138,11 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
         void saveNotificationState(
           address as Address,
           stateRef.current,
-          nostrPrivateKey,
+          key,
         );
       }, 400);
     },
-    [address, nostrPrivateKey],
+    [address, nostrPrivateKey, ensureNostrKey],
   );
 
   const value = useMemo(
