@@ -443,7 +443,12 @@ app.get("/listings/:tokenId", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  const p = await db.find(passport, { id: tokenId });
+  const passportRows = await db
+    .select()
+    .from(passport)
+    .where(eq(passport.id, tokenId))
+    .limit(1);
+  const p = passportRows[0];
   const row = listing[0];
   return c.json(
     jsonBody({
@@ -522,8 +527,10 @@ app.get("/passports/batch", async (c) => {
     return c.json(jsonBody({ passports: [] }));
   }
 
-  const rows = await Promise.all(ids.map((id) => db.find(passport, { id })));
-  const passports = rows.filter((row): row is NonNullable<typeof row> => row != null);
+  const passports = await db
+    .select()
+    .from(passport)
+    .where(inArray(passport.id, ids));
 
   return c.json(jsonBody({ passports }));
 });
@@ -534,8 +541,10 @@ app.get("/listings/batch", async (c) => {
     return c.json(jsonBody({ listings: [] }));
   }
 
-  const rows = await Promise.all(ids.map((id) => db.find(marketplaceListing, { id })));
-  const listingsFound = rows.filter((row): row is NonNullable<typeof row> => row != null);
+  const listingsFound = await db
+    .select()
+    .from(marketplaceListing)
+    .where(inArray(marketplaceListing.id, ids));
   const passportMap = await loadPassportMap(ids);
   const listings = listingsFound.map((listing) => enrichListing(listing, passportMap));
 
