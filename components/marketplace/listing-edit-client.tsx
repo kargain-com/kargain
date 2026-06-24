@@ -337,7 +337,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             </Select>
           </div>
           <Button type="button" disabled={isPending} onClick={() => void runUpdatePrice()}>
-            List for sale
+            Update price
           </Button>
         </section>
       )}
