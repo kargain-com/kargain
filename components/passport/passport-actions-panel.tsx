@@ -37,7 +37,6 @@ import { cn } from "@/lib/utils";
 import {
   karPassportAddress,
   karProStakingAddress,
-  marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useReadContracts } from "wagmi";
@@ -730,14 +729,6 @@ export function PassportActionsPanel({
           Report discrepancy
         </Button>
       </div>
-      )}
-
-      {isOwner && marketplaceAddress(chainId) && (
-        <Button asChild variant="secondary" className="w-full">
-          <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
-            Manage listing
-          </Link>
-        </Button>
       )}
 
       {message && (

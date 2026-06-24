@@ -1,7 +1,6 @@
 "use client";
 
 import { Info } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { waitForTransactionReceipt } from "wagmi/actions";
@@ -360,15 +359,7 @@ export function ListingBuyPanel({
     return (
       <div className="space-y-3">
         {priceBlock}
-        <p className="text-sm text-text-secondary">
-          You listed this vehicle.{" "}
-          <Link
-            href={`/marketplace/${tokenId}/edit?chain=${chainId}`}
-            className="font-medium text-accent-warm underline-offset-2 hover:underline"
-          >
-            Manage listing
-          </Link>
-        </p>
+        <p className="text-sm text-text-secondary">You listed this vehicle.</p>
       </div>
     );
   }
