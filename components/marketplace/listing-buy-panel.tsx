@@ -16,9 +16,9 @@ import {
 } from "wagmi";
 
 import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
+import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
-import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
@@ -119,32 +119,6 @@ function DisclosureRow({ label, value, valueClassName }: { label: string; value:
     <div className="flex items-baseline justify-between gap-3">
       <span className="font-sans text-xs text-text-tertiary">{label}</span>
       <span className={cn("font-mono text-sm text-text-primary text-right", valueClassName)}>{value}</span>
-    </div>
-  );
-}
-
-function ListingPriceHeader({
-  listing,
-}: {
-  listing: { fiatPrice1e8: string; fiatCurrency: number };
-}) {
-  const { displayCurrency, convertPrice } = useDisplayCurrency();
-  const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
-  const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listingCurrency)}`;
-  const showDisplayHint =
-    !(
-      (displayCurrency === "USD" && listingCurrency === 0) ||
-      (displayCurrency === "EUR" && listingCurrency === 1)
-    );
-  const displayHint = convertPrice(BigInt(listing.fiatPrice1e8), listingCurrency);
-
-  return (
-    <div>
-      <p className="font-sans text-xs text-text-tertiary">Price</p>
-      <p className="text-2xl font-medium text-accent-warm">{sellerReceives}</p>
-      {showDisplayHint && (
-        <p className="mt-1 font-mono text-sm text-text-secondary">≈ {displayHint}</p>
-      )}
     </div>
   );
 }
@@ -362,7 +336,11 @@ export function ListingBuyPanel({
 
   const priceBlock = (
     <div className="rounded-sm border border-border-default bg-bg-surface p-4">
-      <ListingPriceHeader listing={listing} />
+      <ListingDisplayPrice
+        fiatPrice1e8={listing.fiatPrice1e8}
+        fiatCurrency={listing.fiatCurrency}
+        showLabel
+      />
     </div>
   );
 
@@ -421,7 +399,11 @@ export function ListingBuyPanel({
   return (
     <>
       <div className="space-y-4 rounded-sm border border-border-default bg-bg-surface p-4">
-        <ListingPriceHeader listing={listing} />
+        <ListingDisplayPrice
+          fiatPrice1e8={listing.fiatPrice1e8}
+          fiatCurrency={listing.fiatCurrency}
+          showLabel
+        />
 
         <div className="flex rounded-sm border border-border-default p-0.5">
           <button

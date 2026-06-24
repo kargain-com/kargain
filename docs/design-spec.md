@@ -309,7 +309,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback.
 
-**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — cover photo from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
+**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
 
 **Photo upload (mint wizard):** [`photo-upload-zone.tsx`](../components/passport/photo-upload-zone.tsx) — drag-and-drop zone with file picker fallback; used on `/passport/new`.
 
@@ -407,8 +407,8 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 
 | Rule | Value |
 |------|-------|
-| Buy panel | Price in seller fiat + optional display-currency hint; ETH / USDC payment toggle |
-| Disclosure | Bordered panel: seller receives, you pay, rate at settlement, platform fee — method-specific rows |
+| Buy panel | Hero price via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (same as browse cards); ETH / USDC payment toggle |
+| Disclosure | Bordered panel: seller receives (listing fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithUsdc`; disabled when USDC not configured on chain |
 | Seller delist | Ghost button with Trash2 icon; seller-only when listing active; phases: Confirm in wallet → Delisting… |
 | Seller manage | Link to `/marketplace/{tokenId}/edit` when viewer is seller |
