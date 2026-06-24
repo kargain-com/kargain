@@ -1,3 +1,4 @@
+import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -70,7 +71,7 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     tokenId: listing.tokenId,
     seller: listing.seller as `0x${string}`,
     fiatPrice1e8: String(listing.fiatPrice1e8),
-    fiatCurrency: listing.fiatCurrency,
+    fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency ?? 0),
     passportStatus: status,
     updatedAtBlock: String(listing.listedAt),
     tokenUri: listing.tokenUri ?? "",

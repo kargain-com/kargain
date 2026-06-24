@@ -8,6 +8,7 @@ import {
   sortEnrichedListings,
   type EnrichedListingForFilter,
 } from "../lib/marketplace/listing-query.ts";
+import { normalizeListingFiatCurrency } from "../lib/marketplace/price-normalize.ts";
 
 const baseRow: EnrichedListingForFilter = {
   passportStatus: "VERIFIED",
@@ -257,6 +258,15 @@ describe("computeListingFacets", () => {
     assert.deepEqual(facets.conditions, ["Excellent", "Good"]);
     assert.deepEqual(facets.vehicleTypes, ["Car", "Motorcycle"]);
     assert.deepEqual(facets.years, [2019, 2021]);
+  });
+});
+
+describe("normalizeListingFiatCurrency", () => {
+  it("coerces API values to 0 or 1", () => {
+    assert.equal(normalizeListingFiatCurrency(0), 0);
+    assert.equal(normalizeListingFiatCurrency(1), 1);
+    assert.equal(normalizeListingFiatCurrency("0"), 0);
+    assert.equal(normalizeListingFiatCurrency("1"), 1);
   });
 });
 

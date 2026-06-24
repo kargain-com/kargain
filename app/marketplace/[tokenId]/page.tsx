@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
@@ -50,6 +51,12 @@ export default function MarketplaceListingPage({
       <MarketplaceListingInner params={params} searchParams={searchParams} />
     </Suspense>
   );
+}
+
+function isPonderListingActive(raw: unknown): boolean {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const active = (raw as { active?: unknown }).active;
+  return active === true || active === "true";
 }
 
 async function MarketplaceListingInner({
@@ -126,18 +133,16 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const listingActive =
-    listingRaw &&
-    typeof listingRaw === "object" &&
-    !Array.isArray(listingRaw) &&
-    Boolean((listingRaw as { active?: boolean | string }).active);
+  const listingActive = isPonderListingActive(listingRaw);
   const listing = listingActive
     ? {
         active: true as const,
         fiatPrice1e8: String(
           (listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8,
         ),
-        fiatCurrency: Number((listingRaw as { fiatCurrency: number }).fiatCurrency),
+        fiatCurrency: normalizeListingFiatCurrency(
+          (listingRaw as { fiatCurrency: number | string }).fiatCurrency,
+        ),
         seller: (listingRaw as { seller: string }).seller as `0x${string}`,
       }
     : null;

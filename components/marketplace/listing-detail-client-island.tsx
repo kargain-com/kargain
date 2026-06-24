@@ -17,6 +17,7 @@ import {
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -111,6 +112,7 @@ export function ListingDetailClientIsland({
             abi: MarketplaceEscrowAbi,
             functionName: "listings",
             args: [tid],
+            chainId: wc,
           },
         ]
       : [],
@@ -131,7 +133,7 @@ export function ListingDetailClientIsland({
       return {
         active: true,
         fiatPrice1e8: listing.fiatPrice1e8,
-        fiatCurrency: listing.fiatCurrency,
+        fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency),
         seller: listing.seller,
       };
     }

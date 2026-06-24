@@ -9,6 +9,11 @@ export function isPriceCurrency(value: string): value is PriceCurrency {
   return PRICE_CURRENCIES.includes(value as PriceCurrency);
 }
 
+/** Coerce API / JSON fiat currency to on-chain 0 = USD, 1 = EUR. */
+export function normalizeListingFiatCurrency(fiatCurrency: number | string): 0 | 1 {
+  return Number(fiatCurrency) === 1 ? 1 : 0;
+}
+
 export type FxRates = {
   eurUsd: bigint;
   ethUsd: bigint;

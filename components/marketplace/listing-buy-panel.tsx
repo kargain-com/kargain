@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
@@ -122,6 +123,32 @@ function DisclosureRow({ label, value, valueClassName }: { label: string; value:
   );
 }
 
+function ListingPriceHeader({
+  listing,
+}: {
+  listing: { fiatPrice1e8: string; fiatCurrency: number };
+}) {
+  const { displayCurrency, convertPrice } = useDisplayCurrency();
+  const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
+  const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listingCurrency)}`;
+  const showDisplayHint =
+    !(
+      (displayCurrency === "USD" && listingCurrency === 0) ||
+      (displayCurrency === "EUR" && listingCurrency === 1)
+    );
+  const displayHint = convertPrice(BigInt(listing.fiatPrice1e8), listingCurrency);
+
+  return (
+    <div>
+      <p className="font-sans text-xs text-text-tertiary">Price</p>
+      <p className="text-2xl font-medium text-accent-warm">{sellerReceives}</p>
+      {showDisplayHint && (
+        <p className="mt-1 font-mono text-sm text-text-secondary">≈ {displayHint}</p>
+      )}
+    </div>
+  );
+}
+
 export function ListingBuyPanel({
   chainId,
   tokenId,
@@ -136,7 +163,6 @@ export function ListingBuyPanel({
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
-  const { displayCurrency, convertPrice } = useDisplayCurrency();
   const [riskOpen, setRiskOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
 
@@ -155,18 +181,21 @@ export function ListingBuyPanel({
             abi: MarketplaceEscrowAbi,
             functionName: "quoteNativeWei",
             args: [tid],
+            chainId: wc,
           },
           {
             address: market,
             abi: MarketplaceEscrowAbi,
             functionName: "quoteUsdcAmount",
             args: [tid],
+            chainId: wc,
           },
           {
             address: market,
             abi: MarketplaceEscrowAbi,
             functionName: "listingUsd1e8",
             args: [tid],
+            chainId: wc,
           },
         ]
       : [],
@@ -199,23 +228,19 @@ export function ListingBuyPanel({
     abi: ERC20_ABI,
     functionName: "allowance",
     args: address && market ? [address, market] : undefined,
+    chainId: wc,
     query: {
       enabled: Boolean(usdc && address && market),
     },
   });
 
+  const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
   const marketOk = Boolean(market);
   const isSeller =
     Boolean(address && listing.seller && address.toLowerCase() === listing.seller.toLowerCase());
 
-  const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listing.fiatCurrency)}`;
-  const showDisplayHint =
-    !(
-      (displayCurrency === "USD" && listing.fiatCurrency === 0) ||
-      (displayCurrency === "EUR" && listing.fiatCurrency === 1)
-    );
-  const displayHint = convertPrice(BigInt(listing.fiatPrice1e8), listing.fiatCurrency as 0 | 1);
-  const isEurListing = listing.fiatCurrency !== 0;
+  const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listingCurrency)}`;
+  const isEurListing = listingCurrency === 1;
 
   const needsUsdcApproval = useMemo(() => {
     if (allowance == null || usdcQuote == null) return false;
@@ -335,54 +360,68 @@ export function ListingBuyPanel({
 
   const usdcOptionDisabled = !usdc || (usdcUnavailable && !isQuotesLoading);
 
+  const priceBlock = (
+    <div className="rounded-sm border border-border-default bg-bg-surface p-4">
+      <ListingPriceHeader listing={listing} />
+    </div>
+  );
+
   if (!isConnected) {
     return (
-      <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
-        <p className="text-sm text-text-secondary">Connect wallet to buy</p>
-        <WalletLoginButton />
+      <div className="space-y-3">
+        {priceBlock}
+        <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+          <p className="text-sm text-text-secondary">Connect wallet to buy</p>
+          <WalletLoginButton />
+        </div>
       </div>
     );
   }
 
   if (isSeller) {
     return (
-      <p className="text-sm text-text-secondary">
-        You listed this vehicle.{" "}
-        <Link
-          href={`/marketplace/${tokenId}/edit?chain=${chainId}`}
-          className="font-medium text-accent-warm underline-offset-2 hover:underline"
-        >
-          Manage listing
-        </Link>
-      </p>
+      <div className="space-y-3">
+        {priceBlock}
+        <p className="text-sm text-text-secondary">
+          You listed this vehicle.{" "}
+          <Link
+            href={`/marketplace/${tokenId}/edit?chain=${chainId}`}
+            className="font-medium text-accent-warm underline-offset-2 hover:underline"
+          >
+            Manage listing
+          </Link>
+        </p>
+      </div>
     );
   }
 
   if (wrongChain) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
-        <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
-          Switch network
-        </Button>
+        {priceBlock}
+        <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+          <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
+          <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
+            Switch network
+          </Button>
+        </div>
       </div>
     );
   }
 
   if (!marketOk) {
-    return <p className="text-sm text-status-error">Marketplace not configured for this chain.</p>;
+    return (
+      <div className="space-y-3">
+        {priceBlock}
+        <p className="text-sm text-status-error">Marketplace not configured for this chain.</p>
+      </div>
+    );
   }
 
   return (
     <>
       <div className="space-y-4 rounded-sm border border-border-default bg-bg-surface p-4">
-        <div>
-          <p className="font-sans text-xs text-text-tertiary">Price</p>
-          <p className="text-2xl font-medium text-accent-warm">{sellerReceives}</p>
-          {showDisplayHint && (
-            <p className="mt-1 font-mono text-sm text-text-secondary">≈ {displayHint}</p>
-          )}
-        </div>
+        <ListingPriceHeader listing={listing} />
 
         <div className="flex rounded-sm border border-border-default p-0.5">
           <button

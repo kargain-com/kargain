@@ -15,6 +15,7 @@ import {
   FIAT_SCALE,
   listingToEur1e8,
   listingToUsd1e8,
+  normalizeListingFiatCurrency,
   type PriceCurrency,
 } from "@/lib/marketplace/price-normalize";
 import { useChainlinkRates } from "@/lib/marketplace/use-chainlink-rates";
@@ -88,30 +89,32 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
 
   const convertPrice = useCallback(
     (fiatPrice1e8: bigint, fiatCurrency: 0 | 1): string => {
+      const listingCurrency = normalizeListingFiatCurrency(fiatCurrency);
+
       if (displayCurrency === "USD") {
-        if (fiatCurrency === 0) {
+        if (listingCurrency === 0) {
           return formatFiat1e8(fiatPrice1e8, "$");
         }
-        if (isRatesLoading || eurUsd == null) return "—";
-        const usd1e8 = listingToUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
+        if (eurUsd == null) return "—";
+        const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, eurUsd);
         return formatFiat1e8(usd1e8, "$");
       }
 
       if (displayCurrency === "EUR") {
-        if (fiatCurrency === 1) {
+        if (listingCurrency === 1) {
           return formatFiat1e8(fiatPrice1e8, "€");
         }
-        if (isRatesLoading || eurUsd == null) return "—";
-        const eur1e8 = listingToEur1e8(fiatPrice1e8, fiatCurrency, eurUsd);
+        if (eurUsd == null) return "—";
+        const eur1e8 = listingToEur1e8(fiatPrice1e8, listingCurrency, eurUsd);
         return formatFiat1e8(eur1e8, "€");
       }
 
-      if (isRatesLoading || ethUsd == null || eurUsd == null) return "—";
-      const usd1e8 = listingToUsd1e8(fiatPrice1e8, fiatCurrency, eurUsd);
+      if (ethUsd == null || eurUsd == null) return "—";
+      const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, eurUsd);
       const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
       return formatEthWei(ethWei);
     },
-    [displayCurrency, ethUsd, eurUsd, isRatesLoading],
+    [displayCurrency, ethUsd, eurUsd],
   );
 
   const value = useMemo(

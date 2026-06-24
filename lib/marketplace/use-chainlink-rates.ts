@@ -7,7 +7,7 @@ import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
 } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -45,15 +45,16 @@ export function useChainlinkRates(): {
 } {
   // Always read feeds on the marketplace chain — not the wallet's active chain.
   // Wallet on Ethereum mainnet (or other networks) has no feed addresses configured.
-  const chainId = DEFAULT_CHAIN_ID;
-  const nativeFeed = chainlinkNativeUsdFeed(chainId);
-  const eurFeed = chainlinkEurUsdFeed(chainId);
+  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
+  const nativeFeed = chainlinkNativeUsdFeed(DEFAULT_CHAIN_ID);
+  const eurFeed = chainlinkEurUsdFeed(DEFAULT_CHAIN_ID);
 
   const contracts = useMemo(() => {
     const reads: Array<{
       address: `0x${string}`;
       abi: typeof AGGREGATOR_V3_ABI;
       functionName: "latestRoundData";
+      chainId: typeof chainId;
     }> = [];
 
     if (isValidFeedAddress(nativeFeed)) {
@@ -61,6 +62,7 @@ export function useChainlinkRates(): {
         address: nativeFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
+        chainId,
       });
     }
     if (isValidFeedAddress(eurFeed)) {
@@ -68,11 +70,12 @@ export function useChainlinkRates(): {
         address: eurFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
+        chainId,
       });
     }
 
     return reads;
-  }, [nativeFeed, eurFeed]);
+  }, [chainId, nativeFeed, eurFeed]);
 
   const hasNative = isValidFeedAddress(nativeFeed);
   const hasEur = isValidFeedAddress(eurFeed);
