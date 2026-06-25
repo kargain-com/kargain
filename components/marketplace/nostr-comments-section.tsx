@@ -155,11 +155,15 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     if (kind === 1 && parentEventId) {
       const target = events[parentEventId]?.event;
       tags.push(["e", parentEventId, "", "reply"]);
-      if (target?.pubkey) tags.push(["p", target.pubkey]);
+      if (target?.pubkey && target.pubkey !== authorPubkey) {
+        tags.push(["p", target.pubkey]);
+      }
     } else if (kind === 7 && parentEventId) {
       const target = events[parentEventId]?.event;
       tags.push(["e", parentEventId]);
-      if (target?.pubkey) tags.push(["p", target.pubkey]);
+      if (target?.pubkey && target.pubkey !== authorPubkey) {
+        tags.push(["p", target.pubkey]);
+      }
     }
     const unsigned = {
       kind,

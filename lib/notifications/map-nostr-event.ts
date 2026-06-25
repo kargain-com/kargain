@@ -38,6 +38,9 @@ export function mapNostrEventToNotification(
   myPubkey: string,
   lastSeenAtNostr: number,
 ): NotificationItem | null {
+  // Skip self-authored events (e.g. reply/like on own comment adds #p to self).
+  if (event.pubkey === myPubkey) return null;
+
   const timestamp = event.created_at;
   const read = timestamp <= lastSeenAtNostr;
 
