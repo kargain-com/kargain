@@ -15,12 +15,16 @@ import { useAccount } from "wagmi";
 
 import {
   loadNotificationState,
+  mergeNotificationStates,
   saveNotificationState,
   type NotificationLastSeenAt,
   type NotificationState,
 } from "@/lib/nostr/notification-state";
-import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 import { useNostrKey } from "@/hooks/use-nostr-key";
+import {
+  loadLocalNotificationState,
+  saveLocalNotificationState,
+} from "@/lib/notifications/local-notification-state";
 import { usePonderNotifications } from "@/hooks/use-ponder-notifications";
 import { useWatchlistNotifications } from "@/hooks/use-watchlist-notifications";
 import { useNostrNotificationsSub } from "@/hooks/use-nostr-notifications-sub";
@@ -67,21 +71,24 @@ export function useNotificationState(): NotificationStateContextValue {
 
 function NotificationStateProvider({ children }: { children: ReactNode }) {
   const { isConnected, address } = useAccount();
-  const { nostrPrivateKey, ensureNostrKey } = useNostrKey();
+  const { nostrPrivateKey, nostrPubkey, ensureNostrKey } = useNostrKey();
   const [state, setState] = useState<NotificationState>(DEFAULT_STATE);
   const [isLoading, setIsLoading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const pubkey = useMemo(
-    () => (nostrPrivateKey ? nostrPubkeyFromPrivateKey(nostrPrivateKey) : null),
-    [nostrPrivateKey],
-  );
-
   useEffect(() => {
-    if (!isConnected || !address || !nostrPrivateKey || !pubkey) {
+    if (!isConnected || !address) {
       setState(DEFAULT_STATE);
+      setIsLoading(false);
+      return;
+    }
+
+    const local = loadLocalNotificationState(address as Address);
+    setState(local);
+
+    if (!nostrPubkey) {
       setIsLoading(false);
       return;
     }
@@ -91,11 +98,12 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const loaded = await loadNotificationState(address as Address, pubkey);
-        if (!cancelled) setState(loaded);
+        const remote = await loadNotificationState(address as Address, nostrPubkey);
+        const merged = mergeNotificationStates(local, remote);
+        if (!cancelled) setState(merged);
       } catch (err) {
         console.error("useNotificationState load failed", err);
-        if (!cancelled) setState(DEFAULT_STATE);
+        if (!cancelled) setState(local);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -104,7 +112,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isConnected, address, nostrPrivateKey, pubkey]);
+  }, [isConnected, address, nostrPubkey]);
 
   useEffect(() => {
     return () => {
@@ -116,9 +124,6 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
     async (channels: Array<keyof NotificationLastSeenAt>, upToTimestamp: number) => {
       if (!address) return;
 
-      const key = nostrPrivateKey ?? (await ensureNostrKey());
-      if (!key) return;
-
       setState((prev) => {
         const nextLastSeen = { ...prev.lastSeenAt };
         for (const channel of channels) {
@@ -126,8 +131,12 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
         }
         const next = { lastSeenAt: nextLastSeen };
         stateRef.current = next;
+        saveLocalNotificationState(address as Address, next);
         return next;
       });
+
+      const key = nostrPrivateKey ?? (await ensureNostrKey());
+      if (!key) return;
 
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
@@ -155,7 +164,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
 function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const { state, isLoading: stateLoading, markRead } = useNotificationState();
-  const { nostrPrivateKey } = useNostrKey();
+  const { nostrPubkey } = useNostrKey();
   const ponder = usePonderNotifications();
   const watchlist = useWatchlistNotifications();
   const nostr = useNostrNotificationsSub(OWNED_TOKEN_IDS_V1);
@@ -173,7 +182,7 @@ function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const isLoading =
     ponder.isLoading ||
     watchlist.isLoading ||
-    (Boolean(nostrPrivateKey) && stateLoading);
+    (Boolean(nostrPubkey) && stateLoading);
 
   const value = useMemo(
     () => ({

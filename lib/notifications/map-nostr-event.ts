@@ -1,6 +1,7 @@
 import type { Event } from "nostr-tools";
 
 import { nostrGroupKey, nostrNotifId } from "@/lib/notifications/id";
+import { marketplaceCommentHref } from "@/lib/notifications/notification-href";
 import type { NotificationItem } from "@/lib/notifications/types";
 
 const LISTING_TAG_PREFIX = "listing:";
@@ -27,6 +28,11 @@ function rootEventId(event: Event): string {
   return event.id;
 }
 
+function likedCommentTargetId(event: Event): string | null {
+  const target = event.tags.find((t) => t[0] === "e")?.[1];
+  return target ?? null;
+}
+
 export function mapNostrEventToNotification(
   event: Event,
   myPubkey: string,
@@ -37,17 +43,20 @@ export function mapNostrEventToNotification(
 
   if (event.kind === 7 && hasPubkeyTag(event, myPubkey)) {
     const tokenId = tokenIdFromListingTag(event);
+    const commentId = likedCommentTargetId(event);
     return {
       id: nostrNotifId(event.kind, event.id),
       type: "nostr.like_on_comment",
       source: "nostr",
       timestamp,
       read,
-      href: tokenId ? `/marketplace/${tokenId}` : "/notifications",
+      href: tokenId
+        ? marketplaceCommentHref(tokenId, commentId ?? undefined)
+        : "/notifications",
       subject: {
         kind: "comment",
         tokenId: tokenId ?? undefined,
-        eventId: event.id,
+        eventId: commentId ?? event.id,
         title: tokenId ? `Passport #${tokenId}` : "Comment",
       },
       actor: { nostrPubkey: event.pubkey },
@@ -65,7 +74,9 @@ export function mapNostrEventToNotification(
       source: "nostr",
       timestamp,
       read,
-      href: tokenId ? `/marketplace/${tokenId}` : "/notifications",
+      href: tokenId
+        ? marketplaceCommentHref(tokenId, event.id)
+        : "/notifications",
       subject: {
         kind: "comment",
         tokenId: tokenId ?? undefined,
@@ -90,7 +101,7 @@ export function mapNostrEventToNotification(
       source: "nostr",
       timestamp,
       read,
-      href: `/marketplace/${tokenId}`,
+      href: marketplaceCommentHref(tokenId, event.id),
       subject: {
         kind: "comment",
         tokenId,

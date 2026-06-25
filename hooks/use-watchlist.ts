@@ -1,30 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { addFavorite, loadFavorites, removeFavorite } from "@/lib/nostr/favorites";
-import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 
 export function useWatchlist(tokenId?: string) {
   const { isConnected } = useAccount();
-  const { nostrPrivateKey, loading: keyLoading, ensureNostrKey } = useNostrKey();
+  const { nostrPrivateKey, nostrPubkey, loading: keyLoading, ensureNostrKey } = useNostrKey();
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
 
-  const pubkey = useMemo(
-    () => (nostrPrivateKey ? nostrPubkeyFromPrivateKey(nostrPrivateKey) : null),
-    [nostrPrivateKey],
-  );
+  const pubkey = nostrPubkey;
 
   const isWatched = tokenId ? watchedIds.includes(tokenId) : false;
 
   useEffect(() => {
-    if (!isConnected || !pubkey || keyLoading) {
+    if (!isConnected || !pubkey) {
       setWatchedIds([]);
-      setIsLoading(keyLoading && isConnected);
+      setIsLoading(keyLoading && isConnected && !pubkey);
       return;
     }
 

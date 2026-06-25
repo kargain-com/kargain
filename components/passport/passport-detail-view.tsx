@@ -321,7 +321,9 @@ export function PassportDetailView({
             />
           </div>
 
-          <NostrCommentsSection tokenId={tokenId} />
+          <div id="passport-comments" className="scroll-mt-24">
+            <NostrCommentsSection tokenId={tokenId} />
+          </div>
 
           <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
         </div>

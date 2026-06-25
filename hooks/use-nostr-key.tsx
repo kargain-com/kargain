@@ -15,9 +15,16 @@ import {
   loadDecryptedKey,
   type WalletSigner,
 } from "@/lib/nostr/key-manager";
+import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
+import {
+  loadCachedPubkey,
+  saveCachedPubkey,
+} from "@/lib/nostr/nostr-pubkey-cache";
 
 type UseNostrKeyState = {
   nostrPrivateKey: `0x${string}` | null;
+  /** Public key from memory or local cache — enables read-only Nostr without signature. */
+  nostrPubkey: string | null;
   loading: boolean;
   status: "idle" | "connecting_wallet" | "restoring" | "creating" | "ready" | "error";
   /** Restore a stored key or create one on demand (prompts wallet signature when new). */
@@ -39,11 +46,16 @@ function isSignatureRejection(err: unknown): boolean {
   );
 }
 
+function persistPubkeyForAddress(address: `0x${string}`, privateKey: `0x${string}`): void {
+  saveCachedPubkey(address, nostrPubkeyFromPrivateKey(privateKey));
+}
+
 /** App-root provider: v1 blob silent restore; v2 on ensureNostrKey. */
 export function NostrKeyProvider({ children }: { children: ReactNode }) {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [nostrPrivateKey, setNostrPrivateKey] = useState<`0x${string}` | null>(null);
+  const [cachedPubkey, setCachedPubkey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<UseNostrKeyState["status"]>("idle");
 
@@ -59,8 +71,21 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     };
   }, [walletClient]);
 
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setCachedPubkey(null);
+      return;
+    }
+    setCachedPubkey(loadCachedPubkey(address));
+  }, [isConnected, address]);
+
+  const nostrPubkey = useMemo(() => {
+    if (nostrPrivateKey) return nostrPubkeyFromPrivateKey(nostrPrivateKey);
+    return cachedPubkey;
+  }, [nostrPrivateKey, cachedPubkey]);
+
   const refresh = useCallback(async () => {
-    if (!isConnected || !signer) {
+    if (!isConnected || !signer || !address) {
       setNostrPrivateKey(null);
       setStatus(isConnected ? "connecting_wallet" : "idle");
       return;
@@ -70,6 +95,10 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     try {
       const key = await loadDecryptedKey(signer);
       setNostrPrivateKey(key);
+      if (key) {
+        persistPubkeyForAddress(address, key);
+        setCachedPubkey(nostrPubkeyFromPrivateKey(key));
+      }
       setStatus(key ? "ready" : "idle");
     } catch (e) {
       setNostrPrivateKey(null);
@@ -77,10 +106,10 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isConnected, signer]);
+  }, [isConnected, signer, address]);
 
   const ensureNostrKey = useCallback(async (): Promise<`0x${string}` | null> => {
-    if (!isConnected || !signer) return null;
+    if (!isConnected || !signer || !address) return null;
     if (nostrPrivateKey) return nostrPrivateKey;
 
     setLoading(true);
@@ -88,6 +117,8 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     try {
       const key = await getOrCreateNostrKey(signer);
       setNostrPrivateKey(key);
+      persistPubkeyForAddress(address, key);
+      setCachedPubkey(nostrPubkeyFromPrivateKey(key));
       setStatus("ready");
       return key;
     } catch (e) {
@@ -97,7 +128,7 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isConnected, nostrPrivateKey, signer]);
+  }, [isConnected, nostrPrivateKey, signer, address]);
 
   useEffect(() => {
     void refresh();
@@ -106,12 +137,13 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       nostrPrivateKey,
+      nostrPubkey,
       loading,
       status,
       ensureNostrKey,
       refresh,
     }),
-    [nostrPrivateKey, loading, status, ensureNostrKey, refresh],
+    [nostrPrivateKey, nostrPubkey, loading, status, ensureNostrKey, refresh],
   );
 
   return <NostrKeyContext.Provider value={value}>{children}</NostrKeyContext.Provider>;

@@ -2,6 +2,7 @@
 
 import { Heart, Loader2, MessageCircle } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { type Filter, finalizeEvent, getPublicKey } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
@@ -36,6 +38,8 @@ function parseParentId(ev: NostrEvent): string | null {
 }
 
 function NostrCommentsSection({ tokenId }: { tokenId: string }) {
+  const searchParams = useSearchParams();
+  const highlightEventId = searchParams.get("e");
   const { isConnected, address } = useAccount();
   const { nostrPrivateKey, loading, ensureNostrKey } = useNostrKey();
   const [events, setEvents] = useState<Record<string, CommentNode>>({});
@@ -46,6 +50,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
   const [feedError, setFeedError] = useState<string | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
   const [sendingError, setSendingError] = useState<string | null>(null);
+  const [flashEventId, setFlashEventId] = useState<string | null>(null);
 
   const pool = useMemo(() => new SimplePool(), []);
   const mountedRef = useRef(true);
@@ -125,6 +130,16 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     }
     return map;
   }, [ordered]);
+
+  useEffect(() => {
+    if (!highlightEventId || feedLoading) return;
+    const el = document.getElementById(`comment-${highlightEventId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashEventId(highlightEventId);
+    const timer = window.setTimeout(() => setFlashEventId(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [highlightEventId, feedLoading, ordered.length]);
 
   const publish = async (
     kind: 1 | 7,
@@ -249,7 +264,14 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
         {roots.map((root) => {
           const evmAddress = root.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
           return (
-            <li key={root.event.id} className="rounded-md border border-border-default bg-bg-surface p-3">
+            <li
+              key={root.event.id}
+              id={`comment-${root.event.id}`}
+              className={cn(
+                "rounded-md border border-border-default bg-bg-surface p-3 transition-colors duration-300",
+                flashEventId === root.event.id && "border-accent-warm",
+              )}
+            >
               <p className="font-sans text-xs text-text-secondary">
                 {evmAddress ? (
                   <Link
@@ -289,7 +311,14 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
                   {(byParent[root.event.id] ?? []).map((child) => {
                     const childEvmAddress = child.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
                     return (
-                      <li key={child.event.id}>
+                      <li
+                        key={child.event.id}
+                        id={`comment-${child.event.id}`}
+                        className={cn(
+                          "transition-colors duration-300",
+                          flashEventId === child.event.id && "rounded-sm border border-accent-warm px-2 py-1",
+                        )}
+                      >
                         <p className="font-sans text-xs text-text-secondary">
                           {childEvmAddress ? (
                             <Link

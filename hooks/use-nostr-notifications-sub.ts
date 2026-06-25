@@ -8,7 +8,7 @@ import { useNotificationState } from "@/hooks/use-notification-state";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { mapNostrEventToNotification } from "@/lib/notifications/map-nostr-event";
 import type { NotificationItem } from "@/lib/notifications/types";
-import { getNostrPool, NOSTR_RELAYS, nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
+import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 
 const LOOKBACK_SECONDS = 7 * 24 * 3600;
 
@@ -41,17 +41,13 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   items: NotificationItem[];
 } {
   const { isConnected } = useAccount();
-  const { nostrPrivateKey } = useNostrKey();
+  const { nostrPubkey } = useNostrKey();
   const { state } = useNotificationState();
   const [events, setEvents] = useState<Event[]>([]);
   const mountedRef = useRef(true);
 
-  const pubkey = useMemo(
-    () => (nostrPrivateKey ? nostrPubkeyFromPrivateKey(nostrPrivateKey) : null),
-    [nostrPrivateKey],
-  );
-
-  const ready = isConnected && Boolean(nostrPrivateKey) && Boolean(pubkey);
+  const pubkey = nostrPubkey;
+  const ready = isConnected && Boolean(pubkey);
   const ownedTokenIdsKey = ownedTokenIds.join("\0");
 
   useEffect(() => {
