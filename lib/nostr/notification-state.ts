@@ -89,10 +89,9 @@ export function mergeNotificationStates(
 export async function loadNotificationState(
   address: `0x${string}`,
   pubkey: string,
-  privateKey: string,
 ): Promise<NotificationState> {
   try {
-    if (!pubkey.trim() || !privateKey.trim()) return DEFAULT_STATE;
+    if (!pubkey.trim()) return DEFAULT_STATE;
 
     const pool = getNostrPool();
     const events = await pool.querySync(

@@ -91,11 +91,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const loaded = await loadNotificationState(
-          address as Address,
-          pubkey,
-          nostrPrivateKey,
-        );
+        const loaded = await loadNotificationState(address as Address, pubkey);
         if (!cancelled) setState(loaded);
       } catch (err) {
         console.error("useNotificationState load failed", err);
@@ -159,6 +155,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
 function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const { state, isLoading: stateLoading, markRead } = useNotificationState();
+  const { nostrPrivateKey } = useNostrKey();
   const ponder = usePonderNotifications();
   const watchlist = useWatchlistNotifications();
   const nostr = useNostrNotificationsSub(OWNED_TOKEN_IDS_V1);
@@ -173,7 +170,10 @@ function NotificationsFeedComposer({ children }: { children: ReactNode }) {
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
 
-  const isLoading = stateLoading || ponder.isLoading || watchlist.isLoading;
+  const isLoading =
+    ponder.isLoading ||
+    watchlist.isLoading ||
+    (Boolean(nostrPrivateKey) && stateLoading);
 
   const value = useMemo(
     () => ({

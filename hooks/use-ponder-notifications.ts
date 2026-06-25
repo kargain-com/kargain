@@ -17,7 +17,7 @@ export function usePonderNotifications(): {
   const { state } = useNotificationState();
 
   const { data, isPending, error } = useQuery({
-    queryKey: ["ponder-notifications", address],
+    queryKey: ["ponder-notifications", address, state.lastSeenAt.ponder],
     queryFn: async () => fetchNotificationFeed(address!, state.lastSeenAt.ponder),
     enabled: isConnected && Boolean(address),
     staleTime: 20_000,

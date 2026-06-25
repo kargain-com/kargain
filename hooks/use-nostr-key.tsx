@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import {
   getOrCreateNostrKey,
@@ -17,6 +25,8 @@ type UseNostrKeyState = {
   refresh: () => Promise<void>;
 };
 
+const NostrKeyContext = createContext<UseNostrKeyState | null>(null);
+
 function isSignatureRejection(err: unknown): boolean {
   if (!err) return false;
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -29,7 +39,8 @@ function isSignatureRejection(err: unknown): boolean {
   );
 }
 
-export function useNostrKey(): UseNostrKeyState {
+/** App-root provider: v1 blob silent restore; v2 on ensureNostrKey. */
+export function NostrKeyProvider({ children }: { children: ReactNode }) {
   const { isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [nostrPrivateKey, setNostrPrivateKey] = useState<`0x${string}` | null>(null);
@@ -92,11 +103,24 @@ export function useNostrKey(): UseNostrKeyState {
     void refresh();
   }, [refresh]);
 
-  return {
-    nostrPrivateKey,
-    loading,
-    status,
-    ensureNostrKey,
-    refresh,
-  };
+  const value = useMemo(
+    () => ({
+      nostrPrivateKey,
+      loading,
+      status,
+      ensureNostrKey,
+      refresh,
+    }),
+    [nostrPrivateKey, loading, status, ensureNostrKey, refresh],
+  );
+
+  return <NostrKeyContext.Provider value={value}>{children}</NostrKeyContext.Provider>;
+}
+
+export function useNostrKey(): UseNostrKeyState {
+  const ctx = useContext(NostrKeyContext);
+  if (!ctx) {
+    throw new Error("useNostrKey must be used within NostrKeyProvider");
+  }
+  return ctx;
 }

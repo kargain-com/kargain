@@ -1,16 +1,30 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { useAccount } from "wagmi";
 
 import { NotificationsClient } from "@/components/notifications/notifications-client";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
+import { useNostrKey } from "@/hooks/use-nostr-key";
 import { cn } from "@/lib/utils";
 
 type TabId = "alerts" | "watchlist";
 
 function tabFromSearchParams(searchParams: URLSearchParams): TabId {
   return searchParams.get("tab") === "watchlist" ? "watchlist" : "alerts";
+}
+
+/** Lazy v2 key restore when user opens /notifications (not app-wide). */
+function NotificationsNostrBootstrap() {
+  const { isConnected } = useAccount();
+  const { ensureNostrKey } = useNostrKey();
+
+  useEffect(() => {
+    if (isConnected) void ensureNostrKey();
+  }, [isConnected, ensureNostrKey]);
+
+  return null;
 }
 
 export function NotificationsShell() {
@@ -34,6 +48,7 @@ export function NotificationsShell() {
 
   return (
     <div className="mx-auto max-w-7xl xl:max-w-[80rem]">
+      <NotificationsNostrBootstrap />
       <h1 className="mb-6 font-display text-fluid-h2 font-medium tracking-[-0.015em] leading-[1.15] text-text-primary">
         Notifications
       </h1>
