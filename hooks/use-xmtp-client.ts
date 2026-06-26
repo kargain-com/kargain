@@ -6,6 +6,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { createXmtpClient } from "@/lib/xmtp/client";
 import type { XmtpClient } from "@/lib/xmtp/helpers";
 import {
+  canInitializeMessaging,
   messagingWalletError,
   readAccountKindFromProvider,
 } from "@/lib/web3/wallet-account";
@@ -166,12 +167,11 @@ export function useXmtpClient(): {
 
     const provider = await connector?.getProvider?.();
     const kind = await readAccountKindFromProvider(provider, address);
-    const walletError = messagingWalletError(kind);
-    if (walletError) {
+    if (!canInitializeMessaging(kind)) {
       setStore({
         client: null,
         isInitializing: false,
-        error: walletError,
+        error: messagingWalletError(kind),
         walletKey: null,
       });
       return null;
@@ -191,7 +191,7 @@ export function useXmtpClient(): {
     void (async () => {
       const provider = await connector?.getProvider?.();
       const kind = await readAccountKindFromProvider(provider, address);
-      if (kind !== "eoa") return;
+      if (!canInitializeMessaging(kind)) return;
       await initialize();
     })();
   }, [address, connector, initialize, isConnected, walletClient]);

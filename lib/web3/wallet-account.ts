@@ -6,7 +6,6 @@ import {
   karPassportAddress,
   karProPassAddress,
   karProStakingAddress,
-  kargainTimelockAddress,
   marketplaceAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -37,6 +36,7 @@ function normalizeAddress(address: string): `0x${string}` | null {
   }
 }
 
+/** On-chain protocol contracts — not timelock (may share a deployer EOA in test configs). */
 export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
   const cid = chainId ?? DEFAULT_CHAIN_ID;
   const candidates = [
@@ -45,7 +45,6 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
     karProPassAddress(cid),
     karProStakingAddress(cid),
     usdcAddress(cid),
-    kargainTimelockAddress(cid),
     chainlinkNativeUsdFeed(cid),
     chainlinkEurUsdFeed(cid),
   ];
@@ -67,9 +66,6 @@ export async function readAccountKind(
   chainId: number,
   address: `0x${string}`,
 ): Promise<WalletAccountKind> {
-  if (isProtocolAddress(address, chainId)) {
-    return "contract";
-  }
   try {
     const bytecode = await getPublicClient(chainId).getBytecode({ address });
     return classifyBytecode(bytecode);
@@ -105,9 +101,13 @@ export function explorerAddressUrl(chainId: number, address: string): string {
 }
 
 export function messagingWalletError(kind: WalletAccountKind): string | null {
-  if (kind === "eoa") return null;
-  if (kind === "eip7702") {
-    return "Messaging requires a standard wallet account. Switch out of Smart Account mode in your wallet, then try again.";
+  if (kind === "contract") {
+    return "This address cannot receive messages.";
   }
-  return "This address cannot receive messages.";
+  return null;
+}
+
+/** Whether the connected wallet may attempt XMTP registration. */
+export function canInitializeMessaging(kind: WalletAccountKind): boolean {
+  return kind !== "contract";
 }

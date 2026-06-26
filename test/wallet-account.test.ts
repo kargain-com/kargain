@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  canInitializeMessaging,
   classifyBytecode,
   explorerAddressUrl,
   isMessageablePeer,
   isProtocolAddress,
   messagingWalletError,
 } from "../lib/web3/wallet-account.ts";
+
+const DEPLOYER = "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77" as const;
 
 describe("classifyBytecode", () => {
   it("classifies clean EOA", () => {
@@ -39,6 +42,11 @@ describe("isProtocolAddress", () => {
       false,
     );
   });
+
+  it("does not flag deployer / timelock-config address", () => {
+    assert.equal(isProtocolAddress(DEPLOYER, 84532), false);
+    assert.equal(isMessageablePeer(DEPLOYER, 84532), true);
+  });
 });
 
 describe("isMessageablePeer", () => {
@@ -58,13 +66,24 @@ describe("isMessageablePeer", () => {
 });
 
 describe("messagingWalletError", () => {
-  it("returns null for EOA", () => {
+  it("returns null for EOA and EIP-7702", () => {
     assert.equal(messagingWalletError("eoa"), null);
+    assert.equal(messagingWalletError("eip7702"), null);
   });
 
-  it("returns message for smart wallets", () => {
-    assert.ok(messagingWalletError("eip7702"));
+  it("returns message for contract accounts", () => {
     assert.ok(messagingWalletError("contract"));
+  });
+});
+
+describe("canInitializeMessaging", () => {
+  it("allows EOA and EIP-7702", () => {
+    assert.equal(canInitializeMessaging("eoa"), true);
+    assert.equal(canInitializeMessaging("eip7702"), true);
+  });
+
+  it("blocks contract accounts", () => {
+    assert.equal(canInitializeMessaging("contract"), false);
   });
 });
 
