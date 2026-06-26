@@ -15,6 +15,7 @@ import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { isProtocolAddress, readAccountKind } from "@/lib/web3/wallet-account";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const getCachedVerifierProfile = cache(fetchKarProVerifierProfile);
@@ -71,6 +72,10 @@ export default async function PublicProfilePage({
   if (!wallet) notFound();
 
   const chainId = DEFAULT_CHAIN_ID;
+
+  if (isProtocolAddress(wallet, chainId)) notFound();
+  const accountKind = await readAccountKind(chainId, wallet);
+  if (accountKind === "contract") notFound();
 
   const [isActiveVerifier, profileData] = await Promise.all([
     readIsActiveVerifier(chainId, wallet),

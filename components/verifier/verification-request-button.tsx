@@ -59,7 +59,7 @@ function buildVerificationMessage(unverified: PassportRow[]): string {
 
 export function VerificationRequestButton({ verifierAddress, verifierName }: Props) {
   const { address: userAddress, isConnected } = useAccount();
-  const { client, isInitializing, initialize } = useXmtpClient();
+  const { client, isInitializing, ensureInitialized } = useXmtpClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -84,8 +84,7 @@ export function VerificationRequestButton({ verifierAddress, verifierName }: Pro
 
       let activeClient = client ?? getCachedXmtpClient();
       if (!activeClient) {
-        await initialize();
-        activeClient = getCachedXmtpClient();
+        activeClient = await ensureInitialized();
       }
       if (!activeClient) return;
 

@@ -31,7 +31,7 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 
 export function ConversationThreadClient({ conversationId }: Props) {
   const { isConnected } = useAccount();
-  const { client, isInitializing, error, initialize } = useXmtpClient();
+  const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
   const { conversations } = useXmtpConversations(client);
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
@@ -79,6 +79,11 @@ export function ConversationThreadClient({ conversationId }: Props) {
   }, [client, conversationId, listPeerAddress]);
 
   useEffect(() => {
+    if (!isConnected) return;
+    void ensureInitialized();
+  }, [ensureInitialized, isConnected]);
+
+  useEffect(() => {
     setLastSeen(conversationId);
   }, [conversationId]);
 
@@ -99,20 +104,14 @@ export function ConversationThreadClient({ conversationId }: Props) {
             Back
           </Link>
         </Button>
-        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="text-sm text-text-secondary">Enable messaging to view this conversation.</p>
-          <Button type="button" disabled={isInitializing} onClick={() => void initialize()}>
-            {isInitializing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                Enabling…
-              </>
-            ) : (
-              "Enable messaging"
-            )}
-          </Button>
-        </div>
-        {error && <p className="text-sm text-status-error">{error}</p>}
+        {isInitializing ? (
+          <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Setting up encrypted messaging…
+          </p>
+        ) : (
+          error && <p className="text-sm text-status-error">{error}</p>
+        )}
       </div>
     );
   }

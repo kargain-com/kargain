@@ -4,6 +4,7 @@ import { WebBaseEth } from "@irys/web-upload-ethereum";
 import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
 import { BrowserProvider } from "ethers";
 
+import { classifyBytecode } from "@/lib/web3/wallet-account";
 import { rpcUrlForChain } from "@/lib/web3/supported-chains";
 
 export const IRYS_GATEWAY = "https://arweave.net";
@@ -94,21 +95,14 @@ export async function checkIrysCompatibility(
 ): Promise<string | null> {
   try {
     const eip1193 = resolveProvider(provider);
-    const code = await eip1193.request({
+    const code = (await eip1193.request({
       method: "eth_getCode",
       params: [address, "latest"],
-    }) as string;
+    })) as string;
 
-    if (!code || code === "0x" || code === "0x0") {
-      return null; // clean EOA — compatible
-    }
-
-    if (code.startsWith("0xef0100")) {
-      // EIP-7702 delegated smart EOA
-      return "eip7702";
-    }
-
-    // ERC-4337 or other contract account
+    const kind = classifyBytecode(code);
+    if (kind === "eoa") return null;
+    if (kind === "eip7702") return "eip7702";
     return "contract";
   } catch {
     return null; // if detection fails, allow upload and let fund() surface the real error

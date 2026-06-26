@@ -105,7 +105,7 @@ export function IdentityHeader({
               )}
               {!isOwner && isConnected && (
                 <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
-                  <Link href="/messages">
+                  <Link href={`/messages?to=${wallet}`}>
                     <MessageSquare size={14} strokeWidth={1.5} aria-hidden />
                     Message
                   </Link>
@@ -113,7 +113,7 @@ export function IdentityHeader({
               )}
               {!isOwner && isConnected && isActiveVerifier && (
                 <Button variant="primary" size="sm" className={headerActionClassName} asChild>
-                  <Link href="/messages">Request verification</Link>
+                  <Link href={`/messages?to=${wallet}`}>Request verification</Link>
                 </Button>
               )}
             </div>

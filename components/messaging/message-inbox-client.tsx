@@ -9,11 +9,17 @@ import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
-import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
+import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
 import { openDmWithPeer } from "@/lib/xmtp/open-dm";
 import { formatRelativeTime, getClientEthereumAddress, shortAddress } from "@/lib/xmtp/helpers";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import {
+  isMessageablePeer,
+  messagingWalletError,
+  readAccountKindFromProvider,
+} from "@/lib/web3/wallet-account";
 
 function parsePeerAddress(raw: string): `0x${string}` | undefined {
   try {
@@ -101,8 +107,8 @@ function InboxSkeleton() {
 export function MessageInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { address, isConnected } = useAccount();
-  const { client, isInitializing, error, initialize } = useXmtpClient();
+  const { address, isConnected, connector } = useAccount();
+  const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
   const { conversations, isLoading } = useXmtpConversations(client);
   const myAddress = client ? getClientEthereumAddress(client) : address;
 
@@ -113,6 +119,12 @@ export function MessageInboxClient() {
   const strippedRef = useRef(false);
   const handledToRef = useRef(false);
   const [openingPeer, setOpeningPeer] = useState(false);
+  const [toError, setToError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    void ensureInitialized();
+  }, [ensureInitialized, isConnected]);
 
   useEffect(() => {
     if (strippedRef.current) return;
@@ -135,23 +147,29 @@ export function MessageInboxClient() {
       peer = getAddress(raw);
     } catch {
       handledToRef.current = true;
+      setToError("Invalid recipient address.");
       return;
     }
 
     if (!isConnected) {
-      handledToRef.current = true;
       return;
     }
 
     if (address && peer.toLowerCase() === address.toLowerCase()) {
       handledToRef.current = true;
+      setToError("You cannot message yourself.");
       return;
     }
 
-    const activeClient = client ?? getCachedXmtpClient();
-    if (!activeClient) {
+    if (!isMessageablePeer(peer, DEFAULT_CHAIN_ID)) {
+      handledToRef.current = true;
+      setToError("This address cannot receive messages.");
+      return;
+    }
+
+    if (!client) {
       if (!isInitializing) {
-        void initialize();
+        void ensureInitialized();
       }
       return;
     }
@@ -160,19 +178,28 @@ export function MessageInboxClient() {
 
     handledToRef.current = true;
     setOpeningPeer(true);
+    setToError(null);
 
     void (async () => {
       try {
+        const provider = await connector?.getProvider?.();
+        const peerKind = await readAccountKindFromProvider(provider, peer);
+        const peerError = messagingWalletError(peerKind);
+        if (peerError) {
+          setToError(peerError);
+          return;
+        }
+
         const existing = findConversationByPeer(conversations, peer);
         if (existing) {
           router.push(`/messages/${existing.id}`);
           return;
         }
 
-        const dm = await openDmWithPeer(activeClient, peer);
+        const dm = await openDmWithPeer(client, peer);
         router.push(`/messages/${dm.id}`);
-      } catch {
-        // Stay on inbox when the conversation cannot be opened.
+      } catch (e) {
+        setToError(e instanceof Error ? e.message : "Could not open conversation.");
       } finally {
         setOpeningPeer(false);
       }
@@ -180,8 +207,9 @@ export function MessageInboxClient() {
   }, [
     address,
     client,
+    connector,
     conversations,
-    initialize,
+    ensureInitialized,
     isConnected,
     isInitializing,
     isLoading,
@@ -200,6 +228,8 @@ export function MessageInboxClient() {
     );
   }
 
+  const showInboxLoading = !client && isInitializing;
+
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-8 text-text-primary">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -216,27 +246,16 @@ export function MessageInboxClient() {
         </p>
       )}
 
-      {!client && (
-        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="text-sm text-text-secondary">
-            Enable end-to-end encrypted messaging with XMTP. You will be asked to sign a one-time message.
-          </p>
-          <Button type="button" disabled={isInitializing} onClick={() => void initialize()}>
-            {isInitializing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                Enabling…
-              </>
-            ) : (
-              "Enable messaging"
-            )}
-          </Button>
-        </div>
+      {showInboxLoading && (
+        <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Setting up encrypted messaging…
+        </p>
       )}
 
-      {error && (
+      {(error || toError) && (
         <p className="rounded-md border border-status-error bg-bg-card p-3 text-sm text-status-error" role="alert">
-          {error}
+          {toError ?? error}
         </p>
       )}
 
@@ -246,7 +265,7 @@ export function MessageInboxClient() {
         <ul className="space-y-2" role="list">
           {conversations.length === 0 && (
             <li className="rounded-md border border-dashed border-border-default p-6 text-center text-sm text-text-secondary">
-              No messages yet. Contact a seller from a listing page.
+              No conversations yet.
             </li>
           )}
           {conversations.map((conversation) => (

@@ -347,19 +347,24 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 ### 4.12 Messages
 
-Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx).
+Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts).
 
 | Element | Rule |
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
-| `?to=` pre-fill | `/messages?to={address}` opens existing DM or creates a new conversation; URL param stripped on mount; invalid address, self, or disconnected wallet → normal inbox |
+| `?to=` pre-fill | `/messages?to={address}` opens existing DM or creates a new conversation; URL param stripped on mount; protocol/contract peers rejected with error; waits for wallet connect |
+| Profile entry | Identity header **Message** / **Request verification** → `/messages?to={wallet}` |
+| XMTP init | Clean EOA: `ensureInitialized()` on inbox/thread mount (wallet sign); opt-in persisted per address for reconnect auto-init (nav unread badge); smart wallets show blocker copy |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
 | Timestamps | Below bubble, `text-xs text-text-tertiary`, aligned with sender side |
 | Composer | `Input` + icon `Button`; Enter sends |
+| Empty inbox | "No conversations yet." |
 
 No per-message sender label in the bubble list.
+
+Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
 
 ---
 
@@ -380,9 +385,11 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 
 ### 4.14 Passport detail
 
-Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx).
+Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
 
 - Page shell: `py-24`, `max-w-7xl`
+- **Listed in escrow:** title block shows **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer (not profile)
+- **Normal ownership:** **On-chain owner** → `/profile/{owner}`
 - **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`
 - `PassportActionsPanel` wrapped with `id="passport-actions"` and `scroll-mt-24` for dispute anchor
 - Trust banner, URI history (collapsed default), Nostr comments

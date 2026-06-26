@@ -17,7 +17,9 @@ import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
+import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
+import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
 type Props = {
   tokenId: string;
@@ -208,6 +210,11 @@ export function PassportDetailView({
     passport.verifier.trim() &&
     passport.verifier !== "0x0000000000000000000000000000000000000000";
   const showG2Banner = showFixedAfterDisputeBanner(passport);
+  const custody = resolvePassportCustody({
+    chainId,
+    passportOwner: passport.owner as `0x${string}`,
+    listing,
+  });
 
   const gallery = (
     <PassportPhotoGallery
@@ -228,12 +235,32 @@ export function PassportDetailView({
         <PassportStatusBadge status={passport.status} />
       </div>
       <p className="font-sans text-sm text-text-secondary">
-        On-chain owner{" "}
-        <EnsWalletLink
-          address={passport.owner}
-          href={`/profile/${passport.owner}`}
-          className="font-mono text-accent-warm hover:underline"
-        />
+        {custody.isEscrowed ? (
+          <>
+            Seller{" "}
+            <EnsWalletLink
+              address={custody.profileAddress}
+              href={`/profile/${custody.profileAddress}`}
+              className="font-mono text-accent-warm hover:underline"
+            />
+            <span className="mx-1 text-text-tertiary">·</span>
+            Held in escrow{" "}
+            <EnsWalletLink
+              address={custody.custodyAddress ?? passport.owner}
+              externalHref={explorerAddressUrl(chainId, custody.custodyAddress ?? passport.owner)}
+              className="font-mono text-accent-warm hover:underline"
+            />
+          </>
+        ) : (
+          <>
+            On-chain owner{" "}
+            <EnsWalletLink
+              address={custody.profileAddress}
+              href={`/profile/${custody.profileAddress}`}
+              className="font-mono text-accent-warm hover:underline"
+            />
+          </>
+        )}
       </p>
     </div>
   );

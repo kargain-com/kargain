@@ -17,27 +17,43 @@ function checksumAddress(address: string): string {
 
 type Props = {
   address: string;
-  href: string;
+  href?: string;
+  externalHref?: string;
   className?: string;
 };
 
-export function EnsWalletLink({ address, href, className }: Props) {
+export function EnsWalletLink({ address, href, externalHref, className }: Props) {
   const checksum = checksumAddress(address);
   const { displayName, isLoading } = useEnsProfile(checksum as Address);
   const hasEnsName = !displayName.startsWith("0x");
+  const linkClassName = cn(className);
 
   if (isLoading) {
     return <span className="inline-block h-4 w-24 animate-pulse rounded-sm bg-bg-surface" />;
   }
 
-  return (
+  const label = (
     <span className="inline-flex flex-col gap-0.5">
-      <Link href={href} title={checksum} className={cn(className)}>
-        {displayName}
-      </Link>
+      {externalHref ? (
+        <a
+          href={externalHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={checksum}
+          className={linkClassName}
+        >
+          {displayName}
+        </a>
+      ) : (
+        <Link href={href ?? `/profile/${checksum}`} title={checksum} className={linkClassName}>
+          {displayName}
+        </Link>
+      )}
       {hasEnsName && (
         <span className="font-mono text-xs text-text-secondary">{shortAddress(checksum)}</span>
       )}
     </span>
   );
+
+  return label;
 }
