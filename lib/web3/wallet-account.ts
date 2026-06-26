@@ -36,7 +36,7 @@ function normalizeAddress(address: string): `0x${string}` | null {
   }
 }
 
-/** On-chain protocol contracts — not timelock (may share a deployer EOA in test configs). */
+/** On-chain protocol contracts — not timelock (env-only when TimelockController exists). */
 export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
   const cid = chainId ?? DEFAULT_CHAIN_ID;
   const candidates = [

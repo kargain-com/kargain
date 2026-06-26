@@ -30,6 +30,10 @@ function main() {
     `export NEXT_PUBLIC_MARKETPLACE_ADDRESS='${manifest.marketplace}'`,
     `export NEXT_PUBLIC_KAR_PRO_PASS_ADDRESS='${manifest.karProPass}'`,
     `export NEXT_PUBLIC_KAR_PRO_STAKING_ADDRESS='${manifest.karProStaking}'`,
+    `# Governance (see passport-v1.1-spec §13.1):`,
+    `#   deployer=${manifest.deployer ?? SEPOLIA_FALLBACK.deployer}`,
+    `#   upgradeAuthority=${manifest.upgradeAuthority ?? SEPOLIA_FALLBACK.upgradeAuthority}`,
+    `#   timelock=not deployed on Sepolia v1.1 redeploy`,
   ];
 
   console.log(exports.join("\n"));

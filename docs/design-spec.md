@@ -364,7 +364,7 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 
 No per-message sender label in the bubble list.
 
-Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
+Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers. Deployer / `upgradeAuthority` EOAs are never in the static denylist — see [passport-v1.1-spec §13.1](../passport-v1.1-spec.md).
 
 ---
 

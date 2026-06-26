@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  allProtocolAddresses,
   canInitializeMessaging,
   classifyBytecode,
   explorerAddressUrl,
@@ -9,8 +10,10 @@ import {
   isProtocolAddress,
   messagingWalletError,
 } from "../lib/web3/wallet-account.ts";
+import { kargainTimelockAddress } from "../lib/web3/deployment-addresses.ts";
+import { SEPOLIA_FALLBACK } from "../scripts/lib/load-deployment.ts";
 
-const DEPLOYER = "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77" as const;
+const SEPOLIA_DEPLOYER = SEPOLIA_FALLBACK.deployer;
 
 describe("classifyBytecode", () => {
   it("classifies clean EOA", () => {
@@ -43,9 +46,26 @@ describe("isProtocolAddress", () => {
     );
   });
 
-  it("does not flag deployer / timelock-config address", () => {
-    assert.equal(isProtocolAddress(DEPLOYER, 84532), false);
-    assert.equal(isMessageablePeer(DEPLOYER, 84532), true);
+  it("does not flag Sepolia deployer / upgradeAuthority EOA", () => {
+    assert.equal(isProtocolAddress(SEPOLIA_DEPLOYER, 84532), false);
+    assert.equal(isMessageablePeer(SEPOLIA_DEPLOYER, 84532), true);
+    assert.equal(
+      SEPOLIA_FALLBACK.upgradeAuthority.toLowerCase(),
+      SEPOLIA_DEPLOYER.toLowerCase(),
+    );
+  });
+});
+
+describe("kargainTimelockAddress", () => {
+  it("has no Sepolia fallback when TimelockController is not deployed", () => {
+    assert.equal(kargainTimelockAddress(84532), undefined);
+  });
+
+  it("timelock is never in the static protocol denylist", () => {
+    const timelock = kargainTimelockAddress(84532);
+    if (!timelock) return;
+    const denylist = allProtocolAddresses(84532).map((addr) => addr.toLowerCase());
+    assert.equal(denylist.includes(timelock.toLowerCase()), false);
   });
 });
 

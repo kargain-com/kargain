@@ -215,6 +215,8 @@ Verified on [Base Sepolia Basescan](https://sepolia.basescan.org). Full addresse
 | `minStakeNative` | 0.05 ETH |
 | `platformFeeBps` | 10 (0.1%) |
 | Payment assets | Native ETH, USDC |
+| Deployer EOA | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
+| Marketplace `upgradeAuthority` | Same as deployer (no timelock on testnet) — [spec §13.1](docs/passport-v1.1-spec.md) |
 
 ---
 
@@ -252,7 +254,7 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 - **Smart wallets + Irys** — contract accounts and EIP-7702 wallets cannot fund Irys uploads from the browser. Use a standard EOA on the target chain for passport photo upload.
 - **Multi-chain** — Ponder indexes Base Sepolia today; additional chains require deployment and indexer configuration per network.
 - **Verification transparency** — disputed passports can still be listed; buyers see status in the UI before purchase.
-- **Upgrade authority** — MarketplaceEscrow upgrade key is the deployer EOA, not a timelock (testnet).
+- **Upgrade authority** — On Base Sepolia, `MarketplaceEscrow.upgradeAuthority` is the deployer EOA, not a `TimelockController` (see [passport-v1.1-spec §13.1](docs/passport-v1.1-spec.md)). Localhost uses a real timelock contract.
 
 ---
 

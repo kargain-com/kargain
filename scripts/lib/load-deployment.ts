@@ -31,6 +31,8 @@ export const SEPOLIA_FALLBACK = {
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
+  /** On-chain `MarketplaceEscrow.upgradeAuthority` after v1.1 redeploy — deployer EOA, not TimelockController. */
+  upgradeAuthority: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
 } as const satisfies Record<string, `0x${string}`>;
 
 export type DeploymentBlocks = {
@@ -55,6 +57,8 @@ export type DeploymentManifest = {
   timelock?: `0x${string}`;
   platformRecipient?: `0x${string}`;
   deployer?: `0x${string}`;
+  /** On-chain MarketplaceEscrow.upgradeAuthority (timelock contract or deployer EOA). */
+  upgradeAuthority?: `0x${string}`;
   deployedAt: string;
   unchanged?: string[];
   blocks: DeploymentBlocks;
@@ -100,6 +104,7 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.nativeFeed ? { nativeFeed: getAddress(raw.nativeFeed) } : {}),
     ...(raw.eurFeed ? { eurFeed: getAddress(raw.eurFeed) } : {}),
     ...(raw.deployer ? { deployer: getAddress(raw.deployer) } : {}),
+    ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
   };
 }
 

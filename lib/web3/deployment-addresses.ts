@@ -8,13 +8,15 @@ export const BASE_SEPOLIA_CHAIN_ID = 84532;
 /** Hardhat localhost (persistent node) */
 export const LOCALHOST_CHAIN_ID = 31337;
 
+/** Base Sepolia (84532) committed fallbacks — Model X v1.1 partial redeploy, June 2026.
+ *  No `timelock` here: Sepolia marketplace `upgradeAuthority` is the deployer EOA (see passport-v1.1-spec §13.1).
+ *  TimelockController is localhost-only until a future governance redeploy. */
 const SEPOLIA = {
   karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
   marketplace: "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
   karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
   karProStaking: "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  timelock: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
   nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
 } as const satisfies Record<string, `0x${string}`>;
@@ -25,11 +27,13 @@ type AddressKey =
   | "karProPass"
   | "karProStaking"
   | "usdc"
-  | "timelock"
   | "nativeFeed"
   | "eurFeed";
 
-const ENV_SINGLE: Record<AddressKey, string> = {
+/** Optional — only set via env when a TimelockController is deployed (e.g. localhost 31337). */
+type OptionalTimelockKey = "timelock";
+
+const ENV_SINGLE: Record<AddressKey | OptionalTimelockKey, string> = {
   karPassport: "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
   marketplace: "NEXT_PUBLIC_MARKETPLACE_ADDRESS",
   karProPass: "NEXT_PUBLIC_KAR_PRO_PASS_ADDRESS",
@@ -40,7 +44,7 @@ const ENV_SINGLE: Record<AddressKey, string> = {
   eurFeed: "NEXT_PUBLIC_EUR_FEED_ADDRESS",
 };
 
-const ENV_BY_CHAIN: Record<AddressKey, string> = {
+const ENV_BY_CHAIN: Record<AddressKey | OptionalTimelockKey, string> = {
   karPassport: "NEXT_PUBLIC_KAR_PASSPORT_BY_CHAIN",
   marketplace: "NEXT_PUBLIC_MARKETPLACE_BY_CHAIN",
   karProPass: "NEXT_PUBLIC_KAR_PRO_PASS_BY_CHAIN",
@@ -99,7 +103,19 @@ export function usdcAddress(chainId?: number): `0x${string}` | undefined {
 }
 
 export function kargainTimelockAddress(chainId?: number): `0x${string}` | undefined {
-  return resolveAddress("timelock", chainId);
+  const cid = chainId ?? DEFAULT_CHAIN_ID;
+  const chainKey = String(cid);
+
+  const byChain = parseJsonMap(
+    process.env[ENV_BY_CHAIN.timelock as keyof NodeJS.ProcessEnv] as string,
+  );
+  const fromMap = byChain[chainKey];
+  if (fromMap) return getAddress(fromMap as `0x${string}`);
+
+  const single = process.env[ENV_SINGLE.timelock] as string | undefined;
+  if (single && cid === DEFAULT_CHAIN_ID) return getAddress(single as `0x${string}`);
+
+  return undefined;
 }
 
 export function chainlinkNativeUsdFeed(chainId?: number): `0x${string}` | undefined {

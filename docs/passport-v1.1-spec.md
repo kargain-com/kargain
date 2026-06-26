@@ -246,6 +246,24 @@ Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm h
 
 Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (gitignored manifest with per-contract blocks + `indexFromBlock` + `nativeFeed` / `eurFeed`).
 
+### 13.1 Governance roles (deployer vs timelock vs upgrade authority)
+
+Three **distinct** concepts — do not conflate in config or UI:
+
+| Role | What it is | Base Sepolia (84532) v1.1 redeploy | Localhost (31337) |
+|------|------------|-----------------------------------|-------------------|
+| **Deployer** | EOA that signed deploy txs | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` | Hardhat account #0 |
+| **upgradeAuthority** | `MarketplaceEscrow.upgradeAuthority` on-chain | **Same as deployer EOA** (`initialize(deployer)` in `deploy-v1.1.ts`) | **TimelockController** address (`initialize(timelock)` in `local-stack.ts`) |
+| **TimelockController** | OpenZeppelin timelock contract (48h delay) | **Not deployed** | Deployed; address in `deployments/31337.json` → `timelock` |
+
+**Config rules:**
+
+- `lib/web3/deployment-addresses.ts` — **no** Sepolia fallback for `timelock`. Use `NEXT_PUBLIC_TIMELOCK_*` only when a TimelockController exists (local / future mainnet).
+- `deployments/84532.json` — must record `deployer` and `upgradeAuthority` separately from any future `timelock` field.
+- **Profiles / messaging** — never treat deployer or `upgradeAuthority` EOA as a protocol denylist entry; block contract accounts via bytecode (`lib/web3/wallet-account.ts`).
+
+**Future mainnet / governance redeploy:** deploy `TimelockController`, call `initialize(timelockAddress)`, write `timelock` + `upgradeAuthority` to manifest; deployer EOA remains a normal user wallet.
+
 **Chainlink price feeds** (immutable constructor args on MarketplaceEscrow impl):
 
 | Feed | Address | Base Sepolia status (June 2026) |

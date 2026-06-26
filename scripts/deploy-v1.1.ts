@@ -186,6 +186,7 @@ async function main() {
       eurFeed: EUR_USD_FEED,
       platformRecipient: PLATFORM_RECIPIENT,
       deployer: deployerAddress,
+      upgradeAuthority,
       deployedAt: new Date().toISOString(),
       unchanged: ["karProPass", "karProStaking"],
       blocks,
