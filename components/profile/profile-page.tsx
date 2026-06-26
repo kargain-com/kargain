@@ -602,7 +602,7 @@ export function ProfilePage({
               id="profile-panel-saved"
               aria-labelledby="profile-tab-saved"
             >
-              <WatchlistClient />
+              <WatchlistClient layout="narrow" />
             </section>
           )}
 

@@ -9,6 +9,13 @@ import { ListingCard } from "@/components/marketplace/listing-card";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useWatchlist } from "@/hooks/use-watchlist";
 
+const GRID_CLASS = {
+  wide: "grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3",
+  narrow: "grid grid-cols-1 gap-3 sm:grid-cols-2",
+} as const;
+
+type WatchlistLayout = keyof typeof GRID_CLASS;
+
 function ListingCardSkeleton() {
   return (
     <div className="h-full overflow-hidden rounded-md border border-border-default bg-bg-card">
@@ -22,7 +29,13 @@ function ListingCardSkeleton() {
   );
 }
 
-export function WatchlistClient() {
+type Props = {
+  /** `narrow` for profile (`max-w-2xl`); `wide` for notifications / full-width pages. */
+  layout?: WatchlistLayout;
+};
+
+export function WatchlistClient({ layout = "wide" }: Props) {
+  const gridClass = GRID_CLASS[layout];
   const { isConnected } = useAccount();
   const { watchedIds, isLoading } = useWatchlist();
 
@@ -47,7 +60,7 @@ export function WatchlistClient() {
       )}
 
       {isConnected && listingsLoading && (
-        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className={gridClass}>
           {Array.from({ length: Math.max(watchedIds.length, 3) }).map((_, i) => (
             <li key={i}>
               <ListingCardSkeleton />
@@ -80,7 +93,7 @@ export function WatchlistClient() {
               Indexer unavailable. Start the Ponder indexer to load saved listings.
             </p>
           )}
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className={gridClass}>
             {listings.map((row) => (
               <li key={row.tokenId}>
                 <ListingCard row={row} />

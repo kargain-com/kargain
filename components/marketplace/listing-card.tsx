@@ -8,7 +8,6 @@ import { ListingDisplayPrice } from "@/components/marketplace/listing-display-pr
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
-import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -17,6 +16,10 @@ type Props = {
   row: MarketplaceListingRow;
   chainStatusDrift?: ListingChainStatusDrift;
 };
+
+function titleIncludesYear(title: string, year: number | null): boolean {
+  return year != null && title.startsWith(`${year} `);
+}
 
 export function ListingCard({ row, chainStatusDrift }: Props) {
   const statusStale = Boolean(chainStatusDrift);
@@ -29,7 +32,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
     >
       <Card
         className={cn(
-          "h-full overflow-hidden bg-bg-card transition-colors duration-300",
+          "h-full overflow-hidden bg-bg-card p-0 transition-colors duration-300",
           displayStatus === "VERIFIED"
             ? "border-accent-warm group-focus-visible:border-accent-warm"
             : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
@@ -67,8 +70,9 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
         </div>
         <CardContent className="space-y-2.5 p-4">
           <div className="flex flex-wrap items-start gap-2">
-            <h3 className="line-clamp-2 flex-1 text-sm font-medium leading-snug text-text-primary">{row.title}</h3>
-            <PassportStatusBadge status={displayStatus} />
+            <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-text-primary">
+              {row.title}
+            </h3>
             {statusStale && (
               <span
                 className="inline-flex items-center gap-1 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-status-error"
@@ -86,7 +90,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">
             {row.make && <span>{row.make}</span>}
             {row.model && <span>{row.model}</span>}
-            {row.year != null && <span>{row.year}</span>}
+            {row.year != null && !titleIncludesYear(row.title, row.year) && <span>{row.year}</span>}
             {row.mileageKm != null && <span>{row.mileageKm.toLocaleString()} km</span>}
           </div>
           {displayStatus === "VERIFIED" && row.verifier.trim() !== "" && (
@@ -110,7 +114,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             fiatCurrency={row.fiatCurrency}
             className="group-hover:text-accent-warm group-focus-visible:text-accent-warm"
           />
-          <p className="truncate font-mono text-[10px] text-text-secondary">
+          <p className="font-mono text-[10px] text-text-secondary">
             #{row.tokenId} · ch {row.chainId}
           </p>
         </CardContent>
