@@ -121,38 +121,38 @@ export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
 
 export const VERIFY_V2_TARGETS = {
   timelock: {
-    label: "Timelock48h",
+    label: "Timelock48h (1.0.0-rc.1)",
     contract: "contracts/Timelock48h.sol:Timelock48h",
     addressKey: "timelock" as const,
     buildArgs: timelockV2ConstructorArgs,
   },
   karProStaking: {
-    label: "KarProStaking v2",
+    label: "KarProStaking (1.1.0-rc.1)",
     contract: "contracts/KarProStaking.sol:KarProStaking",
     addressKey: "karProStaking" as const,
     buildArgs: karProStakingV2ConstructorArgs,
   },
   karPassport: {
-    label: "KarPassport v2",
+    label: "KarPassport (1.2.0-rc.1)",
     contract: "contracts/KarPassport.sol:KarPassport",
     addressKey: "karPassport" as const,
     buildArgs: karPassportV2ConstructorArgs,
   },
   marketplaceImpl: {
-    label: "MarketplaceEscrow v2 impl",
+    label: "MarketplaceEscrow impl (2.0.0-rc.1)",
     contract: "contracts/MarketplaceEscrow.sol:MarketplaceEscrow",
     addressKey: "marketplaceImpl" as const,
     buildArgs: marketplaceImplV2ConstructorArgs,
   },
   marketplaceProxy: {
-    label: "MarketplaceEscrow v2 proxy",
+    label: "MarketplaceEscrow proxy (2.0.0-rc.1)",
     contract:
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
     addressKey: "marketplace" as const,
     buildArgs: marketplaceProxyConstructorArgs,
   },
   proxyOnftAdapter: {
-    label: "ProxyONFT721Adapter",
+    label: "ProxyONFT721Adapter (1.0.0-rc.1)",
     contract: "contracts/ProxyONFT721Adapter.sol:ProxyONFT721Adapter",
     addressKey: "proxyOnftAdapter" as const,
     buildArgs: proxyOnftAdapterConstructorArgs,

@@ -87,7 +87,7 @@ async function main() {
     console.warn(`Warning: manifest generation is "${manifest.generation}", expected "v2".`);
   }
 
-  console.log("Basescan verification for Kargain v2 (Base Sepolia)");
+  console.log("Basescan verification for Kargain generation v2 (Base Sepolia)");
   console.log(`Chain: ${manifest.chainId}`);
   console.log(`KarPassport:         ${manifest.karPassport}`);
   console.log(`Marketplace proxy:   ${manifest.marketplace}`);

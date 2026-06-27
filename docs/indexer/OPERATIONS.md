@@ -1,4 +1,4 @@
-# VPS Ponder reindex runbook
+# Ponder indexer operations (VPS reindex runbook)
 
 Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`; **June 2026 listing cards:** `coverPhotoUri` on `passport` — first metadata photo indexed at URI replay).
 
@@ -205,6 +205,10 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
 | `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
-| `scripts/verify-v1.1.ts` | Basescan verify KarPassport + Marketplace (ops, not VPS) |
-| `deployments/84532.json` | v1.1 addresses + `indexFromBlock` (gitignored on VPS) |
-| `docs/passport-v1.1-spec.md` §13 | Sepolia deploy addresses + Basescan verify |
+| `scripts/verify-v1.1.ts` | Basescan verify v1.x KarPassport + Marketplace (historical stack) |
+| `scripts/verify-v2.ts` | Basescan verify generation v2 stack |
+| `deployments/84532.json` | Manifest (`generation`, `indexFromBlock`) — not in git |
+| [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Sepolia addresses |
+| [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
+| [MIGRATION-V2.md](./MIGRATION-V2.md) | Handler/schema cutover to generation v2 |
+| [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | Deploy record (84532 generation v2) |

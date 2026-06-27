@@ -10,8 +10,10 @@ contracts, and indexer consumer; protocol proposals live in
 |---------------------|------------|
 | A **protocol standard** (metadata schema, identity rules, staking semantics) | [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md) → PR in `kips` |
 | **App UI** | [design-spec.md](docs/design-spec.md) + this file |
-| **Smart contracts** | [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) + `contracts/` |
-| **Ponder schema / reindex** | [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) |
+| **Smart contracts** | [contracts/SPEC.md](docs/contracts/SPEC.md) + `contracts/` |
+| **Ponder migration** | [indexer/MIGRATION-V2.md](docs/indexer/MIGRATION-V2.md) |
+| **Ponder reindex** | [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
+| **All public docs** | [docs/README.md](docs/README.md) |
 
 Open a GitHub issue before large or ambiguous work. Small fixes (typos, clear bugs) can go straight to a PR.
 
@@ -50,9 +52,9 @@ Follow [design-spec.md](docs/design-spec.md):
 
 ## Contract contributions
 
-- Behavior must match [passport-v1.1-spec.md](docs/passport-v1.1-spec.md)
-- Update the spec in the same PR when on-chain semantics or metadata wire format change
-- Base Sepolia addresses: spec §13; do not hardcode single-network assumptions
+- Behavior must match [contracts/SPEC.md](docs/contracts/SPEC.md); update the same file in the PR
+- Base Sepolia addresses: [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) only — do not duplicate elsewhere
+- Do not hardcode single-network assumptions; use `deployment-addresses.ts` + env `*_BY_CHAIN`
 
 ## Pull request expectations
 

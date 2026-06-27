@@ -2,7 +2,7 @@
 
 Canonical reference for website UI components. All new work must conform to this document. Do not invent one-off styles.
 
-**Related public docs:** [README.md](../README.md) · [passport-v1.1-spec.md](./passport-v1.1-spec.md) · [CONTRIBUTING.md](../CONTRIBUTING.md) · [KIPs](https://github.com/kargain-com/kips)
+**Related public docs:** [README.md](../README.md) · [contracts/SPEC.md](./contracts/SPEC.md) · [CONTRIBUTING.md](../CONTRIBUTING.md) · [KIPs](https://github.com/kargain-com/kips)
 
 ---
 
@@ -289,7 +289,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **State:** URL-synced via [`use-market-filters.ts`](../hooks/use-market-filters.ts). Facets from `GET /listings/facets` (Ponder).
 
-**Display currency:** Global preference (USD / EUR / ETH) via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts) (Chainlink primary, CoinGecko gap-fill when a rate is null) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx). Feeds always read on `DEFAULT_CHAIN_ID` (84532), not wallet chain — see [REFERENCE.md §15](./REFERENCE.md). Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip).
+**Display currency:** Global preference (USD / EUR / ETH) via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts) (Chainlink primary, CoinGecko gap-fill when a rate is null) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx). Feeds always read on `DEFAULT_CHAIN_ID` (84532), not wallet chain — see [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts). Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip).
 
 **FX display rules:** Same-currency always renders (USD listing in USD, EUR in EUR). Cross-currency and ETH display show `—` when required rates are null. ETH display for **USD listings** needs only `ethUsd`; EUR listings in ETH need `ethUsd` + `eurUsd`. CoinGecko fills gaps after Chainlink settles — does **not** affect on-chain buy quotes.
 
@@ -364,7 +364,7 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 
 No per-message sender label in the bubble list.
 
-Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers. Deployer / `upgradeAuthority` EOAs are never in the static denylist — see [passport-v1.1-spec §13.1](../passport-v1.1-spec.md).
+Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers. Deployer / `upgradeAuthority` EOAs are never in the static denylist — see [contracts/SPEC.md Part II.4.1](./contracts/SPEC.md#ii41-governance-roles-deployer-vs-timelock-vs-upgrade-authority) (v1.x) and Part I.9.1 (v2 timelock).
 
 ---
 

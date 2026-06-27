@@ -8,7 +8,7 @@ export const BASE_SEPOLIA_CHAIN_ID = 84532;
 /** Hardhat localhost (persistent node) */
 export const LOCALHOST_CHAIN_ID = 31337;
 
-/** Base Sepolia (84532) v1.1 historical fallbacks — superseded by v2 June 27, 2026. */
+/** Base Sepolia (84532) generation v1.1 historical fallbacks — superseded June 27, 2026. */
 const SEPOLIA_LEGACY = {
   karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
   marketplace: "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
@@ -19,7 +19,7 @@ const SEPOLIA_LEGACY = {
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
 } as const satisfies Record<string, `0x${string}`>;
 
-/** Base Sepolia (84532) v2 deploy — June 27, 2026. Active fallbacks when env unset. */
+/** Base Sepolia (84532) v2 generation deploy — June 27, 2026. Active fallbacks when env unset. Semver `-rc.1` on testnet. */
 const SEPOLIA_V2 = {
   karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
   marketplace: "0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19",
@@ -150,5 +150,5 @@ export function chainlinkEurUsdFeed(chainId?: number): `0x${string}` | undefined
   return resolveAddress("eurFeed", chainId);
 }
 
-/** v1.1 Base Sepolia addresses — historical reference only. */
+/** v1.1 Base Sepolia addresses — historical generation v1.x reference only. */
 export const sepoliaLegacyAddresses = SEPOLIA_LEGACY;

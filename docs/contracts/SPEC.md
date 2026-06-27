@@ -1,15 +1,43 @@
-# Kargain contracts v2 — specification
+# Kargain smart contracts — specification
 
-> **Canonical reference** for new v2 deployments (June 2026).  
-> Historical v1.x behavior and live Base Sepolia v1.1 addresses: [passport-v1.1-spec.md](./passport-v1.1-spec.md).
+**Single public specification** for all on-chain contract behavior, deployments, and metadata wire formats.
 
-**Scope:** On-chain behavior for all seven production contracts, bridge architecture, deploy sequence, security model, and v1→v2 deltas.
+| Read this if you need… | Section |
+|------------------------|---------|
+| Current stack (generation v2) | [Part I](#part-i--generation-v2-current) |
+| Historical v1.x behavior | [Part II](#part-ii--generation-v1x-historical-reference) |
+| Passport JSON (`tokenURI`) | [Part III](#part-iii--metadata-wire-format) |
+| v1 → v2 migration summary | [Part IV](#part-iv--migration-reference-v1--generation-v2) |
+| Semver / `-rc.N` policy | [Part V](#part-v--version-policy) |
+| Local E2E & tests | [Appendix](#appendix-a--local-e2e-hardhat-31337) |
 
-**Not in this file:** UI patterns ([design-spec.md](./design-spec.md)), Ponder migration steps ([PONDER-V2-MIGRATION.md](./PONDER-V2-MIGRATION.md)), indexer ops ([VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md)).
+**Related (not in this file):** UI → [design-spec.md](../design-spec.md) · Indexer → [indexer/README.md](../indexer/README.md) · Deploy ops → [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
+
+**Address tables (single source within this document):**
+
+| Generation | Section |
+|------------|---------|
+| v2 active (84532) | [Part I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| v1.x historical (84532) | [Part II.4](#ii4-historical-deployment-base-sepolia-84532) |
+
+## Part 0 — Conventions
+
+### Versioning glossary
+
+| Term | Meaning | Examples |
+|------|---------|----------|
+| **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy-v2.ts` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.2.0-rc.1`, MarketplaceEscrow `2.0.0-rc.1` |
+| **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
+| **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
+
+**Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility. Only **MarketplaceEscrow** has semver major **2**; KarPassport is **1.2.0-rc.1**.
 
 ---
 
-## 1. Overview and version matrix
+# Part I — Generation v2 (current)
+
+### I.1. Overview and version matrix
 
 ### Contract family
 
@@ -25,9 +53,9 @@
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants).
 
-### v1.x → v2 summary
+### v1.x → generation v2 summary
 
-| Area | v1.x | v2 |
+| Area | v1.x | Generation v2 |
 |------|------|-----|
 | Listing currency | Enum (`USD` / `EUR`) | `bytes32` registry + Chainlink feeds per currency |
 | Marketplace governance | Deployer EOA as `upgradeAuthority` | `Timelock48h` as `upgradeAuthority` |
@@ -48,7 +76,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 
 ---
 
-## 2. KarPassport v1.2.0
+### I.2. KarPassport v1.2.0
 
 ### Philosophy (unchanged from v1)
 
@@ -166,7 +194,7 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 
 ---
 
-## 3. KarProPass v1.0.0
+### I.3. KarProPass v1.0.0
 
 Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
@@ -200,7 +228,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-## 4. KarProStaking v1.1.0
+### I.4. KarProStaking v1.1.0
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record).
 - **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass.
@@ -233,7 +261,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-## 5. MarketplaceEscrow v2.0.0
+### I.5. MarketplaceEscrow (`2.0.0-rc.1`)
 
 UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `usdc`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness`.
 
@@ -405,7 +433,7 @@ Public mappings: `listings`, `agentAuthorizations`, `returnRequestedAt`, `settle
 
 ---
 
-## 6. Timelock48h v1.0.0
+### I.6. Timelock48h v1.0.0
 
 OpenZeppelin `TimelockController` with fixed **`MIN_DELAY_SECONDS = 48 hours`**.
 
@@ -419,7 +447,7 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 
 ---
 
-## 7. Bridge architecture
+### I.7. Bridge architecture
 
 ### 7.1 Design decisions
 
@@ -460,7 +488,7 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 
 ---
 
-## 8. Security model
+### I.8. Security model
 
 ### Non-custodial properties
 
@@ -491,41 +519,45 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 
 ---
 
-## 9. Multi-chain deployment matrix
+### I.9. Multi-chain deployment matrix
 
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
-| Base Sepolia | 84532 | `84532 << 128` | USD | v2 deployed June 27, 2026 — see [§9.1](#91-base-sepolia-84532-v2) |
+| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (RC) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
 | Ethereum Sepolia | 11155111 | `11155111 << 128` | USD, EUR, GBP, JPY | Planned |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Live v1.1 stack on Base Sepolia remains at historical addresses ([passport-v1.1-spec.md §13](./passport-v1.1-spec.md)). v2 cutover June 27, 2026.
+Historical v1.x addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Generation v2 cutover June 27, 2026.
 
-### 9.1 Base Sepolia (84532) v2
+### I.9.1 Active deployment (Base Sepolia 84532)
 
-Deployed June 27, 2026 · `indexFromBlock`: 43399242 · manifest: `deployments/84532.json` (local, gitignored)
+> **Single source of truth** for active 84532 contract addresses and semver. Other docs link here.
 
-| Contract | Address |
-|----------|---------|
-| Timelock48h | `0x9319e223ff31c954A940b14F04025B56A53ED384` |
-| KarProPass (reused) | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
-| KarProStaking v2 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` |
-| KarPassport v2 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
-| MarketplaceEscrow impl | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` |
-| MarketplaceEscrow proxy | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` |
-| ProxyONFT721Adapter | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Native USD feed | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` |
-| LayerZero endpoint v2 | `0x6EDCE65403992e310A62460808c4b910D972f10f` |
+Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **43399242** · manifest: `deployments/84532.json` (not in git) · git commit: `c88b5dc`
 
-**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled.
+| Contract | VERSION | Address | Basescan |
+|----------|---------|---------|----------|
+| Timelock48h | `1.0.0-rc.1` | `0x9319e223ff31c954A940b14F04025B56A53ED384` | [code](https://sepolia.basescan.org/address/0x9319e223ff31c954A940b14F04025B56A53ED384#code) |
+| KarProPass (reused) | `1.0.0-rc.1` | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` | [code](https://sepolia.basescan.org/address/0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1) |
+| KarProStaking | `1.1.0-rc.1` | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` | [code](https://sepolia.basescan.org/address/0xb5d79551BB11F726D2A1A110BAc645C4345dA568#code) |
+| KarPassport | `1.2.0-rc.1` | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` | [code](https://sepolia.basescan.org/address/0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594#code) |
+| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` | [code](https://sepolia.basescan.org/address/0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3#code) |
+| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` | [code](https://sepolia.basescan.org/address/0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19#code) |
+| ProxyONFT721Adapter | `1.0.0-rc.1` | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` | [code](https://sepolia.basescan.org/address/0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c#code) |
+| USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
+| LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
+
+**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
+
+**Ops:** `pnpm smoke:v2` · `pnpm verify:v2` · `node --import tsx scripts/lib/print-ponder-env.ts` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
 
 ---
 
-## 10. Deploy sequence
+### I.10. Deploy sequence
 
 Per new chain (matches `scripts/deploy-v2.ts`; Base Sepolia reuses existing **KarProPass**):
 
@@ -546,7 +578,225 @@ Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset`, `co
 
 ---
 
-## 11. Version policy
+# Part II — Generation v1.x (historical reference)
+
+> **Do not use for new integrations on Base Sepolia (84532).** Active addresses and behavior: [Part I](#part-i--generation-v2-current).
+
+### II.1. Philosophy
+
+- **Passport** = hybrid public fact registry + transferable ownership. **No burn.**
+- **Trust state** (`status`, `verifier`, `verifiedAt`) — **on-chain only**.
+- **Vehicle description** — extensible metadata JSON on Arweave (`tokenURI` pointer).
+- **History** — append-only on-chain `records[]`.
+- **Spam / trust** — transparency, not on-chain gates (no mint fee, no listing stake in v1.1).
+
+### II.2. Status lifecycle
+
+```
+UNVERIFIED ──verifyPassport──► VERIFIED
+     ▲                              │
+     │                              │ disputePassport (anyone)
+     │                              ▼
+     │                          DISPUTED
+     │                              │
+     │              resolveDispute(uphold=true)  ──► VERIFIED
+     │              resolveDispute(uphold=false) ──► UNVERIFIED
+     │
+     └── setPassportURI from VERIFIED ── VerificationReset ──► UNVERIFIED
+```
+
+**Exit from DISPUTED:** only `resolveDispute` (active verifier). Owner cannot edit metadata while DISPUTED.
+
+### II.3. `setPassportURI` (Variant C — Phase 1)
+
+| Current status | New URI | Result |
+|----------------|---------|--------|
+| UNVERIFIED | different | Update URI, no reset |
+| UNVERIFIED | same | `revert SameURI()` |
+| VERIFIED | different | `VerificationReset` → UNVERIFIED, update URI |
+| VERIFIED | same | `revert SameURI()` (verification preserved) |
+| DISPUTED | any | `revert InvalidStatus(DISPUTED)` |
+| Listed (escrow owns NFT) | any | `revert NotOwner()` |
+
+**Validation order:**
+
+1. `_requireExists`
+2. `NotOwner`
+3. `EmptyField("uri")` if `newURI` empty
+4. `InvalidStatus` if DISPUTED
+5. `SameURI` if `keccak256(newURI) == keccak256(tokenURI(tokenId))`
+6. If VERIFIED → reset status, verifier, verifiedAt; emit `VerificationReset`
+7. `_setTokenURI` + `PassportURIUpdated`
+
+**Artifacts:**
+
+- `event VerificationReset(uint256 indexed tokenId, address indexed author)`
+- `error SameURI()`
+
+### II.4. Historical deployment (Base Sepolia 84532)
+
+> **Superseded on 84532:** Active stack is [Part I.9.1](#i91-active-deployment-base-sepolia-84532). **Historical v1.x Sepolia addresses below.**
+
+**Scope (partial):** new `KarPassport` + `MarketplaceEscrow` impl/proxy; **unchanged** `KarProPass` + `KarProStaking`.
+
+| Contract | Address |
+|----------|---------|
+| KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
+| KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
+| KarPassport v1.1 | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
+| MarketplaceEscrow impl | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
+| MarketplaceEscrow proxy | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+
+Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (not in git).
+
+#### II.4.1 Governance roles (deployer vs timelock vs upgrade authority)
+
+Three **distinct** concepts — do not conflate in config or UI:
+
+| Role | What it is | Base Sepolia (84532) v1.1 redeploy | Localhost (31337) |
+|------|------------|-----------------------------------|-------------------|
+| **Deployer** | EOA that signed deploy txs | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` | Hardhat account #0 |
+| **upgradeAuthority** | `MarketplaceEscrow.upgradeAuthority` on-chain | **Same as deployer EOA** (`initialize(deployer)` in `deploy-v1.1.ts`) | **TimelockController** address (`initialize(timelock)` in `local-stack.ts`) |
+| **TimelockController** | OpenZeppelin timelock contract (48h delay) | **Not deployed** | Deployed; address in `deployments/31337.json` → `timelock` |
+
+**Config rules:**
+
+- `lib/web3/deployment-addresses.ts` — **no** Sepolia fallback for `timelock`. Use `NEXT_PUBLIC_TIMELOCK_*` only when a TimelockController exists (local / future mainnet).
+- `deployments/84532.json` — must record `deployer` and `upgradeAuthority` separately from any future `timelock` field.
+- **Profiles / messaging** — never treat deployer or `upgradeAuthority` EOA as a protocol denylist entry; block contract accounts via bytecode (`lib/web3/wallet-account.ts`).
+
+**Future mainnet / governance redeploy:** deploy `TimelockController`, call `initialize(timelockAddress)`, write `timelock` + `upgradeAuthority` to manifest; deployer EOA remains a normal user wallet.
+
+**Chainlink price feeds** (immutable constructor args on MarketplaceEscrow impl):
+
+| Feed | Address | Base Sepolia status (June 2026) |
+|------|---------|--------------------------------|
+| ETH/USD (`nativeUsdFeed`) | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | Live Chainlink aggregator |
+| EUR/USD (`eurUsdFeed`) | `0xb49f677943BC038e9857d61E7d053CaA2C1734C1` | **Dead** — no contract bytecode at address |
+
+UI display/filter: Chainlink + CoinGecko gap-fill via [`use-market-rates.ts`](../../lib/marketplace/use-market-rates.ts). On-chain `list`/`buy` for EUR listings calls `eurUsdFeed.latestRoundData()` and **reverts** until redeployed with a live feed. **Mainnet:** use official Base Chainlink proxy addresses; do not copy Sepolia EUR address.
+
+**Basescan verify (one-time ops):**
+
+```bash
+# Requires ETHERSCAN_API_KEY (Etherscan v2, chainid=84532) in .env.local
+pnpm verify:v1.1
+```
+
+Verifies, in order: KarPassport, MarketplaceEscrow impl, ERC1967 proxy (with `initialize` calldata). Skips contracts already verified; pass `--force` to re-submit.
+
+**Status (June 2026):** KarPassport, MarketplaceEscrow impl, and proxy verified on [Base Sepolia Basescan](https://sepolia.basescan.org).
+
+| Contract | Basescan |
+|----------|----------|
+| KarPassport v1.1 | https://sepolia.basescan.org/address/0x6378469256907D7DC14BBfce0261ceDE22314507 |
+| MarketplaceEscrow impl | https://sepolia.basescan.org/address/0x7d37e7cbcc42308264B608429a82D03B7C3112F4 |
+| MarketplaceEscrow proxy | https://sepolia.basescan.org/address/0x4FC74e0B7eE0A741707A553D43Efff68126D198B |
+
+Run constructor-arg unit tests: `pnpm test:verify`.
+
+Indexer env: [indexer/OPERATIONS.md](../indexer/OPERATIONS.md) · `node --import tsx scripts/lib/print-ponder-env.ts`
+
+### II.5. Metadata vs records
+
+| Layer | Contents | Resets verification? |
+|-------|----------|----------------------|
+| Metadata JSON | VIN, make, model, year, mileage, photos, type, colour, location, … | **Only** via `setPassportURI` from VERIFIED |
+| `appendRecord` | service, clarifications, sale notes | **Never** |
+| `reportDiscrepancy` | light discrepancy signal | **Never** |
+| `disputePassport` | opens DISPUTED + discrepancy record | N/A (status → DISPUTED) |
+| `appendAttestation` | verifier attestation | **Never** |
+
+**Canonical for buyer:** current metadata + full record timeline.
+
+**VIN:** field in JSON only; duplicates allowed on-chain.
+
+### II.6. Dispute model
+
+### On-chain
+
+- `disputePassport` — heavy (VERIFIED → DISPUTED). Permissionless including self-dispute.
+- `reportDiscrepancy` — light (record only, status unchanged).
+- **Any active verifier** resolves DISPUTED via `resolveDispute(uphold)` (not limited to the verifier who originally verified the passport).
+
+### D6 — Dispute withdraw (A+ convention, no extra contract fn)
+
+Disputer withdraws **signal only**; status stays DISPUTED until verifier resolves.
+
+1. Disputer calls `reportDiscrepancy(tokenId, "[dispute-withdrawn] <note>", evidenceCID)`.
+2. On-chain `recordType` remains `"discrepancy"`.
+
+### Owner during DISPUTED
+
+- `appendRecord` for clarifications when owner holds NFT.
+- **Not possible while listed** (escrow = owner).
+
+### After `resolve(false)` → UNVERIFIED
+
+Owner may `setPassportURI`, then request re-verification.
+
+### II.7. Marketplace (unchanged in Phase 1)
+
+- List UNVERIFIED / VERIFIED / DISPUTED — allowed on-chain.
+- Escrow does not read passport status.
+- No on-chain buy block in v1.1.
+
+### II.8. Transfer
+
+- Buyer inherits `passportStatus[tokenId]` — no auto-reset on sale (E5).
+
+---
+
+# Part III — Metadata wire format
+
+**Write path (create / edit upload):** always emit `version: "1.1"` with **camelCase** keys. Stored at `ar://…`; on-chain `tokenURI` points to this JSON.
+
+### Required / core fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `version` | `"1.1"` | Wire version for new uploads |
+| `name` | string | Display title, e.g. `"2021 Honda Civic"` |
+| `vin` | string | Normalized uppercase, 11–17 chars |
+| `make`, `model` | string | Required |
+| `year` | number | Integer |
+| `mileageKm` | number | Non-negative; `0` if omitted in form |
+| `photos` | string[] | Arweave URIs (`ar://…`); min 1 on create |
+| `createdAt`, `updatedAt` | string | ISO-8601 timestamps |
+
+### Optional v1.1 fields
+
+Omit empty keys from JSON. Supported optional fields: `description`, `modelVariant`, `type`, `vehicleType`, `fuelType`, `bodyType`, `transmission`, `power`, `evBatteryKwh`, `colour`, `location` (`{ label?, lat?, lng? }`), `engine`, `features` (string[]), `condition`.
+
+### Legacy v1.0 read compatibility
+
+Existing on-chain passports may use:
+
+- `version: "1.0"`
+- `mileage_km` instead of `mileageKm`
+- snake_case legacy keys: `fuel_type`, `body_type`, `color`, `created_at`
+- Parser normalizes to app type `PassportMetadata` (camelCase) and preserves `version: "1.0" | "1.1"`.
+
+### PII (J1)
+
+Wire JSON must **not** include `ownerName`, `phone`, or `email`. Build path rejects these keys before upload.
+
+### Anchor vs cosmetic (edit confirmation)
+
+`diffPassportMetadata` classifies changes before calling `setPassportURI`:
+
+- **Anchor:** `vin`, `make`, `model`, `year`, `type`, `photos`, and `mileageKm` when delta > **500 km**
+- **Cosmetic:** description, colour, power, and other optional fields; small mileage updates (≤ 500 km)
+
+From **VERIFIED**, any URI change that reaches the contract triggers `VerificationReset` (§3); anchor/cosmetic is a product guard before upload, not enforced on-chain.
+
+Run metadata unit tests: `pnpm test:metadata` · records: `pnpm test:records`
+
+---
+
+# Part V — Version policy
+
+
 
 Verbatim from contract headers:
 
@@ -565,9 +815,13 @@ Verbatim from contract headers:
 
 ---
 
-## 12. Differences from v1.x
+---
 
-| Feature | v1.x | v2 |
+# Part IV — Migration reference (v1 → generation v2)
+
+
+
+| Feature | v1.x | Generation v2 |
 |---------|------|-----|
 | Listing currency | `enum FiatCurrency { USD, EUR }` | `bytes32 currencyCode` + feed registry |
 | EUR on Base Sepolia | Hardcoded `eurUsdFeed` in constructor | Dynamic `setCurrencyFeed`; 84532 deploy registers USD only |
@@ -586,4 +840,68 @@ Verbatim from contract headers:
 
 ---
 
-*Last updated: June 2026 — v2 documentation pass; contracts at 238 Hardhat tests, not yet deployed to 84532.*
+*Last updated: June 27, 2026 — generation v2 deployed to Base Sepolia (84532) as `-rc.1` release candidates; 238 Hardhat tests.*
+
+---
+
+## Appendix A — Local E2E Local E2E (Phase 4)
+
+Local dev stack on **Hardhat chain 31337** — full passport lifecycle before Phase 5 Sepolia redeploy.
+
+### Dev stack
+
+| Component | Command / artifact |
+|-----------|-------------------|
+| Hardhat node | `npx hardhat node` (:8545) |
+| Deploy Model X | `pnpm deploy:local` → `deployments/31337.json` |
+| Orchestration | `./scripts/dev-local.sh` |
+| One-shot E2E | `./scripts/e2e-local.sh` |
+
+### Env vars (local)
+
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1` | Add chain 31337 to wagmi |
+| `NEXT_PUBLIC_CHAIN_ID=31337` | Default UI chain |
+| `NEXT_PUBLIC_RPC_BY_CHAIN` | Include `"31337":"http://127.0.0.1:8545"` |
+
+Export addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`
+
+### E2E scenario (`pnpm test:e2e`)
+
+Requires running Hardhat node + `pnpm deploy:local` (or use `./scripts/e2e-local.sh`).
+
+| Step | Action | Assert |
+|------|--------|--------|
+| 1 | `becomeVerifierNative` | verifier active |
+| 2 | `mintPassport` | UNVERIFIED, tokenId 0 |
+| 3 | `verifyPassport` | VERIFIED |
+| 4 | `setPassportURI` | `VerificationReset`, UNVERIFIED |
+| 5 | `verifyPassport` | VERIFIED |
+| 6 | `disputePassport` | DISPUTED |
+| 7 | `resolveDispute(false)` | UNVERIFIED |
+| 8 | `setPassportURI` | OK (T9) |
+| 9 | re-verify, `list` + `buyWithNative` | buyer owns NFT, listing inactive |
+| 10 | `appendRecord` on VERIFIED | status unchanged (T10) |
+
+Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm hardhat test`
+
+**Note:** `localhost` Hardhat network uses the node's default funded accounts, not `DEPLOYER_PRIVATE_KEY`.
+
+## 14. Contract test coverage (June 2026)
+
+| Criterion | Status |
+|-----------|--------|
+| T10 — `appendRecord` on VERIFIED leaves status unchanged | ✅ |
+| E5 — buyer inherits status on transfer (no auto-reset) | ✅ |
+| Listed passport — owner `appendRecord` reverts `NotOwner` | ✅ |
+| Resolve gating — any active verifier (§5) | ✅ documented |
+| README Variant C truth | ✅ |
+
+Contract tests: `pnpm hardhat test` · trust helpers: `pnpm test:trust` · Ponder handler unit tests (indexer): `pnpm test:ponder`
+
+**Deferred (contract / product, Phase 6+):** on-chain evidence requirements for `reportDiscrepancy`. (`buyWithUsdc` UI shipped June 2026 — see AGENTS milestone.)
+
+---
+
+*Last updated: June 27, 2026 — generation v2 on Base Sepolia (84532), semver `-rc.1` on testnet.*

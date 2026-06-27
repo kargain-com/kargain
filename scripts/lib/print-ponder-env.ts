@@ -9,12 +9,16 @@ function main() {
   try {
     manifest = requireSepoliaDeployment();
   } catch {
-    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:v1.1 first`);
+    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:v2 first`);
     process.exit(1);
   }
 
+  const timelock = manifest.timelock ?? SEPOLIA_FALLBACK.timelock;
+  const adapter = manifest.proxyOnftAdapter ?? SEPOLIA_FALLBACK.proxyOnftAdapter;
+
   const exports: string[] = [
-    `# Phase ${manifest.generation} Base Sepolia (chain ${manifest.chainId}) — generated from manifest`,
+    `# Generation ${manifest.generation} Base Sepolia (chain ${manifest.chainId}) — from manifest`,
+    `# Semver: see manifest.contractVersions or on-chain VERSION()`,
     `export PONDER_KAR_PASSPORT_ADDRESS='${manifest.karPassport}'`,
     `export PONDER_KAR_PRO_PASS_ADDRESS='${manifest.karProPass}'`,
     `export PONDER_KAR_PRO_STAKING_ADDRESS='${manifest.karProStaking}'`,
@@ -24,16 +28,18 @@ function main() {
     `export PONDER_NATIVE_FEED_ADDRESS='${manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed}'`,
     `export PONDER_START_BLOCK_84532='${manifest.indexFromBlock}'`,
     `# After backfill: keep the same numeric value (do NOT set latest on Ponder 0.16 — changes build_id)`,
-    `# VPS RPC: export PONDER_RPC_URL_84532=https://sepolia.base.org (see docs/VPS-PONDER-REINDEX.md)`,
-    `# Frontend overrides (optional — update deployment-addresses.ts committed fallbacks too):`,
+    `# VPS RPC: export PONDER_RPC_URL_84532=https://sepolia.base.org (see docs/indexer/OPERATIONS.md)`,
+    `# Frontend overrides (optional — committed fallbacks in lib/web3/deployment-addresses.ts):`,
     `export NEXT_PUBLIC_KAR_PASSPORT_ADDRESS='${manifest.karPassport}'`,
     `export NEXT_PUBLIC_MARKETPLACE_ADDRESS='${manifest.marketplace}'`,
     `export NEXT_PUBLIC_KAR_PRO_PASS_ADDRESS='${manifest.karProPass}'`,
     `export NEXT_PUBLIC_KAR_PRO_STAKING_ADDRESS='${manifest.karProStaking}'`,
-    `# Governance (see passport-v1.1-spec §13.1):`,
+    ...(timelock ? [`export NEXT_PUBLIC_TIMELOCK_ADDRESS='${timelock}'`] : []),
+    ...(adapter ? [`export NEXT_PUBLIC_PROXY_ONFT_ADAPTER_ADDRESS='${adapter}'`] : []),
+    `# Governance (contracts/SPEC.md Part I):`,
     `#   deployer=${manifest.deployer ?? SEPOLIA_FALLBACK.deployer}`,
     `#   upgradeAuthority=${manifest.upgradeAuthority ?? SEPOLIA_FALLBACK.upgradeAuthority}`,
-    `#   timelock=not deployed on Sepolia v1.1 redeploy`,
+    ...(timelock ? [`#   timelock=${timelock} (Timelock48h on generation v2)`] : []),
   ];
 
   console.log(exports.join("\n"));

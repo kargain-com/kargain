@@ -47,7 +47,7 @@ Verifier categories: `MECHANIC` · `GARAGE` · `INSPECTOR` · `BROKER` · `DEALE
 
 ### MarketplaceEscrow
 
-UUPS-upgradeable escrow with **Timelock48h** governance (v2). Sellers list KarPassport NFTs with a **fiat price** in any **registered currency** (`bytes32` code + Chainlink feed — not a fixed USD/EUR enum). **`CURRENCY_NATIVE`** listings price directly in the chain’s native token without an oracle.
+UUPS-upgradeable escrow with **Timelock48h** governance (generation v2). Sellers list KarPassport NFTs with a **fiat price** in any **registered currency** (`bytes32` code + Chainlink feed — not a fixed USD/EUR enum). **`CURRENCY_NATIVE`** listings price directly in the chain’s native token without an oracle.
 
 **Direct listings:** seller lists and delists; optional **`setSettlementNote`** enables **`confirmExternalPayment`** for off-chain settlement (bank transfer, Lightning, BTC, etc.).
 
@@ -74,7 +74,7 @@ Buyers pay via **native token** or any **approved ERC-20** at a live Chainlink q
 | **Nostr** | Comments, watchlist, notification sync |
 | **XMTP** | End-to-end encrypted messaging |
 
-**Documentation:** [contracts-v2-spec.md](docs/contracts-v2-spec.md) (v2 contract spec) · [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (v1.x historical) · [design-spec.md](docs/design-spec.md) (UI patterns) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
+**Documentation:** [docs/README.md](docs/README.md) · [contracts/SPEC.md](docs/contracts/SPEC.md) · [indexer/README.md](docs/indexer/README.md)
 
 ## Tech stack
 
@@ -206,39 +206,15 @@ After compile, refresh ABIs: `node scripts/export-abis.mjs`
 
 ## Contracts
 
-### Contracts (v2 — Base Sepolia testnet, deployed June 27, 2026)
+Integration testnet: **Base Sepolia (84532)**. Release candidates (`-rc.1`) until mainnet — [contracts/SPEC.md Part V](docs/contracts/SPEC.md#part-v--version-policy).
 
-Network: Base Sepolia (chain **84532**)
+| Topic | Document |
+|-------|----------|
+| Full contract specification | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
+| Active addresses (84532) | [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) |
+| Indexer | [docs/indexer/README.md](docs/indexer/README.md) |
 
-| Contract | Version | Address |
-|----------|---------|---------|
-| KarProPass | 1.0.0-rc.1 | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` (reused from v1) |
-| KarProStaking | 1.1.0-rc.1 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` |
-| KarPassport | 1.2.0-rc.1 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
-| MarketplaceEscrow (proxy) | 2.0.0-rc.1 | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` |
-| MarketplaceEscrow (impl) | 2.0.0-rc.1 | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` |
-| Timelock48h | 1.0.0-rc.1 | `0x9319e223ff31c954A940b14F04025B56A53ED384` |
-| ProxyONFT721Adapter | 1.0.0-rc.1 | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` |
-
-**v1.x addresses (Base Sepolia, historical):**
-
-| Contract | Address |
-|----------|---------|
-| KarProPass (v1) | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
-| KarProStaking (v1) | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
-| KarPassport (v1.1) | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
-| MarketplaceEscrow proxy (v1.1) | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
-| MarketplaceEscrow impl (v1.1) | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
-
-Verified on [Base Sepolia Basescan](https://sepolia.basescan.org). v2 parameters and behavior: [contracts-v2-spec.md](docs/contracts-v2-spec.md). v1.x historical detail: [passport-v1.1-spec.md](docs/passport-v1.1-spec.md).
-
-| Parameter | Value (v2 deploy default) |
-|-----------|---------------------------|
-| `minStakeNative` | 0.05 ETH |
-| `platformFeeBps` | 10 (0.1%) |
-| `disputeDeposit` | 0.01 ETH |
-| Payment assets | Native + approved ERC-20 (e.g. USDC) |
-| `upgradeAuthority` | Timelock48h (48h delay) — [contracts-v2-spec.md §6](docs/contracts-v2-spec.md) |
+App fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match SPEC I.9.1).
 
 ---
 
@@ -248,7 +224,7 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 
 - Ponder API: https://ponder.kargain.com
 - Local stack: `docker compose up -d`
-- Schema changes require reindex — see [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md)
+- Schema changes require reindex — see [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
 ---
 
@@ -276,7 +252,7 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 - **Smart wallets + Irys** — contract accounts and EIP-7702 wallets cannot fund Irys uploads from the browser. Use a standard EOA on the target chain for passport photo upload.
 - **Multi-chain** — Ponder indexes Base Sepolia today; additional chains require deployment and indexer configuration per network.
 - **Verification transparency** — disputed passports can still be listed; buyers see status in the UI before purchase.
-- **Upgrade authority** — On Base Sepolia v2, `MarketplaceEscrow.upgradeAuthority` is **Timelock48h** (`0x9319…D384`, 48h delay). v1.1 historical stack used deployer EOA ([passport-v1.1-spec §13.1](docs/passport-v1.1-spec.md)).
+- **Upgrade authority** — Generation v2: Timelock48h on 84532 ([SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). v1.x historical: deployer EOA ([SPEC Part II.4.1](docs/contracts/SPEC.md#ii41-governance-roles-deployer-vs-timelock-vs-upgrade-authority)).
 
 ---
 
@@ -289,8 +265,8 @@ Protocol standards and process live in a separate repo:
 |-------------|----------------|
 | Protocol / standard (metadata, staking rules, interoperability) | Read [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md), then open a PR in `kips` |
 | App code (UI, indexer consumer, contracts in this repo) | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Contract behavior v2 (current) | [contracts-v2-spec.md](docs/contracts-v2-spec.md) |
-| Contract behavior v1.x (historical) | [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) |
+| Contract specification | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
+| Indexer | [docs/indexer/README.md](docs/indexer/README.md) |
 | UI layout and tokens | [design-spec.md](docs/design-spec.md) |
 
 ---

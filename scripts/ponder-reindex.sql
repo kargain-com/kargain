@@ -5,7 +5,7 @@
 --   2. ponder.schema.ts changed (e.g. G1 trust fields, fuel/body/trans denorm)
 --   3. You set PONDER_START_BLOCK_84532 from deployments/84532.json (indexFromBlock)
 --
--- Full runbook: docs/VPS-PONDER-REINDEX.md
+-- Full runbook: docs/indexer/OPERATIONS.md
 -- Prerequisites:
 --   - Stop Ponder before running (docker compose stop ponder)
 --   - PONDER_RPC_URL_84532=https://sepolia.base.org on VPS (PublicNode without token → 403 on archive eth_getLogs)

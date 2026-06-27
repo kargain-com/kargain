@@ -55,8 +55,11 @@ test-results
 # internal docs (local only — not in git)
 /AGENTS.md
 /docs/*
-!/docs/passport-v1.1-spec.md
-!/docs/contracts-v2-spec.md
-!/docs/PONDER-V2-MIGRATION.md
-!/docs/VPS-PONDER-REINDEX.md
+!/docs/README.md
+!/docs/contracts/
+!/docs/contracts/**
+!/docs/indexer/
+!/docs/indexer/**
+!/docs/ops/
+!/docs/ops/**
 !/docs/design-spec.md

@@ -20,7 +20,7 @@ export const LEGACY_SEPOLIA_BLOCKS = {
   marketplace: 42_800_447,
 } as const;
 
-/** v1.1 Base Sepolia fallbacks — historical; superseded by v2 deploy June 27, 2026. */
+/** v1.1 Base Sepolia fallbacks — historical generation v1.x; superseded June 27, 2026. */
 export const SEPOLIA_LEGACY = {
   karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
   karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
@@ -35,7 +35,7 @@ export const SEPOLIA_LEGACY = {
   upgradeAuthority: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
 } as const satisfies Record<string, `0x${string}`>;
 
-/** Active v2 Base Sepolia fallbacks when no manifest / env. */
+/** Active generation v2 Base Sepolia fallbacks when no manifest / env. Semver `-rc.1` on testnet. */
 export const SEPOLIA_FALLBACK = {
   karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
   karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",

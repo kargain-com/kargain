@@ -1,4 +1,4 @@
-/** Must match `VERSION` constants in production Solidity contracts. */
+/** Must match on-chain `VERSION` constants. Semver + `-rc.N` on testnet; drop pre-release on mainnet (spec §11). */
 export const CONTRACT_VERSIONS = {
   KarPassport: "1.2.0-rc.1",
   KarProPass: "1.0.0-rc.1",

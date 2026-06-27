@@ -1,27 +1,29 @@
-# Ponder v2 migration guide
+# Ponder generation v2 migration guide
 
-The production indexer at [ponder.kargain.com](https://ponder.kargain.com) indexes **v1.x** MarketplaceEscrow and KarPassport contracts on Base Sepolia. v2 contracts emit different events and use different listing fields. This document guides the Ponder schema and handler update.
+The production indexer at [ponder.kargain.com](https://ponder.kargain.com) indexes **generation v1.x** MarketplaceEscrow and KarPassport contracts on Base Sepolia. Generation v2 contracts emit different events and use different listing fields. This document guides the Ponder schema and handler update.
 
-**Related:** [contracts-v2-spec.md](./contracts-v2-spec.md) · [VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md)
+**Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook)
+
+**Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. `2.0.0-rc.1` for MarketplaceEscrow). Indexer migration follows generation, not semver major alone.
 
 ---
 
-## 1. What changed in v2 events
+## 1. What changed in generation v2 events
 
 ### MarketplaceEscrow
 
 #### `Sale` (breaking shape)
 
-v1 indexed `fee` and `payAsset` (enum). v2 emits:
+v1 indexed `fee` and `payAsset` (enum). Generation v2 emits:
 
-| Field | v1 | v2 |
+| Field | v1.x | Generation v2 |
 |-------|----|----|
 | Platform fee | `fee` | `platformFee` |
 | Agent fee | — | `agentFee` |
 | Pay asset | `payAsset` (uint8 enum) | `payToken` (address; `address(0)` = native) |
 | Agent | — | `agent` (address; zero for direct listings) |
 
-v2 signature (last param non-indexed):
+Generation v2 signature (last param non-indexed):
 
 ```
 Sale(tokenId, buyer, seller, gross, platformFee, agentFee, netToSeller, payToken, agent)
@@ -29,9 +31,9 @@ Sale(tokenId, buyer, seller, gross, platformFee, agentFee, netToSeller, payToken
 
 #### `Listed` (extended)
 
-v2 adds agent consignment fields:
+Generation v2 adds agent consignment fields:
 
-| Field | v1 | v2 |
+| Field | v1.x | Generation v2 |
 |-------|----|----|
 | Price / currency | `fiatPrice1e8`, `fiatCurrency` (enum) | `fiatPrice1e8`, `currencyCode` (bytes32) |
 | Agent | — | `agent`, `agentFeeBps` |
@@ -72,7 +74,7 @@ Existing handlers (`PassportDisputed`, `DisputeResolved`, etc.) remain relevant;
 
 ---
 
-## 2. Current handler mismatch (v1 ABI on v2 chain)
+## 2. Current handler mismatch (v1 ABI on generation v2 chain)
 
 Handlers in `src/index.ts` still assume v1 event shapes. Example — **`MarketplaceEscrow:Sale`**:
 
@@ -87,15 +89,15 @@ ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
 });
 ```
 
-v2 emits `platformFee`, `agentFee`, `payToken`, and `agent` — indexing v2 without ABI/handler updates will fail or write wrong columns.
+Generation v2 emits `platformFee`, `agentFee`, `payToken`, and `agent` — indexing generation v2 without ABI/handler updates will fail or write wrong columns.
 
-Similarly, **`MarketplaceEscrow:Listed`** reads `event.args.fiatCurrency`; v2 emits `currencyCode`, `agent`, `agentFeeBps`.
+Similarly, **`MarketplaceEscrow:Listed`** reads `event.args.fiatCurrency`; generation v2 emits `currencyCode`, `agent`, `agentFeeBps`.
 
 ---
 
 ## 3. New schema tables/columns
 
-Proposed changes to `ponder.schema.ts` (implement before v2 cutover):
+Proposed changes to `ponder.schema.ts` (implement before generation v2 cutover):
 
 ### `marketplace_listing` (extend)
 
@@ -117,7 +119,7 @@ Deprecate `fiatCurrency` after dual-index period or map legacy rows on read.
 | `payToken` | text | ERC-20 address or empty for native |
 | `agent` | text | Agent on consignment sales |
 
-Deprecate `payAsset` enum column for v2 rows.
+Deprecate `payAsset` enum column for generation v2 rows.
 
 ### `verifier` (extend)
 
@@ -148,53 +150,49 @@ Deprecate `payAsset` enum column for v2 rows.
 
 ---
 
-## 4. New v2 contract addresses
+## 4. Generation v2 contract addresses (84532)
 
-v2 Base Sepolia deployed **June 27, 2026** (`pnpm deploy:v2`). Index from block **43399242**.
+Generation v2 deployed **June 27, 2026** (`pnpm deploy:v2`). **Do not copy addresses here** — canonical table with semver and Basescan links: **[contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)**.
 
-| Contract | Address | Source |
-|----------|---------|--------|
-| Timelock48h | `0x9319e223ff31c954A940b14F04025B56A53ED384` | `deployments/84532.json` |
-| KarProStaking v2 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` | manifest |
-| KarPassport v2 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` | manifest |
-| MarketplaceEscrow proxy v2 | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` | manifest |
-| MarketplaceEscrow impl v2 | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` | manifest |
-| ProxyONFT721Adapter | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` | manifest |
-| KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` | **reused** from v1 |
+**Indexer wiring from manifest** (`deployments/84532.json` — not in git):
 
-**`indexFromBlock`:** set from manifest `indexFromBlock` (minimum deploy block across v2 contracts). Do not reuse v1 start block.
+| Field | Use |
+|-------|-----|
+| `indexFromBlock` | **43399242** — set `PONDER_START_BLOCK_84532` (do not reuse v1 start block) |
+| `karPassport`, `marketplace`, … | `PONDER_*_ADDRESS` via `print-ponder-env.ts` |
+| `generation` | `"v2"` — distinguish from v1.x rows if dual-indexing |
 
-**Ponder config:** add v2 addresses alongside v1 in `ponder.config.ts` / ABI imports after `node scripts/export-abis.mjs`.
+**Ponder config:** point handlers at generation v2 ABIs (`node scripts/export-abis.mjs`) before cutover. Historical v1.x addresses: [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532).
 
 ---
 
-## 5. Reindex procedure
+## 5. Cutover checklist
 
-Follow [VPS-PONDER-REINDEX.md](./VPS-PONDER-REINDEX.md) for Postgres backup, env vars, and restart.
+**Reindex steps (VPS, Postgres, start block):** [OPERATIONS.md](./OPERATIONS.md) — do not duplicate that runbook here.
 
-### Cutover strategy
+### Strategy
 
 | Option | When | Notes |
 |--------|------|-------|
-| **Dual-index** | Transition period | Index both v1 and v2 contract addresses; API filters by `generation` or address set |
-| **Hard cutover** | Clean break | Point app to v2 addresses only; v1 listings become legacy read-only |
+| **Dual-index** | Transition period | Index both v1.x and generation v2 contract addresses; API filters by `generation` or address set |
+| **Hard cutover** | Clean break | Point app to generation v2 addresses only; v1.x listings become legacy read-only |
 
-v2 is a **fresh deploy** at new addresses — v1 event history stays on v1 contracts. No migration of listing state on-chain.
+Generation v2 is a **fresh deploy** at new addresses — v1.x event history stays on v1 contracts. No migration of listing state on-chain.
 
 ### Checklist
 
-1. Export v2 ABIs; regenerate `abis.generated.ts`.
+1. Export ABIs; regenerate `abis.generated.ts`.
 2. Update `ponder.schema.ts` + SQL migrations / reindex.
-3. Rewrite handlers in `src/index.ts` for v2 events (and keep v1 handlers if dual-indexing).
-4. Set `PONDER_START_BLOCK_84532` (or manifest `indexFromBlock`) to v2 deploy block.
+3. Rewrite handlers in `src/index.ts` for generation v2 events (and keep v1 handlers if dual-indexing).
+4. Set `PONDER_START_BLOCK_84532` (or manifest `indexFromBlock`) to generation v2 deploy block.
 5. Deploy Ponder; smoke `GET /listings`, `GET /passports/:tokenId`.
-6. Update `lib/web3/deployment-addresses.ts` and app to consume v2 manifest.
+6. Update `lib/web3/deployment-addresses.ts` and app to consume generation v2 manifest.
 
 ---
 
 ## 6. FX display layer update
 
-v2 allows listing in any registered fiat `currencyCode`. The app display layer (not Ponder) must extend beyond USD/EUR/ETH:
+Generation v2 allows listing in any registered fiat `currencyCode`. The app display layer (not Ponder) must extend beyond USD/EUR/ETH:
 
 ### CoinGecko extension (display only)
 
@@ -216,4 +214,4 @@ Do not use CoinGecko for AED if product policy requires peg disclosure.
 
 ---
 
-*Last updated: June 2026 — pre v2 deploy.*
+*Last updated: June 27, 2026 — generation v2 deployed to Base Sepolia; indexer migration pending.*
