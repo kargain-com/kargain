@@ -31,7 +31,9 @@ Anyone can **permissionlessly mint** a KarPassport NFT at [`/passport/new`](/pas
 
 An **active verifier** (address with an active stake in `KarProStaking`, not the token owner) can **verify** the passport on-chain. The owner may update metadata while **UNVERIFIED**, or while **VERIFIED** — anchor field changes reset verification (Variant C); cosmetic-only edits keep verified status.
 
-Anyone may **dispute** a verified passport. An active verifier **resolves** disputes: uphold keeps VERIFIED status; reject clears verification and returns the passport to UNVERIFIED. Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
+Anyone may **dispute** a verified passport with a **refundable deposit** (default **0.01 ETH**). The dispute opener may **`withdrawDispute`** to restore VERIFIED status and reclaim the deposit. An active verifier **resolves** unresolved disputes via **`DisputeOutcome`**: `ConfirmDispute` clears verification (deposit to opener); `RejectDispute` upholds verification (deposit to resolver). Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
+
+Owners may authorize **agents** for consignment sales (dépôt-vente): the owner keeps title while a KarPro agent lists and manages the sale on their behalf (see MarketplaceEscrow).
 
 ### KarProPass & KarProStaking (Model X)
 
@@ -45,7 +47,13 @@ Verifier categories: `MECHANIC` · `GARAGE` · `INSPECTOR` · `BROKER` · `DEALE
 
 ### MarketplaceEscrow
 
-UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (USD or EUR, stored 1e8). Buyers pay the on-chain quote via **native ETH** or **USDC**, priced through **Chainlink** feeds. Platform fee: **0.1%** (`platformFeeBps: 10`). Passport verification status does not block listing or purchase — transparency is enforced in the UI.
+UUPS-upgradeable escrow with **Timelock48h** governance (v2). Sellers list KarPassport NFTs with a **fiat price** in any **registered currency** (`bytes32` code + Chainlink feed — not a fixed USD/EUR enum). **`CURRENCY_NATIVE`** listings price directly in the chain’s native token without an oracle.
+
+**Direct listings:** seller lists and delists; optional **`setSettlementNote`** enables **`confirmExternalPayment`** for off-chain settlement (bank transfer, Lightning, BTC, etc.).
+
+**Agent consignment (dépôt-vente):** owner authorizes an agent; agent **`listOnBehalf`**, sets price and fee (up to 30%), and may **`updateListing`** without per-change owner approval — seller minimum net is enforced on-chain.
+
+Buyers pay via **native token** or any **approved ERC-20** at a live Chainlink quote. Platform fee: **0.1%** (`platformFeeBps: 10` on deploy). Passport verification status does not block listing or purchase — transparency is enforced in the UI.
 
 ### Off-chain layers
 
@@ -66,7 +74,7 @@ UUPS-upgradeable escrow. Sellers list KarPassport NFTs with a **fiat price** (US
 | **Nostr** | Comments, watchlist, notification sync |
 | **XMTP** | End-to-end encrypted messaging |
 
-**Documentation:** [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (contract spec) · [design-spec.md](docs/design-spec.md) (UI patterns) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
+**Documentation:** [contracts-v2-spec.md](docs/contracts-v2-spec.md) (v2 contract spec) · [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) (v1.x historical) · [design-spec.md](docs/design-spec.md) (UI patterns) · [VPS-PONDER-REINDEX.md](docs/VPS-PONDER-REINDEX.md) (indexer reindex runbook)
 
 ## Tech stack
 
@@ -196,27 +204,41 @@ After compile, refresh ABIs: `node scripts/export-abis.mjs`
 
 ---
 
-## Contracts (Base Sepolia — testnet)
+## Contracts
+
+### Contracts (v2 — Base Sepolia testnet, pending deploy)
 
 Network: Base Sepolia (chain **84532**)
 
+| Contract | Version | Address |
+|----------|---------|---------|
+| KarProPass | 1.0.0-rc.1 | pending deploy |
+| KarProStaking | 1.1.0-rc.1 | pending deploy |
+| KarPassport | 1.2.0-rc.1 | pending deploy |
+| MarketplaceEscrow (proxy) | 2.0.0-rc.1 | pending deploy |
+| MarketplaceEscrow (impl) | 2.0.0-rc.1 | pending deploy |
+| Timelock48h | 1.0.0-rc.1 | pending deploy |
+| ProxyONFT721Adapter | 1.0.0-rc.1 | pending deploy |
+
+**v1.x addresses (Base Sepolia, historical):**
+
 | Contract | Address |
 |----------|---------|
-| KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
-| KarProStaking | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
+| KarProPass (v1) | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
+| KarProStaking (v1) | `0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31` |
 | KarPassport (v1.1) | `0x6378469256907D7DC14BBfce0261ceDE22314507` |
-| MarketplaceEscrow (proxy) | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
-| MarketplaceEscrow (impl) | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
+| MarketplaceEscrow proxy (v1.1) | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+| MarketplaceEscrow impl (v1.1) | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
 
-Verified on [Base Sepolia Basescan](https://sepolia.basescan.org). Full addresses and parameters: [passport-v1.1-spec.md](docs/passport-v1.1-spec.md).
+Verified on [Base Sepolia Basescan](https://sepolia.basescan.org). v2 parameters and behavior: [contracts-v2-spec.md](docs/contracts-v2-spec.md). v1.x historical detail: [passport-v1.1-spec.md](docs/passport-v1.1-spec.md).
 
-| Parameter | Value |
-|-----------|-------|
+| Parameter | Value (v2 deploy default) |
+|-----------|---------------------------|
 | `minStakeNative` | 0.05 ETH |
 | `platformFeeBps` | 10 (0.1%) |
-| Payment assets | Native ETH, USDC |
-| Deployer EOA | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
-| Marketplace `upgradeAuthority` | Same as deployer (no timelock on testnet) — [spec §13.1](docs/passport-v1.1-spec.md) |
+| `disputeDeposit` | 0.01 ETH |
+| Payment assets | Native + approved ERC-20 (e.g. USDC) |
+| `upgradeAuthority` | Timelock48h (48h delay) — [contracts-v2-spec.md §6](docs/contracts-v2-spec.md) |
 
 ---
 
@@ -267,7 +289,8 @@ Protocol standards and process live in a separate repo:
 |-------------|----------------|
 | Protocol / standard (metadata, staking rules, interoperability) | Read [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md), then open a PR in `kips` |
 | App code (UI, indexer consumer, contracts in this repo) | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Contract behavior (implemented today) | [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) |
+| Contract behavior v2 (current) | [contracts-v2-spec.md](docs/contracts-v2-spec.md) |
+| Contract behavior v1.x (historical) | [passport-v1.1-spec.md](docs/passport-v1.1-spec.md) |
 | UI layout and tokens | [design-spec.md](docs/design-spec.md) |
 
 ---
