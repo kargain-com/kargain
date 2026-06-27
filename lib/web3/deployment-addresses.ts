@@ -152,3 +152,19 @@ export function chainlinkEurUsdFeed(chainId?: number): `0x${string}` | undefined
 
 /** v1.1 Base Sepolia addresses — historical generation v1.x reference only. */
 export const sepoliaLegacyAddresses = SEPOLIA_LEGACY;
+
+const SEPOLIA_KARGAIN_CONTRACTS: `0x${string}`[] = [
+  SEPOLIA_V2.karPassport,
+  SEPOLIA_V2.marketplace,
+  SEPOLIA_V2.karProPass,
+  SEPOLIA_V2.karProStaking,
+  SEPOLIA_V2.proxyOnftAdapter,
+  SEPOLIA_LEGACY.karPassport,
+  SEPOLIA_LEGACY.marketplace,
+  SEPOLIA_LEGACY.karProStaking,
+];
+
+/** Kargain-owned contracts on Base Sepolia (v2 + v1.x) for profile/messaging denylist. Excludes timelock. */
+export function sepoliaKargainContractDenylist(): readonly `0x${string}`[] {
+  return SEPOLIA_KARGAIN_CONTRACTS;
+}

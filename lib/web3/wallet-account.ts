@@ -1,12 +1,15 @@
 import { getAddress } from "viem";
 
 import {
+  BASE_SEPOLIA_CHAIN_ID,
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
   karPassportAddress,
   karProPassAddress,
   karProStakingAddress,
   marketplaceAddress,
+  proxyOnftAdapterAddress,
+  sepoliaKargainContractDenylist,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -47,8 +50,23 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
     usdcAddress(cid),
     chainlinkNativeUsdFeed(cid),
     chainlinkEurUsdFeed(cid),
+    proxyOnftAdapterAddress(cid),
   ];
-  return candidates.filter((addr): addr is `0x${string}` => Boolean(addr));
+
+  if (cid === BASE_SEPOLIA_CHAIN_ID) {
+    candidates.push(...sepoliaKargainContractDenylist());
+  }
+
+  const seen = new Set<string>();
+  const out: `0x${string}`[] = [];
+  for (const addr of candidates) {
+    if (!addr) continue;
+    const key = addr.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(addr);
+  }
+  return out;
 }
 
 export function isProtocolAddress(address: string, chainId?: number): boolean {
