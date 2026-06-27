@@ -5,7 +5,7 @@ import {
   LEGACY_SEPOLIA_BLOCKS,
   loadSepoliaDeployment,
   SEPOLIA_CHAIN_ID,
-  SEPOLIA_FALLBACK,
+  SEPOLIA_LEGACY,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
 import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
@@ -25,22 +25,22 @@ function resolveManifest(): DeploymentManifest {
   if (fromFile) return fromFile;
 
   console.warn(
-    "deployments/84532.json not found — using committed SEPOLIA_FALLBACK addresses.",
+    "deployments/84532.json not found — using committed SEPOLIA_LEGACY addresses.",
   );
 
   return {
     chainId: SEPOLIA_CHAIN_ID,
     generation: "v1.1",
-    karPassport: SEPOLIA_FALLBACK.karPassport,
-    karProPass: SEPOLIA_FALLBACK.karProPass,
-    karProStaking: SEPOLIA_FALLBACK.karProStaking,
-    marketplace: SEPOLIA_FALLBACK.marketplace,
-    marketplaceImpl: SEPOLIA_FALLBACK.marketplaceImpl,
-    usdc: SEPOLIA_FALLBACK.usdc,
-    nativeFeed: SEPOLIA_FALLBACK.nativeFeed,
-    eurFeed: SEPOLIA_FALLBACK.eurFeed,
-    platformRecipient: SEPOLIA_FALLBACK.platformRecipient,
-    deployer: SEPOLIA_FALLBACK.deployer,
+    karPassport: SEPOLIA_LEGACY.karPassport,
+    karProPass: SEPOLIA_LEGACY.karProPass,
+    karProStaking: SEPOLIA_LEGACY.karProStaking,
+    marketplace: SEPOLIA_LEGACY.marketplace,
+    marketplaceImpl: SEPOLIA_LEGACY.marketplaceImpl,
+    usdc: SEPOLIA_LEGACY.usdc,
+    nativeFeed: SEPOLIA_LEGACY.nativeFeed,
+    eurFeed: SEPOLIA_LEGACY.eurFeed,
+    platformRecipient: SEPOLIA_LEGACY.platformRecipient,
+    deployer: SEPOLIA_LEGACY.deployer,
     deployedAt: "",
     unchanged: ["karProPass", "karProStaking"],
     blocks: { ...LEGACY_SEPOLIA_BLOCKS },

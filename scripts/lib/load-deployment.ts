@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { getAddress } from "viem";
 
 import type { LocalStackAddresses } from "./local-stack.js";
+import type { ContractVersionName } from "./contract-versions.js";
 
 export const LOCAL_CHAIN_ID = 31337;
 export const SEPOLIA_CHAIN_ID = 84532;
@@ -10,7 +11,7 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const DEPLOYMENT_PATH = join(process.cwd(), "deployments/31337.json");
 export const SEPOLIA_DEPLOYMENT_PATH = join(process.cwd(), "deployments/84532.json");
 
-/** Legacy Model X deploy blocks (Base Sepolia, June 2026). */
+/** Legacy Model X v1.1 deploy blocks (Base Sepolia, June 2026). */
 export const LEGACY_SEPOLIA_BLOCKS = {
   karProPass: 42_800_433,
   karProStaking: 42_800_436,
@@ -19,8 +20,8 @@ export const LEGACY_SEPOLIA_BLOCKS = {
   marketplace: 42_800_447,
 } as const;
 
-/** Committed fallbacks when no manifest / env (updated after Phase 5 deploy). */
-export const SEPOLIA_FALLBACK = {
+/** v1.1 Base Sepolia fallbacks — historical; superseded by v2 deploy June 27, 2026. */
+export const SEPOLIA_LEGACY = {
   karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
   karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
   karProStaking: "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
@@ -31,9 +32,27 @@ export const SEPOLIA_FALLBACK = {
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  /** On-chain `MarketplaceEscrow.upgradeAuthority` after v1.1 redeploy — deployer EOA, not TimelockController. */
   upgradeAuthority: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
 } as const satisfies Record<string, `0x${string}`>;
+
+/** Active v2 Base Sepolia fallbacks when no manifest / env. */
+export const SEPOLIA_FALLBACK = {
+  karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
+  karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
+  karProStaking: "0xb5d79551BB11F726D2A1A110BAc645C4345dA568",
+  marketplace: "0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19",
+  marketplaceImpl: "0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3",
+  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+  eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
+  timelock: "0x9319e223ff31c954A940b14F04025B56A53ED384",
+  proxyOnftAdapter: "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
+  layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
+  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+  deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
+  upgradeAuthority: "0x9319e223ff31c954A940b14F04025B56A53ED384",
+  indexFromBlock: 43_399_242,
+} as const satisfies Record<string, `0x${string}` | number>;
 
 export type DeploymentBlocks = {
   karProPass?: number;
@@ -59,11 +78,16 @@ export type DeploymentManifest = {
   deployer?: `0x${string}`;
   /** On-chain MarketplaceEscrow.upgradeAuthority (timelock contract or deployer EOA). */
   upgradeAuthority?: `0x${string}`;
+  /** v2: LayerZero hub adapter */
+  proxyOnftAdapter?: `0x${string}`;
+  layerZeroEndpoint?: `0x${string}`;
+  tokenIdOffset?: string;
   deployedAt: string;
   unchanged?: string[];
   blocks: DeploymentBlocks;
   indexFromBlock: number;
   txHashes?: Record<string, string>;
+  contractVersions?: { [K in ContractVersionName]: string };
 };
 
 export type PonderAddressBundle = {
@@ -85,8 +109,8 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     marketplaceImpl: getAddress(raw.marketplaceImpl),
     usdc: getAddress(raw.usdc),
     nativeFeed: getAddress(raw.nativeFeed),
-    eurFeed: getAddress(raw.eurFeed),
     timelock: getAddress(raw.timelock),
+    genesisAuthority: getAddress(raw.genesisAuthority),
     platformRecipient: getAddress(raw.platformRecipient),
   };
 }
@@ -141,7 +165,7 @@ export function requireSepoliaDeployment(): DeploymentManifest {
   const deployment = loadSepoliaDeployment();
   if (!deployment) {
     throw new Error(
-      "Missing deployments/84532.json — run `pnpm deploy:v1.1` on Base Sepolia first",
+      "Missing deployments/84532.json — run `pnpm deploy:v2` on Base Sepolia first",
     );
   }
   return deployment;
@@ -202,8 +226,8 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     marketplaceImpl: process.env.PONDER_MARKETPLACE_IMPL_ADDRESS,
     usdc: process.env.PONDER_USDC_ADDRESS,
     nativeFeed: process.env.PONDER_NATIVE_FEED_ADDRESS,
-    eurFeed: process.env.PONDER_EUR_FEED_ADDRESS ?? "0x0000000000000000000000000000000000000000",
     timelock: process.env.PONDER_TIMELOCK_ADDRESS,
+    genesisAuthority: process.env.PONDER_GENESIS_AUTHORITY_ADDRESS ?? process.env.PONDER_TIMELOCK_ADDRESS,
     platformRecipient: process.env.PONDER_PLATFORM_RECIPIENT_ADDRESS,
     deployedAt: "",
   };

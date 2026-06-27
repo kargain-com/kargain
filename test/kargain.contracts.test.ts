@@ -5,14 +5,19 @@ import { getAddress, type Hash, type PublicClient } from "viem";
 
 import {
   Category,
+  CURRENCY_USD,
+  DISPUTE_DEPOSIT,
   deployEscrowStack,
   deployPassportStack,
   deployVerifierStack,
   joinVerifier,
+  mintPassport,
   MIN_STAKE,
   receiptLogs,
   ZERO,
 } from "../scripts/lib/local-stack.js";
+
+const TOKEN_ID_BASE = 31337n << 128n;
 
 const ZERO_ADDR = ZERO;
 
@@ -120,6 +125,15 @@ describe("KarProPass", () => {
         account: stranger.account,
       }),
       revertsWith("NotHolder"),
+    );
+  });
+
+  it("setStaking(address(0)) reverts ZeroAddress", async () => {
+    const { viem } = connection;
+    const { admin, proPass } = await deployVerifierStack(viem);
+    await assert.rejects(
+      proPass.write.setStaking([ZERO], { account: admin.account }),
+      revertsWith("ZeroAddress"),
     );
   });
 });
@@ -387,6 +401,18 @@ describe("KarProStaking — params", () => {
     );
   });
 
+  it("setMinStakeNative below MIN_STAKE_FLOOR reverts BelowMinStakeFloor", async () => {
+    const { viem } = connection;
+    const { admin, staking } = await deployVerifierStack(viem);
+    const floor = (await staking.read.MIN_STAKE_FLOOR()) as bigint;
+    await assert.rejects(
+      staking.write.setMinStakeNative([100_000_000_000_000n], { account: admin.account }),
+      revertsWith("BelowMinStakeFloor"),
+    );
+    await staking.write.setMinStakeNative([floor], { account: admin.account });
+    assert.equal(await staking.read.minStakeNative(), floor);
+  });
+
   it("only owner can setStakeToken", async () => {
     const { viem } = connection;
     const { stranger, staking } = await deployVerifierStack(viem);
@@ -577,26 +603,23 @@ describe("KarPassport — mintPassport", () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     const uri = "ar://passport-1";
-    await passport.write.mintPassport([owner.account.address, uri], {
-      account: owner.account,
-    });
-    const [status] = await passport.read.getPassportStatus([0n]);
+    const tokenId = await mintPassport(passport, owner, owner.account.address, uri);
+    assert.equal(tokenId, TOKEN_ID_BASE);
+    const [status] = await passport.read.getPassportStatus([tokenId]);
     assert.equal(status, 0);
-    assert.equal(await passport.read.tokenURI([0n]), uri);
+    assert.equal(await passport.read.tokenURI([tokenId]), uri);
   });
 
-  it("tokenId increments", async () => {
+  it("tokenId increments with chain offset", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.nextTokenId(), 0n);
-    await passport.write.mintPassport([owner.account.address, "ar://0"], {
-      account: owner.account,
-    });
-    assert.equal(await passport.read.nextTokenId(), 1n);
-    await passport.write.mintPassport([owner.account.address, "ar://1"], {
-      account: owner.account,
-    });
-    assert.equal(await passport.read.nextTokenId(), 2n);
+    assert.equal(await passport.read.nextTokenId(), TOKEN_ID_BASE);
+    const first = await mintPassport(passport, owner, owner.account.address, "ar://0");
+    assert.equal(first, TOKEN_ID_BASE);
+    assert.equal(await passport.read.nextTokenId(), TOKEN_ID_BASE + 1n);
+    const second = await mintPassport(passport, owner, owner.account.address, "ar://1");
+    assert.equal(second, TOKEN_ID_BASE + 1n);
+    assert.equal(await passport.read.nextTokenId(), TOKEN_ID_BASE + 2n);
   });
 });
 
@@ -619,8 +642,8 @@ describe("KarPassport — setPassportURI", () => {
     await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
-    await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ar://new");
+    await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://new");
   });
 
   it("reverts not owner", async () => {
@@ -630,7 +653,7 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ar://hack"], { account: stranger.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, "ar://hack"], { account: stranger.account }),
       revertsWith("NotOwner"),
     );
   });
@@ -642,10 +665,10 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ar://new");
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://new");
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
     assert.equal(getAddress(recordedVerifier), getAddress("0x0000000000000000000000000000000000000000"));
     assert.equal(verifiedAt, 0n);
@@ -658,12 +681,12 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ar://v"], { account: owner.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, "ar://v"], { account: owner.account }),
       revertsWith("SameURI"),
     );
-    const [status] = await passport.read.getPassportStatus([0n]);
+    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
   });
 
@@ -674,7 +697,7 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ar://old"], { account: owner.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, "ar://old"], { account: owner.account }),
       revertsWith("SameURI"),
     );
   });
@@ -686,7 +709,7 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.setPassportURI([0n, ""], { account: owner.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, ""], { account: owner.account }),
       revertsWith("EmptyField"),
     );
   });
@@ -698,10 +721,10 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ar://new"], { account: owner.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account }),
       revertsWith("InvalidStatus"),
     );
   });
@@ -715,9 +738,9 @@ describe("KarPassport — setPassportURI", () => {
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
     await assert.rejects(
-      passport.write.setPassportURI([0n, "ar://new"], { account: seller.account }),
+      passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: seller.account }),
       revertsWith("NotOwner"),
     );
   });
@@ -729,12 +752,12 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
-    await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    await passport.write.setPassportURI([0n, "ar://fixed"], { account: owner.account });
-    assert.equal(await passport.read.tokenURI([0n]), "ar://fixed");
-    const [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
+    await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://fixed"], { account: owner.account });
+    assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://fixed");
+    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
   });
 
@@ -745,7 +768,7 @@ describe("KarPassport — setPassportURI", () => {
     await passport.write.mintPassport([owner.account.address, "ar://old"], {
       account: owner.account,
     });
-    const hash = await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
+    const hash = await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account });
     const logs = await receiptLogs(publicClient, hash, passport.abi);
     assert.equal(logs.some((l) => l.eventName === "VerificationReset"), false);
     assert.equal(logs.some((l) => l.eventName === "PassportURIUpdated"), true);
@@ -759,12 +782,12 @@ describe("KarPassport — setPassportURI", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    const hash = await passport.write.setPassportURI([0n, "ar://new"], { account: owner.account });
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    const hash = await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account });
     const logs = await receiptLogs(publicClient, hash, passport.abi);
     const reset = logs.find((l) => l.eventName === "VerificationReset");
     assert.ok(reset);
-    assert.equal(reset!.args.tokenId, 0n);
+    assert.equal(reset!.args.tokenId, TOKEN_ID_BASE);
     assert.equal(getAddress(reset!.args.author), getAddress(owner.account.address));
   });
 });
@@ -789,8 +812,8 @@ describe("KarPassport — verifyPassport", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    const [status, recordedVerifier] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    const [status, recordedVerifier] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
     assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
   });
@@ -802,7 +825,7 @@ describe("KarPassport — verifyPassport", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: stranger.account }),
+      passport.write.verifyPassport([TOKEN_ID_BASE], { account: stranger.account }),
       revertsWith("NotActiveVerifier"),
     );
   });
@@ -815,7 +838,7 @@ describe("KarPassport — verifyPassport", () => {
     });
     await joinVerifier(staking, owner);
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: owner.account }),
+      passport.write.verifyPassport([TOKEN_ID_BASE], { account: owner.account }),
       revertsWith("CannotSelfVerify"),
     );
   });
@@ -827,10 +850,10 @@ describe("KarPassport — verifyPassport", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await joinVerifier(staking, stranger);
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: stranger.account }),
+      passport.write.verifyPassport([TOKEN_ID_BASE], { account: stranger.account }),
       revertsWith("InvalidStatus"),
     );
   });
@@ -848,7 +871,7 @@ describe("KarPassport — verifyPassport", () => {
     assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: verifier.account }),
+      passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account }),
       revertsWith("NotActiveVerifier"),
     );
   });
@@ -862,7 +885,7 @@ describe("KarPassport — verifyPassport", () => {
     await joinVerifier(staking, verifier);
     await staking.write.leave([], { account: verifier.account });
     await assert.rejects(
-      passport.write.verifyPassport([0n], { account: verifier.account }),
+      passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account }),
       revertsWith("NotActiveVerifier"),
     );
   });
@@ -874,9 +897,9 @@ describe("KarPassport — verifyPassport", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await staking.write.leave([], { account: verifier.account });
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
     assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
     assert.ok(verifiedAt > 0n);
@@ -902,15 +925,15 @@ describe("KarPassport — dispute and resolve", () => {
       account: stack.owner.account,
     });
     await joinVerifier(stack.staking, stack.verifier);
-    await stack.passport.write.verifyPassport([0n], { account: stack.verifier.account });
+    await stack.passport.write.verifyPassport([TOKEN_ID_BASE], { account: stack.verifier.account });
     return stack;
   }
 
   it("anyone disputes VERIFIED passport", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await setupVerified(viem);
-    await passport.write.disputePassport([0n, "fraud"], { account: stranger.account });
-    const [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "fraud"], { account: stranger.account, value: DISPUTE_DEPOSIT });
+    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
     void owner;
   });
@@ -922,7 +945,7 @@ describe("KarPassport — dispute and resolve", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.disputePassport([0n, "reason"], { account: owner.account }),
+      passport.write.disputePassport([TOKEN_ID_BASE, "reason"], { account: owner.account, value: DISPUTE_DEPOSIT }),
       revertsWith("InvalidStatus"),
     );
   });
@@ -931,7 +954,7 @@ describe("KarPassport — dispute and resolve", () => {
     const { viem } = connection;
     const { owner, passport } = await setupVerified(viem);
     await assert.rejects(
-      passport.write.disputePassport([0n, ""], { account: owner.account }),
+      passport.write.disputePassport([TOKEN_ID_BASE, ""], { account: owner.account, value: DISPUTE_DEPOSIT }),
       revertsWith("EmptyField"),
     );
   });
@@ -939,18 +962,18 @@ describe("KarPassport — dispute and resolve", () => {
   it("active verifier resolves uphold=true → VERIFIED", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await setupVerified(viem);
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
-    await passport.write.resolveDispute([0n, true], { account: verifier.account });
-    const [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: verifier.account });
+    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
   });
 
   it("resolve uphold=false → UNVERIFIED, verifier cleared", async () => {
     const { viem } = connection;
     const { owner, verifier, passport, staking } = await setupVerified(viem);
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
-    await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([0n]);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
     assert.equal(verifiedAt, 0n);
@@ -960,9 +983,9 @@ describe("KarPassport — dispute and resolve", () => {
   it("resolve reverts: not active verifier", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await setupVerified(viem);
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
     await assert.rejects(
-      passport.write.resolveDispute([0n, true], { account: stranger.account }),
+      passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: stranger.account }),
       revertsWith("NotActiveVerifier"),
     );
   });
@@ -971,7 +994,7 @@ describe("KarPassport — dispute and resolve", () => {
     const { viem } = connection;
     const { verifier, passport, staking } = await setupVerified(viem);
     await assert.rejects(
-      passport.write.resolveDispute([0n, true], { account: verifier.account }),
+      passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: verifier.account }),
       revertsWith("InvalidStatus"),
     );
     void staking;
@@ -997,10 +1020,10 @@ describe("KarPassport — records", () => {
     await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
-    await passport.write.appendRecord([0n, "service", "Oil change", "cid-1"], {
+    await passport.write.appendRecord([TOKEN_ID_BASE, "service", "Oil change", "cid-1"], {
       account: owner.account,
     });
-    assert.equal(await passport.read.recordCount([0n]), 1n);
+    assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 1n);
   });
 
   it("reportDiscrepancy permissionless", async () => {
@@ -1009,10 +1032,10 @@ describe("KarPassport — records", () => {
     await passport.write.mintPassport([owner.account.address, "ar://r"], {
       account: owner.account,
     });
-    await passport.write.reportDiscrepancy([0n, "scratch found", "cid-2"], {
+    await passport.write.reportDiscrepancy([TOKEN_ID_BASE, "scratch found", "cid-2"], {
       account: stranger.account,
     });
-    assert.equal(await passport.read.recordCount([0n]), 1n);
+    assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 1n);
   });
 
   it("appendAttestation requires active verifier", async () => {
@@ -1022,7 +1045,7 @@ describe("KarPassport — records", () => {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.appendAttestation([0n, "looks good", "cid-3"], {
+      passport.write.appendAttestation([TOKEN_ID_BASE, "looks good", "cid-3"], {
         account: stranger.account,
       }),
       revertsWith("NotActiveVerifier"),
@@ -1036,9 +1059,9 @@ describe("KarPassport — records", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.appendRecord([0n, "note", "first", ""], { account: owner.account });
-    await passport.write.appendAttestation([0n, "attest", "cid"], { account: verifier.account });
-    assert.equal(await passport.read.recordCount([0n]), 2n);
+    await passport.write.appendRecord([TOKEN_ID_BASE, "note", "first", ""], { account: owner.account });
+    await passport.write.appendAttestation([TOKEN_ID_BASE, "attest", "cid"], { account: verifier.account });
+    assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 2n);
   });
 
   it("T10: appendRecord on VERIFIED leaves status unchanged", async () => {
@@ -1048,15 +1071,15 @@ describe("KarPassport — records", () => {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    let [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    let [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
-    await passport.write.appendRecord([0n, "service", "Oil change", "cid-t10"], {
+    await passport.write.appendRecord([TOKEN_ID_BASE, "service", "Oil change", "cid-t10"], {
       account: owner.account,
     });
-    [status] = await passport.read.getPassportStatus([0n]);
+    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
-    assert.equal(await passport.read.recordCount([0n]), 1n);
+    assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 1n);
   });
 
   it("appendRecord reverts NotOwner when listed in escrow", async () => {
@@ -1068,9 +1091,9 @@ describe("KarPassport — records", () => {
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
+    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
     await assert.rejects(
-      passport.write.appendRecord([0n, "service", "while listed", ""], {
+      passport.write.appendRecord([TOKEN_ID_BASE, "service", "while listed", ""], {
         account: seller.account,
       }),
       revertsWith("NotOwner"),
@@ -1097,20 +1120,20 @@ describe("KarPassport — getPassportStatus", () => {
     await passport.write.mintPassport([owner.account.address, "ar://s"], {
       account: owner.account,
     });
-    let [status] = await passport.read.getPassportStatus([0n]);
+    let [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
 
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
 
-    await passport.write.disputePassport([0n, "issue"], { account: owner.account });
-    [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
 
-    await passport.write.resolveDispute([0n, false], { account: verifier.account });
-    [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
+    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
   });
 });
@@ -1166,7 +1189,7 @@ describe("Event completeness (G1/G2/G3)", () => {
       account: owner.account,
     });
     const hash = await passport.write.appendRecord(
-      [0n, "service", "Oil change", "cid-service"],
+      [TOKEN_ID_BASE, "service", "Oil change", "cid-service"],
       { account: owner.account },
     );
     const logs = await receiptLogs(publicClient, hash, passport.abi);
@@ -1185,7 +1208,7 @@ describe("Event completeness (G1/G2/G3)", () => {
       account: owner.account,
     });
     const hash = await passport.write.reportDiscrepancy(
-      [0n, "scratch found", "cid-disc"],
+      [TOKEN_ID_BASE, "scratch found", "cid-disc"],
       { account: stranger.account },
     );
     const logs = await receiptLogs(publicClient, hash, passport.abi);
@@ -1205,7 +1228,7 @@ describe("Event completeness (G1/G2/G3)", () => {
     });
     await joinVerifier(staking, verifier);
     const hash = await passport.write.appendAttestation(
-      [0n, "looks good", "cid-attest"],
+      [TOKEN_ID_BASE, "looks good", "cid-attest"],
       { account: verifier.account },
     );
     const logs = await receiptLogs(publicClient, hash, passport.abi);
@@ -1246,14 +1269,14 @@ describe("MarketplaceEscrow", () => {
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
-    let listing = await marketplace.read.listings([0n]);
-    assert.equal(listing[3], true);
-    await marketplace.write.delist([0n], { account: seller.account });
-    listing = await marketplace.read.listings([0n]);
-    assert.equal(listing[3], false);
+    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    let listing = await marketplace.read.listings([TOKEN_ID_BASE]);
+    assert.equal(listing[2], true);
+    await marketplace.write.delist([TOKEN_ID_BASE], { account: seller.account });
+    listing = await marketplace.read.listings([TOKEN_ID_BASE]);
+    assert.equal(listing[2], false);
     assert.equal(
-      getAddress(await passport.read.ownerOf([0n])),
+      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
       getAddress(seller.account.address),
     );
   });
@@ -1269,15 +1292,15 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
+    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
     const adminBefore = await publicClient.getBalance({ address: admin.account.address });
     const sellerBefore = await publicClient.getBalance({ address: seller.account.address });
-    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
+    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
     const fee = (gross * feeBps) / 10_000n;
     const net = gross - fee;
     assert.equal(
-      getAddress(await passport.read.ownerOf([0n])),
+      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
       getAddress(buyer.account.address),
     );
     const adminAfter = await publicClient.getBalance({ address: admin.account.address });
@@ -1294,19 +1317,19 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    const [statusBefore] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    const [statusBefore] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(statusBefore, 1);
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([0n, 500n * 10n ** 8n, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
-    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
-    const [statusAfter] = await passport.read.getPassportStatus([0n]);
+    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
+    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
+    const [statusAfter] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(statusAfter, statusBefore);
     assert.equal(
-      getAddress(await passport.read.ownerOf([0n])),
+      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
       getAddress(buyer.account.address),
     );
   });
@@ -1322,13 +1345,13 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     const usd1e8 = 200n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteUsdcAmount([0n]);
+    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithToken([TOKEN_ID_BASE, usdc.address]);
     await usdc.write.mint([buyer.account.address, gross]);
     await usdc.write.approve([marketplace.address, gross], { account: buyer.account });
     const adminBefore = await usdc.read.balanceOf([admin.account.address]);
     const sellerBefore = await usdc.read.balanceOf([seller.account.address]);
-    await marketplace.write.buyWithUsdc([0n], { account: buyer.account });
+    await marketplace.write.buyWithToken([TOKEN_ID_BASE, usdc.address], { account: buyer.account });
     const fee = (gross * feeBps) / 10_000n;
     const net = gross - fee;
     const adminAfter = await usdc.read.balanceOf([admin.account.address]);
@@ -1350,10 +1373,10 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
+    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
     const adminBefore = await publicClient.getBalance({ address: admin.account.address });
-    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
+    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
     const proFee = (gross * proFeeBps) / 10_000n;
     const platformFee = (gross * feeBps) / 10_000n;
     assert.notEqual(proFee, platformFee);
@@ -1374,14 +1397,14 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    await marketplace.write.delist([0n], { account: seller.account });
+    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
+    await marketplace.write.delist([TOKEN_ID_BASE], { account: seller.account });
     await staking.write.leave([], { account: seller.account });
     assert.equal(await staking.read.isActiveVerifier([seller.account.address]), false);
-    await marketplace.write.list([0n, usd1e8, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
+    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
     const adminBefore = await publicClient.getBalance({ address: admin.account.address });
-    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
+    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
     const platformFee = (gross * feeBps) / 10_000n;
     const adminAfter = await publicClient.getBalance({ address: admin.account.address });
     assert.equal(adminAfter - adminBefore, platformFee);
@@ -1396,18 +1419,18 @@ describe("MarketplaceEscrow", () => {
       account: seller.account,
     });
     await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([0n], { account: verifier.account });
-    await passport.write.disputePassport([0n, "issue"], { account: seller.account });
-    const [status] = await passport.read.getPassportStatus([0n]);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: seller.account, value: DISPUTE_DEPOSIT });
+    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
     await passport.write.setApprovalForAll([marketplace.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([0n, 400n * 10n ** 8n, 0], { account: seller.account });
-    const gross = await marketplace.read.quoteNativeWei([0n]);
-    await marketplace.write.buyWithNative([0n], { account: buyer.account, value: gross });
+    await marketplace.write.list([TOKEN_ID_BASE, 400n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
+    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
     assert.equal(
-      getAddress(await passport.read.ownerOf([0n])),
+      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
       getAddress(buyer.account.address),
     );
   });
@@ -1419,7 +1442,6 @@ describe("MarketplaceEscrow", () => {
       (await marketplace.read.karPassport([])) as `0x${string}`,
       (await marketplace.read.usdc([])) as `0x${string}`,
       (await marketplace.read.nativeUsdFeed([])) as `0x${string}`,
-      ZERO,
       (await marketplace.read.karProStaking([])) as `0x${string}`,
       (await marketplace.read.platformRecipient([])) as `0x${string}`,
       250n,

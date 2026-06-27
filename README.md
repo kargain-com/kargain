@@ -206,19 +206,19 @@ After compile, refresh ABIs: `node scripts/export-abis.mjs`
 
 ## Contracts
 
-### Contracts (v2 — Base Sepolia testnet, pending deploy)
+### Contracts (v2 — Base Sepolia testnet, deployed June 27, 2026)
 
 Network: Base Sepolia (chain **84532**)
 
 | Contract | Version | Address |
 |----------|---------|---------|
-| KarProPass | 1.0.0-rc.1 | pending deploy |
-| KarProStaking | 1.1.0-rc.1 | pending deploy |
-| KarPassport | 1.2.0-rc.1 | pending deploy |
-| MarketplaceEscrow (proxy) | 2.0.0-rc.1 | pending deploy |
-| MarketplaceEscrow (impl) | 2.0.0-rc.1 | pending deploy |
-| Timelock48h | 1.0.0-rc.1 | pending deploy |
-| ProxyONFT721Adapter | 1.0.0-rc.1 | pending deploy |
+| KarProPass | 1.0.0-rc.1 | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` (reused from v1) |
+| KarProStaking | 1.1.0-rc.1 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` |
+| KarPassport | 1.2.0-rc.1 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
+| MarketplaceEscrow (proxy) | 2.0.0-rc.1 | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` |
+| MarketplaceEscrow (impl) | 2.0.0-rc.1 | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` |
+| Timelock48h | 1.0.0-rc.1 | `0x9319e223ff31c954A940b14F04025B56A53ED384` |
+| ProxyONFT721Adapter | 1.0.0-rc.1 | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` |
 
 **v1.x addresses (Base Sepolia, historical):**
 
@@ -276,7 +276,7 @@ Production indexer: **PostgreSQL + Ponder + cloudflared**
 - **Smart wallets + Irys** — contract accounts and EIP-7702 wallets cannot fund Irys uploads from the browser. Use a standard EOA on the target chain for passport photo upload.
 - **Multi-chain** — Ponder indexes Base Sepolia today; additional chains require deployment and indexer configuration per network.
 - **Verification transparency** — disputed passports can still be listed; buyers see status in the UI before purchase.
-- **Upgrade authority** — On Base Sepolia, `MarketplaceEscrow.upgradeAuthority` is the deployer EOA, not a `TimelockController` (see [passport-v1.1-spec §13.1](docs/passport-v1.1-spec.md)). Localhost uses a real timelock contract.
+- **Upgrade authority** — On Base Sepolia v2, `MarketplaceEscrow.upgradeAuthority` is **Timelock48h** (`0x9319…D384`, 48h delay). v1.1 historical stack used deployer EOA ([passport-v1.1-spec §13.1](docs/passport-v1.1-spec.md)).
 
 ---
 

@@ -6,9 +6,11 @@ import {
   SEPOLIA_CHAIN_ID,
   SEPOLIA_DEPLOYMENT_PATH,
   SEPOLIA_FALLBACK,
+  SEPOLIA_LEGACY,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
 import { computeIndexFromBlock, writeDeploymentManifest } from "./lib/write-deployment.js";
+import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
 
 const BASESCAN = "https://sepolia.basescan.org";
 
@@ -95,8 +97,8 @@ async function main() {
     process.exit(1);
   }
 
-  const karProPassAddress = getAddress(SEPOLIA_FALLBACK.karProPass);
-  const karProStakingAddress = getAddress(SEPOLIA_FALLBACK.karProStaking);
+  const karProPassAddress = getAddress(SEPOLIA_LEGACY.karProPass);
+  const karProStakingAddress = getAddress(SEPOLIA_LEGACY.karProStaking);
 
   const connection = await hardhat.network.connect();
   const { viem } = connection;
@@ -196,6 +198,7 @@ async function main() {
         marketplaceImpl: marketplaceImpl.txHash,
         marketplace: proxy.txHash,
       },
+      contractVersions: { ...CONTRACT_VERSIONS },
     };
 
     writeDeploymentManifest(SEPOLIA_DEPLOYMENT_PATH, manifest);

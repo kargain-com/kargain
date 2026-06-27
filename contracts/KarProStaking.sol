@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+// Version policy:
+//   PATCH (Z): bug fixes that do not change ABI or storage layout
+//   MINOR (Y): new functions added, backward compatible
+//   MAJOR (X): breaking ABI changes, storage layout changes,
+//               or fundamental behavior change
+//   Pre-release: -rc.N for release candidates, remove on mainnet deploy
+//   Immutable contracts (KarPassport, KarProPass, KarProStaking):
+//     any change = new deployment = bump MINOR or MAJOR
+//   Upgradeable contracts (MarketplaceEscrow):
+//     UUPS upgrade = bump MINOR or MAJOR depending on scope
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -14,7 +25,10 @@ interface IKarProPass {
 /// @title KarProStaking
 /// @notice Single entry point to become a verifier: stake ETH or an optional ERC-20, receive a KarProPass.
 /// @dev Stakes are fully refundable on leave; owner cannot withdraw user funds.
+/// @custom:version 1.1.0-rc.1
 contract KarProStaking is ReentrancyGuard, Ownable {
+    string public constant VERSION = "1.1.0-rc.1";
+
     using SafeERC20 for IERC20;
 
     enum StakeAsset {
@@ -31,22 +45,27 @@ contract KarProStaking is ReentrancyGuard, Ownable {
 
     IKarProPass public immutable proPass;
 
+    uint256 public constant MIN_STAKE_FLOOR = 0.001 ether;
+
     uint256 public minStakeNative;
     address public stakeToken;
     uint256 public minStakeToken;
 
     mapping(address => Stake) public stakes;
+    mapping(address => uint256) public verificationFee;
 
     error BelowMinStake();
     error AlreadyVerifier();
     error NotVerifier();
     error TokenNotEnabled();
     error TransferFailed();
+    error BelowMinStakeFloor();
 
     event VerifierJoined(address indexed verifier, uint8 asset, uint256 amount);
     event VerifierLeft(address indexed verifier, uint256 returned);
     event MinStakeNativeUpdated(uint256 newMin);
     event StakeTokenSet(address token, uint256 minAmount);
+    event VerificationFeeUpdated(address indexed verifier, uint256 fee);
 
     /// @notice Deploys staking with the KarProPass contract and default 0.05 ETH minimum.
     /// @param proPass_ KarProPass contract address.
@@ -132,8 +151,10 @@ contract KarProStaking is ReentrancyGuard, Ownable {
 
     /// @notice Updates the minimum native stake for new verifiers only.
     /// @dev Existing stakes keep their locked amount until leave.
+    ///      Minimum is capped at MIN_STAKE_FLOOR to prevent accidental zero-stake sybil attack.
     /// @param v New minimum native stake in wei.
     function setMinStakeNative(uint256 v) external onlyOwner {
+        if (v < MIN_STAKE_FLOOR) revert BelowMinStakeFloor();
         minStakeNative = v;
         emit MinStakeNativeUpdated(v);
     }
@@ -152,5 +173,13 @@ contract KarProStaking is ReentrancyGuard, Ownable {
     /// @return True if the address has an active stake and KarProPass.
     function isActiveVerifier(address a) external view returns (bool) {
         return stakes[a].active;
+    }
+
+    /// @notice Active verifier sets their public verification service fee (informational; in wei).
+    /// @param fee Fee amount in wei.
+    function setVerificationFee(uint256 fee) external {
+        if (!stakes[msg.sender].active) revert NotVerifier();
+        verificationFee[msg.sender] = fee;
+        emit VerificationFeeUpdated(msg.sender, fee);
     }
 }

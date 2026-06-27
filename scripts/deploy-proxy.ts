@@ -1,3 +1,4 @@
+// DEPRECATED: use pnpm deploy:v2. Do not run directly.
 import hardhat from "hardhat";
 import { encodeFunctionData, getAddress } from "viem";
 import { MarketplaceEscrowAbi } from "../lib/contracts/abis.generated.js";

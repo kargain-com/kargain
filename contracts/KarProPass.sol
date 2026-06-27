@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+// Version policy:
+//   PATCH (Z): bug fixes that do not change ABI or storage layout
+//   MINOR (Y): new functions added, backward compatible
+//   MAJOR (X): breaking ABI changes, storage layout changes,
+//               or fundamental behavior change
+//   Pre-release: -rc.N for release candidates, remove on mainnet deploy
+//   Immutable contracts (KarPassport, KarProPass, KarProStaking):
+//     any change = new deployment = bump MINOR or MAJOR
+//   Upgradeable contracts (MarketplaceEscrow):
+//     UUPS upgrade = bump MINOR or MAJOR depending on scope
+
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title KarProPass
 /// @notice Immutable soulbound Kar Pro credential — one token per address, minted/burned only by KarProStaking.
+/// @custom:version 1.0.0-rc.1
 contract KarProPass is ERC721, Ownable {
+    string public constant VERSION = "1.0.0-rc.1";
+
     enum Category {
         MECHANIC,
         GARAGE,
@@ -28,6 +42,7 @@ contract KarProPass is ERC721, Ownable {
     error DoesNotHoldPass();
     error Soulbound();
     error NotHolder();
+    error ZeroAddress();
 
     event ProPassMinted(address indexed holder, uint8 category, string name, string metadataURI);
     event ProPassBurned(address indexed holder);
@@ -42,6 +57,7 @@ contract KarProPass is ERC721, Ownable {
     /// @notice Sets the staking contract authorized to mint and burn passes.
     /// @param s KarProStaking contract address.
     function setStaking(address s) external onlyOwner {
+        if (s == address(0)) revert ZeroAddress();
         staking = s;
     }
 

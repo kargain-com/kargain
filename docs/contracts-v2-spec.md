@@ -495,14 +495,33 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
-| Base Sepolia | 84532 | `84532 << 128` | USD | v2 **pending deploy** (`pnpm deploy:v2`) |
+| Base Sepolia | 84532 | `84532 << 128` | USD | v2 deployed June 27, 2026 — see [§9.1](#91-base-sepolia-84532-v2) |
 | Ethereum Sepolia | 11155111 | `11155111 << 128` | USD, EUR, GBP, JPY | Planned |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Live v1.1 stack on Base Sepolia remains at historical addresses until v2 cutover ([passport-v1.1-spec.md §13](./passport-v1.1-spec.md)).
+Live v1.1 stack on Base Sepolia remains at historical addresses ([passport-v1.1-spec.md §13](./passport-v1.1-spec.md)). v2 cutover June 27, 2026.
+
+### 9.1 Base Sepolia (84532) v2
+
+Deployed June 27, 2026 · `indexFromBlock`: 43399242 · manifest: `deployments/84532.json` (local, gitignored)
+
+| Contract | Address |
+|----------|---------|
+| Timelock48h | `0x9319e223ff31c954A940b14F04025B56A53ED384` |
+| KarProPass (reused) | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` |
+| KarProStaking v2 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` |
+| KarPassport v2 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
+| MarketplaceEscrow impl | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` |
+| MarketplaceEscrow proxy | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` |
+| ProxyONFT721Adapter | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` |
+| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Native USD feed | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` |
+| LayerZero endpoint v2 | `0x6EDCE65403992e310A62460808c4b910D972f10f` |
+
+**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled.
 
 ---
 

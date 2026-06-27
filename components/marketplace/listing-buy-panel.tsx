@@ -147,31 +147,32 @@ export function ListingBuyPanel({
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
 
   const { data: quoteData, isLoading: isQuotesLoading } = useReadContracts({
-    contracts: market
-      ? [
-          {
-            address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "quoteNativeWei",
-            args: [tid],
-            chainId: wc,
-          },
-          {
-            address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "quoteUsdcAmount",
-            args: [tid],
-            chainId: wc,
-          },
-          {
-            address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "listingUsd1e8",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+    contracts:
+      market && usdc
+        ? [
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "quoteBuyWithNative",
+              args: [tid],
+              chainId: wc,
+            },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "quoteBuyWithToken",
+              args: [tid, usdc],
+              chainId: wc,
+            },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "listingUsd1e8",
+              args: [tid],
+              chainId: wc,
+            },
+          ]
+        : [],
   });
 
   const nativeRead = quoteData?.[0];
@@ -266,8 +267,8 @@ export function ListingBuyPanel({
     const hash = await writeContractAsync({
       address: market,
       abi: MarketplaceEscrowAbi,
-      functionName: "buyWithUsdc",
-      args: [tid],
+      functionName: "buyWithToken",
+      args: [tid, usdc],
     });
     await waitForTransactionReceipt(config, { hash });
     router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);

@@ -1,5 +1,9 @@
 # KarPassport v1.1 — Contract Spec
 
+> **Note:** This document covers KarPassport v1.0–v1.1.
+> Current deployed version: v1.2.0-rc.1.
+> See contract NatSpec for v1.2.0 changelog.
+
 Status: **complete** (Phases 1–5 + Basescan verify, `master` June 2026)
 
 > **Multi-chain:** Per-network manifests (`deployments/<chainId>.json`). Base Sepolia = test deployment. See [README.md](../README.md) § Multi-chain platform.

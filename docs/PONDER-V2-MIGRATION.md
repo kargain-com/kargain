@@ -150,16 +150,16 @@ Deprecate `payAsset` enum column for v2 rows.
 
 ## 4. New v2 contract addresses
 
-v2 Base Sepolia deploy **not yet run** (`pnpm deploy:v2`). After deploy, update:
+v2 Base Sepolia deployed **June 27, 2026** (`pnpm deploy:v2`). Index from block **43399242**.
 
 | Contract | Address | Source |
 |----------|---------|--------|
-| Timelock48h | *pending deploy* | `deployments/84532.json` |
-| KarProStaking v2 | *pending deploy* | manifest |
-| KarPassport v2 | *pending deploy* | manifest |
-| MarketplaceEscrow proxy v2 | *pending deploy* | manifest |
-| MarketplaceEscrow impl v2 | *pending deploy* | manifest |
-| ProxyONFT721Adapter | *pending deploy* | manifest |
+| Timelock48h | `0x9319e223ff31c954A940b14F04025B56A53ED384` | `deployments/84532.json` |
+| KarProStaking v2 | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` | manifest |
+| KarPassport v2 | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` | manifest |
+| MarketplaceEscrow proxy v2 | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` | manifest |
+| MarketplaceEscrow impl v2 | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` | manifest |
+| ProxyONFT721Adapter | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` | manifest |
 | KarProPass | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` | **reused** from v1 |
 
 **`indexFromBlock`:** set from manifest `indexFromBlock` (minimum deploy block across v2 contracts). Do not reuse v1 start block.

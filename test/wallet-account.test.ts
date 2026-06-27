@@ -34,7 +34,7 @@ describe("classifyBytecode", () => {
 describe("isProtocolAddress", () => {
   it("flags marketplace escrow on Base Sepolia", () => {
     assert.equal(
-      isProtocolAddress("0x4FC74e0B7eE0A741707A553D43Efff68126D198B", 84532),
+      isProtocolAddress("0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19", 84532),
       true,
     );
   });
@@ -46,19 +46,29 @@ describe("isProtocolAddress", () => {
     );
   });
 
-  it("does not flag Sepolia deployer / upgradeAuthority EOA", () => {
+  it("does not flag Sepolia deployer EOA", () => {
     assert.equal(isProtocolAddress(SEPOLIA_DEPLOYER, 84532), false);
     assert.equal(isMessageablePeer(SEPOLIA_DEPLOYER, 84532), true);
-    assert.equal(
+  });
+
+  it("upgradeAuthority is Timelock48h on v2 Sepolia fallback", () => {
+    assert.notEqual(
       SEPOLIA_FALLBACK.upgradeAuthority.toLowerCase(),
       SEPOLIA_DEPLOYER.toLowerCase(),
+    );
+    assert.equal(
+      SEPOLIA_FALLBACK.upgradeAuthority.toLowerCase(),
+      SEPOLIA_FALLBACK.timelock!.toLowerCase(),
     );
   });
 });
 
 describe("kargainTimelockAddress", () => {
-  it("has no Sepolia fallback when TimelockController is not deployed", () => {
-    assert.equal(kargainTimelockAddress(84532), undefined);
+  it("returns Timelock48h fallback on Base Sepolia", () => {
+    assert.equal(
+      kargainTimelockAddress(84532)?.toLowerCase(),
+      SEPOLIA_FALLBACK.timelock!.toLowerCase(),
+    );
   });
 
   it("timelock is never in the static protocol denylist", () => {

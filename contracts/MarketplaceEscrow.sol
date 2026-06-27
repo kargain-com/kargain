@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+// Version policy:
+//   PATCH (Z): bug fixes that do not change ABI or storage layout
+//   MINOR (Y): new functions added, backward compatible
+//   MAJOR (X): breaking ABI changes, storage layout changes,
+//               or fundamental behavior change
+//   Pre-release: -rc.N for release candidates, remove on mainnet deploy
+//   Immutable contracts (KarPassport, KarProPass, KarProStaking):
+//     any change = new deployment = bump MINOR or MAJOR
+//   Upgradeable contracts (MarketplaceEscrow):
+//     UUPS upgrade = bump MINOR or MAJOR depending on scope
+
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -10,75 +21,152 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
+import {IMarketplaceEscrow} from "./interfaces/IMarketplaceEscrow.sol";
 
 interface IKarProStaking {
     function isActiveVerifier(address a) external view returns (bool);
 }
 
 /// @title MarketplaceEscrow
-/// @notice KarPassport escrow; seller sets fiat (USD/EUR 1e8); buyer pays native or USDC using Chainlink quotes.
-/// @dev UUPS upgradeable; timelock is the sole upgrade authority. ReentrancyGuard on external entrypoints.
-contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
+/// @notice KarPassport escrow with dynamic fiat currencies, agent consignment, and multi-token checkout.
+/// @dev UUPS upgradeable; timelock is upgrade authority. v2 fresh proxy deployment.
+/// @custom:version 2.0.0-rc.1
+contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
+    string public constant VERSION = "2.0.0-rc.1";
+
     using SafeERC20 for IERC20;
+
+    bytes32 public constant CURRENCY_USD = bytes32("USD");
+    bytes32 public constant CURRENCY_NATIVE = bytes32("NATIVE");
+
+    uint256 internal constant _FIAT_SCALE = 1e8;
+    uint256 internal constant _MAX_FEE_BPS = 1000;
+    uint256 internal constant _MAX_AGENT_FEE_BPS = 3000;
+    uint256 internal constant _RETURN_COOLDOWN = 7 days;
 
     IERC721 public immutable karPassport;
     IERC20 public immutable usdc;
     AggregatorV3Interface public immutable nativeUsdFeed;
-    AggregatorV3Interface public immutable eurUsdFeed;
-
+    address public immutable karProStaking;
+    address public immutable platformRecipient;
     uint16 public immutable platformFeeBps;
     uint256 public immutable proFeeBps;
-    address public immutable platformRecipient;
-    address public immutable karProStaking;
     uint256 public immutable maxFeedStaleness;
 
-    /// @dev Set via proxy `initialize`; timelock holds upgrade authority (48h delay on scheduled upgrades).
     address public upgradeAuthority;
-
-    enum FiatCurrency {
-        USD,
-        EUR
-    }
+    bool public paused;
 
     struct Listing {
         address seller;
         uint128 fiatPrice1e8;
-        FiatCurrency fiat;
+        bool active;
+        address agent;
+        uint128 ownerMinPrice1e8;
+        uint16 agentFeeBps;
+        bytes32 currencyCode;
+    }
+
+    struct AgentAuth {
+        address agent;
+        uint64 expiry;
+        uint128 ownerMinPrice1e8;
         bool active;
     }
 
-    mapping(uint256 tokenId => Listing) public listings;
+    struct PaymentTokenConfig {
+        address feed;
+        bool enabled;
+    }
 
-    event Listed(uint256 indexed tokenId, address indexed seller, uint128 fiatPrice1e8, uint8 fiatCurrency);
+    mapping(uint256 tokenId => Listing) public listings;
+    mapping(uint256 tokenId => AgentAuth) public agentAuthorizations;
+    mapping(uint256 tokenId => uint256) public returnRequestedAt;
+    mapping(uint256 tokenId => bytes) public settlementNotes;
+    mapping(bytes32 currencyCode => address feed) public currencyFeeds;
+    mapping(address token => PaymentTokenConfig) public paymentTokens;
+
+    uint256[48] private __gap;
+
+    event Listed(
+        uint256 indexed tokenId,
+        address indexed seller,
+        uint128 fiatPrice1e8,
+        bytes32 currencyCode,
+        address agent,
+        uint16 agentFeeBps
+    );
     event Delisted(uint256 indexed tokenId, address indexed seller);
+    event AgentAuthorized(
+        uint256 indexed tokenId,
+        address indexed owner,
+        address indexed agent,
+        uint64 expiry,
+        uint128 ownerMinPrice1e8
+    );
+    event AgentRevoked(uint256 indexed tokenId, address indexed owner);
+    event ListingUpdated(uint256 indexed tokenId, uint128 newPrice, uint16 newAgentFeeBps);
+    event OwnerMinPriceUpdated(uint256 indexed tokenId, uint128 newMin);
+    event ReturnRequested(uint256 indexed tokenId, address indexed owner);
+    event AgentDelisted(uint256 indexed tokenId, address indexed agent);
+    event ForceReturn(uint256 indexed tokenId, address indexed owner);
     event Sale(
         uint256 indexed tokenId,
         address indexed buyer,
         address indexed seller,
         uint256 gross,
-        uint256 fee,
+        uint256 platformFee,
+        uint256 agentFee,
         uint256 netToSeller,
-        uint8 payAsset
+        address payToken,
+        address agent
     );
+    event SettlementNoteSet(uint256 indexed tokenId, address indexed seller);
+    event ExternalPaymentConfirmed(uint256 indexed tokenId, address indexed buyer, address indexed confirmer);
+    event CurrencyFeedSet(bytes32 indexed currencyCode, address feed);
+    event CurrencyFeedRevoked(bytes32 indexed currencyCode);
+    event PaymentTokenApproved(address indexed token, address feed);
+    event PaymentTokenRevoked(address indexed token);
+    event Paused(bool paused);
+    event UpgradeAuthorityTransferred(address indexed previous, address indexed next);
 
     error NotSeller();
+    error NotAgent();
+    error NotOwner();
     error NotActive();
+    error AlreadyListed();
     error BadPrice();
     error FeeTooHigh();
+    error AgentFeeTooHigh();
     error TransferFailed();
     error StalePrice();
     error BadOracleAnswer();
-    error EurNotSupported();
     error ZeroTimelock();
-
-    uint256 internal constant _MAX_FEE_BPS = 1000;
+    error NotUpgradeAuthority();
+    error CurrencyNotAvailableOnChain();
+    error InvalidFeed();
+    error InvalidFeedDecimals();
+    error BelowOwnerMinPrice();
+    error AgentNotAuthorized();
+    error AgentAuthorizationActive();
+    error MarketplaceNotApproved();
+    error ReturnNotRequested();
+    error ReturnAlreadyRequested();
+    error ReturnCooldownPending();
+    error EmptySettlementNote();
+    error PaymentTokenNotSupported();
+    error ContractPaused();
+    error DirectEthNotAccepted();
+    error CannotRaiseMinPrice();
+    error ListingHasAgent();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @dev IMPORTANT: platformRecipient_ is immutable. Deploy with an EOA
+    ///      or a contract guaranteed to accept ETH and ERC-20 transfers.
+    ///      A reverting recipient permanently blocks all on-chain sales.
     constructor(
         address karPassport_,
         address usdc_,
         address nativeUsdFeed_,
-        address eurUsdFeed_,
         address karProStaking_,
         address platformRecipient_,
         uint256 feeBps_,
@@ -86,16 +174,15 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
         uint256 maxFeedStaleness_
     ) {
         _disableInitializers();
-        require(karPassport_ != address(0), "Marketplace: zero nft");
-        require(usdc_ != address(0), "Marketplace: zero usdc");
-        require(nativeUsdFeed_ != address(0), "Marketplace: zero feed");
-        require(platformRecipient_ != address(0), "Marketplace: zero platform");
+        if (karPassport_ == address(0)) revert ZeroTimelock();
+        if (usdc_ == address(0)) revert ZeroTimelock();
+        if (nativeUsdFeed_ == address(0)) revert ZeroTimelock();
+        if (platformRecipient_ == address(0)) revert ZeroTimelock();
         if (feeBps_ > _MAX_FEE_BPS || proFeeBps_ > _MAX_FEE_BPS) revert FeeTooHigh();
 
         karPassport = IERC721(karPassport_);
         usdc = IERC20(usdc_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
-        eurUsdFeed = AggregatorV3Interface(eurUsdFeed_);
         karProStaking = karProStaking_;
         platformRecipient = platformRecipient_;
         platformFeeBps = uint16(feeBps_);
@@ -103,19 +190,377 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
         maxFeedStaleness = maxFeedStaleness_;
     }
 
-    /// @notice Proxy initializer; stores timelock as upgrade authority.
+    /// @notice Proxy initializer; stores timelock (or deployer for genesis) as upgrade authority.
+    /// @param timelockAddress_ Timelock or deployer EOA for genesis configuration.
     function initialize(address timelockAddress_) external initializer {
         if (timelockAddress_ == address(0)) revert ZeroTimelock();
         upgradeAuthority = timelockAddress_;
     }
 
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == upgradeAuthority, "Marketplace: not upgrade authority");
+    /// @inheritdoc IMarketplaceEscrow
+    function isListed(uint256 tokenId) external view returns (bool) {
+        return listings[tokenId].active;
+    }
+
+    /// @notice Transfer upgrade authority to timelock after genesis configuration.
+    /// @param newAuthority New upgrade authority (typically Timelock48h).
+    function transferUpgradeAuthority(address newAuthority) external {
+        if (msg.sender != upgradeAuthority) revert NotUpgradeAuthority();
+        if (newAuthority == address(0)) revert ZeroTimelock();
+        address previous = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityTransferred(previous, newAuthority);
+    }
+
+    /// @notice Register or update a Chainlink XXX/USD feed for a listing currency.
+    /// @param currencyCode ISO 4217 code as bytes32 (e.g. bytes32("EUR")).
+    /// @param feed Chainlink aggregator proxy address.
+    function setCurrencyFeed(bytes32 currencyCode, address feed) external {
+        _onlyUpgradeAuthority();
+        if (currencyCode == bytes32(0) || currencyCode == CURRENCY_NATIVE) revert CurrencyNotAvailableOnChain();
+        _validateFeed(feed);
+        currencyFeeds[currencyCode] = feed;
+        emit CurrencyFeedSet(currencyCode, feed);
+    }
+
+    /// @notice Disable a listing currency on this chain.
+    /// @param currencyCode ISO 4217 code as bytes32.
+    function revokeCurrencyFeed(bytes32 currencyCode) external {
+        _onlyUpgradeAuthority();
+        delete currencyFeeds[currencyCode];
+        emit CurrencyFeedRevoked(currencyCode);
+    }
+
+    /// @notice Approve an ERC-20 payment token; use address(0) feed for USD-pegged stables.
+    /// @param token ERC-20 token address (address(0) reserved for native sentinel in quotes).
+    /// @param feed Optional Chainlink feed for non-USD-pegged tokens.
+    function approvePaymentToken(address token, address feed) external {
+        _onlyUpgradeAuthority();
+        if (token == address(0)) revert PaymentTokenNotSupported();
+        if (feed != address(0)) {
+            _validateFeed(feed);
+        }
+        paymentTokens[token] = PaymentTokenConfig({feed: feed, enabled: true});
+        emit PaymentTokenApproved(token, feed);
+    }
+
+    /// @notice Remove an approved payment token.
+    /// @param token ERC-20 token address.
+    function revokePaymentToken(address token) external {
+        _onlyUpgradeAuthority();
+        delete paymentTokens[token];
+        emit PaymentTokenRevoked(token);
+    }
+
+    /// @notice Pause or unpause marketplace operations (via timelock).
+    /// @param value True to pause list/buy flows.
+    function setPaused(bool value) external {
+        _onlyUpgradeAuthority();
+        paused = value;
+        emit Paused(value);
+    }
+
+    /// @notice Seller authorizes an agent to list on their behalf.
+    /// @param tokenId Passport token id.
+    /// @param agent Agent address.
+    /// @param expiry Unix timestamp after which authorization expires; use 0 for no expiration.
+    /// @param ownerMinPrice Minimum net-to-seller price in listing currency (1e8).
+    function authorizeAgent(uint256 tokenId, address agent, uint64 expiry, uint128 ownerMinPrice)
+        external
+        nonReentrant
+    {
+        if (paused) revert ContractPaused();
+        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
+        if (agent == address(0)) revert AgentNotAuthorized();
+        if (listings[tokenId].active) revert AlreadyListed();
+
+        if (
+            karPassport.getApproved(tokenId) != address(this)
+                && !karPassport.isApprovedForAll(msg.sender, address(this))
+        ) {
+            revert MarketplaceNotApproved();
+        }
+
+        agentAuthorizations[tokenId] =
+            AgentAuth({agent: agent, expiry: expiry, ownerMinPrice1e8: ownerMinPrice, active: true});
+        emit AgentAuthorized(tokenId, msg.sender, agent, expiry, ownerMinPrice);
+    }
+
+    /// @notice Seller revokes agent authorization when not actively listed.
+    /// @param tokenId Passport token id.
+    function revokeAgent(uint256 tokenId) external nonReentrant {
+        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
+        if (listings[tokenId].active) revert AgentAuthorizationActive();
+        delete agentAuthorizations[tokenId];
+        emit AgentRevoked(tokenId, msg.sender);
+    }
+
+    /// @notice Seller lists their passport directly.
+    /// @param tokenId Passport token id.
+    /// @param fiatPrice1e8 Listing price in listing currency (1e8 decimals).
+    /// @param currencyCode ISO 4217 bytes32 or CURRENCY_NATIVE.
+    function list(uint256 tokenId, uint128 fiatPrice1e8, bytes32 currencyCode) external nonReentrant {
+        if (paused) revert ContractPaused();
+        if (fiatPrice1e8 == 0) revert BadPrice();
+        _requireCurrencySupported(currencyCode);
+        if (listings[tokenId].active) revert NotActive();
+        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
+
+        karPassport.safeTransferFrom(msg.sender, address(this), tokenId);
+        _writeListing(tokenId, msg.sender, fiatPrice1e8, currencyCode, address(0), 0, 0, bytes(""));
+    }
+
+    /// @notice Agent lists on behalf of owner with agent fee.
+    function listOnBehalf(
+        uint256 tokenId,
+        uint128 fiatPrice1e8,
+        bytes32 currencyCode,
+        uint16 agentFeeBps,
+        bytes calldata settlementNote
+    ) external nonReentrant {
+        if (paused) revert ContractPaused();
+        if (fiatPrice1e8 == 0) revert BadPrice();
+        if (agentFeeBps > _MAX_AGENT_FEE_BPS) revert AgentFeeTooHigh();
+        _requireCurrencySupported(currencyCode);
+
+        AgentAuth memory auth = agentAuthorizations[tokenId];
+        if (!auth.active || auth.agent != msg.sender) revert AgentNotAuthorized();
+        if (auth.expiry != 0 && block.timestamp > auth.expiry) revert AgentNotAuthorized();
+        if (listings[tokenId].active) revert NotActive();
+
+        address owner = karPassport.ownerOf(tokenId);
+        _checkSellerNet(fiatPrice1e8, agentFeeBps, platformFeeBps, auth.ownerMinPrice1e8);
+
+        karPassport.safeTransferFrom(owner, address(this), tokenId);
+        _writeListing(
+            tokenId, owner, fiatPrice1e8, currencyCode, msg.sender, agentFeeBps, auth.ownerMinPrice1e8, settlementNote
+        );
+    }
+
+    /// @notice Agent updates price and own fee on an active agent listing.
+    /// @dev Agent may update fees between buyer's off-chain quote and purchase.
+    ///      The seller minimum (ownerMinPrice1e8) is always enforced.
+    ///      Buyers should quote immediately before purchase for accurate split.
+    function updateListing(uint256 tokenId, uint128 newPrice, uint16 newAgentFeeBps) external nonReentrant {
+        if (paused) revert ContractPaused();
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.agent != msg.sender) revert NotAgent();
+        if (newPrice == 0) revert BadPrice();
+        if (newAgentFeeBps > _MAX_AGENT_FEE_BPS) revert AgentFeeTooHigh();
+        _checkSellerNet(newPrice, newAgentFeeBps, platformFeeBps, l.ownerMinPrice1e8);
+
+        l.fiatPrice1e8 = newPrice;
+        l.agentFeeBps = newAgentFeeBps;
+        emit ListingUpdated(tokenId, newPrice, newAgentFeeBps);
+    }
+
+    /// @notice Seller lowers (or keeps) minimum net price on an agent listing.
+    function updateOwnerMinPrice(uint256 tokenId, uint128 newMin) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.seller != msg.sender) revert NotSeller();
+        if (l.agent == address(0)) revert NotAgent();
+        if (newMin > l.ownerMinPrice1e8) revert CannotRaiseMinPrice();
+        _checkSellerNet(l.fiatPrice1e8, l.agentFeeBps, platformFeeBps, newMin);
+        l.ownerMinPrice1e8 = newMin;
+        emit OwnerMinPriceUpdated(tokenId, newMin);
+    }
+
+    /// @notice Seller requests return of NFT from agent listing (starts 7-day cooldown).
+    /// @dev Reverts if a return has already been requested.
+    ///      Call agentDelist to cancel the listing before requesting again.
+    function requestReturn(uint256 tokenId) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.seller != msg.sender) revert NotSeller();
+        if (l.agent == address(0)) revert NotAgent();
+        if (returnRequestedAt[tokenId] != 0) revert ReturnAlreadyRequested();
+        returnRequestedAt[tokenId] = block.timestamp;
+        emit ReturnRequested(tokenId, msg.sender);
+    }
+
+    /// @notice Agent voluntarily returns NFT to seller.
+    function agentDelist(uint256 tokenId) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.agent != msg.sender) revert NotAgent();
+        _returnToSeller(tokenId);
+        emit AgentDelisted(tokenId, msg.sender);
+    }
+
+    /// @notice Seller force-returns NFT after 7 days from requestReturn.
+    function forceReturn(uint256 tokenId) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.seller != msg.sender) revert NotSeller();
+        uint256 requestedAt = returnRequestedAt[tokenId];
+        if (requestedAt == 0) revert ReturnNotRequested();
+        if (block.timestamp < requestedAt + _RETURN_COOLDOWN) revert ReturnCooldownPending();
+        _returnToSeller(tokenId);
+        emit ForceReturn(tokenId, msg.sender);
+    }
+
+    /// @notice Seller delists a direct (non-agent) listing.
+    function delist(uint256 tokenId) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.seller != msg.sender) revert NotSeller();
+        if (l.agent != address(0)) revert ListingHasAgent();
+        _returnToSeller(tokenId);
+        emit Delisted(tokenId, msg.sender);
+    }
+
+    /// @notice Buy with native chain token at quoted amount.
+    function buyWithNative(uint256 tokenId) external payable nonReentrant {
+        if (paused) revert ContractPaused();
+        uint256 gross = quoteBuyWithNative(tokenId);
+        if (msg.value != gross) revert BadPrice();
+        _settleNative(tokenId, msg.sender, gross);
+    }
+
+    /// @notice Buy with an approved ERC-20 token at quoted amount.
+    /// @param tokenId Listing token id.
+    /// @param tokenAddress ERC-20 address; address(0) triggers native purchase path.
+    function buyWithToken(uint256 tokenId, address tokenAddress) external payable nonReentrant {
+        if (paused) revert ContractPaused();
+        if (tokenAddress == address(0)) {
+            uint256 grossNative = quoteBuyWithNative(tokenId);
+            if (msg.value != grossNative) revert BadPrice();
+            _settleNative(tokenId, msg.sender, grossNative);
+            return;
+        }
+        PaymentTokenConfig memory cfg = paymentTokens[tokenAddress];
+        if (!cfg.enabled) revert PaymentTokenNotSupported();
+        uint256 gross = quoteBuyWithToken(tokenId, tokenAddress);
+        _settleErc20(tokenId, msg.sender, tokenAddress, gross);
+    }
+
+    /// @notice Seller sets an off-chain payment destination (Lightning, BTC, IBAN, cash).
+    /// @dev Enables confirmExternalPayment for direct (non-agent) listings.
+    ///      Trust model: seller attests payment received off-chain.
+    ///      Platform does not verify. Not cryptographically proven.
+    /// @param tokenId Active listing token id.
+    /// @param note Encoded payment destination (e.g. "lightning:lnbc...", "btc:bc1q...").
+    function setSettlementNote(uint256 tokenId, bytes calldata note) external nonReentrant {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.seller != msg.sender) revert NotSeller();
+        if (note.length == 0) revert EmptySettlementNote();
+        settlementNotes[tokenId] = note;
+        emit SettlementNoteSet(tokenId, msg.sender);
+    }
+
+    /// @notice Seller or agent confirms off-chain payment received; NFT transfers to buyer with zero platform fee.
+    /// @dev Trust model: seller attests payment off-chain. Platform does not verify. Not cryptographically proven.
+    /// @param tokenId Listing token id.
+    /// @param buyer Buyer address to receive the NFT.
+    function confirmExternalPayment(uint256 tokenId, address buyer) external nonReentrant {
+        if (paused) revert ContractPaused();
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (msg.sender != l.seller && msg.sender != l.agent) revert NotSeller();
+        bytes memory note = settlementNotes[tokenId];
+        if (note.length == 0) revert EmptySettlementNote();
+        if (buyer == address(0)) revert BadPrice();
+
+        l.active = false;
+        delete settlementNotes[tokenId];
+        delete returnRequestedAt[tokenId];
+
+        karPassport.safeTransferFrom(address(this), buyer, tokenId);
+        emit ExternalPaymentConfirmed(tokenId, buyer, msg.sender);
+        _clearListingStorage(tokenId);
+    }
+
+    /// @notice USD-equivalent value of listing (1e8).
+    function listingUsd1e8(uint256 tokenId) public view returns (uint256) {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        return _listingToUsd1e8(l.fiatPrice1e8, l.currencyCode);
+    }
+
+    /// @notice Native wei required to purchase listing.
+    function quoteBuyWithNative(uint256 tokenId) public view returns (uint256) {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (l.currencyCode == CURRENCY_NATIVE) {
+            return uint256(l.fiatPrice1e8) * 1e10;
+        }
+        uint256 usd1e8 = _listingToUsd1e8(l.fiatPrice1e8, l.currencyCode);
+        (, int256 px,, uint256 upd,) = nativeUsdFeed.latestRoundData();
+        _checkFeedFresh(upd);
+        if (px <= 0) revert BadOracleAnswer();
+        return (usd1e8 * 1e18) / uint256(px);
+    }
+
+    /// @notice ERC-20 amount required to purchase listing (token native decimals).
+    function quoteBuyWithToken(uint256 tokenId, address tokenAddress) public view returns (uint256) {
+        Listing storage l = listings[tokenId];
+        if (!l.active) revert NotActive();
+        if (tokenAddress == address(0)) {
+            return quoteBuyWithNative(tokenId);
+        }
+        PaymentTokenConfig memory cfg = paymentTokens[tokenAddress];
+        if (!cfg.enabled) revert PaymentTokenNotSupported();
+
+        uint256 usd1e8 = _listingToUsd1e8(l.fiatPrice1e8, l.currencyCode);
+        if (cfg.feed == address(0)) {
+            return (usd1e8 * 1e6) / _FIAT_SCALE;
+        }
+        (, int256 px,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
+        _checkFeedFresh(upd);
+        if (px <= 0) revert BadOracleAnswer();
+        return (usd1e8 * 1e18) / uint256(px);
     }
 
     /// @inheritdoc IERC721Receiver
     function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
+    }
+
+    receive() external payable {
+        revert DirectEthNotAccepted();
+    }
+
+    function _authorizeUpgrade(address) internal view override {
+        if (msg.sender != upgradeAuthority) revert NotUpgradeAuthority();
+    }
+
+    function _onlyUpgradeAuthority() internal view {
+        if (msg.sender != upgradeAuthority) revert NotUpgradeAuthority();
+    }
+
+    function _validateFeed(address feed) internal view {
+        if (feed.code.length == 0) revert InvalidFeed();
+        AggregatorV3Interface agg = AggregatorV3Interface(feed);
+        if (agg.decimals() != 8) revert InvalidFeedDecimals();
+        (, int256 answer,,,) = agg.latestRoundData();
+        if (answer <= 0) revert BadOracleAnswer();
+    }
+
+    function _requireCurrencySupported(bytes32 currencyCode) internal view {
+        if (currencyCode == CURRENCY_USD) return;
+        if (currencyCode == CURRENCY_NATIVE) return;
+        address feed = currencyFeeds[currencyCode];
+        if (feed == address(0)) revert CurrencyNotAvailableOnChain();
+    }
+
+    function _listingToUsd1e8(uint128 fiatPrice1e8, bytes32 currencyCode) internal view returns (uint256) {
+        if (currencyCode == CURRENCY_USD || currencyCode == CURRENCY_NATIVE) {
+            return uint256(fiatPrice1e8);
+        }
+        address feed = currencyFeeds[currencyCode];
+        if (feed == address(0)) revert CurrencyNotAvailableOnChain();
+        (, int256 rate,, uint256 upd,) = AggregatorV3Interface(feed).latestRoundData();
+        _checkFeedFresh(upd);
+        if (rate <= 0) revert BadOracleAnswer();
+        return (uint256(fiatPrice1e8) * uint256(rate)) / _FIAT_SCALE;
+    }
+
+    function _platformFeeBps(Listing storage l) internal view returns (uint256) {
+        if (l.agent != address(0)) return platformFeeBps;
+        return _feeBpsForSeller(l.seller);
     }
 
     function _feeBpsForSeller(address seller) internal view returns (uint256) {
@@ -133,115 +578,145 @@ contract MarketplaceEscrow is IERC721Receiver, ReentrancyGuard, Initializable, U
         }
     }
 
-    /// @notice USD value of listing in 1e8 "dollar" units (for EUR, converts via EUR/USD feed).
-    function listingUsd1e8(uint256 tokenId) public view returns (uint256) {
-        Listing storage l = listings[tokenId];
-        if (!l.active) revert NotActive();
-        if (l.fiat == FiatCurrency.USD) {
-            return uint256(l.fiatPrice1e8);
+    function _checkSellerNet(uint128 price, uint16 agentFeeBps, uint256 platformBps, uint128 ownerMin)
+        internal
+        pure
+    {
+        uint256 agentFee = (uint256(price) * agentFeeBps) / 10_000;
+        uint256 platformFee = (uint256(price) * platformBps) / 10_000;
+        if (uint256(price) - agentFee - platformFee < ownerMin) revert BelowOwnerMinPrice();
+    }
+
+    function _writeListing(
+        uint256 tokenId,
+        address seller,
+        uint128 fiatPrice1e8,
+        bytes32 currencyCode,
+        address agent,
+        uint16 agentFeeBps,
+        uint128 ownerMinPrice1e8,
+        bytes memory settlementNote
+    ) internal {
+        listings[tokenId] = Listing({
+            seller: seller,
+            fiatPrice1e8: fiatPrice1e8,
+            active: true,
+            agent: agent,
+            ownerMinPrice1e8: ownerMinPrice1e8,
+            agentFeeBps: agentFeeBps,
+            currencyCode: currencyCode
+        });
+
+        if (settlementNote.length > 0) {
+            settlementNotes[tokenId] = settlementNote;
         }
-        if (address(eurUsdFeed) == address(0)) revert EurNotSupported();
-        (, int256 eurUsd,, uint256 upd,) = eurUsdFeed.latestRoundData();
-        _checkFeedFresh(upd);
-        if (eurUsd <= 0) revert BadOracleAnswer();
-        return (uint256(l.fiatPrice1e8) * uint256(eurUsd)) / 1e8;
+
+        emit Listed(tokenId, seller, fiatPrice1e8, currencyCode, agent, agentFeeBps);
     }
 
-    /// @notice Native wei required to pay the listing (uses NATIVE/USD feed; answer = USD per 1 native, 8 decimals).
-    function quoteNativeWei(uint256 tokenId) public view returns (uint256) {
-        uint256 usd1e8 = listingUsd1e8(tokenId);
-        (, int256 px,, uint256 upd,) = nativeUsdFeed.latestRoundData();
-        _checkFeedFresh(upd);
-        if (px <= 0) revert BadOracleAnswer();
-        return (usd1e8 * 1e18) / uint256(px);
-    }
-
-    /// @notice USDC amount (6 decimals) — assumes USDC ≈ USD.
-    function quoteUsdcAmount(uint256 tokenId) public view returns (uint256) {
-        uint256 usd1e8 = listingUsd1e8(tokenId);
-        return (usd1e8 * 1e6) / 1e8;
-    }
-
-    /// @notice Seller escrows NFT; `fiatPrice1e8` is whole+8 decimal fiat (e.g. $100 = 100_00000000).
-    function list(uint256 tokenId, uint128 fiatPrice1e8, uint8 fiatCurrency) external nonReentrant {
-        if (fiatPrice1e8 == 0) revert BadPrice();
-        if (fiatCurrency > uint8(FiatCurrency.EUR)) revert BadPrice();
-        FiatCurrency fc = FiatCurrency(fiatCurrency);
-        if (fc == FiatCurrency.EUR && address(eurUsdFeed) == address(0)) revert EurNotSupported();
-
+    function _returnToSeller(uint256 tokenId) internal {
         Listing storage l = listings[tokenId];
-        require(!l.active, "Marketplace: already listed");
-        address seller = msg.sender;
-        require(karPassport.ownerOf(tokenId) == seller, "Marketplace: not owner");
-
-        karPassport.safeTransferFrom(seller, address(this), tokenId);
-        l.seller = seller;
-        l.fiatPrice1e8 = fiatPrice1e8;
-        l.fiat = fc;
-        l.active = true;
-        emit Listed(tokenId, seller, fiatPrice1e8, fiatCurrency);
-    }
-
-    /// @notice Seller delists and recovers the escrowed NFT.
-    function delist(uint256 tokenId) external nonReentrant {
-        Listing storage l = listings[tokenId];
-        if (!l.active) revert NotActive();
-        if (l.seller != msg.sender) revert NotSeller();
         address seller = l.seller;
         l.active = false;
-        l.fiatPrice1e8 = 0;
-        l.seller = address(0);
         karPassport.safeTransferFrom(address(this), seller, tokenId);
-        emit Delisted(tokenId, seller);
+        _clearListingStorage(tokenId);
     }
 
-    /// @notice Buy listing with native token at the quoted wei amount.
-    function buyWithNative(uint256 tokenId) external payable nonReentrant {
+    function _clearListingStorage(uint256 tokenId) internal {
+        delete settlementNotes[tokenId];
+        delete returnRequestedAt[tokenId];
+        delete agentAuthorizations[tokenId];
+        listings[tokenId].seller = address(0);
+        listings[tokenId].fiatPrice1e8 = 0;
+        listings[tokenId].agent = address(0);
+        listings[tokenId].ownerMinPrice1e8 = 0;
+        listings[tokenId].agentFeeBps = 0;
+        listings[tokenId].currencyCode = bytes32(0);
+    }
+
+    function _minPaymentForOwnerMin(Listing storage l, address payToken) internal view returns (uint256) {
+        if (l.ownerMinPrice1e8 == 0) return 0;
+        if (payToken == address(0)) {
+            if (l.currencyCode == CURRENCY_NATIVE) {
+                return uint256(l.ownerMinPrice1e8) * 1e10;
+            }
+            uint256 usdMin = _listingToUsd1e8(l.ownerMinPrice1e8, l.currencyCode);
+            (, int256 px,, uint256 upd,) = nativeUsdFeed.latestRoundData();
+            _checkFeedFresh(upd);
+            if (px <= 0) revert BadOracleAnswer();
+            return (usdMin * 1e18) / uint256(px);
+        }
+        uint256 usdMinErc20 = _listingToUsd1e8(l.ownerMinPrice1e8, l.currencyCode);
+        PaymentTokenConfig memory cfg = paymentTokens[payToken];
+        if (cfg.feed == address(0)) {
+            return (usdMinErc20 * 1e6) / _FIAT_SCALE;
+        }
+        (, int256 tokenPx,, uint256 tokenUpd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
+        _checkFeedFresh(tokenUpd);
+        if (tokenPx <= 0) revert BadOracleAnswer();
+        return (usdMinErc20 * 1e18) / uint256(tokenPx);
+    }
+
+    function _settleNative(uint256 tokenId, address buyer, uint256 gross) internal {
         Listing storage l = listings[tokenId];
-        if (!l.active) revert NotActive();
-        uint256 gross = quoteNativeWei(tokenId);
-        if (msg.value != gross) revert BadPrice();
-
         address seller = l.seller;
+        address agent = l.agent;
+        uint16 agentBps = l.agentFeeBps;
+
+        uint256 platformBps = _platformFeeBps(l);
+        uint256 agentFee = agent == address(0) ? 0 : (gross * agentBps) / 10_000;
+        uint256 platformFee = (gross * platformBps) / 10_000;
+        uint256 net = gross - agentFee - platformFee;
+
+        if (agent != address(0)) {
+            uint256 minNet = _minPaymentForOwnerMin(l, address(0));
+            if (net < minNet) revert BelowOwnerMinPrice();
+        }
+
         l.active = false;
-        l.fiatPrice1e8 = 0;
-        l.seller = address(0);
 
-        uint256 feeBps = _feeBpsForSeller(seller);
-        uint256 fee = (gross * feeBps) / 10_000;
-        uint256 net = gross - fee;
-
-        (bool feeOk,) = payable(platformRecipient).call{value: fee}("");
-        if (!feeOk) revert TransferFailed();
+        if (platformFee > 0) {
+            (bool feeOk,) = payable(platformRecipient).call{value: platformFee}("");
+            if (!feeOk) revert TransferFailed();
+        }
+        if (agentFee > 0) {
+            (bool agentOk,) = payable(agent).call{value: agentFee}("");
+            if (!agentOk) revert TransferFailed();
+        }
         (bool sellerOk,) = payable(seller).call{value: net}("");
         if (!sellerOk) revert TransferFailed();
 
-        karPassport.safeTransferFrom(address(this), msg.sender, tokenId);
-        emit Sale(tokenId, msg.sender, seller, gross, fee, net, 0);
+        karPassport.safeTransferFrom(address(this), buyer, tokenId);
+        emit Sale(tokenId, buyer, seller, gross, platformFee, agentFee, net, address(0), agent);
+        _clearListingStorage(tokenId);
     }
 
-    /// @notice Buy listing with USDC at the quoted amount.
-    function buyWithUsdc(uint256 tokenId) external nonReentrant {
+    function _settleErc20(uint256 tokenId, address buyer, address tokenAddress, uint256 gross) internal {
         Listing storage l = listings[tokenId];
-        if (!l.active) revert NotActive();
-        uint256 gross = quoteUsdcAmount(tokenId);
-
         address seller = l.seller;
+        address agent = l.agent;
+        uint16 agentBps = l.agentFeeBps;
+
+        uint256 platformBps = _platformFeeBps(l);
+        uint256 agentFee = agent == address(0) ? 0 : (gross * agentBps) / 10_000;
+        uint256 platformFee = (gross * platformBps) / 10_000;
+        uint256 net = gross - agentFee - platformFee;
+
+        if (agent != address(0)) {
+            uint256 minNet = _minPaymentForOwnerMin(l, tokenAddress);
+            if (net < minNet) revert BelowOwnerMinPrice();
+        }
+
         l.active = false;
-        l.fiatPrice1e8 = 0;
-        l.seller = address(0);
 
-        uint256 feeBps = _feeBpsForSeller(seller);
-        uint256 fee = (gross * feeBps) / 10_000;
-        uint256 net = gross - fee;
+        IERC20 token = IERC20(tokenAddress);
+        token.safeTransferFrom(buyer, address(this), gross);
+        if (platformFee > 0) token.safeTransfer(platformRecipient, platformFee);
+        if (agentFee > 0) token.safeTransfer(agent, agentFee);
+        token.safeTransfer(seller, net);
 
-        usdc.safeTransferFrom(msg.sender, address(this), gross);
-        usdc.safeTransfer(platformRecipient, fee);
-        usdc.safeTransfer(seller, net);
-
-        karPassport.safeTransferFrom(address(this), msg.sender, tokenId);
-        emit Sale(tokenId, msg.sender, seller, gross, fee, net, 1);
+        karPassport.safeTransferFrom(address(this), buyer, tokenId);
+        emit Sale(tokenId, buyer, seller, gross, platformFee, agentFee, net, tokenAddress, agent);
+        _clearListingStorage(tokenId);
     }
-
-    receive() external payable {}
 }

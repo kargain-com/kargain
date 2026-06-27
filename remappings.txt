@@ -1,0 +1,4 @@
+@layerzerolabs/onft-evm/=node_modules/@layerzerolabs/onft-evm/
+@layerzerolabs/oapp-evm/=node_modules/@layerzerolabs/oapp-evm/
+@layerzerolabs/lz-evm-protocol-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/
+@layerzerolabs/lz-evm-messagelib-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/

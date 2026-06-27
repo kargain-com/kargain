@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index 003c355afc5ccda1e26df2c58df41ce0ba7c592b..2122bc385dea6e303b57e3ce8dad1d25edb14925 100644
+--- a/package.json
++++ b/package.json
+@@ -18,6 +18,7 @@
+   "license": "MIT",
+   "exports": {
+     "./package.json": "./package.json",
++    "./*": "./*",
+     "./artifacts/*.json": {
+       "require": "./artifacts/*.json",
+       "imports": "./artifacts/*.json"

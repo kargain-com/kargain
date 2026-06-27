@@ -2,6 +2,10 @@ import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicC
 
 export const ZERO = "0x0000000000000000000000000000000000000000" as const;
 export const MIN_STAKE = 50_000_000_000_000_000n; // 0.05 ether
+export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n; // 0.01 ether
+
+/** ISO 4217 USD as bytes32 (right-padded ASCII). */
+export const CURRENCY_USD = "0x5553440000000000000000000000000000000000000000000000000000000000" as const;
 
 /** $2000 per 1 native token, Chainlink-style 8 decimals. */
 export const NATIVE_USD_8D = 2000n * 10n ** 8n;
@@ -54,19 +58,14 @@ export type LocalStackAddresses = {
   marketplaceImpl: `0x${string}`;
   usdc: `0x${string}`;
   nativeFeed: `0x${string}`;
-  eurFeed: `0x${string}`;
   timelock: `0x${string}`;
+  genesisAuthority: `0x${string}`;
   platformRecipient: `0x${string}`;
   deployedAt: string;
 };
 
 export async function deployTimelock(viem: ViemSuite, admin: `0x${string}`) {
-  return viem.deployContract("TimelockController", [
-    48n * 3600n,
-    [admin],
-    [admin],
-    admin,
-  ]);
+  return viem.deployContract("Timelock48h", [[admin], [admin], admin]);
 }
 
 export async function deployMarketplaceViaProxy(
@@ -75,20 +74,19 @@ export async function deployMarketplaceViaProxy(
     karPassport: `0x${string}`;
     usdc: `0x${string}`;
     nativeFeed: `0x${string}`;
-    eurFeed: `0x${string}`;
     karProStaking: `0x${string}`;
     platformRecipient: `0x${string}`;
     feeBps: bigint;
     proFeeBps: bigint;
     maxStale: bigint;
     timelock: `0x${string}`;
+    genesisAuthority: `0x${string}`;
   },
 ) {
   const implementation = await viem.deployContract("MarketplaceEscrow", [
     params.karPassport,
     params.usdc,
     params.nativeFeed,
-    params.eurFeed,
     params.karProStaking,
     params.platformRecipient,
     params.feeBps,
@@ -99,11 +97,18 @@ export async function deployMarketplaceViaProxy(
   const initData = encodeFunctionData({
     abi: implementation.abi,
     functionName: "initialize",
-    args: [params.timelock],
+    args: [params.genesisAuthority],
   });
 
   const proxy = await viem.deployContract("ERC1967Proxy", [implementation.address, initData]);
   const marketplace = await viem.getContractAt("MarketplaceEscrow", proxy.address);
+
+  await marketplace.write.approvePaymentToken([params.usdc, ZERO], {
+    account: (await viem.getWalletClients()).find(
+      (w) => getAddress(w.account.address) === getAddress(params.genesisAuthority),
+    )!.account,
+  });
+
   return { implementation, proxy, marketplace };
 }
 
@@ -120,14 +125,18 @@ export async function deployVerifierStack(viem: ViemSuite) {
 
 export async function deployPassportStack(viem: ViemSuite) {
   const base = await deployVerifierStack(viem);
-  const passport = await viem.deployContract("KarPassport", [base.staking.address]);
+  const passport = await viem.deployContract("KarPassport", [
+    base.staking.address,
+    base.admin.account.address,
+    DISPUTE_DEPOSIT,
+  ]);
   return { ...base, passport };
 }
 
 export async function deployEscrowStack(viem: ViemSuite) {
   const base = await deployPassportStack(viem);
   const usdc = await viem.deployContract("MockUSDC", []);
-  const nativeFeed = await viem.deployContract("MockV3Aggregator", [8, NATIVE_USD_8D]);
+  const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
   const timelock = await deployTimelock(viem, base.admin.account.address);
   const feeBps = 250n;
   const proFeeBps = 100n;
@@ -136,13 +145,13 @@ export async function deployEscrowStack(viem: ViemSuite) {
     karPassport: base.passport.address,
     usdc: usdc.address,
     nativeFeed: nativeFeed.address,
-    eurFeed: ZERO,
     karProStaking: base.staking.address,
     platformRecipient: base.admin.account.address,
     feeBps,
     proFeeBps,
     maxStale,
     timelock: timelock.address,
+    genesisAuthority: base.admin.account.address,
   });
   return {
     ...base,
@@ -157,6 +166,17 @@ export async function deployEscrowStack(viem: ViemSuite) {
     feeBps,
     proFeeBps,
   };
+}
+
+export async function mintPassport(
+  passport: DeployedContract,
+  account: WalletClient,
+  to: `0x${string}`,
+  uri: string,
+) {
+  const tokenId = (await passport.read.nextTokenId()) as bigint;
+  await passport.write.mintPassport([to, uri], { account: account.account });
+  return tokenId;
 }
 
 export async function joinVerifier(
@@ -201,8 +221,8 @@ export function stackToDeploymentAddresses(
     marketplaceImpl: getAddress(stack.implementation.address),
     usdc: getAddress(stack.usdc.address),
     nativeFeed: getAddress(stack.nativeFeed.address),
-    eurFeed: ZERO,
     timelock: getAddress(stack.timelock.address),
+    genesisAuthority: getAddress(stack.admin.account.address),
     platformRecipient: getAddress(stack.admin.account.address),
     deployedAt: new Date().toISOString(),
   };
