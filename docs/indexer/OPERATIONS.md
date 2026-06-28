@@ -84,8 +84,9 @@ Examples that **do not** require reindex:
 ## Prerequisites
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
-- `deployments/84532.json` on the server (or known v1.1 addresses + `indexFromBlock`)
+- **`git pull`** so Ponder and the app use committed addresses in `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`)
 - **`PONDER_RPC_URL_84532=https://sepolia.base.org`** for backfill and production (see above)
+- Remove stale `deployments/84532.json` on the VPS if it points at old v1 addresses — `pnpm ponder:config` warns on drift
 
 ---
 
@@ -126,19 +127,25 @@ docker compose exec -T postgres \
 
 This drops and recreates the `kargain` and `ponder_sync` schemas (truncate alone is **not** enough when start block or contract config changes).
 
-### 4. Refresh environment
+### 4. Verify stack and environment
 
 ```bash
-node --import tsx scripts/lib/print-ponder-env.ts
+pnpm ponder:config
 ```
 
-Paste the output into the server `.env`:
+Contract addresses resolve automatically: `PONDER_*_ADDRESS` env (optional override) → `deployments/84532.json` (local deploy only) → **`SEPOLIA_ACTIVE`** in git. After a redeploy, update `lib/web3/sepolia-addresses.ts` in the same PR and **`git pull` on the VPS** — do not paste address exports into `.env`.
 
-- `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ESCROW_ADDRESS`, …
-- `PONDER_RPC_URL_84532=https://sepolia.base.org`
-- `PONDER_START_BLOCK_84532=<indexFromBlock>` from `deployments/84532.json` for **full** backfill, **or** a checkpoint block if you only need events from that height (e.g. preserve a known test mint without replaying from genesis)
+**VPS `.env` — infrastructure only (steady state):**
 
-For G1 schema-only updates (same contract addresses), keep existing addresses; still set start block to manifest `indexFromBlock` for a full replay unless you intentionally use a higher checkpoint.
+```bash
+PONDER_RPC_URL_84532=https://sepolia.base.org
+PONDER_START_BLOCK_84532=43399242   # SEPOLIA_ACTIVE.indexFromBlock — or a checkpoint for partial replay
+DATABASE_URL=...                    # Postgres for Ponder
+```
+
+Optional advanced overrides: `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, … only when debugging or pre-PR deploy smoke on a machine with a fresh manifest.
+
+For G1 schema-only updates (same contract addresses), keep existing infra env; still set start block to `indexFromBlock` for a full replay unless you intentionally use a higher checkpoint.
 
 ### 5. Start Ponder and wait for sync
 
@@ -203,7 +210,8 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 |------|---------|
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
-| `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
+| `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
+| `scripts/lib/resolve-sepolia-stack.ts` | env → manifest → `SEPOLIA_ACTIVE` resolver |
 | `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
 | `scripts/deploy.ts` | Base Sepolia deploy (generation v2) |

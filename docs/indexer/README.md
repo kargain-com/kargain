@@ -10,10 +10,11 @@ Three documents, three lifecycles — read in this order during a v2 cutover:
 
 ## Contract addresses for indexer env
 
-Do **not** copy address tables here. Set `PONDER_*_ADDRESS` from:
+Do **not** copy address tables here. Resolution order:
 
-- Manifest: `deployments/84532.json` (not in git — run deploy or copy from ops)
-- Export: `node --import tsx scripts/lib/print-ponder-env.ts`
+- Committed: `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`) — **VPS uses this after `git pull`**
+- Local manifest: `deployments/84532.json` (not in git — deploy machine only until PR merges)
+- Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)
 
 **Start block:** `PONDER_START_BLOCK_84532=43399242` (from manifest `indexFromBlock`).

@@ -159,7 +159,7 @@ Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy 
 | Field | Use |
 |-------|-----|
 | `indexFromBlock` | **43399242** — set `PONDER_START_BLOCK_84532` (do not reuse v1 start block) |
-| `karPassport`, `marketplace`, … | `PONDER_*_ADDRESS` via `print-ponder-env.ts` |
+| `karPassport`, `marketplace`, … | Committed `SEPOLIA_ACTIVE` after git pull (`pnpm ponder:config` to verify) |
 | `generation` | `"v2"` — distinguish from v1.x rows if dual-indexing |
 
 **Ponder config:** point handlers at generation v2 ABIs (`node scripts/export-abis.mjs`) before cutover. Historical v1.x addresses: [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532).

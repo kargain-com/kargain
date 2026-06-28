@@ -15,9 +15,9 @@ import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
  *   PONDER_START_BLOCK_31337=0        — local Hardhat replay
  *   PONDER_RPC_URL_84532              — VPS: https://sepolia.base.org (see docs/indexer/OPERATIONS.md)
  *
- * Addresses: PONDER_*_ADDRESS env → deployments/84532.json → committed fallbacks in load-deployment.ts
+ * Addresses: PONDER_*_ADDRESS env → deployments/84532.json → lib/web3/sepolia-addresses.ts (SEPOLIA_ACTIVE)
  *
- * After redeploy: run scripts/ponder-reindex.sql, then eval "$(node --import tsx scripts/lib/print-ponder-env.ts)"
+ * After redeploy: update SEPOLIA_ACTIVE, git pull on VPS, run ponder-reindex.sql — see docs/indexer/OPERATIONS.md
  */
 const { chains, addresses, localAddresses, contractEntry, database } = buildPonderRuntime();
 

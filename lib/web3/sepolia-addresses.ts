@@ -2,6 +2,9 @@
 
 export const SEPOLIA_CHAIN_ID = 84532;
 
+/** Official Base Sepolia public RPC — Ponder backfill + wagmi reads. See docs/indexer/OPERATIONS.md */
+export const SEPOLIA_PUBLIC_RPC = "https://sepolia.base.org";
+
 /** Active generation v2 stack — June 27, 2026 deploy. Semver `-rc.1` on testnet. */
 export const SEPOLIA_ACTIVE = {
   karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",

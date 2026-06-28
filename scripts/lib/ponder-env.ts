@@ -34,7 +34,7 @@ export function resolveChainStartBlock(chainId: number): number | "latest" {
     const legacy = parseStartBlock(process.env.PONDER_START_BLOCK);
     if (legacy !== undefined && legacy !== "latest") return legacy;
 
-    return "latest";
+    return sepoliaIndexFromBlock();
   }
 
   throw new Error(`Unsupported Ponder chain id: ${chainId}`);

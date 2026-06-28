@@ -134,51 +134,6 @@ export function requireSepoliaDeployment(): DeploymentManifest {
   return deployment;
 }
 
-function ponderAddressesFromEnv(prefix: "PONDER"): PonderAddressBundle | null {
-  const karPassport = process.env[`${prefix}_KAR_PASSPORT_ADDRESS`];
-  const karProPass = process.env[`${prefix}_KAR_PRO_PASS_ADDRESS`];
-  const karProStaking = process.env[`${prefix}_KAR_PRO_STAKING_ADDRESS`];
-  const marketplace = process.env[`${prefix}_MARKETPLACE_ADDRESS`];
-  if (!karPassport || !karProPass || !karProStaking || !marketplace) return null;
-  return {
-    karPassport: getAddress(karPassport as `0x${string}`),
-    karProPass: getAddress(karProPass as `0x${string}`),
-    karProStaking: getAddress(karProStaking as `0x${string}`),
-    marketplace: getAddress(marketplace as `0x${string}`),
-    ...(process.env[`${prefix}_MARKETPLACE_IMPL_ADDRESS`]
-      ? {
-          marketplaceImpl: getAddress(
-            process.env[`${prefix}_MARKETPLACE_IMPL_ADDRESS`] as `0x${string}`,
-          ),
-        }
-      : {}),
-  };
-}
-
-export function ponderSepoliaAddresses(): PonderAddressBundle {
-  const fromEnv = ponderAddressesFromEnv("PONDER");
-  if (fromEnv) return fromEnv;
-
-  const fromFile = loadSepoliaDeployment();
-  if (fromFile) {
-    return {
-      karPassport: fromFile.karPassport,
-      karProPass: fromFile.karProPass,
-      karProStaking: fromFile.karProStaking,
-      marketplace: fromFile.marketplace,
-      marketplaceImpl: fromFile.marketplaceImpl,
-    };
-  }
-
-  return {
-    karPassport: SEPOLIA_FALLBACK.karPassport,
-    karProPass: SEPOLIA_FALLBACK.karProPass,
-    karProStaking: SEPOLIA_FALLBACK.karProStaking,
-    marketplace: SEPOLIA_FALLBACK.marketplace,
-    marketplaceImpl: SEPOLIA_FALLBACK.marketplaceImpl,
-  };
-}
-
 export function ponderLocalAddresses(): LocalStackAddresses {
   const fromEnv = {
     chainId: LOCAL_CHAIN_ID,
@@ -208,14 +163,8 @@ export function ponderLocalAddresses(): LocalStackAddresses {
   );
 }
 
-export function sepoliaBlocksForPonder(): DeploymentBlocks {
-  const manifest = loadSepoliaDeployment();
-  if (manifest?.blocks) return manifest.blocks;
-  return { ...SEPOLIA_ACTIVE.blocks };
-}
-
-export function sepoliaIndexFromBlock(): number | undefined {
-  const manifest = loadSepoliaDeployment();
-  if (manifest?.indexFromBlock !== undefined) return manifest.indexFromBlock;
-  return SEPOLIA_ACTIVE.indexFromBlock;
-}
+export {
+  ponderSepoliaAddresses,
+  sepoliaBlocksForPonder,
+  sepoliaIndexFromBlock,
+} from "./resolve-sepolia-stack.js";

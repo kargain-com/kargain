@@ -32,6 +32,7 @@
     "smoke:sepolia": "hardhat run scripts/smoke-deploy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",
     "postcompile": "pnpm abis:export",
+    "ponder:config": "node --import tsx scripts/ponder-config.ts",
     "ponder:dev": "ponder dev",
     "ponder:start": "ponder start"
   },

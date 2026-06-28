@@ -553,7 +553,7 @@ Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **4
 
 **Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
-**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `node --import tsx scripts/lib/print-ponder-env.ts` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
 
 ---
 
@@ -695,7 +695,7 @@ Verifies the active stack from `deployments/84532.json`. Historical v1.x contrac
 
 Run constructor-arg unit tests: `pnpm test:verify`.
 
-Indexer env: [indexer/OPERATIONS.md](../indexer/OPERATIONS.md) · `node --import tsx scripts/lib/print-ponder-env.ts`
+Indexer env: [indexer/OPERATIONS.md](../indexer/OPERATIONS.md) · `pnpm ponder:config`
 
 ### II.5. Metadata vs records
 
