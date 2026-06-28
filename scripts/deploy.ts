@@ -110,36 +110,32 @@ async function main() {
     const deployerAddress = getAddress(deployer.account.address);
     const karProPassAddress = getAddress(SEPOLIA_FALLBACK.karProPass);
 
-    console.log("Kargain v2 deploy — Base Sepolia (parallel stack, no v1 migration)");
+    console.log("Kargain deploy — Base Sepolia (generation v2 stack)");
     console.log(`Deployer: ${deployerAddress}`);
     console.log(`Chain:    ${chainId}`);
     console.log("");
 
-    // 1. Timelock48h
     const timelock = await deployStep(viem, "Timelock48h", "Timelock48h", [
       [deployerAddress],
       [deployerAddress],
       deployerAddress,
     ]);
 
-    // 2–4. KarProStaking v2 + link existing KarProPass
     const proPass = await viem.getContractAt("KarProPass", karProPassAddress);
-    const staking = await deployStep(viem, "KarProStaking v2", "KarProStaking", [
+    const staking = await deployStep(viem, "KarProStaking", "KarProStaking", [
       karProPassAddress,
       deployerAddress,
     ]);
     await proPass.write.setStaking([staking.address], { account: deployer.account });
 
-    // 5. KarPassport v2
     const tokenIdOffset = BigInt(chainId) << 128n;
-    const karPassport = await deployStep(viem, "KarPassport v2", "KarPassport", [
+    const karPassport = await deployStep(viem, "KarPassport", "KarPassport", [
       staking.address,
       deployerAddress,
       DISPUTE_DEPOSIT,
     ]);
 
-    // 6–7. MarketplaceEscrow impl + new proxy (genesis upgradeAuthority = deployer)
-    const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow v2 impl", "MarketplaceEscrow", [
+    const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
       karPassport.address,
       feedConfig.usdc,
       feedConfig.nativeUsdFeed,
@@ -156,14 +152,13 @@ async function main() {
       args: [deployerAddress],
     });
 
-    const proxy = await deployStep(viem, "MarketplaceEscrow v2 proxy", "ERC1967Proxy", [
+    const proxy = await deployStep(viem, "MarketplaceEscrow proxy", "ERC1967Proxy", [
       marketplaceImpl.address,
       initData,
     ]);
 
     const marketplace = await viem.getContractAt("MarketplaceEscrow", proxy.address);
 
-    // 8. Genesis currency + USDC payment token (deployer is upgradeAuthority)
     for (const entry of liveCurrencies) {
       if (entry.code === "USD" || entry.code === "NATIVE") continue;
       const code = currencyCodeBytes32(entry.code);
@@ -174,10 +169,8 @@ async function main() {
       account: deployer.account,
     });
 
-    // 9. Transfer upgradeAuthority to Timelock
     await marketplace.write.transferUpgradeAuthority([timelock.address], { account: deployer.account });
 
-    // 10. ProxyONFT721Adapter (LayerZero testnet eids: Base Sepolia 40245 only until peers configured)
     const onftAdapter = await deployStep(viem, "ProxyONFT721Adapter", "ProxyONFT721Adapter", [
       karPassport.address,
       proxy.address,
@@ -236,17 +229,18 @@ async function main() {
     writeDeploymentManifest(SEPOLIA_DEPLOYMENT_PATH, manifest);
 
     console.log("");
-    console.log("v2 deployment complete:");
+    console.log("Deployment complete:");
     console.log(`  Timelock48h:             ${timelock.address}`);
     console.log(`  KarProPass:              ${karProPassAddress} (reused)`);
-    console.log(`  KarProStaking v2:        ${staking.address}`);
-    console.log(`  KarPassport v2:          ${karPassport.address}`);
+    console.log(`  KarProStaking:           ${staking.address}`);
+    console.log(`  KarPassport:             ${karPassport.address}`);
     console.log(`  MarketplaceEscrow proxy: ${proxy.address}`);
     console.log(`  ProxyONFT721Adapter:     ${onftAdapter.address}`);
     console.log(`  upgradeAuthority:        ${upgradeAuthority}`);
     console.log(`  tokenIdOffset:           ${tokenIdOffset}`);
     console.log(`  Manifest:                ${SEPOLIA_DEPLOYMENT_PATH}`);
     console.log("");
+    console.log("Next: node --import tsx scripts/lib/print-ponder-env.ts");
     console.log("Configure LayerZero peers among 40xxx testnet eids before bridging.");
     console.log(`Basescan: ${BASESCAN}/address/${proxy.address}`);
   } finally {

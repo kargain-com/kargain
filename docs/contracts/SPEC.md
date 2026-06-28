@@ -26,7 +26,7 @@
 
 | Term | Meaning | Examples |
 |------|---------|----------|
-| **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy-v2.ts` |
+| **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
 | **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.2.0-rc.1`, MarketplaceEscrow `2.0.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
@@ -71,7 +71,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 
 | Context | `platformFeeBps` | Notes |
 |---------|------------------|-------|
-| `scripts/deploy-v2.ts` (production deploy) | `10` (0.1%) | Intended testnet/mainnet default |
+| `scripts/deploy.ts` (production deploy) | `10` (0.1%) | Intended testnet/mainnet default |
 | `scripts/lib/local-stack.ts` (Hardhat tests) | `250` (2.5%) | Test-only; not deploy default |
 
 ---
@@ -128,7 +128,7 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 
 ### Dispute deposit system
 
-| Parameter | Default (deploy-v2) | Admin |
+| Parameter | Default (deploy.ts) | Admin |
 |-----------|---------------------|-------|
 | `disputeDeposit` | `0.01 ether` | `setDisputeDeposit` (owner) |
 | `totalLockedDeposits` | Sum of active bonds | Accounting only |
@@ -365,7 +365,7 @@ All admin operations require **`upgradeAuthority`** (Timelock after handoff):
 - `transferUpgradeAuthority`
 - UUPS `_authorizeUpgrade`
 
-Deployer registers genesis currencies **before** transferring authority to timelock (`deploy-v2.ts` steps 8–10).
+Deployer registers genesis currencies **before** transferring authority to timelock (`deploy.ts` steps 8–10).
 
 ### 5.7 MarketplaceEscrow — function reference
 
@@ -553,13 +553,13 @@ Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **4
 
 **Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
-**Ops:** `pnpm smoke:v2` · `pnpm verify:v2` · `node --import tsx scripts/lib/print-ponder-env.ts` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `node --import tsx scripts/lib/print-ponder-env.ts` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
 
 ---
 
 ### I.10. Deploy sequence
 
-Per new chain (matches `scripts/deploy-v2.ts`; Base Sepolia reuses existing **KarProPass**):
+Per new chain (matches `scripts/deploy.ts`; Base Sepolia reuses existing **KarProPass**):
 
 1. Deploy **Timelock48h** (proposer, executor, admin — typically deployer).
 2. Deploy **KarProPass** (skip if reusing existing pass, as on 84532).
@@ -647,7 +647,7 @@ UNVERIFIED ──verifyPassport──► VERIFIED
 | MarketplaceEscrow impl | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
 | MarketplaceEscrow proxy | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
 
-Deploy: `pnpm deploy:v1.1` → writes `deployments/84532.json` (not in git).
+Deploy: addresses only — see [Part I.9.1](#i91-active-deployment-base-sepolia-84532). Historical v1.x partial redeploy (June 2026) is documented here; use `pnpm deploy:sepolia` for new stacks.
 
 #### II.4.1 Governance roles (deployer vs timelock vs upgrade authority)
 
@@ -656,7 +656,7 @@ Three **distinct** concepts — do not conflate in config or UI:
 | Role | What it is | Base Sepolia (84532) v1.1 redeploy | Localhost (31337) |
 |------|------------|-----------------------------------|-------------------|
 | **Deployer** | EOA that signed deploy txs | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` | Hardhat account #0 |
-| **upgradeAuthority** | `MarketplaceEscrow.upgradeAuthority` on-chain | **Same as deployer EOA** (`initialize(deployer)` in `deploy-v1.1.ts`) | **TimelockController** address (`initialize(timelock)` in `local-stack.ts`) |
+| **upgradeAuthority** | `MarketplaceEscrow.upgradeAuthority` on-chain | **Same as deployer EOA** (v1 `initialize(deployer)`) | **TimelockController** address (`initialize(timelock)` in `local-stack.ts` / `deploy.ts`) |
 | **TimelockController** | OpenZeppelin timelock contract (48h delay) | **Not deployed** | Deployed; address in `deployments/31337.json` → `timelock` |
 
 **Config rules:**
@@ -680,10 +680,10 @@ UI display/filter: Chainlink + CoinGecko gap-fill via [`use-market-rates.ts`](..
 
 ```bash
 # Requires ETHERSCAN_API_KEY (Etherscan v2, chainid=84532) in .env.local
-pnpm verify:v1.1
+pnpm verify:sepolia
 ```
 
-Verifies, in order: KarPassport, MarketplaceEscrow impl, ERC1967 proxy (with `initialize` calldata). Skips contracts already verified; pass `--force` to re-submit.
+Verifies the active stack from `deployments/84532.json`. Historical v1.x contracts may remain unverified on Basescan; addresses in table above.
 
 **Status (June 2026):** KarPassport, MarketplaceEscrow impl, and proxy verified on [Base Sepolia Basescan](https://sepolia.basescan.org).
 

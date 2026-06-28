@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { resolvePassportCustody } from "../lib/marketplace/passport-custody.ts";
+import { SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
 
-const MARKETPLACE = "0x4FC74e0B7eE0A741707A553D43Efff68126D198B" as const;
+const MARKETPLACE = SEPOLIA_ACTIVE.marketplace;
 const SELLER = "0xcfe194fea9727bD04dA8F78c2362680986e02dF1" as const;
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
 

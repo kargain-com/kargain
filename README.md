@@ -194,11 +194,9 @@ pnpm hardhat compile    # compile Solidity
 pnpm hardhat test       # contract tests
 pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
 pnpm deploy:local       # deploy Model X to running Hardhat node
-pnpm deploy:v2          # generation v2 full stack on Base Sepolia
-pnpm deploy:v1.1        # partial v1.x redeploy (historical; KarPassport + Marketplace)
-pnpm verify:v1.1        # verify v1.x on Basescan (needs ETHERSCAN_API_KEY)
-pnpm verify:v2          # verify generation v2 on Basescan
-pnpm smoke:v2           # read-only post-deploy checks on Sepolia
+pnpm deploy:sepolia     # full stack on Base Sepolia (generation v2)
+pnpm verify:sepolia     # verify on Basescan (needs ETHERSCAN_API_KEY)
+pnpm smoke:sepolia      # read-only post-deploy checks on Sepolia
 node --import tsx --test test/*.test.ts   # app unit tests
 ```
 

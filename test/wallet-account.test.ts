@@ -11,6 +11,7 @@ import {
   messagingWalletError,
 } from "../lib/web3/wallet-account.ts";
 import { kargainTimelockAddress } from "../lib/web3/deployment-addresses.ts";
+import { SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
 import { SEPOLIA_FALLBACK } from "../scripts/lib/load-deployment.ts";
 
 const SEPOLIA_DEPLOYER = SEPOLIA_FALLBACK.deployer;
@@ -80,11 +81,9 @@ describe("kargainTimelockAddress", () => {
 });
 
 describe("isMessageablePeer", () => {
-  it("rejects protocol addresses", () => {
-    assert.equal(
-      isMessageablePeer("0x4FC74e0B7eE0A741707A553D43Efff68126D198B", 84532),
-      false,
-    );
+  it("rejects historical v1 marketplace on denylist", () => {
+    const legacyMarketplace = SEPOLIA_HISTORICAL_DENYLIST[1];
+    assert.equal(isMessageablePeer(legacyMarketplace, 84532), false);
   });
 
   it("allows normal addresses", () => {
@@ -119,11 +118,9 @@ describe("canInitializeMessaging", () => {
 
 describe("explorerAddressUrl", () => {
   it("builds Base Sepolia explorer link", () => {
-    const url = explorerAddressUrl(
-      84532,
-      "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
-    );
+    const legacyMarketplace = SEPOLIA_HISTORICAL_DENYLIST[1];
+    const url = explorerAddressUrl(84532, legacyMarketplace);
     assert.ok(url.includes("sepolia.basescan.org"));
-    assert.ok(url.includes("0x4FC74e0B7eE0A741707A553D43Efff68126D198B"));
+    assert.ok(url.includes(legacyMarketplace));
   });
 });

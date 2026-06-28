@@ -1,6 +1,6 @@
 # Ponder generation v2 migration guide
 
-The production indexer at [ponder.kargain.com](https://ponder.kargain.com) indexes **generation v1.x** MarketplaceEscrow and KarPassport contracts on Base Sepolia. Generation v2 contracts emit different events and use different listing fields. This document guides the Ponder schema and handler update.
+The production indexer at [ponder.kargain.com](https://ponder.kargain.com) should index **generation v2** contracts on Base Sepolia after VPS env cutover. Generation v2 contracts emit different events and use different listing fields than v1.x. This document guides the Ponder schema and handler update.
 
 **Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook)
 
@@ -152,7 +152,7 @@ Deprecate `payAsset` enum column for generation v2 rows.
 
 ## 4. Generation v2 contract addresses (84532)
 
-Generation v2 deployed **June 27, 2026** (`pnpm deploy:v2`). **Do not copy addresses here** — canonical table with semver and Basescan links: **[contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)**.
+Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy addresses here** — canonical table with semver and Basescan links: **[contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)**.
 
 **Indexer wiring from manifest** (`deployments/84532.json` — not in git):
 

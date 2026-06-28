@@ -22,12 +22,8 @@ async function main() {
   try {
     manifest = requireSepoliaDeployment();
   } catch {
-    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:v2 first`);
+    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:sepolia first`);
     process.exit(1);
-  }
-
-  if (manifest.generation !== "v2") {
-    console.warn(`Warning: manifest generation is "${manifest.generation}", expected "v2".`);
   }
 
   const hardhat = await import("hardhat");

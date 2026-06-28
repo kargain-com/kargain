@@ -6,19 +6,30 @@ import {
   type DeploymentManifest,
 } from "./load-deployment.js";
 
-/** Must match `scripts/deploy-v1.1.ts`. */
+/** Must match `scripts/deploy.ts`. */
 export const MARKETPLACE_FEE_BPS = 10n;
 export const MARKETPLACE_PRO_FEE_BPS = 0n;
 export const MARKETPLACE_MAX_FEED_STALENESS = 3600n;
+export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
 export function karPassportConstructorArgs(manifest: DeploymentManifest) {
-  return [manifest.karProStaking] as const;
+  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
+  return [manifest.karProStaking, deployer, DISPUTE_DEPOSIT] as const;
+}
+
+export function karProStakingConstructorArgs(manifest: DeploymentManifest) {
+  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
+  return [manifest.karProPass, deployer] as const;
+}
+
+export function timelockConstructorArgs(manifest: DeploymentManifest) {
+  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
+  return [[deployer], [deployer], deployer] as const;
 }
 
 export function marketplaceImplConstructorArgs(manifest: DeploymentManifest) {
   const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
   const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
-  const eurFeed = manifest.eurFeed ?? SEPOLIA_FALLBACK.eurFeed;
   const platformRecipient =
     manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
 
@@ -26,7 +37,6 @@ export function marketplaceImplConstructorArgs(manifest: DeploymentManifest) {
     manifest.karPassport,
     usdc,
     nativeFeed,
-    eurFeed,
     manifest.karProStaking,
     platformRecipient,
     MARKETPLACE_FEE_BPS,
@@ -46,66 +56,6 @@ export function marketplaceProxyConstructorArgs(manifest: DeploymentManifest) {
   return [manifest.marketplaceImpl, initData] as const;
 }
 
-export const VERIFY_TARGETS = {
-  karPassport: {
-    label: "KarPassport v1.1",
-    contract: "contracts/KarPassport.sol:KarPassport",
-    addressKey: "karPassport" as const,
-    buildArgs: karPassportConstructorArgs,
-  },
-  marketplaceImpl: {
-    label: "MarketplaceEscrow impl",
-    contract: "contracts/MarketplaceEscrow.sol:MarketplaceEscrow",
-    addressKey: "marketplaceImpl" as const,
-    buildArgs: marketplaceImplConstructorArgs,
-  },
-  marketplaceProxy: {
-    label: "MarketplaceEscrow proxy",
-    contract:
-      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
-    addressKey: "marketplace" as const,
-    buildArgs: marketplaceProxyConstructorArgs,
-  },
-} as const;
-
-export type VerifyTargetKey = keyof typeof VERIFY_TARGETS;
-
-/** Must match `scripts/deploy-v2.ts`. */
-export const V2_DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
-
-export function karPassportV2ConstructorArgs(manifest: DeploymentManifest) {
-  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  return [manifest.karProStaking, deployer, V2_DISPUTE_DEPOSIT] as const;
-}
-
-export function karProStakingV2ConstructorArgs(manifest: DeploymentManifest) {
-  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  return [manifest.karProPass, deployer] as const;
-}
-
-export function timelockV2ConstructorArgs(manifest: DeploymentManifest) {
-  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  return [[deployer], [deployer], deployer] as const;
-}
-
-export function marketplaceImplV2ConstructorArgs(manifest: DeploymentManifest) {
-  const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
-  const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
-
-  return [
-    manifest.karPassport,
-    usdc,
-    nativeFeed,
-    manifest.karProStaking,
-    platformRecipient,
-    MARKETPLACE_FEE_BPS,
-    MARKETPLACE_PRO_FEE_BPS,
-    MARKETPLACE_MAX_FEED_STALENESS,
-  ] as const;
-}
-
 export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
   const lzEndpoint =
@@ -119,30 +69,30 @@ export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
   ] as const;
 }
 
-export const VERIFY_V2_TARGETS = {
+export const VERIFY_TARGETS = {
   timelock: {
     label: "Timelock48h (1.0.0-rc.1)",
     contract: "contracts/Timelock48h.sol:Timelock48h",
     addressKey: "timelock" as const,
-    buildArgs: timelockV2ConstructorArgs,
+    buildArgs: timelockConstructorArgs,
   },
   karProStaking: {
     label: "KarProStaking (1.1.0-rc.1)",
     contract: "contracts/KarProStaking.sol:KarProStaking",
     addressKey: "karProStaking" as const,
-    buildArgs: karProStakingV2ConstructorArgs,
+    buildArgs: karProStakingConstructorArgs,
   },
   karPassport: {
     label: "KarPassport (1.2.0-rc.1)",
     contract: "contracts/KarPassport.sol:KarPassport",
     addressKey: "karPassport" as const,
-    buildArgs: karPassportV2ConstructorArgs,
+    buildArgs: karPassportConstructorArgs,
   },
   marketplaceImpl: {
     label: "MarketplaceEscrow impl (2.0.0-rc.1)",
     contract: "contracts/MarketplaceEscrow.sol:MarketplaceEscrow",
     addressKey: "marketplaceImpl" as const,
-    buildArgs: marketplaceImplV2ConstructorArgs,
+    buildArgs: marketplaceImplConstructorArgs,
   },
   marketplaceProxy: {
     label: "MarketplaceEscrow proxy (2.0.0-rc.1)",
@@ -159,4 +109,4 @@ export const VERIFY_V2_TARGETS = {
   },
 } as const;
 
-export type VerifyV2TargetKey = keyof typeof VERIFY_V2_TARGETS;
+export type VerifyTargetKey = keyof typeof VERIFY_TARGETS;

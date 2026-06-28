@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAddress } from "viem";
 
+import { SEPOLIA_ACTIVE } from "../../lib/web3/sepolia-addresses.js";
 import type { LocalStackAddresses } from "./local-stack.js";
 import type { ContractVersionName } from "./contract-versions.js";
 
@@ -11,48 +12,8 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const DEPLOYMENT_PATH = join(process.cwd(), "deployments/31337.json");
 export const SEPOLIA_DEPLOYMENT_PATH = join(process.cwd(), "deployments/84532.json");
 
-/** Legacy Model X v1.1 deploy blocks (Base Sepolia, June 2026). */
-export const LEGACY_SEPOLIA_BLOCKS = {
-  karProPass: 42_800_433,
-  karProStaking: 42_800_436,
-  karPassport: 42_800_441,
-  marketplaceImpl: 42_800_447,
-  marketplace: 42_800_447,
-} as const;
-
-/** v1.1 Base Sepolia fallbacks — historical generation v1.x; superseded June 27, 2026. */
-export const SEPOLIA_LEGACY = {
-  karPassport: "0x6378469256907D7DC14BBfce0261ceDE22314507",
-  karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
-  karProStaking: "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
-  marketplace: "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
-  marketplaceImpl: "0x7d37e7cbcc42308264B608429a82D03B7C3112F4",
-  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-  eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
-  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
-  deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-} as const satisfies Record<string, `0x${string}`>;
-
-/** Active generation v2 Base Sepolia fallbacks when no manifest / env. Semver `-rc.1` on testnet. */
-export const SEPOLIA_FALLBACK = {
-  karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
-  karProPass: "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
-  karProStaking: "0xb5d79551BB11F726D2A1A110BAc645C4345dA568",
-  marketplace: "0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19",
-  marketplaceImpl: "0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3",
-  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-  eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
-  timelock: "0x9319e223ff31c954A940b14F04025B56A53ED384",
-  proxyOnftAdapter: "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
-  layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
-  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
-  deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x9319e223ff31c954A940b14F04025B56A53ED384",
-  indexFromBlock: 43_399_242,
-} as const satisfies Record<string, `0x${string}` | number>;
+/** Active Base Sepolia fallbacks when no manifest / env. Re-export from lib/web3/sepolia-addresses.ts */
+export const SEPOLIA_FALLBACK = SEPOLIA_ACTIVE;
 
 export type DeploymentBlocks = {
   karProPass?: number;
@@ -60,6 +21,8 @@ export type DeploymentBlocks = {
   karPassport?: number;
   marketplaceImpl?: number;
   marketplace?: number;
+  timelock?: number;
+  proxyOnftAdapter?: number;
 };
 
 export type DeploymentManifest = {
@@ -165,7 +128,7 @@ export function requireSepoliaDeployment(): DeploymentManifest {
   const deployment = loadSepoliaDeployment();
   if (!deployment) {
     throw new Error(
-      "Missing deployments/84532.json — run `pnpm deploy:v2` on Base Sepolia first",
+      "Missing deployments/84532.json — run `pnpm deploy:sepolia` on Base Sepolia first",
     );
   }
   return deployment;
@@ -248,10 +211,11 @@ export function ponderLocalAddresses(): LocalStackAddresses {
 export function sepoliaBlocksForPonder(): DeploymentBlocks {
   const manifest = loadSepoliaDeployment();
   if (manifest?.blocks) return manifest.blocks;
-  return { ...LEGACY_SEPOLIA_BLOCKS };
+  return { ...SEPOLIA_ACTIVE.blocks };
 }
 
 export function sepoliaIndexFromBlock(): number | undefined {
   const manifest = loadSepoliaDeployment();
-  return manifest?.indexFromBlock;
+  if (manifest?.indexFromBlock !== undefined) return manifest.indexFromBlock;
+  return SEPOLIA_ACTIVE.indexFromBlock;
 }

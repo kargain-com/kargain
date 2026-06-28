@@ -1,14 +1,12 @@
 import { config as loadEnv } from "dotenv";
 import { getAddress } from "viem";
 
+import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
 import {
-  LEGACY_SEPOLIA_BLOCKS,
-  loadSepoliaDeployment,
-  SEPOLIA_CHAIN_ID,
-  SEPOLIA_LEGACY,
+  requireSepoliaDeployment,
+  SEPOLIA_DEPLOYMENT_PATH,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
-import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
 import { runHardhatVerify } from "./lib/run-hardhat-verify.js";
 import {
   VERIFY_TARGETS,
@@ -20,34 +18,6 @@ loadEnv();
 
 const BASESCAN = "https://sepolia.basescan.org";
 
-function resolveManifest(): DeploymentManifest {
-  const fromFile = loadSepoliaDeployment();
-  if (fromFile) return fromFile;
-
-  console.warn(
-    "deployments/84532.json not found — using committed SEPOLIA_LEGACY addresses.",
-  );
-
-  return {
-    chainId: SEPOLIA_CHAIN_ID,
-    generation: "v1.1",
-    karPassport: SEPOLIA_LEGACY.karPassport,
-    karProPass: SEPOLIA_LEGACY.karProPass,
-    karProStaking: SEPOLIA_LEGACY.karProStaking,
-    marketplace: SEPOLIA_LEGACY.marketplace,
-    marketplaceImpl: SEPOLIA_LEGACY.marketplaceImpl,
-    usdc: SEPOLIA_LEGACY.usdc,
-    nativeFeed: SEPOLIA_LEGACY.nativeFeed,
-    eurFeed: SEPOLIA_LEGACY.eurFeed,
-    platformRecipient: SEPOLIA_LEGACY.platformRecipient,
-    deployer: SEPOLIA_LEGACY.deployer,
-    deployedAt: "",
-    unchanged: ["karProPass", "karProStaking"],
-    blocks: { ...LEGACY_SEPOLIA_BLOCKS },
-    indexFromBlock: 42_830_248,
-  };
-}
-
 async function verifyTarget(
   key: VerifyTargetKey,
   manifest: DeploymentManifest,
@@ -55,7 +25,14 @@ async function verifyTarget(
   force: boolean,
 ) {
   const target = VERIFY_TARGETS[key];
-  const address = getAddress(manifest[target.addressKey]);
+  const rawAddress = manifest[target.addressKey];
+  if (!rawAddress) {
+    console.log(`\n${target.label}`);
+    console.log("  Skipping — address not in manifest.");
+    return "skipped" as const;
+  }
+
+  const address = getAddress(rawAddress);
   const constructorArgs = target.buildArgs(manifest);
 
   console.log(`\n${target.label}`);
@@ -71,13 +48,19 @@ async function verifyTarget(
   }
 
   console.log("  Submitting Hardhat verify…");
-  const result = runHardhatVerify({
-    address,
-    contract: target.contract,
-    constructorArgs,
-  });
-  console.log(`  Done (${result}).`);
-  return result;
+  try {
+    const result = runHardhatVerify({
+      address,
+      contract: target.contract,
+      constructorArgs,
+    });
+    console.log(`  Done (${result}).`);
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(`  Failed — ${message.split("\n")[0]}`);
+    return "failed" as const;
+  }
 }
 
 async function main() {
@@ -86,33 +69,38 @@ async function main() {
     console.error(
       "ETHERSCAN_API_KEY not set.\n" +
         "Add your Etherscan v2 API key to .env.local (or .env) and run:\n" +
-        "pnpm verify:v1.1",
+        "pnpm verify:sepolia",
     );
     process.exit(1);
   }
 
   const force = process.argv.includes("--force");
-  const manifest = resolveManifest();
+  let manifest: DeploymentManifest;
+  try {
+    manifest = requireSepoliaDeployment();
+  } catch {
+    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:sepolia first`);
+    process.exit(1);
+  }
 
-  console.log("Basescan verification for KarPassport v1.1 (Base Sepolia)");
+  console.log("Basescan verification for Kargain (Base Sepolia)");
+  console.log(`Generation: ${manifest.generation}`);
   console.log(`Chain: ${manifest.chainId}`);
-  console.log(`KarPassport:    ${manifest.karPassport}`);
-  console.log(`Marketplace impl: ${manifest.marketplaceImpl}`);
-  console.log(`Marketplace proxy: ${manifest.marketplace}`);
+  console.log(`KarPassport:         ${manifest.karPassport}`);
+  console.log(`Marketplace proxy:   ${manifest.marketplace}`);
+  console.log(`Timelock:            ${manifest.timelock ?? "(missing)"}`);
   if (force) console.log("Force mode: re-submitting even if explorer shows verified source.");
 
   const order: VerifyTargetKey[] = [
+    "timelock",
+    "karProStaking",
     "karPassport",
     "marketplaceImpl",
     "marketplaceProxy",
+    "proxyOnftAdapter",
   ];
 
-  const summary: Record<VerifyTargetKey, string> = {
-    karPassport: "pending",
-    marketplaceImpl: "pending",
-    marketplaceProxy: "pending",
-  };
-
+  const summary: Record<string, string> = {};
   for (const key of order) {
     summary[key] = await verifyTarget(key, manifest, apiKey, force);
   }
@@ -121,7 +109,13 @@ async function main() {
   for (const key of order) {
     console.log(`  ${VERIFY_TARGETS[key].label}: ${summary[key]}`);
   }
-  console.log("\nOpen proxy on Basescan to confirm implementation link after both impl + proxy verify.");
+  console.log("\nOpen proxy on Basescan to confirm implementation link after impl + proxy verify.");
+
+  const failed = order.filter((key) => summary[key] === "failed");
+  if (failed.length > 0) {
+    console.error(`\n${failed.length} verification(s) failed — deploy is still valid; retry individually with --force.`);
+    process.exit(1);
+  }
 }
 
 main().catch((err: unknown) => {

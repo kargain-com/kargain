@@ -75,7 +75,7 @@ Examples that **do not** require reindex:
 
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
-- Basescan verify (`pnpm verify:v1.1`) — ops-only, no indexer impact
+- Basescan verify (`pnpm verify:sepolia`) — ops-only, no indexer impact
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
 
@@ -205,8 +205,8 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/lib/print-ponder-env.ts` | Emit `PONDER_*` env from manifest |
 | `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
-| `scripts/verify-v1.1.ts` | Basescan verify v1.x KarPassport + Marketplace (historical stack) |
-| `scripts/verify-v2.ts` | Basescan verify generation v2 stack |
+| `scripts/verify.ts` | Basescan verify active Sepolia stack |
+| `scripts/deploy.ts` | Base Sepolia deploy (generation v2) |
 | `deployments/84532.json` | Manifest (`generation`, `indexFromBlock`) — not in git |
 | [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
