@@ -4,77 +4,41 @@ Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
 Messaging and payments without intermediaries.
 
-**Multi-chain platform** — Kargain is designed to run on multiple networks, not a single L2. **Base Sepolia** is the current **integration testnet**; Base mainnet and additional chains follow validation.
+**Multi-chain platform** — Base Sepolia (84532) is the current integration testnet; Base mainnet and additional chains follow validation.
 
 MIT License · Open Source
 
 ---
 
-## Multi-chain platform
+## What is Kargain?
 
-| | |
-|---|---|
-| **Vision** | One marketplace and passport protocol across chains. Users choose where their passport lives; listings and trust state are chain-scoped but the product is not. |
-| **Today** | **Base Sepolia (84532)** — contracts, Ponder indexer, and integration testing. Optional **Hardhat (31337)** for local development. |
-| **Planned** | **Base mainnet (8453)**, then **Ethereum mainnet (1)** as canonical trust layer. |
-| **Chain-agnostic** | Passport photos and metadata on **Arweave**; Nostr comments, watchlist, and notifications; XMTP messaging. |
-
-Contract addresses and RPC configuration are parameterized per chain via `deployments/<chainId>.json` and `lib/web3/deployment-addresses.ts`.
-
----
-
-## How it works
-
-### KarPassport
-
-Anyone can **permissionlessly mint** a KarPassport NFT at [`/passport/new`](/passport/new). Vehicle details and photos are stored on Arweave (via client-side Irys upload). Each passport starts **UNVERIFIED**.
-
-An **active verifier** (address with an active stake in `KarProStaking`, not the token owner) can **verify** the passport on-chain. The owner may update metadata while **UNVERIFIED**, or while **VERIFIED** — anchor field changes reset verification (Variant C); cosmetic-only edits keep verified status.
-
-Anyone may **dispute** a verified passport with a **refundable deposit** (default **0.01 ETH**). The dispute opener may **`withdrawDispute`** to restore VERIFIED status and reclaim the deposit. An active verifier **resolves** unresolved disputes via **`DisputeOutcome`**: `ConfirmDispute` clears verification (deposit to opener); `RejectDispute` upholds verification (deposit to resolver). Owners and third parties can append **rich on-chain records** (service history, discrepancies, attestations).
-
-Owners may authorize **agents** for consignment sales (dépôt-vente): the owner keeps title while a KarPro agent lists and manages the sale on their behalf (see MarketplaceEscrow).
-
-### KarProPass & KarProStaking (Model X)
-
-Soulbound credential for verification professionals — **one pass per wallet**, non-transferable.
-
-Becoming a verifier is a **single permissionless action**: stake **0.05 ETH** via `KarProStaking.becomeVerifierNative` → receive a KarProPass. **Active stake** (`isActiveVerifier`) is the source of truth for verifier status — not KarProPass balance. Stake is **fully refundable** — no slash, no delay. `leave()` burns the pass and returns the stake.
-
-Verifier identity (category, display name, metadata URI) is stored on-chain and indexed by Ponder. Kargain revenue comes **only from marketplace sales** (0.1% platform fee).
-
-Verifier categories: `MECHANIC` · `GARAGE` · `INSPECTOR` · `BROKER` · `DEALER` · `OTHER`
-
-### MarketplaceEscrow
-
-UUPS-upgradeable escrow with **Timelock48h** governance (generation v2). Sellers list KarPassport NFTs with a **fiat price** in any **registered currency** (`bytes32` code + Chainlink feed — not a fixed USD/EUR enum). **`CURRENCY_NATIVE`** listings price directly in the chain’s native token without an oracle.
-
-**Direct listings:** seller lists and delists; optional **`setSettlementNote`** enables **`confirmExternalPayment`** for off-chain settlement (bank transfer, Lightning, BTC, etc.).
-
-**Agent consignment (dépôt-vente):** owner authorizes an agent; agent **`listOnBehalf`**, sets price and fee (up to 30%), and may **`updateListing`** without per-change owner approval — seller minimum net is enforced on-chain.
-
-Buyers pay via **native token** or any **approved ERC-20** at a live Chainlink quote. Platform fee: **0.1%** (`platformFeeBps: 10` on deploy). Passport verification status does not block listing or purchase — transparency is enforced in the UI.
-
-### Off-chain layers
-
-- **Ponder** — indexes contract events and serves listing, passport, and verifier APIs ([production](https://ponder.kargain.com)).
-- **Nostr** — public comments (NIP-01), watchlist (NIP-51), notification read-state (NIP-78). Wallet-derived identity.
-- **XMTP** — encrypted buyer–seller messaging.
-
----
-
-## Architecture
+Kargain combines on-chain vehicle passports, professional verification, and escrow-backed sales:
 
 | Layer | Role |
 |-------|------|
-| **Next.js frontend** | App UI, wallet auth (SIWE), client-side Arweave uploads |
-| **Ponder indexer** | Indexes chain events; REST API for listings, passports, verifiers |
-| **EVM contracts** | KarPassport, KarProPass, KarProStaking (immutable); MarketplaceEscrow (UUPS proxy) |
-| **Arweave** (via Irys) | Permanent photos and passport metadata (`ar://` URIs) |
-| **Nostr** | Comments, watchlist, notification sync |
-| **XMTP** | End-to-end encrypted messaging |
+| **KarPassport** | Permissionless NFT mint; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED lifecycle |
+| **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`) |
+| **MarketplaceEscrow** | Listings in registered fiat codes, native/ERC-20 checkout, agent consignment, external payment confirmation |
+| **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (comments, watchlist, notifications), XMTP messaging |
 
-**Documentation:** [docs/README.md](docs/README.md) · [contracts/SPEC.md](docs/contracts/SPEC.md) · [indexer/README.md](docs/indexer/README.md)
+Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)**.  
+UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
+
+---
+
+## Documentation
+
+**Start here:** [docs/README.md](docs/README.md)
+
+| Topic | Document |
+|-------|----------|
+| Contracts, metadata, deploy addresses | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
+| Ponder indexer (API, ops, v2 reference) | [docs/indexer/README.md](docs/indexer/README.md) |
+| VPS reindex runbook | [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
+| June 2026 v2 deploy record | [docs/ops/deploys/84532-v2.md](docs/ops/deploys/84532-v2.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+---
 
 ## Tech stack
 
@@ -83,29 +47,25 @@ Buyers pay via **native token** or any **approved ERC-20** at a live Chainlink q
 | Frontend | Next.js 16, React 19, Tailwind v4, wagmi 2, viem |
 | Indexer | Ponder 0.16, PostgreSQL |
 | Contracts | Solidity 0.8.28, Hardhat 3, OpenZeppelin 5 |
-| Storage | Arweave via Irys (`@irys/web-upload`) |
-| Social | Nostr (NIP-01, NIP-51, NIP-78) |
-| Messaging | XMTP |
-| Chain | Base Sepolia (84532) testnet today; multi-chain by design |
+| Storage | Arweave via Irys |
+| Social / messaging | Nostr (NIP-01, NIP-51, NIP-78), XMTP |
+| Chain (today) | Base Sepolia (84532) |
+
+---
 
 ## App routes
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Marketplace browse — filters and listings |
+| `/` | Marketplace browse |
 | `/passport/new` | Mint KarPassport |
 | `/passport/[tokenId]/edit` | Edit passport metadata |
 | `/marketplace/[tokenId]` | Listing / passport detail |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
-| `/kar-pro` | KarPro onboarding and credential |
+| `/kar-pro` | KarPro onboarding |
 | `/verifiers` | Verifier directory |
-| `/verifier/[address]` | Redirects to `/profile/[address]` |
-| `/pro/[slug]` | Professional showroom |
-| `/profile/[handle]` | Public wallet profile |
-| `/profile/edit` | Profile edit and wallet connect |
-| `/messages` | XMTP inbox |
-| `/messages/[conversationId]` | DM thread |
-| `/notifications` | Alerts and watchlist (`?tab=watchlist`) |
+| `/profile/[handle]` | Public profile |
+| `/messages`, `/notifications` | XMTP inbox, alerts + watchlist |
 
 ---
 
@@ -113,168 +73,66 @@ Buyers pay via **native token** or any **approved ERC-20** at a live Chainlink q
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm
-- A wallet with Base Sepolia ETH (for on-chain testing)  
-  Faucet: https://faucet.quicknode.com/base/sepolia
+- Node.js 20+, pnpm
+- Base Sepolia ETH for on-chain testing — [faucet](https://faucet.quicknode.com/base/sepolia)
 
-### Install
+### Install and run
 
 ```bash
 git clone https://github.com/kargain-com/kargain.git
 cd kargain
 pnpm install
 cp .env.example .env.local
+pnpm dev                    # Next.js → http://localhost:3000
+pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)
 ```
 
-### Configure `.env.local`
+Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)).
 
-See `.env.example` for the full list. Key variables:
-
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_APP_URL` | App origin (default `http://localhost:3000`) |
-| `SIWE_SESSION_SECRET` | HMAC secret for SIWE session cookies — **required in production** |
-| `NEXT_PUBLIC_CHAIN_ID` | Default chain — `84532` for Base Sepolia |
-| `NEXT_PUBLIC_XMTP_ENV` | XMTP environment — `dev` or `production` |
-| `NEXT_PUBLIC_RPC_BY_CHAIN` | JSON map of chain ID → RPC URL |
-| `PONDER_SQL_API_URL` | Ponder REST API (local: `http://localhost:42069`) |
-| `BASE_SEPOLIA_RPC_URL` | RPC for Hardhat `baseSepolia` network |
-| `DEPLOYER_PRIVATE_KEY` | Optional — Hardhat deploy account (never commit) |
-| `ETHERSCAN_API_KEY` | Basescan API key for contract verification |
-
-Deployed contract addresses live in `lib/web3/deployment-addresses.ts` (optional `NEXT_PUBLIC_*` overrides in `.env.local`).
-
-### Run
+### Local chain (31337)
 
 ```bash
-# Next.js frontend
-pnpm dev
-
-# Ponder indexer (requires PostgreSQL — see docker-compose.yml)
-pnpm ponder:dev
-```
-
-### Local development (chain 31337)
-
-Full Model X stack on a persistent Hardhat node with Ponder indexing:
-
-```bash
-# One terminal — Postgres + Hardhat node + deploy + Ponder
-./scripts/dev-local.sh
-
-# Another terminal — frontend on localhost chain
-export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1
-export NEXT_PUBLIC_CHAIN_ID=31337
+./scripts/dev-local.sh       # Postgres + Hardhat + deploy + Ponder
+export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1 NEXT_PUBLIC_CHAIN_ID=31337
 eval "$(node --import tsx scripts/lib/print-local-env.ts)"
 pnpm dev
 ```
 
-Manual steps:
+Details: [SPEC Appendix A — local E2E](docs/contracts/SPEC.md#appendix-a--local-e2e-hardhat-31337).
+
+### Tests
 
 ```bash
-npx hardhat node          # terminal 1
-pnpm deploy:local         # terminal 2 (writes deployments/31337.json)
-PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK_31337=0 pnpm ponder:dev   # terminal 3
-pnpm test:e2e             # viem lifecycle (+ optional Ponder checks)
+pnpm hardhat test
+pnpm test:e2e
+node --import tsx --test test/*.test.ts
+pnpm deploy:sepolia          # generation v2 on Base Sepolia
+pnpm smoke:sepolia
 ```
 
-One-shot CI-style E2E: `./scripts/e2e-local.sh`
-
-Open http://localhost:3000
-
-### Create a passport
-
-Connect a wallet, then visit `/passport/new`. Photos and metadata upload via Irys (client-side, user-pays). **Standard EOA wallets** are required for upload — smart contract accounts are blocked before any Irys transaction.
-
-### Tests and contracts
-
-```bash
-pnpm hardhat compile    # compile Solidity
-pnpm hardhat test       # contract tests
-pnpm test:e2e           # localhost lifecycle (requires hardhat node + deploy:local)
-pnpm deploy:local       # deploy Model X to running Hardhat node
-pnpm deploy:sepolia     # full stack on Base Sepolia (generation v2)
-pnpm verify:sepolia     # verify on Basescan (needs ETHERSCAN_API_KEY)
-pnpm smoke:sepolia      # read-only post-deploy checks on Sepolia
-node --import tsx --test test/*.test.ts   # app unit tests
-```
-
-After compile, refresh ABIs: `node scripts/export-abis.mjs`
+After compile: `node scripts/export-abis.mjs`
 
 ---
 
-## Contracts
+## Production indexer
 
-Integration testnet: **Base Sepolia (84532)**. Release candidates (`-rc.1`) until mainnet — [contracts/SPEC.md Part V](docs/contracts/SPEC.md#part-v--version-policy).
-
-| Topic | Document |
-|-------|----------|
-| Full contract specification | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
-| Active addresses (84532) | [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) |
-| Indexer | [docs/indexer/README.md](docs/indexer/README.md) |
-
-App fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match SPEC I.9.1).
-
----
-
-## Infrastructure
-
-Production indexer: **PostgreSQL + Ponder + cloudflared**
-
-- Ponder API: https://ponder.kargain.com — generation v2 contracts, backfill from block **43399242** (June 2026)
-- Local stack: `docker compose up -d`
-- Diagnostic: `pnpm ponder:config` · Reindex runbook: [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
-
----
-
-## Ponder API
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /listings` | Marketplace browse and search (optional: `priceCurrency`, `eurUsdRate`, `ethUsdRate` for cross-currency filter/sort). Unfiltered default browse uses SQL pagination in Ponder (not full-table scan). |
-| `GET /listings/facets` | Filter facets (make, price, status, …) |
-| `GET /listings/:tokenId` | Listing detail |
-| `GET /passports/:tokenId` | Passport detail |
-| `GET /passports/batch` | Batch passport lookup |
-| `GET /listings/batch` | Batch listing lookup |
-| `GET /notifications/:address` | Alerts feed for a wallet |
-| `GET /profile/:address/passports` | Passports owned by address |
-| `GET /profile/:address/listings` | Listings by seller |
-| `GET /verifiers` | Verifier directory |
-| `GET /verifiers/:address` | Verifier profile |
-| `GET /verifiers/:address/attestations` | Verifier attestations |
+- API: https://ponder.kargain.com (generation v2, from block **43399242**)
+- Stack: `docker compose up -d` · diagnostic: `pnpm ponder:config`
+- Reindex after schema changes: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
 ---
 
 ## Known limitations
 
-- **Smart wallets + Irys** — contract accounts and EIP-7702 wallets cannot fund Irys uploads from the browser. Use a standard EOA on the target chain for passport photo upload.
-- **Multi-chain** — Ponder indexes Base Sepolia today; additional chains require deployment and indexer configuration per network.
-- **Verification transparency** — disputed passports can still be listed; buyers see status in the UI before purchase.
-- **Upgrade authority** — Generation v2: Timelock48h on 84532 ([SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). v1.x historical: deployer EOA ([SPEC Part II.4.1](docs/contracts/SPEC.md#ii41-governance-roles-deployer-vs-timelock-vs-upgrade-authority)).
+- **Irys uploads** require a standard EOA wallet (smart wallets blocked).
+- **Ponder** indexes Base Sepolia today; other chains need per-network deploy + indexer config.
+- **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
 ---
 
-## Governance and proposals
+## Governance
 
-Protocol standards and process live in a separate repo:
-[kargain-com/kips](https://github.com/kargain-com/kips).
-
-| Change type | Where to start |
-|-------------|----------------|
-| Protocol / standard (metadata, staking rules, interoperability) | Read [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md), then open a PR in `kips` |
-| App code (UI, indexer consumer, contracts in this repo) | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Contract specification | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
-| Indexer | [docs/indexer/README.md](docs/indexer/README.md) |
-| UI layout and tokens | [design-spec.md](docs/design-spec.md) |
-
----
-
-## Contributing
-
-This project is MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, scope, and the KIP vs code split.
-Open an issue before significant work.
+Protocol standards: [kargain-com/kips](https://github.com/kargain-com/kips) ([KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md)).
 
 ## License
 

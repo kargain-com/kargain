@@ -16,7 +16,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
-| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference + deferred events |
+| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference + FX display extension |
 | [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook |
 
 ## UI

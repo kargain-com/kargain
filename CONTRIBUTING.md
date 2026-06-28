@@ -11,7 +11,7 @@ contracts, and indexer consumer; protocol proposals live in
 | A **protocol standard** (metadata schema, identity rules, staking semantics) | [KIP-1](https://github.com/kargain-com/kips/blob/master/kip-0001.md) → PR in `kips` |
 | **App UI** | [design-spec.md](docs/design-spec.md) + this file |
 | **Smart contracts** | [contracts/SPEC.md](docs/contracts/SPEC.md) + `contracts/` |
-| **Ponder migration** | [indexer/MIGRATION-V2.md](docs/indexer/MIGRATION-V2.md) |
+| **Ponder v2 reference** | [indexer/MIGRATION-V2.md](docs/indexer/MIGRATION-V2.md) |
 | **Ponder reindex** | [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
 | **All public docs** | [docs/README.md](docs/README.md) |
 

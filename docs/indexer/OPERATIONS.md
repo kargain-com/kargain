@@ -20,7 +20,7 @@ Generation v2 **env cutover complete** on VPS:
 
 Legacy v1 rows (e.g. `passport id 0`) require **full reindex** after pointing at v2 addresses — not env paste alone. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
 
-**Handlers:** v2 event indexing in `src/index.ts` — deploy + **reindex required** when schema changes (June 2026 handler migration).
+**Handlers:** v2 event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
 
 ---
 
@@ -185,15 +185,14 @@ Wait until logs show:
 ### 6. Smoke checks
 
 ```bash
-curl -s https://ponder.kargain.com/passports/0 | jq '.hadDispute, .lastMetadataChangeAt, .verificationResetCount, .disputeOpenedAt'
-curl -s https://ponder.kargain.com/listings | jq '.listings[0].coverPhotoUri, .total'
-curl -s https://ponder.kargain.com/listings/facets | jq '.fuelTypes, .statusCounts, .conditions, .vehicleTypes'
-curl -s https://ponder.kargain.com/health
+curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
+curl -si https://ponder.kargain.com/status | head -20
+curl -s https://ponder.kargain.com/listings | jq '.total'
+curl -s https://ponder.kargain.com/listings/facets | jq '.statusCounts'
+curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
 ```
 
-Replace token `0` with a known minted passport if needed. On the marketplace UI, cards may show an **On-chain** badge when sampled RPC status differs from Ponder (G4) — that is client-side and does not require reindex.
-
-After reindex, run the browse filter smoke items in [README.md](../README.md) (top bar + drawer: status, make, condition, vehicle type, location, colour).
+Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
 
 ---
 
@@ -238,5 +237,5 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `deployments/84532.json` | Manifest (`generation`, `indexFromBlock`) — not in git |
 | [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
-| [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + deferred events |
+| [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + FX extension |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | Deploy record (84532 generation v2) |

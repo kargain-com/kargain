@@ -146,7 +146,7 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 
 ### Unchanged v1.1 behaviors
 
-- **Variant C** `setPassportURI`: VERIFIED + different URI → `VerificationReset` → UNVERIFIED; DISPUTED → revert; same URI → `SameURI`.
+- **`setPassportURI` (verification reset policy):** from VERIFIED, a new metadata URI emits `VerificationReset` → UNVERIFIED; from DISPUTED → revert; same URI → `SameURI`.
 - `appendRecord`, `reportDiscrepancy`, `appendAttestation` — record-only paths unchanged in role.
 - `verifyPassport`: active verifier only; `CannotSelfVerify` if verifier owns token.
 - **E5:** Buyer inherits `passportStatus` on transfer; no auto-reset on sale.
@@ -160,7 +160,7 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 | `setDisputeDeposit` | owner | Update minimum bond; emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedDeposits` |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
-| `setPassportURI` | token owner | Variant C URI update |
+| `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `disputePassport` | anyone + ETH | VERIFIED → DISPUTED + deposit |
 | `withdrawDispute` | dispute opener | DISPUTED → VERIFIED + refund |
@@ -607,7 +607,7 @@ UNVERIFIED ──verifyPassport──► VERIFIED
 
 **Exit from DISPUTED:** only `resolveDispute` (active verifier). Owner cannot edit metadata while DISPUTED.
 
-### II.3. `setPassportURI` (Variant C — Phase 1)
+### II.3. `setPassportURI` (verification reset policy)
 
 | Current status | New URI | Result |
 |----------------|---------|--------|
@@ -896,7 +896,7 @@ Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm h
 | E5 — buyer inherits status on transfer (no auto-reset) | ✅ |
 | Listed passport — owner `appendRecord` reverts `NotOwner` | ✅ |
 | Resolve gating — any active verifier (§5) | ✅ documented |
-| README Variant C truth | ✅ |
+| README metadata reset policy | ✅ |
 
 Contract tests: `pnpm hardhat test` · trust helpers: `pnpm test:trust` · Ponder handler unit tests (indexer): `pnpm test:ponder`
 
