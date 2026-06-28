@@ -21,7 +21,8 @@ Do not maintain parallel contract docs. If you need to document a contract chang
 
 | Topic | Document |
 |-------|----------|
-| Indexer cutover | [../indexer/MIGRATION-V2.md](../indexer/MIGRATION-V2.md) |
+| Indexer cutover (env) | ✅ June 2026 — [../indexer/OPERATIONS.md](../indexer/OPERATIONS.md) |
+| Indexer handlers (v2 events) | ✅ [../indexer/MIGRATION-V2.md](../indexer/MIGRATION-V2.md) |
 | Indexer reindex | [../indexer/OPERATIONS.md](../indexer/OPERATIONS.md) |
 | Deploy record (84532) | [../ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) |
 | UI | [../design-spec.md](../design-spec.md) |

@@ -530,7 +530,7 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Generation v2 cutover June 27, 2026.
+Historical v1.x addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Generation v2 cutover June 27, 2026; production Ponder indexes v2 from block **43399242** (June 2026).
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 

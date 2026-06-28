@@ -7,7 +7,9 @@ import {
   isDisputeWithdrawnRecord,
 } from "../lib/passport/index-passport-metadata.ts";
 import {
+  disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
+  disputeWithdrawnTrustFields,
   hadDisputeAfterResolve,
   nextVerificationResetCount,
   passportDisputedTrustFields,
@@ -56,6 +58,19 @@ describe("isDisputeWithdrawnRecord", () => {
 });
 
 describe("ponder G1 trust fields", () => {
+  it("maps v2 DisputeOutcome to uphold flag", () => {
+    assert.equal(disputeOutcomeUpholdsVerification(0), false);
+    assert.equal(disputeOutcomeUpholdsVerification(1), true);
+  });
+
+  it("sets VERIFIED on dispute withdrawn", () => {
+    const fields = disputeWithdrawnTrustFields(100n);
+    assert.equal(fields.status, "VERIFIED");
+    assert.equal(fields.disputeOpenedAt, 0n);
+    assert.equal(fields.disputeWithdrawnAt, 100n);
+    assert.equal(fields.disputeDeposit, null);
+  });
+
   it("sets lastMetadataChangeAt on mint", () => {
     const ts = 100n;
     const fields = passportMintTrustFields(ts);
@@ -74,8 +89,10 @@ describe("ponder G1 trust fields", () => {
   it("clears disputeOpenedAt on resolve", () => {
     const reject = disputeResolvedTrustFields(false, 300n);
     assert.equal(reject.disputeOpenedAt, 0n);
+    assert.equal(reject.disputeDeposit, null);
     const uphold = disputeResolvedTrustFields(true, 300n);
     assert.equal(uphold.disputeOpenedAt, 0n);
+    assert.equal(uphold.disputeDeposit, null);
   });
 
   it("keeps hadDispute sticky after resolve", () => {

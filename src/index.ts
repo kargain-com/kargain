@@ -1,5 +1,7 @@
 import { ponder } from "ponder:registry";
 import {
+  agentAuthorization,
+  currencyFeed,
   marketplaceListing,
   marketplaceSale,
   passport,
@@ -8,9 +10,12 @@ import {
   verifier,
 } from "ponder:schema";
 
+import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
 import {
+  disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
+  disputeWithdrawnTrustFields,
   passportDisputedTrustFields,
   passportMintTrustFields,
   passportUriUpdatedTrustFields,
@@ -23,6 +28,14 @@ import { indexKarProMetadataFromUri } from "./lib/ponder-kar-pro-metadata";
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
+
+function agentAuthId(tokenId: string, agent: string): string {
+  return `${tokenId}-${agent.toLowerCase()}`;
+}
+
+function currencyFeedId(chainId: number, currencyCode: string): string {
+  return `${chainId}-${currencyCode}`;
+}
 
 async function appendUriHistory(
   context: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"],
@@ -96,9 +109,16 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
 });
 
 ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
+  const uphold = disputeOutcomeUpholdsVerification(Number(event.args.outcome));
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
-    .set(disputeResolvedTrustFields(event.args.uphold, event.block.timestamp));
+    .set(disputeResolvedTrustFields(uphold, event.block.timestamp));
+});
+
+ponder.on("KarPassport:DisputeWithdrawn", async ({ event, context }) => {
+  await context.db
+    .update(passport, { id: event.args.tokenId.toString() })
+    .set(disputeWithdrawnTrustFields(event.block.timestamp));
 });
 
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
@@ -168,6 +188,7 @@ ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
     await context.db.update(passport, { id: tokenId }).set({
       disputeWithdrawnAt: event.block.timestamp,
       disputeOpenedAt: 0n,
+      disputeDeposit: null,
       updatedAt: event.block.timestamp,
     });
   }
@@ -216,6 +237,12 @@ ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
     });
 });
 
+ponder.on("KarProStaking:VerificationFeeUpdated", async ({ event, context }) => {
+  await context.db
+    .update(verifier, { id: event.args.verifier.toLowerCase() })
+    .set({ verificationFee: event.args.fee });
+});
+
 ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
   const id = event.args.holder.toLowerCase();
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
@@ -260,27 +287,50 @@ ponder.on("KarProPass:ProPassBurned", async ({ event, context }) => {
 
 ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const currencyCode = decodeCurrencyCode(event.args.currencyCode);
+  const agent = event.args.agent.toLowerCase();
+  const authId = agent !== ZERO_ADDRESS ? agentAuthId(tokenId, agent) : null;
+  const auth = authId ? await context.db.find(agentAuthorization, { id: authId }) : null;
+
+  const listingValues = {
+    id: tokenId,
+    tokenId,
+    seller: event.args.seller,
+    fiatPrice1e8: event.args.fiatPrice1e8,
+    currencyCode,
+    agent: agent === ZERO_ADDRESS ? "" : event.args.agent,
+    agentFeeBps: Number(event.args.agentFeeBps),
+    ownerMinPrice1e8: auth?.ownerMinPrice1e8 ?? 0n,
+    active: true,
+    listedAt: event.block.timestamp,
+    soldAt: 0n,
+    buyer: "",
+  };
+
   await context.db
     .insert(marketplaceListing)
-    .values({
-      id: tokenId,
-      tokenId,
-      seller: event.args.seller,
-      fiatPrice1e8: event.args.fiatPrice1e8,
-      fiatCurrency: event.args.fiatCurrency,
-      active: true,
-      listedAt: event.block.timestamp,
-      soldAt: 0n,
-      buyer: "",
-    })
+    .values(listingValues)
     .onConflictDoUpdate({
-      seller: event.args.seller,
-      fiatPrice1e8: event.args.fiatPrice1e8,
-      fiatCurrency: event.args.fiatCurrency,
+      seller: listingValues.seller,
+      fiatPrice1e8: listingValues.fiatPrice1e8,
+      currencyCode: listingValues.currencyCode,
+      agent: listingValues.agent,
+      agentFeeBps: listingValues.agentFeeBps,
+      ownerMinPrice1e8: listingValues.ownerMinPrice1e8,
       active: true,
       listedAt: event.block.timestamp,
       soldAt: 0n,
       buyer: "",
+    });
+});
+
+ponder.on("MarketplaceEscrow:ListingUpdated", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(marketplaceListing, { id: tokenId })
+    .set({
+      fiatPrice1e8: event.args.newPrice,
+      agentFeeBps: Number(event.args.newAgentFeeBps),
     });
 });
 
@@ -290,8 +340,19 @@ ponder.on("MarketplaceEscrow:Delisted", async ({ event, context }) => {
     .set({ active: false });
 });
 
+ponder.on("MarketplaceEscrow:AgentDelisted", async ({ event, context }) => {
+  await context.db
+    .update(marketplaceListing, { id: event.args.tokenId.toString() })
+    .set({ active: false });
+});
+
 ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const payToken =
+    event.args.payToken === ZERO_ADDRESS ? "" : event.args.payToken;
+  const agent =
+    event.args.agent === ZERO_ADDRESS ? "" : event.args.agent;
+
   await context.db
     .update(marketplaceListing, { id: tokenId })
     .set({
@@ -306,9 +367,147 @@ ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
     buyer: event.args.buyer,
     seller: event.args.seller,
     gross: event.args.gross,
-    fee: event.args.fee,
+    platformFee: event.args.platformFee,
+    agentFee: event.args.agentFee,
     netToSeller: event.args.netToSeller,
-    payAsset: Number(event.args.payAsset),
+    payToken,
+    agent,
     timestamp: event.block.timestamp,
   });
 });
+
+ponder.on("MarketplaceEscrow:AgentAuthorized", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const agent = event.args.agent;
+  const id = agentAuthId(tokenId, agent);
+
+  await context.db
+    .insert(agentAuthorization)
+    .values({
+      id,
+      tokenId,
+      agent,
+      expiry: BigInt(event.args.expiry),
+      ownerMinPrice1e8: event.args.ownerMinPrice1e8,
+      active: true,
+    })
+    .onConflictDoUpdate({
+      tokenId,
+      agent,
+      expiry: BigInt(event.args.expiry),
+      ownerMinPrice1e8: event.args.ownerMinPrice1e8,
+      active: true,
+    });
+});
+
+ponder.on("MarketplaceEscrow:AgentRevoked", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const agent = event.args.agent;
+  const id = agentAuthId(tokenId, agent);
+
+  await context.db
+    .update(agentAuthorization, { id })
+    .set({ active: false });
+
+  const listing = await context.db.find(marketplaceListing, { id: tokenId });
+  if (listing && listing.agent.toLowerCase() === agent.toLowerCase()) {
+    await context.db
+      .update(marketplaceListing, { id: tokenId })
+      .set({ agent: "" });
+  }
+});
+
+ponder.on("MarketplaceEscrow:OwnerMinPriceUpdated", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const listing = await context.db.find(marketplaceListing, { id: tokenId });
+  if (listing?.agent) {
+    const id = agentAuthId(tokenId, listing.agent);
+    await context.db
+      .update(agentAuthorization, { id })
+      .set({ ownerMinPrice1e8: event.args.newMin });
+  }
+  await context.db
+    .update(marketplaceListing, { id: tokenId })
+    .set({ ownerMinPrice1e8: event.args.newMin });
+});
+
+ponder.on("MarketplaceEscrow:CurrencyFeedSet", async ({ event, context }) => {
+  const currencyCode = decodeCurrencyCode(event.args.currencyCode);
+  const chainId = Number(event.chain.id);
+  const id = currencyFeedId(chainId, currencyCode);
+
+  await context.db
+    .insert(currencyFeed)
+    .values({
+      id,
+      chainId,
+      currencyCode,
+      feed: event.args.feed,
+      registeredAt: event.block.timestamp,
+      active: true,
+    })
+    .onConflictDoUpdate({
+      chainId,
+      currencyCode,
+      feed: event.args.feed,
+      registeredAt: event.block.timestamp,
+      active: true,
+    });
+});
+
+ponder.on("MarketplaceEscrow:CurrencyFeedRevoked", async ({ event, context }) => {
+  const currencyCode = decodeCurrencyCode(event.args.currencyCode);
+  const chainId = Number(event.chain.id);
+  const id = currencyFeedId(chainId, currencyCode);
+
+  await context.db
+    .update(currencyFeed, { id })
+    .set({ active: false });
+});
+
+ponder.on("MarketplaceEscrow:ReturnRequested", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const listing = await context.db.find(marketplaceListing, { id: tokenId });
+  if (listing?.active) {
+    await context.db
+      .update(marketplaceListing, { id: tokenId })
+      .set({ returnRequestedAt: event.block.timestamp });
+  }
+});
+
+ponder.on("MarketplaceEscrow:ForceReturn", async ({ event, context }) => {
+  await context.db
+    .update(marketplaceListing, { id: event.args.tokenId.toString() })
+    .set({ active: false });
+});
+
+ponder.on("MarketplaceEscrow:ExternalPaymentConfirmed", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(marketplaceListing, { id: tokenId })
+    .set({
+      active: false,
+      externalPaymentConfirmedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("MarketplaceEscrow:SettlementNoteSet", async () => {
+  // Indexed only; note read via on-chain settlementNotes(tokenId) RPC.
+});
+
+ponder.on("MarketplaceEscrow:PaymentTokenApproved", async () => {});
+
+ponder.on("MarketplaceEscrow:PaymentTokenRevoked", async () => {});
+
+ponder.on("MarketplaceEscrow:Paused", async () => {});
+
+ponder.on("KarPassport:DisputeDepositPaid", async ({ event, context }) => {
+  await context.db
+    .update(passport, { id: event.args.tokenId.toString() })
+    .set({
+      disputeDeposit: event.args.amount,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("KarPassport:DisputeDepositUpdated", async () => {});

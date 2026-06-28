@@ -22,10 +22,26 @@ export function passportDisputedTrustFields(timestamp: bigint) {
   };
 }
 
+/** RejectDispute (1) upholds verification; ConfirmDispute (0) clears it. */
+export function disputeOutcomeUpholdsVerification(outcome: number): boolean {
+  return outcome === 1;
+}
+
+export function disputeWithdrawnTrustFields(timestamp: bigint) {
+  return {
+    status: "VERIFIED" as const,
+    disputeWithdrawnAt: timestamp,
+    disputeOpenedAt: 0n,
+    disputeDeposit: null,
+    updatedAt: timestamp,
+  };
+}
+
 export function disputeResolvedTrustFields(uphold: boolean, timestamp: bigint) {
   const resolved = {
     lastDisputeResolvedAt: timestamp,
     disputeOpenedAt: 0n,
+    disputeDeposit: null,
     updatedAt: timestamp,
   };
   if (uphold) {

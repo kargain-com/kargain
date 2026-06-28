@@ -222,9 +222,9 @@ App fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresse
 
 Production indexer: **PostgreSQL + Ponder + cloudflared**
 
-- Ponder API: https://ponder.kargain.com
+- Ponder API: https://ponder.kargain.com — generation v2 contracts, backfill from block **43399242** (June 2026)
 - Local stack: `docker compose up -d`
-- Schema changes require reindex — see [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
+- Diagnostic: `pnpm ponder:config` · Reindex runbook: [indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
 ---
 

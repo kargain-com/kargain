@@ -1,14 +1,14 @@
 # Ponder indexer documentation
 
-Three documents, three lifecycles — read in this order during a v2 cutover:
+| Document | Lifecycle | You need it when… |
+|----------|-----------|-------------------|
+| [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
+| [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | Deferred marketplace events, FX display extension |
+| [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
-| Step | Document | Lifecycle | You need it when… |
-|------|----------|-----------|-------------------|
-| 1 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Temporary** (archive after cutover) | Changing event handlers or `ponder.schema.ts` for generation v2 |
-| 2 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
-| 3 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | Reviewing that deploy’s smoke/verify results and VPS cutover |
+**Production (June 2026):** [ponder.kargain.com](https://ponder.kargain.com) indexes generation v2 contracts from block **43399242** with v2 event handlers. **Reindex required** after deploying handler/schema changes.
 
-## Contract addresses for indexer env
+## Contract addresses for indexer
 
 Do **not** copy address tables here. Resolution order:
 
@@ -17,8 +17,8 @@ Do **not** copy address tables here. Resolution order:
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)
 
-**Start block:** `PONDER_START_BLOCK_84532=43399242` (from manifest `indexFromBlock`).
+**Start block:** `PONDER_START_BLOCK_84532=43399242` (`SEPOLIA_ACTIVE.indexFromBlock`).
 
-## After cutover
+## Listing API fields (v2)
 
-When production indexes generation v2 only, **MIGRATION-V2.md** can move to an archive folder or be deleted. **OPERATIONS.md** stays the runbook for all future reindexes.
+Ponder stores `currencyCode`, `agent`, `agentFeeBps` on listings. HTTP API also returns legacy `fiatCurrency: 0|1` (USD/EUR) for existing frontend — see `lib/marketplace/currency-code.ts`.

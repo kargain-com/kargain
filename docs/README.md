@@ -16,7 +16,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
-| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | **Temporary** — v2 event/schema migration (until cutover done) |
+| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference + deferred events |
 | [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook |
 
 ## UI
@@ -29,7 +29,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify results, VPS cutover checklist |
+| [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify + **completed** VPS cutover |
 
 ## Product onboarding
 

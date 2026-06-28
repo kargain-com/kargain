@@ -34,6 +34,7 @@ import {
   SLUG_PATTERN,
 } from "../../lib/kar-pro/kar-pro-metadata";
 import { buildNotificationFeed } from "./notifications-query";
+import { legacyFiatFromCurrencyCode } from "../../lib/marketplace/currency-code";
 
 const app = new Hono();
 
@@ -128,11 +129,20 @@ async function loadPassportMap(
   return map;
 }
 
+function withLegacyFiatCurrency<T extends { currencyCode: string }>(
+  row: T,
+): T & { fiatCurrency: 0 | 1 } {
+  return {
+    ...row,
+    fiatCurrency: legacyFiatFromCurrencyCode(row.currencyCode),
+  };
+}
+
 async function loadActiveListingFacetRows(): Promise<EnrichedListingForFilter[]> {
   const rows = await db
     .select({
       fiatPrice1e8: marketplaceListing.fiatPrice1e8,
-      fiatCurrency: marketplaceListing.fiatCurrency,
+      currencyCode: marketplaceListing.currencyCode,
       listedAt: marketplaceListing.listedAt,
       make: passport.make,
       model: passport.model,
@@ -151,7 +161,7 @@ async function loadActiveListingFacetRows(): Promise<EnrichedListingForFilter[]>
 
   return rows.map((row) => ({
     fiatPrice1e8: row.fiatPrice1e8,
-    fiatCurrency: row.fiatCurrency,
+    fiatCurrency: legacyFiatFromCurrencyCode(row.currencyCode),
     listedAt: row.listedAt,
     passportStatus: row.passportStatus ?? "UNVERIFIED",
     vin: "",
@@ -175,7 +185,10 @@ function enrichListing(
     tokenId: string;
     seller: string;
     fiatPrice1e8: bigint;
-    fiatCurrency: number;
+    currencyCode: string;
+    agent: string;
+    agentFeeBps: number;
+    ownerMinPrice1e8: bigint;
     active: boolean;
     listedAt: bigint;
     soldAt: bigint;
@@ -186,7 +199,7 @@ function enrichListing(
   const p = passportMap.get(listing.tokenId);
   const passportStatus = p?.status ?? "UNVERIFIED";
   return {
-    ...listing,
+    ...withLegacyFiatCurrency(listing),
     make: p?.make ?? "",
     model: p?.model ?? "",
     year: p?.year ?? 0,
@@ -233,7 +246,10 @@ async function loadDefaultBrowsePage(
         tokenId: marketplaceListing.tokenId,
         seller: marketplaceListing.seller,
         fiatPrice1e8: marketplaceListing.fiatPrice1e8,
-        fiatCurrency: marketplaceListing.fiatCurrency,
+        currencyCode: marketplaceListing.currencyCode,
+        agent: marketplaceListing.agent,
+        agentFeeBps: marketplaceListing.agentFeeBps,
+        ownerMinPrice1e8: marketplaceListing.ownerMinPrice1e8,
         active: marketplaceListing.active,
         listedAt: marketplaceListing.listedAt,
         soldAt: marketplaceListing.soldAt,
@@ -269,15 +285,20 @@ async function loadDefaultBrowsePage(
   ]);
 
   const listings = rows.map((row) => ({
-    id: row.id,
-    tokenId: row.tokenId,
-    seller: row.seller,
-    fiatPrice1e8: row.fiatPrice1e8,
-    fiatCurrency: row.fiatCurrency,
-    active: row.active,
-    listedAt: row.listedAt,
-    soldAt: row.soldAt,
-    buyer: row.buyer,
+    ...withLegacyFiatCurrency({
+      id: row.id,
+      tokenId: row.tokenId,
+      seller: row.seller,
+      fiatPrice1e8: row.fiatPrice1e8,
+      currencyCode: row.currencyCode,
+      agent: row.agent,
+      agentFeeBps: row.agentFeeBps,
+      ownerMinPrice1e8: row.ownerMinPrice1e8,
+      active: row.active,
+      listedAt: row.listedAt,
+      soldAt: row.soldAt,
+      buyer: row.buyer,
+    }),
     passportStatus: row.status ?? "UNVERIFIED",
     verifier: row.verifier ?? "",
     vin: row.vin ?? "",
@@ -410,18 +431,23 @@ app.get("/listings/facets", async (c) => {
     loadActiveListingFacetRows(),
     db
       .select({
-        fiatCurrency: marketplaceListing.fiatCurrency,
+        currencyCode: marketplaceListing.currencyCode,
         count: count(),
       })
       .from(marketplaceListing)
       .where(eq(marketplaceListing.active, true))
-      .groupBy(marketplaceListing.fiatCurrency),
+      .groupBy(marketplaceListing.currencyCode),
   ]);
+
+  const fiatCurrencySet = new Set<number>();
+  for (const row of fiatRows) {
+    fiatCurrencySet.add(legacyFiatFromCurrencyCode(row.currencyCode));
+  }
 
   const facets = computeListingFacets(
     facetRows,
     facetRows.length,
-    fiatRows.map((row) => row.fiatCurrency),
+    [...fiatCurrencySet].sort((a, b) => a - b),
   );
 
   return c.json({
@@ -452,7 +478,7 @@ app.get("/listings/:tokenId", async (c) => {
   const row = listing[0];
   return c.json(
     jsonBody({
-      ...row,
+      ...withLegacyFiatCurrency(row),
       passportStatus: p?.status ?? "UNVERIFIED",
       verifier: p?.verifier ?? "",
       vin: p?.vin ?? "",

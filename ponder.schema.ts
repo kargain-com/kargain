@@ -30,6 +30,7 @@ export const passport = onchainTable("passport", (t) => ({
   vehicleType: t.text().notNull().default(""),
   colour: t.text().notNull().default(""),
   locationLabel: t.text().notNull().default(""),
+  disputeDeposit: t.bigint(),
   createdAt: t.bigint().notNull(),
   updatedAt: t.bigint().notNull(),
 }));
@@ -66,11 +67,16 @@ export const marketplaceListing = onchainTable("marketplace_listing", (t) => ({
   tokenId: t.text().notNull(),
   seller: t.text().notNull(),
   fiatPrice1e8: t.bigint().notNull(),
-  fiatCurrency: t.integer().notNull(),
+  currencyCode: t.text().notNull().default("USD"),
+  agent: t.text().notNull().default(""),
+  agentFeeBps: t.integer().notNull().default(0),
+  ownerMinPrice1e8: t.bigint().notNull().default(0n),
   active: t.boolean().notNull().default(true),
   listedAt: t.bigint().notNull(),
   soldAt: t.bigint().notNull().default(0n),
   buyer: t.text().notNull().default(""),
+  returnRequestedAt: t.bigint(),
+  externalPaymentConfirmedAt: t.bigint(),
 }));
 
 export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
@@ -79,10 +85,30 @@ export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
   buyer: t.text().notNull(),
   seller: t.text().notNull(),
   gross: t.bigint().notNull(),
-  fee: t.bigint().notNull(),
+  platformFee: t.bigint().notNull(),
+  agentFee: t.bigint().notNull().default(0n),
   netToSeller: t.bigint().notNull(),
-  payAsset: t.integer().notNull(),
+  payToken: t.text().notNull().default(""),
+  agent: t.text().notNull().default(""),
   timestamp: t.bigint().notNull(),
+}));
+
+export const agentAuthorization = onchainTable("agent_authorization", (t) => ({
+  id: t.text().primaryKey(),
+  tokenId: t.text().notNull(),
+  agent: t.text().notNull(),
+  expiry: t.bigint().notNull().default(0n),
+  ownerMinPrice1e8: t.bigint().notNull().default(0n),
+  active: t.boolean().notNull().default(true),
+}));
+
+export const currencyFeed = onchainTable("currency_feed", (t) => ({
+  id: t.text().primaryKey(),
+  chainId: t.integer().notNull(),
+  currencyCode: t.text().notNull(),
+  feed: t.text().notNull(),
+  registeredAt: t.bigint().notNull(),
+  active: t.boolean().notNull().default(true),
 }));
 
 export const verifier = onchainTable("verifier", (t) => ({
@@ -94,6 +120,7 @@ export const verifier = onchainTable("verifier", (t) => ({
   metadataURI: t.text().notNull().default(""),
   stakeAsset: t.integer().notNull().default(0),
   stakeAmount: t.text().notNull().default("0"),
+  verificationFee: t.bigint().notNull().default(0n),
   active: t.boolean().notNull().default(false),
   joinedAt: t.bigint().notNull().default(0n),
   leftAt: t.bigint().notNull().default(0n),

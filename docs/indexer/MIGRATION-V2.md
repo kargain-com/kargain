@@ -1,6 +1,14 @@
 # Ponder generation v2 migration guide
 
-The production indexer at [ponder.kargain.com](https://ponder.kargain.com) should index **generation v2** contracts on Base Sepolia after VPS env cutover. Generation v2 contracts emit different events and use different listing fields than v1.x. This document guides the Ponder schema and handler update.
+**Status (June 2026):**
+
+| Area | Status |
+|------|--------|
+| VPS env + contract addresses | ✅ Complete — `SEPOLIA_ACTIVE`, reindex from **43399242** ([ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)) |
+| v1 ghost index data | ✅ Cleared after production reindex |
+| Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
+
+Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented.** This document remains as reference for deferred events and FX display work.
 
 **Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook)
 
@@ -74,24 +82,16 @@ Existing handlers (`PassportDisputed`, `DisputeResolved`, etc.) remain relevant;
 
 ---
 
-## 2. Current handler mismatch (v1 ABI on generation v2 chain)
+## 2. Handler implementation (complete)
 
-Handlers in `src/index.ts` still assume v1 event shapes. Example — **`MarketplaceEscrow:Sale`**:
+Handlers in [`src/index.ts`](../../src/index.ts) index generation v2 events. Key mappings:
 
-```293:313:src/index.ts
-ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
-  // ...
-  await context.db.insert(marketplaceSale).values({
-    // ...
-    fee: event.args.fee,
-    payAsset: Number(event.args.payAsset),
-  });
-});
-```
+- **`Listed`:** `currencyCode` (bytes32 → ASCII), `agent`, `agentFeeBps`
+- **`Sale`:** `platformFee`, `agentFee`, `payToken`, `agent`
+- **`DisputeResolved`:** `outcome` enum via `disputeOutcomeUpholdsVerification`
+- **`DisputeWithdrawn`:** dedicated handler (status `VERIFIED`)
 
-Generation v2 emits `platformFee`, `agentFee`, `payToken`, and `agent` — indexing generation v2 without ABI/handler updates will fail or write wrong columns.
-
-Similarly, **`MarketplaceEscrow:Listed`** reads `event.args.fiatCurrency`; generation v2 emits `currencyCode`, `agent`, `agentFeeBps`.
+API layer ([`src/api/index.ts`](../../src/api/index.ts)) exposes legacy `fiatCurrency: 0|1` derived from `currencyCode` for existing browse/buy UI.
 
 ---
 
@@ -168,7 +168,7 @@ Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy 
 
 ## 5. Cutover checklist
 
-**Reindex steps (VPS, Postgres, start block):** [OPERATIONS.md](./OPERATIONS.md) — do not duplicate that runbook here.
+**Env + reindex (VPS):** ✅ Complete June 2026 — [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md). **Do not duplicate** [OPERATIONS.md](./OPERATIONS.md) runbook here.
 
 ### Strategy
 
@@ -179,14 +179,20 @@ Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy 
 
 Generation v2 is a **fresh deploy** at new addresses — v1.x event history stays on v1 contracts. No migration of listing state on-chain.
 
-### Checklist
+### Checklist (handler migration — complete)
 
-1. Export ABIs; regenerate `abis.generated.ts`.
-2. Update `ponder.schema.ts` + SQL migrations / reindex.
-3. Rewrite handlers in `src/index.ts` for generation v2 events (and keep v1 handlers if dual-indexing).
-4. Set `PONDER_START_BLOCK_84532` (or manifest `indexFromBlock`) to generation v2 deploy block.
-5. Deploy Ponder; smoke `GET /listings`, `GET /passports/:tokenId`.
-6. Update `lib/web3/deployment-addresses.ts` and app to consume generation v2 manifest.
+1. ~~Export ABIs; regenerate `abis.generated.ts`~~ — ✅
+2. ~~Update `ponder.schema.ts` + reindex~~ — ✅ (reindex after VPS deploy)
+3. ~~Rewrite handlers in `src/index.ts` for generation v2 events~~ — ✅
+4. ~~Set `PONDER_START_BLOCK_84532`~~ — ✅ **43399242** on production VPS
+5. Deploy Ponder; smoke `GET /listings`, `GET /passports/:tokenId` after mint/list on v2
+6. ~~Update `lib/web3/sepolia-addresses.ts`~~ — ✅
+
+### Deferred (phase 2) — ✅ complete
+
+- ~~Marketplace: `ReturnRequested`, `ForceReturn`, `SettlementNoteSet`, `ExternalPaymentConfirmed`, `PaymentTokenApproved/Revoked`, `Paused`~~ — handlers in `src/index.ts`; schema columns `returnRequestedAt`, `externalPaymentConfirmedAt` on `marketplace_listing`; `disputeDeposit` on `passport`. **`SettlementNoteSet`** is a no-op handler (event has no `note` arg); frontend reads `settlementNotes(tokenId)` via wagmi RPC.
+- ~~KarPassport: `DisputeDepositPaid`, `DisputeDepositUpdated`~~ — `DisputeDepositPaid` writes `passport.disputeDeposit`; cleared on `DisputeResolved` / `DisputeWithdrawn` via trust-field helpers.
+- CoinGecko FX extension — §6 below
 
 ---
 
@@ -214,4 +220,4 @@ Do not use CoinGecko for AED if product policy requires peg disclosure.
 
 ---
 
-*Last updated: June 27, 2026 — generation v2 deployed to Base Sepolia; indexer migration pending.*
+*Last updated: June 27, 2026 — v2 handlers + schema complete; VPS reindex after deploy.*

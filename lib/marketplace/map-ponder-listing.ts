@@ -1,3 +1,4 @@
+import { legacyFiatFromCurrencyCode } from "@/lib/marketplace/currency-code";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
@@ -8,7 +9,8 @@ export type PonderListingInput = {
   tokenId: string;
   seller: string;
   fiatPrice1e8: string | number;
-  fiatCurrency: number;
+  fiatCurrency?: number;
+  currencyCode?: string;
   active: boolean;
   listedAt: string | number;
   passportStatus?: string;
@@ -71,7 +73,9 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     tokenId: listing.tokenId,
     seller: listing.seller as `0x${string}`,
     fiatPrice1e8: String(listing.fiatPrice1e8),
-    fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency ?? 0),
+    fiatCurrency: listing.fiatCurrency != null
+      ? normalizeListingFiatCurrency(listing.fiatCurrency)
+      : legacyFiatFromCurrencyCode(listing.currencyCode ?? "USD"),
     passportStatus: status,
     updatedAtBlock: String(listing.listedAt),
     tokenUri: listing.tokenUri ?? "",

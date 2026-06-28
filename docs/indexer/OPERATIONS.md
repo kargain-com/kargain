@@ -6,6 +6,24 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 ---
 
+## Production state (validated June 2026)
+
+Generation v2 **env cutover complete** on VPS:
+
+| Item | Value |
+|------|--------|
+| Contract set | `SEPOLIA_ACTIVE` in git — KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
+| Start block | `PONDER_START_BLOCK_84532=43399242` |
+| RPC | `https://sepolia.base.org` |
+| Address resolution | `git pull` → committed fallbacks; optional `pnpm ponder:config` |
+| Docker | `docker compose build ponder` after code pull (see Dockerfile.ponder `COPY patches`) |
+
+Legacy v1 rows (e.g. `passport id 0`) require **full reindex** after pointing at v2 addresses — not env paste alone. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
+
+**Handlers:** v2 event indexing in `src/index.ts` — deploy + **reindex required** when schema changes (June 2026 handler migration).
+
+---
+
 ## Production RPC and start block (VPS — June 2026)
 
 Validated on Base Sepolia production VPS.
@@ -199,6 +217,7 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | Ponder exits on start (“build_id”) | Run full `ponder-reindex.sql`, not table truncate only |
 | Slow / stalled sync on `sepolia.base.org` | Retry; optional Alchemy/QuickNode for backfill only |
 | Empty `fuelType` on old rows | Expected until metadata URIs are re-fetched during replay; ensure Arweave reachable from VPS |
+| API shows v1 `passport id 0` after v2 deploy | Rebuild ponder image + `ponder-reindex.sh`; confirm `pnpm ponder:config` → v2 karPassport |
 | API 404 for passport | Token minted on deprecated pre-v1.1 contract — not in current index |
 | Env change ignored | Use `docker compose up -d --force-recreate ponder` (not `restart` alone) after editing `.env` |
 
@@ -212,11 +231,12 @@ After schema change, drop local DB or run `ponder-reindex.sql` against your loca
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
 | `scripts/lib/resolve-sepolia-stack.ts` | env → manifest → `SEPOLIA_ACTIVE` resolver |
+| `Dockerfile.ponder` | Copy `patches/` before `pnpm install` (Docker build on VPS) |
 | `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
 | `scripts/deploy.ts` | Base Sepolia deploy (generation v2) |
 | `deployments/84532.json` | Manifest (`generation`, `indexFromBlock`) — not in git |
 | [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
-| [MIGRATION-V2.md](./MIGRATION-V2.md) | Handler/schema cutover to generation v2 |
+| [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + deferred events |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | Deploy record (84532 generation v2) |
