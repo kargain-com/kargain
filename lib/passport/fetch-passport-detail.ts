@@ -274,11 +274,15 @@ export async function fetchListingDetail(tokenId: string) {
   }
 }
 
-export async function fetchVerifierDetail(address: string) {
+export async function fetchVerifierDetail(
+  address: string,
+  options?: { fresh?: boolean },
+) {
   try {
-    const res = await fetch(`${PONDER_URL}/verifiers/${address}`, {
-      next: { revalidate: 30 },
-    });
+    const res = await fetch(
+      `${PONDER_URL}/verifiers/${address}`,
+      options?.fresh ? { cache: "no-store" } : { next: { revalidate: 30 } },
+    );
     if (!res.ok) return null;
     return res.json();
   } catch {

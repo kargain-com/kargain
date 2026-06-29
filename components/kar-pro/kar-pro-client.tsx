@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useReadContracts } from "wagmi";
 
-import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import { KarProCredentialCard } from "@/components/kar-pro/kar-pro-credential-card";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
+import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -19,6 +20,7 @@ export function KarProClient({
   onVerifierStatusChange?: (isActiveVerifier: boolean) => void;
 }) {
   const chainId = DEFAULT_CHAIN_ID;
+  const queryClient = useQueryClient();
   const { address, isConnected } = useAccount();
 
   const staking = karProStakingAddress(chainId);
@@ -44,20 +46,22 @@ export function KarProClient({
   const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
 
   const {
-    data: verifierProfile,
-    isPending: profilePending,
+    profile: verifierProfile,
+    isLoading: profileLoading,
+    isSyncing,
     refetch: refetchProfile,
-  } = useQuery({
-    queryKey: ["kar-pro-verifier", address],
-    queryFn: () => fetchKarProVerifierProfile(address!),
-    enabled: Boolean(address && isActiveVerifier),
+  } = useKarProVerifierProfile(address, {
+    isActiveVerifier,
+    syncWhileMissing: true,
   });
 
   const handleJoinSuccess = () => {
     void refetch().then((result) => {
       const active = result.data?.[0]?.result === true;
       onVerifierStatusChange?.(active);
-      if (active) void refetchProfile();
+      if (active && address) {
+        void queryClient.invalidateQueries({ queryKey: ["kar-pro-verifier", address] });
+      }
     });
   };
 
@@ -101,11 +105,26 @@ export function KarProClient({
     );
   }
 
-  if (profilePending || !verifierProfile) {
+  if (profileLoading) {
     return (
       <div className={containerClass}>
         <div className="rounded-md border border-border-default bg-bg-card p-6">
           <p className="font-sans text-fluid-sm text-text-secondary">Loading your KarPro credential…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!verifierProfile) {
+    return (
+      <div className={containerClass}>
+        <div className="rounded-md border border-border-default bg-bg-card p-6 space-y-4">
+          <p className="font-sans text-fluid-sm text-text-secondary">
+            Profile sync is taking longer than expected.
+          </p>
+          <Button type="button" variant="ghost" onClick={() => void refetchProfile()}>
+            Retry
+          </Button>
         </div>
       </div>
     );
@@ -124,6 +143,11 @@ export function KarProClient({
         onUpdated={() => void refetchProfile()}
         onLeft={handleLeave}
       />
+      {isSyncing && (
+        <p className="font-sans text-fluid-sm text-text-secondary">
+          Syncing verification stats…
+        </p>
+      )}
     </div>
   );
 }

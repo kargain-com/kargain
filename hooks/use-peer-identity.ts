@@ -1,9 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useEnsName, useReadContract } from "wagmi";
 
-import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
+import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
@@ -40,10 +39,9 @@ export function usePeerIdentity(peerAddress: `0x${string}` | undefined): PeerIde
     query: { enabled: Boolean(staking && peerAddress) },
   });
 
-  const { data: verifierProfile } = useQuery({
-    queryKey: ["kar-pro-verifier", peerAddress],
-    queryFn: () => fetchKarProVerifierProfile(peerAddress!),
-    enabled: Boolean(peerAddress && isActiveVerifier === true),
+  const { profile: verifierProfile } = useKarProVerifierProfile(peerAddress, {
+    isActiveVerifier: isActiveVerifier === true,
+    syncWhileMissing: false,
   });
 
   if (!peerAddress) {

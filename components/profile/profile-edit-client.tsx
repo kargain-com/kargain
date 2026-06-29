@@ -1,18 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { CheckCheck, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useWalletClient } from "wagmi";
 
-import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -63,10 +62,9 @@ export function ProfileEditClient() {
     query: { enabled: Boolean(staking && address) },
   });
 
-  const { data: verifierProfile } = useQuery({
-    queryKey: ["kar-pro-verifier", address],
-    queryFn: () => fetchKarProVerifierProfile(address!),
-    enabled: Boolean(address && isActiveVerifier === true),
+  const { profile: verifierProfile } = useKarProVerifierProfile(address, {
+    isActiveVerifier: isActiveVerifier === true,
+    syncWhileMissing: true,
   });
 
   useEffect(() => {

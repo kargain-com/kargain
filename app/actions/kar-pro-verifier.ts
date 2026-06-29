@@ -28,8 +28,9 @@ export type KarProVerifierProfile = {
 
 export async function fetchKarProVerifierProfile(
   address: string,
+  options?: { fresh?: boolean },
 ): Promise<KarProVerifierProfile | null> {
-  const detail = await fetchVerifierDetail(address);
+  const detail = await fetchVerifierDetail(address, options);
   if (!detail) return null;
 
   const identity = detail.identity as {
