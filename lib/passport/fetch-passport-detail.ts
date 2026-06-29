@@ -189,6 +189,36 @@ async function confirmStatusOnChain(
   return ponderStatus;
 }
 
+async function confirmOwnerOnChain(
+  tokenId: string,
+  chainId: number,
+  ponderOwner: string,
+): Promise<string> {
+  const address = karPassportAddress(chainId);
+  if (!address) return ponderOwner;
+
+  try {
+    const client = getPublicClient(chainId);
+    const chainOwner = await client.readContract({
+      address,
+      abi: KarPassportAbi,
+      functionName: "ownerOf",
+      args: [BigInt(tokenId)],
+    });
+
+    if (
+      typeof chainOwner === "string" &&
+      chainOwner.toLowerCase() !== ponderOwner.toLowerCase()
+    ) {
+      return chainOwner;
+    }
+  } catch {
+    /* keep ponder owner */
+  }
+
+  return ponderOwner;
+}
+
 export async function fetchPassportDetail(
   tokenId: string,
   chainId: number,
@@ -209,13 +239,14 @@ export async function fetchPassportDetail(
   if (!parsed) return { ok: false, error: "PONDER_UNAVAILABLE" };
 
   const tokenUri = parsed.tokenUri.trim();
-  const [status, metaResult] = await Promise.all([
+  const [status, owner, metaResult] = await Promise.all([
     confirmStatusOnChain(tokenId, chainId, parsed.status),
+    confirmOwnerOnChain(tokenId, chainId, parsed.owner),
     tokenUri
       ? fetchArweaveMetadata(tokenUri, chainId)
       : Promise.resolve({ ok: false as const }),
   ]);
-  const passport: PonderPassportDetail = { ...parsed, status };
+  const passport: PonderPassportDetail = { ...parsed, status, owner };
 
   if (!tokenUri) {
     return { ok: true, passport, metadata: null, metadataError: true };

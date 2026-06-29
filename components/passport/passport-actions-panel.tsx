@@ -24,6 +24,12 @@ import {
 } from "@/lib/contracts/abis.generated";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
+import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
+import {
+  isOnChainNftOwner,
+  isPassportHolder,
+  resolveEffectiveOnChainOwner,
+} from "@/lib/passport/passport-owner";
 import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
@@ -50,6 +56,7 @@ type Props = {
   disputeWithdrawnAt: string;
   duplicateVin: boolean;
   listingActive?: boolean;
+  listingSeller?: `0x${string}`;
   tokenUri: string;
   currentMetadata: PassportMetadata | null;
   uriHistory: PonderUriHistoryEntry[];
@@ -66,6 +73,7 @@ export function PassportActionsPanel({
   disputeWithdrawnAt,
   duplicateVin,
   listingActive,
+  listingSeller,
   tokenUri,
   currentMetadata,
   uriHistory,
@@ -123,10 +131,18 @@ export function PassportActionsPanel({
         : [],
   });
 
+  const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
+  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
+
   const isActiveVerifier = reads?.[0]?.result === true;
-  const isOwner =
-    Boolean(address) &&
-    address!.toLowerCase() === passportOwner.toLowerCase();
+  const isOwner = isOnChainNftOwner(address, effectiveOwner);
+  const holder = isPassportHolder({
+    address,
+    onChainOwner,
+    ponderOwner: passportOwner,
+    listingActive,
+    listingSeller,
+  });
   const isLastDisputer =
     Boolean(address) &&
     lastDisputer &&
@@ -578,6 +594,12 @@ export function PassportActionsPanel({
         </div>
       )}
 
+      {listingActive && holder && (
+        <p className="text-xs text-text-secondary">
+          Service records can be added after delisting.
+        </p>
+      )}
+
       {isOwner && status !== "DISPUTED" && !listingActive && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Button
@@ -696,7 +718,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isConnected && (
+      {isConnected && !holder && (
       <div className="space-y-2 border-t border-border-default pt-4">
         <Label htmlFor="discrepancy">Report discrepancy</Label>
         <Textarea

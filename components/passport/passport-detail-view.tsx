@@ -340,6 +340,7 @@ export function PassportDetailView({
               disputeWithdrawnAt={passport.disputeWithdrawnAt}
               duplicateVin={passport.duplicateVin}
               listingActive={listing?.active}
+              listingSeller={listing?.seller}
               tokenUri={passport.tokenUri}
               currentMetadata={metadata}
               uriHistory={passport.uriHistory}

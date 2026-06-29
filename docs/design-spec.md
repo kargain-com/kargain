@@ -394,6 +394,9 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - **Normal ownership:** **On-chain owner** → `/profile/{owner}`
 - **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`
 - `PassportActionsPanel` wrapped with `id="passport-actions"` and `scroll-mt-24` for dispute anchor
+- **Owner actions** (`PassportActionsPanel`): wallet role from on-chain `ownerOf` via [`passport-owner.ts`](../lib/passport/passport-owner.ts) + [`use-passport-on-chain-owner.ts`](../hooks/use-passport-on-chain-owner.ts); Ponder `passport.owner` is SSR fallback only
+- **Passport holder** (human owner: NFT `ownerOf` when unlisted, listing `seller` when in escrow) sees **Edit metadata**, **Add record +** (when not listed and not DISPUTED); **Report discrepancy** hidden for holder
+- While listed in escrow: holder sees *Service records can be added after delisting.* — `appendRecord` requires NFT custody
 - Trust banner, URI history (collapsed default), Nostr comments
 - Mobile: identity block before gallery when not disputed; disputed layout leads with dispute section then gallery
 
@@ -423,7 +426,9 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 | Disclosure | Bordered panel: seller receives (listing fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithUsdc`; disabled when USDC not configured on chain |
 | Seller delist | Ghost button with Trash2 icon; seller-only when listing active; phases: Confirm in wallet → Delisting… |
-| Seller manage | Link to `/marketplace/{tokenId}/edit` when viewer is seller |
+| Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
+| Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
+| Message seller | `SellerContactButton` (XMTP) for non-holders only — hidden when viewer is passport holder or listing seller |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.

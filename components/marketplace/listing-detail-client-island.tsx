@@ -8,10 +8,18 @@ import { useAccount, useReadContracts } from "wagmi";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { Button } from "@/components/ui/button";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import {
+  isOnChainNftOwner,
+  isPassportHolder,
+  resolveEffectiveOnChainOwner,
+} from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
+import {
+  karPassportAddress,
+  marketplaceAddress,
+} from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type ActiveListing = {
@@ -32,7 +40,7 @@ type Props = {
   chainId: number;
   tokenId: string;
   listing: ListingProp | null;
-  /** Current passport holder (marketplace contract while listed). */
+  /** Ponder passport owner (fallback while chain loads). */
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
   duplicateVin: boolean;
@@ -82,25 +90,36 @@ export function ListingDetailClientIsland({
 }: Props) {
   const { address, isConnected } = useAccount();
 
+  const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
-  const { data: chainReads, isLoading: isChainListingLoading } = useReadContracts({
-    contracts: market
-      ? [
-          {
-            address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "listings",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+  const { data: chainReads, isLoading: isChainReadsLoading } = useReadContracts({
+    contracts:
+      passport && market
+        ? [
+            {
+              address: passport,
+              abi: KarPassportAbi,
+              functionName: "ownerOf",
+              args: [tid],
+              chainId: wc,
+            },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "listings",
+              args: [tid],
+              chainId: wc,
+            },
+          ]
+        : [],
   });
 
-  const chainRow = parseOnChainListing(chainReads?.[0]?.result);
+  const onChainOwner = chainReads?.[0]?.result as `0x${string}` | undefined;
+  const chainRow = parseOnChainListing(chainReads?.[1]?.result);
+  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
   const effectiveListing = useMemo((): ActiveListing | null => {
     if (chainRow?.active) {
@@ -122,35 +141,42 @@ export function ListingDetailClientIsland({
     return null;
   }, [chainRow, listing]);
 
-  const contactPeer: `0x${string}` = effectiveListing?.active
-    ? effectiveListing.seller
-    : passportOwner;
-  const isSelf =
-    Boolean(address) &&
-    address!.toLowerCase() === contactPeer.toLowerCase();
+  const listingActive = Boolean(effectiveListing?.active);
+  const listingSeller = effectiveListing?.seller;
 
-  const isOwner =
-    Boolean(address) &&
-    address!.toLowerCase() === passportOwner.toLowerCase();
+  const contactPeer: `0x${string}` | undefined = listingActive
+    ? listingSeller
+    : effectiveOwner;
 
   const isSeller = Boolean(
-    effectiveListing?.active &&
+    listingActive &&
     address &&
-    effectiveListing.seller &&
-    address.toLowerCase() === effectiveListing.seller.toLowerCase(),
+    listingSeller &&
+    address.toLowerCase() === listingSeller.toLowerCase(),
   );
+
+  const isOwner = isOnChainNftOwner(address, effectiveOwner);
+
+  const holder = isPassportHolder({
+    address,
+    onChainOwner,
+    ponderOwner: passportOwner,
+    listingActive,
+    listingSeller,
+  });
 
   const canManageListing = Boolean(
     market &&
     address &&
-    (isSeller || (!effectiveListing?.active && isOwner)),
+    (isSeller || (!listingActive && isOwner)),
   );
 
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
+  const manageLabel = listingActive ? "Manage listing" : "List for sale";
 
   return (
     <div className="space-y-6">
-      {effectiveListing?.active ? (
+      {listingActive && effectiveListing ? (
         <ListingBuyPanel
           chainId={chainId}
           tokenId={tokenId}
@@ -159,7 +185,7 @@ export function ListingDetailClientIsland({
           duplicateVin={duplicateVin}
           hadDispute={hadDispute}
         />
-      ) : isChainListingLoading && market ? (
+      ) : isChainReadsLoading && market ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Checking listing…
         </p>
@@ -171,17 +197,17 @@ export function ListingDetailClientIsland({
 
       {canManageListing && (
         <Button asChild variant="secondary" className="w-full">
-          <Link href={editHref}>Manage listing</Link>
+          <Link href={editHref}>{manageLabel}</Link>
         </Button>
       )}
 
-      {contactPeer && !isSelf && !isSeller && (
+      {contactPeer && !holder && !isSeller && (
         <div className="flex flex-wrap gap-2">
           {isConnected ? (
             <SellerContactButton
               peerAddress={contactPeer}
               label="Message seller"
-              listingTokenId={effectiveListing?.active ? tokenId : null}
+              listingTokenId={listingActive ? tokenId : null}
             />
           ) : (
             <button
