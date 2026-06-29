@@ -1,11 +1,14 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
+  useConfig,
   useSignMessage,
   useSwitchChain,
   useWriteContract,
@@ -24,6 +27,7 @@ import {
 } from "@/lib/contracts/abis.generated";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
+import { invalidatePassportChainReads } from "@/lib/passport/invalidate-passport-chain-reads";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
 import {
   isOnChainNftOwner,
@@ -81,6 +85,8 @@ export function PassportActionsPanel({
   lastVerificationResetAt,
 }: Props) {
   const router = useRouter();
+  const config = useConfig();
+  const queryClient = useQueryClient();
   const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
@@ -156,20 +162,29 @@ export function PassportActionsPanel({
     return () => window.clearTimeout(timer);
   }, [recordAddedSuccess]);
 
+  const completePassportTx = useCallback(
+    async (hash: `0x${string}`) => {
+      await waitForTransactionReceipt(config, { hash });
+      await invalidatePassportChainReads(queryClient, config, chainId, tokenId);
+      router.refresh();
+    },
+    [chainId, config, queryClient, router, tokenId],
+  );
+
   const run = useCallback(
-    async (fn: () => Promise<unknown>, success: string) => {
+    async (fn: () => Promise<`0x${string}`>, success: string) => {
       if (wrongChain) {
         await switchChainAsync?.({ chainId: wc });
       }
       try {
-        await fn();
+        const hash = await fn();
+        await completePassportTx(hash);
         setMessage(success);
-        router.refresh();
       } catch (err) {
         setMessage(err instanceof Error ? err.message : "Transaction failed.");
       }
     },
-    [router, switchChainAsync, wc, wrongChain],
+    [completePassportTx, switchChainAsync, wc, wrongChain],
   );
 
   const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
@@ -245,7 +260,7 @@ export function PassportActionsPanel({
 
     try {
       const evidenceCID = await resolveOwnerRecordEvidence();
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendRecord",
@@ -257,16 +272,16 @@ export function PassportActionsPanel({
       setRecordEvidencePaste("");
       setRecordEvidenceFile(null);
       setRecordAddedSuccess(true);
-      router.refresh();
+      await completePassportTx(hash);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
+    completePassportTx,
     passport,
     recordDescription,
     recordType,
     resolveOwnerRecordEvidence,
-    router,
     switchChainAsync,
     tid,
     wc,
@@ -284,7 +299,7 @@ export function PassportActionsPanel({
 
     try {
       const evidenceCID = await resolveDiscrepancyEvidence();
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "reportDiscrepancy",
@@ -293,16 +308,16 @@ export function PassportActionsPanel({
       setDiscrepancyText("");
       setDiscrepancyEvidencePaste("");
       setDiscrepancyEvidenceFile(null);
+      await completePassportTx(hash);
       setMessage("Discrepancy reported.");
-      router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
+    completePassportTx,
     discrepancyText,
     passport,
     resolveDiscrepancyEvidence,
-    router,
     switchChainAsync,
     tid,
     wc,
@@ -320,7 +335,7 @@ export function PassportActionsPanel({
 
     try {
       const evidenceCID = await resolveClarificationEvidence();
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendRecord",
@@ -329,16 +344,16 @@ export function PassportActionsPanel({
       setClarificationText("");
       setClarificationEvidencePaste("");
       setClarificationEvidenceFile(null);
+      await completePassportTx(hash);
       setMessage("Clarification appended.");
-      router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
     clarificationText,
+    completePassportTx,
     passport,
     resolveClarificationEvidence,
-    router,
     switchChainAsync,
     tid,
     wc,
@@ -356,7 +371,7 @@ export function PassportActionsPanel({
 
     try {
       const evidenceCID = await resolveAttestationEvidence();
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendAttestation",
@@ -365,16 +380,16 @@ export function PassportActionsPanel({
       setAttestationText("");
       setAttestationEvidencePaste("");
       setAttestationEvidenceFile(null);
+      await completePassportTx(hash);
       setMessage("Attestation appended.");
-      router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
     attestationText,
+    completePassportTx,
     passport,
     resolveAttestationEvidence,
-    router,
     switchChainAsync,
     tid,
     wc,

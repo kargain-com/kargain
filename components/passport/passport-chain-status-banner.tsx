@@ -1,15 +1,10 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import { useReadContract } from "wagmi";
 
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import {
-  chainStatusFromGetPassportStatusResult,
-  compareListingStatus,
-} from "@/lib/passport/confirm-listing-status";
+import { usePassportChainStatus } from "@/hooks/use-passport-chain-status";
+import { compareListingStatus } from "@/lib/passport/confirm-listing-status";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<PassportStatus, string> = {
@@ -31,22 +26,16 @@ export function PassportChainStatusBanner({
   chainId,
   className,
 }: Props) {
-  const address = karPassportAddress(chainId);
-
-  const { data, isLoading, isFetching, isError } = useReadContract({
-    address,
-    abi: KarPassportAbi,
-    functionName: "getPassportStatus",
-    args: [BigInt(tokenId)],
+  const { chainStatus, isLoading, isFetching, isError } = usePassportChainStatus(
     chainId,
-    query: { enabled: Boolean(address) },
-  });
+    String(tokenId),
+    ponderStatus,
+  );
 
-  if (isLoading || isFetching || isError || !data) {
+  if (isLoading || isFetching || isError || !chainStatus) {
     return null;
   }
 
-  const chainStatus = chainStatusFromGetPassportStatusResult(data);
   const drift = compareListingStatus(ponderStatus, chainStatus);
   if (!drift) {
     return null;
