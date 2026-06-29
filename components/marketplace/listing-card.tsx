@@ -5,6 +5,7 @@ import { AlertTriangle, ShieldCheck } from "lucide-react";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
@@ -114,9 +115,12 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             fiatCurrency={row.fiatCurrency}
             className="group-hover:text-accent-warm group-focus-visible:text-accent-warm"
           />
-          <p className="font-mono text-[10px] text-text-secondary">
-            #{row.tokenId} · ch {row.chainId}
-          </p>
+          <PassportIdLabel
+            tokenId={row.tokenId}
+            chainId={row.chainId}
+            prefix="none"
+            variant="mono"
+          />
         </CardContent>
       </Card>
     </Link>

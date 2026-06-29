@@ -14,6 +14,7 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -280,7 +281,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
 
       <section className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-4">
         <p className="text-xs text-text-secondary">Token</p>
-        <p className="font-mono text-sm text-text-primary">#{tokenId}</p>
+        <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" variant="mono" className="text-sm text-text-primary" />
         {active ? (
           <>
             <p className="text-xs text-text-secondary pt-2">Price</p>

@@ -10,6 +10,7 @@ import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/k
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
@@ -204,7 +205,13 @@ function PassportProfileCard({
       href={`/marketplace/${tokenId}?chain=${chainId}`}
       className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm transition-colors duration-150 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
     >
-      <span className="font-mono text-text-primary">#{tokenId}</span>
+      <PassportIdLabel
+        tokenId={tokenId}
+        chainId={chainId}
+        prefix="none"
+        variant="mono"
+        className="text-text-primary"
+      />
       <span className="ml-2">
         <PassportStatusBadge status={status} />
       </span>
@@ -235,7 +242,11 @@ function AttestationRow({
         href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
         className="text-sm text-text-primary transition-colors duration-150 hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
       >
-        Passport #{attestation.tokenId}
+        <PassportIdLabel
+          tokenId={attestation.tokenId}
+          chainId={chainId}
+          className="text-sm text-accent-warm hover:underline"
+        />
       </Link>
       {attestation.description.trim() && (
         <p className="mt-1 truncate text-sm text-text-secondary">
@@ -321,7 +332,13 @@ function DisputeCard({
           />
           <PassportStatusBadge status="DISPUTED" />
         </div>
-        <span className="font-mono text-xs text-text-tertiary">#{dispute.tokenId}</span>
+        <PassportIdLabel
+          tokenId={dispute.tokenId}
+          chainId={chainId}
+          prefix="none"
+          variant="mono"
+          className="text-text-tertiary"
+        />
       </div>
 
       {vehicleLabel && (

@@ -1,5 +1,6 @@
 import type { Event } from "nostr-tools";
 
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { nostrGroupKey, nostrNotifId } from "@/lib/notifications/id";
 import { marketplaceCommentHref } from "@/lib/notifications/notification-href";
 import type { NotificationItem } from "@/lib/notifications/types";
@@ -60,7 +61,7 @@ export function mapNostrEventToNotification(
         kind: "comment",
         tokenId: tokenId ?? undefined,
         eventId: commentId ?? event.id,
-        title: tokenId ? `Passport #${tokenId}` : "Comment",
+        title: tokenId ? formatPassportTitle(tokenId) : "Comment",
       },
       actor: { nostrPubkey: event.pubkey },
       body: "Someone liked your comment",
@@ -84,7 +85,7 @@ export function mapNostrEventToNotification(
         kind: "comment",
         tokenId: tokenId ?? undefined,
         eventId: event.id,
-        title: tokenId ? `Passport #${tokenId}` : "Comment",
+        title: tokenId ? formatPassportTitle(tokenId) : "Comment",
       },
       actor: { nostrPubkey: event.pubkey },
       body: "Someone replied to your comment",
@@ -109,7 +110,7 @@ export function mapNostrEventToNotification(
         kind: "comment",
         tokenId,
         eventId: event.id,
-        title: `Passport #${tokenId}`,
+        title: formatPassportTitle(tokenId),
       },
       actor: { nostrPubkey: event.pubkey },
       body: "A new comment on your passport",

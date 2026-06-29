@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
+import { formatKarPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 export async function generateMetadata({
@@ -28,7 +29,9 @@ export async function generateMetadata({
     }
   }
 
-  return { title: `KarPassport #${raw}` };
+  const parsed = parsePassportTokenId(raw);
+  const chainId = parsed.isV2Prefixed ? parsed.chainId : parseChainParam(undefined);
+  return { title: formatKarPassportTitle(raw, chainId) };
 }
 
 function DetailFallback() {

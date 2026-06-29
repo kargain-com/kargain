@@ -1,3 +1,4 @@
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { passportGroupKey, ponderNotifId } from "@/lib/notifications/id";
 import type { NotificationItem, NotificationType, PonderFeedItem } from "@/lib/notifications/types";
 
@@ -41,7 +42,7 @@ function mapSingleItem(item: PonderFeedItem, lastSeenAtPonder: number): Notifica
     subject: {
       kind: "passport",
       tokenId: item.tokenId,
-      title: `Passport #${item.tokenId}`,
+      title: formatPassportTitle(item.tokenId),
     },
     actor,
     body: config.body,

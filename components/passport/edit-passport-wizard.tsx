@@ -15,6 +15,7 @@ import {
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
 import {
@@ -259,7 +260,10 @@ export function EditPassportWizard({
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-10">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-medium">Edit passport #{tokenId}</h1>
+        <h1 className="flex flex-wrap items-baseline gap-x-2 text-xl font-medium">
+          <span>Edit passport</span>
+          <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" />
+        </h1>
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>← Back</Link>
         </Button>

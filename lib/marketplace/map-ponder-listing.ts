@@ -1,4 +1,5 @@
 import { legacyFiatFromCurrencyCode } from "@/lib/marketplace/currency-code";
+import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
@@ -58,7 +59,7 @@ function buildTitle(listing: PonderListingInput): string {
     return `${listing.year} ${listing.make} ${listing.model}`;
   }
   if (listing.make && listing.model) return `${listing.make} ${listing.model}`;
-  return `Vehicle #${listing.tokenId}`;
+  return `Vehicle ${formatPassportShortLabel(listing.tokenId, DEFAULT_CHAIN_ID)}`;
 }
 
 function coverPhotoUrl(coverPhotoUri: string | undefined): string | null {

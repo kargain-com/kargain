@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -111,7 +112,7 @@ export function BuyRiskModal({
           </Button>
         </div>
 
-        <p className="font-mono text-[10px] text-text-tertiary">#{tokenId}</p>
+        <PassportIdLabel tokenId={tokenId} prefix="none" variant="mono" className="text-text-tertiary" />
       </DialogContent>
     </Dialog>
   );

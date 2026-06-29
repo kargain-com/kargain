@@ -1,3 +1,4 @@
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { passportGroupKey } from "@/lib/notifications/id";
 import type { WatchlistSnapshotDiff } from "@/lib/notifications/watchlist-snapshot";
 import type { NotificationItem, NotificationType } from "@/lib/notifications/types";
@@ -46,7 +47,7 @@ export function mapWatchlistDiffs(
       subject: {
         kind: "passport",
         tokenId: diff.tokenId,
-        title: `Passport #${diff.tokenId}`,
+        title: formatPassportTitle(diff.tokenId),
       },
       body: config.body,
       groupKey: passportGroupKey(diff.tokenId),

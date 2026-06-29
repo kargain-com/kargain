@@ -5,6 +5,7 @@ import NostrCommentsSection from "@/components/marketplace/nostr-comments-sectio
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
@@ -15,6 +16,7 @@ import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import { formatKarPassportTitle } from "@/lib/passport/passport-token-id";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
@@ -44,7 +46,7 @@ function formatChainDate(timestampSec: string, locale: string): string {
   }).format(new Date(sec * 1000));
 }
 
-function buildTitle(metadata: PassportMetadata | null, tokenId: string): string {
+function buildTitle(metadata: PassportMetadata | null, tokenId: string, chainId: number): string {
   if (metadata?.name?.trim()) return metadata.name.trim();
   if (metadata?.year && metadata.make && metadata.model) {
     return `${metadata.year} ${metadata.make} ${metadata.model}`;
@@ -52,7 +54,7 @@ function buildTitle(metadata: PassportMetadata | null, tokenId: string): string 
   if (metadata?.make && metadata.model) {
     return `${metadata.make} ${metadata.model}`;
   }
-  return `KarPassport #${tokenId}`;
+  return formatKarPassportTitle(tokenId, chainId);
 }
 
 function isValidWalletAddress(address: string): boolean {
@@ -194,7 +196,7 @@ export function PassportDetailView({
   metadataError,
   listing = null,
 }: Props) {
-  const title = buildTitle(metadata, tokenId);
+  const title = buildTitle(metadata, tokenId, chainId);
   const isDisputed = passport.status === "DISPUTED";
   const disputeBannerText = getDisputeBannerText({
     disputeReason: passport.disputeReason,
@@ -226,9 +228,7 @@ export function PassportDetailView({
   const titleBlock = (
     <div className="mt-8 flex flex-col gap-2 lg:flex lg:flex-row lg:items-end lg:justify-between">
       <div className="space-y-3">
-        <p className="font-mono text-xs uppercase tracking-widest text-text-tertiary">
-          Passport #{tokenId}
-        </p>
+        <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
         <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
           {title}
         </h1>

@@ -7,10 +7,12 @@ import { Clock } from "lucide-react";
 import { getProShowroomData } from "@/app/actions/pro-showroom";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -68,7 +70,11 @@ function AttestationRow({
         href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
         className="font-mono text-sm text-accent-warm hover:underline"
       >
-        Passport #{attestation.tokenId}
+        <PassportIdLabel
+          tokenId={attestation.tokenId}
+          chainId={chainId}
+          className="text-sm text-accent-warm hover:underline"
+        />
       </Link>
       {attestation.description.trim() && (
         <p className="line-clamp-2 font-sans text-sm text-text-primary">
@@ -285,7 +291,7 @@ export default async function ProShowroomPage({
                       ? `${passport.year} ${passport.make} ${passport.model}`
                       : passport.make && passport.model
                         ? `${passport.make} ${passport.model}`
-                        : `Passport #${passport.tokenId}`;
+                        : formatPassportTitle(passport.tokenId, chainId);
                   const verifiedDate = formatChainDate(passport.verifiedAt);
 
                   return (
@@ -304,9 +310,12 @@ export default async function ProShowroomPage({
                             Verified {verifiedDate}
                           </p>
                         )}
-                        <p className="font-mono text-xs text-text-tertiary">
-                          Passport #{passport.tokenId}
-                        </p>
+                        <PassportIdLabel
+                          tokenId={passport.tokenId}
+                          chainId={chainId}
+                          variant="mono"
+                          className="text-text-tertiary"
+                        />
                       </div>
                     </Link>
                   );

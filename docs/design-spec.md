@@ -317,6 +317,8 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Irys upload progress (create + edit):** [`passport-upload-progress.tsx`](../components/passport/passport-upload-progress.tsx) — batch photo status, fee hint, progress bar. Shown during `phase === "uploading"`. Upload errors from Irys at deposit/upload time use `formatPassportUploadError` (same path as evidence uploads on passport detail).
 
+**Passport token ID display:** v2 on-chain IDs encode `chainId << 128 | localSequence` ([SPEC](./contracts/SPEC.md)). UI shows human labels via [`passport-token-id.ts`](../lib/passport/passport-token-id.ts) + [`passport-id-label.tsx`](../components/passport/passport-id-label.tsx) — e.g. `Passport #0 · Base Sepolia`. Full decimal ID stays in URLs, APIs, and `title` tooltip on hover.
+
 ---
 
 ### 4.11 Profile

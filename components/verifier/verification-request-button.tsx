@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import { openDmWithPeer } from "@/lib/xmtp/open-dm";
 
@@ -51,7 +52,9 @@ function buildVerificationMessage(unverified: PassportRow[]): string {
 
   const lines = unverified.slice(0, 3).map((p) => {
     const label = [p.make, p.model, p.year].filter(Boolean).join(" ");
-    return `• Passport #${p.id ?? "?"}${label ? " — " + label : ""}`;
+    const id = p.id != null ? String(p.id) : null;
+    if (!id) return `• Passport #?${label ? " — " + label : ""}`;
+    return `• ${formatPassportTitle(id)}${label ? " — " + label : ""}`;
   });
   const more = unverified.length > 3 ? `\n+ ${unverified.length - 3} more` : "";
   return [header, ...lines, more].filter(Boolean).join("\n");

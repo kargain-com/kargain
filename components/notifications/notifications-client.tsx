@@ -9,12 +9,14 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 import type { NotificationItem } from "@/lib/notifications/types";
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 
 function groupLabel(groupKey: string, items: NotificationItem[]) {
   const first = items[0];
-  if (first?.subject.tokenId) return `Passport #${first.subject.tokenId}`;
+  if (first?.subject.title && first.subject.tokenId) return first.subject.title;
+  if (first?.subject.tokenId) return formatPassportTitle(first.subject.tokenId);
   if (groupKey.startsWith("passport:")) {
-    return `Passport #${groupKey.slice("passport:".length)}`;
+    return formatPassportTitle(groupKey.slice("passport:".length));
   }
   return "Activity";
 }
