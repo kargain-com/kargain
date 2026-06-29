@@ -6,14 +6,13 @@ import { useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
-import { openDmWithPeer } from "@/lib/xmtp/open-dm";
+import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import {
-  isMessageablePeer,
-  messagingWalletError,
-  readAccountKindFromProvider,
-} from "@/lib/web3/wallet-account";
+import { isMessageablePeer } from "@/lib/web3/wallet-account";
 
 type Props = {
   peerAddress: `0x${string}`;
@@ -24,7 +23,10 @@ type Props = {
 export function SellerContactButton({ peerAddress, label, listingTokenId: _listingTokenId }: Props) {
   const { address, isConnected, connector } = useAccount();
   const router = useRouter();
-  const { isInitializing, error, ensureInitialized } = useXmtpClient();
+  const { client, ensureInitialized } = useXmtpClient();
+  const { isInitializing, error, needsSetup, enableMessages } = useMessagingStatus();
+  const { profile: peerProfile } = useNostrProfile(peerAddress);
+  const { reachable, message, isLoading } = usePeerMessagingReachability(peerAddress);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -48,25 +50,43 @@ export function SellerContactButton({ peerAddress, label, listingTokenId: _listi
     );
   }
 
+  if (!isLoading && !reachable && message) {
+    return (
+      <p className="text-sm text-text-secondary" role="status">
+        {message}
+      </p>
+    );
+  }
+
   const handleClick = async () => {
     setActionError(null);
     setBusy(true);
     try {
-      const provider = await connector?.getProvider?.();
-      const peerKind = await readAccountKindFromProvider(provider, peerAddress);
-      const peerError = messagingWalletError(peerKind);
-      if (peerError) {
-        setActionError(peerError);
-        return;
+      if (needsSetup) {
+        const enabled = await enableMessages();
+        if (!enabled) return;
       }
 
-      const activeClient = await ensureInitialized();
+      const activeClient = client ?? (await ensureInitialized());
       if (!activeClient) return;
 
-      const conversation = await openDmWithPeer(activeClient, peerAddress);
+      const provider = await connector?.getProvider?.();
+      const conversation = await contactPeer({
+        client: activeClient,
+        ensureReady: ensureInitialized,
+        peerAddress,
+        nostrProfile: peerProfile,
+        provider,
+      });
       router.push(`/messages/${conversation.id}`);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Could not open conversation.");
+      setActionError(
+        e instanceof ContactPeerError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not open conversation.",
+      );
     } finally {
       setBusy(false);
     }
@@ -81,7 +101,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId: _listi
         variant="outline"
         size="sm"
         className="gap-2"
-        disabled={busy || isInitializing}
+        disabled={busy || isInitializing || isLoading}
         onClick={() => void handleClick()}
         aria-label={label}
       >

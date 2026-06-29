@@ -216,7 +216,7 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **Logo:** [`KargainLogo`](../components/ui/kargain-logo.tsx) at 24px + wordmark "Kargain". Mobile: icon only — wordmark `hidden sm:block`.
 
-**Messages:** Lucide `Inbox` (20px, `strokeWidth={1.5}`). Unread: dot badge via [`XmtpUnreadBadge`](../components/messaging/xmtp-unread-badge.tsx). Desktop only (`hidden md:inline-flex`); requires wallet connected.
+**Messages:** Lucide `Inbox` (20px, `strokeWidth={1.5}`). Nav dot via [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx): amber when account messaging setup is incomplete; warm accent when unread. Desktop only (`hidden md:inline-flex`); requires wallet connected.
 
 **Alerts:** Lucide `Bell` (20px, `strokeWidth={1.5}`). Unread: dot badge via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx). Desktop only (`hidden md:inline-flex`); link always visible, badge when wallet connected.
 
@@ -349,20 +349,29 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 ### 4.12 Messages
 
-Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts).
+Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx).
+
+**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered and DMs available. Until enabled, `needsSetup` surfaces show [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) instead of empty inbox or SDK errors.
 
 | Element | Rule |
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
-| `?to=` pre-fill | `/messages?to={address}` opens existing DM or creates a new conversation; URL param stripped on mount; protocol/contract peers rejected with error; waits for wallet connect |
-| Profile entry | Identity header **Message** / **Request verification** → `/messages?to={wallet}` |
-| XMTP init | Clean EOA: `ensureInitialized()` on inbox/thread mount (wallet sign); opt-in persisted per address for reconnect auto-init (nav unread badge); smart wallets show blocker copy |
+| Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsSetup`; links to `/profile/edit#messages` |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) on `/profile/edit` — enable/disable + **Allow incoming messages** toggle (`messagesEnabled` in Nostr kind 0) |
+| Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
+| KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until ready |
+| `?to=` pre-fill | `/messages?to={address}` opens DM after self messaging is ready; uses [`contactPeer`](../lib/xmtp/contact-peer.ts); URL param stripped on mount |
+| Profile entry | Identity header **Message** / **Request verification** only when peer is reachable (`Client.canMessage` + Nostr `messagesEnabled`); else *Messages not available* |
+| Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
+| XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; opted-in addresses auto-reconnect; smart wallets show blocker copy |
+| Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
 | Timestamps | Below bubble, `text-xs text-text-tertiary`, aligned with sender side |
 | Composer | `Input` + icon `Button`; Enter sends |
-| Empty inbox | "No conversations yet." |
+| Empty inbox | "No conversations yet." (only when messaging is active) |
+| User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
 
 No per-message sender label in the bubble list.
 
@@ -432,7 +441,7 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 | Seller delist | Ghost button with Trash2 icon; seller-only when listing active; phases: Confirm in wallet → Delisting… |
 | Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
 | Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
-| Message seller | `SellerContactButton` (XMTP) for non-holders only — hidden when viewer is passport holder or listing seller |
+| Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.

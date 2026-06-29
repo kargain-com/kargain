@@ -8,7 +8,7 @@ import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
-import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
+import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { cn } from "@/lib/utils";
 
@@ -109,7 +109,7 @@ export function MobileBottomNav() {
           label="Messages"
           icon={Inbox}
           active={path.startsWith("/messages")}
-          badge={isConnected ? <XmtpUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
+          badge={isConnected ? <MessagingNavStatus className="-top-0.5 -right-0.5" /> : undefined}
         />
 
         <div className="flex items-end justify-center">

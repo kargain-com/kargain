@@ -3,6 +3,8 @@ export type NostrProfileData = {
   about?: string;
   picture?: string;
   website?: string;
+  /** When explicitly false, the user is not accepting direct messages. */
+  messagesEnabled?: boolean;
 };
 
 export function parseProfileContent(content: string): NostrProfileData | null {
@@ -16,6 +18,8 @@ export function parseProfileContent(content: string): NostrProfileData | null {
     if (typeof obj.about === "string") result.about = obj.about;
     if (typeof obj.picture === "string") result.picture = obj.picture;
     if (typeof obj.website === "string") result.website = obj.website;
+    if (obj.messagesEnabled === false) result.messagesEnabled = false;
+    else if (obj.messagesEnabled === true) result.messagesEnabled = true;
     return result;
   } catch {
     return {};

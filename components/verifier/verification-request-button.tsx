@@ -7,8 +7,11 @@ import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
+import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
-import { openDmWithPeer } from "@/lib/xmtp/open-dm";
+import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 
 type Props = {
   verifierAddress: `0x${string}`;
@@ -61,10 +64,15 @@ function buildVerificationMessage(unverified: PassportRow[]): string {
 }
 
 export function VerificationRequestButton({ verifierAddress, verifierName }: Props) {
-  const { address: userAddress, isConnected } = useAccount();
-  const { client, isInitializing, ensureInitialized } = useXmtpClient();
+  const { address: userAddress, isConnected, connector } = useAccount();
+  const { client, ensureInitialized } = useXmtpClient();
+  const { isInitializing, needsSetup, enableMessages } = useMessagingStatus();
+  const { profile: verifierProfile } = useNostrProfile(verifierAddress);
+  const { reachable, message, isLoading: reachabilityLoading } =
+    usePeerMessagingReachability(verifierAddress);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (
     isConnected &&
@@ -77,25 +85,50 @@ export function VerificationRequestButton({ verifierAddress, verifierName }: Pro
   const handleRequestVerification = async () => {
     if (!isConnected || !userAddress) return;
 
+    setActionError(null);
     setLoading(true);
     try {
       const data = await getProfileData(userAddress);
       const unverified = (data.passports as PassportRow[]).filter(
         (p) => p.status === "UNVERIFIED",
       );
-      const message = buildVerificationMessage(unverified);
+      const messageText = buildVerificationMessage(unverified);
+
+      if (needsSetup) {
+        const enabled = await enableMessages();
+        if (!enabled) {
+          setActionError("Enable messages in your profile to send a request.");
+          return;
+        }
+      }
 
       let activeClient = client ?? getCachedXmtpClient();
       if (!activeClient) {
         activeClient = await ensureInitialized();
       }
-      if (!activeClient) return;
+      if (!activeClient) {
+        setActionError("Enable messages in your profile to send a request.");
+        return;
+      }
 
-      const dm = await openDmWithPeer(activeClient, verifierAddress);
-      await dm.sendText(message);
+      const provider = await connector?.getProvider?.();
+      const dm = await contactPeer({
+        client: activeClient,
+        ensureReady: ensureInitialized,
+        peerAddress: verifierAddress,
+        nostrProfile: verifierProfile,
+        provider,
+      });
+      await dm.sendText(messageText);
       router.push(`/messages/${dm.id}`);
-    } catch {
-      // Silent failure — user stays on directory page.
+    } catch (e) {
+      setActionError(
+        e instanceof ContactPeerError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not open conversation.",
+      );
     } finally {
       setLoading(false);
     }
@@ -116,6 +149,14 @@ export function VerificationRequestButton({ verifierAddress, verifierName }: Pro
     );
   }
 
+  if (!reachabilityLoading && !reachable) {
+    return (
+      <p className="text-sm text-text-secondary" role="status">
+        {message ?? "Messages not available"}
+      </p>
+    );
+  }
+
   if (isBusy) {
     return (
       <button
@@ -132,14 +173,21 @@ export function VerificationRequestButton({ verifierAddress, verifierName }: Pro
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void handleRequestVerification()}
-      className={GHOST_BUTTON_CLASS}
-      aria-label={`Request verification from ${verifierName}`}
-    >
-      <MessageSquare size={16} strokeWidth={1.5} aria-hidden />
-      Request verification
-    </button>
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => void handleRequestVerification()}
+        className={GHOST_BUTTON_CLASS}
+        aria-label={`Request verification from ${verifierName}`}
+      >
+        <MessageSquare size={16} strokeWidth={1.5} aria-hidden />
+        Request verification
+      </button>
+      {actionError && (
+        <p className="text-sm text-status-error" role="alert">
+          {actionError}
+        </p>
+      )}
+    </div>
   );
 }

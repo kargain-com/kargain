@@ -8,18 +8,17 @@ import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
+import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
+import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
+import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
-import { openDmWithPeer } from "@/lib/xmtp/open-dm";
+import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 import { formatRelativeTime, getClientEthereumAddress, shortAddress } from "@/lib/xmtp/helpers";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import {
-  isMessageablePeer,
-  messagingWalletError,
-  readAccountKindFromProvider,
-} from "@/lib/web3/wallet-account";
+import { isMessageablePeer } from "@/lib/web3/wallet-account";
 
 function parsePeerAddress(raw: string): `0x${string}` | undefined {
   try {
@@ -108,7 +107,8 @@ export function MessageInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address, isConnected, connector } = useAccount();
-  const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
+  const { client, ensureInitialized } = useXmtpClient();
+  const { isReady, needsSetup, status } = useMessagingStatus();
   const { conversations, isLoading } = useXmtpConversations(client);
   const myAddress = client ? getClientEthereumAddress(client) : address;
 
@@ -121,10 +121,8 @@ export function MessageInboxClient() {
   const [openingPeer, setOpeningPeer] = useState(false);
   const [toError, setToError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isConnected) return;
-    void ensureInitialized();
-  }, [ensureInitialized, isConnected]);
+  const pendingPeer = initialToRef.current ? parsePeerAddress(initialToRef.current) : undefined;
+  const { profile: peerProfile } = useNostrProfile(pendingPeer);
 
   useEffect(() => {
     if (strippedRef.current) return;
@@ -167,10 +165,7 @@ export function MessageInboxClient() {
       return;
     }
 
-    if (!client) {
-      if (!isInitializing) {
-        void ensureInitialized();
-      }
+    if (!isReady || !client) {
       return;
     }
 
@@ -182,24 +177,29 @@ export function MessageInboxClient() {
 
     void (async () => {
       try {
-        const provider = await connector?.getProvider?.();
-        const peerKind = await readAccountKindFromProvider(provider, peer);
-        const peerError = messagingWalletError(peerKind);
-        if (peerError) {
-          setToError(peerError);
-          return;
-        }
-
         const existing = findConversationByPeer(conversations, peer);
         if (existing) {
           router.push(`/messages/${existing.id}`);
           return;
         }
 
-        const dm = await openDmWithPeer(client, peer);
+        const provider = await connector?.getProvider?.();
+        const dm = await contactPeer({
+          client,
+          ensureReady: ensureInitialized,
+          peerAddress: peer,
+          nostrProfile: peerProfile,
+          provider,
+        });
         router.push(`/messages/${dm.id}`);
       } catch (e) {
-        setToError(e instanceof Error ? e.message : "Could not open conversation.");
+        const message =
+          e instanceof ContactPeerError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Could not open conversation.";
+        setToError(message);
       } finally {
         setOpeningPeer(false);
       }
@@ -211,8 +211,9 @@ export function MessageInboxClient() {
     conversations,
     ensureInitialized,
     isConnected,
-    isInitializing,
     isLoading,
+    isReady,
+    peerProfile,
     router,
   ]);
 
@@ -228,8 +229,6 @@ export function MessageInboxClient() {
     );
   }
 
-  const showInboxLoading = !client && isInitializing;
-
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-8 text-text-primary">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -239,6 +238,8 @@ export function MessageInboxClient() {
         )}
       </div>
 
+      {needsSetup && !openingPeer && <MessagingSetupCard variant="full" context="account" />}
+
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -246,22 +247,22 @@ export function MessageInboxClient() {
         </p>
       )}
 
-      {showInboxLoading && (
+      {status === "initializing" && !needsSetup && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Setting up encrypted messaging…
+          Confirm in your wallet…
         </p>
       )}
 
-      {(error || toError) && (
+      {toError && (
         <p className="rounded-md border border-status-error bg-bg-card p-3 text-sm text-status-error" role="alert">
-          {toError ?? error}
+          {toError}
         </p>
       )}
 
-      {client && isLoading && <InboxSkeleton />}
+      {isReady && isLoading && <InboxSkeleton />}
 
-      {client && !isLoading && (
+      {isReady && !isLoading && (
         <ul className="space-y-2" role="list">
           {conversations.length === 0 && (
             <li className="rounded-md border border-dashed border-border-default p-6 text-center text-sm text-text-secondary">

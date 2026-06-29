@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Address } from "viem";
 
 import { Button } from "@/components/ui/button";
+import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 
 export type ProfileActionBannerProps = {
   isOwner: boolean;
@@ -25,6 +26,10 @@ export function ProfileActionBanner({
   openDisputeCount,
   onTabChange,
 }: ProfileActionBannerProps) {
+  const { reachable, isLoading } = usePeerMessagingReachability(
+    !isOwner && isConnected && subjectIsKarPro ? subjectWallet : undefined,
+  );
+
   if (!isOwner && isConnected && subjectIsKarPro) {
     return (
       <div className="flex items-center gap-4 rounded-sm border border-border-default p-4">
@@ -32,9 +37,15 @@ export function ProfileActionBanner({
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Ask {subjectName} to verify your passport
         </p>
-        <Button variant="secondary" size="sm" className="shrink-0" asChild>
-          <Link href={`/messages?to=${subjectWallet}`}>Send request</Link>
-        </Button>
+        {isLoading ? null : reachable ? (
+          <Button variant="secondary" size="sm" className="shrink-0" asChild>
+            <Link href={`/messages?to=${subjectWallet}`}>Send request</Link>
+          </Button>
+        ) : (
+          <p className="shrink-0 text-xs text-text-secondary" role="status">
+            Messages not available
+          </p>
+        )}
       </div>
     );
   }

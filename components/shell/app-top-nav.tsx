@@ -5,7 +5,7 @@ import { Bell, Inbox, PlusCircle, ShieldCheck } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 
-import { XmtpUnreadBadge } from "@/components/messaging/xmtp-unread-badge";
+import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { ChainSelector } from "@/components/shell/chain-selector";
 import { CurrencySelector } from "@/components/shell/currency-selector";
@@ -74,7 +74,7 @@ export function AppTopNav() {
               className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
               <Inbox size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
-              <XmtpUnreadBadge className="top-1.5 right-1.5" />
+              <MessagingNavStatus className="top-1.5 right-1.5" />
             </Link>
           )}
           {showBecomeKarPro && (

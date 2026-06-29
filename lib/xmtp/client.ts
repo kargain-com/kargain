@@ -10,7 +10,7 @@ import {
 import type { WalletClient } from "viem";
 import { getAddress, hexToBytes } from "viem";
 
-function parseXmtpEnv(): XmtpEnv {
+export function getXmtpEnv(): XmtpEnv {
   const raw = process.env.NEXT_PUBLIC_XMTP_ENV?.trim();
   if (
     raw === "local" ||
@@ -56,7 +56,7 @@ export async function createXmtpClient(
   address: `0x${string}`,
 ): Promise<Awaited<ReturnType<typeof Client.create>>> {
   const signer = buildEoaSigner(walletClient, address);
-  const options = { env: parseXmtpEnv() } as ClientOptions;
+  const options = { env: getXmtpEnv() } as ClientOptions;
   const client = await Client.create(signer, options);
   await client.conversations.sync();
   return client;

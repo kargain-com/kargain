@@ -7,6 +7,7 @@ import { useAccount, useReadContracts } from "wagmi";
 
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
+import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
@@ -163,6 +164,8 @@ export function ListingDetailClientIsland({
           Not currently listed
         </p>
       )}
+
+      {isSeller && listingActive && <SellerMessagingBanner />}
 
       {canManageListing && (
         <Button asChild variant="secondary" className="w-full">

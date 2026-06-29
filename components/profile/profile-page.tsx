@@ -12,6 +12,7 @@ import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
+import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
@@ -464,6 +465,8 @@ export function ProfilePage({
         />
 
         <ProfileBio about={about} website={website} />
+
+        {isOwner && <AccountSetupBanner />}
 
         {isActiveVerifier && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border-default py-4">

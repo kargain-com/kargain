@@ -6,6 +6,12 @@ import { useAccount, useWalletClient } from "wagmi";
 import { createXmtpClient } from "@/lib/xmtp/client";
 import type { XmtpClient } from "@/lib/xmtp/helpers";
 import {
+  clearOptedIn,
+  hasOptedIn,
+  isMessagingDisabledLocally,
+  setOptedIn,
+} from "@/lib/xmtp/messaging-preferences";
+import {
   canInitializeMessaging,
   messagingWalletError,
   readAccountKindFromProvider,
@@ -17,8 +23,6 @@ type XmtpClientStore = {
   error: string | null;
   walletKey: string | null;
 };
-
-const XMTP_OPT_IN_PREFIX = "xmtp:opted-in:";
 
 let store: XmtpClientStore = {
   client: null,
@@ -47,22 +51,20 @@ function getSnapshot() {
   return store;
 }
 
-function optInKey(address: string): string {
-  return `${XMTP_OPT_IN_PREFIX}${address.toLowerCase()}`;
-}
-
-function hasOptedIn(address: string): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(optInKey(address)) === "1";
-}
-
-function setOptedIn(address: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(optInKey(address), "1");
-}
-
 export function getCachedXmtpClient(): XmtpClient | null {
   return store.client;
+}
+
+export function closeXmtpClient(): void {
+  if (store.client) {
+    store.client.close();
+  }
+  setStore({
+    client: null,
+    isInitializing: false,
+    error: null,
+    walletKey: null,
+  });
 }
 
 function waitForInitialization(): Promise<void> {
@@ -122,6 +124,11 @@ export function useXmtpClient(): {
     }
 
     const key = address.toLowerCase();
+    if (isMessagingDisabledLocally(key)) {
+      setStore({ client: null, error: null, walletKey: null });
+      return;
+    }
+
     if (store.client && store.walletKey === key) return;
 
     if (store.isInitializing) {
@@ -161,6 +168,11 @@ export function useXmtpClient(): {
     }
 
     const key = address.toLowerCase();
+    if (isMessagingDisabledLocally(key)) {
+      setStore({ client: null, error: null, walletKey: null });
+      return null;
+    }
+
     if (store.client && store.walletKey === key) {
       return store.client;
     }
@@ -184,6 +196,7 @@ export function useXmtpClient(): {
   useEffect(() => {
     if (!isConnected || !address || !walletClient) return;
     const key = address.toLowerCase();
+    if (isMessagingDisabledLocally(key)) return;
     if (!hasOptedIn(key)) return;
     if (store.client && store.walletKey === key) return;
     if (store.isInitializing) return;
@@ -201,13 +214,7 @@ export function useXmtpClient(): {
 
 export function resetXmtpClientOnDisconnect(isConnected: boolean) {
   if (isConnected) return;
-  if (store.client) {
-    store.client.close();
-  }
-  setStore({
-    client: null,
-    isInitializing: false,
-    error: null,
-    walletKey: null,
-  });
+  closeXmtpClient();
 }
+
+export { clearOptedIn, hasOptedIn, isMessagingDisabledLocally };

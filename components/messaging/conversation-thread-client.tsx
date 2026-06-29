@@ -8,8 +8,10 @@ import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
+import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpMessages } from "@/hooks/use-xmtp-messages";
@@ -31,7 +33,8 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 
 export function ConversationThreadClient({ conversationId }: Props) {
   const { isConnected } = useAccount();
-  const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
+  const { client } = useXmtpClient();
+  const { isReady, needsSetup } = useMessagingStatus();
   const { conversations } = useXmtpConversations(client);
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
@@ -79,11 +82,6 @@ export function ConversationThreadClient({ conversationId }: Props) {
   }, [client, conversationId, listPeerAddress]);
 
   useEffect(() => {
-    if (!isConnected) return;
-    void ensureInitialized();
-  }, [ensureInitialized, isConnected]);
-
-  useEffect(() => {
     setLastSeen(conversationId);
   }, [conversationId]);
 
@@ -95,7 +93,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
     return null;
   }
 
-  if (!client) {
+  if (!isReady || !client) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col justify-center gap-4 px-4 py-8 text-text-primary">
         <Button type="button" variant="ghost" size="sm" className="w-fit gap-2" asChild>
@@ -104,13 +102,12 @@ export function ConversationThreadClient({ conversationId }: Props) {
             Back
           </Link>
         </Button>
-        {isInitializing ? (
-          <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            Setting up encrypted messaging…
-          </p>
+        {needsSetup ? (
+          <MessagingSetupCard variant="full" context="account" />
         ) : (
-          error && <p className="text-sm text-status-error">{error}</p>
+          <p className="text-sm text-text-secondary" role="status">
+            Loading messages…
+          </p>
         )}
       </div>
     );

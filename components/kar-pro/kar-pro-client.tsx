@@ -5,9 +5,11 @@ import { useAccount, useReadContracts } from "wagmi";
 
 import { KarProCredentialCard } from "@/components/kar-pro/kar-pro-credential-card";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
+import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
+import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -44,6 +46,7 @@ export function KarProClient({
   });
 
   const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
+  const { needsSetup } = useMessagingStatus();
 
   const {
     profile: verifierProfile,
@@ -132,6 +135,7 @@ export function KarProClient({
 
   return (
     <div className={containerClass}>
+      {needsSetup && <MessagingSetupCard context="karpro" variant="full" />}
       <KarProCredentialCard
         category={verifierProfile.category}
         name={verifierProfile.name}

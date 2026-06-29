@@ -14,6 +14,7 @@ import {
 } from "wagmi";
 
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
+import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -365,6 +366,8 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
           <p className="text-sm text-text-secondary">Not currently listed</p>
         )}
       </section>
+
+      {active && isSeller && <SellerMessagingBanner />}
 
       {active && isSeller && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">

@@ -10,6 +10,7 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
 import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
+import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -52,6 +53,9 @@ export function IdentityHeader({
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
+  const { reachable, isLoading: reachabilityLoading } = usePeerMessagingReachability(
+    !isOwner ? wallet : undefined,
+  );
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: wallet,
     chainId: ENS_CHAIN_ID,
@@ -103,7 +107,7 @@ export function IdentityHeader({
                   <Link href="/profile/edit">Edit profile</Link>
                 </Button>
               )}
-              {!isOwner && isConnected && (
+              {!isOwner && isConnected && reachable && (
                 <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
                   <Link href={`/messages?to=${wallet}`}>
                     <MessageSquare size={14} strokeWidth={1.5} aria-hidden />
@@ -111,10 +115,15 @@ export function IdentityHeader({
                   </Link>
                 </Button>
               )}
-              {!isOwner && isConnected && isActiveVerifier && (
+              {!isOwner && isConnected && isActiveVerifier && reachable && (
                 <Button variant="primary" size="sm" className={headerActionClassName} asChild>
                   <Link href={`/messages?to=${wallet}`}>Request verification</Link>
                 </Button>
+              )}
+              {!isOwner && isConnected && !reachabilityLoading && !reachable && (
+                <p className="text-xs text-text-secondary" role="status">
+                  Messages not available
+                </p>
               )}
             </div>
           )}
