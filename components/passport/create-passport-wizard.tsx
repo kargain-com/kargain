@@ -240,7 +240,6 @@ export function CreatePassportWizard() {
         newPhotoFiles: photos,
         buildMetadata: (photoUris) => buildMetadataWire(form, photoUris),
         provider,
-        address,
         onProgress: setUploadProgress,
       });
 

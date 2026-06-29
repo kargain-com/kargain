@@ -197,7 +197,6 @@ export function EditPassportWizard({
           return buildMetadataWireForEdit(form, photoUris, { createdAt });
         },
         provider,
-        address,
         onProgress: setUploadProgress,
       });
 

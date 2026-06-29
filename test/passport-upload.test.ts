@@ -1,46 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  formatPassportUploadError,
-  PassportIrysWalletBlockedError,
-  uploadPassportToIrys,
-} from "../lib/passport/upload-passport-metadata.ts";
-
-function mockProvider(code: string) {
-  return {
-    request: async (args: { method: string; params?: readonly unknown[] }) => {
-      if (args.method === "eth_getCode") return code;
-      throw new Error(`unexpected method: ${args.method}`);
-    },
-  };
-}
+import { formatPassportUploadError } from "../lib/passport/upload-passport-metadata.ts";
 
 describe("formatPassportUploadError", () => {
-  it("returns wallet-blocked message unchanged", () => {
+  it("maps bundler deposit failure to smart-wallet hint", () => {
     const message = formatPassportUploadError(
-      new PassportIrysWalletBlockedError(
-        "Your wallet uses Smart Account mode (EIP-7702).\nYour ETH balance is safe — no transaction was sent.",
-      ),
+      new Error("Transaction not sent to any of this bundler"),
     );
-    assert.match(message, /EIP-7702/);
-    assert.match(message, /no transaction was sent/i);
+    assert.match(message, /could not deposit to Irys storage/i);
+    assert.match(message, /EOA/i);
   });
-});
 
-describe("uploadPassportToIrys", () => {
-  it("throws PassportIrysWalletBlockedError before upload for EIP-7702", async () => {
-    globalThis.window = {} as Window & typeof globalThis;
-
-    await assert.rejects(
-      () =>
-        uploadPassportToIrys({
-          newPhotoFiles: [],
-          buildMetadata: () => ({ version: "1.1", photos: [] }),
-          provider: mockProvider("0xef0100abcdef"),
-          address: "0x000000000000000000000000000000000000abcd",
-        }),
-      (err: unknown) => err instanceof PassportIrysWalletBlockedError,
-    );
+  it("maps user rejection to cancelled message", () => {
+    const message = formatPassportUploadError(new Error("User rejected the request"));
+    assert.equal(message, "Wallet signature cancelled.");
   });
 });

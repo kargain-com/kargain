@@ -1,5 +1,4 @@
 import {
-  checkIrysCompatibility,
   getIrysUploader,
   isIrysDevnet,
   prepareUserPaidUpload,
@@ -29,14 +28,6 @@ const METADATA_TAGS: IrysTag[] = [
 
 const DEFAULT_ATTEMPTS = 3;
 
-/** Thrown when eth_getCode detects a wallet incompatible with Irys fund(). */
-export class PassportIrysWalletBlockedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PassportIrysWalletBlockedError";
-  }
-}
-
 async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -52,9 +43,6 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): 
 }
 
 export function formatPassportUploadError(err: unknown): string {
-  if (err instanceof PassportIrysWalletBlockedError) {
-    return err.message;
-  }
   if (err instanceof Error) {
     if (err.message.includes("User rejected")) {
       return "Wallet signature cancelled.";
@@ -73,35 +61,6 @@ export function formatPassportUploadError(err: unknown): string {
     return err.message;
   }
   return "Upload failed. Please try again.";
-}
-
-/**
- * Returns a user-facing error string if the wallet cannot fund Irys uploads,
- * or null if the wallet is compatible.
- */
-export async function checkWalletForIrysUpload(
-  provider: unknown,
-  address: string,
-): Promise<string | null> {
-  const result = await checkIrysCompatibility(provider, address);
-  if (result === null) return null;
-
-  if (result === "eip7702") {
-    return [
-      "Your wallet uses Smart Account mode (EIP-7702), which is incompatible with Irys storage deposits.",
-      "To upload photos, switch to a standard EOA account:",
-      "• In MetaMask: open account list → select an account without the Smart Account label",
-      "• Or use Rabby, Rainbow, or any classic EOA wallet on Base Sepolia",
-      "Your ETH balance is safe — no transaction was sent.",
-    ].join("\n");
-  }
-
-  return [
-    "Your wallet is a Smart Contract account, which cannot send the direct ETH transfer required by Irys storage.",
-    "To upload photos, use a standard EOA wallet:",
-    "• Rabby, MetaMask (classic account), Rainbow, or Frame on Base Sepolia",
-    "Your ETH balance is safe — no transaction was sent.",
-  ].join("\n");
 }
 
 export async function uploadPassportPhotos(
@@ -141,21 +100,15 @@ export async function uploadPassportMetadataJson(
 }
 
 /**
- * Wallet check, photo upload (batch), and metadata JSON upload on one Irys session.
+ * Photo upload (batch), and metadata JSON upload on one Irys session.
  * `buildMetadata` receives URIs for newly uploaded files only (in upload order).
  */
 export async function uploadPassportToIrys(params: {
   newPhotoFiles: File[];
   buildMetadata: (uploadedNewPhotoUris: string[]) => Record<string, unknown>;
   provider: unknown;
-  address: string;
   onProgress?: (progress: UploadProgress) => void;
 }): Promise<string> {
-  const walletError = await checkWalletForIrysUpload(params.provider, params.address);
-  if (walletError) {
-    throw new PassportIrysWalletBlockedError(walletError);
-  }
-
   const { uris: uploadedNewUris, uploader } = await uploadPassportPhotos(
     params.newPhotoFiles,
     params.provider,

@@ -315,7 +315,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Photo upload (mint wizard):** [`photo-upload-zone.tsx`](../components/passport/photo-upload-zone.tsx) — drag-and-drop zone with file picker fallback; used on `/passport/new`.
 
-**Irys upload progress (create + edit):** [`passport-upload-progress.tsx`](../components/passport/passport-upload-progress.tsx) — batch photo status, fee hint, progress bar. Shown during `phase === "uploading"`. Errors use `whitespace-pre-line` for multi-line smart-wallet messages.
+**Irys upload progress (create + edit):** [`passport-upload-progress.tsx`](../components/passport/passport-upload-progress.tsx) — batch photo status, fee hint, progress bar. Shown during `phase === "uploading"`. Upload errors from Irys at deposit/upload time use `formatPassportUploadError` (same path as evidence uploads on passport detail).
 
 ---
 

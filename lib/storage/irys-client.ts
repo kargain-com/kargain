@@ -4,7 +4,6 @@ import { WebBaseEth } from "@irys/web-upload-ethereum";
 import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
 import { BrowserProvider } from "ethers";
 
-import { classifyBytecode } from "@/lib/web3/wallet-account";
 import { rpcUrlForChain } from "@/lib/web3/supported-chains";
 
 export const IRYS_GATEWAY = "https://arweave.net";
@@ -80,33 +79,6 @@ async function readChainId(provider: Eip1193Provider): Promise<number> {
     return result;
   }
   throw new Error("Unable to read wallet chain ID");
-}
-
-/**
- * Check whether the connected account is a plain EOA compatible with Irys fund().
- * Smart Accounts (EIP-7702 delegated or ERC-4337 contract) route fund() through
- * DelegationManager — Irys rejects the deposit.
- *
- * Returns null if compatible (clean EOA), or an error string if not.
- */
-export async function checkIrysCompatibility(
-  provider: unknown,
-  address: string,
-): Promise<string | null> {
-  try {
-    const eip1193 = resolveProvider(provider);
-    const code = (await eip1193.request({
-      method: "eth_getCode",
-      params: [address, "latest"],
-    })) as string;
-
-    const kind = classifyBytecode(code);
-    if (kind === "eoa") return null;
-    if (kind === "eip7702") return "eip7702";
-    return "contract";
-  } catch {
-    return null; // if detection fails, allow upload and let fund() surface the real error
-  }
 }
 
 function irysNodeUrl(chainId: number): string {

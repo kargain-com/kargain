@@ -124,7 +124,7 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Known limitations
 
-- **Irys uploads** require a standard EOA wallet (smart wallets blocked).
+- **Irys uploads** use the connected wallet for Arweave storage deposits; some smart wallets may fail at deposit time with an in-app message.
 - **Ponder** indexes Base Sepolia today; other chains need per-network deploy + indexer config.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
