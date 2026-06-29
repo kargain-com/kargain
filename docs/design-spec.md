@@ -418,7 +418,7 @@ Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-fo
 
 ### 4.16 Marketplace listing detail
 
-Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx).
+Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx). On-chain listing rows decoded via [`parse-on-chain-listing.ts`](../lib/marketplace/parse-on-chain-listing.ts) (MarketplaceEscrow v2 struct; `active` at tuple index 2).
 
 | Rule | Value |
 |------|-------|

@@ -30,6 +30,7 @@ import {
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import {
   karPassportAddress,
   marketplaceAddress,
@@ -40,38 +41,6 @@ type Props = {
   tokenId: string;
   chainId: number;
 };
-
-function parseListing(raw: unknown): {
-  seller: `0x${string}`;
-  fiatPrice1e8: bigint;
-  fiat: number;
-  active: boolean;
-} | null {
-  if (raw == null) return null;
-  if (typeof raw === "object" && !Array.isArray(raw) && "seller" in raw) {
-    const o = raw as {
-      seller: `0x${string}`;
-      fiatPrice1e8: bigint;
-      fiat: number;
-      active: boolean;
-    };
-    return {
-      seller: o.seller,
-      fiatPrice1e8: o.fiatPrice1e8,
-      fiat: Number(o.fiat),
-      active: Boolean(o.active),
-    };
-  }
-  if (Array.isArray(raw) && raw.length >= 4) {
-    return {
-      seller: raw[0] as `0x${string}`,
-      fiatPrice1e8: raw[1] as bigint,
-      fiat: Number(raw[2]),
-      active: Boolean(raw[3]),
-    };
-  }
-  return null;
-}
 
 export function ListingEditClient({ tokenId, chainId }: Props) {
   const config = useConfig();
@@ -121,11 +90,11 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   const refetchListing = refetchReads;
   const refetchOwner = refetchReads;
 
-  const row = parseListing(listingOnChain);
+  const row = parseOnChainListing(listingOnChain);
   const active = row?.active ?? false;
   const seller = row?.seller;
   const fiatPrice1e8 = row?.fiatPrice1e8 ?? 0n;
-  const listedFiat = row?.fiat ?? 0;
+  const listedFiat = row?.fiatCurrency ?? 0;
 
   const isSeller =
     Boolean(address && seller && address.toLowerCase() === (seller as string).toLowerCase());

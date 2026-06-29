@@ -9,6 +9,7 @@ import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { Button } from "@/components/ui/button";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import {
   isOnChainNftOwner,
@@ -46,38 +47,6 @@ type Props = {
   duplicateVin: boolean;
   hadDispute: boolean;
 };
-
-function parseOnChainListing(raw: unknown): {
-  seller: `0x${string}`;
-  fiatPrice1e8: bigint;
-  fiat: number;
-  active: boolean;
-} | null {
-  if (raw == null) return null;
-  if (typeof raw === "object" && !Array.isArray(raw) && "seller" in raw) {
-    const o = raw as {
-      seller: `0x${string}`;
-      fiatPrice1e8: bigint;
-      fiat: number;
-      active: boolean;
-    };
-    return {
-      seller: o.seller,
-      fiatPrice1e8: o.fiatPrice1e8,
-      fiat: Number(o.fiat),
-      active: Boolean(o.active),
-    };
-  }
-  if (Array.isArray(raw) && raw.length >= 4) {
-    return {
-      seller: raw[0] as `0x${string}`,
-      fiatPrice1e8: raw[1] as bigint,
-      fiat: Number(raw[2]),
-      active: Boolean(raw[3]),
-    };
-  }
-  return null;
-}
 
 export function ListingDetailClientIsland({
   chainId,
@@ -126,7 +95,7 @@ export function ListingDetailClientIsland({
       return {
         active: true,
         fiatPrice1e8: String(chainRow.fiatPrice1e8),
-        fiatCurrency: chainRow.fiat,
+        fiatCurrency: normalizeListingFiatCurrency(chainRow.fiatCurrency),
         seller: chainRow.seller,
       };
     }
@@ -176,7 +145,7 @@ export function ListingDetailClientIsland({
 
   return (
     <div className="space-y-6">
-      {listingActive && effectiveListing ? (
+      {listingActive && effectiveListing && !holder ? (
         <ListingBuyPanel
           chainId={chainId}
           tokenId={tokenId}
