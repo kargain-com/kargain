@@ -39,6 +39,9 @@ export const metadata: Metadata = {
     description: "Decentralized used-car marketplace on Base Sepolia.",
     images: ["/opengraph-image"],
   },
+  other: {
+    "base:app_id": "6a429f434c9267afe64e904c",
+  },
 };
 
 export const viewport: Viewport = {
