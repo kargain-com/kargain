@@ -158,6 +158,7 @@ async function MarketplaceListingInner({
         passport={result.passport}
         metadata={result.metadata}
         metadataError={result.metadataError}
+        indexerPending={result.indexerPending}
         listing={listing}
       />
     </div>

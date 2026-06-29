@@ -178,7 +178,7 @@ export function CreatePassportWizard() {
 
     setPhase("success");
     router.push(
-      `/marketplace/${minted.args.tokenId.toString()}?chain=${walletChain}`,
+      `/marketplace/${minted.args.tokenId.toString()}/created?chain=${walletChain}&tx=${mintReceipt.transactionHash}`,
     );
   }, [mintReceipt, router, walletChain]);
 

@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { fetchChainPassportDetail } from "@/lib/passport/build-chain-passport-detail";
 import {
   fetchArweaveMetadata,
   type PassportMetadata,
@@ -23,6 +24,7 @@ export type PassportDetailResult =
       passport: PonderPassportDetail;
       metadata: PassportMetadata | null;
       metadataError?: boolean;
+      indexerPending?: boolean;
     }
   | { ok: false; error: "NOT_FOUND" }
   | { ok: false; error: "PONDER_UNAVAILABLE" };
@@ -228,7 +230,17 @@ export async function fetchPassportDetail(
     const res = await fetch(`${PONDER_URL}/passports/${tokenId}`, {
       next: { revalidate: 10 },
     });
-    if (res.status === 404) return { ok: false, error: "NOT_FOUND" };
+    if (res.status === 404) {
+      const chainResult = await fetchChainPassportDetail(tokenId, chainId);
+      if (!chainResult.ok) return { ok: false, error: "NOT_FOUND" };
+      return {
+        ok: true,
+        passport: chainResult.passport,
+        metadata: chainResult.metadata,
+        metadataError: chainResult.metadataError,
+        indexerPending: true,
+      };
+    }
     if (!res.ok) return { ok: false, error: "PONDER_UNAVAILABLE" };
     raw = await res.json();
   } catch {

@@ -5,6 +5,7 @@ import NostrCommentsSection from "@/components/marketplace/nostr-comments-sectio
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
+import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
@@ -29,6 +30,7 @@ type Props = {
   passport: PonderPassportDetail;
   metadata: PassportMetadata | null;
   metadataError?: boolean;
+  indexerPending?: boolean;
   listing?: {
     active: boolean;
     fiatPrice1e8: string;
@@ -194,6 +196,7 @@ export function PassportDetailView({
   passport,
   metadata,
   metadataError,
+  indexerPending = false,
   listing = null,
 }: Props) {
   const title = buildTitle(metadata, tokenId, chainId);
@@ -273,6 +276,12 @@ export function PassportDetailView({
       >
         ← Back to marketplace
       </Link>
+
+      {indexerPending && (
+        <div className="mt-8">
+          <PassportIndexerSyncBanner tokenId={tokenId} chainId={chainId} />
+        </div>
+      )}
 
       {isDisputed && (
         <DisputeStatusSection
