@@ -3,22 +3,18 @@ import { notFound } from "next/navigation";
 import { cache, Suspense } from "react";
 import { getAddress } from "viem";
 
-import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
-import {
-  getPassportsByVerifier,
-  getProfileData,
-} from "@/app/actions/marketplace-listings";
-import { getVerifierAttestations } from "@/app/actions/verifier-attestations";
+import { getProfileData } from "@/app/actions/marketplace-listings";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
+import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { isProtocolAddress, readAccountKind } from "@/lib/web3/wallet-account";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
-const getCachedVerifierProfile = cache(fetchKarProVerifierProfile);
+const getCachedVerifierPublicData = cache(fetchVerifierPublicData);
 
 function parseProfileWallet(raw: string): `0x${string}` | null {
   const handle = decodeURIComponent(raw);
@@ -57,8 +53,8 @@ export async function generateMetadata({
   const wallet = parseProfileWallet(raw);
   if (!wallet) return { title: "Profile" };
 
-  const verifierProfile = await getCachedVerifierProfile(wallet);
-  const name = verifierProfile?.name?.trim() || navShortAddress(wallet);
+  const verifierData = await getCachedVerifierPublicData(wallet);
+  const name = verifierData.profile?.name?.trim() || navShortAddress(wallet);
   return { title: `${name} — Kargain` };
 }
 
@@ -94,20 +90,22 @@ export default async function PublicProfilePage({
     make?: string;
     model?: string;
   }[] = [];
-  let verifiedPassports: Awaited<ReturnType<typeof getPassportsByVerifier>> = [];
-  let verifierProfile: Awaited<ReturnType<typeof fetchKarProVerifierProfile>> = null;
-  let attestations: Awaited<ReturnType<typeof getVerifierAttestations>>["attestations"] = [];
+  let verifiedPassports: Awaited<
+    ReturnType<typeof getCachedVerifierPublicData>
+  >["verifiedPassports"] = [];
+  let verifierProfile: Awaited<
+    ReturnType<typeof getCachedVerifierPublicData>
+  >["profile"] = null;
+  let attestations: Awaited<
+    ReturnType<typeof getCachedVerifierPublicData>
+  >["attestations"] = [];
 
   try {
-    const [verifier, verified, attestationsResult] = await Promise.all([
-      isActiveVerifier ? getCachedVerifierProfile(wallet) : Promise.resolve(null),
-      isActiveVerifier ? getPassportsByVerifier(wallet) : Promise.resolve([]),
-      isActiveVerifier ? getVerifierAttestations(wallet) : Promise.resolve(null),
-    ]);
+    const verifierData = await getCachedVerifierPublicData(wallet);
 
-    verifierProfile = verifier;
-    verifiedPassports = verified;
-    attestations = attestationsResult?.attestations ?? [];
+    verifierProfile = verifierData.profile;
+    verifiedPassports = verifierData.verifiedPassports;
+    attestations = verifierData.attestations;
 
     passports = (profileData.passports as Array<Record<string, unknown>>).map((p) => ({
       tokenId: String(p.id ?? ""),

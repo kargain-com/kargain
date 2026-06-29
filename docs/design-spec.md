@@ -337,11 +337,13 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob v2 encrypts sk with signature-derived AES — see [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts) |
-| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier only): verifications · active since · `0.05 ETH` staked (owner only) |
+| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · `0.05 ETH` staked (owner only). Refreshes client-side via `ProfileVerifierStatsBand`. |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
 | KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
-| Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier (visible to all visitors); **Disputes** owner + active verifier only |
+| Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier or has verifier history in Ponder (visible to all visitors); **Disputes** owner + active verifier only |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
+
+**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
 Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
 

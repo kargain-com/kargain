@@ -9,6 +9,8 @@ import {
   passportUriHistory,
 } from "ponder:schema";
 
+import { getAddress } from "viem";
+
 import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
 import {
@@ -101,7 +103,7 @@ ponder.on("KarPassport:PassportVerified", async ({ event, context }) => {
     .update(passport, { id: event.args.tokenId.toString() })
     .set({
       status: "VERIFIED",
-      verifier: event.args.verifier,
+      verifier: getAddress(event.args.verifier),
       verifiedAt: event.block.timestamp,
       updatedAt: event.block.timestamp,
     });

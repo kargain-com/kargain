@@ -206,6 +206,7 @@ export async function getPassportsByVerifier(
   try {
     const url = new URL(`${PONDER_URL}/passports`);
     url.searchParams.set("verifier", address);
+    url.searchParams.set("status", "VERIFIED");
     url.searchParams.set("limit", "100");
     const res = await fetch(url.toString(), { next: { revalidate: 30 } });
     if (!res.ok) return [];

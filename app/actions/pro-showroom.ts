@@ -8,10 +8,10 @@ import {
 } from "@/lib/marketplace/map-ponder-listing";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
-  PonderVerifierDetail,
   VerifierRow,
 } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
@@ -65,48 +65,6 @@ type PonderListingRaw = {
   verifier?: string;
 };
 
-function isPassportStatus(value: string): value is PassportStatus {
-  return value === "UNVERIFIED" || value === "VERIFIED" || value === "DISPUTED";
-}
-
-function mapVerifierDetail(raw: unknown, address: `0x${string}`): VerifierRow | null {
-  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const detail = raw as PonderVerifierDetail;
-  const identity = detail.identity;
-  const stake = detail.stake;
-  if (!identity) return null;
-
-  return {
-    address,
-    category: Number(identity.category ?? 5),
-    name: String(identity.name ?? ""),
-    slug: String(identity.slug ?? ""),
-    metadataURI: String(identity.metadataURI ?? ""),
-    stakeAsset: stake?.asset != null ? Number(stake.asset) : undefined,
-    stakeAmount: stake?.amount != null ? String(stake.amount) : undefined,
-    active: stake?.active === true,
-    joinedAt: detail.joinedAt != null ? String(detail.joinedAt) : undefined,
-    leftAt: detail.leftAt != null ? String(detail.leftAt) : undefined,
-    verificationCount: Number(detail.verificationCount ?? 0),
-  };
-}
-
-function mapPassportRow(raw: Record<string, unknown>): ProShowroomPassport | null {
-  const tokenId = String(raw.id ?? "");
-  const statusRaw = typeof raw.status === "string" ? raw.status : "";
-  if (!tokenId || !isPassportStatus(statusRaw)) return null;
-
-  const year = typeof raw.year === "number" ? raw.year : Number(raw.year ?? 0);
-  return {
-    tokenId,
-    status: statusRaw,
-    make: typeof raw.make === "string" ? raw.make : "",
-    model: typeof raw.model === "string" ? raw.model : "",
-    year: Number.isFinite(year) ? year : 0,
-    verifiedAt: raw.verifiedAt != null ? String(raw.verifiedAt) : "0",
-  };
-}
-
 function mapListingRaw(listing: PonderListingRaw) {
   return mapPonderListingToRow({
     id: String(listing.id ?? listing.tokenId ?? ""),
@@ -129,6 +87,22 @@ function mapListingRaw(listing: PonderListingRaw) {
     duplicateVin: listing.duplicateVin,
     verifier: listing.verifier,
   });
+}
+
+function mapVerifierRow(
+  profile: NonNullable<Awaited<ReturnType<typeof fetchVerifierPublicData>>["profile"]>,
+  address: `0x${string}`,
+): VerifierRow {
+  return {
+    address,
+    category: profile.category,
+    name: profile.name,
+    slug: profile.slug,
+    metadataURI: profile.metadataURI,
+    active: profile.active,
+    joinedAt: profile.joinedAt > 0 ? String(profile.joinedAt) : undefined,
+    verificationCount: profile.verificationCount,
+  };
 }
 
 export async function getProShowroomData(slug: string): Promise<ProShowroomData | null> {
@@ -158,56 +132,45 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   let attestationTotal = 0;
 
   try {
-    const [activeOnChain, verifierRes, passportsRes, listingsRes, attestationsRes] =
-      await Promise.all([
-        staking
-          ? getPublicClient(DEFAULT_CHAIN_ID)
-              .readContract({
-                address: staking,
-                abi: KarProStakingAbi,
-                functionName: "isActiveVerifier",
-                args: [address],
-              })
-              .catch(() => false)
-          : Promise.resolve(false),
-        fetch(`${PONDER_URL}/verifiers/${address}`, revalidate),
-        fetch(`${PONDER_URL}/passports?verifier=${address}&limit=100`, revalidate),
-        fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
-        fetch(`${PONDER_URL}/verifiers/${address}/attestations?limit=100`, revalidate),
-      ]);
+    const [activeOnChain, verifierData, listingsRes] = await Promise.all([
+      staking
+        ? getPublicClient(DEFAULT_CHAIN_ID)
+            .readContract({
+              address: staking,
+              abi: KarProStakingAbi,
+              functionName: "isActiveVerifier",
+              args: [address],
+            })
+            .catch(() => false)
+        : Promise.resolve(false),
+      fetchVerifierPublicData(address),
+      fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
+    ]);
 
     isActiveVerifier = activeOnChain === true;
 
-    if (verifierRes.ok) {
-      const raw = (await verifierRes.json()) as unknown;
-      verifier = mapVerifierDetail(raw, address);
+    if (verifierData.profile) {
+      verifier = mapVerifierRow(verifierData.profile, address);
     }
 
-    if (passportsRes.ok) {
-      const data = (await passportsRes.json()) as {
-        passports?: Array<Record<string, unknown>>;
-        total?: number;
-      };
-      verifiedPassportTotal = Number(data.total ?? 0);
-      verifiedPassports = (data.passports ?? [])
-        .map(mapPassportRow)
-        .filter((p): p is ProShowroomPassport => p != null);
-    }
+    verifiedPassportTotal = verifierData.verifiedPassportTotal;
+    verifiedPassports = verifierData.verifiedPassports.map((p) => ({
+      tokenId: p.tokenId,
+      status: p.status,
+      make: p.make,
+      model: p.model,
+      year: p.year,
+      verifiedAt: p.verifiedAt,
+    }));
+
+    recentAttestations = verifierData.attestations;
+    attestationTotal = verifierData.attestationTotal;
 
     if (listingsRes.ok) {
       const data = (await listingsRes.json()) as { listings?: PonderListingRaw[] };
       activeListings = (data.listings ?? [])
         .filter((l) => l.active === true)
         .map(mapListingRaw);
-    }
-
-    if (attestationsRes.ok) {
-      const data = (await attestationsRes.json()) as {
-        attestations?: PonderVerifierAttestation[];
-        total?: number;
-      };
-      recentAttestations = data.attestations ?? [];
-      attestationTotal = Number(data.total ?? recentAttestations.length);
     }
   } catch {
     /* return partial data with address */

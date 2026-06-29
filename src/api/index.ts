@@ -500,9 +500,10 @@ app.get("/passports", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
   const owner = c.req.query("owner");
-  const status = c.req.query("status");
-  const vin = c.req.query("vin")?.toUpperCase();
   const verifierParam = c.req.query("verifier");
+  const status =
+    c.req.query("status") ?? (verifierParam ? "VERIFIED" : undefined);
+  const vin = c.req.query("vin")?.toUpperCase();
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
   const offset = (page - 1) * limit;
 
@@ -658,6 +659,7 @@ app.get("/verifiers", async (c) => {
     db
       .select({ verifier: passport.verifier, total: count() })
       .from(passport)
+      .where(eq(passport.status, "VERIFIED"))
       .groupBy(passport.verifier),
   ]);
 
@@ -693,10 +695,13 @@ async function buildVerifierDetailResponse(id: string) {
   if (!row[0]) return null;
 
   const v = row[0];
+  const checksumVerifier = getAddress(id);
   const verificationRow = await db
     .select({ total: count() })
     .from(passport)
-    .where(eq(passport.verifier, getAddress(id)));
+    .where(
+      and(eq(passport.verifier, checksumVerifier), eq(passport.status, "VERIFIED")),
+    );
 
   const verificationCount = verificationRow[0]?.total ?? 0;
 
@@ -704,14 +709,16 @@ async function buildVerifierDetailResponse(id: string) {
     .select()
     .from(passport)
     .where(
-      and(eq(passport.status, "DISPUTED"), eq(passport.verifier, getAddress(id))),
+      and(eq(passport.status, "DISPUTED"), eq(passport.verifier, checksumVerifier)),
     )
     .orderBy(desc(passport.updatedAt));
 
   const verifiedPassports = await db
     .select()
     .from(passport)
-    .where(eq(passport.verifier, getAddress(id)))
+    .where(
+      and(eq(passport.verifier, checksumVerifier), eq(passport.status, "VERIFIED")),
+    )
     .orderBy(desc(passport.verifiedAt))
     .limit(20);
 

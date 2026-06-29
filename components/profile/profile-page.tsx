@@ -10,6 +10,7 @@ import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/k
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
+import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-stats-band";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
@@ -65,6 +66,7 @@ function countLabel(base: string, count: number): ReactNode {
 function buildTabList(
   isOwner: boolean,
   isActiveVerifier: boolean,
+  showVerifierHistory: boolean,
   counts: {
     passports: number;
     listings: number;
@@ -80,7 +82,7 @@ function buildTabList(
   if (isOwner) {
     tabs.push({ id: "saved", label: "Saved" });
   }
-  if (isActiveVerifier) {
+  if (showVerifierHistory) {
     tabs.push({ id: "verified", label: countLabel("Verified", counts.verified) });
     tabs.push({ id: "attestations", label: countLabel("Attestations", counts.attestations) });
   }
@@ -111,14 +113,6 @@ function tabButtonClass(active: boolean): string {
     active
       ? "border-accent-warm text-text-primary"
       : "border-transparent text-text-secondary hover:text-text-primary",
-  );
-}
-
-function StatsSeparator() {
-  return (
-    <span className="mx-2 text-text-tertiary" aria-hidden>
-      ·
-    </span>
   );
 }
 
@@ -396,9 +390,15 @@ export function ProfilePage({
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
 
+  const showVerifierHistory =
+    isActiveVerifier ||
+    verifiedPassports.length > 0 ||
+    attestations.length > 0 ||
+    (verifierProfile?.verificationCount ?? 0) > 0;
+
   const tabs = useMemo(
     () =>
-      buildTabList(isOwner, isActiveVerifier, {
+      buildTabList(isOwner, isActiveVerifier, showVerifierHistory, {
         passports: passports.length,
         listings: listings.length,
         verified: verifiedPassports.length,
@@ -408,6 +408,7 @@ export function ProfilePage({
     [
       isOwner,
       isActiveVerifier,
+      showVerifierHistory,
       passports.length,
       listings.length,
       verifiedPassports.length,
@@ -447,10 +448,6 @@ export function ProfilePage({
 
   const about = profile?.about?.trim() ?? "";
   const website = profile?.website?.trim() ?? "";
-  const memberSinceYear =
-    verifierProfile?.joinedAt != null && verifierProfile.joinedAt > 0
-      ? new Date(verifierProfile.joinedAt * 1000).getFullYear()
-      : null;
   const subjectName = verifierProfile?.name?.trim() || navShortAddress(wallet);
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-text-primary">
@@ -468,34 +465,12 @@ export function ProfilePage({
 
         {isOwner && <AccountSetupBanner />}
 
-        {isActiveVerifier && (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border-default py-4">
-            <span className="font-mono text-sm">
-              <span className="font-medium text-text-primary">
-                {verifierProfile?.verificationCount ?? 0}
-              </span>
-              <span className="ml-1.5 text-text-secondary">verifications</span>
-            </span>
-            {memberSinceYear != null && (
-              <>
-                <StatsSeparator />
-                <span className="font-mono text-sm">
-                  <span className="text-text-secondary">Active since </span>
-                  <span className="font-medium text-text-primary">{memberSinceYear}</span>
-                </span>
-              </>
-            )}
-            {isOwner && isActiveVerifier && (
-              <>
-                <StatsSeparator />
-                <span className="font-mono text-sm">
-                  <span className="font-medium text-text-primary">0.05 ETH</span>
-                  <span className="ml-1.5 text-text-secondary">staked</span>
-                </span>
-              </>
-            )}
-          </div>
-        )}
+        <ProfileVerifierStatsBand
+          wallet={wallet}
+          isActiveVerifier={isActiveVerifier}
+          initialProfile={verifierProfile}
+          isOwner={isOwner}
+        />
 
         <KarProStatusWidget
           isOwner={isOwner}
@@ -626,7 +601,7 @@ export function ProfilePage({
             </section>
           )}
 
-          {activeTab === "verified" && isActiveVerifier && (
+          {activeTab === "verified" && showVerifierHistory && (
             <section
               role="tabpanel"
               id="profile-panel-verified"
@@ -687,7 +662,7 @@ export function ProfilePage({
             </section>
           )}
 
-          {activeTab === "attestations" && isActiveVerifier && (
+          {activeTab === "attestations" && showVerifierHistory && (
             <section
               role="tabpanel"
               id="profile-panel-attestations"

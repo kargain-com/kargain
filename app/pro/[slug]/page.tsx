@@ -153,7 +153,12 @@ export default async function ProShowroomPage({
   const { address, verifier, profileMetadata } = data;
   const name = displayName(verifier?.name, address);
 
-  if (!data.isActiveVerifier) {
+  const showShowroom =
+    data.isActiveVerifier ||
+    verifier?.active === true ||
+    data.verifiedPassportTotal > 0;
+
+  if (!showShowroom) {
     return (
       <div className="min-h-dvh bg-bg-primary text-text-primary">
         <section className="w-full bg-bg-primary py-16">
@@ -233,28 +238,28 @@ export default async function ProShowroomPage({
               </div>
             </div>
 
-            <div className="hidden lg:grid lg:grid-cols-3 gap-px bg-border-default shrink-0">
-              <div className="flex flex-col gap-2 bg-bg-primary py-6 px-6">
-                <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
+            <div className="grid w-full grid-cols-3 gap-px bg-border-default shrink-0 lg:w-auto">
+              <div className="flex flex-col gap-2 bg-bg-primary py-4 px-3 sm:py-6 sm:px-6">
+                <p className="font-mono text-xl sm:text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                   {verificationCount}
                 </p>
-                <p className="font-sans text-sm font-normal text-text-secondary">
+                <p className="font-sans text-xs sm:text-sm font-normal text-text-secondary">
                   Passports verified
                 </p>
               </div>
-              <div className="flex flex-col gap-2 bg-bg-primary py-6 px-6">
-                <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
+              <div className="flex flex-col gap-2 bg-bg-primary py-4 px-3 sm:py-6 sm:px-6">
+                <p className="font-mono text-xl sm:text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                   {data.activeListings.length}
                 </p>
-                <p className="font-sans text-sm font-normal text-text-secondary">
+                <p className="font-sans text-xs sm:text-sm font-normal text-text-secondary">
                   Active listings
                 </p>
               </div>
-              <div className="flex flex-col gap-2 bg-bg-primary py-6 px-6">
-                <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
-                  {data.recentAttestations.length}
+              <div className="flex flex-col gap-2 bg-bg-primary py-4 px-3 sm:py-6 sm:px-6">
+                <p className="font-mono text-xl sm:text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
+                  {data.attestationTotal}
                 </p>
-                <p className="font-sans text-sm font-normal text-text-secondary">
+                <p className="font-sans text-xs sm:text-sm font-normal text-text-secondary">
                   Attestations
                 </p>
               </div>
