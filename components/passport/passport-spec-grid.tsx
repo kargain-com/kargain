@@ -1,13 +1,10 @@
+import { formatMileage } from "@/lib/passport/format-mileage";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 
 type SpecRow = {
   label: string;
   value: string;
 };
-
-function formatMileage(km: number): string {
-  return `${km.toLocaleString()} km`;
-}
 
 function formatLocation(metadata: PassportMetadata): string | null {
   const { location } = metadata;

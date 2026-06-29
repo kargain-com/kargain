@@ -14,17 +14,11 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { MetadataChangeConfirmDialog } from "@/components/passport/metadata-change-confirm-dialog";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -37,6 +31,11 @@ import {
   diffPassportMetadata,
   hasAnchorChanges,
 } from "@/lib/passport/metadata-diff";
+import {
+  formatMetadataDiffForDisplay,
+  type MetadataDiffDisplay,
+  type PhotoDisplayContext,
+} from "@/lib/passport/format-metadata-diff-display";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 import {
@@ -101,9 +100,7 @@ export function EditPassportWizard({
   const [errors, setErrors] = useState<PassportCreateFormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingDiff, setPendingDiff] = useState<ReturnType<
-    typeof diffPassportMetadata
-  > | null>(null);
+  const [pendingDisplay, setPendingDisplay] = useState<MetadataDiffDisplay | null>(null);
   const [phase, setPhase] = useState<"idle" | "uploading" | "saving">("idle");
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
@@ -160,6 +157,18 @@ export function EditPassportWizard({
   const reorderPhoto = (fromIndex: number, toIndex: number) => {
     setPhotos((prev) => reorderArrayItem(prev, fromIndex, toIndex));
   };
+
+  const photoDisplayContext = useMemo((): PhotoDisplayContext => ({
+    resolveThumb: (_uri, index) => {
+      const item = photos[index];
+      const src = previewSrcs[index];
+      if (!item || !src) return null;
+      if (item.kind === "existing") {
+        return { src, alt: "Existing photo" };
+      }
+      return { src, alt: item.file.name };
+    },
+  }), [photos, previewSrcs]);
 
   const executeSave = async () => {
     if (!address || !connector) return;
@@ -239,7 +248,9 @@ export function EditPassportWizard({
 
     const diff = diffPassportMetadata(initialMetadata, afterMetadata);
     if (hasAnchorChanges(diff) || diff.cosmetic.length > 0) {
-      setPendingDiff(diff);
+      setPendingDisplay(
+        formatMetadataDiffForDisplay(diff, { photoContext: photoDisplayContext }),
+      );
       setConfirmOpen(true);
       return;
     }
@@ -348,62 +359,16 @@ export function EditPassportWizard({
         </Button>
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm metadata changes</DialogTitle>
-            <DialogDescription>
-              Review anchor vs cosmetic changes before uploading a new metadata URI.
-            </DialogDescription>
-          </DialogHeader>
-          {pendingDiff && (
-            <div className="space-y-3 text-sm">
-              {pendingDiff.anchor.length > 0 && (
-                <div>
-                  <p className="font-medium text-status-error">Anchor changes</p>
-                  <ul className="mt-1 list-disc pl-5 text-text-secondary">
-                    {pendingDiff.anchor.map((c) => (
-                      <li key={c.field}>
-                        {c.field}: {c.before || "—"} → {c.after || "—"}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {pendingDiff.cosmetic.length > 0 && (
-                <div>
-                  <p className="font-medium">Cosmetic changes</p>
-                  <ul className="mt-1 list-disc pl-5 text-text-secondary">
-                    {pendingDiff.cosmetic.map((c) => (
-                      <li key={c.field}>
-                        {c.field}: {c.before || "—"} → {c.after || "—"}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {status === "VERIFIED" && pendingDiff.anchor.length > 0 && (
-                <p className="text-status-error">
-                  Verification will be reset because anchor fields changed.
-                </p>
-              )}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirmOpen(false);
-                void executeSave();
-              }}
-            >
-              Confirm and save
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <MetadataChangeConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        display={pendingDisplay}
+        status={status}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void executeSave();
+        }}
+      />
     </div>
   );
 }

@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { MetadataChangeSummary } from "@/components/passport/metadata-change-summary";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { fetchArweaveMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import { formatMetadataDiffForDisplay } from "@/lib/passport/format-metadata-diff-display";
 import {
   diffPassportMetadata,
   pickMetadataDiffUris,
   recommendsReInspection,
-  type PassportMetadataDiff,
 } from "@/lib/passport/metadata-diff";
+import { resolveUri } from "@/lib/storage/resolve-uri";
 import type { PonderUriHistoryEntry } from "@/lib/types/ponder";
 
 type Props = {
@@ -20,38 +22,6 @@ type Props = {
   verificationResetCount: number;
   lastVerificationResetAt: string;
 };
-
-function DiffList({
-  title,
-  changes,
-  variant,
-}: {
-  title: string;
-  changes: PassportMetadataDiff["anchor"];
-  variant: "anchor" | "cosmetic";
-}) {
-  if (changes.length === 0) return null;
-  return (
-    <div>
-      <p
-        className={
-          variant === "anchor"
-            ? "font-medium text-status-error"
-            : "font-medium text-text-primary"
-        }
-      >
-        {title}
-      </p>
-      <ul className="mt-1 list-disc pl-5 text-sm text-text-secondary">
-        {changes.map((change) => (
-          <li key={change.field}>
-            {change.field}: {change.before || "—"} → {change.after || "—"}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 export function MetadataDiffPanel({
   chainId,
@@ -99,10 +69,18 @@ export function MetadataDiffPanel({
     };
   }, [uriPair, chainId]);
 
-  const diff = useMemo(() => {
+  const display = useMemo(() => {
     if (!beforeMetadata || !currentMetadata) return null;
-    return diffPassportMetadata(beforeMetadata, currentMetadata);
-  }, [beforeMetadata, currentMetadata]);
+    const diff = diffPassportMetadata(beforeMetadata, currentMetadata);
+    return formatMetadataDiffForDisplay(diff, {
+      photoContext: {
+        resolveThumb: (uri, index) => ({
+          src: resolveUri(uri, chainId),
+          alt: `Photo ${index + 1}`,
+        }),
+      },
+    });
+  }, [beforeMetadata, currentMetadata, chainId]);
 
   if (!uriPair && !showReInspect) return null;
 
@@ -130,19 +108,20 @@ export function MetadataDiffPanel({
         </p>
       )}
 
-      {diff && (diff.anchor.length > 0 || diff.cosmetic.length > 0) ? (
+      {display && (display.identityChanges.length > 0 || display.otherChanges.length > 0) ? (
         <div className="space-y-3">
           <p className="text-sm text-text-secondary">
             Changes since the previous metadata URI:
           </p>
-          <DiffList title="Anchor changes" changes={diff.anchor} variant="anchor" />
-          <DiffList title="Cosmetic changes" changes={diff.cosmetic} variant="cosmetic" />
+          <MetadataChangeSummary display={display} />
         </div>
       ) : null}
 
-      {diff && diff.anchor.length === 0 && diff.cosmetic.length === 0 && (
-        <p className="text-sm text-text-secondary">No field differences detected vs previous URI.</p>
-      )}
+      {display &&
+        display.identityChanges.length === 0 &&
+        display.otherChanges.length === 0 && (
+          <p className="text-sm text-text-secondary">No field differences detected vs previous URI.</p>
+        )}
     </div>
   );
 }
