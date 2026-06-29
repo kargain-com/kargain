@@ -7,7 +7,6 @@ import {
   passport,
   passportRecord,
   passportUriHistory,
-  verifier,
 } from "ponder:schema";
 
 import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
@@ -25,6 +24,16 @@ import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
 import { indexKarProMetadataFromUri } from "./lib/ponder-kar-pro-metadata";
+import {
+  normalizeVerifierId,
+  patchVerifierIfExists,
+  proPassBurnedPatch,
+  proPassProfilePatch,
+  upsertVerifierFromProPassMint,
+  upsertVerifierFromStakingJoin,
+  verificationFeePatch,
+  verifierLeftPatch,
+} from "./lib/ponder-verifier-lifecycle";
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
@@ -207,82 +216,63 @@ ponder.on("KarPassport:Transfer", async ({ event, context }) => {
 });
 
 ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
-  const id = event.args.verifier.toLowerCase();
-  await context.db
-    .insert(verifier)
-    .values({
-      id,
-      address: event.args.verifier,
-      stakeAsset: Number(event.args.asset),
-      stakeAmount: event.args.amount.toString(),
-      active: true,
-      joinedAt: event.block.timestamp,
-    })
-    .onConflictDoUpdate({
-      address: event.args.verifier,
-      stakeAsset: Number(event.args.asset),
-      stakeAmount: event.args.amount.toString(),
-      active: true,
-      joinedAt: event.block.timestamp,
-    });
+  await upsertVerifierFromStakingJoin(
+    context.db,
+    event.args.verifier,
+    Number(event.args.asset),
+    event.args.amount,
+    event.block.timestamp,
+  );
 });
 
 ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
-  await context.db
-    .update(verifier, { id: event.args.verifier.toLowerCase() })
-    .set({
-      active: false,
-      stakeAmount: "0",
-      leftAt: event.block.timestamp,
-    });
+  await patchVerifierIfExists(
+    context.db,
+    normalizeVerifierId(event.args.verifier),
+    verifierLeftPatch(event.block.timestamp),
+  );
 });
 
 ponder.on("KarProStaking:VerificationFeeUpdated", async ({ event, context }) => {
-  await context.db
-    .update(verifier, { id: event.args.verifier.toLowerCase() })
-    .set({ verificationFee: event.args.fee });
+  await patchVerifierIfExists(
+    context.db,
+    normalizeVerifierId(event.args.verifier),
+    verificationFeePatch(event.args.fee),
+  );
 });
 
 ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
-  const id = event.args.holder.toLowerCase();
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
-  await context.db
-    .insert(verifier)
-    .values({
-      id,
-      address: event.args.holder,
-      category: Number(event.args.category),
-      name: event.args.name,
-      slug,
-      metadataURI: event.args.metadataURI,
-      active: true,
-    })
-    .onConflictDoUpdate({
-      address: event.args.holder,
-      category: Number(event.args.category),
-      name: event.args.name,
-      slug,
-      metadataURI: event.args.metadataURI,
-      active: true,
-    });
+  await upsertVerifierFromProPassMint(
+    context.db,
+    event.args.holder,
+    Number(event.args.category),
+    event.args.name,
+    event.args.metadataURI,
+    slug,
+  );
 });
 
 ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
-  await context.db
-    .update(verifier, { id: event.args.holder.toLowerCase() })
-    .set({
-      category: Number(event.args.category),
-      name: event.args.name,
+  await patchVerifierIfExists(
+    context.db,
+    normalizeVerifierId(event.args.holder),
+    proPassProfilePatch(
+      Number(event.args.category),
+      event.args.name,
+      event.args.metadataURI,
       slug,
-      metadataURI: event.args.metadataURI,
-    });
+    ),
+  );
 });
 
 ponder.on("KarProPass:ProPassBurned", async ({ event, context }) => {
-  await context.db
-    .update(verifier, { id: event.args.holder.toLowerCase() })
-    .set({ active: false });
+  await patchVerifierIfExists(
+    context.db,
+    normalizeVerifierId(event.args.holder),
+    proPassBurnedPatch(),
+  );
 });
 
 ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {

@@ -19,6 +19,10 @@ Do **not** copy address tables here. Resolution order:
 
 **Start block:** `PONDER_START_BLOCK_84532=43399242` (`SEPOLIA_ACTIVE.indexFromBlock`).
 
+## Verifier lifecycle (bounded indexing)
+
+Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows; **mutation** and **deactivation** events (`ProfileUpdated`, `VerificationFeeUpdated`, `ProPassBurned`, `VerifierLeft`) patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error).
+
 ## Listing API fields (v2)
 
 Ponder stores `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. HTTP API also returns legacy `fiatCurrency: 0|1` (USD/EUR) for existing frontend — see `lib/marketplace/currency-code.ts`.
