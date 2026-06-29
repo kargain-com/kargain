@@ -145,7 +145,7 @@ export function ListingDetailClientIsland({
 
   return (
     <div className="space-y-6">
-      {listingActive && effectiveListing && !holder ? (
+      {listingActive && effectiveListing ? (
         <ListingBuyPanel
           chainId={chainId}
           tokenId={tokenId}
