@@ -422,8 +422,12 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 
 | Rule | Value |
 |------|-------|
-| Buy panel | Hero price via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (same as browse cards); ETH / USDC payment toggle |
-| Disclosure | Bordered panel: seller receives (listing fiat), you pay, rate at settlement — method-specific rows |
+| Asking price | List denomination in ISO fiat (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
+| Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
+| Direct payment | Optional seller `settlementNotes` (bank, BTC, etc.); buy panel **Direct payment** card when note set — *Not verified by Kargain* |
+| Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); `encodeCurrencyCode` for `list()` |
+| Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; ETH / USDC toggle |
+| Disclosure | Bordered panel: seller receives (asking fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithUsdc`; disabled when USDC not configured on chain |
 | Seller delist | Ghost button with Trash2 icon; seller-only when listing active; phases: Confirm in wallet → Delisting… |
 | Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |

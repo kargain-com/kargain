@@ -4,9 +4,35 @@ import { describe, it } from "node:test";
 import { currencyCodeBytes32 } from "../scripts/lib/chainlink-feeds.ts";
 import {
   decodeCurrencyCode,
+  encodeCurrencyCode,
   legacyFiatFromCurrencyCode,
+  listingCurrencyCodesForChain,
   payTokenToLegacyPayAsset,
 } from "../lib/marketplace/currency-code.ts";
+
+describe("encodeCurrencyCode", () => {
+  it("roundtrips with decodeCurrencyCode", () => {
+    for (const iso of ["USD", "EUR", "GBP"] as const) {
+      const encoded = encodeCurrencyCode(iso);
+      assert.equal(decodeCurrencyCode(encoded), iso);
+      assert.equal(encoded, currencyCodeBytes32(iso));
+    }
+  });
+});
+
+describe("listingCurrencyCodesForChain", () => {
+  it("returns USD only on Base Sepolia", () => {
+    assert.deepEqual(listingCurrencyCodesForChain(84532), ["USD"]);
+  });
+
+  it("returns multi-currency on Ethereum Sepolia", () => {
+    assert.deepEqual(listingCurrencyCodesForChain(11155111), ["USD", "EUR", "GBP", "JPY"]);
+  });
+
+  it("falls back to USD for unknown chains", () => {
+    assert.deepEqual(listingCurrencyCodesForChain(999), ["USD"]);
+  });
+});
 
 describe("decodeCurrencyCode", () => {
   it("decodes USD and EUR", () => {

@@ -10,8 +10,10 @@ const PRICE_CLASS =
 type Props = {
   fiatPrice1e8: string | bigint;
   fiatCurrency: number | string;
-  /** Show "Price" label above amount (listing detail sidebar). */
+  /** Show label above amount (listing detail sidebar). */
   showLabel?: boolean;
+  /** Label when showLabel is true. */
+  label?: "asking" | "price";
   className?: string;
 };
 
@@ -19,17 +21,19 @@ export function ListingDisplayPrice({
   fiatPrice1e8,
   fiatCurrency,
   showLabel = false,
+  label = "asking",
   className,
 }: Props) {
   const { convertPrice } = useDisplayCurrency();
   const amount =
     typeof fiatPrice1e8 === "bigint" ? fiatPrice1e8 : BigInt(fiatPrice1e8);
   const price = convertPrice(amount, normalizeListingFiatCurrency(fiatCurrency));
+  const labelText = label === "asking" ? "Asking price" : "Price";
 
   if (showLabel) {
     return (
       <div className={className}>
-        <p className="font-sans text-xs text-text-tertiary">Price</p>
+        <p className="font-sans text-xs text-text-tertiary">{labelText}</p>
         <p className={PRICE_CLASS}>{price}</p>
       </div>
     );

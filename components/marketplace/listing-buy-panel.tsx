@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
@@ -145,6 +146,17 @@ export function ListingBuyPanel({
   const wrongChain = walletChain !== chainId;
   const tid = BigInt(tokenId);
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
+
+  const { data: settlementNoteRaw } = useReadContract({
+    address: market,
+    abi: MarketplaceEscrowAbi,
+    functionName: "settlementNotes",
+    args: [tid],
+    chainId: wc,
+    query: { enabled: Boolean(market) },
+  });
+
+  const directPaymentNote = decodeSettlementNote(settlementNoteRaw).trim();
 
   const { data: quoteData, isLoading: isQuotesLoading } = useReadContracts({
     contracts:
@@ -335,19 +347,37 @@ export function ListingBuyPanel({
   const usdcOptionDisabled = !usdc || (usdcUnavailable && !isQuotesLoading);
 
   const priceBlock = (
-    <div className="rounded-sm border border-border-default bg-bg-surface p-4">
+    <div className="rounded-sm border border-border-default bg-bg-surface p-4 space-y-2">
       <ListingDisplayPrice
         fiatPrice1e8={listing.fiatPrice1e8}
         fiatCurrency={listing.fiatCurrency}
         showLabel
+        label="asking"
       />
+      <p className="font-sans text-xs text-text-secondary">
+        Checkout on Kargain is in ETH or USDC.
+      </p>
     </div>
   );
+
+  const directPaymentBlock =
+    directPaymentNote.length > 0 ? (
+      <div className="space-y-2 rounded-sm border border-border-default bg-bg-card p-4">
+        <p className="font-sans text-sm font-medium text-text-primary">Direct payment</p>
+        <p className="font-sans text-xs text-text-secondary whitespace-pre-wrap">
+          {directPaymentNote}
+        </p>
+        <p className="font-sans text-xs text-text-tertiary">
+          Arrange payment with the seller. Not verified by Kargain.
+        </p>
+      </div>
+    ) : null;
 
   if (!isConnected) {
     return (
       <div className="space-y-3">
         {priceBlock}
+        {directPaymentBlock}
         <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
           <p className="text-sm text-text-secondary">Connect wallet to buy</p>
           <WalletLoginButton />
@@ -395,7 +425,13 @@ export function ListingBuyPanel({
           fiatPrice1e8={listing.fiatPrice1e8}
           fiatCurrency={listing.fiatCurrency}
           showLabel
+          label="asking"
         />
+        <p className="font-sans text-xs text-text-secondary">
+          Checkout on Kargain is in ETH or USDC.
+        </p>
+
+        {directPaymentBlock}
 
         <div className="flex rounded-sm border border-border-default p-0.5">
           <button

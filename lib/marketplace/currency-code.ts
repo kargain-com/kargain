@@ -1,4 +1,34 @@
-import { getAddress, type Hex } from "viem";
+import { getAddress, stringToHex, type Hex } from "viem";
+
+/** ISO codes supported for on-chain listing denomination (per-chain subset). */
+export const LISTING_CURRENCY_CODES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "JPY",
+  "CAD",
+] as const;
+
+export type ListingCurrencyCode = (typeof LISTING_CURRENCY_CODES)[number];
+
+/** chainId → listing currency codes registered at deploy (SPEC §5.1). */
+const LISTING_CURRENCIES_BY_CHAIN: Record<number, readonly ListingCurrencyCode[]> = {
+  84532: ["USD"],
+  11155111: ["USD", "EUR", "GBP", "JPY"],
+  80002: ["USD"],
+  8453: ["USD", "EUR", "GBP", "CAD"],
+};
+
+const DEFAULT_LISTING_CURRENCIES: readonly ListingCurrencyCode[] = ["USD"];
+
+export function listingCurrencyCodesForChain(chainId: number): readonly ListingCurrencyCode[] {
+  return LISTING_CURRENCIES_BY_CHAIN[chainId] ?? DEFAULT_LISTING_CURRENCIES;
+}
+
+/** Encode ISO 4217 code for MarketplaceEscrow `currencyCode` (bytes32). */
+export function encodeCurrencyCode(iso: string): Hex {
+  return stringToHex(iso, { size: 32 });
+}
 
 /** Decode ISO-style bytes32 currency code from MarketplaceEscrow events. */
 export function decodeCurrencyCode(code: Hex | string): string {

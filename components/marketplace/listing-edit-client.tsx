@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
-import { parseUnits } from "viem";
+import { useCallback, useEffect, useState } from "react";
+import { parseUnits, toBytes } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -13,24 +13,22 @@ import {
   useConfig,
 } from "wagmi";
 
+import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import {
+  encodeCurrencyCode,
+  listingCurrencyCodesForChain,
+  type ListingCurrencyCode,
+} from "@/lib/marketplace/currency-code";
+import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
+import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
+import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import {
   KarPassportAbi,
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
-import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
-import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import {
   karPassportAddress,
   marketplaceAddress,
@@ -42,6 +40,13 @@ type Props = {
   chainId: number;
 };
 
+function txErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message.length > 160 ? `${err.message.slice(0, 160)}…` : err.message;
+  }
+  return "Transaction failed.";
+}
+
 export function ListingEditClient({ tokenId, chainId }: Props) {
   const config = useConfig();
   const wc = wagmiChainId(chainId);
@@ -49,8 +54,12 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const currencyOptions = listingCurrencyCodesForChain(chainId);
   const [priceInput, setPriceInput] = useState("");
-  const [fiatCurrency, setFiatCurrency] = useState<"0" | "1">("0");
+  const [askingCurrency, setAskingCurrency] = useState<ListingCurrencyCode>(
+    currencyOptions[0] ?? "USD",
+  );
+  const [settlementNote, setSettlementNote] = useState("");
   const [log, setLog] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
@@ -80,6 +89,12 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
               functionName: "listings",
               args: [tid],
             },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "settlementNotes",
+              args: [tid],
+            },
           ]
         : [],
   });
@@ -87,14 +102,20 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   const ownerOf = reads?.[0]?.result as `0x${string}` | undefined;
   const approved = reads?.[1]?.result as `0x${string}` | undefined;
   const listingOnChain = reads?.[2]?.result;
+  const settlementNoteRaw = reads?.[3]?.result;
   const refetchListing = refetchReads;
-  const refetchOwner = refetchReads;
 
   const row = parseOnChainListing(listingOnChain);
   const active = row?.active ?? false;
   const seller = row?.seller;
   const fiatPrice1e8 = row?.fiatPrice1e8 ?? 0n;
   const listedFiat = row?.fiatCurrency ?? 0;
+
+  const onChainNote = decodeSettlementNote(settlementNoteRaw);
+
+  useEffect(() => {
+    if (onChainNote) setSettlementNote(onChainNote);
+  }, [onChainNote]);
 
   const isSeller =
     Boolean(address && seller && address.toLowerCase() === (seller as string).toLowerCase());
@@ -107,110 +128,190 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   const isApproved =
     Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
 
+  const saveSettlementNote = useCallback(
+    async (note: string) => {
+      if (!market || !note.trim()) return;
+      const hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "setSettlementNote",
+        args: [tid, toBytes(note.trim())],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      await refetchListing();
+    },
+    [config, market, refetchListing, tid, writeContractAsync],
+  );
+
   const runDelist = useCallback(async () => {
     if (!canDelist || !market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Delisting…");
-    const hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "delist",
-      args: [tid],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    await refetchListing();
-    setLog("Delisted.");
+    try {
+      const hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "delist",
+        args: [tid],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      await refetchListing();
+      setLog("Delisted.");
+    } catch (err) {
+      setLog(txErrorMessage(err));
+    }
   }, [canDelist, wrongChain, market, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
 
   const runApprove = useCallback(async () => {
     if (!address || !passport || !market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Approving marketplace…");
-    const hash = await writeContractAsync({
-      address: passport,
-      abi: KarPassportAbi,
-      functionName: "approve",
-      args: [market, tid],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    await refetchOwner();
-    setLog("Marketplace approved.");
-  }, [address, wrongChain, passport, market, tid, config, wc, refetchOwner, switchChainAsync, writeContractAsync]);
-
-  const runList = useCallback(async () => {
-    if (!canList || !market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    const amount = parseUnits(priceInput || "0", 8);
-    if (amount <= 0n) {
-      setLog("Enter a valid price.");
-      return;
-    }
-    setLog("Listing…");
-    const hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "list",
-      args: [tid, amount, Number(fiatCurrency)],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    await refetchListing();
-    setLog("Listed.");
-  }, [canList, wrongChain, market, priceInput, fiatCurrency, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
-
-  const runUpdatePrice = useCallback(async () => {
-    if (!canDelist || !market || !passport) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    const amount = parseUnits(priceInput || "0", 8);
-    if (amount <= 0n) {
-      setLog("Enter a valid price.");
-      return;
-    }
-    setLog("Updating price (delist + relist)…");
-    let hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "delist",
-      args: [tid],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    if (!isApproved) {
-      hash = await writeContractAsync({
+    try {
+      const hash = await writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "approve",
         args: [market, tid],
       });
       await waitForTransactionReceipt(config, { hash });
+      await refetchListing();
+      setLog("Marketplace approved.");
+    } catch (err) {
+      setLog(txErrorMessage(err));
     }
-    hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "list",
-      args: [tid, amount, Number(fiatCurrency)],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    await refetchListing();
-    setLog("Price updated.");
+  }, [address, wrongChain, passport, market, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
+
+  const runList = useCallback(async () => {
+    if (!canList || !market) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    const amount = parseUnits(priceInput || "0", 8);
+    if (amount <= 0n) {
+      setLog("Enter a valid asking price.");
+      return;
+    }
+    setLog("Listing…");
+    try {
+      const hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "list",
+        args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      if (settlementNote.trim()) {
+        setLog("Saving payment instructions…");
+        await saveSettlementNote(settlementNote);
+      }
+      await refetchListing();
+      setLog("Listed.");
+    } catch (err) {
+      setLog(txErrorMessage(err));
+    }
+  }, [
+    canList,
+    wrongChain,
+    market,
+    priceInput,
+    askingCurrency,
+    settlementNote,
+    tid,
+    config,
+    wc,
+    refetchListing,
+    saveSettlementNote,
+    switchChainAsync,
+    writeContractAsync,
+  ]);
+
+  const runUpdatePrice = useCallback(async () => {
+    if (!canDelist || !market || !passport) return;
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    const amount = parseUnits(priceInput || "0", 8);
+    if (amount <= 0n) {
+      setLog("Enter a valid asking price.");
+      return;
+    }
+    setLog("Updating price (delist + relist)…");
+    try {
+      let hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "delist",
+        args: [tid],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      if (!isApproved) {
+        hash = await writeContractAsync({
+          address: passport,
+          abi: KarPassportAbi,
+          functionName: "approve",
+          args: [market, tid],
+        });
+        await waitForTransactionReceipt(config, { hash });
+      }
+      hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "list",
+        args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      if (settlementNote.trim()) {
+        setLog("Saving payment instructions…");
+        await saveSettlementNote(settlementNote);
+      }
+      await refetchListing();
+      setLog("Price updated.");
+    } catch (err) {
+      setLog(txErrorMessage(err));
+    }
   }, [
     canDelist,
     wrongChain,
     market,
     passport,
     priceInput,
-    fiatCurrency,
+    askingCurrency,
+    settlementNote,
     isApproved,
     tid,
     config,
     wc,
     refetchListing,
+    saveSettlementNote,
     switchChainAsync,
     writeContractAsync,
+  ]);
+
+  const runSaveSettlementNote = useCallback(async () => {
+    if (!active || !isSeller || !market) return;
+    if (!settlementNote.trim()) {
+      setLog("Enter direct payment instructions.");
+      return;
+    }
+    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    setLog("Saving payment instructions…");
+    try {
+      await saveSettlementNote(settlementNote);
+      setLog("Payment instructions saved.");
+    } catch (err) {
+      setLog(txErrorMessage(err));
+    }
+  }, [
+    active,
+    isSeller,
+    market,
+    settlementNote,
+    wrongChain,
+    wc,
+    saveSettlementNote,
+    switchChainAsync,
   ]);
 
   if (!isConnected) {
     return (
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-        <p className="text-sm text-text-secondary">Connect wallet to buy</p>
+        <p className="text-sm text-text-secondary">Connect wallet to manage this listing.</p>
         <WalletLoginButton />
       </div>
     );
@@ -239,12 +340,14 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
     );
   }
 
+  const displayCurrency = fiatCurrencyLabel(listedFiat);
+
   return (
     <div className="mx-auto max-w-lg space-y-8 px-4 py-10">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-medium text-text-primary">Manage listing</h1>
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>← Back to marketplace</Link>
+          <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>← Back to passport</Link>
         </Button>
       </div>
 
@@ -253,9 +356,9 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" variant="mono" className="text-sm text-text-primary" />
         {active ? (
           <>
-            <p className="text-xs text-text-secondary pt-2">Price</p>
+            <p className="text-xs text-text-secondary pt-2">Asking price</p>
             <p className="text-lg font-medium text-accent-warm">
-              {formatFiat1e8(fiatPrice1e8)} {fiatCurrencyLabel(listedFiat)}
+              {formatFiat1e8(fiatPrice1e8)} {displayCurrency}
             </p>
           </>
         ) : (
@@ -280,34 +383,48 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
 
       {active && isSeller && (
         <section className="space-y-4 rounded-md border border-accent-warm/40 bg-bg-surface p-4">
-          <h2 className="text-sm font-medium text-text-primary">Update fiat price</h2>
+          <h2 className="text-sm font-medium text-text-primary">Update asking price</h2>
           <p className="text-xs text-text-secondary">
-            Contract has no single-step price edit. We delist, then relist (two on-chain steps in one action).
+            The contract delists and relists in one action (two on-chain steps).
           </p>
-          <div className="space-y-2">
-            <Label htmlFor="fiat-upd">Amount ({fiatCurrency === "0" ? "USD" : "EUR"}, 8 decimals on-chain)</Label>
-            <Input
-              id="fiat-upd"
-              inputMode="decimal"
-              placeholder="25000.50"
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Currency</Label>
-            <Select value={fiatCurrency} onValueChange={(v) => setFiatCurrency(v as "0" | "1")}>
-              <SelectTrigger className="border-border-default bg-bg-surface">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="border-border-default bg-bg-primary">
-                <SelectItem value="0">USD</SelectItem>
-                <SelectItem value="1">EUR</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <ListingSellerSettlementPanel
+            chainId={chainId}
+            priceInput={priceInput}
+            onPriceInputChange={setPriceInput}
+            askingCurrency={askingCurrency}
+            onAskingCurrencyChange={setAskingCurrency}
+            settlementNote={settlementNote}
+            onSettlementNoteChange={setSettlementNote}
+            priceInputId="asking-price-update"
+            showSettlementFields={false}
+            disabled={isPending}
+          />
           <Button type="button" disabled={isPending} onClick={() => void runUpdatePrice()}>
-            Update price
+            Update asking price
+          </Button>
+        </section>
+      )}
+
+      {active && isSeller && (
+        <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+          <h2 className="text-sm font-medium text-text-primary">Direct payment instructions</h2>
+          <p className="text-xs text-text-secondary">
+            Shown to buyers who want to pay you outside Kargain checkout.
+          </p>
+          <ListingSellerSettlementPanel
+            chainId={chainId}
+            priceInput=""
+            onPriceInputChange={() => {}}
+            askingCurrency={askingCurrency}
+            onAskingCurrencyChange={() => {}}
+            settlementNote={settlementNote}
+            onSettlementNoteChange={setSettlementNote}
+            priceInputId="settlement-only"
+            showAskingFields={false}
+            disabled={isPending}
+          />
+          <Button type="button" variant="secondary" disabled={isPending} onClick={() => void runSaveSettlementNote()}>
+            Save payment instructions
           </Button>
         </section>
       )}
@@ -321,28 +438,17 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             </Button>
           )}
           {isApproved && <p className="text-xs text-accent-warm">Marketplace approved.</p>}
-          <div className="space-y-2">
-            <Label htmlFor="fiat-new">List price (USD or EUR units, stored 1e8)</Label>
-            <Input
-              id="fiat-new"
-              inputMode="decimal"
-              placeholder="42000"
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Currency</Label>
-            <Select value={fiatCurrency} onValueChange={(v) => setFiatCurrency(v as "0" | "1")}>
-              <SelectTrigger className="border-border-default bg-bg-surface">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="border-border-default bg-bg-primary">
-                <SelectItem value="0">USD</SelectItem>
-                <SelectItem value="1">EUR</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <ListingSellerSettlementPanel
+            chainId={chainId}
+            priceInput={priceInput}
+            onPriceInputChange={setPriceInput}
+            askingCurrency={askingCurrency}
+            onAskingCurrencyChange={setAskingCurrency}
+            settlementNote={settlementNote}
+            onSettlementNoteChange={setSettlementNote}
+            priceInputId="asking-price-new"
+            disabled={isPending}
+          />
           <Button type="button" disabled={isPending || !isApproved} onClick={() => void runList()}>
             List for sale
           </Button>
