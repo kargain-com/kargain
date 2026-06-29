@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { nanoid } from "nanoid";
 import { useRouter } from "next/navigation";
@@ -7,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useAccount,
   useChainId,
+  useConfig,
   useSignMessage,
   useSwitchChain,
   useWaitForTransactionReceipt,
@@ -15,14 +17,19 @@ import {
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { MetadataChangeConfirmDialog } from "@/components/passport/metadata-change-confirm-dialog";
+import { PassportEditSuccessBanner } from "@/components/passport/passport-edit-success-banner";
+import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
+import { PassportUploadPreflightBanner } from "@/components/passport/passport-upload-preflight-banner";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { isHeicFile } from "@/lib/passport/compress-passport-image";
 import {
   buildMetadataWireForEdit,
   formInputToMetadataPreview,
@@ -46,6 +53,16 @@ import {
   type PassportEditFormInput,
   type PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
+import { invalidatePassportChainReads } from "@/lib/passport/invalidate-passport-chain-reads";
+import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
+import {
+  editConfirmingOnChain,
+  editPhaseLabel,
+  editSavingOnChain,
+  editUploadStarting,
+  VERIFIED_ANCHOR_WARNING,
+  type EditPhase,
+} from "@/lib/passport/passport-flow-messages";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   formatPassportUploadError,
@@ -53,6 +70,7 @@ import {
   uploadPassportToIrys,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
+import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo-files";
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
@@ -62,6 +80,11 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 type EditPhotoItem =
   | { id: string; kind: "existing"; uri: string }
   | { id: string; kind: "new"; file: File };
+
+type PendingSave = {
+  metadata: PassportMetadata;
+  hadVerificationReset: boolean;
+};
 
 function initialEditPhotos(uris: string[]): EditPhotoItem[] {
   return uris.map((uri) => ({ id: uri, kind: "existing", uri }));
@@ -83,6 +106,8 @@ export function EditPassportWizard({
   existingPhotoUris,
 }: Props) {
   const router = useRouter();
+  const config = useConfig();
+  const queryClient = useQueryClient();
   const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
@@ -90,7 +115,13 @@ export function EditPassportWizard({
   const { writeContractAsync, isPending, reset: resetWrite } = useWriteContract();
   const wc = wagmiChainId(chainId);
   const wrongChain = isConnected && walletChain !== chainId;
+  const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
+    address,
+    connector,
+  );
 
+  const [baselineMetadata, setBaselineMetadata] = useState(initialMetadata);
+  const [passportStatus, setPassportStatus] = useState(status);
   const [form, setForm] = useState<PassportEditFormInput>(() =>
     metadataToFormInput(initialMetadata),
   );
@@ -101,12 +132,20 @@ export function EditPassportWizard({
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDisplay, setPendingDisplay] = useState<MetadataDiffDisplay | null>(null);
-  const [phase, setPhase] = useState<"idle" | "uploading" | "saving">("idle");
+  const [phase, setPhase] = useState<EditPhase>("idle");
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [isOptimizingPhotos, setIsOptimizingPhotos] = useState(false);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [hadVerificationReset, setHadVerificationReset] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const pendingSaveRef = useRef<PendingSave | null>(null);
 
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
+  const {
+    isLoading: isConfirming,
+    isSuccess: isConfirmed,
+    isError: isConfirmError,
+  } = useWaitForTransactionReceipt({ hash: txHash });
 
   const previewSrcs = useMemo(
     () =>
@@ -115,7 +154,7 @@ export function EditPassportWizard({
           ? resolveUri(item.uri, chainId)
           : URL.createObjectURL(item.file),
       ),
-    [photos],
+    [photos, chainId],
   );
 
   useEffect(() => {
@@ -126,35 +165,110 @@ export function EditPassportWizard({
     };
   }, [photos, previewSrcs]);
 
-  const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      [key]: key === "vin" ? normalizeVin(value) : value,
-    }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  const clearSuccessState = useCallback(() => {
+    setShowSuccess(false);
+    setPhase((current) => (current === "success" ? "idle" : current));
   }, []);
+
+  const finalizeSave = useCallback(async () => {
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+
+    try {
+      await invalidatePassportChainReads(queryClient, config, chainId, tokenId);
+      router.refresh();
+
+      setBaselineMetadata(pending.metadata);
+      setForm(metadataToFormInput(pending.metadata));
+      setPhotos(initialEditPhotos(pending.metadata.photos));
+      setPassportStatus((prev) => (pending.hadVerificationReset ? "UNVERIFIED" : prev));
+      setHadVerificationReset(pending.hadVerificationReset);
+      setShowSuccess(true);
+      setPhase("success");
+    } finally {
+      pendingSaveRef.current = null;
+      setTxHash(undefined);
+      resetWrite();
+    }
+  }, [chainId, config, queryClient, resetWrite, router, tokenId]);
+
+  useEffect(() => {
+    if (!txHash || !isConfirmed) return;
+    void finalizeSave();
+  }, [txHash, isConfirmed, finalizeSave]);
+
+  useEffect(() => {
+    if (!txHash || !isConfirmError) return;
+    setFormError("Transaction failed or was rejected.");
+    setUploadProgress(null);
+    setPhase("idle");
+    setTxHash(undefined);
+    pendingSaveRef.current = null;
+    resetWrite();
+  }, [txHash, isConfirmError, resetWrite]);
+
+  const updateField = useCallback(
+    (key: PassportFormFieldKey, value: string) => {
+      clearSuccessState();
+      setForm((prev) => ({
+        ...prev,
+        [key]: key === "vin" ? normalizeVin(value) : value,
+      }));
+      setErrors((prev) => ({ ...prev, [key]: undefined }));
+    },
+    [clearSuccessState],
+  );
+
+  const newPhotosForPreflight = useMemo(
+    () =>
+      photos
+        .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
+        .map((item) => item.file),
+    [photos],
+  );
 
   const onPhotosSelected = (files: FileList | null) => {
     if (!files?.length) return;
-    const incoming = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    setPhotos((prev) => {
-      const total = prev.length + incoming.length;
-      if (total > MAX_PHOTOS) {
-        setFormError(`Maximum ${MAX_PHOTOS} photos allowed.`);
-        return prev;
-      }
-      return [
-        ...prev,
-        ...incoming.map((file) => ({ id: nanoid(), kind: "new" as const, file })),
-      ];
-    });
+    clearSuccessState();
+    const incoming = Array.from(files).filter(
+      (f) => f.type.startsWith("image/") || isHeicFile(f),
+    );
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) return;
+
+    const batch = incoming.slice(0, remaining);
+    if (batch.length === 0) return;
+
+    setIsOptimizingPhotos(true);
+    setFormError(null);
+
+    void processPassportPhotoFiles(batch)
+      .then((optimized) => {
+        setPhotos((prev) => {
+          const total = prev.length + optimized.length;
+          if (total > MAX_PHOTOS) {
+            setFormError(`Maximum ${MAX_PHOTOS} photos allowed.`);
+            return prev;
+          }
+          return [
+            ...prev,
+            ...optimized.map((file) => ({ id: nanoid(), kind: "new" as const, file })),
+          ];
+        });
+      })
+      .finally(() => {
+        setIsOptimizingPhotos(false);
+        if (photoInputRef.current) photoInputRef.current.value = "";
+      });
   };
 
   const removePhoto = (index: number) => {
+    clearSuccessState();
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const reorderPhoto = (fromIndex: number, toIndex: number) => {
+    clearSuccessState();
     setPhotos((prev) => reorderArrayItem(prev, fromIndex, toIndex));
   };
 
@@ -170,6 +284,18 @@ export function EditPassportWizard({
     },
   }), [photos, previewSrcs]);
 
+  const computeVerificationReset = useCallback((): boolean => {
+    const previewPhotoUris = photos.map((item) =>
+      item.kind === "existing" ? item.uri : `new:${item.id}`,
+    );
+    const afterMetadata = formInputToMetadataPreview(form, previewPhotoUris, {
+      createdAt: baselineMetadata.createdAt,
+      updatedAt: new Date().toISOString(),
+    });
+    const diff = diffPassportMetadata(baselineMetadata, afterMetadata);
+    return passportStatus === "VERIFIED" && hasAnchorChanges(diff);
+  }, [baselineMetadata, form, passportStatus, photos]);
+
   const executeSave = async () => {
     if (!address || !connector) return;
     const passport = karPassportAddress(chainId);
@@ -178,9 +304,12 @@ export function EditPassportWizard({
       return;
     }
 
+    const hadVerificationResetOnSave = computeVerificationReset();
+
     setPhase("uploading");
     setFormError(null);
     setUploadProgress(null);
+    setShowSuccess(false);
 
     try {
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
@@ -194,7 +323,9 @@ export function EditPassportWizard({
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
         .map((item) => item.file);
-      const createdAt = initialMetadata.createdAt ?? new Date().toISOString();
+      const createdAt = baselineMetadata.createdAt ?? new Date().toISOString();
+
+      let savedMetadata: PassportMetadata | null = null;
 
       const uri = await uploadPassportToIrys({
         newPhotoFiles: newFiles,
@@ -204,11 +335,22 @@ export function EditPassportWizard({
             if (item.kind === "existing") return item.uri;
             return uploadedNewPhotoUris[uploadIndex++]!;
           });
-          return buildMetadataWireForEdit(form, photoUris, { createdAt });
+          const wire = buildMetadataWireForEdit(form, photoUris, { createdAt });
+          savedMetadata = parseMetadataJson(wire);
+          return wire;
         },
         provider,
         onProgress: setUploadProgress,
       });
+
+      if (!savedMetadata) {
+        throw new Error("Failed to prepare saved metadata.");
+      }
+
+      pendingSaveRef.current = {
+        metadata: savedMetadata,
+        hadVerificationReset: hadVerificationResetOnSave,
+      };
 
       setUploadProgress(null);
       setPhase("saving");
@@ -219,12 +361,13 @@ export function EditPassportWizard({
         args: [BigInt(tokenId), uri],
       });
       setTxHash(hash);
-      router.push(`/marketplace/${tokenId}?chain=${chainId}`);
+      setPhase("confirming");
     } catch (err) {
       resetIrysUploaderCache();
       setFormError(formatPassportUploadError(err));
       setUploadProgress(null);
       setPhase("idle");
+      pendingSaveRef.current = null;
       resetWrite();
     }
   };
@@ -242,11 +385,11 @@ export function EditPassportWizard({
       item.kind === "existing" ? item.uri : `new:${item.id}`,
     );
     const afterMetadata = formInputToMetadataPreview(form, previewPhotoUris, {
-      createdAt: initialMetadata.createdAt,
+      createdAt: baselineMetadata.createdAt,
       updatedAt: new Date().toISOString(),
     });
 
-    const diff = diffPassportMetadata(initialMetadata, afterMetadata);
+    const diff = diffPassportMetadata(baselineMetadata, afterMetadata);
     if (hasAnchorChanges(diff) || diff.cosmetic.length > 0) {
       setPendingDisplay(
         formatMetadataDiffForDisplay(diff, { photoContext: photoDisplayContext }),
@@ -257,7 +400,16 @@ export function EditPassportWizard({
     void executeSave();
   };
 
-  const isBusy = phase !== "idle" || isPending || isConfirming;
+  const isBusy =
+    phase === "uploading" ||
+    phase === "saving" ||
+    phase === "confirming" ||
+    isPending ||
+    isConfirming ||
+    isOptimizingPhotos;
+
+  const saveButtonLabel =
+    phase === "idle" || phase === "success" ? "Save changes" : editPhaseLabel(phase);
 
   if (!isConnected) {
     return (
@@ -280,9 +432,28 @@ export function EditPassportWizard({
         </Button>
       </div>
 
-      {status === "VERIFIED" && (
+      {showSuccess && (
+        <PassportEditSuccessBanner
+          tokenId={tokenId}
+          chainId={chainId}
+          hadVerificationReset={hadVerificationReset}
+          onDismiss={() => {
+            setShowSuccess(false);
+            setPhase("idle");
+          }}
+        />
+      )}
+
+      <PassportIndexerSyncBanner
+        tokenId={tokenId}
+        chainId={chainId}
+        enabled={showSuccess}
+        variant="edit"
+      />
+
+      {passportStatus === "VERIFIED" && (
         <p className="rounded-md border border-status-error/40 p-4 text-sm text-text-secondary">
-          This passport is verified. Anchor field changes will reset verification to UNVERIFIED.
+          {VERIFIED_ANCHOR_WARNING}
         </p>
       )}
 
@@ -315,6 +486,12 @@ export function EditPassportWizard({
 
         <div className="space-y-2 border-t border-border-default pt-6">
           <Label>Photos</Label>
+          <PassportUploadPreflightBanner
+            accountKind={accountKind}
+            photos={newPhotosForPreflight}
+            isLoadingKind={isLoadingAccountKind}
+            context="edit"
+          />
           {photos.length > 0 && (
             <>
               <p className="font-mono text-xs text-text-tertiary">
@@ -332,30 +509,43 @@ export function EditPassportWizard({
               />
             </>
           )}
-          <input ref={photoInputRef} type="file" accept="image/*" multiple className="sr-only" onChange={(e) => onPhotosSelected(e.target.files)} disabled={isBusy} />
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*,.heic,.heif"
+            multiple
+            className="sr-only"
+            onChange={(e) => onPhotosSelected(e.target.files)}
+            disabled={isBusy}
+          />
           <Button type="button" variant="secondary" disabled={isBusy || photos.length >= MAX_PHOTOS} onClick={() => photoInputRef.current?.click()}>
             Add photos
           </Button>
+          {isOptimizingPhotos && (
+            <p className="font-sans text-xs text-text-tertiary" role="status">
+              Optimizing photos…
+            </p>
+          )}
           {errors.photos && <p className="text-xs text-status-error">{errors.photos}</p>}
         </div>
 
         {phase === "uploading" &&
           (uploadProgress ? (
-            <PassportUploadProgressPanel uploadProgress={uploadProgress} />
+            <PassportUploadProgressPanel uploadProgress={uploadProgress} context="edit" />
           ) : (
-            <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
+            <p className="font-sans text-sm text-text-secondary">{editUploadStarting()}</p>
           ))}
 
         {phase === "saving" && (
-          <p className="font-sans text-sm text-text-secondary">Saving on-chain…</p>
+          <p className="font-sans text-sm text-text-secondary">{editSavingOnChain()}</p>
+        )}
+
+        {phase === "confirming" && (
+          <p className="font-sans text-sm text-text-secondary">{editConfirmingOnChain()}</p>
         )}
 
         <Button type="button" className="w-full" disabled={isBusy} onClick={onSubmit}>
-          {phase === "uploading"
-            ? "Uploading…"
-            : phase === "saving"
-              ? "Saving…"
-              : "Save changes"}
+          {saveButtonLabel}
         </Button>
       </div>
 
@@ -363,7 +553,7 @@ export function EditPassportWizard({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         display={pendingDisplay}
-        status={status}
+        status={passportStatus}
         onConfirm={() => {
           setConfirmOpen(false);
           void executeSave();

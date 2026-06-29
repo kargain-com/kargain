@@ -54,6 +54,27 @@ export function buildChainPassportStub(
   };
 }
 
+export async function readTokenUriOnChain(
+  tokenId: string,
+  chainId: number,
+): Promise<string | null> {
+  const address = karPassportAddress(chainId);
+  if (!address) return null;
+
+  try {
+    const client = getPublicClient(chainId);
+    const uri = await client.readContract({
+      address,
+      abi: KarPassportAbi,
+      functionName: "tokenURI",
+      args: [BigInt(tokenId)],
+    });
+    return typeof uri === "string" ? uri : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchChainPassportDetail(
   tokenId: string,
   chainId: number,
@@ -82,12 +103,7 @@ export async function fetchChainPassportDetail(
   let status: PassportStatus = "UNVERIFIED";
   try {
     const [uri, statusResult] = await Promise.all([
-      client.readContract({
-        address,
-        abi: KarPassportAbi,
-        functionName: "tokenURI",
-        args: [tokenIdBigInt],
-      }),
+      readTokenUriOnChain(tokenId, chainId),
       client.readContract({
         address,
         abi: KarPassportAbi,
@@ -95,7 +111,7 @@ export async function fetchChainPassportDetail(
         args: [tokenIdBigInt],
       }),
     ]);
-    tokenUri = typeof uri === "string" ? uri : "";
+    tokenUri = uri ?? "";
     const chainStatus = passportStatusFromChainIndex(Number(statusResult[0]));
     if (chainStatus) status = chainStatus;
   } catch {

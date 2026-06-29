@@ -129,3 +129,39 @@ export function messagingWalletError(kind: WalletAccountKind): string | null {
 export function canInitializeMessaging(kind: WalletAccountKind): boolean {
   return kind !== "contract";
 }
+
+const SMART_WALLET_PHOTO_COUNT_THRESHOLD = 1;
+const SMART_WALLET_UPLOAD_BYTES_THRESHOLD = 1_500_000;
+const LARGE_UPLOAD_BYTES_THRESHOLD = 5_000_000;
+
+export function passportStorageUploadHint(input: {
+  kind: WalletAccountKind;
+  photoCount: number;
+  totalBytes: number;
+}): string | null {
+  const { kind, photoCount, totalBytes } = input;
+
+  if (
+    kind === "contract" &&
+    (photoCount > SMART_WALLET_PHOTO_COUNT_THRESHOLD ||
+      totalBytes > SMART_WALLET_UPLOAD_BYTES_THRESHOLD)
+  ) {
+    return (
+      "Smart contract wallets may fail the separate Irys storage deposit needed for multiple or large photos. " +
+      "Try a standard MetaMask account for upload, use fewer photos, or keep one optimized photo. " +
+      "Minting the passport still works with any wallet."
+    );
+  }
+
+  if (
+    (kind === "eoa" || kind === "eip7702") &&
+    totalBytes > LARGE_UPLOAD_BYTES_THRESHOLD
+  ) {
+    return (
+      "This upload is large. Your wallet may ask for a separate Base Sepolia ETH deposit to Irys " +
+      "before photos upload. That is storage cost, not mint gas."
+    );
+  }
+
+  return null;
+}

@@ -1,7 +1,12 @@
 import { cache } from "react";
 
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import { fetchChainPassportDetail } from "@/lib/passport/build-chain-passport-detail";
+import { fetchChainPassportDetail, readTokenUriOnChain } from "@/lib/passport/build-chain-passport-detail";
+import {
+  effectiveTokenUri,
+  hasTokenUriDrift,
+  overlayPassportFromMetadata,
+} from "@/lib/passport/passport-uri-drift";
 import {
   fetchArweaveMetadata,
   type PassportMetadata,
@@ -250,25 +255,51 @@ export async function fetchPassportDetail(
   const parsed = parsePonderPassport(raw);
   if (!parsed) return { ok: false, error: "PONDER_UNAVAILABLE" };
 
-  const tokenUri = parsed.tokenUri.trim();
+  const ponderTokenUri = parsed.tokenUri.trim();
+  const chainTokenUri = await readTokenUriOnChain(tokenId, chainId);
+  const uriDrift = hasTokenUriDrift(ponderTokenUri, chainTokenUri);
+  const effectiveUri = effectiveTokenUri(ponderTokenUri, chainTokenUri);
+
   const [status, owner, metaResult] = await Promise.all([
     confirmStatusOnChain(tokenId, chainId, parsed.status),
     confirmOwnerOnChain(tokenId, chainId, parsed.owner),
-    tokenUri
-      ? fetchArweaveMetadata(tokenUri, chainId)
+    effectiveUri
+      ? fetchArweaveMetadata(effectiveUri, chainId)
       : Promise.resolve({ ok: false as const }),
   ]);
-  const passport: PonderPassportDetail = { ...parsed, status, owner };
 
-  if (!tokenUri) {
-    return { ok: true, passport, metadata: null, metadataError: true };
+  let passport: PonderPassportDetail = { ...parsed, status, owner, tokenUri: effectiveUri };
+
+  if (!effectiveUri) {
+    return {
+      ok: true,
+      passport,
+      metadata: null,
+      metadataError: true,
+      ...(uriDrift ? { indexerPending: true } : {}),
+    };
   }
 
   if (!metaResult.ok) {
-    return { ok: true, passport, metadata: null, metadataError: true };
+    return {
+      ok: true,
+      passport,
+      metadata: null,
+      metadataError: true,
+      ...(uriDrift ? { indexerPending: true } : {}),
+    };
   }
 
-  return { ok: true, passport, metadata: metaResult.metadata };
+  if (uriDrift) {
+    passport = overlayPassportFromMetadata(passport, metaResult.metadata, effectiveUri);
+  }
+
+  return {
+    ok: true,
+    passport,
+    metadata: metaResult.metadata,
+    ...(uriDrift ? { indexerPending: true } : {}),
+  };
 }
 
 /** Per-request dedupe for generateMetadata + page render. */

@@ -1,13 +1,19 @@
 "use client";
 
 import { Progress } from "@/components/ui/progress";
+import type { PassportFlowContext } from "@/lib/passport/passport-flow-messages";
+import { uploadProgressSubtitle } from "@/lib/passport/passport-flow-messages";
 import type { UploadProgress } from "@/lib/passport/upload-passport-metadata";
 
 type Props = {
   uploadProgress: UploadProgress;
+  context?: PassportFlowContext;
 };
 
-export function PassportUploadProgressPanel({ uploadProgress }: Props) {
+export function PassportUploadProgressPanel({
+  uploadProgress,
+  context = "create",
+}: Props) {
   return (
     <div className="space-y-2">
       <p className="font-sans text-sm text-text-secondary">
@@ -20,8 +26,7 @@ export function PassportUploadProgressPanel({ uploadProgress }: Props) {
           : "Preparing passport…"}
       </p>
       <p className="font-sans text-xs text-text-tertiary">
-        Storage fees are paid from your wallet. You may be asked to deposit Base Sepolia ETH to
-        Irys, then sign the photo batch and metadata.
+        {uploadProgressSubtitle(context)}
       </p>
       <Progress
         value={
