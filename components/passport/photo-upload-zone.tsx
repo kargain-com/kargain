@@ -4,6 +4,8 @@ import { Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
+import { isHeicFile } from "@/lib/passport/compress-passport-image";
+import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo-files";
 import { cn } from "@/lib/utils";
 
 type PhotoUploadZoneProps = {
@@ -15,6 +17,11 @@ type PhotoUploadZoneProps = {
   error?: string;
   disabled?: boolean;
 };
+
+function isAcceptedImage(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return isHeicFile(file);
+}
 
 export function PhotoUploadZone({
   photos,
@@ -28,6 +35,7 @@ export function PhotoUploadZone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   const previewUrls = useMemo(
     () => photos.map((file) => URL.createObjectURL(file)),
@@ -41,11 +49,12 @@ export function PhotoUploadZone({
   }, [previewUrls]);
 
   const canAddMore = photos.length < maxPhotos;
+  const zoneDisabled = disabled || isOptimizing;
 
   const handleFiles = useCallback(
     (fileList: FileList | File[]) => {
       const incoming = Array.from(fileList);
-      const images = incoming.filter((f) => f.type.startsWith("image/"));
+      const images = incoming.filter(isAcceptedImage);
       const rejected = incoming.length - images.length;
 
       if (rejected > 0) {
@@ -59,15 +68,24 @@ export function PhotoUploadZone({
       const remaining = maxPhotos - photos.length;
       if (remaining <= 0) return;
 
-      onAdd(images.slice(0, remaining));
-      if (inputRef.current) inputRef.current.value = "";
+      const batch = images.slice(0, remaining);
+      setIsOptimizing(true);
+
+      void processPassportPhotoFiles(batch)
+        .then((optimized) => {
+          onAdd(optimized);
+        })
+        .finally(() => {
+          setIsOptimizing(false);
+          if (inputRef.current) inputRef.current.value = "";
+        });
     },
     [maxPhotos, onAdd, photos.length],
   );
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!disabled && canAddMore) setDragOver(true);
+    if (!zoneDisabled && canAddMore) setDragOver(true);
   };
 
   const onDragLeave = () => {
@@ -77,7 +95,7 @@ export function PhotoUploadZone({
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    if (disabled || !canAddMore) return;
+    if (zoneDisabled || !canAddMore) return;
     if (e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
@@ -88,19 +106,15 @@ export function PhotoUploadZone({
   return (
     <div>
       {canAddMore && (
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
+        <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
           <input
             ref={inputRef}
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             id="passport-photos"
             className="sr-only"
-            disabled={disabled}
+            disabled={zoneDisabled}
             onChange={(e) => {
               if (e.target.files) handleFiles(e.target.files);
             }}
@@ -112,7 +126,7 @@ export function PhotoUploadZone({
               dragOver
                 ? "border-accent-warm bg-bg-card"
                 : "border-border-default bg-bg-surface hover:border-border-hover",
-              disabled && "cursor-not-allowed opacity-50",
+              zoneDisabled && "cursor-not-allowed opacity-50",
             )}
           >
             <Upload
@@ -122,10 +136,10 @@ export function PhotoUploadZone({
               aria-hidden
             />
             <p className="font-sans text-sm text-text-secondary">
-              Drag photos here or click to upload
+              {isOptimizing ? "Optimizing photos…" : "Drag photos here or click to upload"}
             </p>
             <p className="mt-1 font-mono text-xs text-text-tertiary">
-              JPEG, PNG, WebP · Up to {maxPhotos} photos
+              JPEG, PNG, WebP, HEIC · optimized to WebP · up to {maxPhotos} photos
             </p>
           </label>
         </div>
@@ -142,7 +156,7 @@ export function PhotoUploadZone({
               src: previewUrls[index]!,
               alt: file.name,
             }))}
-            disabled={disabled}
+            disabled={zoneDisabled}
             onRemove={onRemove}
             onReorder={onReorder}
           />

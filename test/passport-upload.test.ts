@@ -9,7 +9,7 @@ describe("formatPassportUploadError", () => {
       new Error("Transaction not sent to any of this bundler"),
     );
     assert.match(message, /could not deposit to Irys storage/i);
-    assert.match(message, /EOA/i);
+    assert.match(message, /fewer optimized photos/i);
   });
 
   it("maps user rejection to cancelled message", () => {

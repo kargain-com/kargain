@@ -13,10 +13,12 @@ import {
 } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
+import { PassportUploadPreflightBanner } from "@/components/passport/passport-upload-preflight-banner";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
@@ -66,6 +68,10 @@ export function CreatePassportWizard() {
   const chainId = DEFAULT_CHAIN_ID;
   const wc = wagmiChainId(chainId);
   const wrongChain = isConnected && walletChain !== chainId;
+  const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
+    address,
+    connector,
+  );
 
   const [step, setStep] = useState<Step>(1);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -325,6 +331,12 @@ export function CreatePassportWizard() {
         <div className="space-y-5">
           <h2 className="font-display text-lg font-medium text-text-primary mb-6">Add photos</h2>
 
+          <PassportUploadPreflightBanner
+            accountKind={accountKind}
+            photos={photos}
+            isLoadingKind={isLoadingAccountKind}
+          />
+
           <PhotoUploadZone
             photos={photos}
             onAdd={onPhotosAdd}
@@ -337,7 +349,7 @@ export function CreatePassportWizard() {
 
           {phase === "uploading" &&
             (uploadProgress ? (
-              <PassportUploadProgressPanel uploadProgress={uploadProgress} />
+              <PassportUploadProgressPanel uploadProgress={uploadProgress} context="create" />
             ) : (
               <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
             ))}

@@ -4,6 +4,7 @@ import { WebBaseEth } from "@irys/web-upload-ethereum";
 import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
 import { BrowserProvider } from "ethers";
 
+import { estimateIrysUploadBytes } from "@/lib/storage/irys-upload-estimate";
 import { rpcUrlForChain } from "@/lib/web3/supported-chains";
 
 export const IRYS_GATEWAY = "https://arweave.net";
@@ -25,9 +26,6 @@ const UPLOAD_TIMEOUT_MS = 120_000;
 
 const DEVNET_NODE_URL = "https://devnet.irys.xyz";
 const MAINNET_NODE_URL = "https://node2.irys.xyz";
-
-/** Extra bytes reserved for bundle overhead when pre-funding multi-file uploads. */
-const BUNDLE_OVERHEAD_BYTES = 16_384;
 
 /** Gas fee multiplier passed to Irys fund() for congested testnets. */
 const FUND_FEE_MULTIPLIER = 1.2;
@@ -112,7 +110,7 @@ function photoUploadName(file: File, index: number): string {
  * The user pays storage from their own wallet via a direct ETH transfer to Irys.
  */
 async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise<void> {
-  const bytes = Math.ceil(totalBytes * 1.15) + BUNDLE_OVERHEAD_BYTES;
+  const bytes = estimateIrysUploadBytes(totalBytes);
   const price = await uploader.getPrice(bytes);
   const balance = await uploader.getBalance();
 
