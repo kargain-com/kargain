@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { isHeicFile } from "@/lib/passport/compress-passport-image";
+import { passportImageOptimizeErrorMessage } from "@/lib/passport/passport-flow-messages";
 import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo-files";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +76,9 @@ export function PhotoUploadZone({
         .then((optimized) => {
           onAdd(optimized);
         })
+        .catch((err) => {
+          setDropError(passportImageOptimizeErrorMessage(err));
+        })
         .finally(() => {
           setIsOptimizing(false);
           if (inputRef.current) inputRef.current.value = "";
@@ -139,7 +143,7 @@ export function PhotoUploadZone({
               {isOptimizing ? "Optimizing photos…" : "Drag photos here or click to upload"}
             </p>
             <p className="mt-1 font-mono text-xs text-text-tertiary">
-              JPEG, PNG, WebP, HEIC · optimized to WebP · up to {maxPhotos} photos
+              JPEG, PNG, WebP, HEIC · optimized to WebP (up to 100 KB each) · up to {maxPhotos} photos
             </p>
           </label>
         </div>

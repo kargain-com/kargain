@@ -48,10 +48,18 @@ export const INDEXER_SYNC_DETAIL_HINT =
   "Syncing passport history from the indexer…";
 
 export function uploadProgressSubtitle(context: PassportFlowContext): string {
+  const cap = "Each photo is optimized to WebP (up to 100 KB) before upload.";
+  const storage =
+    "Storage may require a separate Base Sepolia ETH deposit to Irys from your wallet — that is not mint gas.";
   if (context === "edit") {
-    return "Only new photos are uploaded. Images are optimized to WebP before upload. Storage may require a separate Base Sepolia ETH deposit to Irys from your wallet — that is not mint gas.";
+    return `Only new photos are uploaded. ${cap} ${storage}`;
   }
-  return "Photos are optimized to WebP before upload. Storage may require a separate Base Sepolia ETH deposit to Irys from your wallet — that is not mint gas.";
+  return `${cap} ${storage}`;
+}
+
+export function passportImageOptimizeErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return "Could not optimize one or more photos. Try different images.";
 }
 
 export function preflightPhotoCountLabel(context: PassportFlowContext, count: number, totalBytes: string): string {

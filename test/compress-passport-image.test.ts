@@ -3,10 +3,9 @@ import { describe, it } from "node:test";
 
 import {
   isHeicFile,
-  shouldSkipPassportImageCompression,
-  PASSPORT_IMAGE_MAX_EDGE_PX,
-  PASSPORT_IMAGE_SKIP_MAX_BYTES,
+  PASSPORT_IMAGE_TARGET_MAX_BYTES,
 } from "../lib/passport/compress-passport-image.ts";
+import { PassportImageOptimizeError } from "../lib/passport/passport-image-optimize-error.ts";
 
 describe("isHeicFile", () => {
   it("detects HEIC mime type", () => {
@@ -25,44 +24,16 @@ describe("isHeicFile", () => {
   });
 });
 
-describe("shouldSkipPassportImageCompression", () => {
-  it("skips small webp within dimension cap", () => {
-    const file = { name: "a.webp", type: "image/webp", size: 100_000 } as File;
-    assert.equal(
-      shouldSkipPassportImageCompression(file, 1920, 1080),
-      true,
-    );
+describe("PASSPORT_IMAGE_TARGET_MAX_BYTES", () => {
+  it("is 100 KB", () => {
+    assert.equal(PASSPORT_IMAGE_TARGET_MAX_BYTES, 102_400);
   });
+});
 
-  it("does not skip large jpeg", () => {
-    const file = {
-      name: "a.jpg",
-      type: "image/jpeg",
-      size: PASSPORT_IMAGE_SKIP_MAX_BYTES + 1,
-    } as File;
-    assert.equal(
-      shouldSkipPassportImageCompression(file, 1920, 1080),
-      false,
-    );
-  });
-
-  it("does not skip png even when small", () => {
-    const file = { name: "a.png", type: "image/png", size: 100_000 } as File;
-    assert.equal(
-      shouldSkipPassportImageCompression(file, 800, 600),
-      false,
-    );
-  });
-
-  it("does not skip when over max edge", () => {
-    const file = { name: "a.webp", type: "image/webp", size: 100_000 } as File;
-    assert.equal(
-      shouldSkipPassportImageCompression(
-        file,
-        PASSPORT_IMAGE_MAX_EDGE_PX + 100,
-        1080,
-      ),
-      false,
-    );
+describe("PassportImageOptimizeError", () => {
+  it("formats budget errors with file name", () => {
+    const err = new PassportImageOptimizeError("car.jpg", "budget");
+    assert.match(err.message, /car\.jpg/i);
+    assert.match(err.message, /100 KB/i);
   });
 });

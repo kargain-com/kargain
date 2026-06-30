@@ -60,6 +60,7 @@ import {
   editPhaseLabel,
   editSavingOnChain,
   editUploadStarting,
+  passportImageOptimizeErrorMessage,
   VERIFIED_ANCHOR_WARNING,
   type EditPhase,
 } from "@/lib/passport/passport-flow-messages";
@@ -255,6 +256,9 @@ export function EditPassportWizard({
             ...optimized.map((file) => ({ id: nanoid(), kind: "new" as const, file })),
           ];
         });
+      })
+      .catch((err) => {
+        setFormError(passportImageOptimizeErrorMessage(err));
       })
       .finally(() => {
         setIsOptimizingPhotos(false);

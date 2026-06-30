@@ -124,7 +124,7 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Known limitations
 
-- **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are optimized to WebP in the browser before upload. Smart contract wallets may still fail when multiple or large photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
+- **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are re-encoded to WebP (up to 100 KB each) in the browser before upload. Smart contract wallets may still fail when multiple photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
 - **Ponder** indexes Base Sepolia today; other chains need per-network deploy + indexer config.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
