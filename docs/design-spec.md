@@ -450,6 +450,9 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 | Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
 | Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
+| Delegate to a pro | **Delegate to a pro** opens [`authorize-agent-dialog.tsx`](../components/marketplace/authorize-agent-dialog.tsx) when owner, listing inactive, no active on-chain authorization; KarPro picker via [`verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) `onSelectAgent` mode |
+| Agent authorization | [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); shows agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
+| Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 

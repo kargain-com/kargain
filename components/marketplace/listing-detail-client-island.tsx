@@ -2,9 +2,11 @@
 
 import { MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 
+import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
+import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
@@ -38,6 +40,13 @@ type ListingProp = {
   seller: `0x${string}`;
 };
 
+type AgentAuthResult = {
+  agent: `0x${string}`;
+  expiry: bigint;
+  ownerMinPrice1e8: bigint;
+  active: boolean;
+};
+
 type Props = {
   chainId: number;
   tokenId: string;
@@ -59,13 +68,18 @@ export function ListingDetailClientIsland({
   hadDispute,
 }: Props) {
   const { address, isConnected } = useAccount();
+  const [authorizeOpen, setAuthorizeOpen] = useState(false);
 
   const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
-  const { data: chainReads, isLoading: isChainReadsLoading } = useReadContracts({
+  const {
+    data: chainReads,
+    isLoading: isChainReadsLoading,
+    refetch: refetchChainReads,
+  } = useReadContracts({
     contracts:
       passport && market
         ? [
@@ -83,13 +97,33 @@ export function ListingDetailClientIsland({
               args: [tid],
               chainId: wc,
             },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "agentAuthorizations",
+              args: [tid],
+              chainId: wc,
+            },
           ]
         : [],
   });
 
   const onChainOwner = chainReads?.[0]?.result as `0x${string}` | undefined;
   const chainRow = parseOnChainListing(chainReads?.[1]?.result);
+  const agentAuthRaw = chainReads?.[2]?.result as AgentAuthResult | undefined;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
+
+  const agentAuth = useMemo((): AgentAuthResult | null => {
+    if (!agentAuthRaw || !agentAuthRaw.active) return null;
+    return {
+      agent: agentAuthRaw.agent,
+      expiry: BigInt(agentAuthRaw.expiry),
+      ownerMinPrice1e8: BigInt(agentAuthRaw.ownerMinPrice1e8),
+      active: agentAuthRaw.active,
+    };
+  }, [agentAuthRaw]);
+
+  const agentAuthActive = agentAuth?.active === true;
 
   const effectiveListing = useMemo((): ActiveListing | null => {
     if (chainRow?.active) {
@@ -141,6 +175,10 @@ export function ListingDetailClientIsland({
     (isSeller || (!listingActive && isOwner)),
   );
 
+  const showDelegateEntry = Boolean(
+    isOwner && !listingActive && !agentAuthActive && market && address,
+  );
+
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const manageLabel = listingActive ? "Manage listing" : "List for sale";
 
@@ -167,11 +205,40 @@ export function ListingDetailClientIsland({
 
       {isSeller && listingActive && <SellerMessagingBanner />}
 
+      {isOwner && agentAuthActive && agentAuth && (
+        <AgentAuthorizationStatus
+          chainId={chainId}
+          tokenId={tokenId}
+          agentAuth={agentAuth}
+          listingActive={listingActive}
+          onChanged={() => void refetchChainReads()}
+        />
+      )}
+
       {canManageListing && (
         <Button asChild variant="secondary" className="w-full">
           <Link href={editHref}>{manageLabel}</Link>
         </Button>
       )}
+
+      {showDelegateEntry && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setAuthorizeOpen(true)}
+        >
+          Delegate to a pro
+        </Button>
+      )}
+
+      <AuthorizeAgentDialog
+        chainId={chainId}
+        tokenId={tokenId}
+        open={authorizeOpen}
+        onOpenChange={setAuthorizeOpen}
+        onAuthorized={() => void refetchChainReads()}
+      />
 
       {contactPeer && !holder && !isSeller && (
         <div className="flex flex-wrap gap-2">
