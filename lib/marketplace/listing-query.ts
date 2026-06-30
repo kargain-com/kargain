@@ -34,11 +34,16 @@ export type ListingFilterQuery = {
   priceCurrency?: PriceCurrency;
   eurUsdRate?: string;
   ethUsdRate?: string;
+  btcUsdRate?: string;
   cnyUsdRate?: string;
   inrUsdRate?: string;
   brlUsdRate?: string;
   idrUsdRate?: string;
   audUsdRate?: string;
+  aedUsdRate?: string;
+  krwUsdRate?: string;
+  rubUsdRate?: string;
+  jpyUsdRate?: string;
   sort?: MarketSort;
 };
 
@@ -211,11 +216,16 @@ export function parseListingFilterQuery(
     priceCurrency: parsePriceCurrency(query.priceCurrency),
     eurUsdRate: query.eurUsdRate?.trim() || undefined,
     ethUsdRate: query.ethUsdRate?.trim() || undefined,
+    btcUsdRate: query.btcUsdRate?.trim() || undefined,
     cnyUsdRate: query.cnyUsdRate?.trim() || undefined,
     inrUsdRate: query.inrUsdRate?.trim() || undefined,
     brlUsdRate: query.brlUsdRate?.trim() || undefined,
     idrUsdRate: query.idrUsdRate?.trim() || undefined,
     audUsdRate: query.audUsdRate?.trim() || undefined,
+    aedUsdRate: query.aedUsdRate?.trim() || undefined,
+    krwUsdRate: query.krwUsdRate?.trim() || undefined,
+    rubUsdRate: query.rubUsdRate?.trim() || undefined,
+    jpyUsdRate: query.jpyUsdRate?.trim() || undefined,
     sort,
   };
 }

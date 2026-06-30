@@ -11,7 +11,7 @@ export const LISTING_CURRENCY_CODES = [
 
 export type ListingCurrencyCode = (typeof LISTING_CURRENCY_CODES)[number];
 
-/** Canonical display-layer fiat codes (legacy enum indices 0–7). */
+/** Canonical display-layer fiat codes (legacy enum indices 0–10). */
 export const LEGACY_FIAT_CURRENCIES = [
   "USD",
   "EUR",
@@ -21,20 +21,35 @@ export const LEGACY_FIAT_CURRENCIES = [
   "IDR",
   "AUD",
   "AED",
+  "KRW",
+  "RUB",
+  "JPY",
 ] as const;
 
 export type LegacyFiatCurrencyCode = (typeof LEGACY_FIAT_CURRENCIES)[number];
-export type LegacyFiatCurrency = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type LegacyFiatCurrency = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
-export const DISPLAY_CURRENCIES = [...LEGACY_FIAT_CURRENCIES, "ETH"] as const;
+export const CRYPTO_DISPLAY_CURRENCIES = ["ETH", "BTC"] as const;
+export type CryptoDisplayCurrency = (typeof CRYPTO_DISPLAY_CURRENCIES)[number];
+
+export const DISPLAY_CURRENCIES = [
+  ...LEGACY_FIAT_CURRENCIES,
+  ...CRYPTO_DISPLAY_CURRENCIES,
+] as const;
 export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
+
+export function isCryptoDisplayCurrency(
+  value: DisplayCurrency,
+): value is CryptoDisplayCurrency {
+  return (CRYPTO_DISPLAY_CURRENCIES as readonly string[]).includes(value);
+}
 
 export function isDisplayCurrency(value: string): value is DisplayCurrency {
   return (DISPLAY_CURRENCIES as readonly string[]).includes(value);
 }
 
 export function isLegacyFiatCurrency(n: number): n is LegacyFiatCurrency {
-  return Number.isInteger(n) && n >= 0 && n <= 7;
+  return Number.isInteger(n) && n >= 0 && n <= 10;
 }
 
 export function legacyFiatToCode(n: LegacyFiatCurrency): LegacyFiatCurrencyCode {

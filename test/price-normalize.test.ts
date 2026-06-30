@@ -7,12 +7,15 @@ import {
   fiatUsdRate,
   FIAT_SCALE,
   listingToUsd1e8,
+  ratesReadyForPriceCurrency,
   usd1e8ToFiat1e8,
 } from "../lib/marketplace/price-normalize.ts";
 
 const EUR_USD = 108_000_000n;
 const CNY_USD = 14_000_000n;
+const KRW_USD = 64_495n;
 const AED_LIVE = 27_229_408n;
+const BTC_USD = 7_000_000_000_000n;
 const rates = {
   ethUsd: 300_000_000_000n,
   eurUsd: EUR_USD,
@@ -94,5 +97,22 @@ describe("displayAmountToUsd1e8", () => {
 
   it("returns undefined for EUR when rates missing", () => {
     assert.equal(displayAmountToUsd1e8("100", "EUR", null), undefined);
+  });
+
+  it("converts BTC filter input to USD", () => {
+    const usd = displayAmountToUsd1e8("1", "BTC", { btcUsd: BTC_USD });
+    assert.equal(usd, BTC_USD);
+  });
+
+  it("converts KRW filter input to USD", () => {
+    const usd = displayAmountToUsd1e8("1000000", "KRW", { krwUsd: KRW_USD });
+    assert.equal(usd, (1_000_000n * KRW_USD));
+  });
+});
+
+describe("ratesReadyForPriceCurrency", () => {
+  it("requires btcUsd for BTC display filter", () => {
+    assert.equal(ratesReadyForPriceCurrency("BTC", null), false);
+    assert.equal(ratesReadyForPriceCurrency("BTC", { btcUsd: BTC_USD }), true);
   });
 });

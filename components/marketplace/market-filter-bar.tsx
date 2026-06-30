@@ -20,7 +20,10 @@ import {
 } from "@/components/ui/select";
 import { useFacets } from "@/hooks/use-facets";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
+import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
+import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
+import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import {
   countActiveFilters,
   countDrawerActiveFilters,
@@ -30,11 +33,9 @@ import {
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
 import {
-  fiat1e8ToEthWei,
-  FIAT_SCALE,
   rateRequiredForPriceCurrency,
   ratesReadyForPriceCurrency,
-  type PartialFxRates,
+  usdFacetRangeToCrypto,
 } from "@/lib/marketplace/price-normalize";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
 import { cn } from "@/lib/utils";
@@ -102,17 +103,9 @@ function FilterSearchInput({
 export function MarketFilterBar() {
   const { facets } = useFacets();
   const { filters, patchFilters } = useMarketFilterNavigation();
-  const {
-    displayCurrency,
-    ethUsd,
-    eurUsd,
-    cnyUsd,
-    inrUsd,
-    brlUsd,
-    idrUsd,
-    audUsd,
-    isRatesLoading,
-  } = useDisplayCurrency();
+  const fxContext = useDisplayCurrency();
+  const filterRates = pickPartialFxRates(fxContext);
+  const { displayCurrency, isRatesLoading } = fxContext;
   const [searchInput, setSearchInput] = useState(filters.search);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
@@ -174,35 +167,28 @@ export function MarketFilterBar() {
       : (facets?.priceRanges?.USD ??
         ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
 
-  const usdRangeForEth =
+  const usdRangeForCrypto =
     facets?.priceRanges?.USD ??
     ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
 
-  const priceRange =
-    displayCurrency === "ETH" && ethUsd != null
-      ? {
-          min: usdRangeForEth.min
-            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.min * Number(FIAT_SCALE))), ethUsd)
-            : 0,
-          max: usdRangeForEth.max
-            ? fiat1e8ToEthWei(BigInt(Math.round(usdRangeForEth.max * Number(FIAT_SCALE))), ethUsd)
-            : 0,
-        }
-      : fiatPriceRange;
+  let priceRange = fiatPriceRange;
+  if (isCryptoDisplayCurrency(displayCurrency)) {
+    const config = CRYPTO_DISPLAY_CONFIG[displayCurrency];
+    const cryptoRate = filterRates[config.rateField];
+    if (cryptoRate != null) {
+      priceRange = usdFacetRangeToCrypto(
+        usdRangeForCrypto.min,
+        usdRangeForCrypto.max,
+        cryptoRate,
+        config.scale,
+      );
+    }
+  }
 
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
   const priceDraftHasBounds = Boolean(priceDraft.priceMin || priceDraft.priceMax);
   const priceApplyNeedsRates =
     priceDraftHasBounds && rateRequiredForPriceCurrency(displayCurrency);
-  const filterRates: PartialFxRates = {
-    ethUsd,
-    eurUsd,
-    cnyUsd,
-    inrUsd,
-    brlUsd,
-    idrUsd,
-    audUsd,
-  };
   const priceApplyDisabled =
     priceApplyNeedsRates &&
     (isRatesLoading || !ratesReadyForPriceCurrency(displayCurrency, filterRates));

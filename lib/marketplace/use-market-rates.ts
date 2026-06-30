@@ -4,25 +4,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { fetchCoinGeckoRates } from "@/lib/marketplace/coingecko-rates";
-import { AED_USD_PEG_1E8 } from "@/lib/marketplace/price-normalize";
+import { AED_USD_PEG_1E8, type PartialFxRates } from "@/lib/marketplace/price-normalize";
 import { useChainlinkRates } from "@/lib/marketplace/use-chainlink-rates";
 
 const COINGECKO_STALE_MS = 60_000;
 
-/** Chainlink has no feeds for CNY/INR/BRL/IDR/AUD/AED on 84532 — always fetch from CoinGecko. */
+/** Chainlink has no feeds for extended fiats or BTC on 84532 — always fetch from CoinGecko. */
 const NEEDS_EXTENDED_FIAT_RATES = true;
 
-export function useMarketRates(): {
-  ethUsd: bigint | null;
-  eurUsd: bigint | null;
-  cnyUsd: bigint | null;
-  inrUsd: bigint | null;
-  brlUsd: bigint | null;
-  idrUsd: bigint | null;
-  audUsd: bigint | null;
+export type MarketRates = PartialFxRates & {
   aedUsd: bigint;
   isLoading: boolean;
-} {
+};
+
+export function useMarketRates(): MarketRates {
   const {
     ethUsd: chainlinkEthUsd,
     eurUsd: chainlinkEurUsd,
@@ -44,26 +39,48 @@ export function useMarketRates(): {
 
   const ethUsd = chainlinkEthUsd ?? coingeckoRates?.ethUsd ?? null;
   const eurUsd = chainlinkEurUsd ?? coingeckoRates?.eurUsd ?? null;
+  const btcUsd = coingeckoRates?.btcUsd ?? null;
   const cnyUsd = coingeckoRates?.cnyUsd ?? null;
   const inrUsd = coingeckoRates?.inrUsd ?? null;
   const brlUsd = coingeckoRates?.brlUsd ?? null;
   const idrUsd = coingeckoRates?.idrUsd ?? null;
   const audUsd = coingeckoRates?.audUsd ?? null;
   const aedUsd = coingeckoRates?.aedUsd ?? AED_USD_PEG_1E8;
+  const krwUsd = coingeckoRates?.krwUsd ?? null;
+  const rubUsd = coingeckoRates?.rubUsd ?? null;
+  const jpyUsd = coingeckoRates?.jpyUsd ?? null;
   const isLoading = chainlinkLoading || (needsCoinGecko && coingeckoLoading);
 
   return useMemo(
     () => ({
       ethUsd,
       eurUsd,
+      btcUsd,
       cnyUsd,
       inrUsd,
       brlUsd,
       idrUsd,
       audUsd,
       aedUsd,
+      krwUsd,
+      rubUsd,
+      jpyUsd,
       isLoading,
     }),
-    [aedUsd, audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd, isLoading],
+    [
+      aedUsd,
+      audUsd,
+      brlUsd,
+      btcUsd,
+      cnyUsd,
+      ethUsd,
+      eurUsd,
+      idrUsd,
+      inrUsd,
+      isLoading,
+      jpyUsd,
+      krwUsd,
+      rubUsd,
+    ],
   );
 }

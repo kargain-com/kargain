@@ -202,14 +202,22 @@ Generation v2 allows listing in any registered fiat `currencyCode`. The app disp
 
 ### CoinGecko extension (display only) — ✅ shipped June 2026
 
-[`lib/marketplace/coingecko-rates.ts`](../../lib/marketplace/coingecko-rates.ts):
+[`lib/marketplace/coingecko-rates.ts`](../../lib/marketplace/coingecko-rates.ts) + [`lib/marketplace/fx-rate-registry.ts`](../../lib/marketplace/fx-rate-registry.ts):
 
 - **`simple/price`** — ETH/USD + EUR/USD (existing; EUR via ETH cross-rate)
-- **`exchange_rates`** — CNY, INR, BRL, IDR, AUD, **AED** (USD per unit at 1e8)
+- **`exchange_rates`** — CNY, INR, BRL, IDR, AUD, **AED**, **KRW**, **RUB**, **JPY** (USD per unit at 1e8)
+- **`exchange_rates.usd`** — USD per BTC → `btcUsd` for BTC display (suffix `BTC`, 4 decimals)
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD (and EUR/ETH). **AED** does not use an indexer rate param — client applies live CoinGecko + peg fallback via `fiatUsdRate`. **Redeploy ponder image only** — no `ponder-reindex.sql`.
+Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD/KRW/RUB/JPY (and EUR/ETH/BTC). **AED** does not use an indexer rate param — client applies live CoinGecko + peg fallback via `fiatUsdRate`. **Redeploy ponder image only** — no `ponder-reindex.sql`.
+
+**Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
+
+### Known display limitations
+
+- **KRW / JPY** use the shared 2-decimal fiat formatter (e.g. `₩50,000,000.00`). Integer-only formatting for zero-decimal currencies is a possible follow-up.
+- **CNY and JPY** share the `¥` glyph in the selector; the ISO code column disambiguates.
 
 ### AED — ✅ shipped June 2026, peg retained as fallback only
 
@@ -225,4 +233,4 @@ UI: `currency-selector.tsx` lists **AED** like other fiats (no "(pegged)" suffix
 
 ---
 
-*Last updated: June 30, 2026 — AED live CoinGecko rate (peg fallback); currency selector aligned symbol column.*
+*Last updated: June 30, 2026 — KRW/RUB/JPY/BTC display layer; fx-rate-registry.*

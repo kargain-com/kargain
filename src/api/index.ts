@@ -353,6 +353,11 @@ app.get("/listings", async (c) => {
     brlUsdRate: c.req.query("brlUsdRate"),
     idrUsdRate: c.req.query("idrUsdRate"),
     audUsdRate: c.req.query("audUsdRate"),
+    aedUsdRate: c.req.query("aedUsdRate"),
+    krwUsdRate: c.req.query("krwUsdRate"),
+    rubUsdRate: c.req.query("rubUsdRate"),
+    jpyUsdRate: c.req.query("jpyUsdRate"),
+    btcUsdRate: c.req.query("btcUsdRate"),
     sort: c.req.query("sort"),
   });
 

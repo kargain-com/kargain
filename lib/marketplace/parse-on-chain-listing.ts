@@ -8,7 +8,7 @@ import {
 export type OnChainListingRow = {
   seller: `0x${string}`;
   fiatPrice1e8: bigint;
-  /** Legacy fiat enum for display and API (0–7; see LEGACY_FIAT_CURRENCIES). */
+  /** Legacy fiat enum for display and API (0–10; see LEGACY_FIAT_CURRENCIES). */
   fiatCurrency: number;
   active: boolean;
 };

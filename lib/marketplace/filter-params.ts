@@ -1,9 +1,14 @@
-import {
-  isPriceCurrency,
-  type PriceCurrency,
-} from "@/lib/marketplace/price-normalize";
+import type { PriceCurrency } from "@/lib/marketplace/price-normalize";
+import { isPriceCurrency } from "@/lib/marketplace/price-normalize";
 import type { LegacyFiatCurrencyCode } from "@/lib/marketplace/currency-code";
+import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
+import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
+import {
+  marketRatesToQueryParams,
+  type MarketApiRates,
+} from "@/lib/marketplace/fx-rate-registry";
+import type { PartialFxRates } from "@/lib/marketplace/price-normalize";
 
 export type MarketSort = "newest" | "price_asc" | "price_desc" | "mileage_asc";
 export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
@@ -167,11 +172,18 @@ export function countDrawerActiveFilters(filters: MarketFilterState): number {
   return n;
 }
 
+function formatCryptoDisplayAmount(amount: string, code: PriceCurrency): string {
+  if (!isCryptoDisplayCurrency(code)) return amount;
+  const n = Number.parseFloat(amount);
+  if (!Number.isFinite(n)) return amount;
+  return `${n} ${CRYPTO_DISPLAY_CONFIG[code].suffix}`;
+}
+
 function formatCompactPrice(amount: string, displayCurrency: PriceCurrency): string {
   const n = Number.parseFloat(amount);
   if (!Number.isFinite(n)) return amount;
-  if (displayCurrency === "ETH") {
-    return `${n} ETH`;
+  if (isCryptoDisplayCurrency(displayCurrency)) {
+    return formatCryptoDisplayAmount(amount, displayCurrency);
   }
   const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
   const prefix = symbol.length === 1 ? symbol : `${symbol} `;
@@ -182,7 +194,9 @@ function formatCompactPrice(amount: string, displayCurrency: PriceCurrency): str
 }
 
 export function priceFilterPlaceholder(displayCurrency: PriceCurrency): string {
-  if (displayCurrency === "ETH") return "e.g. 4 ETH";
+  if (isCryptoDisplayCurrency(displayCurrency)) {
+    return `e.g. 4 ${CRYPTO_DISPLAY_CONFIG[displayCurrency].suffix}`;
+  }
   const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
   const prefix = symbol.length === 1 ? symbol : `${symbol} `;
   return `e.g. 15 000 ${prefix}`;
@@ -199,21 +213,25 @@ export function formatPriceChipLabel(
     if (Number.isFinite(minN) && Number.isFinite(maxN) && minN >= 1000 && maxN >= 1000) {
       return `${formatCompactPrice(priceMin, displayCurrency)}–${formatCompactPrice(priceMax, displayCurrency)}`;
     }
-    if (displayCurrency === "ETH") {
-      return `${priceMin}–${priceMax} ETH`;
+    if (isCryptoDisplayCurrency(displayCurrency)) {
+      return `${priceMin}–${priceMax} ${CRYPTO_DISPLAY_CONFIG[displayCurrency].suffix}`;
     }
     const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
     const prefix = symbol.length === 1 ? symbol : `${symbol} `;
     return `${prefix}${Number(priceMin).toLocaleString("en-US")}–${prefix}${Number(priceMax).toLocaleString("en-US")}`;
   }
   if (priceMin) {
-    if (displayCurrency === "ETH") return `From ${priceMin} ETH`;
+    if (isCryptoDisplayCurrency(displayCurrency)) {
+      return `From ${priceMin} ${CRYPTO_DISPLAY_CONFIG[displayCurrency].suffix}`;
+    }
     const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
     const prefix = symbol.length === 1 ? symbol : `${symbol} `;
     return `From ${prefix}${Number(priceMin).toLocaleString("en-US")}`;
   }
   if (priceMax) {
-    if (displayCurrency === "ETH") return `Up to ${priceMax} ETH`;
+    if (isCryptoDisplayCurrency(displayCurrency)) {
+      return `Up to ${priceMax} ${CRYPTO_DISPLAY_CONFIG[displayCurrency].suffix}`;
+    }
     const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
     const prefix = symbol.length === 1 ? symbol : `${symbol} `;
     return `Up to ${prefix}${Number(priceMax).toLocaleString("en-US")}`;
@@ -254,15 +272,7 @@ export function formatMultiValueChipLabel(values: string[]): string {
   return values.join(" · ");
 }
 
-export type MarketApiRates = {
-  eurUsdRate?: string;
-  ethUsdRate?: string;
-  cnyUsdRate?: string;
-  inrUsdRate?: string;
-  brlUsdRate?: string;
-  idrUsdRate?: string;
-  audUsdRate?: string;
-};
+export type { MarketApiRates };
 
 function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
   if (filters.priceCurrency) return filters.priceCurrency;
@@ -270,17 +280,18 @@ function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
   return "USD";
 }
 
-function shouldForwardRates(rates?: MarketApiRates): boolean {
+function shouldForwardRates(rates?: PartialFxRates): boolean {
   return rates != null;
 }
 
 export function marketFiltersToApiInput(
   filters: MarketFilterState,
-  rates?: MarketApiRates,
+  rates?: PartialFxRates,
 ) {
   const hasPriceBounds = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
   const priceCurrency = hasPriceBounds ? effectivePriceCurrency(filters) : undefined;
   const forwardRates = shouldForwardRates(rates);
+  const queryRates = forwardRates && rates ? marketRatesToQueryParams(rates) : undefined;
 
   return {
     search: filters.search.trim() || undefined,
@@ -291,13 +302,18 @@ export function marketFiltersToApiInput(
     priceMin: filters.priceMin.trim() || undefined,
     priceMax: filters.priceMax.trim() || undefined,
     priceCurrency,
-    eurUsdRate: forwardRates ? rates?.eurUsdRate : undefined,
-    ethUsdRate: forwardRates ? rates?.ethUsdRate : undefined,
-    cnyUsdRate: forwardRates ? rates?.cnyUsdRate : undefined,
-    inrUsdRate: forwardRates ? rates?.inrUsdRate : undefined,
-    brlUsdRate: forwardRates ? rates?.brlUsdRate : undefined,
-    idrUsdRate: forwardRates ? rates?.idrUsdRate : undefined,
-    audUsdRate: forwardRates ? rates?.audUsdRate : undefined,
+    eurUsdRate: queryRates?.eurUsdRate,
+    ethUsdRate: queryRates?.ethUsdRate,
+    btcUsdRate: queryRates?.btcUsdRate,
+    cnyUsdRate: queryRates?.cnyUsdRate,
+    inrUsdRate: queryRates?.inrUsdRate,
+    brlUsdRate: queryRates?.brlUsdRate,
+    idrUsdRate: queryRates?.idrUsdRate,
+    audUsdRate: queryRates?.audUsdRate,
+    aedUsdRate: queryRates?.aedUsdRate,
+    krwUsdRate: queryRates?.krwUsdRate,
+    rubUsdRate: queryRates?.rubUsdRate,
+    jpyUsdRate: queryRates?.jpyUsdRate,
     mileageMin: filters.mileageMin ? Number.parseInt(filters.mileageMin, 10) : undefined,
     mileageMax: filters.mileageMax ? Number.parseInt(filters.mileageMax, 10) : undefined,
     fuelType: filters.fuelTypes.length ? filters.fuelTypes.join(",") : undefined,

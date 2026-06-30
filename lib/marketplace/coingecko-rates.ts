@@ -1,4 +1,10 @@
 import { FIAT_SCALE } from "@/lib/marketplace/price-normalize";
+import {
+  COINGECKO_EXCHANGE_FIAT_KEYS,
+  createNullExchangeFiatRates,
+  type ExchangeFiatRateField,
+  type PartialFxRates,
+} from "@/lib/marketplace/fx-rate-registry";
 
 export const COINGECKO_FX_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,eur";
@@ -9,13 +15,8 @@ export const COINGECKO_EXCHANGE_RATES_URL =
 export type CoinGeckoFxRates = {
   ethUsd: bigint | null;
   eurUsd: bigint | null;
-  cnyUsd: bigint | null;
-  inrUsd: bigint | null;
-  brlUsd: bigint | null;
-  idrUsd: bigint | null;
-  audUsd: bigint | null;
-  aedUsd: bigint | null;
-};
+  btcUsd: bigint | null;
+} & Pick<PartialFxRates, ExchangeFiatRateField>;
 
 type CoinGeckoEthResponse = {
   ethereum?: {
@@ -27,17 +28,6 @@ type CoinGeckoEthResponse = {
 type CoinGeckoExchangeRatesResponse = {
   rates?: Record<string, { value?: number }>;
 };
-
-const EXCHANGE_RATE_FIATS = ["cny", "inr", "brl", "idr", "aud", "aed"] as const;
-
-const NULL_EXCHANGE_FIAT_RATES = {
-  cnyUsd: null,
-  inrUsd: null,
-  brlUsd: null,
-  idrUsd: null,
-  audUsd: null,
-  aedUsd: null,
-} as const;
 
 function fiatPriceTo1e8(value: number): bigint | null {
   if (!Number.isFinite(value) || value <= 0) return null;
@@ -69,26 +59,23 @@ export function parseCoinGeckoRates(json: CoinGeckoEthResponse): Pick<
 /** Parse CoinGecko exchange_rates BTC-denominated fiats into USD-per-unit 1e8 rates. */
 export function parseCoinGeckoExchangeRates(
   json: CoinGeckoExchangeRatesResponse,
-): Pick<
-  CoinGeckoFxRates,
-  "cnyUsd" | "inrUsd" | "brlUsd" | "idrUsd" | "audUsd" | "aedUsd"
-> {
+): Pick<CoinGeckoFxRates, ExchangeFiatRateField | "btcUsd"> {
   const rates = json.rates;
   const usdPerBtc = rates?.usd?.value;
   if (usdPerBtc == null || !Number.isFinite(usdPerBtc) || usdPerBtc <= 0) {
-    return { ...NULL_EXCHANGE_FIAT_RATES };
+    return { ...createNullExchangeFiatRates(), btcUsd: null };
   }
 
-  const result: Pick<
-    CoinGeckoFxRates,
-    "cnyUsd" | "inrUsd" | "brlUsd" | "idrUsd" | "audUsd" | "aedUsd"
-  > = { ...NULL_EXCHANGE_FIAT_RATES };
+  const result: Pick<CoinGeckoFxRates, ExchangeFiatRateField | "btcUsd"> = {
+    ...createNullExchangeFiatRates(),
+    btcUsd: fiatPriceTo1e8(usdPerBtc),
+  };
 
-  for (const fiat of EXCHANGE_RATE_FIATS) {
+  for (const fiat of COINGECKO_EXCHANGE_FIAT_KEYS) {
     const fiatPerBtc = rates?.[fiat]?.value;
     if (fiatPerBtc == null || !Number.isFinite(fiatPerBtc) || fiatPerBtc <= 0) continue;
     const usdPerUnit = usdPerBtc / fiatPerBtc;
-    const key = `${fiat}Usd` as keyof typeof result;
+    const key = `${fiat}Usd` as ExchangeFiatRateField;
     result[key] = fiatPriceTo1e8(usdPerUnit);
   }
 
@@ -107,15 +94,15 @@ async function fetchCoinGeckoEthRates(): Promise<Pick<CoinGeckoFxRates, "ethUsd"
 }
 
 async function fetchCoinGeckoExchangeRates(): Promise<
-  Pick<CoinGeckoFxRates, "cnyUsd" | "inrUsd" | "brlUsd" | "idrUsd" | "audUsd" | "aedUsd">
+  Pick<CoinGeckoFxRates, ExchangeFiatRateField | "btcUsd">
 > {
   try {
     const res = await fetch(COINGECKO_EXCHANGE_RATES_URL);
-    if (!res.ok) return { ...NULL_EXCHANGE_FIAT_RATES };
+    if (!res.ok) return { ...createNullExchangeFiatRates(), btcUsd: null };
     const json = (await res.json()) as CoinGeckoExchangeRatesResponse;
     return parseCoinGeckoExchangeRates(json);
   } catch {
-    return { ...NULL_EXCHANGE_FIAT_RATES };
+    return { ...createNullExchangeFiatRates(), btcUsd: null };
   }
 }
 

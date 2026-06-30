@@ -29,6 +29,9 @@ const FIAT_SYMBOLS: Record<LegacyFiatCurrencyCode, string> = {
   IDR: "Rp",
   AUD: "A$",
   AED: "AED",
+  KRW: "₩",
+  RUB: "₽",
+  JPY: "¥",
 };
 
 export function fiatCurrencySymbol(code: LegacyFiatCurrencyCode): string {

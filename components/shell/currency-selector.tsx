@@ -18,13 +18,15 @@ import {
   type DisplayCurrency,
   useDisplayCurrency,
 } from "@/lib/marketplace/display-currency-context";
+import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
+import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import { cn } from "@/lib/utils";
 
 const OPTIONS = DISPLAY_CURRENCIES.map((value) => ({ value }));
 
 function currencyOptionSymbol(code: DisplayCurrency): string {
-  if (code === "ETH") return "Ξ";
+  if (isCryptoDisplayCurrency(code)) return CRYPTO_DISPLAY_CONFIG[code].selectorSymbol;
   const symbol = fiatCurrencySymbol(code);
   return symbol === code ? "" : symbol;
 }
@@ -106,7 +108,7 @@ export function CurrencySelector() {
               {displayCurrency}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[148px] p-1">
+          <DropdownMenuContent align="end" className="min-w-[168px] p-1">
             {OPTIONS.map((option) => (
               <DropdownMenuItem
                 key={option.value}

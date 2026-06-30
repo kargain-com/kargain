@@ -57,6 +57,9 @@ describe("legacyFiatFromCurrencyCode", () => {
     assert.equal(legacyFiatFromCurrencyCode("IDR"), 5);
     assert.equal(legacyFiatFromCurrencyCode("AUD"), 6);
     assert.equal(legacyFiatFromCurrencyCode("AED"), 7);
+    assert.equal(legacyFiatFromCurrencyCode("KRW"), 8);
+    assert.equal(legacyFiatFromCurrencyCode("RUB"), 9);
+    assert.equal(legacyFiatFromCurrencyCode("JPY"), 10);
   });
 
   it("falls back unknown listing codes to USD", () => {
@@ -65,18 +68,21 @@ describe("legacyFiatFromCurrencyCode", () => {
   });
 
   it("roundtrips via legacyFiatToCode", () => {
-    for (let i = 0; i <= 7; i++) {
+    for (let i = 0; i <= 10; i++) {
       assert.equal(legacyFiatFromCurrencyCode(legacyFiatToCode(i as 0)), i);
     }
   });
 });
 
 describe("isDisplayCurrency", () => {
-  it("accepts all display currencies including ETH", () => {
+  it("accepts all display currencies including crypto", () => {
     assert.equal(isDisplayCurrency("USD"), true);
     assert.equal(isDisplayCurrency("CNY"), true);
     assert.equal(isDisplayCurrency("AED"), true);
+    assert.equal(isDisplayCurrency("KRW"), true);
+    assert.equal(isDisplayCurrency("JPY"), true);
     assert.equal(isDisplayCurrency("ETH"), true);
+    assert.equal(isDisplayCurrency("BTC"), true);
     assert.equal(isDisplayCurrency("GBP"), false);
   });
 });

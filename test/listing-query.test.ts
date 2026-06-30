@@ -28,6 +28,7 @@ const baseRow: EnrichedListingForFilter = {
 const ETH_USD = 300_000_000_000n;
 const EUR_USD = 108_000_000n;
 const CNY_USD = 14_000_000n;
+const KRW_USD = 64_495n;
 
 describe("matchesListingFilters", () => {
   it("matches fuel, body, and transmission csv filters", () => {
@@ -142,6 +143,18 @@ describe("matchesListingFilters", () => {
         cnyUsdRate: String(CNY_USD),
       }),
       false,
+    );
+  });
+
+  it("filters by KRW price bounds with krwUsd rate", () => {
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "KRW",
+        priceMin: "100000",
+        priceMax: "500000",
+        krwUsdRate: String(KRW_USD),
+      }),
+      true,
     );
   });
 
@@ -283,10 +296,10 @@ describe("computeListingFacets", () => {
 });
 
 describe("normalizeListingFiatCurrency", () => {
-  it("coerces API values to legacy enum 0–7", () => {
+  it("coerces API values to legacy enum 0–10", () => {
     assert.equal(normalizeListingFiatCurrency(0), 0);
     assert.equal(normalizeListingFiatCurrency(1), 1);
-    assert.equal(normalizeListingFiatCurrency(7), 7);
+    assert.equal(normalizeListingFiatCurrency(10), 10);
     assert.equal(normalizeListingFiatCurrency("0"), 0);
     assert.equal(normalizeListingFiatCurrency("1"), 1);
     assert.equal(normalizeListingFiatCurrency(99), 0);

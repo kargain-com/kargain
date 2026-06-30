@@ -19,9 +19,9 @@ import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import {
   rateRequiredForPriceCurrency,
   ratesReadyForPriceCurrency,
-  type PartialFxRates,
 } from "@/lib/marketplace/price-normalize";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
+import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
 type MarketBrowseProps = {
@@ -32,15 +32,8 @@ export function MarketBrowse({
   initialChainId: _initialChainId,
 }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
-  const {
-    ethUsd,
-    eurUsd,
-    cnyUsd,
-    inrUsd,
-    brlUsd,
-    idrUsd,
-    audUsd,
-  } = useDisplayCurrency();
+  const fxContext = useDisplayCurrency();
+  const filterRates = pickPartialFxRates(fxContext);
 
   const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
   const effectivePriceCurrency = filters.priceCurrency || "USD";
@@ -50,33 +43,15 @@ export function MarketBrowse({
     filters.sort === "price_asc" || filters.sort === "price_desc";
   const needsRates = needsRatesForFilter || needsRatesForSort;
 
-  const filterRates: PartialFxRates = {
-    ethUsd,
-    eurUsd,
-    cnyUsd,
-    inrUsd,
-    brlUsd,
-    idrUsd,
-    audUsd,
-  };
   const ratesReadyForFilter =
     !needsRatesForFilter ||
     ratesReadyForPriceCurrency(effectivePriceCurrency, filterRates);
-  const ratesReadyForSort = !needsRatesForSort || (ethUsd != null && eurUsd != null);
+  const ratesReadyForSort = !needsRatesForSort || (filterRates.ethUsd != null && filterRates.eurUsd != null);
   const ratesReady = ratesReadyForFilter && ratesReadyForSort;
 
   const apiInput = useMemo(
-    () =>
-      marketFiltersToApiInput(filters, {
-        eurUsdRate: eurUsd?.toString(),
-        ethUsdRate: ethUsd?.toString(),
-        cnyUsdRate: cnyUsd?.toString(),
-        inrUsdRate: inrUsd?.toString(),
-        brlUsdRate: brlUsd?.toString(),
-        idrUsdRate: idrUsd?.toString(),
-        audUsdRate: audUsd?.toString(),
-      }),
-    [filters, ethUsd, eurUsd, cnyUsd, inrUsd, brlUsd, idrUsd, audUsd],
+    () => marketFiltersToApiInput(filters, filterRates),
+    [filters, filterRates],
   );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 

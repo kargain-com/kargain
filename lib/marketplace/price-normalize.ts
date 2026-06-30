@@ -1,13 +1,23 @@
 import {
+  isCryptoDisplayCurrency,
   isDisplayCurrency,
   legacyFiatToCode,
   type DisplayCurrency,
   type LegacyFiatCurrency,
   type LegacyFiatCurrencyCode,
 } from "@/lib/marketplace/currency-code";
+import {
+  CRYPTO_DISPLAY_CONFIG,
+  FIAT_RATE_KEYS,
+  parseFxRatesFromQueryParams,
+  type PartialFxRates,
+} from "@/lib/marketplace/fx-rate-registry";
+
+export type { PartialFxRates };
 
 export const FIAT_SCALE = 100_000_000n;
 export const ETH_SCALE = 1_000_000_000_000_000_000n;
+export const BTC_SCALE = 100_000_000n;
 
 /** UAE Central Bank peg fallback: 1 AED = 0.2723 USD (stable since 1997). Used when CoinGecko omits AED. */
 export const AED_USD_PEG_1E8 = 27_230_000n;
@@ -18,10 +28,10 @@ export function isPriceCurrency(value: string): value is PriceCurrency {
   return isDisplayCurrency(value);
 }
 
-/** Coerce API / JSON fiat currency to legacy enum 0–7; invalid → 0 (USD). */
+/** Coerce API / JSON fiat currency to legacy enum 0–10; invalid → 0 (USD). */
 export function normalizeListingFiatCurrency(fiatCurrency: number | string): LegacyFiatCurrency {
   const n = Number(fiatCurrency);
-  if (Number.isInteger(n) && n >= 0 && n <= 7) return n as LegacyFiatCurrency;
+  if (Number.isInteger(n) && n >= 0 && n <= 10) return n as LegacyFiatCurrency;
   return 0;
 }
 
@@ -33,61 +43,27 @@ export type FxRates = {
   brlUsd: bigint;
   idrUsd: bigint;
   audUsd: bigint;
+  krwUsd: bigint;
+  rubUsd: bigint;
+  jpyUsd: bigint;
 };
-
-export type PartialFxRates = {
-  ethUsd?: bigint | null;
-  eurUsd?: bigint | null;
-  cnyUsd?: bigint | null;
-  inrUsd?: bigint | null;
-  brlUsd?: bigint | null;
-  idrUsd?: bigint | null;
-  audUsd?: bigint | null;
-  aedUsd?: bigint | null;
-};
-
-const FIAT_RATE_KEYS: Record<
-  Exclude<LegacyFiatCurrencyCode, "USD">,
-  keyof PartialFxRates
-> = {
-  EUR: "eurUsd",
-  CNY: "cnyUsd",
-  INR: "inrUsd",
-  BRL: "brlUsd",
-  IDR: "idrUsd",
-  AUD: "audUsd",
-  AED: "aedUsd",
-};
-
-function parseRateField(raw: string | undefined): bigint | null {
-  if (!raw?.trim()) return null;
-  try {
-    const v = BigInt(raw.trim());
-    return v > 0n ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Parse individual rate query params into a partial rates object. */
 export function parseFxRatesFromQuery(params: {
   eurUsdRate?: string;
   ethUsdRate?: string;
+  btcUsdRate?: string;
   cnyUsdRate?: string;
   inrUsdRate?: string;
   brlUsdRate?: string;
   idrUsdRate?: string;
   audUsdRate?: string;
+  aedUsdRate?: string;
+  krwUsdRate?: string;
+  rubUsdRate?: string;
+  jpyUsdRate?: string;
 }): PartialFxRates {
-  return {
-    ethUsd: parseRateField(params.ethUsdRate),
-    eurUsd: parseRateField(params.eurUsdRate),
-    cnyUsd: parseRateField(params.cnyUsdRate),
-    inrUsd: parseRateField(params.inrUsdRate),
-    brlUsd: parseRateField(params.brlUsdRate),
-    idrUsd: parseRateField(params.idrUsdRate),
-    audUsd: parseRateField(params.audUsdRate),
-  };
+  return parseFxRatesFromQueryParams(params);
 }
 
 /** @deprecated Use parseFxRatesFromQuery — kept for call sites passing two rates. */
@@ -105,6 +81,9 @@ export function parseFxRates(
     brlUsd: partial.brlUsd ?? 0n,
     idrUsd: partial.idrUsd ?? 0n,
     audUsd: partial.audUsd ?? 0n,
+    krwUsd: partial.krwUsd ?? 0n,
+    rubUsd: partial.rubUsd ?? 0n,
+    jpyUsd: partial.jpyUsd ?? 0n,
   };
 }
 
@@ -136,7 +115,11 @@ export function ratesReadyForPriceCurrency(
   rates: PartialFxRates | null,
 ): boolean {
   if (!rateRequiredForPriceCurrency(currency)) return true;
-  if (currency === "ETH") return rates?.ethUsd != null;
+  if (isCryptoDisplayCurrency(currency)) {
+    const config = CRYPTO_DISPLAY_CONFIG[currency];
+    const rate = rates?.[config.rateField];
+    return rate != null && rate > 0n;
+  }
   if (currency === "EUR") return rates?.eurUsd != null;
   const fiatRate = fiatUsdRate(currency, rates);
   return fiatRate != null;
@@ -193,10 +176,12 @@ export function displayAmountToUsd1e8(
     return BigInt(Math.round(n * Number(FIAT_SCALE)));
   }
 
-  if (priceCurrency === "ETH") {
-    if (rates?.ethUsd == null) return undefined;
-    const ethWei = BigInt(Math.round(n * Number(ETH_SCALE)));
-    return (ethWei * rates.ethUsd) / ETH_SCALE;
+  if (isCryptoDisplayCurrency(priceCurrency)) {
+    const config = CRYPTO_DISPLAY_CONFIG[priceCurrency];
+    const cryptoRate = rates?.[config.rateField];
+    if (cryptoRate == null || cryptoRate <= 0n) return undefined;
+    const units = BigInt(Math.round(n * Number(config.scale)));
+    return (units * cryptoRate) / config.scale;
   }
 
   const fiatCode = priceCurrency as LegacyFiatCurrencyCode;
@@ -211,3 +196,27 @@ export function fiat1e8ToEthWei(usd1e8: bigint, ethUsd: bigint): number {
   const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
   return Number(ethWei) / Number(ETH_SCALE);
 }
+
+/** USD 1e8 → BTC display number (for facet placeholders). */
+export function fiat1e8ToBtc(usd1e8: bigint, btcUsd: bigint): number {
+  const btcSat = (usd1e8 * BTC_SCALE) / btcUsd;
+  return Number(btcSat) / Number(BTC_SCALE);
+}
+
+/** Convert USD facet bounds to crypto display units for filter sliders. */
+export function usdFacetRangeToCrypto(
+  usdMin: number,
+  usdMax: number,
+  cryptoUsd: bigint,
+  scale: bigint,
+): { min: number; max: number } {
+  const toUnits = (usd: number): number => {
+    if (!usd) return 0;
+    const usd1e8 = BigInt(Math.round(usd * Number(FIAT_SCALE)));
+    const units = (usd1e8 * scale) / cryptoUsd;
+    return Number(units) / Number(scale);
+  };
+  return { min: toUnits(usdMin), max: toUnits(usdMax) };
+}
+
+export { FIAT_RATE_KEYS };

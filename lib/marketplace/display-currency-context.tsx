@@ -12,14 +12,15 @@ import {
 
 import {
   DISPLAY_CURRENCIES,
+  isCryptoDisplayCurrency,
   isDisplayCurrency,
   legacyFiatToCode,
   type DisplayCurrency,
   type LegacyFiatCurrency,
 } from "@/lib/marketplace/currency-code";
+import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import {
-  ETH_SCALE,
   FIAT_SCALE,
   listingToUsd1e8,
   normalizeListingFiatCurrency,
@@ -48,33 +49,30 @@ function formatFiat1e8WithSymbol(value: bigint, symbol: string): string {
   return `${prefix}${neg ? `-${core}` : core}`;
 }
 
-function formatEthWei(ethWei: bigint): string {
-  const neg = ethWei < 0n;
-  const v = neg ? -ethWei : ethWei;
-  const whole = v / ETH_SCALE;
-  const fracRaw = v % ETH_SCALE;
-  let frac4 = (fracRaw + 5_000_000_000_000_000n) / 10_000_000_000_000_000n;
+function formatCryptoUnits(units: bigint, suffix: string, fracDigits: number): string {
+  const neg = units < 0n;
+  const v = neg ? -units : units;
+  const config = Object.values(CRYPTO_DISPLAY_CONFIG).find((c) => c.suffix === suffix);
+  const scale = config?.scale ?? 1n;
+  const whole = v / scale;
+  const fracRaw = v % scale;
+  const fracDivisor = 10n ** BigInt(fracDigits);
+  const fracScale = scale / fracDivisor;
+  let frac = fracScale > 0n ? (fracRaw + fracScale / 2n) / fracScale : 0n;
   let wholePart = whole;
-  if (frac4 === 10_000n) {
+  if (frac >= fracDivisor) {
     wholePart += 1n;
-    frac4 = 0n;
+    frac = 0n;
   }
-  const core = `${wholePart.toString()}.${frac4.toString().padStart(4, "0")}`;
-  return `${neg ? `-${core}` : core} ETH`;
+  const core = `${wholePart.toString()}.${frac.toString().padStart(fracDigits, "0")}`;
+  return `${neg ? `-${core}` : core} ${suffix}`;
 }
 
-type DisplayCurrencyContextValue = {
+type DisplayCurrencyContextValue = PartialFxRates & {
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (currency: DisplayCurrency) => void;
   convertPrice: (fiatPrice1e8: bigint, fiatCurrency: LegacyFiatCurrency) => string;
   isRatesLoading: boolean;
-  ethUsd: bigint | null;
-  eurUsd: bigint | null;
-  cnyUsd: bigint | null;
-  inrUsd: bigint | null;
-  brlUsd: bigint | null;
-  idrUsd: bigint | null;
-  audUsd: bigint | null;
   aedUsd: bigint;
 };
 
@@ -82,30 +80,53 @@ const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>
 
 export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
   const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>("USD");
+  const marketRates = useMarketRates();
+
   const {
     ethUsd,
     eurUsd,
+    btcUsd,
     cnyUsd,
     inrUsd,
     brlUsd,
     idrUsd,
     audUsd,
     aedUsd,
+    krwUsd,
+    rubUsd,
+    jpyUsd,
     isLoading: isRatesLoading,
-  } = useMarketRates();
+  } = marketRates;
 
   const rates: PartialFxRates = useMemo(
     () => ({
       ethUsd,
       eurUsd,
+      btcUsd,
       cnyUsd,
       inrUsd,
       brlUsd,
       idrUsd,
       audUsd,
       aedUsd,
+      krwUsd,
+      rubUsd,
+      jpyUsd,
     }),
-    [aedUsd, audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd],
+    [
+      aedUsd,
+      audUsd,
+      brlUsd,
+      btcUsd,
+      cnyUsd,
+      ethUsd,
+      eurUsd,
+      idrUsd,
+      inrUsd,
+      jpyUsd,
+      krwUsd,
+      rubUsd,
+    ],
   );
 
   useEffect(() => {
@@ -125,12 +146,14 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       const listingCurrency = normalizeListingFiatCurrency(fiatCurrency);
       const listingCode = legacyFiatToCode(listingCurrency);
 
-      if (displayCurrency === "ETH") {
-        if (ethUsd == null) return "—";
+      if (isCryptoDisplayCurrency(displayCurrency)) {
+        const config = CRYPTO_DISPLAY_CONFIG[displayCurrency];
+        const cryptoRate = rates[config.rateField];
+        if (cryptoRate == null || cryptoRate <= 0n) return "—";
         const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, rates);
         if (usd1e8 == null) return "—";
-        const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
-        return formatEthWei(ethWei);
+        const units = (usd1e8 * config.scale) / cryptoRate;
+        return formatCryptoUnits(units, config.suffix, config.fracDigits);
       }
 
       const displayCode = displayCurrency;
@@ -148,7 +171,7 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       const symbol = fiatCurrencySymbol(displayCode);
       return formatFiat1e8WithSymbol(display1e8, symbol);
     },
-    [displayCurrency, ethUsd, rates],
+    [displayCurrency, rates],
   );
 
   const value = useMemo(
@@ -157,29 +180,10 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       setDisplayCurrency,
       convertPrice,
       isRatesLoading,
-      ethUsd,
-      eurUsd,
-      cnyUsd,
-      inrUsd,
-      brlUsd,
-      idrUsd,
-      audUsd,
+      ...rates,
       aedUsd,
     }),
-    [
-      aedUsd,
-      audUsd,
-      brlUsd,
-      cnyUsd,
-      convertPrice,
-      displayCurrency,
-      ethUsd,
-      eurUsd,
-      idrUsd,
-      inrUsd,
-      isRatesLoading,
-      setDisplayCurrency,
-    ],
+    [aedUsd, convertPrice, displayCurrency, isRatesLoading, rates, setDisplayCurrency],
   );
 
   return (

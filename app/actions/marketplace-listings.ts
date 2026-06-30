@@ -31,6 +31,11 @@ const filterSchema = z.object({
   brlUsdRate: z.string().optional(),
   idrUsdRate: z.string().optional(),
   audUsdRate: z.string().optional(),
+  aedUsdRate: z.string().optional(),
+  krwUsdRate: z.string().optional(),
+  rubUsdRate: z.string().optional(),
+  jpyUsdRate: z.string().optional(),
+  btcUsdRate: z.string().optional(),
   mileageMin: z.number().int().optional(),
   mileageMax: z.number().int().optional(),
   fuelType: z.string().optional(),
@@ -109,6 +114,11 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   if (p.brlUsdRate) url.searchParams.set("brlUsdRate", p.brlUsdRate);
   if (p.idrUsdRate) url.searchParams.set("idrUsdRate", p.idrUsdRate);
   if (p.audUsdRate) url.searchParams.set("audUsdRate", p.audUsdRate);
+  if (p.aedUsdRate) url.searchParams.set("aedUsdRate", p.aedUsdRate);
+  if (p.krwUsdRate) url.searchParams.set("krwUsdRate", p.krwUsdRate);
+  if (p.rubUsdRate) url.searchParams.set("rubUsdRate", p.rubUsdRate);
+  if (p.jpyUsdRate) url.searchParams.set("jpyUsdRate", p.jpyUsdRate);
+  if (p.btcUsdRate) url.searchParams.set("btcUsdRate", p.btcUsdRate);
   if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
   if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
   if (p.transmission) url.searchParams.set("transmission", p.transmission);

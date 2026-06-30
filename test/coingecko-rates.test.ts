@@ -33,10 +33,14 @@ describe("parseCoinGeckoExchangeRates", () => {
         idr: { value: 1100000000 },
         aud: { value: 105000 },
         aed: { value: 257000 },
+        krw: { value: 90000000 },
+        rub: { value: 4500000 },
+        jpy: { value: 9500000 },
       },
     });
 
     assert.ok(result.cnyUsd != null);
+    assert.equal(result.btcUsd, 7_000_000_000_000n);
 
     const expectedCny = BigInt(Math.round((70000 / 500000) * Number(FIAT_SCALE)));
     assert.equal(result.cnyUsd, expectedCny);
@@ -46,6 +50,9 @@ describe("parseCoinGeckoExchangeRates", () => {
     assert.ok(result.idrUsd != null);
     assert.ok(result.audUsd != null);
     assert.ok(result.aedUsd != null);
+    assert.ok(result.krwUsd != null);
+    assert.ok(result.rubUsd != null);
+    assert.ok(result.jpyUsd != null);
     const expectedAed = BigInt(Math.round((70000 / 257000) * Number(FIAT_SCALE)));
     assert.equal(result.aedUsd, expectedAed);
   });
@@ -62,13 +69,11 @@ describe("parseCoinGeckoExchangeRates", () => {
   });
 
   it("returns null fields when USD rate missing", () => {
-    assert.deepEqual(parseCoinGeckoExchangeRates({ rates: { cny: { value: 500000 } } }), {
-      cnyUsd: null,
-      inrUsd: null,
-      brlUsd: null,
-      idrUsd: null,
-      audUsd: null,
-      aedUsd: null,
-    });
+    const result = parseCoinGeckoExchangeRates({ rates: { cny: { value: 500000 } } });
+    assert.equal(result.cnyUsd, null);
+    assert.equal(result.btcUsd, null);
+    assert.equal(result.krwUsd, null);
+    assert.equal(result.rubUsd, null);
+    assert.equal(result.jpyUsd, null);
   });
 });
