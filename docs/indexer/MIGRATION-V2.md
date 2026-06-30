@@ -205,19 +205,19 @@ Generation v2 allows listing in any registered fiat `currencyCode`. The app disp
 [`lib/marketplace/coingecko-rates.ts`](../../lib/marketplace/coingecko-rates.ts):
 
 - **`simple/price`** — ETH/USD + EUR/USD (existing; EUR via ETH cross-rate)
-- **`exchange_rates`** — CNY, INR, BRL, IDR, AUD (USD per unit at 1e8)
+- **`exchange_rates`** — CNY, INR, BRL, IDR, AUD, **AED** (USD per unit at 1e8)
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-Browse filter/sort: optional `*UsdRate` query params on `GET /listings` ([indexer/README.md](./README.md#get-listings--fx-query-parameters)). **Redeploy ponder image only** — no `ponder-reindex.sql`.
+Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD (and EUR/ETH). **AED** does not use an indexer rate param — client applies live CoinGecko + peg fallback via `fiatUsdRate`. **Redeploy ponder image only** — no `ponder-reindex.sql`.
 
-### AED (pegged) — ✅ shipped June 2026
+### AED — ✅ shipped June 2026, peg retained as fallback only
 
-UAE dirham is pegged to USD. Constant in [`price-normalize.ts`](../../lib/marketplace/price-normalize.ts):
+UAE dirham is pegged to USD. As of the live CoinGecko `exchange_rates` extension above, AED is fetched the same way as CNY/INR/BRL/IDR/AUD — **not** read from a hardcoded constant in normal operation. The constant in [`price-normalize.ts`](../../lib/marketplace/price-normalize.ts) is kept only as a safety-net fallback for when CoinGecko's response omits the `aed` field:
 
-- **`AED_USD_PEG_1E8`** — 1 AED = 0.2723 USD (UAE Central Bank peg, stable since 1997)
+- **`AED_USD_PEG_1E8`** — 1 AED = 0.2723 USD (UAE Central Bank peg, stable since 1997) — **fallback value, not primary source**
 
-UI label: **"AED (pegged)"** in [`currency-selector.tsx`](../../components/shell/currency-selector.tsx). Never fetched from CoinGecko or Chainlink.
+UI: `currency-selector.tsx` lists **AED** like other fiats (no "(pegged)" suffix). Dropdown/sheet rows use a fixed-width monospace symbol slot + ISO code for vertical alignment; AED leaves the symbol slot empty. The peg constant exists so the UI degrades to a known-good value instead of `—` during a CoinGecko outage.
 
 ### Listing creation (84532)
 
@@ -225,4 +225,4 @@ UI label: **"AED (pegged)"** in [`currency-selector.tsx`](../../components/shell
 
 ---
 
-*Last updated: June 30, 2026 — FX display layer shipped; indexer API rate params (redeploy-only).*
+*Last updated: June 30, 2026 — AED live CoinGecko rate (peg fallback); currency selector aligned symbol column.*

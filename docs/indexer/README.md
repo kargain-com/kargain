@@ -37,7 +37,9 @@ Optional query params for cross-currency **price filter and sort** (stateless AP
 | `eurUsdRate`, `ethUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit) |
 | `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |
 
-Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. New-currency filters need **indexer + frontend** deployed together.
+**AED price filter:** no rate query param — `fiatUsdRate("AED")` on the client uses live CoinGecko with `AED_USD_PEG_1E8` fallback ([`price-normalize.ts`](../../lib/marketplace/price-normalize.ts)).
+
+Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. **CNY/INR/BRL/IDR/AUD** filters need **indexer + frontend** deployed together; AED and USD do not.
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw).
 

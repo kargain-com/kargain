@@ -18,15 +18,39 @@ import {
   type DisplayCurrency,
   useDisplayCurrency,
 } from "@/lib/marketplace/display-currency-context";
-import { fiatCurrencyOptionLabel } from "@/lib/marketplace/fiat-format";
+import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import { cn } from "@/lib/utils";
 
-const OPTIONS: Array<{ value: DisplayCurrency; label: string }> = DISPLAY_CURRENCIES.map(
-  (value) => {
-    if (value === "ETH") return { value, label: "Ξ ETH" };
-    return { value, label: fiatCurrencyOptionLabel(value) };
-  },
-);
+const OPTIONS = DISPLAY_CURRENCIES.map((value) => ({ value }));
+
+function currencyOptionSymbol(code: DisplayCurrency): string {
+  if (code === "ETH") return "Ξ";
+  const symbol = fiatCurrencySymbol(code);
+  return symbol === code ? "" : symbol;
+}
+
+function CurrencyOptionLabel({
+  code,
+  selected,
+}: {
+  code: DisplayCurrency;
+  selected: boolean;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        className={cn(
+          "inline-block w-6 font-mono",
+          selected ? "text-accent-warm" : "text-text-secondary",
+        )}
+        aria-hidden
+      >
+        {currencyOptionSymbol(code) || "\u00A0"}
+      </span>
+      <span>{code}</span>
+    </span>
+  );
+}
 
 const triggerClassName = cn(
   "inline-flex h-9 w-[72px] shrink-0 items-center justify-center rounded-sm border border-border-hover bg-transparent",
@@ -92,7 +116,10 @@ export function CurrencySelector() {
                 )}
                 onSelect={() => setDisplayCurrency(option.value)}
               >
-                {option.label}
+                <CurrencyOptionLabel
+                  code={option.value}
+                  selected={displayCurrency === option.value}
+                />
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -126,7 +153,10 @@ export function CurrencySelector() {
                   )}
                   onClick={() => selectCurrency(option.value)}
                 >
-                  {option.label}
+                  <CurrencyOptionLabel
+                    code={option.value}
+                    selected={displayCurrency === option.value}
+                  />
                 </button>
               ))}
             </div>
