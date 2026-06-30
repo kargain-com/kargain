@@ -29,6 +29,7 @@ const ETH_USD = 300_000_000_000n;
 const EUR_USD = 108_000_000n;
 const CNY_USD = 14_000_000n;
 const KRW_USD = 64_495n;
+const AED_USD = 27_229_408n;
 
 describe("matchesListingFilters", () => {
   it("matches fuel, body, and transmission csv filters", () => {
@@ -155,6 +156,26 @@ describe("matchesListingFilters", () => {
         krwUsdRate: String(KRW_USD),
       }),
       true,
+    );
+  });
+
+  it("filters by AED price bounds with aedUsd rate", () => {
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "AED",
+        priceMin: "400",
+        priceMax: "700",
+        aedUsdRate: String(AED_USD),
+      }),
+      true,
+    );
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "AED",
+        priceMin: "700",
+        aedUsdRate: String(AED_USD),
+      }),
+      false,
     );
   });
 

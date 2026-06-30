@@ -19,9 +19,6 @@ export const FIAT_SCALE = 100_000_000n;
 export const ETH_SCALE = 1_000_000_000_000_000_000n;
 export const BTC_SCALE = 100_000_000n;
 
-/** UAE Central Bank peg fallback: 1 AED = 0.2723 USD (stable since 1997). Used when CoinGecko omits AED. */
-export const AED_USD_PEG_1E8 = 27_230_000n;
-
 export type PriceCurrency = DisplayCurrency;
 
 export function isPriceCurrency(value: string): value is PriceCurrency {
@@ -87,17 +84,12 @@ export function parseFxRates(
   };
 }
 
-/** USD per 1 unit of fiat at 1e8 scale. AED falls back to peg when live rate absent. */
+/** USD per 1 unit of fiat at 1e8 scale. */
 export function fiatUsdRate(
   code: LegacyFiatCurrencyCode,
   rates: PartialFxRates | null,
 ): bigint | null {
   if (code === "USD") return FIAT_SCALE;
-  if (code === "AED") {
-    const live = rates?.aedUsd;
-    if (live != null && live > 0n) return live;
-    return AED_USD_PEG_1E8;
-  }
   const key = FIAT_RATE_KEYS[code];
   const rate = rates?.[key];
   return rate != null && rate > 0n ? rate : null;
@@ -105,7 +97,7 @@ export function fiatUsdRate(
 
 /** Whether a live FX rate is required for price filter/sort in this display currency. */
 export function rateRequiredForPriceCurrency(currency: PriceCurrency): boolean {
-  if (currency === "USD" || currency === "AED") return false;
+  if (currency === "USD") return false;
   return true;
 }
 

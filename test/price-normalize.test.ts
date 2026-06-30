@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  AED_USD_PEG_1E8,
   displayAmountToUsd1e8,
   fiatUsdRate,
   FIAT_SCALE,
@@ -32,12 +31,11 @@ describe("fiatUsdRate", () => {
     assert.equal(fiatUsdRate("USD", null), FIAT_SCALE);
   });
 
-  it("returns AED peg fallback when live rate absent", () => {
-    assert.equal(fiatUsdRate("AED", null), AED_USD_PEG_1E8);
-    assert.equal(AED_USD_PEG_1E8, 27_230_000n);
+  it("returns null for AED when live rate absent", () => {
+    assert.equal(fiatUsdRate("AED", null), null);
   });
 
-  it("prefers live AED rate when present", () => {
+  it("returns live AED rate when present", () => {
     assert.equal(fiatUsdRate("AED", { aedUsd: AED_LIVE }), AED_LIVE);
   });
 
@@ -73,9 +71,8 @@ describe("usd1e8ToFiat1e8", () => {
     assert.equal(aed, (100_000_000_000n * FIAT_SCALE) / AED_LIVE);
   });
 
-  it("converts USD to AED using peg fallback when live rate absent", () => {
-    const aed = usd1e8ToFiat1e8(100_000_000_000n, "AED", null);
-    assert.equal(aed, (100_000_000_000n * FIAT_SCALE) / AED_USD_PEG_1E8);
+  it("returns null for AED when live rate absent", () => {
+    assert.equal(usd1e8ToFiat1e8(100_000_000_000n, "AED", null), null);
   });
 });
 
@@ -85,9 +82,8 @@ describe("displayAmountToUsd1e8", () => {
     assert.equal(usd, (100n * CNY_USD));
   });
 
-  it("converts AED filter input using peg fallback when live rate absent", () => {
-    const usd = displayAmountToUsd1e8("100", "AED", null);
-    assert.equal(usd, 100n * AED_USD_PEG_1E8);
+  it("returns undefined for AED when live rate absent", () => {
+    assert.equal(displayAmountToUsd1e8("100", "AED", null), undefined);
   });
 
   it("converts AED filter input using live rate when present", () => {
@@ -114,5 +110,10 @@ describe("ratesReadyForPriceCurrency", () => {
   it("requires btcUsd for BTC display filter", () => {
     assert.equal(ratesReadyForPriceCurrency("BTC", null), false);
     assert.equal(ratesReadyForPriceCurrency("BTC", { btcUsd: BTC_USD }), true);
+  });
+
+  it("requires aedUsd for AED display filter", () => {
+    assert.equal(ratesReadyForPriceCurrency("AED", null), false);
+    assert.equal(ratesReadyForPriceCurrency("AED", { aedUsd: AED_LIVE }), true);
   });
 });

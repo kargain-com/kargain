@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { fetchCoinGeckoRates } from "@/lib/marketplace/coingecko-rates";
-import { AED_USD_PEG_1E8, type PartialFxRates } from "@/lib/marketplace/price-normalize";
+import type { PartialFxRates } from "@/lib/marketplace/price-normalize";
 import { useChainlinkRates } from "@/lib/marketplace/use-chainlink-rates";
 
 const COINGECKO_STALE_MS = 60_000;
@@ -13,7 +13,6 @@ const COINGECKO_STALE_MS = 60_000;
 const NEEDS_EXTENDED_FIAT_RATES = true;
 
 export type MarketRates = PartialFxRates & {
-  aedUsd: bigint;
   isLoading: boolean;
 };
 
@@ -45,7 +44,7 @@ export function useMarketRates(): MarketRates {
   const brlUsd = coingeckoRates?.brlUsd ?? null;
   const idrUsd = coingeckoRates?.idrUsd ?? null;
   const audUsd = coingeckoRates?.audUsd ?? null;
-  const aedUsd = coingeckoRates?.aedUsd ?? AED_USD_PEG_1E8;
+  const aedUsd = coingeckoRates?.aedUsd ?? null;
   const krwUsd = coingeckoRates?.krwUsd ?? null;
   const rubUsd = coingeckoRates?.rubUsd ?? null;
   const jpyUsd = coingeckoRates?.jpyUsd ?? null;

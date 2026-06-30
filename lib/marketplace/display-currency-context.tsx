@@ -73,7 +73,6 @@ type DisplayCurrencyContextValue = PartialFxRates & {
   setDisplayCurrency: (currency: DisplayCurrency) => void;
   convertPrice: (fiatPrice1e8: bigint, fiatCurrency: LegacyFiatCurrency) => string;
   isRatesLoading: boolean;
-  aedUsd: bigint;
 };
 
 const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>(null);
@@ -181,9 +180,8 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       convertPrice,
       isRatesLoading,
       ...rates,
-      aedUsd,
     }),
-    [aedUsd, convertPrice, displayCurrency, isRatesLoading, rates, setDisplayCurrency],
+    [convertPrice, displayCurrency, isRatesLoading, rates, setDisplayCurrency],
   );
 
   return (

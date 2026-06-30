@@ -210,7 +210,7 @@ Generation v2 allows listing in any registered fiat `currencyCode`. The app disp
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD/KRW/RUB/JPY (and EUR/ETH/BTC). **AED** does not use an indexer rate param — client applies live CoinGecko + peg fallback via `fiatUsdRate`. **Redeploy ponder image only** — no `ponder-reindex.sql`.
+Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY (and EUR/ETH/BTC). All non-USD display currencies require live CoinGecko (or Chainlink for EUR/ETH) rates — no hardcoded peg fallbacks. **Redeploy ponder image only** — no `ponder-reindex.sql`.
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 
@@ -219,18 +219,10 @@ Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/
 - **KRW / JPY** use the shared 2-decimal fiat formatter (e.g. `₩50,000,000.00`). Integer-only formatting for zero-decimal currencies is a possible follow-up.
 - **CNY and JPY** share the `¥` glyph in the selector; the ISO code column disambiguates.
 
-### AED — ✅ shipped June 2026, peg retained as fallback only
-
-UAE dirham is pegged to USD. As of the live CoinGecko `exchange_rates` extension above, AED is fetched the same way as CNY/INR/BRL/IDR/AUD — **not** read from a hardcoded constant in normal operation. The constant in [`price-normalize.ts`](../../lib/marketplace/price-normalize.ts) is kept only as a safety-net fallback for when CoinGecko's response omits the `aed` field:
-
-- **`AED_USD_PEG_1E8`** — 1 AED = 0.2723 USD (UAE Central Bank peg, stable since 1997) — **fallback value, not primary source**
-
-UI: `currency-selector.tsx` lists **AED** like other fiats (no "(pegged)" suffix). Dropdown/sheet rows use a fixed-width monospace symbol slot + ISO code for vertical alignment; AED leaves the symbol slot empty. The peg constant exists so the UI degrades to a known-good value instead of `—` during a CoinGecko outage.
-
 ### Listing creation (84532)
 
 **Unchanged:** sellers still list in **USD only** on Base Sepolia — [`listingCurrencyCodesForChain(84532)`](../../lib/marketplace/currency-code.ts) → `["USD"]`. Display-layer currencies do not add on-chain listing denominations.
 
 ---
 
-*Last updated: June 30, 2026 — KRW/RUB/JPY/BTC display layer; fx-rate-registry.*
+*Last updated: June 30, 2026 — AED live-rate only (peg removed).*

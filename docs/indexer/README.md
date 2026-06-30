@@ -35,11 +35,9 @@ Optional query params for cross-currency **price filter and sort** (stateless AP
 |-------|---------|
 | `priceCurrency` | Display currency for `priceMin` / `priceMax` bounds (USD, EUR, ETH, BTC, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY) |
 | `eurUsdRate`, `ethUsdRate`, `btcUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit; `btcUsd` from CoinGecko `exchange_rates.usd`) |
-| `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate`, `krwUsdRate`, `rubUsdRate`, `jpyUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |
+| `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate`, `aedUsdRate`, `krwUsdRate`, `rubUsdRate`, `jpyUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |
 
-**AED price filter:** no rate query param — `fiatUsdRate("AED")` on the client uses live CoinGecko with `AED_USD_PEG_1E8` fallback ([`price-normalize.ts`](../../lib/marketplace/price-normalize.ts)).
-
-Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) / [`fx-rate-registry.ts`](../../lib/marketplace/fx-rate-registry.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. **KRW/RUB/JPY/BTC** and earlier CoinGecko fiats need **indexer + frontend** deployed together; AED and USD do not.
+Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) / [`fx-rate-registry.ts`](../../lib/marketplace/fx-rate-registry.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. CoinGecko fiat/crypto browse filters need **indexer + frontend** deployed together; **USD** price filter does not.
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw).
 
