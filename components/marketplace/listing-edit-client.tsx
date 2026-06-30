@@ -26,6 +26,7 @@ import {
 import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   KarPassportAbi,
   MarketplaceEscrowAbi,
@@ -40,13 +41,6 @@ type Props = {
   tokenId: string;
   chainId: number;
 };
-
-function txErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message.trim()) {
-    return err.message.length > 160 ? `${err.message.slice(0, 160)}…` : err.message;
-  }
-  return "Transaction failed.";
-}
 
 export function ListingEditClient({ tokenId, chainId }: Props) {
   const config = useConfig();

@@ -6,9 +6,11 @@ import { useCallback, useMemo, useState } from "react";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
+  useBalance,
   useChainId,
   useReadContract,
   useReadContracts,
+  useSimulateContract,
   useSwitchChain,
   useWriteContract,
   useConfig,
@@ -21,6 +23,7 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
@@ -40,6 +43,13 @@ const ERC20_ABI = [
       { name: "owner", type: "address" },
       { name: "spender", type: "address" },
     ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
@@ -139,6 +149,7 @@ export function ListingBuyPanel({
   const { writeContractAsync, isPending } = useWriteContract();
   const [riskOpen, setRiskOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
+  const [txError, setTxError] = useState<string | null>(null);
 
   const market = marketplaceAddress(chainId);
   const usdc = usdcAddress(chainId);
@@ -220,6 +231,23 @@ export function ListingBuyPanel({
     },
   });
 
+  const { data: usdcBalance } = useReadContract({
+    address: usdc,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    chainId: wc,
+    query: {
+      enabled: Boolean(usdc && address),
+    },
+  });
+
+  const { data: ethBalance } = useBalance({
+    address,
+    chainId: wc,
+    query: { enabled: Boolean(address) },
+  });
+
   const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
   const marketOk = Boolean(market);
   const isSeller =
@@ -233,24 +261,92 @@ export function ListingBuyPanel({
     return allowance < usdcQuote;
   }, [allowance, usdcQuote]);
 
+  const insufficientEthBalance =
+    paymentMethod === "ETH" &&
+    ethBalance != null &&
+    nativeQuote != null &&
+    ethBalance.value < nativeQuote;
+
+  const insufficientUsdcBalance =
+    paymentMethod === "USDC" &&
+    usdcBalance != null &&
+    usdcQuote != null &&
+    usdcBalance < usdcQuote;
+
+  const canSimulateNative = useMemo(
+    () =>
+      Boolean(
+        address &&
+          market &&
+          !nativeUnavailable &&
+          nativeQuote != null &&
+          ethBalance != null &&
+          ethBalance.value >= nativeQuote,
+      ),
+    [address, market, nativeUnavailable, nativeQuote, ethBalance],
+  );
+
+  const canSimulateUsdc = useMemo(
+    () =>
+      Boolean(
+        address &&
+          market &&
+          usdc &&
+          !usdcUnavailable &&
+          usdcQuote != null &&
+          !needsUsdcApproval &&
+          usdcBalance != null &&
+          usdcBalance >= usdcQuote,
+      ),
+    [address, market, usdc, usdcUnavailable, usdcQuote, needsUsdcApproval, usdcBalance],
+  );
+
+  const { error: simulateNativeError } = useSimulateContract({
+    address: market,
+    abi: MarketplaceEscrowAbi,
+    functionName: "buyWithNative",
+    args: [tid],
+    value: nativeQuote,
+    chainId: wc,
+    query: { enabled: canSimulateNative },
+  });
+
+  const { error: simulateUsdcError } = useSimulateContract({
+    address: market,
+    abi: MarketplaceEscrowAbi,
+    functionName: "buyWithToken",
+    args: usdc ? [tid, usdc] : undefined,
+    chainId: wc,
+    query: { enabled: canSimulateUsdc },
+  });
+
   const buyNative = useCallback(async () => {
     if (!market || nativeQuote == null) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    const hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "buyWithNative",
-      args: [tid],
-      value: nativeQuote,
-    });
-    await waitForTransactionReceipt(config, { hash });
-    router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
+    try {
+      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (simulateNativeError) {
+        setTxError(txErrorMessage(simulateNativeError));
+        return;
+      }
+      const hash = await writeContractAsync({
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "buyWithNative",
+        args: [tid],
+        value: nativeQuote,
+      });
+      await waitForTransactionReceipt(config, { hash });
+      router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
+    } catch (err) {
+      setTxError(txErrorMessage(err));
+    }
   }, [
     chainId,
     config,
     market,
     nativeQuote,
     router,
+    simulateNativeError,
     switchChainAsync,
     tid,
     tokenId,
@@ -261,35 +357,45 @@ export function ListingBuyPanel({
 
   const buyUsdc = useCallback(async () => {
     if (!market || !usdc || usdcQuote == null) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    try {
+      if (wrongChain) await switchChainAsync?.({ chainId: wc });
 
-    const currentAllowance = allowance ?? 0n;
-    if (currentAllowance < usdcQuote) {
+      const currentAllowance = allowance ?? 0n;
+      if (currentAllowance < usdcQuote) {
+        const hash = await writeContractAsync({
+          address: usdc,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [market, usdcQuote],
+        });
+        await waitForTransactionReceipt(config, { hash });
+        await refetchAllowance();
+        return;
+      }
+
+      if (simulateUsdcError) {
+        setTxError(txErrorMessage(simulateUsdcError));
+        return;
+      }
+
       const hash = await writeContractAsync({
-        address: usdc,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [market, usdcQuote],
+        address: market,
+        abi: MarketplaceEscrowAbi,
+        functionName: "buyWithToken",
+        args: [tid, usdc],
       });
       await waitForTransactionReceipt(config, { hash });
-      await refetchAllowance();
-      return;
+      router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
+    } catch (err) {
+      setTxError(txErrorMessage(err));
     }
-
-    const hash = await writeContractAsync({
-      address: market,
-      abi: MarketplaceEscrowAbi,
-      functionName: "buyWithToken",
-      args: [tid, usdc],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
   }, [
     allowance,
     chainId,
     config,
     market,
     router,
+    simulateUsdcError,
     switchChainAsync,
     tid,
     tokenId,
@@ -301,10 +407,15 @@ export function ListingBuyPanel({
     refetchAllowance,
   ]);
 
-  const executeBuy = paymentMethod === "ETH" ? buyNative : buyUsdc;
+  const executeBuy = useCallback(async () => {
+    setTxError(null);
+    if (paymentMethod === "ETH") await buyNative();
+    else await buyUsdc();
+  }, [paymentMethod, buyNative, buyUsdc]);
 
   const handleBuyClick = () => {
     if (requiresRiskAck) {
+      setTxError(null);
       setRiskOpen(true);
       return;
     }
@@ -335,11 +446,12 @@ export function ListingBuyPanel({
   const buyDisabled =
     isPending ||
     (paymentMethod === "ETH"
-      ? nativeUnavailable || nativeQuote == null
+      ? nativeUnavailable || nativeQuote == null || insufficientEthBalance
       : !usdc ||
         usdcUnavailable ||
         usdcQuote == null ||
-        isAllowanceLoading);
+        isAllowanceLoading ||
+        insufficientUsdcBalance);
 
   const buyLabel =
     paymentMethod === "USDC" && needsUsdcApproval ? "Approve USDC" : "Buy now";
@@ -436,7 +548,10 @@ export function ListingBuyPanel({
         <div className="flex rounded-sm border border-border-default p-0.5">
           <button
             type="button"
-            onClick={() => setPaymentMethod("ETH")}
+            onClick={() => {
+              setTxError(null);
+              setPaymentMethod("ETH");
+            }}
             className={cn(
               "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
               paymentMethod === "ETH"
@@ -449,7 +564,10 @@ export function ListingBuyPanel({
           <button
             type="button"
             disabled={usdcOptionDisabled}
-            onClick={() => setPaymentMethod("USDC")}
+            onClick={() => {
+              setTxError(null);
+              setPaymentMethod("USDC");
+            }}
             className={cn(
               "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
               paymentMethod === "USDC"
@@ -521,6 +639,17 @@ export function ListingBuyPanel({
         <Button type="button" className="w-full" disabled={buyDisabled} onClick={handleBuyClick}>
           {buyLabel}
         </Button>
+        {insufficientEthBalance && (
+          <p className="text-sm text-text-secondary">Insufficient ETH balance.</p>
+        )}
+        {insufficientUsdcBalance && (
+          <p className="text-sm text-text-secondary">Insufficient USDC balance.</p>
+        )}
+        {txError && (
+          <p className="text-sm text-status-error" role="alert">
+            {txError}
+          </p>
+        )}
       </div>
 
       <BuyRiskModal
