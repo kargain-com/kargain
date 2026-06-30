@@ -24,7 +24,6 @@ import {
   type ListingCurrencyCode,
 } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -336,7 +335,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
     );
   }
 
-  const displayCurrency = fiatCurrencyLabel(normalizeListingFiatCurrency(listedFiat ?? 0));
+  const displayCurrency = fiatCurrencyLabel(listedFiat);
 
   return (
     <div className="mx-auto max-w-lg space-y-8 px-4 py-10">

@@ -25,7 +25,19 @@ Ponder observes a **bounded event window** (start block, reindex checkpoints). K
 
 ## Listing API fields (v2)
 
-Ponder stores `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. HTTP API also returns legacy `fiatCurrency: 0|1` (USD/EUR) for existing frontend — see `lib/marketplace/currency-code.ts`.
+Ponder stores `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. HTTP API also returns legacy `fiatCurrency` integer (0–7 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
+
+### `GET /listings` — FX query parameters
+
+Optional query params for cross-currency **price filter and sort** (stateless API layer — **redeploy only**, no schema reindex; see [OPERATIONS.md](./OPERATIONS.md) “Do not reindex”).
+
+| Param | Purpose |
+|-------|---------|
+| `priceCurrency` | Display currency for `priceMin` / `priceMax` bounds (USD, EUR, ETH, CNY, INR, BRL, IDR, AUD, AED) |
+| `eurUsdRate`, `ethUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit) |
+| `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |
+
+Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. New-currency filters need **indexer + frontend** deployed together.
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw).
 

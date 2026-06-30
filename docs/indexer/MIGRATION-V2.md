@@ -198,26 +198,31 @@ Generation v2 is a **fresh deploy** at new addresses — v1.x event history stay
 
 ## 6. FX display layer update
 
-Generation v2 allows listing in any registered fiat `currencyCode`. The app display layer (not Ponder) must extend beyond USD/EUR/ETH:
+Generation v2 allows listing in any registered fiat `currencyCode`. The app display layer (not Ponder schema) extends beyond USD/EUR/ETH:
 
-### CoinGecko extension (display only)
+### CoinGecko extension (display only) — ✅ shipped June 2026
 
-Extend `lib/marketplace/coingecko-rates.ts` (or successor) to fetch:
+[`lib/marketplace/coingecko-rates.ts`](../../lib/marketplace/coingecko-rates.ts):
 
-- **CNY**, **INR**, **BRL**, **IDR**, **AUD** for browse/filter display
+- **`simple/price`** — ETH/USD + EUR/USD (existing; EUR via ETH cross-rate)
+- **`exchange_rates`** — CNY, INR, BRL, IDR, AUD (USD per unit at 1e8)
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-### AED (pegged)
+Browse filter/sort: optional `*UsdRate` query params on `GET /listings` ([indexer/README.md](./README.md#get-listings--fx-query-parameters)). **Redeploy ponder image only** — no `ponder-reindex.sql`.
 
-UAE dirham is pegged to USD. Use constant:
+### AED (pegged) — ✅ shipped June 2026
 
-- **1 AED = 0.2723 USD** (UAE Central Bank peg, stable since 1997)
+UAE dirham is pegged to USD. Constant in [`price-normalize.ts`](../../lib/marketplace/price-normalize.ts):
 
-UI label: **"AED (pegged)"** — honest about non-oracle source.
+- **`AED_USD_PEG_1E8`** — 1 AED = 0.2723 USD (UAE Central Bank peg, stable since 1997)
 
-Do not use CoinGecko for AED if product policy requires peg disclosure.
+UI label: **"AED (pegged)"** in [`currency-selector.tsx`](../../components/shell/currency-selector.tsx). Never fetched from CoinGecko or Chainlink.
+
+### Listing creation (84532)
+
+**Unchanged:** sellers still list in **USD only** on Base Sepolia — [`listingCurrencyCodesForChain(84532)`](../../lib/marketplace/currency-code.ts) → `["USD"]`. Display-layer currencies do not add on-chain listing denominations.
 
 ---
 
-*Last updated: June 27, 2026 — v2 handlers + schema complete; VPS reindex after deploy.*
+*Last updated: June 30, 2026 — FX display layer shipped; indexer API rate params (redeploy-only).*

@@ -1,8 +1,8 @@
 import {
   legacyFiatToCode,
-  type LegacyFiatCurrency,
   type LegacyFiatCurrencyCode,
 } from "@/lib/marketplace/currency-code";
+import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 
 /** On-chain fiat is stored with 8 decimals (Chainlink-style 1e8). */
 export function formatFiat1e8(raw: string | bigint): string {
@@ -16,8 +16,8 @@ export function formatFiat1e8(raw: string | bigint): string {
   return neg ? `-${core}` : core;
 }
 
-export function fiatCurrencyLabel(currency: LegacyFiatCurrency): LegacyFiatCurrencyCode {
-  return legacyFiatToCode(currency);
+export function fiatCurrencyLabel(currency: number): LegacyFiatCurrencyCode {
+  return legacyFiatToCode(normalizeListingFiatCurrency(currency));
 }
 
 const FIAT_SYMBOLS: Record<LegacyFiatCurrencyCode, string> = {
