@@ -13,17 +13,20 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
   type DisplayCurrency,
   useDisplayCurrency,
 } from "@/lib/marketplace/display-currency-context";
+import { fiatCurrencyOptionLabel } from "@/lib/marketplace/fiat-format";
 import { cn } from "@/lib/utils";
 
-const OPTIONS: Array<{ value: DisplayCurrency; label: string }> = [
-  { value: "USD", label: "$ USD" },
-  { value: "EUR", label: "€ EUR" },
-  { value: "ETH", label: "Ξ ETH" },
-];
+const OPTIONS: Array<{ value: DisplayCurrency; label: string }> = DISPLAY_CURRENCIES.map(
+  (value) => {
+    if (value === "ETH") return { value, label: "Ξ ETH" };
+    return { value, label: fiatCurrencyOptionLabel(value) };
+  },
+);
 
 const triggerClassName = cn(
   "inline-flex h-9 w-[72px] shrink-0 items-center justify-center rounded-sm border border-border-hover bg-transparent",
@@ -79,7 +82,7 @@ export function CurrencySelector() {
               {displayCurrency}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[120px] p-1">
+          <DropdownMenuContent align="end" className="min-w-[148px] p-1">
             {OPTIONS.map((option) => (
               <DropdownMenuItem
                 key={option.value}

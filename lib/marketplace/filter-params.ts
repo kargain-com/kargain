@@ -1,8 +1,9 @@
 import {
   isPriceCurrency,
-  parseFxRates,
   type PriceCurrency,
 } from "@/lib/marketplace/price-normalize";
+import type { LegacyFiatCurrencyCode } from "@/lib/marketplace/currency-code";
+import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 
 export type MarketSort = "newest" | "price_asc" | "price_desc" | "mileage_asc";
 export type VerificationFilter = "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
@@ -172,22 +173,19 @@ function formatCompactPrice(amount: string, displayCurrency: PriceCurrency): str
   if (displayCurrency === "ETH") {
     return `${n} ETH`;
   }
-  const symbol = displayCurrency === "EUR" ? "€" : "$";
+  const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
+  const prefix = symbol.length === 1 ? symbol : `${symbol} `;
   if (n >= 1000 && n % 1000 === 0) {
-    return `${symbol}${n / 1000}k`;
+    return `${prefix}${n / 1000}k`;
   }
-  return `${symbol}${n.toLocaleString("en-US")}`;
+  return `${prefix}${n.toLocaleString("en-US")}`;
 }
 
 export function priceFilterPlaceholder(displayCurrency: PriceCurrency): string {
-  switch (displayCurrency) {
-    case "EUR":
-      return "e.g. 15 000 €";
-    case "ETH":
-      return "e.g. 4 ETH";
-    default:
-      return "e.g. 15 000 $";
-  }
+  if (displayCurrency === "ETH") return "e.g. 4 ETH";
+  const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
+  const prefix = symbol.length === 1 ? symbol : `${symbol} `;
+  return `e.g. 15 000 ${prefix}`;
 }
 
 export function formatPriceChipLabel(
@@ -204,18 +202,21 @@ export function formatPriceChipLabel(
     if (displayCurrency === "ETH") {
       return `${priceMin}–${priceMax} ETH`;
     }
-    const symbol = displayCurrency === "EUR" ? "€" : "$";
-    return `${symbol}${Number(priceMin).toLocaleString("en-US")}–${symbol}${Number(priceMax).toLocaleString("en-US")}`;
+    const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
+    const prefix = symbol.length === 1 ? symbol : `${symbol} `;
+    return `${prefix}${Number(priceMin).toLocaleString("en-US")}–${prefix}${Number(priceMax).toLocaleString("en-US")}`;
   }
   if (priceMin) {
     if (displayCurrency === "ETH") return `From ${priceMin} ETH`;
-    const symbol = displayCurrency === "EUR" ? "€" : "$";
-    return `From ${symbol}${Number(priceMin).toLocaleString("en-US")}`;
+    const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
+    const prefix = symbol.length === 1 ? symbol : `${symbol} `;
+    return `From ${prefix}${Number(priceMin).toLocaleString("en-US")}`;
   }
   if (priceMax) {
     if (displayCurrency === "ETH") return `Up to ${priceMax} ETH`;
-    const symbol = displayCurrency === "EUR" ? "€" : "$";
-    return `Up to ${symbol}${Number(priceMax).toLocaleString("en-US")}`;
+    const symbol = fiatCurrencySymbol(displayCurrency as LegacyFiatCurrencyCode);
+    const prefix = symbol.length === 1 ? symbol : `${symbol} `;
+    return `Up to ${prefix}${Number(priceMax).toLocaleString("en-US")}`;
   }
   return "";
 }
@@ -256,6 +257,11 @@ export function formatMultiValueChipLabel(values: string[]): string {
 export type MarketApiRates = {
   eurUsdRate?: string;
   ethUsdRate?: string;
+  cnyUsdRate?: string;
+  inrUsdRate?: string;
+  brlUsdRate?: string;
+  idrUsdRate?: string;
+  audUsdRate?: string;
 };
 
 function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
@@ -264,15 +270,17 @@ function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
   return "USD";
 }
 
+function shouldForwardRates(rates?: MarketApiRates): boolean {
+  return rates != null;
+}
+
 export function marketFiltersToApiInput(
   filters: MarketFilterState,
   rates?: MarketApiRates,
 ) {
   const hasPriceBounds = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
-  const parsedRates =
-    rates?.eurUsdRate && rates?.ethUsdRate
-      ? parseFxRates(rates.eurUsdRate, rates.ethUsdRate)
-      : null;
+  const priceCurrency = hasPriceBounds ? effectivePriceCurrency(filters) : undefined;
+  const forwardRates = shouldForwardRates(rates);
 
   return {
     search: filters.search.trim() || undefined,
@@ -282,9 +290,14 @@ export function marketFiltersToApiInput(
     yearMax: filters.yearMax ? Number.parseInt(filters.yearMax, 10) : undefined,
     priceMin: filters.priceMin.trim() || undefined,
     priceMax: filters.priceMax.trim() || undefined,
-    priceCurrency: hasPriceBounds ? effectivePriceCurrency(filters) : undefined,
-    eurUsdRate: parsedRates ? rates?.eurUsdRate : undefined,
-    ethUsdRate: parsedRates ? rates?.ethUsdRate : undefined,
+    priceCurrency,
+    eurUsdRate: forwardRates ? rates?.eurUsdRate : undefined,
+    ethUsdRate: forwardRates ? rates?.ethUsdRate : undefined,
+    cnyUsdRate: forwardRates ? rates?.cnyUsdRate : undefined,
+    inrUsdRate: forwardRates ? rates?.inrUsdRate : undefined,
+    brlUsdRate: forwardRates ? rates?.brlUsdRate : undefined,
+    idrUsdRate: forwardRates ? rates?.idrUsdRate : undefined,
+    audUsdRate: forwardRates ? rates?.audUsdRate : undefined,
     mileageMin: filters.mileageMin ? Number.parseInt(filters.mileageMin, 10) : undefined,
     mileageMax: filters.mileageMax ? Number.parseInt(filters.mileageMax, 10) : undefined,
     fuelType: filters.fuelTypes.length ? filters.fuelTypes.join(",") : undefined,

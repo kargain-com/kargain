@@ -11,26 +11,28 @@ import {
 } from "react";
 
 import {
+  DISPLAY_CURRENCIES,
+  isDisplayCurrency,
+  legacyFiatToCode,
+  type DisplayCurrency,
+  type LegacyFiatCurrency,
+} from "@/lib/marketplace/currency-code";
+import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
+import {
   ETH_SCALE,
   FIAT_SCALE,
-  listingToEur1e8,
   listingToUsd1e8,
   normalizeListingFiatCurrency,
-  type PriceCurrency,
+  usd1e8ToFiat1e8,
+  type PartialFxRates,
 } from "@/lib/marketplace/price-normalize";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 
-export type DisplayCurrency = PriceCurrency;
+export type { DisplayCurrency };
 
 const STORAGE_KEY = "kargain_display_currency";
 
-const DISPLAY_CURRENCIES: DisplayCurrency[] = ["USD", "EUR", "ETH"];
-
-function isDisplayCurrency(value: string): value is DisplayCurrency {
-  return DISPLAY_CURRENCIES.includes(value as DisplayCurrency);
-}
-
-function formatFiat1e8(value: bigint, prefix: "$" | "€"): string {
+function formatFiat1e8WithSymbol(value: bigint, symbol: string): string {
   const neg = value < 0n;
   const v = neg ? -value : value;
   const whole = v / FIAT_SCALE;
@@ -42,6 +44,7 @@ function formatFiat1e8(value: bigint, prefix: "$" | "€"): string {
     frac2 = 0n;
   }
   const core = `${wholePart.toLocaleString("en-US")}.${frac2.toString().padStart(2, "0")}`;
+  const prefix = symbol.length === 1 ? symbol : `${symbol} `;
   return `${prefix}${neg ? `-${core}` : core}`;
 }
 
@@ -63,17 +66,46 @@ function formatEthWei(ethWei: bigint): string {
 type DisplayCurrencyContextValue = {
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (currency: DisplayCurrency) => void;
-  convertPrice: (fiatPrice1e8: bigint, fiatCurrency: 0 | 1) => string;
+  convertPrice: (fiatPrice1e8: bigint, fiatCurrency: LegacyFiatCurrency) => string;
   isRatesLoading: boolean;
   ethUsd: bigint | null;
   eurUsd: bigint | null;
+  cnyUsd: bigint | null;
+  inrUsd: bigint | null;
+  brlUsd: bigint | null;
+  idrUsd: bigint | null;
+  audUsd: bigint | null;
+  aedUsd: bigint;
 };
 
 const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>(null);
 
 export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
   const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>("USD");
-  const { ethUsd, eurUsd, isLoading: isRatesLoading } = useMarketRates();
+  const {
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+    aedUsd,
+    isLoading: isRatesLoading,
+  } = useMarketRates();
+
+  const rates: PartialFxRates = useMemo(
+    () => ({
+      ethUsd,
+      eurUsd,
+      cnyUsd,
+      inrUsd,
+      brlUsd,
+      idrUsd,
+      audUsd,
+    }),
+    [audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd],
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -88,38 +120,37 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const convertPrice = useCallback(
-    (fiatPrice1e8: bigint, fiatCurrency: 0 | 1): string => {
+    (fiatPrice1e8: bigint, fiatCurrency: LegacyFiatCurrency): string => {
       const listingCurrency = normalizeListingFiatCurrency(fiatCurrency);
+      const listingCode = legacyFiatToCode(listingCurrency);
 
-      if (displayCurrency === "USD") {
-        if (listingCurrency === 0) {
-          return formatFiat1e8(fiatPrice1e8, "$");
-        }
-        if (eurUsd == null) return "—";
-        const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, eurUsd);
-        return formatFiat1e8(usd1e8, "$");
-      }
-
-      if (displayCurrency === "EUR") {
-        if (listingCurrency === 1) {
-          return formatFiat1e8(fiatPrice1e8, "€");
-        }
-        if (eurUsd == null) return "—";
-        const eur1e8 = listingToEur1e8(fiatPrice1e8, listingCurrency, eurUsd);
-        return formatFiat1e8(eur1e8, "€");
-      }
-
-      if (ethUsd == null) return "—";
-      if (listingCurrency === 1) {
-        if (eurUsd == null) return "—";
-        const usd1e8 = listingToUsd1e8(fiatPrice1e8, 1, eurUsd);
+      if (displayCurrency === "ETH") {
+        if (ethUsd == null) return "—";
+        const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, rates);
+        if (usd1e8 == null) return "—";
         const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
         return formatEthWei(ethWei);
       }
-      const ethWei = (fiatPrice1e8 * ETH_SCALE) / ethUsd;
-      return formatEthWei(ethWei);
+
+      const displayCode = displayCurrency;
+      if (listingCode === displayCode) {
+        const symbol = fiatCurrencySymbol(displayCode);
+        return formatFiat1e8WithSymbol(fiatPrice1e8, symbol);
+      }
+
+      const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, rates);
+      if (usd1e8 == null) return "—";
+
+      const display1e8 = usd1e8ToFiat1e8(usd1e8, displayCode, {
+        ...rates,
+        // AED peg is not in PartialFxRates but usd1e8ToFiat1e8 uses fiatUsdRate which handles AED
+      });
+      if (display1e8 == null) return "—";
+
+      const symbol = fiatCurrencySymbol(displayCode);
+      return formatFiat1e8WithSymbol(display1e8, symbol);
     },
-    [displayCurrency, ethUsd, eurUsd],
+    [displayCurrency, ethUsd, rates],
   );
 
   const value = useMemo(
@@ -130,8 +161,27 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       isRatesLoading,
       ethUsd,
       eurUsd,
+      cnyUsd,
+      inrUsd,
+      brlUsd,
+      idrUsd,
+      audUsd,
+      aedUsd,
     }),
-    [convertPrice, displayCurrency, ethUsd, eurUsd, isRatesLoading, setDisplayCurrency],
+    [
+      aedUsd,
+      audUsd,
+      brlUsd,
+      cnyUsd,
+      convertPrice,
+      displayCurrency,
+      ethUsd,
+      eurUsd,
+      idrUsd,
+      inrUsd,
+      isRatesLoading,
+      setDisplayCurrency,
+    ],
   );
 
   return (
@@ -146,3 +196,5 @@ export function useDisplayCurrency(): DisplayCurrencyContextValue {
   }
   return ctx;
 }
+
+export { DISPLAY_CURRENCIES };

@@ -5,7 +5,9 @@ import { currencyCodeBytes32 } from "../scripts/lib/chainlink-feeds.ts";
 import {
   decodeCurrencyCode,
   encodeCurrencyCode,
+  isDisplayCurrency,
   legacyFiatFromCurrencyCode,
+  legacyFiatToCode,
   listingCurrencyCodesForChain,
   payTokenToLegacyPayAsset,
 } from "../lib/marketplace/currency-code.ts";
@@ -46,10 +48,36 @@ describe("decodeCurrencyCode", () => {
 });
 
 describe("legacyFiatFromCurrencyCode", () => {
-  it("maps EUR to 1 and others to 0", () => {
+  it("maps all display fiat codes to enum indices", () => {
     assert.equal(legacyFiatFromCurrencyCode("USD"), 0);
     assert.equal(legacyFiatFromCurrencyCode("EUR"), 1);
+    assert.equal(legacyFiatFromCurrencyCode("CNY"), 2);
+    assert.equal(legacyFiatFromCurrencyCode("INR"), 3);
+    assert.equal(legacyFiatFromCurrencyCode("BRL"), 4);
+    assert.equal(legacyFiatFromCurrencyCode("IDR"), 5);
+    assert.equal(legacyFiatFromCurrencyCode("AUD"), 6);
+    assert.equal(legacyFiatFromCurrencyCode("AED"), 7);
+  });
+
+  it("falls back unknown listing codes to USD", () => {
+    assert.equal(legacyFiatFromCurrencyCode("GBP"), 0);
     assert.equal(legacyFiatFromCurrencyCode("NATIVE"), 0);
+  });
+
+  it("roundtrips via legacyFiatToCode", () => {
+    for (let i = 0; i <= 7; i++) {
+      assert.equal(legacyFiatFromCurrencyCode(legacyFiatToCode(i as 0)), i);
+    }
+  });
+});
+
+describe("isDisplayCurrency", () => {
+  it("accepts all display currencies including ETH", () => {
+    assert.equal(isDisplayCurrency("USD"), true);
+    assert.equal(isDisplayCurrency("CNY"), true);
+    assert.equal(isDisplayCurrency("AED"), true);
+    assert.equal(isDisplayCurrency("ETH"), true);
+    assert.equal(isDisplayCurrency("GBP"), false);
   });
 });
 

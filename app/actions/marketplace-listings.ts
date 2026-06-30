@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 
+import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
   filtersFromSearchParams,
   marketFiltersToApiInput,
@@ -22,9 +23,14 @@ const filterSchema = z.object({
   yearMax: z.number().int().optional(),
   priceMin: z.string().optional(),
   priceMax: z.string().optional(),
-  priceCurrency: z.enum(["USD", "EUR", "ETH"]).optional(),
+  priceCurrency: z.enum(DISPLAY_CURRENCIES as unknown as [string, ...string[]]).optional(),
   eurUsdRate: z.string().optional(),
   ethUsdRate: z.string().optional(),
+  cnyUsdRate: z.string().optional(),
+  inrUsdRate: z.string().optional(),
+  brlUsdRate: z.string().optional(),
+  idrUsdRate: z.string().optional(),
+  audUsdRate: z.string().optional(),
   mileageMin: z.number().int().optional(),
   mileageMax: z.number().int().optional(),
   fuelType: z.string().optional(),
@@ -98,6 +104,11 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   if (p.priceCurrency) url.searchParams.set("priceCurrency", p.priceCurrency);
   if (p.eurUsdRate) url.searchParams.set("eurUsdRate", p.eurUsdRate);
   if (p.ethUsdRate) url.searchParams.set("ethUsdRate", p.ethUsdRate);
+  if (p.cnyUsdRate) url.searchParams.set("cnyUsdRate", p.cnyUsdRate);
+  if (p.inrUsdRate) url.searchParams.set("inrUsdRate", p.inrUsdRate);
+  if (p.brlUsdRate) url.searchParams.set("brlUsdRate", p.brlUsdRate);
+  if (p.idrUsdRate) url.searchParams.set("idrUsdRate", p.idrUsdRate);
+  if (p.audUsdRate) url.searchParams.set("audUsdRate", p.audUsdRate);
   if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
   if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
   if (p.transmission) url.searchParams.set("transmission", p.transmission);

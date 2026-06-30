@@ -29,7 +29,13 @@ import {
   priceFilterPlaceholder,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
-import { fiat1e8ToEthWei, FIAT_SCALE } from "@/lib/marketplace/price-normalize";
+import {
+  fiat1e8ToEthWei,
+  FIAT_SCALE,
+  rateRequiredForPriceCurrency,
+  ratesReadyForPriceCurrency,
+  type PartialFxRates,
+} from "@/lib/marketplace/price-normalize";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +102,17 @@ function FilterSearchInput({
 export function MarketFilterBar() {
   const { facets } = useFacets();
   const { filters, patchFilters } = useMarketFilterNavigation();
-  const { displayCurrency, ethUsd, eurUsd, isRatesLoading } = useDisplayCurrency();
+  const {
+    displayCurrency,
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+    isRatesLoading,
+  } = useDisplayCurrency();
   const [searchInput, setSearchInput] = useState(filters.search);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
@@ -176,9 +192,20 @@ export function MarketFilterBar() {
 
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
   const priceDraftHasBounds = Boolean(priceDraft.priceMin || priceDraft.priceMax);
-  const priceApplyNeedsRates = priceDraftHasBounds && displayCurrency !== "USD";
+  const priceApplyNeedsRates =
+    priceDraftHasBounds && rateRequiredForPriceCurrency(displayCurrency);
+  const filterRates: PartialFxRates = {
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+  };
   const priceApplyDisabled =
-    priceApplyNeedsRates && (isRatesLoading || ethUsd == null || eurUsd == null);
+    priceApplyNeedsRates &&
+    (isRatesLoading || !ratesReadyForPriceCurrency(displayCurrency, filterRates));
 
   const toggleFuel = (opt: string) => {
     const next = filters.fuelTypes.includes(opt)

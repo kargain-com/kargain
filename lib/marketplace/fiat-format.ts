@@ -1,3 +1,9 @@
+import {
+  legacyFiatToCode,
+  type LegacyFiatCurrency,
+  type LegacyFiatCurrencyCode,
+} from "@/lib/marketplace/currency-code";
+
 /** On-chain fiat is stored with 8 decimals (Chainlink-style 1e8). */
 export function formatFiat1e8(raw: string | bigint): string {
   const n = typeof raw === "bigint" ? raw : BigInt(raw);
@@ -10,6 +16,29 @@ export function formatFiat1e8(raw: string | bigint): string {
   return neg ? `-${core}` : core;
 }
 
-export function fiatCurrencyLabel(currency: number): "USD" | "EUR" {
-  return currency === 1 ? "EUR" : "USD";
+export function fiatCurrencyLabel(currency: LegacyFiatCurrency): LegacyFiatCurrencyCode {
+  return legacyFiatToCode(currency);
+}
+
+const FIAT_SYMBOLS: Record<LegacyFiatCurrencyCode, string> = {
+  USD: "$",
+  EUR: "€",
+  CNY: "¥",
+  INR: "₹",
+  BRL: "R$",
+  IDR: "Rp",
+  AUD: "A$",
+  AED: "AED",
+};
+
+export function fiatCurrencySymbol(code: LegacyFiatCurrencyCode): string {
+  return FIAT_SYMBOLS[code];
+}
+
+/** Selector-style label: symbol + ISO code (e.g. "$ USD"). */
+export function fiatCurrencyOptionLabel(code: LegacyFiatCurrencyCode): string {
+  const symbol = fiatCurrencySymbol(code);
+  if (code === "AED") return "AED (pegged)";
+  if (symbol === code) return code;
+  return `${symbol} ${code}`;
 }

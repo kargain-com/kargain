@@ -27,6 +27,7 @@ const baseRow: EnrichedListingForFilter = {
 
 const ETH_USD = 300_000_000_000n;
 const EUR_USD = 108_000_000n;
+const CNY_USD = 14_000_000n;
 
 describe("matchesListingFilters", () => {
   it("matches fuel, body, and transmission csv filters", () => {
@@ -121,6 +122,26 @@ describe("matchesListingFilters", () => {
         priceMin: "200000",
       }),
       true,
+    );
+  });
+
+  it("filters by CNY price bounds with cnyUsd rate", () => {
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "CNY",
+        priceMin: "500",
+        priceMax: "2000",
+        cnyUsdRate: String(CNY_USD),
+      }),
+      true,
+    );
+    assert.equal(
+      matchesListingFilters(baseRow, {
+        priceCurrency: "CNY",
+        priceMin: "2000",
+        cnyUsdRate: String(CNY_USD),
+      }),
+      false,
     );
   });
 
@@ -262,11 +283,13 @@ describe("computeListingFacets", () => {
 });
 
 describe("normalizeListingFiatCurrency", () => {
-  it("coerces API values to 0 or 1", () => {
+  it("coerces API values to legacy enum 0–7", () => {
     assert.equal(normalizeListingFiatCurrency(0), 0);
     assert.equal(normalizeListingFiatCurrency(1), 1);
+    assert.equal(normalizeListingFiatCurrency(7), 7);
     assert.equal(normalizeListingFiatCurrency("0"), 0);
     assert.equal(normalizeListingFiatCurrency("1"), 1);
+    assert.equal(normalizeListingFiatCurrency(99), 0);
   });
 });
 

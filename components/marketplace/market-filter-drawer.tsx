@@ -22,7 +22,13 @@ import {
   type MarketFilterState,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
-import { fiat1e8ToEthWei, FIAT_SCALE } from "@/lib/marketplace/price-normalize";
+import {
+  fiat1e8ToEthWei,
+  FIAT_SCALE,
+  rateRequiredForPriceCurrency,
+  ratesReadyForPriceCurrency,
+  type PartialFxRates,
+} from "@/lib/marketplace/price-normalize";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
@@ -90,7 +96,8 @@ type Props = {
 export function MarketFilterDrawer({ open, onOpenChange }: Props) {
   const { facets } = useFacets();
   const { filters, pushFilters } = useMarketFilterNavigation();
-  const { displayCurrency, ethUsd, eurUsd, isRatesLoading } = useDisplayCurrency();
+  const { displayCurrency, ethUsd, eurUsd, cnyUsd, inrUsd, brlUsd, idrUsd, audUsd, isRatesLoading } =
+    useDisplayCurrency();
   const [draft, setDraft] = useState<MarketFilterState>(filters);
 
   useEffect(() => {
@@ -138,9 +145,20 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
 
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
   const draftHasPriceBounds = Boolean(draft.priceMin || draft.priceMax);
-  const showResultsNeedsRates = draftHasPriceBounds && displayCurrency !== "USD";
+  const showResultsNeedsRates =
+    draftHasPriceBounds && rateRequiredForPriceCurrency(displayCurrency);
+  const filterRates: PartialFxRates = {
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+  };
   const showResultsDisabled =
-    showResultsNeedsRates && (isRatesLoading || ethUsd == null || eurUsd == null);
+    showResultsNeedsRates &&
+    (isRatesLoading || !ratesReadyForPriceCurrency(displayCurrency, filterRates));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

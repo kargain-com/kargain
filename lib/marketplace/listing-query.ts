@@ -1,9 +1,15 @@
 import type { MarketSort } from "@/lib/marketplace/filter-params";
 import {
+  isLegacyFiatCurrency,
+  legacyFiatToCode,
+} from "@/lib/marketplace/currency-code";
+import {
   displayAmountToUsd1e8,
+  isPriceCurrency,
   listingToUsd1e8,
-  parseFxRates,
-  type FxRates,
+  parseFxRatesFromQuery,
+  rateRequiredForPriceCurrency,
+  type PartialFxRates,
   type PriceCurrency,
 } from "@/lib/marketplace/price-normalize";
 
@@ -28,6 +34,11 @@ export type ListingFilterQuery = {
   priceCurrency?: PriceCurrency;
   eurUsdRate?: string;
   ethUsdRate?: string;
+  cnyUsdRate?: string;
+  inrUsdRate?: string;
+  brlUsdRate?: string;
+  idrUsdRate?: string;
+  audUsdRate?: string;
   sort?: MarketSort;
 };
 
@@ -64,21 +75,25 @@ export function splitCsvFilter(raw: string | null | undefined): string[] {
 }
 
 export function fiatCodeToCurrency(code: number): "USD" | "EUR" {
-  return code === 1 ? "EUR" : "USD";
+  if (isLegacyFiatCurrency(code)) {
+    const label = legacyFiatToCode(code);
+    if (label === "EUR") return "EUR";
+  }
+  return "USD";
 }
 
 function parsePriceCurrency(raw: string | undefined): PriceCurrency | undefined {
-  if (raw === "USD" || raw === "EUR" || raw === "ETH") return raw;
+  if (raw && isPriceCurrency(raw)) return raw;
   return undefined;
 }
 
 function resolveRowUsd1e8(
   row: ListingFilterFields,
-  rates: FxRates | null,
+  rates: PartialFxRates | null,
 ): bigint | null {
   if (row.fiatCurrency === 0) return row.fiatPrice1e8;
-  if (rates == null) return null;
-  return listingToUsd1e8(row.fiatPrice1e8, 1, rates.eurUsd);
+  if (!isLegacyFiatCurrency(row.fiatCurrency)) return row.fiatPrice1e8;
+  return listingToUsd1e8(row.fiatPrice1e8, row.fiatCurrency, rates);
 }
 
 type PriceBoundsUsd1e8 = {
@@ -88,15 +103,24 @@ type PriceBoundsUsd1e8 = {
 
 function resolveFilterBoundsUsd1e8(
   filters: ListingFilterQuery,
-  rates: FxRates | null,
+  rates: PartialFxRates | null,
 ): PriceBoundsUsd1e8 | null {
   const hasMin = Boolean(filters.priceMin?.trim());
   const hasMax = Boolean(filters.priceMax?.trim());
   if (!hasMin && !hasMax) return null;
 
   const priceCurrency = filters.priceCurrency ?? "USD";
-  const needsRates = priceCurrency !== "USD";
-  if (needsRates && rates == null) return null;
+  if (rateRequiredForPriceCurrency(priceCurrency)) {
+    const min = hasMin
+      ? displayAmountToUsd1e8(filters.priceMin!, priceCurrency, rates)
+      : undefined;
+    const max = hasMax
+      ? displayAmountToUsd1e8(filters.priceMax!, priceCurrency, rates)
+      : undefined;
+    if (hasMin && min == null) return null;
+    if (hasMax && max == null) return null;
+    return { min, max };
+  }
 
   const min = hasMin
     ? displayAmountToUsd1e8(filters.priceMin!, priceCurrency, rates)
@@ -187,6 +211,11 @@ export function parseListingFilterQuery(
     priceCurrency: parsePriceCurrency(query.priceCurrency),
     eurUsdRate: query.eurUsdRate?.trim() || undefined,
     ethUsdRate: query.ethUsdRate?.trim() || undefined,
+    cnyUsdRate: query.cnyUsdRate?.trim() || undefined,
+    inrUsdRate: query.inrUsdRate?.trim() || undefined,
+    brlUsdRate: query.brlUsdRate?.trim() || undefined,
+    idrUsdRate: query.idrUsdRate?.trim() || undefined,
+    audUsdRate: query.audUsdRate?.trim() || undefined,
     sort,
   };
 }
@@ -224,7 +253,7 @@ export function matchesListingFilters(
     return false;
   }
 
-  const rates = parseFxRates(filters.eurUsdRate, filters.ethUsdRate);
+  const rates = parseFxRatesFromQuery(filters);
   const bounds = resolveFilterBoundsUsd1e8(filters, rates);
   if (bounds) {
     const rowUsd = resolveRowUsd1e8(row, rates);
@@ -254,7 +283,7 @@ export function sortEnrichedListings<T extends EnrichedListingForFilter>(
   rows: T[],
   sort: MarketSort,
   verifiedFirst: boolean,
-  rates: FxRates | null = null,
+  rates: PartialFxRates | null = null,
 ): T[] {
   const copy = [...rows];
   const rank = (status: string) =>

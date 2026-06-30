@@ -11,6 +11,36 @@ export const LISTING_CURRENCY_CODES = [
 
 export type ListingCurrencyCode = (typeof LISTING_CURRENCY_CODES)[number];
 
+/** Canonical display-layer fiat codes (legacy enum indices 0–7). */
+export const LEGACY_FIAT_CURRENCIES = [
+  "USD",
+  "EUR",
+  "CNY",
+  "INR",
+  "BRL",
+  "IDR",
+  "AUD",
+  "AED",
+] as const;
+
+export type LegacyFiatCurrencyCode = (typeof LEGACY_FIAT_CURRENCIES)[number];
+export type LegacyFiatCurrency = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export const DISPLAY_CURRENCIES = [...LEGACY_FIAT_CURRENCIES, "ETH"] as const;
+export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
+
+export function isDisplayCurrency(value: string): value is DisplayCurrency {
+  return (DISPLAY_CURRENCIES as readonly string[]).includes(value);
+}
+
+export function isLegacyFiatCurrency(n: number): n is LegacyFiatCurrency {
+  return Number.isInteger(n) && n >= 0 && n <= 7;
+}
+
+export function legacyFiatToCode(n: LegacyFiatCurrency): LegacyFiatCurrencyCode {
+  return LEGACY_FIAT_CURRENCIES[n];
+}
+
 /** chainId → listing currency codes registered at deploy (SPEC §5.1). */
 const LISTING_CURRENCIES_BY_CHAIN: Record<number, readonly ListingCurrencyCode[]> = {
   84532: ["USD"],
@@ -43,9 +73,12 @@ export function decodeCurrencyCode(code: Hex | string): string {
   return out;
 }
 
-/** Map v2 currencyCode to legacy v1 fiat enum for API/filter compat (0=USD, 1=EUR). */
-export function legacyFiatFromCurrencyCode(code: string): 0 | 1 {
-  return code.toUpperCase() === "EUR" ? 1 : 0;
+/** Map v2 currencyCode to legacy fiat enum for API/filter compat. */
+export function legacyFiatFromCurrencyCode(code: string): LegacyFiatCurrency {
+  const upper = code.toUpperCase();
+  const index = (LEGACY_FIAT_CURRENCIES as readonly string[]).indexOf(upper);
+  if (index >= 0) return index as LegacyFiatCurrency;
+  return 0;
 }
 
 /** Map v2 payToken to legacy payAsset enum (0=native, 1=USDC). */

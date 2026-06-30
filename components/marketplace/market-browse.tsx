@@ -16,6 +16,11 @@ import { FadeUp } from "@/components/ui/fade-up";
 import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
+import {
+  rateRequiredForPriceCurrency,
+  ratesReadyForPriceCurrency,
+  type PartialFxRates,
+} from "@/lib/marketplace/price-normalize";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
@@ -27,23 +32,51 @@ export function MarketBrowse({
   initialChainId: _initialChainId,
 }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
-  const { ethUsd, eurUsd } = useDisplayCurrency();
+  const {
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+  } = useDisplayCurrency();
 
   const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
   const effectivePriceCurrency = filters.priceCurrency || "USD";
-  const needsRatesForFilter = hasPriceFilter && effectivePriceCurrency !== "USD";
+  const needsRatesForFilter =
+    hasPriceFilter && rateRequiredForPriceCurrency(effectivePriceCurrency);
   const needsRatesForSort =
     filters.sort === "price_asc" || filters.sort === "price_desc";
   const needsRates = needsRatesForFilter || needsRatesForSort;
-  const ratesReady = ethUsd != null && eurUsd != null;
+
+  const filterRates: PartialFxRates = {
+    ethUsd,
+    eurUsd,
+    cnyUsd,
+    inrUsd,
+    brlUsd,
+    idrUsd,
+    audUsd,
+  };
+  const ratesReadyForFilter =
+    !needsRatesForFilter ||
+    ratesReadyForPriceCurrency(effectivePriceCurrency, filterRates);
+  const ratesReadyForSort = !needsRatesForSort || (ethUsd != null && eurUsd != null);
+  const ratesReady = ratesReadyForFilter && ratesReadyForSort;
 
   const apiInput = useMemo(
     () =>
       marketFiltersToApiInput(filters, {
         eurUsdRate: eurUsd?.toString(),
         ethUsdRate: ethUsd?.toString(),
+        cnyUsdRate: cnyUsd?.toString(),
+        inrUsdRate: inrUsd?.toString(),
+        brlUsdRate: brlUsd?.toString(),
+        idrUsdRate: idrUsd?.toString(),
+        audUsdRate: audUsd?.toString(),
       }),
-    [filters, ethUsd, eurUsd],
+    [filters, ethUsd, eurUsd, cnyUsd, inrUsd, brlUsd, idrUsd, audUsd],
   );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 
