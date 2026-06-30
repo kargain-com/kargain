@@ -98,7 +98,10 @@ export function AuthorizeAgentDialog({
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
-  const currencyOptions = listingCurrencyCodesForChain(chainId);
+  // UI label only: on this chain, agents can only list in these currencies today.
+  // The contract does NOT store currency on authorizeAgent — ownerMinPrice1e8 is a raw
+  // scalar compared in whatever currency the agent picks at listOnBehalf.
+  const chainListingCurrency = listingCurrencyCodesForChain(chainId)[0] ?? "USD";
 
   const [step, setStep] = useState<Step>("approval");
   const [txError, setTxError] = useState<string | null>(null);
@@ -106,9 +109,6 @@ export function AuthorizeAgentDialog({
   const [verifiersLoading, setVerifiersLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<VerifierDirectoryEntry | null>(null);
   const [minPriceInput, setMinPriceInput] = useState("");
-  const [minCurrency, setMinCurrency] = useState<ListingCurrencyCode>(
-    currencyOptions[0] ?? "USD",
-  );
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
 
@@ -150,10 +150,9 @@ export function AuthorizeAgentDialog({
     setTxError(null);
     setSelectedAgent(null);
     setMinPriceInput("");
-    setMinCurrency(currencyOptions[0] ?? "USD");
     setNoExpiration(true);
     setExpiryDate("");
-  }, [currencyOptions]);
+  }, []);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -254,11 +253,11 @@ export function AuthorizeAgentDialog({
     try {
       const amount = parseUnits(minPriceInput, 8);
       if (amount <= 0n) return null;
-      return formatListingPrice(amount, minCurrency);
+      return formatListingPrice(amount, chainListingCurrency);
     } catch {
       return null;
     }
-  }, [minPriceInput, minCurrency]);
+  }, [minPriceInput, chainListingCurrency]);
 
   const canSubmitTerms = useMemo(() => {
     if (!selectedAgent || !market) return false;
@@ -316,8 +315,8 @@ export function AuthorizeAgentDialog({
         <DialogHeader>
           <DialogTitle>Delegate to a pro</DialogTitle>
           <DialogDescription>
-            Authorize a KarPro to list and sell your vehicle on your behalf. You set the minimum
-            you will receive from any sale.
+            Authorize a KarPro to list and sell your vehicle on your behalf. You set a minimum
+            net amount; it applies once your agent lists the vehicle.
           </DialogDescription>
         </DialogHeader>
 
@@ -401,31 +400,23 @@ export function AuthorizeAgentDialog({
               </button>
             </div>
 
+            {/* TODO(product): when listingCurrencyCodesForChain returns >1 code, decide whether
+                the owner specifies intended currency, the agent is constrained at listOnBehalf,
+                or AgentAuth gains an on-chain currencyCode — do not re-add a selector that
+                implies a guarantee the contract does not enforce at authorize time. */}
             <div className="space-y-2">
-              <Label htmlFor="agent-min-price">Minimum you will receive</Label>
-              <div className="flex gap-2">
-                <input
-                  id="agent-min-price"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={minPriceInput}
-                  onChange={(e) => setMinPriceInput(e.target.value)}
-                  className="min-h-11 flex-1 rounded-sm border border-border-default bg-bg-card px-4 py-3 font-sans text-sm text-text-primary transition-colors duration-200 placeholder:text-text-tertiary focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                />
-                <select
-                  aria-label="Minimum price currency"
-                  value={minCurrency}
-                  onChange={(e) => setMinCurrency(e.target.value as ListingCurrencyCode)}
-                  className="min-h-11 rounded-sm border border-border-default bg-bg-card px-3 font-sans text-sm text-text-primary transition-colors duration-200 focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                >
-                  {currencyOptions.map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Label htmlFor="agent-min-price">
+                Minimum you&apos;ll receive ({chainListingCurrency})
+              </Label>
+              <input
+                id="agent-min-price"
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={minPriceInput}
+                onChange={(e) => setMinPriceInput(e.target.value)}
+                className="min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-4 py-3 font-sans text-sm text-text-primary transition-colors duration-200 placeholder:text-text-tertiary focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              />
             </div>
 
             <div className="space-y-3">
@@ -459,9 +450,9 @@ export function AuthorizeAgentDialog({
 
             {formattedMinPrice && (
               <p className="rounded-md border border-border-default bg-bg-surface p-3 text-sm text-text-secondary">
-                After this, {agentName} can list, price, and sell your vehicle. You will always
-                receive at least {formattedMinPrice} regardless of the final sale price or
-                agent&apos;s commission.
+                {agentName} can list, price, and sell your vehicle on your behalf. When they list
+                it, you&apos;re guaranteed to receive at least {formattedMinPrice} in the currency
+                they choose — after their fee and platform fees.
               </p>
             )}
 

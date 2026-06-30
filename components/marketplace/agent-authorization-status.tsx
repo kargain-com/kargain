@@ -66,6 +66,9 @@ export function AgentAuthorizationStatus({
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
+  // UI label only: reflects registered listing currencies on this chain today.
+  // The contract does NOT store currency on authorizeAgent — ownerMinPrice1e8 is a raw
+  // scalar compared in whatever currency the agent picks at listOnBehalf.
   const currencyCode = listingCurrencyCodesForChain(chainId)[0] ?? "USD";
   const { displayName, isKarPro, profileHref } = usePeerIdentity(agentAuth.agent);
 
@@ -184,7 +187,9 @@ export function AgentAuthorizationStatus({
 
       <dl className="space-y-2 text-sm">
         <div className="flex justify-between gap-4">
-          <dt className="text-text-secondary">Minimum you receive</dt>
+          <dt className="text-text-secondary">
+            Minimum you&apos;ll receive ({currencyCode})
+          </dt>
           <dd className="font-mono tabular-nums text-text-primary">
             {formatFiat1e8(currentMin)} {currencyCode}
           </dd>
