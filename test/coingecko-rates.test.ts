@@ -32,6 +32,7 @@ describe("parseCoinGeckoExchangeRates", () => {
         brl: { value: 350000 },
         idr: { value: 1100000000 },
         aud: { value: 105000 },
+        aed: { value: 257000 },
       },
     });
 
@@ -44,6 +45,20 @@ describe("parseCoinGeckoExchangeRates", () => {
     assert.ok(result.brlUsd != null);
     assert.ok(result.idrUsd != null);
     assert.ok(result.audUsd != null);
+    assert.ok(result.aedUsd != null);
+    const expectedAed = BigInt(Math.round((70000 / 257000) * Number(FIAT_SCALE)));
+    assert.equal(result.aedUsd, expectedAed);
+  });
+
+  it("returns null aedUsd when aed missing from exchange_rates", () => {
+    const result = parseCoinGeckoExchangeRates({
+      rates: {
+        usd: { value: 70000 },
+        cny: { value: 500000 },
+      },
+    });
+    assert.equal(result.cnyUsd != null, true);
+    assert.equal(result.aedUsd, null);
   });
 
   it("returns null fields when USD rate missing", () => {
@@ -53,6 +68,7 @@ describe("parseCoinGeckoExchangeRates", () => {
       brlUsd: null,
       idrUsd: null,
       audUsd: null,
+      aedUsd: null,
     });
   });
 });

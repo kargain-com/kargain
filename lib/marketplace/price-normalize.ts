@@ -9,7 +9,7 @@ import {
 export const FIAT_SCALE = 100_000_000n;
 export const ETH_SCALE = 1_000_000_000_000_000_000n;
 
-/** UAE Central Bank peg: 1 AED = 0.2723 USD (stable since 1997). USD per 1 AED at 1e8. */
+/** UAE Central Bank peg fallback: 1 AED = 0.2723 USD (stable since 1997). Used when CoinGecko omits AED. */
 export const AED_USD_PEG_1E8 = 27_230_000n;
 
 export type PriceCurrency = DisplayCurrency;
@@ -43,10 +43,11 @@ export type PartialFxRates = {
   brlUsd?: bigint | null;
   idrUsd?: bigint | null;
   audUsd?: bigint | null;
+  aedUsd?: bigint | null;
 };
 
 const FIAT_RATE_KEYS: Record<
-  Exclude<LegacyFiatCurrencyCode, "USD" | "AED">,
+  Exclude<LegacyFiatCurrencyCode, "USD">,
   keyof PartialFxRates
 > = {
   EUR: "eurUsd",
@@ -55,6 +56,7 @@ const FIAT_RATE_KEYS: Record<
   BRL: "brlUsd",
   IDR: "idrUsd",
   AUD: "audUsd",
+  AED: "aedUsd",
 };
 
 function parseRateField(raw: string | undefined): bigint | null {
@@ -106,13 +108,17 @@ export function parseFxRates(
   };
 }
 
-/** USD per 1 unit of fiat at 1e8 scale. AED uses peg constant; USD returns identity scale. */
+/** USD per 1 unit of fiat at 1e8 scale. AED falls back to peg when live rate absent. */
 export function fiatUsdRate(
   code: LegacyFiatCurrencyCode,
   rates: PartialFxRates | null,
 ): bigint | null {
   if (code === "USD") return FIAT_SCALE;
-  if (code === "AED") return AED_USD_PEG_1E8;
+  if (code === "AED") {
+    const live = rates?.aedUsd;
+    if (live != null && live > 0n) return live;
+    return AED_USD_PEG_1E8;
+  }
   const key = FIAT_RATE_KEYS[code];
   const rate = rates?.[key];
   return rate != null && rate > 0n ? rate : null;

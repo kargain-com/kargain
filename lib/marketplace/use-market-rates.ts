@@ -9,7 +9,7 @@ import { useChainlinkRates } from "@/lib/marketplace/use-chainlink-rates";
 
 const COINGECKO_STALE_MS = 60_000;
 
-/** Chainlink has no feeds for CNY/INR/BRL/IDR/AUD on 84532 — always fetch from CoinGecko. */
+/** Chainlink has no feeds for CNY/INR/BRL/IDR/AUD/AED on 84532 — always fetch from CoinGecko. */
 const NEEDS_EXTENDED_FIAT_RATES = true;
 
 export function useMarketRates(): {
@@ -49,7 +49,7 @@ export function useMarketRates(): {
   const brlUsd = coingeckoRates?.brlUsd ?? null;
   const idrUsd = coingeckoRates?.idrUsd ?? null;
   const audUsd = coingeckoRates?.audUsd ?? null;
-  const aedUsd = AED_USD_PEG_1E8;
+  const aedUsd = coingeckoRates?.aedUsd ?? AED_USD_PEG_1E8;
   const isLoading = chainlinkLoading || (needsCoinGecko && coingeckoLoading);
 
   return useMemo(
@@ -64,6 +64,6 @@ export function useMarketRates(): {
       aedUsd,
       isLoading,
     }),
-    [audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd, isLoading],
+    [aedUsd, audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd, isLoading],
   );
 }

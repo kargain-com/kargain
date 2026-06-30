@@ -38,7 +38,6 @@ export function fiatCurrencySymbol(code: LegacyFiatCurrencyCode): string {
 /** Selector-style label: symbol + ISO code (e.g. "$ USD"). */
 export function fiatCurrencyOptionLabel(code: LegacyFiatCurrencyCode): string {
   const symbol = fiatCurrencySymbol(code);
-  if (code === "AED") return "AED (pegged)";
   if (symbol === code) return code;
   return `${symbol} ${code}`;
 }

@@ -103,8 +103,9 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       brlUsd,
       idrUsd,
       audUsd,
+      aedUsd,
     }),
-    [audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd],
+    [aedUsd, audUsd, brlUsd, cnyUsd, ethUsd, eurUsd, idrUsd, inrUsd],
   );
 
   useEffect(() => {
@@ -141,10 +142,7 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       const usd1e8 = listingToUsd1e8(fiatPrice1e8, listingCurrency, rates);
       if (usd1e8 == null) return "—";
 
-      const display1e8 = usd1e8ToFiat1e8(usd1e8, displayCode, {
-        ...rates,
-        // AED peg is not in PartialFxRates but usd1e8ToFiat1e8 uses fiatUsdRate which handles AED
-      });
+      const display1e8 = usd1e8ToFiat1e8(usd1e8, displayCode, rates);
       if (display1e8 == null) return "—";
 
       const symbol = fiatCurrencySymbol(displayCode);
