@@ -18,7 +18,7 @@ import {
   type DisplayCurrency,
   type LegacyFiatCurrency,
 } from "@/lib/marketplace/currency-code";
-import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
+import { CRYPTO_DISPLAY_CONFIG, pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import {
   FIAT_SCALE,
@@ -80,53 +80,8 @@ const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>
 export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
   const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>("USD");
   const marketRates = useMarketRates();
-
-  const {
-    ethUsd,
-    eurUsd,
-    btcUsd,
-    cnyUsd,
-    inrUsd,
-    brlUsd,
-    idrUsd,
-    audUsd,
-    aedUsd,
-    krwUsd,
-    rubUsd,
-    jpyUsd,
-    isLoading: isRatesLoading,
-  } = marketRates;
-
-  const rates: PartialFxRates = useMemo(
-    () => ({
-      ethUsd,
-      eurUsd,
-      btcUsd,
-      cnyUsd,
-      inrUsd,
-      brlUsd,
-      idrUsd,
-      audUsd,
-      aedUsd,
-      krwUsd,
-      rubUsd,
-      jpyUsd,
-    }),
-    [
-      aedUsd,
-      audUsd,
-      brlUsd,
-      btcUsd,
-      cnyUsd,
-      ethUsd,
-      eurUsd,
-      idrUsd,
-      inrUsd,
-      jpyUsd,
-      krwUsd,
-      rubUsd,
-    ],
-  );
+  const { isLoading: isRatesLoading } = marketRates;
+  const rates = useMemo(() => pickPartialFxRates(marketRates), [marketRates]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
