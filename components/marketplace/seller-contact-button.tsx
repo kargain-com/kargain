@@ -10,6 +10,7 @@ import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
+import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { isMessageablePeer } from "@/lib/web3/wallet-account";
@@ -20,7 +21,11 @@ type Props = {
   listingTokenId?: string | null;
 };
 
-export function SellerContactButton({ peerAddress, label, listingTokenId: _listingTokenId }: Props) {
+function buildListingInquiryMessage(tokenId: string): string {
+  return `Hi, I'm interested in your listing for ${formatPassportTitle(tokenId)}.`;
+}
+
+export function SellerContactButton({ peerAddress, label, listingTokenId }: Props) {
   const { address, isConnected, connector } = useAccount();
   const router = useRouter();
   const { client, ensureInitialized } = useXmtpClient();
@@ -78,6 +83,12 @@ export function SellerContactButton({ peerAddress, label, listingTokenId: _listi
         nostrProfile: peerProfile,
         provider,
       });
+      if (listingTokenId) {
+        const last = await conversation.lastMessage();
+        if (!last) {
+          await conversation.sendText(buildListingInquiryMessage(listingTokenId));
+        }
+      }
       router.push(`/messages/${conversation.id}`);
     } catch (e) {
       setActionError(
