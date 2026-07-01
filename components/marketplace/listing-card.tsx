@@ -102,7 +102,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
                 Verified by{" "}
                 <Link
                   href={`/profile/${row.verifier}`}
-                  className="text-text-primary hover:text-accent-warm transition-colors duration-200
+                  className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm transition-colors duration-200
                              focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
                   onClick={(e) => e.stopPropagation()}
                 >

@@ -86,7 +86,7 @@ export function PassportUriHistory({ entries, chainId }: Props) {
                     <span className="text-text-tertiary">Author </span>
                     <Link
                       href={`/profile/${entry.author}`}
-                      className="font-mono text-accent-warm hover:underline"
+                      className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
                     >
                       {shortAddress(entry.author as `0x${string}`)}
                     </Link>

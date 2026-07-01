@@ -122,7 +122,7 @@ function DisputeStatusSection({
               <EnsWalletLink
                 address={lastDisputer}
                 href={`/profile/${lastDisputer}`}
-                className="font-mono text-base text-accent-warm hover:underline"
+                className="font-mono text-base text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
               />
             </div>
           )}
@@ -247,14 +247,14 @@ export function PassportDetailView({
             <EnsWalletLink
               address={custody.profileAddress}
               href={`/profile/${custody.profileAddress}`}
-              className="font-mono text-accent-warm hover:underline"
+              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
             />
             <span className="mx-1 text-text-tertiary">·</span>
             Held in escrow{" "}
             <EnsWalletLink
               address={custody.custodyAddress ?? passport.owner}
               externalHref={explorerAddressUrl(chainId, custody.custodyAddress ?? passport.owner)}
-              className="font-mono text-accent-warm hover:underline"
+              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
             />
           </>
         ) : (
@@ -263,7 +263,7 @@ export function PassportDetailView({
             <EnsWalletLink
               address={custody.profileAddress}
               href={`/profile/${custody.profileAddress}`}
-              className="font-mono text-accent-warm hover:underline"
+              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
             />
           </>
         )}

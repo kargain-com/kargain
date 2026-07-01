@@ -296,7 +296,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
                 {evmAddress ? (
                   <Link
                     href={`/profile/${evmAddress}`}
-                    className="font-mono text-xs text-accent-warm hover:underline"
+                    className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
                   >
                     {shortAddress(evmAddress as `0x${string}`)}
                   </Link>
@@ -343,7 +343,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
                           {childEvmAddress ? (
                             <Link
                               href={`/profile/${childEvmAddress}`}
-                              className="font-mono text-xs text-accent-warm hover:underline"
+                              className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
                             >
                               {shortAddress(childEvmAddress as `0x${string}`)}
                             </Link>

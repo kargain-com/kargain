@@ -32,7 +32,7 @@ export function ListingAgentBuyerAttribution({ agentAddress }: Props) {
         <p className="font-sans text-sm text-text-secondary">Sold by…</p>
         <div className="flex items-center gap-3">
           <IdentityAvatar address={agentAddress} size={40} alt="" />
-          <p className="font-sans text-sm text-text-secondary">{navShortAddress(agentAddress)}</p>
+          <p className="font-mono text-sm text-text-secondary">{navShortAddress(agentAddress)}</p>
         </div>
       </div>
     );
@@ -55,7 +55,7 @@ export function ListingAgentBuyerAttribution({ agentAddress }: Props) {
           <IdentityAvatar address={agentAddress} size={40} alt="Agent" />
           <Link
             href={`/profile/${agentAddress}`}
-            className="truncate font-sans text-sm font-medium text-text-primary underline-offset-2 hover:text-accent-warm hover:underline"
+            className="truncate font-mono text-sm text-text-secondary underline-offset-2 hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
           >
             {navShortAddress(agentAddress)}
           </Link>

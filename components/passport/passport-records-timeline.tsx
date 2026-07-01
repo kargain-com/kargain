@@ -96,7 +96,7 @@ export function PassportRecordsTimeline({
                   Author:{" "}
                   <Link
                     href={`/profile/${record.author}`}
-                    className="font-mono text-accent-warm hover:underline"
+                    className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
                   >
                     {navShortAddress(record.author)}
                   </Link>
