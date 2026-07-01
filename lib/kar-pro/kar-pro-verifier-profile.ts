@@ -37,6 +37,7 @@ export function buildKarProProfileFromChain(
     active: true,
     joinedAt: input.joinedAt,
     verificationCount: 0,
+    verificationFee: 0n,
     disputedPassports: [],
   };
 }

@@ -35,6 +35,7 @@ describe("mapVerifierDetailToProfile", () => {
         address: ADDRESS,
         joinedAt: 1_700_000_000,
         verificationCount: 7,
+        verificationFee: "50000000000000000",
         identity: {
           category: 1,
           name: "Inspector",
@@ -48,6 +49,7 @@ describe("mapVerifierDetailToProfile", () => {
     );
 
     assert.equal(profile.verificationCount, 7);
+    assert.equal(profile.verificationFee, 50_000_000_000_000_000n);
     assert.equal(profile.name, "Inspector");
     assert.equal(profile.active, true);
     assert.equal(profile.joinedAt, 1_700_000_000);

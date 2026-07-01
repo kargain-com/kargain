@@ -913,6 +913,7 @@ async function buildVerifierDetailResponse(id: string) {
     },
     joinedAt: v.joinedAt,
     leftAt: v.leftAt,
+    verificationFee: v.verificationFee,
     verificationCount,
     disputedPassports,
     verifiedPassports,

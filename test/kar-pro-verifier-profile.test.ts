@@ -27,6 +27,7 @@ describe("shouldPollKarProVerifierProfile", () => {
           active: true,
           joinedAt: 1,
           verificationCount: 0,
+          verificationFee: 0n,
           disputedPassports: [],
         },
         5,

@@ -20,5 +20,6 @@ export type KarProVerifierProfile = {
   active: boolean;
   joinedAt: number;
   verificationCount: number;
+  verificationFee: bigint;
   disputedPassports: DisputedPassportRow[];
 };

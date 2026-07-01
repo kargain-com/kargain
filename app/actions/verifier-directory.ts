@@ -11,6 +11,7 @@ export type VerifierDirectoryEntry = {
   metadataURI: string;
   active: boolean;
   verificationCount: number;
+  verificationFee: string;
   joinedAt: number;
 };
 
@@ -30,9 +31,21 @@ type PonderVerifiersRawResponse = {
     metadataURI: string;
     active: boolean;
     verificationCount: number;
+    verificationFee?: string | number;
     joinedAt?: string | number;
   }>;
 };
+
+function parseVerificationFeeWire(raw: unknown): string {
+  if (raw == null || raw === "") return "0";
+  const s = String(raw).trim();
+  try {
+    BigInt(s);
+    return s;
+  } catch {
+    return "0";
+  }
+}
 
 function parseVerifierEntry(
   row: PonderVerifiersRawResponse["verifiers"][number],
@@ -47,6 +60,7 @@ function parseVerifierEntry(
     metadataURI: String(row.metadataURI ?? ""),
     active: row.active === true,
     verificationCount: Number(row.verificationCount ?? 0),
+    verificationFee: parseVerificationFeeWire(row.verificationFee),
     joinedAt: Number(row.joinedAt ?? 0),
   };
 }
