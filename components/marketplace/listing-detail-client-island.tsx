@@ -8,10 +8,12 @@ import { useAccount, useReadContracts } from "wagmi";
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
+import { OwnerReturnRequestPanel } from "@/components/marketplace/owner-return-request-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import {
@@ -38,6 +40,8 @@ type ListingProp = {
   fiatPrice1e8: string;
   fiatCurrency: number;
   seller: `0x${string}`;
+  agent?: string;
+  returnRequestedAt?: string | number;
 };
 
 type AgentAuthResult = {
@@ -104,6 +108,13 @@ export function ListingDetailClientIsland({
               args: [tid],
               chainId: wc,
             },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "returnRequestedAt",
+              args: [tid],
+              chainId: wc,
+            },
           ]
         : [],
   });
@@ -111,6 +122,7 @@ export function ListingDetailClientIsland({
   const onChainOwner = chainReads?.[0]?.result as `0x${string}` | undefined;
   const chainRow = parseOnChainListing(chainReads?.[1]?.result);
   const agentAuthRaw = chainReads?.[2]?.result as AgentAuthResult | undefined;
+  const chainReturnRequestedAt = chainReads?.[3]?.result as bigint | undefined;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
   const agentAuth = useMemo((): AgentAuthResult | null => {
@@ -179,6 +191,10 @@ export function ListingDetailClientIsland({
     isOwner && !listingActive && !agentAuthActive && market && address,
   );
 
+  const showReturnFlow = Boolean(
+    isOwner && listingActive && hasListingAgent(listing?.agent),
+  );
+
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const manageLabel = listingActive ? "Manage listing" : "List for sale";
 
@@ -211,6 +227,17 @@ export function ListingDetailClientIsland({
           tokenId={tokenId}
           agentAuth={agentAuth}
           listingActive={listingActive}
+          onChanged={() => void refetchChainReads()}
+        />
+      )}
+
+      {showReturnFlow && (
+        <OwnerReturnRequestPanel
+          chainId={chainId}
+          tokenId={tokenId}
+          ponderReturnRequestedAt={listing?.returnRequestedAt}
+          chainReturnRequestedAt={chainReturnRequestedAt}
+          agentAuthActive={agentAuthActive}
           onChanged={() => void refetchChainReads()}
         />
       )}

@@ -36,6 +36,8 @@ type Props = {
     fiatPrice1e8: string;
     fiatCurrency: number;
     seller: `0x${string}`;
+    agent?: string;
+    returnRequestedAt?: string | number;
   } | null;
 };
 

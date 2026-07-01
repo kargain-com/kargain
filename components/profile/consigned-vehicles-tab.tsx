@@ -17,6 +17,7 @@ import { AgentDelistButton } from "@/components/marketplace/agent-delist-button"
 import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
 import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-listing-panel";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { ReturnCooldownDisplay } from "@/components/marketplace/return-cooldown-display";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
@@ -26,6 +27,7 @@ import {
   mapAgentListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
+import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import type {
   PassportStatus,
   PonderAgentAuthorization,
@@ -225,11 +227,18 @@ function ActiveConsignmentCard({
 }) {
   const [editExpanded, setEditExpanded] = useState(false);
   const tokenId = String(listing.tokenId ?? listing.id ?? "");
+  const returnAt = parseReturnRequestedAt(listing.returnRequestedAt);
 
   return (
     <div className="space-y-0">
       <ListingCard row={row} />
       <div className="rounded-b-md border border-t-0 border-border-default bg-bg-surface px-4 py-3">
+        {returnAt > 0n && (
+          <div className="mb-3 space-y-2">
+            <p className="font-sans text-xs text-text-secondary">Owner requested return</p>
+            <ReturnCooldownDisplay returnRequestedAt={returnAt} />
+          </div>
+        )}
         {!editExpanded ? (
           <div className="flex flex-col gap-2">
             <Button

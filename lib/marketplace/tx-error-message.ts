@@ -14,6 +14,12 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
     "You are not authorized to act for this vehicle, or the authorization expired.",
   ],
   ["AgentFeeTooHigh", "Commission cannot exceed 30%."],
+  [
+    "ReturnAlreadyRequested",
+    "A return has already been requested. Check the countdown for when force return becomes available.",
+  ],
+  ["ReturnCooldownPending", "The 7-day cooldown has not yet elapsed. Please wait."],
+  ["ReturnNotRequested", "Request a return first before forcing it."],
 ];
 
 function mapRevertReason(message: string): string | null {

@@ -137,16 +137,19 @@ async function MarketplaceListingInner({
   }
 
   const listingActive = isPonderListingActive(listingRaw);
-  const listing = listingActive
+  const listing = listingRaw
     ? {
-        active: true as const,
+        active: listingActive,
         fiatPrice1e8: String(
-          (listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8,
+          (listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8 ?? "0",
         ),
         fiatCurrency: normalizeListingFiatCurrency(
           (listingRaw as { fiatCurrency: number | string }).fiatCurrency,
         ),
         seller: (listingRaw as { seller: string }).seller as `0x${string}`,
+        agent: (listingRaw as { agent?: string }).agent,
+        returnRequestedAt: (listingRaw as { returnRequestedAt?: string | number })
+          .returnRequestedAt,
       }
     : null;
 
