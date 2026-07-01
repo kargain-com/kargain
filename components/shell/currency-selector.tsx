@@ -11,6 +11,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
@@ -42,7 +43,7 @@ function CurrencyOptionLabel({
     <span className="inline-flex items-center gap-2">
       <span
         className={cn(
-          "inline-block w-6 font-mono",
+          "inline-block w-6 shrink-0 text-right font-mono",
           selected ? "text-accent-warm" : "text-text-secondary",
         )}
         aria-hidden
@@ -140,15 +141,19 @@ export function CurrencySelector() {
             side="bottom"
             className="flex flex-col gap-0 p-0 pb-[env(safe-area-inset-bottom)] [&>button.absolute]:hidden"
           >
-            <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-border-default" aria-hidden />
-            <SheetTitle className="sr-only">Display currency</SheetTitle>
-            <div className="mb-4 mt-4 px-2">
+            <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-border-default" aria-hidden />
+            <SheetHeader className="shrink-0 border-b border-border-default px-4 pb-3 pt-2">
+              <SheetTitle className="font-sans text-base font-medium normal-case tracking-normal text-text-primary">
+                Display currency
+              </SheetTitle>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
               {OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   className={cn(
-                    "flex h-14 w-full items-center px-4 font-sans text-base font-medium transition-colors duration-200",
+                    "flex w-full items-center rounded-sm px-4 py-2.5 font-sans text-sm transition-colors duration-200",
                     displayCurrency === option.value
                       ? "bg-bg-surface text-accent-warm"
                       : "text-text-primary",
