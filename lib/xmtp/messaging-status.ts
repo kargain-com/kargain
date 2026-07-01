@@ -49,7 +49,8 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
 
   if (!optedIn) return "inactive";
 
-  return "inactive";
+  // Opted in locally but client not restored yet (reconnect / auto-init pending).
+  return "initializing";
 }
 
 export function messagingStatusNeedsSetup(status: MessagingStatus): boolean {

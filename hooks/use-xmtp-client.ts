@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import type { WalletClient } from "viem";
 import { useAccount, useWalletClient } from "wagmi";
 
 import { createXmtpClient } from "@/lib/xmtp/client";
@@ -11,11 +12,13 @@ import {
   isMessagingDisabledLocally,
   setOptedIn,
 } from "@/lib/xmtp/messaging-preferences";
+import { waitForWalletClient } from "@/lib/xmtp/wait-wallet-client";
 import {
   canInitializeMessaging,
   messagingWalletError,
   readAccountKindFromProvider,
 } from "@/lib/web3/wallet-account";
+import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type XmtpClientStore = {
   client: XmtpClient | null;
@@ -80,6 +83,48 @@ function waitForInitialization(): Promise<void> {
   });
 }
 
+async function runInitialize(
+  walletClient: WalletClient,
+  address: `0x${string}`,
+): Promise<void> {
+  const key = address.toLowerCase();
+  if (isMessagingDisabledLocally(key)) {
+    setStore({ client: null, error: null, walletKey: null });
+    return;
+  }
+
+  if (store.client && store.walletKey === key) return;
+
+  if (store.isInitializing) {
+    await waitForInitialization();
+    return;
+  }
+
+  setStore({ isInitializing: true, error: null, walletKey: key });
+
+  try {
+    if (store.client && store.walletKey !== key) {
+      store.client.close();
+    }
+
+    const created = await createXmtpClient(walletClient, address);
+    setOptedIn(key);
+    setStore({
+      client: created,
+      isInitializing: false,
+      error: null,
+      walletKey: key,
+    });
+  } catch (e) {
+    setStore({
+      client: null,
+      isInitializing: false,
+      error: e instanceof Error ? e.message : "Failed to initialize XMTP.",
+      walletKey: null,
+    });
+  }
+}
+
 export function useXmtpClient(): {
   client: XmtpClient | null;
   isInitializing: boolean;
@@ -89,7 +134,8 @@ export function useXmtpClient(): {
 } {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { address, isConnected, connector } = useAccount();
-  const { data: walletClient } = useWalletClient();
+  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
+  const { data: walletClient } = useWalletClient({ chainId });
 
   const walletKey = address?.toLowerCase() ?? null;
   const client =
@@ -117,52 +163,33 @@ export function useXmtpClient(): {
     }
   }, [address, isConnected]);
 
+  const resolveWalletClient = useCallback(async (): Promise<WalletClient | null> => {
+    if (!isConnected || !address) return null;
+    return waitForWalletClient(connector, chainId, walletClient);
+  }, [address, chainId, connector, isConnected, walletClient]);
+
   const initialize = useCallback(async () => {
-    if (!isConnected || !address || !walletClient) {
+    if (!isConnected || !address) {
       setStore({ client: null, error: null, walletKey: null });
       return;
     }
 
-    const key = address.toLowerCase();
-    if (isMessagingDisabledLocally(key)) {
-      setStore({ client: null, error: null, walletKey: null });
-      return;
-    }
-
-    if (store.client && store.walletKey === key) return;
-
-    if (store.isInitializing) {
-      await waitForInitialization();
-      return;
-    }
-
-    setStore({ isInitializing: true, error: null, walletKey: key });
-
-    try {
-      if (store.client && store.walletKey !== key) {
-        store.client.close();
-      }
-
-      const created = await createXmtpClient(walletClient, address);
-      setOptedIn(key);
-      setStore({
-        client: created,
-        isInitializing: false,
-        error: null,
-        walletKey: key,
-      });
-    } catch (e) {
+    const resolved = await resolveWalletClient();
+    if (!resolved) {
       setStore({
         client: null,
         isInitializing: false,
-        error: e instanceof Error ? e.message : "Failed to initialize XMTP.",
+        error: "Wallet not ready. Try again.",
         walletKey: null,
       });
+      return;
     }
-  }, [address, isConnected, walletClient]);
+
+    await runInitialize(resolved, address);
+  }, [address, isConnected, resolveWalletClient]);
 
   const ensureInitialized = useCallback(async (): Promise<XmtpClient | null> => {
-    if (!isConnected || !address || !walletClient) {
+    if (!isConnected || !address) {
       setStore({ client: null, error: null, walletKey: null });
       return null;
     }
@@ -177,6 +204,17 @@ export function useXmtpClient(): {
       return store.client;
     }
 
+    const resolved = await resolveWalletClient();
+    if (!resolved) {
+      setStore({
+        client: null,
+        isInitializing: false,
+        error: "Wallet not ready. Try again.",
+        walletKey: null,
+      });
+      return null;
+    }
+
     const provider = await connector?.getProvider?.();
     const kind = await readAccountKindFromProvider(provider, address);
     if (!canInitializeMessaging(kind)) {
@@ -189,12 +227,12 @@ export function useXmtpClient(): {
       return null;
     }
 
-    await initialize();
+    await runInitialize(resolved, address);
     return store.client && store.walletKey === key ? store.client : null;
-  }, [address, connector, initialize, isConnected, walletClient]);
+  }, [address, connector, isConnected, resolveWalletClient]);
 
   useEffect(() => {
-    if (!isConnected || !address || !walletClient) return;
+    if (!isConnected || !address) return;
     const key = address.toLowerCase();
     if (isMessagingDisabledLocally(key)) return;
     if (!hasOptedIn(key)) return;
@@ -202,12 +240,24 @@ export function useXmtpClient(): {
     if (store.isInitializing) return;
 
     void (async () => {
+      const resolved = await waitForWalletClient(connector, chainId, walletClient);
+      if (!resolved) return;
+
       const provider = await connector?.getProvider?.();
       const kind = await readAccountKindFromProvider(provider, address);
-      if (!canInitializeMessaging(kind)) return;
-      await initialize();
+      if (!canInitializeMessaging(kind)) {
+        setStore({
+          client: null,
+          isInitializing: false,
+          error: messagingWalletError(kind),
+          walletKey: null,
+        });
+        return;
+      }
+
+      await runInitialize(resolved, address);
     })();
-  }, [address, connector, initialize, isConnected, walletClient]);
+  }, [address, chainId, connector, isConnected, walletClient]);
 
   return { client, isInitializing, error, initialize, ensureInitialized };
 }

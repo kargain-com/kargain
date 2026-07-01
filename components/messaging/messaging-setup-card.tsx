@@ -1,8 +1,9 @@
 "use client";
 
-import { CheckCircle2, Loader2, MessageCircle } from "lucide-react";
+import { Loader2, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useAccount, useWalletClient } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,12 @@ import {
   messagingUnsupportedCopy,
   useMessagingStatus,
 } from "@/hooks/use-messaging-status";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import {
+  enableMessagingFull,
+  enableMessagingFullError,
+} from "@/lib/xmtp/enable-messaging-full";
+import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type SetupContext = "account" | "seller" | "karpro";
@@ -45,7 +52,11 @@ export function MessagingSetupCard({
   context = "account",
   className,
 }: Props) {
-  const { status, error, enableMessages, walletKind } = useMessagingStatus();
+  const { address } = useAccount();
+  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
+  const { data: walletClient } = useWalletClient({ chainId });
+  const { profile, refetch } = useNostrProfile(address);
+  const { status, error, enableMessages, isReady, walletKind } = useMessagingStatus();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -54,13 +65,26 @@ export function MessagingSetupCard({
   const copy = contextCopy(context);
 
   const onEnable = async () => {
+    if (!address || !walletClient) {
+      setActionError("Wallet not ready. Try again.");
+      return;
+    }
+
     setActionError(null);
     setBusy(true);
     try {
-      const ok = await enableMessages();
-      if (!ok) {
-        setActionError("Could not enable messages. Try again.");
+      const result = await enableMessagingFull({
+        enableMessages,
+        address,
+        walletClient,
+        profile,
+        xmtpAlreadyActive: isReady,
+      });
+      if (!result.ok) {
+        setActionError(enableMessagingFullError(result.step));
+        return;
       }
+      void refetch();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not enable messages.");
     } finally {
@@ -73,20 +97,6 @@ export function MessagingSetupCard({
   }
 
   if (status === "active") {
-    if (variant === "compact") {
-      return (
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary",
-            className,
-          )}
-          role="status"
-        >
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-accent-warm" aria-hidden />
-          Messages enabled
-        </div>
-      );
-    }
     return null;
   }
 

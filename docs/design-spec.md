@@ -363,14 +363,14 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsSetup`; links to `/profile/edit#messages` |
-| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) on `/profile/edit` — enable/disable + **Allow incoming messages** toggle (`messagesEnabled` in Nostr kind 0) |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) on `/profile/edit` — **Private messages** [`Switch`](../components/ui/switch.tsx) (XMTP enable + Nostr `messagesEnabled` in one control) |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until ready |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after self messaging is ready; uses [`contactPeer`](../lib/xmtp/contact-peer.ts); URL param stripped on mount |
 | Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends *Hi, I'm interested in your listing for {formatPassportTitle}.* before navigating to `/messages/{id}`; existing threads unchanged |
 | Profile entry | Identity header **Message** / **Request verification** only when peer is reachable (`Client.canMessage` + Nostr `messagesEnabled`); else *Messages not available* |
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
-| XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; opted-in addresses auto-reconnect; smart wallets show blocker copy |
+| XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; opted-in addresses auto-reconnect (`initializing` until client restored); enable path publishes Nostr `messagesEnabled: true`; smart wallets show blocker copy |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |

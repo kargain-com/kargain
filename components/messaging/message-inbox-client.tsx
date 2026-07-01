@@ -166,6 +166,9 @@ export function MessageInboxClient() {
     }
 
     if (!isReady || !client) {
+      if (needsSetup && isConnected && initialToRef.current) {
+        setToError("Enable private messages to open this conversation.");
+      }
       return;
     }
 
@@ -213,6 +216,7 @@ export function MessageInboxClient() {
     isConnected,
     isLoading,
     isReady,
+    needsSetup,
     peerProfile,
     router,
   ]);

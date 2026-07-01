@@ -57,9 +57,12 @@ describe("deriveMessagingStatus", () => {
     );
   });
 
-  it("returns inactive before first successful init", () => {
+  it("returns inactive before first opt-in", () => {
     assert.equal(deriveMessagingStatus(base), "inactive");
-    assert.equal(deriveMessagingStatus({ ...base, optedIn: true }), "inactive");
+  });
+
+  it("returns initializing when opted in but client not restored", () => {
+    assert.equal(deriveMessagingStatus({ ...base, optedIn: true }), "initializing");
   });
 });
 
@@ -67,6 +70,7 @@ describe("messaging status helpers", () => {
   it("flags setup-needed states", () => {
     assert.equal(messagingStatusNeedsSetup("inactive"), true);
     assert.equal(messagingStatusNeedsSetup("error"), true);
+    assert.equal(messagingStatusNeedsSetup("initializing"), false);
     assert.equal(messagingStatusNeedsSetup("active"), false);
   });
 
