@@ -43,6 +43,26 @@ type PonderListingBatchResponse = {
   listings: Array<PonderListingBatchRow & { id?: string }>;
 };
 
+type PonderProfilePassportsResponse = {
+  passports: Array<{ id?: string | number }>;
+};
+
+export async function fetchOwnedPassportTokenIds(address: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${PONDER_URL}/profile/${encodeURIComponent(address)}/passports`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as PonderProfilePassportsResponse;
+    return (data.passports ?? [])
+      .map((p) => String(p.id ?? "").trim())
+      .filter((id) => id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchNotificationFeed(
   address: string,
   since: number,

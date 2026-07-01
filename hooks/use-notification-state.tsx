@@ -25,6 +25,7 @@ import {
   loadLocalNotificationState,
   saveLocalNotificationState,
 } from "@/lib/notifications/local-notification-state";
+import { useOwnedPassportTokenIds } from "@/hooks/use-owned-passport-token-ids";
 import { usePonderNotifications } from "@/hooks/use-ponder-notifications";
 import { useWatchlistNotifications } from "@/hooks/use-watchlist-notifications";
 import { useNostrNotificationsSub } from "@/hooks/use-nostr-notifications-sub";
@@ -33,9 +34,6 @@ import type { NotificationItem } from "@/lib/notifications/types";
 const DEFAULT_STATE: NotificationState = {
   lastSeenAt: { ponder: 0, nostr: 0, watchlist: 0 },
 };
-
-/** Phase 1: no owned-passport #d filters yet — stable ref for effect deps */
-const OWNED_TOKEN_IDS_V1: string[] = [];
 
 type NotificationStateContextValue = {
   state: NotificationState;
@@ -167,7 +165,8 @@ function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const { nostrPubkey } = useNostrKey();
   const ponder = usePonderNotifications();
   const watchlist = useWatchlistNotifications();
-  const nostr = useNostrNotificationsSub(OWNED_TOKEN_IDS_V1);
+  const ownedTokenIds = useOwnedPassportTokenIds();
+  const nostr = useNostrNotificationsSub(ownedTokenIds);
 
   const items = useMemo(() => {
     const byId = new Map<string, NotificationItem>();

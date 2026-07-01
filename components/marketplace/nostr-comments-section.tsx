@@ -141,6 +141,22 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     return () => window.clearTimeout(timer);
   }, [highlightEventId, feedLoading, ordered.length]);
 
+  const resolveParentPubkey = async (parentEventId: string): Promise<string | null> => {
+    const localPubkey = events[parentEventId]?.event.pubkey;
+    if (localPubkey) return localPubkey;
+
+    try {
+      const results = await pool.querySync(
+        [...NOSTR_RELAYS],
+        { ids: [parentEventId], limit: 1 },
+        { maxWait: 3000 },
+      );
+      return results[0]?.pubkey ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const publish = async (
     kind: 1 | 7,
     content: string,
@@ -153,16 +169,16 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       tags.push(["evm", address.toLowerCase()]);
     }
     if (kind === 1 && parentEventId) {
-      const target = events[parentEventId]?.event;
       tags.push(["e", parentEventId, "", "reply"]);
-      if (target?.pubkey && target.pubkey !== authorPubkey) {
-        tags.push(["p", target.pubkey]);
+      const targetPubkey = await resolveParentPubkey(parentEventId);
+      if (targetPubkey && targetPubkey !== authorPubkey) {
+        tags.push(["p", targetPubkey]);
       }
     } else if (kind === 7 && parentEventId) {
-      const target = events[parentEventId]?.event;
       tags.push(["e", parentEventId]);
-      if (target?.pubkey && target.pubkey !== authorPubkey) {
-        tags.push(["p", target.pubkey]);
+      const targetPubkey = await resolveParentPubkey(parentEventId);
+      if (targetPubkey && targetPubkey !== authorPubkey) {
+        tags.push(["p", targetPubkey]);
       }
     }
     const unsigned = {

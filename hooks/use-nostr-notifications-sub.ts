@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Event, Filter } from "nostr-tools";
+import type { Event } from "nostr-tools";
 import { useAccount } from "wagmi";
 
 import { useNotificationState } from "@/hooks/use-notification-state";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { mapNostrEventToNotification } from "@/lib/notifications/map-nostr-event";
+import { buildNostrNotificationFilters } from "@/lib/notifications/nostr-notification-filters";
 import type { NotificationItem } from "@/lib/notifications/types";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 
@@ -18,23 +19,6 @@ function mergeEvents(existing: Event[], incoming: Event[]): Event[] {
     byId.set(ev.id, ev);
   }
   return [...byId.values()];
-}
-
-function buildFilters(pubkey: string, ownedTokenIds: string[], since: number): Filter[] {
-  const filters: Filter[] = [
-    { kinds: [1], "#p": [pubkey], since },
-    { kinds: [7], "#p": [pubkey], since },
-  ];
-
-  if (ownedTokenIds.length > 0) {
-    filters.push({
-      kinds: [1],
-      "#d": ownedTokenIds.map((id) => `listing:${id}`),
-      since,
-    });
-  }
-
-  return filters;
 }
 
 export function useNostrNotificationsSub(ownedTokenIds: string[]): {
@@ -60,8 +44,8 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
     const pool = getNostrPool();
     const sinceLive = state.lastSeenAt.nostr;
     const sinceBackfill = Math.max(0, state.lastSeenAt.nostr - LOOKBACK_SECONDS);
-    const liveFilters = buildFilters(pubkey, ownedTokenIds, sinceLive);
-    const backfillFilters = buildFilters(pubkey, ownedTokenIds, sinceBackfill);
+    const liveFilters = buildNostrNotificationFilters(pubkey, ownedTokenIds, sinceLive);
+    const backfillFilters = buildNostrNotificationFilters(pubkey, ownedTokenIds, sinceBackfill);
 
     void Promise.all(
       backfillFilters.map((filter) =>
