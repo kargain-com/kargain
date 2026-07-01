@@ -2,6 +2,7 @@ import { Client } from "@xmtp/client";
 import { getAddress } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { isMessagesAccepting } from "@/lib/nostr/messages-enabled";
 import { ethereumIdentifier, getXmtpEnv } from "@/lib/xmtp/client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import {
@@ -19,7 +20,7 @@ export type PeerReachabilityReason =
   | null;
 
 export function peerAcceptsMessages(profile: NostrProfileData | null | undefined): boolean {
-  return profile?.messagesEnabled !== false;
+  return isMessagesAccepting(profile);
 }
 
 export async function checkXmtpReachable(address: `0x${string}`): Promise<boolean> {

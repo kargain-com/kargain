@@ -5,6 +5,7 @@ import { finalizeEvent } from "nostr-tools";
 
 import { getOrCreateNostrKey, loadDecryptedKey } from "@/lib/nostr/key-manager";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import {
   getNostrPool,
   NOSTR_RELAYS,
@@ -30,30 +31,34 @@ async function fetchKind0ByAuthor(pubkey: string, maxWait: number): Promise<Nost
   const pool = getNostrPool();
   const events = await pool.querySync(
     [...NOSTR_RELAYS],
-    { kinds: [0], authors: [pubkey], limit: 1 },
+    { kinds: [0], authors: [pubkey], limit: 20 },
     { maxWait },
   );
-  if (events.length === 0) return null;
-  const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+  const latest = pickLatestKind0Event(events);
   if (!latest) return null;
   return parseProfileContentOrEmpty(latest.content);
 }
 
-async function fetchKind0ByEthereumTag(
-  address: `0x${string}`,
-  maxWait: number,
+/** Canonical public profile read — same path viewers use (NIP-39 ethereum tag). */
+export async function fetchNostrProfileByEthereumTag(
+  walletAddress: Address,
+  maxWait = 3000,
 ): Promise<NostrProfileData | null> {
-  const pool = getNostrPool();
-  const tag = `ethereum:${address.toLowerCase()}`;
-  const events = await pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [0], "#i": [tag], limit: 20 },
-    { maxWait },
-  );
-  if (events.length === 0) return null;
-  const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-  if (!latest) return null;
-  return parseProfileContentOrEmpty(latest.content);
+  try {
+    const address = toWalletAddress(walletAddress);
+    const pool = getNostrPool();
+    const tag = `ethereum:${address.toLowerCase()}`;
+    const events = await pool.querySync(
+      [...NOSTR_RELAYS],
+      { kinds: [0], "#i": [tag], limit: 20 },
+      { maxWait },
+    );
+    const latest = pickLatestKind0Event(events);
+    if (!latest) return null;
+    return parseProfileContentOrEmpty(latest.content);
+  } catch {
+    return null;
+  }
 }
 
 /** Fetch kind:0 profile for a wallet address from relays. Never throws. */
@@ -62,16 +67,17 @@ export async function fetchNostrProfile(
 ): Promise<NostrProfileData | null> {
   try {
     const address = toWalletAddress(walletAddress);
+    const byTag = await fetchNostrProfileByEthereumTag(address, 3000);
+    if (byTag) return byTag;
+
     const storedKey = await loadDecryptedKey({
       address,
       signMessage: async () => "" as `0x${string}`,
     });
-    if (storedKey) {
-      const pubkey = nostrPubkeyFromPrivateKey(storedKey);
-      const byAuthor = await fetchKind0ByAuthor(pubkey, 2500);
-      if (byAuthor) return byAuthor;
-    }
-    return fetchKind0ByEthereumTag(address, 3000);
+    if (!storedKey) return null;
+
+    const pubkey = nostrPubkeyFromPrivateKey(storedKey);
+    return fetchKind0ByAuthor(pubkey, 2500);
   } catch {
     return null;
   }

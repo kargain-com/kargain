@@ -14,6 +14,7 @@ import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
+import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
@@ -474,6 +475,7 @@ export function ProfilePage({
         <ProfileBio about={about} website={website} />
 
         {isOwner && <AccountSetupBanner />}
+        {isOwner && <MessagingDriftBanner />}
 
         <ProfileVerifierStatsBand
           wallet={wallet}

@@ -4,8 +4,18 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 
+import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useMessagingActivation } from "@/hooks/use-messaging-activation";
 import {
   canWalletEnableMessaging,
   messagingUnsupportedCopy,
@@ -13,6 +23,8 @@ import {
 } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import {
+  disableMessagingFull,
+  disableMessagingError,
   enableMessagingFull,
   enableMessagingFullError,
 } from "@/lib/xmtp/enable-messaging-full";
@@ -38,11 +50,11 @@ export function MessagingSettingsSection() {
     disableMessages,
     walletKind,
   } = useMessagingStatus();
+  const activation = useMessagingActivation();
   const [saving, setSaving] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [confirmDisableOpen, setConfirmDisableOpen] = useState(false);
 
-  const allowIncoming = profile?.messagesEnabled !== false;
-  const messagingOn = isReady && allowIncoming && status !== "disabled";
   const unsupported = messagingUnsupportedCopy(walletKind);
   const canEnable = canWalletEnableMessaging(walletKind);
 
@@ -59,47 +71,72 @@ export function MessagingSettingsSection() {
         },
         address,
         {
-          signMessage: (msg) => walletClient.signMessage({ message: msg }),
+          signMessage: (msg) => walletClient.signMessage({ account: address, message: msg }),
         },
       );
     },
     [address, profile?.about, profile?.name, profile?.picture, profile?.website, walletClient],
   );
 
-  const onTogglePrivateMessages = async (next: boolean) => {
-    if (!address || saving) return;
-
-    if (!walletClient) {
-      setToggleError("Wallet not ready. Try again.");
+  const onEnable = async () => {
+    if (!address || saving || !walletClient) {
+      if (!walletClient) setToggleError("Wallet not ready. Try again.");
       return;
     }
 
     setToggleError(null);
     setSaving(true);
     try {
-      if (next) {
-        const result = await enableMessagingFull({
-          enableMessages,
-          address,
-          walletClient,
-          profile,
-          xmtpAlreadyActive: isReady,
-        });
-        if (!result.ok) {
-          setToggleError(enableMessagingFullError(result.step));
-          return;
-        }
-        void refetch();
+      const result = await enableMessagingFull({
+        enableMessages,
+        address,
+        walletClient,
+        profile,
+        xmtpAlreadyActive: isReady,
+      });
+      if (!result.ok) {
+        setToggleError(enableMessagingFullError(result.step, result.verifyDetail));
         return;
       }
-
-      disableMessages();
-      const ok = await publishPreference(false);
-      if (!ok) setToggleError("Could not save your messaging preference.");
-      else void refetch();
+      void refetch();
+      activation.refetchNetwork();
     } finally {
       setSaving(false);
     }
+  };
+
+  const onConfirmDisable = async () => {
+    if (!address || saving || !walletClient) return;
+
+    setToggleError(null);
+    setSaving(true);
+    try {
+      const result = await disableMessagingFull({
+        address,
+        walletClient,
+        profile,
+        publishPreference,
+        disableMessages,
+      });
+      if (!result.ok) {
+        setToggleError(disableMessagingError(result.step));
+        return;
+      }
+      setConfirmDisableOpen(false);
+      void refetch();
+      activation.refetchNetwork();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onTogglePrivateMessages = (next: boolean) => {
+    if (saving) return;
+    if (next) {
+      void onEnable();
+      return;
+    }
+    setConfirmDisableOpen(true);
   };
 
   if (!address) return null;
@@ -118,23 +155,28 @@ export function MessagingSettingsSection() {
     );
   }
 
-  const switchDisabled = saving || isInitializing || status === "initializing";
-  const showSpinner = saving || isInitializing || status === "initializing";
+  const switchBusy =
+    saving || isInitializing || status === "initializing" || activation.networkChecking;
+  const showSpinner = switchBusy;
+
+  const helperCopy = activation.switchOn
+    ? "Encrypted messages are active for your account."
+    : activation.explicitlyOptedOut
+      ? "You turned off private messages."
+      : "Finish setup to activate private messages.";
 
   return (
     <section id="messages" className="flex flex-col gap-4 scroll-mt-24">
       <SectionEyebrow>Messages</SectionEyebrow>
+
+      <MessagingDriftBanner />
 
       <div className="flex items-center justify-between gap-4 rounded-md border border-border-default bg-bg-surface px-4 py-3">
         <div className="min-w-0 space-y-0.5">
           <Label htmlFor="private-messages" className="text-sm text-text-primary">
             Private messages
           </Label>
-          <p className="text-sm text-text-secondary">
-            {messagingOn
-              ? "Buyers, sellers, and verifiers can reach you through encrypted messages."
-              : "One wallet signature turns on encrypted messages for your account."}
-          </p>
+          <p className="text-sm text-text-secondary">{helperCopy}</p>
           {showSpinner && (
             <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -148,10 +190,10 @@ export function MessagingSettingsSection() {
           )}
           <Switch
             id="private-messages"
-            checked={messagingOn}
-            disabled={switchDisabled}
+            checked={activation.switchOn}
+            disabled={switchBusy || !activation.nostrLoaded}
             aria-busy={saving}
-            onCheckedChange={(checked) => void onTogglePrivateMessages(checked)}
+            onCheckedChange={onTogglePrivateMessages}
           />
         </div>
       </div>
@@ -167,6 +209,38 @@ export function MessagingSettingsSection() {
           Could not enable messages. Try toggling private messages on again.
         </p>
       )}
+
+      <Dialog open={confirmDisableOpen} onOpenChange={setConfirmDisableOpen}>
+        <DialogContent showClose className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Turn off private messages?</DialogTitle>
+            <DialogDescription>
+              Others will not be able to start new conversations with you on Kargain. You can turn
+              them back on anytime from profile settings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={saving}
+              onClick={() => void onConfirmDisable()}
+            >
+              {saving ? "Turning off…" : "Turn off messages"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saving}
+              onClick={() => setConfirmDisableOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

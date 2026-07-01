@@ -53,9 +53,8 @@ export function IdentityHeader({
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
-  const { reachable, isLoading: reachabilityLoading } = usePeerMessagingReachability(
-    !isOwner ? wallet : undefined,
-  );
+  const { reachable, isLoading: reachabilityLoading, message: reachabilityMessage } =
+    usePeerMessagingReachability(!isOwner ? wallet : undefined);
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: wallet,
     chainId: ENS_CHAIN_ID,
@@ -122,7 +121,7 @@ export function IdentityHeader({
               )}
               {!isOwner && isConnected && !reachabilityLoading && !reachable && (
                 <p className="text-xs text-text-secondary" role="status">
-                  Messages not available
+                  {reachabilityMessage ?? "Messages not available"}
                 </p>
               )}
             </div>

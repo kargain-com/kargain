@@ -8,6 +8,7 @@ import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
+import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
@@ -243,6 +244,8 @@ export function MessageInboxClient() {
       </div>
 
       {needsSetup && !openingPeer && <MessagingSetupCard variant="full" context="account" />}
+
+      {!needsSetup && <MessagingDriftBanner />}
 
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">

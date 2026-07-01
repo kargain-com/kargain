@@ -15,6 +15,7 @@ describe("enableMessagingFull", () => {
       address: ADDRESS,
       walletClient: {} as never,
       profile: null,
+      skipVerify: true,
     });
     assert.equal(result.ok, false);
     assert.equal(result.step, "xmtp");
@@ -30,6 +31,7 @@ describe("enableMessagingFull", () => {
         },
       } as never,
       profile: { name: "Test" },
+      skipVerify: true,
     });
     assert.equal(result.ok, false);
     assert.equal(result.step, "nostr");
@@ -50,6 +52,7 @@ describe("enableMessagingFull", () => {
       } as never,
       profile: null,
       xmtpAlreadyActive: true,
+      skipVerify: true,
     });
     assert.equal(xmtpCalled, false);
     assert.equal(result.ok, false);
@@ -61,5 +64,7 @@ describe("enableMessagingFullError", () => {
   it("maps steps to user-facing copy", () => {
     assert.match(enableMessagingFullError("xmtp"), /enable messages/i);
     assert.match(enableMessagingFullError("nostr"), /preference/i);
+    assert.match(enableMessagingFullError("verify", "network"), /network/i);
+    assert.match(enableMessagingFullError("verify", "relay"), /profile still shows/i);
   });
 });

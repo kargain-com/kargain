@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { useMessagingActivation } from "@/hooks/use-messaging-activation";
 import {
   canWalletEnableMessaging,
   messagingUnsupportedCopy,
@@ -57,6 +58,7 @@ export function MessagingSetupCard({
   const { data: walletClient } = useWalletClient({ chainId });
   const { profile, refetch } = useNostrProfile(address);
   const { status, error, enableMessages, isReady, walletKind } = useMessagingStatus();
+  const activation = useMessagingActivation();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -81,10 +83,11 @@ export function MessagingSetupCard({
         xmtpAlreadyActive: isReady,
       });
       if (!result.ok) {
-        setActionError(enableMessagingFullError(result.step));
+        setActionError(enableMessagingFullError(result.step, result.verifyDetail));
         return;
       }
       void refetch();
+      activation.refetchNetwork();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not enable messages.");
     } finally {
