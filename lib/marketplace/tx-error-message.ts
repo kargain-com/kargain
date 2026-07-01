@@ -5,6 +5,15 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
   ["MarketplaceNotApproved", "Approve the marketplace on your passport first."],
   ["CannotRaiseMinPrice", "New minimum must be lower than the current minimum."],
   ["AgentAuthorizationActive", "Return the vehicle from the agent before revoking access."],
+  [
+    "BelowOwnerMinPrice",
+    "Owner would receive less than their guaranteed minimum after fees. Lower commission or raise the asking price.",
+  ],
+  [
+    "AgentNotAuthorized",
+    "You are not authorized to act for this vehicle, or the authorization expired.",
+  ],
+  ["AgentFeeTooHigh", "Commission cannot exceed 30%."],
 ];
 
 function mapRevertReason(message: string): string | null {

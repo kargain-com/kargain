@@ -1,19 +1,24 @@
 "use client";
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useInView } from "framer-motion";
 import Link from "next/link";
-import { useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
 import {
   getAgentAuthorizations,
   getAgentListings,
 } from "@/app/actions/agent-consignment";
 import { fetchPassportBatch } from "@/app/actions/notifications";
+import { AgentDelistButton } from "@/components/marketplace/agent-delist-button";
+import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
+import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-listing-panel";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
+import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
@@ -21,7 +26,11 @@ import {
   mapAgentListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
-import type { PassportStatus, PonderAgentAuthorization } from "@/lib/types/ponder";
+import type {
+  PassportStatus,
+  PonderAgentAuthorization,
+  PonderAgentListingRaw,
+} from "@/lib/types/ponder";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -41,6 +50,18 @@ type Props = {
 };
 
 const LISTINGS_PAGE_SIZE = 20;
+
+async function invalidateAgentConsignmentQueries(
+  wallet: Address,
+  queryClient: ReturnType<typeof useQueryClient>,
+  router: ReturnType<typeof useRouter>,
+) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["agent-awaiting", wallet] }),
+    queryClient.invalidateQueries({ queryKey: ["agent-listings", wallet] }),
+  ]);
+  router.refresh();
+}
 
 function ListingCardSkeleton() {
   return (
@@ -95,6 +116,10 @@ function AuthorizedAwaitingCard({
   year,
   owner,
   chainStatusUnavailable,
+  ownerMinPrice1e8,
+  platformFeeBps,
+  wallet,
+  onConsignmentChanged,
 }: {
   tokenId: string;
   chainId: number;
@@ -104,20 +129,28 @@ function AuthorizedAwaitingCard({
   year?: number;
   owner: string;
   chainStatusUnavailable?: boolean;
+  ownerMinPrice1e8: bigint;
+  platformFeeBps: bigint | null | undefined;
+  wallet: Address;
+  onConsignmentChanged: () => void;
 }) {
+  const [listExpanded, setListExpanded] = useState(false);
+
   return (
-    <Link
-      href={`/marketplace/${tokenId}?chain=${chainId}`}
-      className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm transition-colors duration-150 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-    >
+    <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <PassportIdLabel
-          tokenId={tokenId}
-          chainId={chainId}
-          prefix="none"
-          variant="mono"
-          className="text-text-primary"
-        />
+        <Link
+          href={`/marketplace/${tokenId}?chain=${chainId}`}
+          className="text-text-primary underline-offset-2 hover:text-accent-warm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          <PassportIdLabel
+            tokenId={tokenId}
+            chainId={chainId}
+            prefix="none"
+            variant="mono"
+            className="text-inherit"
+          />
+        </Link>
         <PassportStatusBadge status={status} />
       </div>
       {make && model && (
@@ -137,7 +170,114 @@ function AuthorizedAwaitingCard({
       {chainStatusUnavailable && (
         <p className="mt-1 font-sans text-xs text-text-tertiary">Status unavailable</p>
       )}
-    </Link>
+
+      {!listExpanded ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-3 w-full"
+          onClick={() => setListExpanded(true)}
+        >
+          List vehicle
+        </Button>
+      ) : (
+        <>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setListExpanded(false)}
+              className="font-sans text-xs text-text-secondary underline-offset-2 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+            >
+              Collapse
+            </button>
+          </div>
+          <AgentListOnBehalfPanel
+            chainId={chainId}
+            tokenId={tokenId}
+            ownerMinPrice1e8={ownerMinPrice1e8}
+            platformFeeBps={platformFeeBps}
+            wallet={wallet}
+            onSuccess={() => {
+              setListExpanded(false);
+              onConsignmentChanged();
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function ActiveConsignmentCard({
+  listing,
+  row,
+  chainId,
+  platformFeeBps,
+  wallet,
+  onConsignmentChanged,
+}: {
+  listing: PonderAgentListingRaw;
+  row: MarketplaceListingRow;
+  chainId: number;
+  platformFeeBps: bigint | null | undefined;
+  wallet: Address;
+  onConsignmentChanged: () => void;
+}) {
+  const [editExpanded, setEditExpanded] = useState(false);
+  const tokenId = String(listing.tokenId ?? listing.id ?? "");
+
+  return (
+    <div className="space-y-0">
+      <ListingCard row={row} />
+      <div className="rounded-b-md border border-t-0 border-border-default bg-bg-surface px-4 py-3">
+        {!editExpanded ? (
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => setEditExpanded(true)}
+            >
+              Edit listing
+            </Button>
+            <AgentDelistButton
+              chainId={chainId}
+              tokenId={tokenId}
+              wallet={wallet}
+              onSuccess={onConsignmentChanged}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setEditExpanded(false)}
+                className="font-sans text-xs text-text-secondary underline-offset-2 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              >
+                Collapse
+              </button>
+            </div>
+            <AgentUpdateListingPanel
+              chainId={chainId}
+              listing={listing}
+              platformFeeBps={platformFeeBps}
+              wallet={wallet}
+              onSuccess={() => {
+                setEditExpanded(false);
+                onConsignmentChanged();
+              }}
+            />
+            <AgentDelistButton
+              chainId={chainId}
+              tokenId={tokenId}
+              wallet={wallet}
+              onSuccess={onConsignmentChanged}
+            />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -199,10 +339,14 @@ function AwaitingAuthorizationsSection({
   wallet,
   chainId,
   wrongChain,
+  platformFeeBps,
+  onConsignmentChanged,
 }: {
   wallet: Address;
   chainId: number;
   wrongChain: boolean;
+  platformFeeBps: bigint | null | undefined;
+  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -374,6 +518,10 @@ function AwaitingAuthorizationsSection({
                   year={passport?.year}
                   owner={passport?.owner ?? ""}
                   chainStatusUnavailable={chainStatusUnavailable}
+                  ownerMinPrice1e8={BigInt(auth.ownerMinPrice1e8)}
+                  platformFeeBps={platformFeeBps}
+                  wallet={wallet}
+                  onConsignmentChanged={onConsignmentChanged}
                 />
               </li>
             ))}
@@ -398,12 +546,16 @@ function ListingsSection({
   active,
   emptyMessage,
   omitWhenEmpty,
+  platformFeeBps,
+  onConsignmentChanged,
 }: {
   title: string;
   wallet: Address;
   active: boolean;
   emptyMessage: string;
   omitWhenEmpty?: boolean;
+  platformFeeBps: bigint | null | undefined;
+  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -417,13 +569,14 @@ function ListingsSection({
     isError,
   } = useAgentListingsInfinite(wallet, active);
 
-  const rows: MarketplaceListingRow[] = useMemo(
-    () =>
-      data?.pages.flatMap((page) =>
-        page.listings.map((listing) => mapAgentListingToRow(listing)),
-      ) ?? [],
-    [data],
-  );
+  const listingPairs = useMemo(() => {
+    const listings =
+      data?.pages.flatMap((page) => page.listings) ?? [];
+    return listings.map((listing) => ({
+      listing,
+      row: mapAgentListingToRow(listing),
+    }));
+  }, [data]);
 
   const ponderError = data?.pages[0]?.ponderError;
   const total = data?.pages[0]?.total ?? 0;
@@ -458,16 +611,27 @@ function ListingsSection({
         </div>
       )}
 
-      {!isPending && !ponderError && rows.length === 0 && (
+      {!isPending && !ponderError && listingPairs.length === 0 && (
         <p className="py-4 text-center text-sm text-text-secondary">{emptyMessage}</p>
       )}
 
-      {!ponderError && rows.length > 0 && (
+      {!ponderError && listingPairs.length > 0 && (
         <>
           <ul className="grid gap-3 sm:grid-cols-2">
-            {rows.map((row) => (
+            {listingPairs.map(({ listing, row }) => (
               <li key={row.tokenId}>
-                <ListingCard row={row} />
+                {active ? (
+                  <ActiveConsignmentCard
+                    listing={listing}
+                    row={row}
+                    chainId={row.chainId}
+                    platformFeeBps={platformFeeBps}
+                    wallet={wallet}
+                    onConsignmentChanged={onConsignmentChanged}
+                  />
+                ) : (
+                  <ListingCard row={row} />
+                )}
               </li>
             ))}
           </ul>
@@ -487,9 +651,27 @@ function ListingsSection({
 
 export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const { chainId: connectedChainId } = useAccount();
+  const queryClient = useQueryClient();
+  const router = useRouter();
   const wc = wagmiChainId(chainId);
+  const market = marketplaceAddress(chainId);
   const wrongChain =
     connectedChainId != null && connectedChainId !== wc;
+
+  const { data: platformFeeBpsRaw } = useReadContract({
+    address: market ?? undefined,
+    abi: MarketplaceEscrowAbi,
+    functionName: "platformFeeBps",
+    chainId: wc,
+    query: { enabled: Boolean(market) },
+  });
+
+  const platformFeeBps =
+    platformFeeBpsRaw != null ? BigInt(platformFeeBpsRaw) : undefined;
+
+  const onConsignmentChanged = useCallback(() => {
+    void invalidateAgentConsignmentQueries(wallet, queryClient, router);
+  }, [wallet, queryClient, router]);
 
   return (
     <div className="space-y-2">
@@ -503,6 +685,8 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         wallet={wallet}
         chainId={chainId}
         wrongChain={wrongChain}
+        platformFeeBps={platformFeeBps}
+        onConsignmentChanged={onConsignmentChanged}
       />
 
       <ListingsSection
@@ -510,6 +694,8 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         wallet={wallet}
         active
         emptyMessage="No active consignments"
+        platformFeeBps={platformFeeBps}
+        onConsignmentChanged={onConsignmentChanged}
       />
 
       <ListingsSection
@@ -518,6 +704,8 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         active={false}
         emptyMessage="No past consignments"
         omitWhenEmpty
+        platformFeeBps={platformFeeBps}
+        onConsignmentChanged={onConsignmentChanged}
       />
     </div>
   );

@@ -274,6 +274,8 @@ export type PonderAgentListingRaw = {
   coverPhotoUri?: string;
   duplicateVin?: boolean;
   verifier?: string;
+  agentFeeBps?: number;
+  ownerMinPrice1e8?: string;
 };
 
 export type PonderAgentListingsResponse = {
