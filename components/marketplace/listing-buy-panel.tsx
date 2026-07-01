@@ -73,6 +73,7 @@ type Props = {
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
+  directPaymentNote?: string;
 };
 
 function formatEth4FromWei(ethWei: bigint): string {
@@ -140,6 +141,7 @@ export function ListingBuyPanel({
   passportStatus,
   duplicateVin,
   hadDispute,
+  directPaymentNote: directPaymentNoteProp,
 }: Props) {
   const config = useConfig();
   const router = useRouter();
@@ -164,10 +166,11 @@ export function ListingBuyPanel({
     functionName: "settlementNotes",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(market) },
+    query: { enabled: Boolean(market) && directPaymentNoteProp === undefined },
   });
 
-  const directPaymentNote = decodeSettlementNote(settlementNoteRaw).trim();
+  const directPaymentNote =
+    directPaymentNoteProp ?? decodeSettlementNote(settlementNoteRaw).trim();
 
   const { data: quoteData, isLoading: isQuotesLoading } = useReadContracts({
     contracts:

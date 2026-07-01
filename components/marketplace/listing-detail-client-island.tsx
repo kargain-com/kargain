@@ -2,13 +2,16 @@
 
 import { MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-agent-buyer-attribution";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
+import { ListingMakeOfferButton } from "@/components/marketplace/listing-make-offer-button";
+import { ListingOffersPanel } from "@/components/marketplace/listing-offers-panel";
 import { OwnerReturnRequestPanel } from "@/components/marketplace/owner-return-request-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
@@ -17,6 +20,8 @@ import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.gener
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
+import { resolveNostrPubkeyForEthereumAddress } from "@/lib/nostr/nostr-client";
 import {
   isOnChainNftOwner,
   isPassportHolder,
@@ -64,6 +69,15 @@ type Props = {
   hadDispute: boolean;
 };
 
+function formatChainTimestamp(value: string | number | undefined): string {
+  const sec = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(sec) || sec <= 0) return "";
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(sec * 1000));
+}
+
 export function ListingDetailClientIsland({
   chainId,
   tokenId,
@@ -73,8 +87,10 @@ export function ListingDetailClientIsland({
   duplicateVin,
   hadDispute,
 }: Props) {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
   const [authorizeOpen, setAuthorizeOpen] = useState(false);
+  const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
@@ -117,6 +133,13 @@ export function ListingDetailClientIsland({
               args: [tid],
               chainId: wc,
             },
+            {
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "settlementNotes",
+              args: [tid],
+              chainId: wc,
+            },
           ]
         : [],
   });
@@ -125,6 +148,8 @@ export function ListingDetailClientIsland({
   const chainRow = parseOnChainListing(chainReads?.[1]?.result);
   const agentAuthRaw = chainReads?.[2]?.result as AgentAuthResult | undefined;
   const chainReturnRequestedAt = chainReads?.[3]?.result as bigint | undefined;
+  const directPaymentNote = decodeSettlementNote(chainReads?.[4]?.result).trim();
+  const hasDirectPayment = directPaymentNote.length > 0;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
   const agentAuth = useMemo((): AgentAuthResult | null => {
@@ -178,7 +203,27 @@ export function ListingDetailClientIsland({
     address.toLowerCase() === listingSeller.toLowerCase(),
   );
 
+  const isAgent = Boolean(
+    address &&
+      hasListingAgent(listing?.agent) &&
+      address.toLowerCase() === listing!.agent!.toLowerCase(),
+  );
+
   const isOwner = isOnChainNftOwner(address, effectiveOwner);
+
+  useEffect(() => {
+    if (!listingSeller) {
+      setSellerNostrPubkey(null);
+      return;
+    }
+    let cancelled = false;
+    void resolveNostrPubkeyForEthereumAddress(listingSeller).then((pubkey) => {
+      if (!cancelled) setSellerNostrPubkey(pubkey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingSeller]);
 
   const holder = isPassportHolder({
     address,
@@ -205,6 +250,13 @@ export function ListingDetailClientIsland({
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const manageLabel = listingActive ? "Manage listing" : "List for sale";
 
+  const externalPaymentDate = formatChainTimestamp(listing?.externalPaymentConfirmedAt);
+
+  const handleOfferConfirmed = useCallback(() => {
+    void refetchChainReads();
+    router.refresh();
+  }, [refetchChainReads, router]);
+
   return (
     <div className="space-y-6">
       {listingActive && effectiveListing ? (
@@ -215,6 +267,7 @@ export function ListingDetailClientIsland({
           passportStatus={passportStatus}
           duplicateVin={duplicateVin}
           hadDispute={hadDispute}
+          directPaymentNote={directPaymentNote}
         />
       ) : isChainReadsLoading && market ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
@@ -228,8 +281,19 @@ export function ListingDetailClientIsland({
 
       {!listingActive && externalPaymentConfirmed && (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-          Payment confirmed externally.
+          {externalPaymentDate
+            ? `Payment confirmed externally on ${externalPaymentDate}.`
+            : "Payment confirmed externally."}
         </p>
+      )}
+
+      {listingActive && hasDirectPayment && listingSeller && (
+        <ListingMakeOfferButton
+          tokenId={tokenId}
+          sellerAddress={listingSeller}
+          sellerNostrPubkey={sellerNostrPubkey}
+          agentAddress={listing?.agent}
+        />
       )}
 
       {listingActive && hasListingAgent(listing?.agent) && (
@@ -237,6 +301,19 @@ export function ListingDetailClientIsland({
       )}
 
       {isSeller && listingActive && <SellerMessagingBanner />}
+
+      {listingActive &&
+        hasDirectPayment &&
+        (isSeller || isAgent) &&
+        sellerNostrPubkey && (
+          <ListingOffersPanel
+            chainId={chainId}
+            tokenId={tokenId}
+            sellerNostrPubkey={sellerNostrPubkey}
+            hasDirectPayment={hasDirectPayment}
+            onConfirmed={handleOfferConfirmed}
+          />
+        )}
 
       {isOwner && agentAuthActive && agentAuth && (
         <AgentAuthorizationStatus
