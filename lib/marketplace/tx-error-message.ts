@@ -25,6 +25,19 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
     "NotVerifier",
     "You must be an active KarPro verifier to set a verification fee.",
   ],
+  [
+    "InsufficientDeposit",
+    "The required deposit has changed. Please retry.",
+  ],
+  [
+    "NotDisputeOpener",
+    "Only the dispute opener can withdraw this dispute.",
+  ],
+  ["NoActiveDispute", "This passport is not in an active dispute."],
+  [
+    "CannotResolveSelfDispute",
+    "You cannot resolve a dispute you opened yourself.",
+  ],
 ];
 
 function mapRevertReason(message: string): string | null {

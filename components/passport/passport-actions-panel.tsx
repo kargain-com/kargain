@@ -4,11 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { formatEther } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
   useConfig,
+  useReadContract,
   useSignMessage,
   useSwitchChain,
   useWriteContract,
@@ -26,8 +28,8 @@ import {
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
-import { DISPUTE_WITHDRAWN_PREFIX } from "@/lib/passport/index-passport-metadata";
 import { invalidatePassportChainReads } from "@/lib/passport/invalidate-passport-chain-reads";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
 import {
   isOnChainNftOwner,
@@ -137,6 +139,16 @@ export function PassportActionsPanel({
         : [],
   });
 
+  const { data: disputeDepositRaw, isLoading: disputeDepositLoading } = useReadContract({
+    address: passport ?? undefined,
+    abi: KarPassportAbi,
+    functionName: "disputeDeposit",
+    chainId: wc,
+    query: { enabled: Boolean(passport) },
+  });
+  const disputeDeposit =
+    disputeDepositRaw != null ? BigInt(disputeDepositRaw) : undefined;
+
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
@@ -182,7 +194,7 @@ export function PassportActionsPanel({
         await completePassportTx(hash);
         setMessage(success);
       } catch (err) {
-        setMessage(err instanceof Error ? err.message : "Transaction failed.");
+        setMessage(txErrorMessage(err));
       }
     },
     [completePassportTx, passport, switchChainAsync, wc, wrongChain],
@@ -484,11 +496,24 @@ export function PassportActionsPanel({
             onChange={(e) => setDisputeReason(e.target.value)}
             rows={3}
           />
+          {disputeDepositLoading ? (
+            <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
+          ) : disputeDeposit != null ? (
+            <p className="text-xs text-text-secondary">
+              Opening a dispute requires a refundable deposit of {formatEther(disputeDeposit)}{" "}
+              ETH.
+            </p>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             className="w-full border-status-error text-status-error"
-            disabled={isPending || !disputeReason.trim()}
+            disabled={
+              isPending ||
+              disputeDepositLoading ||
+              disputeDeposit === undefined ||
+              !disputeReason.trim()
+            }
             onClick={() =>
               void run(
                 () =>
@@ -497,6 +522,7 @@ export function PassportActionsPanel({
                     abi: KarPassportAbi,
                     functionName: "disputePassport",
                     args: [tid, disputeReason.trim()],
+                    value: disputeDeposit,
                   }),
                 "Dispute opened.",
               )
@@ -510,69 +536,93 @@ export function PassportActionsPanel({
       {status === "DISPUTED" && isActiveVerifier && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-text-secondary">
-            Any active verifier may resolve this dispute (matches on-chain rules).
+            You cannot resolve a dispute you opened yourself.
           </p>
-          <Button
-            type="button"
-            disabled={actionsBusy}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport,
-                    abi: KarPassportAbi,
-                    functionName: "resolveDispute",
-                    args: [tid, 1],
-                  }),
-                "Dispute upheld — passport remains verified.",
-              )
-            }
-          >
-            Resolve — uphold
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={actionsBusy}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport,
-                    abi: KarPassportAbi,
-                    functionName: "resolveDispute",
-                    args: [tid, 0],
-                  }),
-                "Dispute rejected — verification cleared.",
-              )
-            }
-          >
-            Resolve — reject
-          </Button>
+          {!isLastDisputer && (
+            <>
+              <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
+                <p className="text-xs text-text-secondary">
+                  The verification was incorrect. Status becomes unverified. The dispute opener
+                  receives the deposit back.
+                </p>
+                <Button
+                  type="button"
+                  disabled={actionsBusy}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        writeContractAsync({
+                          address: passport,
+                          abi: KarPassportAbi,
+                          functionName: "resolveDispute",
+                          args: [tid, 0],
+                        }),
+                      "Dispute confirmed. Passport is now unverified.",
+                    )
+                  }
+                >
+                  Confirm dispute
+                </Button>
+              </div>
+              <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
+                <p className="text-xs text-text-secondary">
+                  The verification stands. Status stays verified. You receive the deposit as
+                  compensation for reviewing.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={actionsBusy}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        writeContractAsync({
+                          address: passport,
+                          abi: KarPassportAbi,
+                          functionName: "resolveDispute",
+                          args: [tid, 1],
+                        }),
+                      "Dispute rejected. Verification stands.",
+                    )
+                  }
+                >
+                  Reject dispute
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {status === "DISPUTED" && isLastDisputer && !disputeWithdrawn && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={isPending}
-          onClick={() =>
-            void run(
-              () =>
-                writeContractAsync({
-                  address: passport,
-                  abi: KarPassportAbi,
-                  functionName: "reportDiscrepancy",
-                  args: [tid, `${DISPUTE_WITHDRAWN_PREFIX} withdrawn`, ""],
-                }),
-              "Dispute signal withdrawn.",
-            )
-          }
-        >
-          Withdraw dispute signal
-        </Button>
+      {status === "DISPUTED" && isLastDisputer && (
+        <div className="space-y-2">
+          {disputeDeposit != null && (
+            <p className="text-xs text-text-secondary">
+              This restores VERIFIED status and refunds your {formatEther(disputeDeposit)} ETH
+              deposit in full. Only you can do this.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            disabled={isPending}
+            onClick={() =>
+              void run(
+                () =>
+                  writeContractAsync({
+                    address: passport,
+                    abi: KarPassportAbi,
+                    functionName: "withdrawDispute",
+                    args: [tid],
+                  }),
+                "Dispute withdrawn. Your deposit has been refunded.",
+              )
+            }
+          >
+            Withdraw my dispute
+          </Button>
+        </div>
       )}
 
       {status === "DISPUTED" && isOwner && !listingActive && (
