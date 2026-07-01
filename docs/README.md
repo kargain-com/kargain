@@ -23,7 +23,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [design-spec.md](./design-spec.md) | Layout, tokens, components — marketplace §4.16 groups agent consignment by role (buyer, owner, KarPro) |
+| [design-spec.md](./design-spec.md) | Layout, tokens, components — marketplace §4.16 agent consignment by role; §4.17 verification fee |
 
 ## Deploy records
 

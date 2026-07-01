@@ -74,8 +74,8 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
 | `GET /notifications/:address` | Notification feed |
-| `GET /verifiers` | Verifier directory |
-| `GET /verifiers/:address` | Verifier profile |
+| `GET /verifiers` | Verifier directory (`verificationFee` wei string on each row) |
+| `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |
 | `GET /verifiers/:address/attestations` | Verifier attestations |
 

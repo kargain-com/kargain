@@ -311,7 +311,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Homepage stats (`/`):** [`MarketplaceStatsLine`](../components/marketplace/marketplace-stats-line.tsx) in [`app/page.tsx`](../app/page.tsx) inside `Suspense` (sibling to [`market-browse.tsx`](../components/marketplace/market-browse.tsx)). Stats fetch does not block filter bar or listing grid shell. Compact ambient line above [`market-filter-bar.tsx`](../components/marketplace/market-filter-bar.tsx): `font-mono text-xs text-text-tertiary tabular-nums` (e.g. `42 listings · 12 verified · 5 active verifiers`). Hidden when all stats are 0.
 
-**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback.
+**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback. Each card shows verification count, member since, **verification fee** (`formatVerificationFee` — `0` → *Contact for quote*), **View showroom →**, **Request verification**, and **Pay for inspection** when fee &gt; 0 (see §4.17).
 
 **Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
 
@@ -341,13 +341,13 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob v2 encrypts sk with signature-derived AES — see [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts) |
-| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · `0.05 ETH` staked (owner only). Refreshes client-side via `ProfileVerifierStatsBand`. |
+| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · `0.05 ETH` staked (owner only). Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
 | KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
 | Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier or has verifier history in Ponder (visible to all visitors); **Disputes** owner + active verifier only |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
-**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
+**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). **Verification fee** line below the stats grid. Hero CTAs: contact verifier, **Pay for inspection** when fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
 Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
 
@@ -487,6 +487,42 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
 | Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
 | Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
+
+---
+
+### 4.17 Verification fee
+
+KarProStaking `verificationFee` is informational on-chain — Kargain does not escrow or enforce payment. Contract reference: [SPEC §I.4](./contracts/SPEC.md). Helpers: [`verification-fee.ts`](../lib/verifier/verification-fee.ts) (`formatVerificationFee`, `verificationFeeInUsdc`).
+
+#### Display (owners and visitors)
+
+| Surface | Rule |
+|---------|------|
+| Verifier directory card | Mono `text-xs text-text-secondary` fee line under count / member since; always shown (`0` → *Contact for quote*) |
+| Request verification | [`verification-request-button.tsx`](../components/verifier/verification-request-button.tsx) — muted fee under button when fee &gt; 0 only |
+| Profile stats band | [`profile-verifier-stats-band.tsx`](../components/profile/profile-verifier-stats-band.tsx) — **Verification fee** segment for all visitors |
+| Pro showroom hero | Fee line below stats grid; [`VerificationPayButton`](../components/verifier/verification-payment-modal.tsx) when fee &gt; 0 |
+
+#### Verifier management (`/kar-pro`)
+
+| Rule | Value |
+|------|-------|
+| Set fee | [`kar-pro-credential-card.tsx`](../components/kar-pro/kar-pro-credential-card.tsx) — ETH decimal input, `setVerificationFee` on-chain; empty / `0` clears to *Contact for quote* |
+| Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only link to `/kar-pro` — writes live on credential card |
+
+#### Pay for inspection (passport owners)
+
+| Rule | Value |
+|------|-------|
+| Entry points | **Pay for inspection** on `/verifiers` cards and `/pro/[slug]` hero when `verificationFee &gt; 0` |
+| Modal | [`verification-payment-modal.tsx`](../components/verifier/verification-payment-modal.tsx) — [`Dialog`](../components/ui/dialog.tsx) shell |
+| Passport step | UNVERIFIED passports from `getProfileData` → dropdown (`formatPassportTitle` + make/model); else manual passport ID input |
+| ETH | Native transfer to verifier; `data` = `stringToHex("kargain:verify:{tokenId}")` (human-readable memo on explorers) |
+| USDC | ERC-20 `transfer` to verifier; amount from `verificationFeeInUsdc` + live `ethUsd` from [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts); UI shows passport ID only — honest copy that USDC has no on-chain memo |
+| Toggle | Same segmented **Pay with ETH / Pay with USDC** pattern as [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx) |
+| Trust copy | Modal disclaimer: payment goes directly to verifier; Kargain does not hold funds; verification is separate on-chain step |
+| Success | Confirmation in modal; no navigation away |
+| Hidden | No pay button when fee is `0`, when viewer is the verifier, or on agent-picker card layout |
 
 ---
 

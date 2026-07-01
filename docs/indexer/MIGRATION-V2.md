@@ -125,7 +125,7 @@ Deprecate `payAsset` enum column for generation v2 rows.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `verificationFee` | bigint | From `VerificationFeeUpdated` |
+| `verificationFee` | bigint | From `VerificationFeeUpdated`; exposed on `GET /verifiers` and `GET /verifiers/:address` as string wei (July 2026) |
 
 ### New table: `agent_authorization`
 
