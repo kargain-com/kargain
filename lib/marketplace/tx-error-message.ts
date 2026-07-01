@@ -20,6 +20,7 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
   ],
   ["ReturnCooldownPending", "The 7-day cooldown has not yet elapsed. Please wait."],
   ["ReturnNotRequested", "Request a return first before forcing it."],
+  ["EmptySettlementNote", "Settlement note cannot be empty."],
   [
     "NotVerifier",
     "You must be an active KarPro verifier to set a verification fee.",

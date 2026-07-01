@@ -28,6 +28,7 @@ export type PonderListingInput = {
   verifier?: string;
   agent?: string;
   returnRequestedAt?: string | number;
+  externalPaymentConfirmedAt?: string | number;
 };
 
 export type MarketplaceListingRow = {
@@ -56,6 +57,7 @@ export type MarketplaceListingRow = {
   featured: boolean;
   agent: string | null;
   returnRequestedAt: string | null;
+  externalPaymentConfirmedAt: string | null;
 };
 
 function buildTitle(listing: PonderListingInput): string {
@@ -104,6 +106,11 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
       listing.returnRequestedAt != null && String(listing.returnRequestedAt) !== "0"
         ? String(listing.returnRequestedAt)
         : null,
+    externalPaymentConfirmedAt:
+      listing.externalPaymentConfirmedAt != null &&
+      String(listing.externalPaymentConfirmedAt) !== "0"
+        ? String(listing.externalPaymentConfirmedAt)
+        : null,
   };
 }
 
@@ -133,5 +140,6 @@ export function mapAgentListingToRow(
     verifier: listing.verifier,
     agent: listing.agent,
     returnRequestedAt: listing.returnRequestedAt,
+    externalPaymentConfirmedAt: listing.externalPaymentConfirmedAt,
   });
 }

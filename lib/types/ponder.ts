@@ -278,6 +278,7 @@ export type PonderAgentListingRaw = {
   agentFeeBps?: number;
   ownerMinPrice1e8?: string;
   returnRequestedAt?: string;
+  externalPaymentConfirmedAt?: string;
 };
 
 export type PonderAgentListingsResponse = {

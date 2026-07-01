@@ -38,6 +38,7 @@ type Props = {
     seller: `0x${string}`;
     agent?: string;
     returnRequestedAt?: string | number;
+    externalPaymentConfirmedAt?: string | number;
   } | null;
 };
 

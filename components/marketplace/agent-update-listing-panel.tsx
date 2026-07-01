@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseUnits } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
   useConfig,
+  useReadContract,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -14,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
 import {
   SellerNetCalculator,
   sellerNetSatisfied,
@@ -24,6 +26,7 @@ import {
   type ListingCurrencyCode,
 } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { MAX_AGENT_FEE_BPS } from "@/lib/marketplace/seller-net";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import type { PonderAgentListingRaw } from "@/lib/types/ponder";
@@ -102,7 +105,23 @@ export function AgentUpdateListingPanel({
   const [commissionInput, setCommissionInput] = useState(() =>
     initialCommissionPct(listing.agentFeeBps),
   );
+  const [settlementNote, setSettlementNote] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
+
+  const { data: settlementNoteRaw } = useReadContract({
+    address: market,
+    abi: MarketplaceEscrowAbi,
+    functionName: "settlementNotes",
+    args: [tid],
+    chainId: wc,
+    query: { enabled: Boolean(market) },
+  });
+
+  const onChainNote = decodeSettlementNote(settlementNoteRaw).trim();
+
+  useEffect(() => {
+    if (onChainNote) setSettlementNote(onChainNote);
+  }, [onChainNote]);
 
   const price1e8 = useMemo(() => parsePrice1e8(priceInput), [priceInput]);
   const agentFeeBps = useMemo(
@@ -230,6 +249,26 @@ export function AgentUpdateListingPanel({
       >
         Update listing
       </Button>
+
+      <div className="space-y-2 border-t border-border-default pt-3">
+        <h3 className="text-sm font-medium text-text-primary">Direct payment instructions</h3>
+        <p className="text-xs text-text-secondary">
+          Shown to buyers who want to pay outside Kargain checkout. The owner updates these on
+          the manage listing page.
+        </p>
+        <ListingSellerSettlementPanel
+          chainId={chainId}
+          priceInput=""
+          onPriceInputChange={() => {}}
+          askingCurrency={listingCurrency}
+          onAskingCurrencyChange={() => {}}
+          settlementNote={settlementNote}
+          onSettlementNoteChange={() => {}}
+          priceInputId={`agent-settlement-${tokenId}`}
+          showAskingFields={false}
+          disabled
+        />
+      </div>
     </div>
   );
 }

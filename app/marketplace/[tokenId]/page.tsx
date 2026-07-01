@@ -150,6 +150,9 @@ async function MarketplaceListingInner({
         agent: (listingRaw as { agent?: string }).agent,
         returnRequestedAt: (listingRaw as { returnRequestedAt?: string | number })
           .returnRequestedAt,
+        externalPaymentConfirmedAt: (
+          listingRaw as { externalPaymentConfirmedAt?: string | number }
+        ).externalPaymentConfirmedAt,
       }
     : null;
 

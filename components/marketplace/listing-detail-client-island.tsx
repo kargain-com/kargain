@@ -43,6 +43,7 @@ type ListingProp = {
   seller: `0x${string}`;
   agent?: string;
   returnRequestedAt?: string | number;
+  externalPaymentConfirmedAt?: string | number;
 };
 
 type AgentAuthResult = {
@@ -161,6 +162,11 @@ export function ListingDetailClientIsland({
   const listingActive = Boolean(effectiveListing?.active);
   const listingSeller = effectiveListing?.seller;
 
+  const externalPaymentConfirmed = Boolean(
+    listing?.externalPaymentConfirmedAt != null &&
+      String(listing.externalPaymentConfirmedAt) !== "0",
+  );
+
   const contactPeer: `0x${string}` | undefined = listingActive
     ? listingSeller
     : effectiveOwner;
@@ -217,6 +223,12 @@ export function ListingDetailClientIsland({
       ) : (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Not currently listed
+        </p>
+      )}
+
+      {!listingActive && externalPaymentConfirmed && (
+        <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
+          Payment confirmed externally.
         </p>
       )}
 
