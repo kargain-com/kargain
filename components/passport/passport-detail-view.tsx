@@ -336,7 +336,12 @@ export function PassportDetailView({
                   href={`/profile/${passport.verifier}`}
                   className="font-mono text-accent-warm hover:underline"
                 />
-                {verifiedDate && <> on {verifiedDate}</>}
+                {verifiedDate && (
+                  <>
+                    {" "}
+                    on <span className="font-mono tabular-nums">{verifiedDate}</span>
+                  </>
+                )}
                 <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
               </p>
             </section>

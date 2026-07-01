@@ -67,7 +67,7 @@ export function NotificationRow({ item, isLast = false, onRead }: NotificationRo
           >
             {item.body}
           </p>
-          <p className="mt-1 font-sans text-xs text-text-tertiary">
+          <p className="mt-1 font-mono text-xs text-text-tertiary tabular-nums">
             {formatRelativeTime(new Date(item.timestamp * 1000))}
           </p>
         </div>

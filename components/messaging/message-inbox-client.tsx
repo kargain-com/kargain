@@ -67,7 +67,7 @@ function ConversationInboxRow({ conversation }: { conversation: ConversationSumm
           </div>
           {conversation.lastMessageAt && (
             <time
-              className="shrink-0 text-[10px] text-text-secondary"
+              className="shrink-0 font-mono text-[10px] text-text-secondary tabular-nums"
               dateTime={conversation.lastMessageAt.toISOString()}
             >
               {formatRelativeTime(conversation.lastMessageAt)}

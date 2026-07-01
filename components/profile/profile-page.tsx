@@ -24,6 +24,7 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/xmtp/helpers";
 import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = {
@@ -256,7 +257,9 @@ function AttestationRow({
           {attestation.description.trim()}
         </p>
       )}
-      {date && <p className="mt-1 text-xs text-text-tertiary">{date}</p>}
+      {date && (
+        <p className="mt-1 font-mono text-xs text-text-tertiary tabular-nums">{date}</p>
+      )}
       {href && (
         <a
           href={href}
@@ -283,29 +286,6 @@ function formatVehicleLabel(year: number, make: string, model: string): string {
   return parts.join(" ");
 }
 
-function formatRelativeDisputeTime(timestampSec: number): string {
-  if (!Number.isFinite(timestampSec) || timestampSec <= 0) return "";
-
-  const date = new Date(timestampSec * 1000);
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  if (diffMs < 0) return "just now";
-
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return "just now";
-
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(date);
-}
-
 function isNonemptyDisputer(address: string): boolean {
   const trimmed = address.trim();
   return trimmed.length > 0 && trimmed.toLowerCase() !== ZERO_ADDRESS;
@@ -320,7 +300,10 @@ function DisputeCard({
 }) {
   const vehicleLabel = formatVehicleLabel(dispute.year, dispute.make, dispute.model);
   const reason = dispute.disputeReason.trim();
-  const openedLabel = formatRelativeDisputeTime(dispute.disputeOpenedAt);
+  const openedLabel =
+    Number.isFinite(dispute.disputeOpenedAt) && dispute.disputeOpenedAt > 0
+      ? formatRelativeTime(new Date(dispute.disputeOpenedAt * 1000))
+      : "";
   const showDisputer = isNonemptyDisputer(dispute.lastDisputer);
 
   return (
@@ -357,10 +340,10 @@ function DisputeCard({
       {(openedLabel || showDisputer) && (
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {openedLabel && (
-            <span className="font-mono text-xs text-text-tertiary">{openedLabel}</span>
+            <span className="font-mono text-xs text-text-tertiary tabular-nums">{openedLabel}</span>
           )}
           {showDisputer && (
-            <span className="font-mono text-xs text-text-secondary">
+            <span className="font-mono text-xs text-text-secondary tabular-nums">
               Disputed by {shortAddress(dispute.lastDisputer)}
             </span>
           )}

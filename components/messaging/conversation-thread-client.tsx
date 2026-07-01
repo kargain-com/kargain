@@ -175,7 +175,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
                 <p className="whitespace-pre-wrap break-words">{message.content}</p>
               </div>
               <time
-                className={`text-xs text-text-tertiary ${message.isMine ? "text-right" : "text-left"}`}
+                className={`font-mono text-xs text-text-tertiary tabular-nums ${message.isMine ? "text-right" : "text-left"}`}
                 dateTime={message.sentAt.toISOString()}
               >
                 {formatRelativeTime(message.sentAt)}
