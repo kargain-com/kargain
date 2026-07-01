@@ -313,7 +313,9 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback. Each card shows verification count, member since, **verification fee** (`formatVerificationFee` — `0` → *Contact for quote*), **View showroom →**, **Request verification**, and **Pay for inspection** when fee &gt; 0 (see §4.17).
 
-**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
+> **Price display: superseded by §10.2** — see below. Amounts no longer use `text-accent-warm`.
+
+**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). (Price display: §10.2 — no accent-warm on amounts or card hover.) Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
 
 **Photo upload (mint + edit):** [`photo-upload-zone.tsx`](../components/passport/photo-upload-zone.tsx) (create) and [`edit-passport-wizard.tsx`](../components/passport/edit-passport-wizard.tsx) (new photos only). Incoming images (including HEIC via `heic2any`) are always re-encoded to **WebP ≤ 100 KB** in the browser via [`compress-passport-image.ts`](../lib/passport/compress-passport-image.ts) and [`passport-image-encode-plan.ts`](../lib/passport/passport-image-encode-plan.ts) — quality and max-edge ladder until the byte budget is met; no skip path and no fallback to the original file. Failures surface as [`PassportImageOptimizeError`](../lib/passport/passport-image-optimize-error.ts) with user-facing copy from [`passport-flow-messages.ts`](../lib/passport/passport-flow-messages.ts). [`passport-upload-preflight-banner.tsx`](../components/passport/passport-upload-preflight-banner.tsx) warns smart contract wallets when multiple photos may fail the Irys storage deposit.
 
@@ -376,7 +378,7 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
-| Timestamps | Below bubble, `text-xs text-text-tertiary`, aligned with sender side |
+| Timestamps | Below bubble, `font-mono text-xs text-text-tertiary tabular-nums`, aligned with sender side (inbox row: `font-mono text-[10px] text-text-secondary tabular-nums`) |
 | Composer | `Input` + icon `Button`; Enter sends |
 | Empty inbox | "No conversations yet." (only when messaging is active) |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
@@ -623,4 +625,99 @@ Do not use any of the following in this codebase:
 
 ---
 
-*Document version: 2.0 (June 2026 — Kargain-only public release). Update when tokens, app shell, or component contracts change.*
+## 10. Instrument Layer
+
+Kargain's UI treats verified on-chain facts as **instrument readings** — precise, mono, status-colored — not marketing copy. This section governs how factual and status data is distinguished from narrative or decorative UI. It does not replace §4 component layout contracts; when §4 and §10 conflict on factual typography or accent usage, **§10 wins** for those properties.
+
+---
+
+### 10.1 Data typography
+
+All on-chain and factual fields render in `font-mono` with `tabular-nums` on numeric values. **No sans-serif exceptions** for the field types below.
+
+| Field type | Examples | Canonical classes |
+|------------|----------|-------------------|
+| Token / chain identifiers | Passport token ID, chain suffix | Serial: `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` (see §10.2) |
+| Transaction / block data | Tx hash, block number | `font-mono text-fluid-sm font-normal tabular-nums text-text-primary` (§3 Mono numeric) or `font-mono text-xs` in dense rows |
+| Wallet addresses | ENS name sub-line, `shortAddress`, `navShortAddress` | `font-mono text-xs text-text-secondary` or `font-mono text-sm text-text-secondary` |
+| Timestamps | Record dates, notification times, message times | `font-mono tabular-nums` + `text-text-tertiary` or `text-text-secondary` (see §10.4) |
+| Browse / asking price | Listing card, detail sidebar | `font-mono text-lg font-medium tabular-nums text-text-primary` |
+| Fee lines | Verification fee, checkout disclosure amounts | `font-mono text-xs text-text-secondary` |
+| Vehicle spec values | VIN, mileage, year, spec grid values | `font-mono text-sm font-normal text-text-primary` (labels: §3-style tertiary uppercase mono) |
+
+**Cross-reference:** §3 **Mono numeric** and **Code inline** rows remain the base scale for non-status factual text.
+
+**Passport token ID serial:** [`passport-id-label.tsx`](../components/passport/passport-id-label.tsx) `variant="eyebrow"` is documented here as **serial** styling (tertiary mono, never accent). The component prop name is unchanged.
+
+**Narrative eyebrows vs serials:** §3 **Caption / eyebrow** (`text-accent-warm`, global `.eyebrow`) applies to **narrative page and section labels** only (§4.6 page intros, form section headers) — not to on-chain serial numbers or factual metadata.
+
+**Relative time:** Canonical formatter: [`lib/xmtp/helpers.ts`](../lib/xmtp/helpers.ts) `formatRelativeTime`. Display output with `font-mono tabular-nums`. Local duplicate formatters (e.g. profile dispute cards) are Phase-2 technical debt — not part of this spec amendment.
+
+---
+
+### 10.2 Accent as status, not decoration
+
+`accent-warm` is reserved for an **actively verified, confirmed, or active** trust state. It is never used for prices, category/metadata labels, passport serial numbers, or as a resting link color.
+
+| Use case | Accent allowed? | Canonical classes |
+|----------|-----------------|-------------------|
+| Browse / asking price | No | `font-mono text-lg font-medium tabular-nums text-text-primary` |
+| Fee lines (verification, checkout disclosure) | No | `font-mono text-xs text-text-secondary` (emphasis within mono: `text-text-primary`) |
+| Listing card price hover | No | No `group-hover:text-accent-warm` on price amounts |
+| Passport token ID serial | No | `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` |
+| KarPro **membership** badge (verified pro) | Yes | [`KarProBadge`](../components/ui/kar-pro-badge.tsx) / [`PassportStatusBadge`](../components/ui/passport-status-badge.tsx) VERIFIED: `border-accent-warm text-accent-warm` |
+| KarPro **category** (broker type, etc.) | No | `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` |
+| Wallet / ENS / shortAddress links | Hover / focus only | Rest: `font-mono text-text-secondary`; `:hover` / `:focus-visible`: `text-accent-warm` |
+| DISPUTED labels / badges | No | `status-error` only — see §10.3 |
+| Nav / control focus rings | Yes (non-decorative) | `--focus-ring`, input focus `border-accent-warm` per §4 |
+
+**Never accent:** prices, category/metadata labels, serial numbers, resting link color, DISPUTED state.
+
+---
+
+### 10.3 Status color single-source
+
+| State | Border | Text / icon | Notes |
+|-------|--------|-------------|-------|
+| VERIFIED / active on-chain confirmed | `border-accent-warm` (badges; VERIFIED listing card border per §4.10) | `text-accent-warm` | Status indicator only |
+| DISPUTED | `border-status-error` or `border-status-error/40` | `text-status-error` | **No accent-warm exception** — includes `DisputeStatusSection` status label in [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx) (code fix deferred) |
+| UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
+| Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Not accent |
+
+**§4.14 amendment:** Disputed passport layout (`DisputeStatusSection`) must use `status-error` for the status label. Any `text-accent-warm` on a "Disputed" eyebrow is non-compliant once component code catches up.
+
+**Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Reserve color for `accent-warm` (verified) and `status-error` (disputed / error). Do not use `border-emerald-500` or other non-token greens.
+
+**Planned token parity (code deferred):** `--color-status-success` / `status-success` already exist in [`app/globals.css`](../app/globals.css). Export as `statusSuccess` in [`lib/design-tokens.ts`](../lib/design-tokens.ts) in a later instrument-layer pass — **not consumed in UI yet**.
+
+---
+
+### 10.4 Log vs feed
+
+Two intentional visual languages. Do not merge notification row structure into the passport timeline component.
+
+| Pattern | Purpose | Reference implementation | Visual language |
+|---------|---------|--------------------------|-----------------|
+| **Log** | Immutable on-chain history | [`passport-records-timeline.tsx`](../components/passport/passport-records-timeline.tsx), [`passport-uri-history.tsx`](../components/passport/passport-uri-history.tsx) | Chronological entries; bordered items on `bg-bg-surface` shell |
+| **Feed** | Ephemeral alerts / social activity | [`notifications-client.tsx`](../components/notifications/notifications-client.tsx), [`notification-row.tsx`](../components/notifications/notification-row.tsx) | Grouped rows; unread affordances; distinct from log layout |
+
+**Shared rule:** All timestamps in log and feed patterns use `font-mono tabular-nums` (with `text-text-tertiary` or `text-text-secondary` as appropriate).
+
+**Status:** §4.12 Messages timestamps and the components covered by the mono-timestamp session are already in compliance with this rule if that session's changes are present in the working tree (verify per step 4 above) — if so, do not add a "supersedes/stale" note here, since there is nothing stale to flag.
+
+---
+
+### 10.5 Iconography
+
+No literal vehicle iconography (car, wheel, road silhouettes) in **system chrome**. Prefer abstract instrument or navigation motifs (brackets, ticks, coordinates, compass).
+
+| Item | Status |
+|------|--------|
+| Mobile bottom nav Marketplace tab: `Car` → `Compass` | **Planned** — not yet shipped ([`mobile-bottom-nav.tsx`](../components/shell/mobile-bottom-nav.tsx)) |
+| §4.8 current `Car` reference | Unchanged until icon code session; update §4.8 table to `Compass` when shipped |
+
+Icon size and `strokeWidth` rules: §7 Iconography (unchanged).
+
+---
+
+*Document version: 2.1 (July 2026 — Instrument Layer spec addition). Update when tokens, app shell, or component contracts change.*
