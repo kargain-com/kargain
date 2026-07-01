@@ -13,6 +13,7 @@ import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
+import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -264,6 +265,12 @@ export default async function ProShowroomPage({
                 </p>
               </div>
             </div>
+            <p className="mt-4 font-mono text-sm">
+              <span className="text-text-secondary">Verification fee </span>
+              <span className="text-text-primary">
+                {formatVerificationFee(data.verificationFee)}
+              </span>
+            </p>
           </div>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">

@@ -11,6 +11,8 @@ import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
 } from "@/lib/kar-pro/kar-pro-metadata";
+import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
+import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 import { VerificationRequestButton } from "./verification-request-button";
@@ -66,6 +68,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
   const showroomHref = showroomSlug
     ? `/pro/${showroomSlug}`
     : `/profile/${verifier.address}`;
+  const feeWei = parseReturnRequestedAt(verifier.verificationFee);
 
   return (
     <article className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover">
@@ -91,6 +94,9 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
             Member since {new Date(verifier.joinedAt * 1000).getFullYear()}
           </p>
         )}
+        <p className="font-mono text-xs text-text-secondary">
+          {formatVerificationFee(feeWei)}
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -114,6 +120,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
             <VerificationRequestButton
               verifierAddress={verifier.address}
               verifierName={name}
+              verificationFee={feeWei}
             />
           </>
         )}

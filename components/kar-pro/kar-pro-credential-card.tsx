@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { formatEther, getAddress } from "viem";
+import { formatEther, getAddress, parseEther } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -18,7 +18,10 @@ import {
   type KarProProfileFieldValues,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { KarProPassAbi, KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   categoryIndexToLabel,
@@ -60,6 +63,17 @@ function formatStakeEth(wei: bigint | undefined): string {
   const formatted = formatEther(wei);
   const num = Number.parseFloat(formatted);
   return Number.isFinite(num) ? num.toFixed(2) : formatted;
+}
+
+function parseVerificationFeeInput(input: string): bigint | null {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed === "0") return 0n;
+  try {
+    const wei = parseEther(trimmed);
+    return wei >= 0n ? wei : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchMetadataFields(
@@ -114,6 +128,9 @@ export function KarProCredentialCard({
     website: "",
   });
   const [loading, setLoading] = useState(false);
+  const [feeInput, setFeeInput] = useState("");
+  const [feeSaving, setFeeSaving] = useState(false);
+  const [feeSaved, setFeeSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const staking = karProStakingAddress(chainId);
@@ -138,6 +155,14 @@ export function KarProCredentialCard({
     query: { enabled: Boolean(staking) },
   });
 
+  const { data: onChainFee, refetch: refetchFee } = useReadContract({
+    address: staking,
+    abi: KarProStakingAbi,
+    functionName: "verificationFee",
+    args: [address],
+    query: { enabled: Boolean(staking && address) },
+  });
+
   const stakeLabel = formatStakeEth(minStake);
   const showroomSlug = (slugProp ?? "").trim() || fields.slug.trim();
 
@@ -160,6 +185,11 @@ export function KarProCredentialCard({
       cancelled = true;
     };
   }, [editing, category, name, metadataURI, slugProp]);
+
+  useEffect(() => {
+    if (onChainFee === undefined) return;
+    setFeeInput(formatEther(onChainFee));
+  }, [onChainFee]);
 
   const onSaveProfile = async () => {
     if (!proPass || !fields.name.trim() || !fields.slug.trim()) return;
@@ -199,6 +229,38 @@ export function KarProCredentialCard({
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onSaveFee = async () => {
+    if (!staking) return;
+    const feeWei = parseVerificationFeeInput(feeInput);
+    if (feeWei === null) {
+      setError("Enter a valid ETH amount or leave empty for contact for quote.");
+      return;
+    }
+
+    setError(null);
+    setFeeSaved(false);
+    setFeeSaving(true);
+
+    try {
+      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+
+      const hash = await writeContractAsync({
+        address: staking,
+        abi: KarProStakingAbi,
+        functionName: "setVerificationFee",
+        args: [feeWei],
+      });
+
+      await waitForTransactionReceipt(config, { hash });
+      void refetchFee();
+      setFeeSaved(true);
+    } catch (err) {
+      setError(txErrorMessage(err));
+    } finally {
+      setFeeSaving(false);
     }
   };
 
@@ -295,6 +357,44 @@ export function KarProCredentialCard({
           )}
         </div>
       )}
+
+      <div className="mt-6 space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="kar-pro-verification-fee">Verification fee (ETH)</Label>
+          <p className="font-sans text-xs text-text-secondary">
+            Owners see this before requesting verification. Leave empty or 0 to show
+            contact for quote.
+          </p>
+          <Input
+            id="kar-pro-verification-fee"
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={feeInput}
+            onChange={(e) => {
+              setFeeInput(e.target.value);
+              setFeeSaved(false);
+            }}
+            disabled={feeSaving || loading}
+            className="font-mono"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={feeSaving || loading}
+            onClick={() => void onSaveFee()}
+          >
+            {feeSaving ? "Saving…" : "Save fee"}
+          </Button>
+          {feeSaved && (
+            <p className="font-sans text-sm text-text-secondary" role="status">
+              Saved
+            </p>
+          )}
+        </div>
+      </div>
 
       <Separator className="my-6" />
 

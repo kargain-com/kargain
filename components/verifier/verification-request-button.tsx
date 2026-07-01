@@ -11,11 +11,13 @@ import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
+import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 
 type Props = {
   verifierAddress: `0x${string}`;
   verifierName: string;
+  verificationFee?: bigint;
 };
 
 type PassportRow = {
@@ -63,7 +65,11 @@ function buildVerificationMessage(unverified: PassportRow[]): string {
   return [header, ...lines, more].filter(Boolean).join("\n");
 }
 
-export function VerificationRequestButton({ verifierAddress, verifierName }: Props) {
+export function VerificationRequestButton({
+  verifierAddress,
+  verifierName,
+  verificationFee,
+}: Props) {
   const { address: userAddress, isConnected, connector } = useAccount();
   const { client, ensureInitialized } = useXmtpClient();
   const { isInitializing, needsSetup, enableMessages } = useMessagingStatus();
@@ -183,6 +189,11 @@ export function VerificationRequestButton({ verifierAddress, verifierName }: Pro
         <MessageSquare size={16} strokeWidth={1.5} aria-hidden />
         Request verification
       </button>
+      {verificationFee != null && verificationFee > 0n && (
+        <p className="font-mono text-xs text-text-secondary">
+          {formatVerificationFee(verificationFee)}
+        </p>
+      )}
       {actionError && (
         <p className="text-sm text-status-error" role="alert">
           {actionError}

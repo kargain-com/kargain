@@ -1,6 +1,7 @@
 "use client";
 
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
+import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 
 type ProfileVerifierStatsBandProps = {
@@ -27,6 +28,7 @@ export function ProfileVerifierStatsBand({
 
   const profile = liveProfile ?? initialProfile;
   const verificationCount = profile?.verificationCount ?? 0;
+  const verificationFee = profile?.verificationFee ?? 0n;
   const showBand =
     isActiveVerifier || verificationCount > 0 || Boolean(profile?.active);
 
@@ -54,6 +56,13 @@ export function ProfileVerifierStatsBand({
           </span>
         </>
       )}
+      <StatsSeparator />
+      <span className="font-mono text-sm">
+        <span className="text-text-secondary">Verification fee </span>
+        <span className="font-medium text-text-primary">
+          {formatVerificationFee(verificationFee)}
+        </span>
+      </span>
       {isOwner && isActiveVerifier && (
         <>
           <StatsSeparator />

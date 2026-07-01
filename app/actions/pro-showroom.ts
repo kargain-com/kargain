@@ -43,6 +43,7 @@ export type ProShowroomData = {
   attestationTotal: number;
   profileMetadata: { slug?: string; description?: string; website?: string } | null;
   isActiveVerifier: boolean;
+  verificationFee: bigint;
 };
 
 type PonderListingRaw = {
@@ -114,6 +115,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   let activeConsignmentTotal = 0;
   let recentAttestations: PonderVerifierAttestation[] = [];
   let attestationTotal = 0;
+  let verificationFee = 0n;
 
   try {
     const [activeOnChain, verifierData, listingsRes, consignmentsRes] = await Promise.all([
@@ -139,6 +141,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
 
     if (verifierData.profile) {
       verifier = mapVerifierRow(verifierData.profile, address);
+      verificationFee = verifierData.profile.verificationFee;
     }
 
     verifiedPassportTotal = verifierData.verifiedPassportTotal;
@@ -194,5 +197,6 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     attestationTotal,
     profileMetadata,
     isActiveVerifier,
+    verificationFee,
   };
 }
