@@ -7,6 +7,7 @@ import { useAccount, useReadContracts } from "wagmi";
 
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
+import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-agent-buyer-attribution";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { OwnerReturnRequestPanel } from "@/components/marketplace/owner-return-request-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
@@ -217,6 +218,10 @@ export function ListingDetailClientIsland({
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Not currently listed
         </p>
+      )}
+
+      {listingActive && hasListingAgent(listing?.agent) && (
+        <ListingAgentBuyerAttribution agentAddress={listing!.agent as `0x${string}`} />
       )}
 
       {isSeller && listingActive && <SellerMessagingBanner />}

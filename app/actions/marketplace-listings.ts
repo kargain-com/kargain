@@ -83,6 +83,7 @@ type PonderListing = {
   coverPhotoUri?: string;
   duplicateVin?: boolean;
   verifier?: string;
+  agent?: string;
 };
 
 type PonderListingsResponse = {

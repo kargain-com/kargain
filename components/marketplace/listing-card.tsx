@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck, UserRound } from "lucide-react";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
@@ -9,6 +9,7 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
+import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -106,6 +107,22 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
                   onClick={(e) => e.stopPropagation()}
                 >
                   {shortAddress(row.verifier)}
+                </Link>
+              </p>
+            </div>
+          )}
+          {hasListingAgent(row.agent) && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <UserRound size={12} strokeWidth={1.5} className="text-accent-warm shrink-0" aria-hidden />
+              <p className="font-sans text-xs text-text-secondary truncate">
+                Sold by{" "}
+                <Link
+                  href={`/profile/${row.agent}`}
+                  className="text-text-primary hover:text-accent-warm transition-colors duration-200
+                             focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {shortAddress(row.agent!)}
                 </Link>
               </p>
             </div>
