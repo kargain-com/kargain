@@ -16,14 +16,14 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
-| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; FX display layer (§6); agent consignment API + `?hasActiveListing` (§6) |
+| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; FX display layer (§6); agent consignment API + UI (§6) |
 | [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook |
 
 ## UI
 
 | Document | Purpose |
 |----------|---------|
-| [design-spec.md](./design-spec.md) | Layout, tokens, components |
+| [design-spec.md](./design-spec.md) | Layout, tokens, components — marketplace §4.16 groups agent consignment by role (buyer, owner, KarPro) |
 
 ## Deploy records
 

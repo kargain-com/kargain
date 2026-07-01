@@ -227,6 +227,8 @@ Agent-scoped browse for the **Consigned vehicles** profile tab and **Active cons
 
 **Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side fetch-all). **Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain — not these routes. Ponder `agent_authorization` can show stale `active: true` after return events that clear on-chain mapping without `AgentRevoked`; the dashboard awaiting section also chain-reads `agentAuthorizations` to hide stale rows.
 
+**Buyer UI (July 2026):** `agent` on listing responses powers browse-card and detail attribution; buyers see agent identity, not `agentFeeBps` or `ownerMinPrice1e8`. See [design-spec.md](../design-spec.md) §4.16.
+
 Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
 
 ### Known display limitations
@@ -240,4 +242,4 @@ Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-junej
 
 ---
 
-*Last updated: July 1, 2026 — agent consignment dashboard; `?hasActiveListing` authorizations filter.*
+*Last updated: July 1, 2026 — agent consignment buyer display; complete loop documented in design-spec §4.16.*

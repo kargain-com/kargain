@@ -435,30 +435,58 @@ Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-fo
 
 Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx). On-chain listing rows decoded via [`parse-on-chain-listing.ts`](../lib/marketplace/parse-on-chain-listing.ts) (MarketplaceEscrow v2 struct; `active` at tuple index 2).
 
+Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
+
+#### Checkout and buy (all buyers)
+
 | Rule | Value |
 |------|-------|
 | Asking price | List denomination in ISO fiat (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
 | Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
 | Direct payment | Optional seller `settlementNotes` (bank, BTC, etc.); buy panel **Direct payment** card when note set — *Not verified by Kargain* |
-| Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); `encodeCurrencyCode` for `list()` |
 | Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; ETH / USDC toggle |
 | Disclosure | Bordered panel: seller receives (asking fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithToken(tokenId, usdc)`; disabled when USDC not configured on chain |
 | Buy errors | Inline `text-status-error` message under the buy button (`role="alert"`) on `approve` / `buyWithNative` / `buyWithToken` failure, via shared [`tx-error-message.ts`](../lib/marketplace/tx-error-message.ts); preflight balance check (ETH and USDC) disables the button with a `text-text-secondary` hint before a doomed transaction is sent; `useSimulateContract` gates the final purchase call so most reverts surface before the wallet signature prompt |
-| Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
-| Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
-| Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
-| Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
+| Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed. On consignment listings the contact peer is the passport owner (on-chain `seller`), not the agent |
+
+#### Agent consignment — buyers
+
+When `agent` is set on an active listing, buyers see who is selling on their behalf. Internal deal terms (`agentFeeBps`, `ownerMinPrice1e8`) are never shown.
+
+| Rule | Value |
+|------|-------|
+| Browse cards | [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — compact **Sold by** row (`UserRound` icon, `shortAddress`, link to `/profile/[agent]`). No per-card profile fetch |
+| Listing detail | [`listing-agent-buyer-attribution.tsx`](../components/marketplace/listing-agent-buyer-attribution.tsx) below buy panel — avatar + KarPro name via `usePeerIdentity` / `fetchKarProVerifierProfile`; copy *Sold by [name] on behalf of the owner*; link to `/pro/[slug]` when slug exists else `/profile/[address]` |
+| Degradation | When profile missing: *Sold by an agent* with link to `/profile/[agent]` — no error state |
+| Buy flow | Unchanged — `buyWithNative` / `buyWithToken` work the same for direct and consignment listings |
+
+#### Agent consignment — owners
+
+| Rule | Value |
+|------|-------|
 | Delegate to a pro | **Delegate to a pro** opens [`authorize-agent-dialog.tsx`](../components/marketplace/authorize-agent-dialog.tsx) when owner, listing inactive, no active on-chain authorization; KarPro picker via [`verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) `onSelectAgent` mode |
 | Owner minimum price | No currency selector on authorize form — `ownerMinPrice1e8` is a raw on-chain scalar until the agent lists (`listOnBehalf` picks currency); label uses [`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts); confirmation copy: guaranteed minimum *in the currency the agent chooses* |
 | Agent authorization | [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); shows agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
-| Agent dashboard | **Consigned vehicles** tab on `/profile/[handle]` when owner + active KarPro ([`consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx)); awaiting section via Ponder `GET /agents/:address/authorizations?hasActiveListing=false` (paginated) + `/passports/batch` enrichment; chain `agentAuthorizations` filters stale rows; **List vehicle** expand → [`agent-list-on-behalf-panel.tsx`](../components/marketplace/agent-list-on-behalf-panel.tsx) with live [`seller-net-calculator.tsx`](../components/marketplace/seller-net-calculator.tsx) (submit blocked when owner minimum not met; `platformFeeBps` chain-read). Active section: **Edit listing** / **Return to owner** ([`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx), [`agent-delist-button.tsx`](../components/marketplace/agent-delist-button.tsx)); read-only [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) when owner requested return. Past section read-only. **Active consignments** on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) with **View all N consignments →** to `?tab=consigned` when truncated at 100 |
-| Owner return flow | On listing detail ([`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx)) when owner + active consignment (`agent` non-zero): [`owner-return-request-panel.tsx`](../components/marketplace/owner-return-request-panel.tsx) — **Request return** (`requestReturn`) → 7-day [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) (live countdown) → **Force return** (`forceReturn`) when elapsed; request button hidden (not disabled) during cooldown; force button disabled until countdown ends; chain `agentAuthorizations` gates force submit; `returnRequestedAt` from Ponder + chain read |
-| Buyer consignment | When `agent` is set on an active listing: browse cards ([`listing-card.tsx`](../components/marketplace/listing-card.tsx)) show compact **Sold by** attribution (`UserRound` icon, `shortAddress`, link to `/profile/[agent]` — no per-card profile fetch). Listing detail ([`listing-agent-buyer-attribution.tsx`](../components/marketplace/listing-agent-buyer-attribution.tsx)) below buy panel: avatar + KarPro name via `usePeerIdentity` / `fetchKarProVerifierProfile`; copy *Sold by [name] on behalf of the owner*; link to `/pro/[slug]` when slug exists else `/profile/[address]`; degrades to *Sold by an agent* when profile missing. **Do not** show `agentFeeBps` or `ownerMinPrice1e8` to buyers |
+| Owner return flow | When owner + active consignment (`agent` non-zero): [`owner-return-request-panel.tsx`](../components/marketplace/owner-return-request-panel.tsx) — **Request return** (`requestReturn`) → 7-day [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) (live countdown) → **Force return** (`forceReturn`) when elapsed; request button hidden (not disabled) during cooldown; force button disabled until countdown ends; chain `agentAuthorizations` gates force submit; `returnRequestedAt` from Ponder + chain read |
 
-Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
+#### Agent consignment — KarPro agents
+
+| Rule | Value |
+|------|-------|
+| Agent dashboard | **Consigned vehicles** tab on `/profile/[handle]` when owner + active KarPro ([`consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx)); awaiting section via Ponder `GET /agents/:address/authorizations?hasActiveListing=false` (paginated) + `/passports/batch` enrichment; chain `agentAuthorizations` filters stale rows; **List vehicle** expand → [`agent-list-on-behalf-panel.tsx`](../components/marketplace/agent-list-on-behalf-panel.tsx) with live [`seller-net-calculator.tsx`](../components/marketplace/seller-net-calculator.tsx) (submit blocked when owner minimum not met; `platformFeeBps` chain-read). Active section: **Edit listing** / **Return to owner** ([`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx), [`agent-delist-button.tsx`](../components/marketplace/agent-delist-button.tsx)); read-only [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) when owner requested return. Past section read-only |
+| Pro showroom | **Active consignments** on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) with **View all N consignments →** to `?tab=consigned` when truncated at 100 |
+
+#### Seller listing management
+
+| Rule | Value |
+|------|-------|
+| Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); `encodeCurrencyCode` for `list()` |
+| Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
+| Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
+| Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
 
 ---
 
