@@ -367,6 +367,7 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until ready |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after self messaging is ready; uses [`contactPeer`](../lib/xmtp/contact-peer.ts); URL param stripped on mount |
+| Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends *Hi, I'm interested in your listing for {formatPassportTitle}.* before navigating to `/messages/{id}`; existing threads unchanged |
 | Profile entry | Identity header **Message** / **Request verification** only when peer is reachable (`Client.canMessage` + Nostr `messagesEnabled`); else *Messages not available* |
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
 | XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; opted-in addresses auto-reconnect; smart wallets show blocker copy |
@@ -449,7 +450,18 @@ Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 | USDC buy | ERC-20 `approve` then `buyWithToken(tokenId, usdc)`; disabled when USDC not configured on chain |
 | Buy errors | Inline `text-status-error` message under the buy button (`role="alert"`) on `approve` / `buyWithNative` / `buyWithToken` failure, via shared [`tx-error-message.ts`](../lib/marketplace/tx-error-message.ts); preflight balance check (ETH and USDC) disables the button with a `text-text-secondary` hint before a doomed transaction is sent; `useSimulateContract` gates the final purchase call so most reverts surface before the wallet signature prompt |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
-| Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed. On consignment listings the contact peer is the passport owner (on-chain `seller`), not the agent |
+| Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed; passes `listingTokenId` on active listings so new DMs open with listing context (§4.12). On consignment listings the contact peer is the passport owner (on-chain `seller`), not the agent |
+
+#### Direct payment and external settlement
+
+When the seller has set `settlementNotes`, buyers can register interest off-chain; the seller (or consignment agent) attests receipt on-chain via `confirmExternalPayment`. Contract trust model: [SPEC Part I §5.4](./contracts/SPEC.md#54-payment-flows).
+
+| Rule | Value |
+|------|-------|
+| Buyer offer | [`listing-make-offer-button.tsx`](../components/marketplace/listing-make-offer-button.tsx) — **Make an offer** / **Withdraw offer** when listing active and direct-payment note set; Nostr kind **30405** via [`listing-offers.ts`](../lib/nostr/listing-offers.ts) (`#d` `kargain:offer:{tokenId}`, `#i` passport + buyer `ethereum:` tag, `#p` seller pubkey); requires seller NIP-39–linked Nostr identity — else *Seller has not linked a Nostr identity. Offers are unavailable.* |
+| Seller offers panel | [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) — visible to listing seller **or** consignment agent when direct payment note set; lists relay offers with profile links; **Confirm payment** → inline *Confirm received payment from {address}?* → `confirmExternalPayment(tokenId, buyer)`; trust copy: *Confirming transfers the NFT immediately. Only confirm after you have received payment.* |
+| Post-confirm | Delisted listing shows read-only *Payment confirmed externally* (with chain timestamp when indexed); Ponder field `externalPaymentConfirmedAt` on listing detail |
+| Offer gating | Hidden for seller and agent viewers; buyer offer button only when `hasDirectPayment` |
 
 #### Agent consignment — buyers
 
@@ -477,6 +489,8 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Rule | Value |
 |------|-------|
 | Agent dashboard | **Consigned vehicles** tab on `/profile/[handle]` when owner + active KarPro ([`consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx)); awaiting section via Ponder `GET /agents/:address/authorizations?hasActiveListing=false` (paginated) + `/passports/batch` enrichment; chain `agentAuthorizations` filters stale rows; **List vehicle** expand → [`agent-list-on-behalf-panel.tsx`](../components/marketplace/agent-list-on-behalf-panel.tsx) with live [`seller-net-calculator.tsx`](../components/marketplace/seller-net-calculator.tsx) (submit blocked when owner minimum not met; `platformFeeBps` chain-read). Active section: **Edit listing** / **Return to owner** ([`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx), [`agent-delist-button.tsx`](../components/marketplace/agent-delist-button.tsx)); read-only [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) when owner requested return. Past section read-only |
+| Agent settlement note | [`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx) — read-only **Direct payment instructions** (chain `settlementNotes`); copy notes owner edits on manage listing; agents set note only at `listOnBehalf` |
+| Agent confirm payment | Same [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) as seller on active consignment listings with direct payment |
 | Pro showroom | **Active consignments** on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) with **View all N consignments →** to `?tab=consigned` when truncated at 100 |
 
 #### Seller listing management
