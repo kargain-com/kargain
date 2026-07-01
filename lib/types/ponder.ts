@@ -236,3 +236,49 @@ export type PonderVerifierAttestationsResponse = {
   limit: number;
   offset: number;
 };
+
+export type PonderAgentAuthorization = {
+  tokenId: string;
+  agent: string;
+  expiry: string;
+  ownerMinPrice1e8: string;
+  active: boolean;
+  hasActiveListing: boolean;
+};
+
+export type PonderAgentAuthorizationsResponse = {
+  authorizations: PonderAgentAuthorization[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type PonderAgentListingRaw = {
+  id?: string;
+  tokenId?: string;
+  seller?: string;
+  fiatPrice1e8?: string | number;
+  fiatCurrency?: number;
+  currencyCode?: string;
+  active?: boolean;
+  listedAt?: string | number;
+  passportStatus?: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  mileageKm?: number;
+  fuelType?: string;
+  bodyType?: string;
+  transmission?: string;
+  tokenUri?: string;
+  coverPhotoUri?: string;
+  duplicateVin?: boolean;
+  verifier?: string;
+};
+
+export type PonderAgentListingsResponse = {
+  listings: PonderAgentListingRaw[];
+  total: number;
+  page: number;
+  limit: number;
+};

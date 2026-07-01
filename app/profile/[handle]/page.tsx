@@ -4,6 +4,7 @@ import { cache, Suspense } from "react";
 import { getAddress } from "viem";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
+import { getAgentConsignmentCount } from "@/app/actions/agent-consignment";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -78,6 +79,14 @@ export default async function PublicProfilePage({
     getProfileData(wallet),
   ]);
 
+  let consignedCount: number | null = null;
+  if (isActiveVerifier) {
+    const countResult = await getAgentConsignmentCount(wallet);
+    if (countResult.count != null && !countResult.ponderError) {
+      consignedCount = countResult.count;
+    }
+  }
+
   let ponderErr: string | null = null;
   let passports: {
     tokenId: string;
@@ -139,6 +148,7 @@ export default async function PublicProfilePage({
           disputedPassports={verifierProfile?.disputedPassports ?? []}
           attestations={attestations}
           ponderErr={ponderErr}
+          consignedCount={consignedCount}
         />
       </Suspense>
     </div>

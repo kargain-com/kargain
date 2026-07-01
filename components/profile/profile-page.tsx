@@ -14,6 +14,7 @@ import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
+import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
@@ -37,7 +38,7 @@ export type ProfileListing = {
   model?: string;
 };
 
-type TabId = "passports" | "listings" | "saved" | "verified" | "disputes" | "attestations";
+type TabId = "passports" | "listings" | "saved" | "verified" | "disputes" | "consigned" | "attestations";
 
 export type ProfilePageProps = {
   wallet: Address;
@@ -51,6 +52,7 @@ export type ProfilePageProps = {
   disputedPassports: DisputedPassportRow[];
   attestations: PonderVerifierAttestation[];
   ponderErr: string | null;
+  consignedCount?: number | null;
 };
 
 function countLabel(base: string, count: number): ReactNode {
@@ -73,6 +75,7 @@ function buildTabList(
     verified: number;
     attestations: number;
     disputes: number;
+    consigned: number;
   },
 ): { id: TabId; label: ReactNode }[] {
   const tabs: { id: TabId; label: ReactNode }[] = [
@@ -88,6 +91,10 @@ function buildTabList(
   }
   if (isOwner && isActiveVerifier) {
     tabs.push({ id: "disputes", label: countLabel("Disputes", counts.disputes) });
+    tabs.push({
+      id: "consigned",
+      label: countLabel("Consigned vehicles", counts.consigned),
+    });
   }
   return tabs;
 }
@@ -384,6 +391,7 @@ export function ProfilePage({
   disputedPassports,
   attestations,
   ponderErr,
+  consignedCount = null,
 }: ProfilePageProps) {
   const searchParams = useSearchParams();
   const { isConnected } = useAccount();
@@ -404,6 +412,7 @@ export function ProfilePage({
         verified: verifiedPassports.length,
         attestations: attestations.length,
         disputes: disputedPassports.length,
+        consigned: consignedCount ?? 0,
       }),
     [
       isOwner,
@@ -414,6 +423,7 @@ export function ProfilePage({
       verifiedPassports.length,
       attestations.length,
       disputedPassports.length,
+      consignedCount,
     ],
   );
 
@@ -659,6 +669,16 @@ export function ProfilePage({
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === "consigned" && isOwner && isActiveVerifier && (
+            <section
+              role="tabpanel"
+              id="profile-panel-consigned"
+              aria-labelledby="profile-tab-consigned"
+            >
+              <ConsignedVehiclesTab wallet={wallet} chainId={chainId} />
             </section>
           )}
 

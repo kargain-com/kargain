@@ -13,6 +13,7 @@ import {
   desc,
   eq,
   inArray,
+  notInArray,
   replaceBigInts,
   sql,
 } from "ponder";
@@ -681,10 +682,45 @@ app.get("/agents/:address/authorizations", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
   const offset = (page - 1) * limit;
-  const where = and(
+  const hasActiveListingFilter = parseOptionalBoolean(
+    c.req.query("hasActiveListing"),
+  );
+
+  const conditions = [
     eq(agentAuthorization.agent, agent),
     eq(agentAuthorization.active, true),
-  );
+  ];
+
+  if (hasActiveListingFilter !== undefined) {
+    const listedRows = await db
+      .select({ tokenId: marketplaceListing.tokenId })
+      .from(marketplaceListing)
+      .where(
+        and(
+          eq(marketplaceListing.agent, agent),
+          eq(marketplaceListing.active, true),
+        ),
+      );
+    const listedTokenIds = [...new Set(listedRows.map((row) => row.tokenId))];
+
+    if (hasActiveListingFilter === true) {
+      if (listedTokenIds.length === 0) {
+        return c.json(
+          jsonBody({
+            authorizations: [],
+            total: 0,
+            page,
+            limit,
+          }),
+        );
+      }
+      conditions.push(inArray(agentAuthorization.tokenId, listedTokenIds));
+    } else if (listedTokenIds.length > 0) {
+      conditions.push(notInArray(agentAuthorization.tokenId, listedTokenIds));
+    }
+  }
+
+  const where = and(...conditions);
 
   const [rows, totalRow] = await Promise.all([
     db
@@ -704,26 +740,35 @@ app.get("/agents/:address/authorizations", async (c) => {
   ]);
 
   const total = totalRow[0]?.total ?? 0;
-  const tokenIds = rows.map((row) => row.tokenId);
-  let listedTokenIds = new Set<string>();
-  if (tokenIds.length > 0) {
-    const activeListings = await db
-      .select({ tokenId: marketplaceListing.tokenId })
-      .from(marketplaceListing)
-      .where(
-        and(
-          inArray(marketplaceListing.tokenId, tokenIds),
-          eq(marketplaceListing.agent, agent),
-          eq(marketplaceListing.active, true),
-        ),
-      );
-    listedTokenIds = new Set(activeListings.map((row) => row.tokenId));
-  }
 
-  const authorizations = rows.map((row) => ({
-    ...row,
-    hasActiveListing: listedTokenIds.has(row.tokenId),
-  }));
+  let authorizations;
+  if (hasActiveListingFilter !== undefined) {
+    authorizations = rows.map((row) => ({
+      ...row,
+      hasActiveListing: hasActiveListingFilter,
+    }));
+  } else {
+    const tokenIds = rows.map((row) => row.tokenId);
+    let listedTokenIds = new Set<string>();
+    if (tokenIds.length > 0) {
+      const activeListings = await db
+        .select({ tokenId: marketplaceListing.tokenId })
+        .from(marketplaceListing)
+        .where(
+          and(
+            inArray(marketplaceListing.tokenId, tokenIds),
+            eq(marketplaceListing.agent, agent),
+            eq(marketplaceListing.active, true),
+          ),
+        );
+      listedTokenIds = new Set(activeListings.map((row) => row.tokenId));
+    }
+
+    authorizations = rows.map((row) => ({
+      ...row,
+      hasActiveListing: listedTokenIds.has(row.tokenId),
+    }));
+  }
 
   return c.json(
     jsonBody({

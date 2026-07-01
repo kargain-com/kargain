@@ -1,7 +1,7 @@
 import { legacyFiatFromCurrencyCode } from "@/lib/marketplace/currency-code";
 import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
-import type { PassportStatus } from "@/lib/types/ponder";
+import type { PassportStatus, PonderAgentListingRaw } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -96,4 +96,31 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     karPro: false,
     featured: status === "VERIFIED",
   };
+}
+
+export function mapAgentListingToRow(
+  listing: PonderAgentListingRaw,
+): MarketplaceListingRow {
+  return mapPonderListingToRow({
+    id: String(listing.id ?? listing.tokenId ?? ""),
+    tokenId: String(listing.tokenId ?? listing.id ?? ""),
+    seller: String(listing.seller ?? ""),
+    fiatPrice1e8: listing.fiatPrice1e8 ?? "0",
+    fiatCurrency: listing.fiatCurrency,
+    currencyCode: listing.currencyCode,
+    active: listing.active === true,
+    listedAt: listing.listedAt ?? "0",
+    passportStatus: listing.passportStatus,
+    make: listing.make,
+    model: listing.model,
+    year: listing.year,
+    mileageKm: listing.mileageKm,
+    fuelType: listing.fuelType,
+    bodyType: listing.bodyType,
+    transmission: listing.transmission,
+    tokenUri: listing.tokenUri,
+    coverPhotoUri: listing.coverPhotoUri,
+    duplicateVin: listing.duplicateVin,
+    verifier: listing.verifier,
+  });
 }

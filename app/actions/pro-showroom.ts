@@ -3,7 +3,7 @@
 import { getAddress } from "viem";
 
 import {
-  mapPonderListingToRow,
+  mapAgentListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
@@ -37,6 +37,8 @@ export type ProShowroomData = {
   verifiedPassports: ProShowroomPassport[];
   verifiedPassportTotal: number;
   activeListings: MarketplaceListingRow[];
+  activeConsignments: MarketplaceListingRow[];
+  activeConsignmentTotal: number;
   recentAttestations: PonderVerifierAttestation[];
   attestationTotal: number;
   profileMetadata: { slug?: string; description?: string; website?: string } | null;
@@ -66,27 +68,7 @@ type PonderListingRaw = {
 };
 
 function mapListingRaw(listing: PonderListingRaw) {
-  return mapPonderListingToRow({
-    id: String(listing.id ?? listing.tokenId ?? ""),
-    tokenId: String(listing.tokenId ?? listing.id ?? ""),
-    seller: String(listing.seller ?? ""),
-    fiatPrice1e8: listing.fiatPrice1e8 ?? "0",
-    fiatCurrency: listing.fiatCurrency ?? 0,
-    active: listing.active === true,
-    listedAt: listing.listedAt ?? "0",
-    passportStatus: listing.passportStatus,
-    make: listing.make,
-    model: listing.model,
-    year: listing.year,
-    mileageKm: listing.mileageKm,
-    fuelType: listing.fuelType,
-    bodyType: listing.bodyType,
-    transmission: listing.transmission,
-    tokenUri: listing.tokenUri,
-    coverPhotoUri: listing.coverPhotoUri,
-    duplicateVin: listing.duplicateVin,
-    verifier: listing.verifier,
-  });
+  return mapAgentListingToRow(listing);
 }
 
 function mapVerifierRow(
@@ -128,11 +110,13 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   let verifiedPassports: ProShowroomPassport[] = [];
   let verifiedPassportTotal = 0;
   let activeListings: MarketplaceListingRow[] = [];
+  let activeConsignments: MarketplaceListingRow[] = [];
+  let activeConsignmentTotal = 0;
   let recentAttestations: PonderVerifierAttestation[] = [];
   let attestationTotal = 0;
 
   try {
-    const [activeOnChain, verifierData, listingsRes] = await Promise.all([
+    const [activeOnChain, verifierData, listingsRes, consignmentsRes] = await Promise.all([
       staking
         ? getPublicClient(DEFAULT_CHAIN_ID)
             .readContract({
@@ -145,6 +129,10 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
         : Promise.resolve(false),
       fetchVerifierPublicData(address),
       fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
+      fetch(
+        `${PONDER_URL}/agents/${address}/listings?active=true&limit=100`,
+        revalidate,
+      ),
     ]);
 
     isActiveVerifier = activeOnChain === true;
@@ -172,6 +160,15 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
         .filter((l) => l.active === true)
         .map(mapListingRaw);
     }
+
+    if (consignmentsRes.ok) {
+      const data = (await consignmentsRes.json()) as {
+        listings?: PonderListingRaw[];
+        total?: number;
+      };
+      activeConsignments = (data.listings ?? []).map(mapListingRaw);
+      activeConsignmentTotal = data.total ?? activeConsignments.length;
+    }
   } catch {
     /* return partial data with address */
   }
@@ -191,6 +188,8 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     verifiedPassports,
     verifiedPassportTotal,
     activeListings,
+    activeConsignments,
+    activeConsignmentTotal,
     recentAttestations,
     attestationTotal,
     profileMetadata,

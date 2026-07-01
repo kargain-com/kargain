@@ -356,7 +356,34 @@ export default async function ProShowroomPage({
         </div>
       </section>
 
-      {/* Section 4 — Recent attestations (omit when empty) */}
+      {/* Section 4 — Active consignments */}
+      <section className="py-24" aria-labelledby="active-consignments-heading">
+        <div className={CONTAINER}>
+          <SectionHeader id="active-consignments-heading" title="Active consignments" />
+
+          {data.activeConsignments.length === 0 ? (
+            <p className="font-sans text-sm text-text-secondary">No active consignments.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {data.activeConsignments.map((listing) => (
+                  <ListingCard key={`consign-${listing.tokenId}`} row={listing} />
+                ))}
+              </div>
+              {data.activeConsignmentTotal > data.activeConsignments.length && (
+                <Link
+                  href={`/profile/${address}?tab=consigned`}
+                  className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
+                >
+                  View all {data.activeConsignmentTotal} consignments →
+                </Link>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Section 5 — Recent attestations (omit when empty) */}
       {data.recentAttestations.length > 0 && (
         <section className="py-24" aria-labelledby="recent-attestations-heading">
           <div className={CONTAINER}>

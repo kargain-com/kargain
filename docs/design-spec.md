@@ -454,7 +454,7 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 | Owner minimum price | No currency selector on authorize form — `ownerMinPrice1e8` is a raw on-chain scalar until the agent lists (`listOnBehalf` picks currency); label uses [`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts); confirmation copy: guaranteed minimum *in the currency the agent chooses* |
 | Agent authorization | [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); shows agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
-| Agent dashboard (future) | Agent-scoped data via Ponder `GET /agents/:address/authorizations` and `GET /agents/:address/listings` ([indexer/README.md](./indexer/README.md)) — `listOnBehalf` / consigned tab not built yet |
+| Agent dashboard | **Consigned vehicles** tab on `/profile/[handle]` when owner + active KarPro ([`consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx)); Ponder `GET /agents/:address/authorizations` + `GET /agents/:address/listings`; awaiting section enriched via `/passports/batch`, chain `agentAuthorizations` filters stale rows; **Active consignments** on [`/pro/[slug]`](../app/pro/[slug]/page.tsx). Display only — `listOnBehalf` / `agentDelist` deferred |
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 
