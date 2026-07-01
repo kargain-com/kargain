@@ -190,9 +190,10 @@ curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/listings | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.statusCounts'
 curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
+curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/authorizations?hasActiveListing=false' | jq '.total, .page, .limit'
 ```
 
-Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
+Replace `<tokenId>` with a known minted passport. The agent authorizations line expects a valid empty filtered response (`total: 0`) when the address has no consignments — not an unfiltered list (confirms `?hasActiveListing` is live). `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
 
 ---
 

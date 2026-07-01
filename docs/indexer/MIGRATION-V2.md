@@ -138,7 +138,7 @@ Deprecate `payAsset` enum column for generation v2 rows.
 | `ownerMinPrice1e8` | bigint | Floor in listing currency |
 | `active` | boolean | Cleared on revoke / list end |
 
-**HTTP API (June 2026):** `GET /agents/:address/authorizations` and `GET /agents/:address/listings` — see [indexer/README.md](./README.md#agent-consignment-routes--shipped-june-2026). Owner-facing authorization status on listing detail still uses on-chain `agentAuthorizations` (Ponder row can be stale after return without `AgentRevoked`).
+**HTTP API (June 2026):** `GET /agents/:address/authorizations` and `GET /agents/:address/listings` — see [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026). Owner-facing authorization status on listing detail still uses on-chain `agentAuthorizations` (Ponder row can be stale after return without `AgentRevoked`).
 
 ### New table: `currency_feed`
 
@@ -216,9 +216,18 @@ Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 
-### Agent consignment HTTP API — ✅ shipped June 2026
+### Agent consignment HTTP API — ✅ shipped June–July 2026
 
-Agent-scoped browse for future dashboard / pro showroom: `GET /agents/:address/authorizations` (paginated; `hasActiveListing` per row) and `GET /agents/:address/listings` (paginated; optional `?active=`). **Redeploy ponder only** — secondary indexes on `agent` columns. Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-june-2026).
+Agent-scoped browse for the **Consigned vehicles** profile tab and **Active consignments** pro showroom section. Read-only queries in [`src/api/index.ts`](../../src/api/index.ts). **Redeploy ponder image only** — `agentIdx` on `agent_authorization.agent` and `marketplace_listing.agent`; no `ponder-reindex.sql` expected (if `MigrationError` on VPS, see [OPERATIONS.md](./OPERATIONS.md)).
+
+| Route | Purpose |
+|-------|---------|
+| `GET /agents/:address/authorizations` | Paginated active authorizations; `hasActiveListing` per row; optional `?hasActiveListing=true\|false` (filtered `total`) |
+| `GET /agents/:address/listings` | Paginated listings where `agent` matches; optional `?active=true\|false` |
+
+**Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side fetch-all). **Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain — not these routes. Ponder `agent_authorization` can show stale `active: true` after return events that clear on-chain mapping without `AgentRevoked`; the dashboard awaiting section also chain-reads `agentAuthorizations` to hide stale rows.
+
+Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
 
 ### Known display limitations
 
@@ -231,4 +240,4 @@ Agent-scoped browse for future dashboard / pro showroom: `GET /agents/:address/a
 
 ---
 
-*Last updated: June 30, 2026 — agent consignment Ponder API routes.*
+*Last updated: July 1, 2026 — agent consignment dashboard; `?hasActiveListing` authorizations filter.*

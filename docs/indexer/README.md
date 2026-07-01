@@ -39,13 +39,13 @@ Optional query params for cross-currency **price filter and sort** (stateless AP
 
 Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) / [`fx-rate-registry.ts`](../../lib/marketplace/fx-rate-registry.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. CoinGecko fiat/crypto browse filters need **indexer + frontend** deployed together; **USD** price filter does not.
 
-### Agent consignment routes — ✅ shipped June 2026
+### Agent consignment routes — ✅ shipped June–July 2026
 
 Read-only agent-scoped queries in [`src/api/index.ts`](../../src/api/index.ts). **Redeploy ponder image only** — `agentIdx` on `agent_authorization.agent` and `marketplace_listing.agent`; no `ponder-reindex.sql` expected (if `MigrationError` on VPS, see [OPERATIONS.md](./OPERATIONS.md)).
 
 | Route | Purpose |
 |-------|---------|
-| `GET /agents/:address/authorizations` | Active authorizations for agent; `{ authorizations, total, page, limit }`; each row includes `hasActiveListing` |
+| `GET /agents/:address/authorizations` | Active authorizations for agent; `{ authorizations, total, page, limit }`; each row includes `hasActiveListing`; optional `?hasActiveListing=true\|false` filters before pagination (`total` reflects filter) |
 | `GET /agents/:address/listings` | Listings where `agent` matches; same pagination envelope; optional `?active=true\|false`; enrichment matches `GET /profile/:address/listings` |
 
 `:address` validated with `isAddress`; queries use checksum `getAddress()` to match chain-indexed rows.
@@ -69,7 +69,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /passports/batch` | Batch passport lookup |
 | `GET /profile/:address/passports` | Passports owned by address |
 | `GET /profile/:address/listings` | Listings by seller |
-| `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row) |
+| `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
 | `GET /notifications/:address` | Notification feed |
 | `GET /verifiers` | Verifier directory |
