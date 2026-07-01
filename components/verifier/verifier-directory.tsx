@@ -16,6 +16,7 @@ import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 import { VerificationRequestButton } from "./verification-request-button";
+import { VerificationPayButton } from "./verification-payment-modal";
 
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
 const CATEGORY_CHIPS = ["All", ...CATEGORY_LABELS] as const;
@@ -121,6 +122,11 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
               verifierAddress={verifier.address}
               verifierName={name}
               verificationFee={feeWei}
+            />
+            <VerificationPayButton
+              verifierAddress={verifier.address}
+              verifierName={name}
+              feeWei={feeWei}
             />
           </>
         )}

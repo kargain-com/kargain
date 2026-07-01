@@ -9,6 +9,7 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
+import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
@@ -275,6 +276,15 @@ export default async function ProShowroomPage({
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <SellerContactButton peerAddress={address} label="Contact verifier" />
+            {data.verificationFee > 0n && (
+              <VerificationPayButton
+                verifierAddress={address}
+                verifierName={name}
+                feeWei={data.verificationFee}
+                variant="secondary"
+                size="sm"
+              />
+            )}
             <Link
               href={`/profile/${address}`}
               className="font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary"
