@@ -1,5 +1,6 @@
 import { db } from "ponder:api";
 import {
+  agentAuthorization,
   marketplaceListing,
   passport,
   passportRecord,
@@ -16,7 +17,7 @@ import {
   sql,
 } from "ponder";
 import { Hono } from "hono";
-import { getAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import {
   computeListingFacets,
@@ -53,6 +54,18 @@ function parseLimit(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : 20;
   if (!Number.isFinite(n) || n < 1) return 20;
   return Math.min(n, 100);
+}
+
+function parseAddressParam(raw: string): `0x${string}` | null {
+  const trimmed = raw.trim();
+  if (!isAddress(trimmed)) return null;
+  return getAddress(trimmed);
+}
+
+function parseOptionalBoolean(raw: string | undefined): boolean | undefined {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return undefined;
 }
 
 function parseOffset(raw: string | undefined): number {
@@ -657,6 +670,114 @@ app.get("/profile/:address/listings", async (c) => {
   const enriched = listings.map((listing) => enrichListing(listing, passportMap));
 
   return c.json(jsonBody({ listings: enriched }));
+});
+
+app.get("/agents/:address/authorizations", async (c) => {
+  const agent = parseAddressParam(c.req.param("address"));
+  if (!agent) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const where = and(
+    eq(agentAuthorization.agent, agent),
+    eq(agentAuthorization.active, true),
+  );
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        tokenId: agentAuthorization.tokenId,
+        agent: agentAuthorization.agent,
+        expiry: agentAuthorization.expiry,
+        ownerMinPrice1e8: agentAuthorization.ownerMinPrice1e8,
+        active: agentAuthorization.active,
+      })
+      .from(agentAuthorization)
+      .where(where)
+      .orderBy(desc(agentAuthorization.tokenId))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(agentAuthorization).where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+  const tokenIds = rows.map((row) => row.tokenId);
+  let listedTokenIds = new Set<string>();
+  if (tokenIds.length > 0) {
+    const activeListings = await db
+      .select({ tokenId: marketplaceListing.tokenId })
+      .from(marketplaceListing)
+      .where(
+        and(
+          inArray(marketplaceListing.tokenId, tokenIds),
+          eq(marketplaceListing.agent, agent),
+          eq(marketplaceListing.active, true),
+        ),
+      );
+    listedTokenIds = new Set(activeListings.map((row) => row.tokenId));
+  }
+
+  const authorizations = rows.map((row) => ({
+    ...row,
+    hasActiveListing: listedTokenIds.has(row.tokenId),
+  }));
+
+  return c.json(
+    jsonBody({
+      authorizations,
+      total,
+      page,
+      limit,
+    }),
+  );
+});
+
+app.get("/agents/:address/listings", async (c) => {
+  const agent = parseAddressParam(c.req.param("address"));
+  if (!agent) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const activeFilter = parseOptionalBoolean(c.req.query("active"));
+
+  const conditions = [eq(marketplaceListing.agent, agent)];
+  if (activeFilter === true) {
+    conditions.push(eq(marketplaceListing.active, true));
+  } else if (activeFilter === false) {
+    conditions.push(eq(marketplaceListing.active, false));
+  }
+  const where = and(...conditions);
+
+  const [listingsFound, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(marketplaceListing)
+      .where(where)
+      .orderBy(desc(marketplaceListing.listedAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(marketplaceListing).where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+  const tokenIds = [...new Set(listingsFound.map((l) => l.tokenId))];
+  const passportMap = await loadPassportMap(tokenIds);
+  const listings = listingsFound.map((listing) => enrichListing(listing, passportMap));
+
+  return c.json(
+    jsonBody({
+      listings,
+      total,
+      page,
+      limit,
+    }),
+  );
 });
 
 app.get("/verifiers", async (c) => {

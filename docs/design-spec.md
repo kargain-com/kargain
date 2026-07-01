@@ -451,8 +451,10 @@ Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/l
 | Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
 | Delegate to a pro | **Delegate to a pro** opens [`authorize-agent-dialog.tsx`](../components/marketplace/authorize-agent-dialog.tsx) when owner, listing inactive, no active on-chain authorization; KarPro picker via [`verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) `onSelectAgent` mode |
+| Owner minimum price | No currency selector on authorize form — `ownerMinPrice1e8` is a raw on-chain scalar until the agent lists (`listOnBehalf` picks currency); label uses [`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts); confirmation copy: guaranteed minimum *in the currency the agent chooses* |
 | Agent authorization | [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); shows agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
+| Agent dashboard (future) | Agent-scoped data via Ponder `GET /agents/:address/authorizations` and `GET /agents/:address/listings` ([indexer/README.md](./indexer/README.md)) — `listOnBehalf` / consigned tab not built yet |
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 

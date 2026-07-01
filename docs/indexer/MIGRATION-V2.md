@@ -138,6 +138,8 @@ Deprecate `payAsset` enum column for generation v2 rows.
 | `ownerMinPrice1e8` | bigint | Floor in listing currency |
 | `active` | boolean | Cleared on revoke / list end |
 
+**HTTP API (June 2026):** `GET /agents/:address/authorizations` and `GET /agents/:address/listings` — see [indexer/README.md](./README.md#agent-consignment-routes--shipped-june-2026). Owner-facing authorization status on listing detail still uses on-chain `agentAuthorizations` (Ponder row can be stale after return without `AgentRevoked`).
+
 ### New table: `currency_feed`
 
 | Column | Type | Notes |
@@ -214,6 +216,10 @@ Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 
+### Agent consignment HTTP API — ✅ shipped June 2026
+
+Agent-scoped browse for future dashboard / pro showroom: `GET /agents/:address/authorizations` (paginated; `hasActiveListing` per row) and `GET /agents/:address/listings` (paginated; optional `?active=`). **Redeploy ponder only** — secondary indexes on `agent` columns. Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-june-2026).
+
 ### Known display limitations
 
 - **KRW / JPY** use the shared 2-decimal fiat formatter (e.g. `₩50,000,000.00`). Integer-only formatting for zero-decimal currencies is a possible follow-up.
@@ -225,4 +231,4 @@ Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/
 
 ---
 
-*Last updated: June 30, 2026 — AED live-rate only (peg removed).*
+*Last updated: June 30, 2026 — agent consignment Ponder API routes.*

@@ -1,4 +1,4 @@
-import { onchainTable } from "ponder";
+import { index, onchainTable } from "ponder";
 
 export const passport = onchainTable("passport", (t) => ({
   id: t.text().primaryKey(),
@@ -62,22 +62,28 @@ export const passportRecord = onchainTable("passport_record", (t) => ({
   timestamp: t.bigint().notNull(),
 }));
 
-export const marketplaceListing = onchainTable("marketplace_listing", (t) => ({
-  id: t.text().primaryKey(),
-  tokenId: t.text().notNull(),
-  seller: t.text().notNull(),
-  fiatPrice1e8: t.bigint().notNull(),
-  currencyCode: t.text().notNull().default("USD"),
-  agent: t.text().notNull().default(""),
-  agentFeeBps: t.integer().notNull().default(0),
-  ownerMinPrice1e8: t.bigint().notNull().default(0n),
-  active: t.boolean().notNull().default(true),
-  listedAt: t.bigint().notNull(),
-  soldAt: t.bigint().notNull().default(0n),
-  buyer: t.text().notNull().default(""),
-  returnRequestedAt: t.bigint(),
-  externalPaymentConfirmedAt: t.bigint(),
-}));
+export const marketplaceListing = onchainTable(
+  "marketplace_listing",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    seller: t.text().notNull(),
+    fiatPrice1e8: t.bigint().notNull(),
+    currencyCode: t.text().notNull().default("USD"),
+    agent: t.text().notNull().default(""),
+    agentFeeBps: t.integer().notNull().default(0),
+    ownerMinPrice1e8: t.bigint().notNull().default(0n),
+    active: t.boolean().notNull().default(true),
+    listedAt: t.bigint().notNull(),
+    soldAt: t.bigint().notNull().default(0n),
+    buyer: t.text().notNull().default(""),
+    returnRequestedAt: t.bigint(),
+    externalPaymentConfirmedAt: t.bigint(),
+  }),
+  (table) => ({
+    agentIdx: index().on(table.agent),
+  }),
+);
 
 export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
   id: t.text().primaryKey(),
@@ -93,14 +99,20 @@ export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
   timestamp: t.bigint().notNull(),
 }));
 
-export const agentAuthorization = onchainTable("agent_authorization", (t) => ({
-  id: t.text().primaryKey(),
-  tokenId: t.text().notNull(),
-  agent: t.text().notNull(),
-  expiry: t.bigint().notNull().default(0n),
-  ownerMinPrice1e8: t.bigint().notNull().default(0n),
-  active: t.boolean().notNull().default(true),
-}));
+export const agentAuthorization = onchainTable(
+  "agent_authorization",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    agent: t.text().notNull(),
+    expiry: t.bigint().notNull().default(0n),
+    ownerMinPrice1e8: t.bigint().notNull().default(0n),
+    active: t.boolean().notNull().default(true),
+  }),
+  (table) => ({
+    agentIdx: index().on(table.agent),
+  }),
+);
 
 export const currencyFeed = onchainTable("currency_feed", (t) => ({
   id: t.text().primaryKey(),
