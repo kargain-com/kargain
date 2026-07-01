@@ -216,8 +216,8 @@ export default async function ProShowroomPage({
             <div className="flex gap-6">
               <IdentityAvatar address={address} size={80} />
               <div className="min-w-0 space-y-4">
-                <span className="inline-block font-mono text-xs uppercase tracking-wider border border-accent-warm text-accent-warm rounded-sm px-2 py-1">
-                  {categoryIndexToLabel(category).toUpperCase()}
+                <span className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
+                  {categoryIndexToLabel(category)}
                 </span>
                 <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                   {name}

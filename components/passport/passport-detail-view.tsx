@@ -94,7 +94,7 @@ function DisputeStatusSection({
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm">
+            <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-status-error">
               Disputed
             </p>
             <h2

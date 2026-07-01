@@ -41,7 +41,7 @@ export function VerifierInactiveBadge({ chainId, verifier, className }: Props) {
     <span
       className={
         className ??
-        "inline-flex rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-status-error"
+        "inline-flex items-center px-2.5 py-1 rounded-full bg-bg-surface border border-status-error/40 font-mono text-xs font-medium tracking-[0.18em] uppercase text-status-error"
       }
     >
       Verifier inactive

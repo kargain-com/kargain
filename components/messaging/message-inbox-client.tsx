@@ -11,6 +11,7 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
+import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
@@ -56,13 +57,11 @@ function ConversationInboxRow({ conversation }: { conversation: ConversationSumm
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <IdentityAvatar address={peerAddress as Address | undefined} size={32} />
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
               <p className="truncate font-sans text-sm font-medium text-text-primary">
                 {isLoading ? shortAddress(conversation.peerAddress) : displayName}
               </p>
-              {isKarPro && (
-                <span className="font-mono text-[10px] uppercase text-accent-warm">KarPro</span>
-              )}
+              {isKarPro && <KarProBadge className="shrink-0" />}
             </div>
           </div>
           {conversation.lastMessageAt && (

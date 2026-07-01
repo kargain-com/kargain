@@ -313,7 +313,7 @@ function DisputeCard({
           <AlertTriangle
             size={16}
             strokeWidth={1.5}
-            className="shrink-0 text-status-warning"
+            className="shrink-0 text-status-error"
             aria-hidden
           />
           <PassportStatusBadge status="DISPUTED" />

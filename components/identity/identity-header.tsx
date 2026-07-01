@@ -8,6 +8,7 @@ import { useAccount, useEnsName } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
+import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
@@ -146,9 +147,12 @@ export function IdentityHeader({
           </span>
 
           {isActiveVerifier && (
-            <span className="inline-block shrink-0 rounded-sm border border-accent-warm px-2 py-1 font-mono text-xs uppercase tracking-wider text-accent-warm">
-              KarPro · {categoryIndexToLabel(karProCategory ?? 5)}
-            </span>
+            <>
+              <KarProBadge className="shrink-0" />
+              <span className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
+                {categoryIndexToLabel(karProCategory ?? 5)}
+              </span>
+            </>
           )}
         </div>
 

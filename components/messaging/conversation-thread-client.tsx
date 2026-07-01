@@ -11,6 +11,7 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpClient } from "@/hooks/use-xmtp-client";
@@ -137,15 +138,15 @@ export function ConversationThreadClient({ conversationId }: Props) {
             <IdentityAvatar address={peerAddress as Address | undefined} size={32} />
           </Link>
           <div className="min-w-0">
-            <Link
-              href={profileHref}
-              className="block truncate font-sans text-sm font-medium text-text-primary transition-colors hover:text-accent-warm"
-            >
-              {displayName || "Unknown peer"}
-            </Link>
-            {isKarPro && (
-              <span className="font-mono text-[10px] uppercase text-accent-warm">KarPro</span>
-            )}
+            <div className="flex items-center gap-2">
+              <Link
+                href={profileHref}
+                className="block truncate font-sans text-sm font-medium text-text-primary transition-colors hover:text-accent-warm"
+              >
+                {displayName || "Unknown peer"}
+              </Link>
+              {isKarPro && <KarProBadge className="shrink-0" />}
+            </div>
             <p className="text-[10px] text-text-secondary">End-to-end encrypted</p>
           </div>
         </div>
