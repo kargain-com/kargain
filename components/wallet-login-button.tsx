@@ -2,9 +2,10 @@
 
 import { ChevronDown, ChevronRight, Copy, ExternalLink, LogOut, User, Wallet } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { getAddress } from "viem";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import type { Connector } from "wagmi";
 
 import {
   Dialog,
@@ -25,8 +26,24 @@ import { useClientMounted } from "@/hooks/use-client-mounted";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { endWalletSession } from "@/lib/auth/end-wallet-session";
 import { getViemChain } from "@/lib/web3/supported-chains";
+import {
+  hasInjectedEthereumProvider,
+  isMobileBrowser,
+  walletConnectProjectId,
+} from "@/lib/web3/wallet-connect";
 import { identiconBackground, navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
+
+function connectorDisplayName(connector: Connector): string {
+  if (connector.id === "injected") return "Browser wallet";
+  return connector.name;
+}
+
+function isConnectorVisible(connector: Connector): boolean {
+  if (connector.id === "injected") return hasInjectedEthereumProvider();
+  if (connector.id === "walletConnect") return Boolean(walletConnectProjectId());
+  return true;
+}
 
 function WalletIdenticon({ address, className }: { address: string; className?: string }) {
   return (
@@ -41,10 +58,17 @@ function WalletIdenticon({ address, className }: { address: string; className?: 
 export function WalletLoginButton() {
   const mounted = useClientMounted();
   const [connectOpen, setConnectOpen] = useState(false);
+  const [pendingConnectorUid, setPendingConnectorUid] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
-  const { connect, connectors, isPending, error, variables } = useConnect();
+  const { connect, connectors, isPending, error } = useConnect();
+
+  const visibleConnectors = useMemo(
+    () => connectors.filter(isConnectorVisible),
+    [connectors],
+  );
+  const showMobileHint = isMobileBrowser() && !hasInjectedEthereumProvider();
 
   const checksumAddress = (() => {
     if (!address) return undefined;
@@ -169,29 +193,66 @@ export function WalletLoginButton() {
             </DialogDescription>
           </DialogHeader>
 
-          <ul className="flex flex-col gap-2">
-            {connectors.map((connector: (typeof connectors)[number]) => (
-              <li key={connector.uid}>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => {
-                    connect({ connector });
-                    setConnectOpen(false);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-sm border border-border-default bg-bg-surface px-4 py-3 text-left transition-colors duration-200 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50"
-                >
-                  <Wallet size={32} strokeWidth={1.5} className="size-8 shrink-0 text-text-secondary" aria-hidden />
-                  <span className="flex-1 font-sans text-sm font-medium text-text-primary">
-                    {isPending && variables?.connector?.name === connector.name
-                      ? `Connecting ${connector.name}…`
-                      : connector.name}
-                  </span>
-                  <ChevronRight size={16} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
-                </button>
-              </li>
-            ))}
-          </ul>
+          {showMobileHint && (
+            <p className="mb-4 font-sans text-sm text-text-secondary">
+              No in-browser wallet detected. Tap{" "}
+              <span className="font-medium text-text-primary">WalletConnect</span> to open your
+              wallet app, or open kargain.com in MetaMask or Coinbase Wallet.
+            </p>
+          )}
+
+          {visibleConnectors.length === 0 ? (
+            <p className="font-sans text-sm text-text-secondary">
+              Wallet connection is not available in this browser. Open kargain.com in your wallet
+              app&apos;s browser, or ask the site operator to enable WalletConnect.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {visibleConnectors.map((connector) => {
+                const label = connectorDisplayName(connector);
+                return (
+                  <li key={connector.uid}>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => {
+                        setPendingConnectorUid(connector.uid);
+                        connect(
+                          { connector },
+                          {
+                            onSuccess: () => {
+                              setPendingConnectorUid(null);
+                              setConnectOpen(false);
+                            },
+                            onError: () => setPendingConnectorUid(null),
+                          },
+                        );
+                      }}
+                      className="flex w-full items-center gap-3 rounded-sm border border-border-default bg-bg-surface px-4 py-3 text-left transition-colors duration-200 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50"
+                    >
+                      <Wallet
+                        size={32}
+                        strokeWidth={1.5}
+                        className="size-8 shrink-0 text-text-secondary"
+                        aria-hidden
+                      />
+                      <span className="flex-1 font-sans text-sm font-medium text-text-primary">
+                        {isPending && pendingConnectorUid === connector.uid
+                          ? `Connecting ${label}…`
+                          : label}
+                      </span>
+                      <ChevronRight
+                        size={16}
+                        strokeWidth={1.5}
+                        className="shrink-0 text-text-secondary"
+                        aria-hidden
+                      />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
           {error && (
             <p className="mt-3 font-sans text-xs text-status-error" role="alert">

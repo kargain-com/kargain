@@ -8,11 +8,11 @@ import { WalletSessionSync } from "@/components/providers/wallet-session-sync";
 import { NostrKeyProvider } from "@/hooks/use-nostr-key";
 import { NotificationsProvider } from "@/hooks/use-notification-state";
 import { DisplayCurrencyProvider } from "@/lib/marketplace/display-currency-context";
-import { createStandaloneWagmiConfig } from "@/lib/web3/wagmi-standalone-config";
+import { createWagmiConfig } from "@/lib/web3/wagmi-config";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
-  const [standaloneWagmiConfig] = useState(() => createStandaloneWagmiConfig());
+  const [wagmiConfig] = useState(() => createWagmiConfig());
 
   useEffect(() => {
     const onRejection = (event: PromiseRejectionEvent) => {
@@ -32,7 +32,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WagmiProvider config={standaloneWagmiConfig as never}>
+      <WagmiProvider config={wagmiConfig}>
         <DisplayCurrencyProvider>
           <WalletSessionSync />
           <NostrKeyProvider>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { parseUnits, toBytes } from "viem";
+import { parseUnits, stringToHex } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -130,7 +130,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         address: market,
         abi: MarketplaceEscrowAbi,
         functionName: "setSettlementNote",
-        args: [tid, toBytes(note.trim())],
+        args: [tid, stringToHex(note.trim())],
       });
       await waitForTransactionReceipt(config, { hash });
       await refetchListing();

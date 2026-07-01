@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { parseUnits, toBytes } from "viem";
+import { parseUnits, stringToHex } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -128,7 +128,7 @@ export function AgentListOnBehalfPanel({
     setTxError(null);
     try {
       const noteBytes = settlementNote.trim()
-        ? toBytes(settlementNote.trim())
+        ? stringToHex(settlementNote.trim())
         : ("0x" as const);
       const hash = await writeContractAsync({
         address: market,

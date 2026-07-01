@@ -87,7 +87,7 @@ pnpm dev                    # Next.js → http://localhost:3000
 pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)
 ```
 
-Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)).
+Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). For mobile wallets in Safari/Chrome, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com).
 
 ### Local chain (31337)
 

@@ -173,6 +173,7 @@ export function PassportActionsPanel({
 
   const run = useCallback(
     async (fn: () => Promise<`0x${string}`>, success: string) => {
+      if (!passport) return;
       if (wrongChain) {
         await switchChainAsync?.({ chainId: wc });
       }
@@ -184,7 +185,7 @@ export function PassportActionsPanel({
         setMessage(err instanceof Error ? err.message : "Transaction failed.");
       }
     },
-    [completePassportTx, switchChainAsync, wc, wrongChain],
+    [completePassportTx, passport, switchChainAsync, wc, wrongChain],
   );
 
   const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
@@ -414,7 +415,7 @@ export function PassportActionsPanel({
         <p className="text-sm text-text-secondary">Passport contract not configured.</p>
       )}
 
-      {(!isConnected || passport) && (
+      {passport && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
       <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
 
@@ -521,7 +522,7 @@ export function PassportActionsPanel({
                     address: passport,
                     abi: KarPassportAbi,
                     functionName: "resolveDispute",
-                    args: [tid, true],
+                    args: [tid, 1],
                   }),
                 "Dispute upheld — passport remains verified.",
               )
@@ -540,7 +541,7 @@ export function PassportActionsPanel({
                     address: passport,
                     abi: KarPassportAbi,
                     functionName: "resolveDispute",
-                    args: [tid, false],
+                    args: [tid, 0],
                   }),
                 "Dispute rejected — verification cleared.",
               )
