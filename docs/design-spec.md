@@ -21,7 +21,7 @@ When implementing UI:
 - Keep `design-tokens.ts` and `:root` in `globals.css` in sync when tokens change.
 - Do not copy hex values or clamp formulas into this doc; read them from the files above.
 
-Design principles (enforced in tokens): dark-first, flat surfaces (no shadows), single warm accent used sparingly, maximum heading weight 500, sentence case in UI copy.
+Design principles (enforced in tokens): dark-first, flat surfaces (no shadows), single warm accent used sparingly as **instrument status** (§10.2), maximum heading weight 500, sentence case in UI copy. Philosophy: [§11](#11-design-philosophy).
 
 **Platform:** Kargain is a **multi-chain** product. Base Sepolia is the integration testnet — UI and flows should remain chain-aware (see [README.md](../README.md) § Multi-chain platform). Do not hardcode single-network assumptions in new components.
 
@@ -630,6 +630,8 @@ Do not use any of the following in this codebase:
 
 Kargain's UI treats verified on-chain facts as **instrument readings** — precise, mono, status-colored — not marketing copy. This section governs how factual and status data is distinguished from narrative or decorative UI. It does not replace §4 component layout contracts; when §4 and §10 conflict on factual typography or accent usage, **§10 wins** for those properties.
 
+**Philosophy and rollout:** [§11 Design philosophy](#11-design-philosophy) · [§12 Implementation roadmap](#12-instrument-layer--implementation-roadmap) · [§13 Mobile layout contracts](#13-mobile-layout-contracts)
+
 ---
 
 ### 10.1 Data typography
@@ -681,7 +683,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | State | Border | Text / icon | Notes |
 |-------|--------|-------------|-------|
 | VERIFIED / active on-chain confirmed | `border-accent-warm` (badges; VERIFIED listing card border per §4.10) | `text-accent-warm` | Status indicator only |
-| DISPUTED | `border-status-error` or `border-status-error/40` | `text-status-error` | **No accent-warm exception** — includes `DisputeStatusSection` status label in [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx) (code fix deferred) |
+| DISPUTED | `border-status-error` or `border-status-error/40` | `text-status-error` | **No accent-warm exception** — includes `DisputeStatusSection` status label in [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx) |
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
 | Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Not accent |
 
@@ -793,4 +795,291 @@ Loading spinners (`Loader2` or custom SVG) use `strokeWidth={1.5}` per §7 — n
 
 ---
 
-*Document version: 2.7 (July 2026 — §10.8 loading states). Update when tokens, app shell, or component contracts change.*
+---
+
+## 11. Design philosophy
+
+Kargain is a **provenance navigator** for transport technology — not a dealership showroom. The UI is an instrument panel over immutable protocol facts: on-chain state, Arweave metadata, KarPro verification, and indexed history.
+
+**North star:** Every screen answers *what is recorded on-chain, by whom, and in what trust state?*
+
+### 11.1 Three visual layers
+
+| Layer | Role | Typography | Color |
+|-------|------|------------|-------|
+| **Foundation** (§1–9) | Surfaces, spacing, motion, accessibility | Geist Sans display · Inter body · Geist Mono data | Token palette only |
+| **Instrument** (§10) | Facts, serials, statuses, logs | Mono + `tabular-nums` for all on-chain fields | `accent-warm` = verified/active; `status-error` = disputed; neutral otherwise |
+| **Narrative** | Human explanations, form labels, section titles | Sans, sentence case | `text-primary` / `text-secondary` |
+
+When Foundation and Instrument conflict on factual typography or accent usage, **§10 wins**.
+
+### 11.2 Navigator metaphor (future-proof)
+
+Kargain does not sell the beauty of a vehicle — it charts **provenance** the way a navigator charts position:
+
+| Concept | Product meaning | Visual language |
+|---------|-----------------|-----------------|
+| **Course** | Ownership, sales, verification trajectory | Log pattern (§10.4) — timeline with ticks |
+| **Coordinates** | Token ID, chain, tx hash, block | Serial mono (§10.1) |
+| **Log** | Immutable on-chain records | `PassportLogSection` |
+| **Compass** | Marketplace discovery | `Compass` nav icon (§10.5) |
+| **Stamp** | KarPro / VERIFIED trust | Badge border `accent-warm` |
+
+**System chrome** must not use literal vehicle silhouettes (cars, wheels, roads). Prefer abstract instrument motifs: brackets, ticks, coordinates, compass, serial stamps. This keeps the brand valid as transport technology categories evolve beyond road vehicles.
+
+### 11.3 Brass accent semantics
+
+`accent-warm` (`#d4a574`) is **instrument brass** — the metal of gauges and vernier scales — not a generic warm CTA color. Use it only where the interface reports an **active trust or navigation state** (§10.2–10.3). Prices, serial numbers, and resting body links never use accent.
+
+### 11.4 UI review checklist
+
+Before shipping any component, answer:
+
+1. **Fact or narrative?** On-chain / numeric → mono. Explanations → sans.
+2. **Status or decoration?** Verified/active → accent border or badge. Disputed → `status-error`. Else → neutral borders.
+3. **Log or feed?** Immutable history → log shell (§10.4). Ephemeral alerts / social → feed rows.
+
+### 11.5 Marketing surface (out of scope for `app/`)
+
+Public marketing pages (if added later) may use larger display type and coordinate-grid backgrounds built from CSS tokens. They must **not** introduce shadows, font weights above 500, vehicle hero photography, or tokens outside `globals.css`. Product UI (`app/`) stays flat and instrument-first per §9.
+
+---
+
+## 12. Instrument Layer — implementation roadmap
+
+**Status:** Planned (July 2026). §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**. This roadmap covers the next pass: shared primitives, accent compliance, signature visuals, mobile refinement, and page restructuring.
+
+**Baseline verified:** `pnpm tsc --noEmit` and `pnpm test` (435 tests) pass on the planning branch.
+
+### 12.1 Phase overview
+
+| Phase | Goal | Risk | Depends on |
+|-------|------|------|------------|
+| **IL-0** Primitives | Single source for link, serial, frame, timeline classes | Low | — |
+| **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 |
+| **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 |
+| **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 |
+| **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 |
+| **IL-5** Token parity | `status-success` export + purchase-confirmed semantics | Low | IL-1 |
+| **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
+
+Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport timeline + gallery.
+
+### 12.2 IL-0 — Shared primitives
+
+New modules (proposed paths):
+
+| Module | Purpose |
+|--------|---------|
+| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame` |
+| [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
+| [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame (CSS borders, no images) for gallery hero and VIN block |
+| [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks wrapping log list items |
+
+**`globals.css` amendments:**
+
+| Rule | Today | Target |
+|------|-------|--------|
+| `.link` | `text-accent-warm` at rest | `text-text-secondary` at rest; `hover:text-accent-warm` |
+| `.link-underline` | accent at rest | same as `.link` + underline |
+| `.eyebrow` | unchanged | narrative section labels only — never on-chain serials |
+
+**`lib/design-tokens.ts`:** export `statusSuccess` from `--color-status-success` (CSS already defined).
+
+### 12.3 IL-1 — Accent audit
+
+Run before each IL phase ships:
+
+```bash
+rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' \
+  | rg -v 'focus-visible|focus:border-accent-warm|border-accent-warm text-accent-warm|VERIFIED|verified|active \?|checked &&'
+```
+
+#### Compliant accent (keep)
+
+| Pattern | Examples |
+|---------|----------|
+| Trust status | `PassportStatusBadge` VERIFIED, VERIFIED listing card border, log item `verified` border |
+| Nav / filter **active** state | Mobile bottom nav `border-t-2 border-accent-warm`, market filter chip selected, currency row selected |
+| Focus rings | `focus:border-accent-warm`, `--focus-ring` |
+| Unread affordance | `notification-row` `border-l-2 border-accent-warm` when unread |
+| Gallery selection | Active photo thumb border (selection state, not price) |
+| Switch on | `border-accent-warm bg-accent-warm` |
+| FAB center icon | Mobile create passport `Plus` icon color (primary nav affordance) |
+
+#### Fix required (accent at rest or hover border on non-status controls)
+
+| Area | Files | Issue |
+|------|-------|-------|
+| Global links | `app/globals.css` `.link`, `.link-underline` | Accent at rest |
+| Passport detail | `passport-detail-view.tsx`, `passport-records-timeline.tsx`, `passport-uri-history.tsx` | `link-underline` / URI links at rest |
+| Pro showroom | `app/pro/[slug]/page.tsx` | Multiple `text-accent-warm` body links at rest |
+| Verifier directory | `verifier-directory.tsx` | Category eyebrows use accent (should be tertiary per §10.2); button `hover:border-accent-warm` |
+| Profile / KarPro | `profile-page.tsx`, `karpro-status-widget.tsx`, `kar-pro-credential-card.tsx`, `messaging-settings-section.tsx` | Accent eyebrows for non-status labels |
+| Agent / consignment | `agent-authorization-status.tsx`, `listing-agent-buyer-attribution.tsx`, `consigned-vehicles-tab.tsx` | Accent at rest on labels and links |
+| Shell controls | `app-top-nav.tsx`, `wallet-login-button.tsx`, `currency-selector.tsx`, `verifiers-intent-banner.tsx` | `hover:border-accent-warm` on buttons (§10.6) |
+| Marketplace | `market-filter-bar.tsx` active count mono accent (OK if count only); `buy-risk-modal.tsx`, `listing-edit-client.tsx` approval line |
+| Metadata | `metadata-diff-panel.tsx` | `text-accent-warm` on diff heading |
+| EmptyState CTA | `empty-state.tsx` | Documented exception: text-style CTA may use accent at rest with `hover:text-text-primary` (§12.3.1) |
+
+#### 12.3.1 Documented accent exceptions (after IL-1)
+
+| Exception | Rule |
+|-----------|------|
+| `EmptyState` `action` | Accent at rest allowed; hover → `text-text-primary` |
+| Nav / filter active slot | `border-accent-warm` + optional `text-accent-warm` on **current route or selected value** only |
+| `EnsWalletLink` / `InstrumentLink` | Rest `text-text-secondary`; accent hover/focus only |
+
+### 12.4 IL-2 — Signature visuals
+
+#### Timeline axis (pilot)
+
+Upgrade [`passport-log-section.tsx`](../components/passport/passport-log-section.tsx) / [`passport-records-timeline.tsx`](../components/passport/passport-records-timeline.tsx):
+
+```
+┌─ Level A shell (bg-bg-surface)
+│  ├─ vertical hairline (border-l border-border-default) + tick per entry
+│  └─ Level B items (bg-bg-primary/80) aligned to ticks
+```
+
+- Tick: 1px horizontal mark at each entry timestamp (mono, §10.1).
+- Mobile: axis stays left; entries stack full width — no horizontal scroll on axis.
+- Do **not** add success green on log entries (§10.3).
+
+#### Corner bracket frame
+
+Wrap [`passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx) hero in `InstrumentFrame`:
+
+- Four L-shaped corners via pseudo-elements or nested borders (1px `border-border-default`, optional `border-accent-warm/40` when passport VERIFIED).
+- VIN row in [`passport-spec-grid.tsx`](../components/passport/passport-spec-grid.tsx): bracket frame + serial mono.
+
+#### Stamp badges
+
+Consolidate VERIFIED / KarPro into one stamp pattern: mono caps, hairline border, no fill glow. Reference: [`kar-pro-badge.tsx`](../components/ui/kar-pro-badge.tsx), [`passport-status-badge.tsx`](../components/ui/passport-status-badge.tsx).
+
+### 12.5 IL-3 — Mobile instrument pass
+
+| Surface | Current | Target |
+|---------|---------|--------|
+| **Passport / listing detail** | `lg:grid` sidebar; buy panel in aside | Mobile: **commerce block immediately after** title + status badges (before long-scroll attributes). Desktop: keep sticky aside. |
+| **Bottom nav** | `pb-16` on main; safe-area on bar | Audit `scroll-mt-*` anchors (`#passport-actions`, `#passport-comments`) for FAB overlap; prefer `scroll-mt-28` on mobile |
+| **Filter** | Drawer on mobile (`market-filter-drawer.tsx`) | Ensure mono price inputs keep `min-h-11`; active filter count stays mono tertiary unless chip is selected |
+| **Currency sheet** | `max-h-[90dvh]` | Keep; verify 13-row list scroll + 44px row height |
+| **Messaging / notifications** | Level C rows | Peer name sans; timestamp mono — already shipped; verify truncate + badge dots at 320px width |
+| **Touch** | `min-h-11` on controls | Gallery prev/next: bump to `h-11 w-11` on mobile (currently `h-9`) |
+| **Passport create FAB** | Center `-mt-3` | Keep; document as primary nav affordance (not trust status) |
+
+**Mobile layout wireframe (listing detail, `< lg`):**
+
+```
+[Back link]
+[Trust banner / dispute alert]
+[Status badges + serial]
+[Buy panel / offers]          ← moved up (IL-4)
+[Photo gallery + brackets]
+[Description]
+[Attributes + VIN frame]
+[History log + axis]
+[Actions]
+[Comments]
+[URI history]
+```
+
+### 12.6 IL-4 — Page restructuring
+
+#### Passport / marketplace detail (`passport-detail-view.tsx`)
+
+1. Extract **commerce island** (buy, offers, agent, return) into ordered block rendered **above** gallery on `< lg`, **in aside** on `lg+`.
+2. Group **instrument readouts** (serial, chain banner, custody, verifier line) into a single Level B panel (`bg-bg-surface p-4`) under title.
+3. Collapse duplicate trust signals (banner + badge + card border) — one primary status readout per viewport.
+
+#### Marketplace browse (`/`)
+
+- Stats line + filter bar: already non-blocking (Suspense). No change unless IL-2 adds coordinate micro-grid in stats line (optional, CSS-only).
+
+#### Profile (`profile-page.tsx`)
+
+- Tab bar: active tab border — align with nav active pattern (accent border bottom, not full tab fill).
+- Disputes / attestations: ensure log vs feed separation (§10.4).
+
+### 12.7 IL-5 — Status success semantics
+
+Use `status-success` **only** for post-confirmation commerce states (e.g. external payment confirmed, purchase complete) — not for VERIFIED passport (that remains `accent-warm`).
+
+| State | Color |
+|-------|-------|
+| VERIFIED passport / KarPro active | `accent-warm` |
+| Purchase / external payment confirmed | `status-success` border or mono label |
+| DISPUTED | `status-error` |
+
+Files: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx), [`app/marketplace/[tokenId]/purchased/page.tsx`](../app/marketplace/[tokenId]/purchased/page.tsx).
+
+### 12.8 IL-6 — Marketing shell (optional)
+
+Separate Next.js route group `app/(marketing)/` if needed:
+
+- Coordinate grid background via CSS `linear-gradient` on tokens only.
+- Large `text-fluid-display` headlines; same Geist/Inter/Mono stack.
+- CTA → wallet connect or `/` marketplace.
+- **No** duplication of product components; link into app routes.
+
+### 12.9 Verification plan (per phase)
+
+| Check | Command / method |
+|-------|------------------|
+| Types | `pnpm tsc --noEmit` |
+| Unit tests | `pnpm test` |
+| Build | `pnpm build` |
+| Accent grep | §12.3 ripgrep audit |
+| Visual | Manual: 320px, 390px, 768px, 1280px — passport detail, `/`, `/messages`, `/verifiers` |
+| a11y | Focus ring visible; touch targets ≥ 44px; contrast on `text-text-secondary` body |
+
+### 12.10 Definition of done (full IL program)
+
+- [ ] IL-0 primitives merged; `globals.css` link utilities compliant
+- [ ] IL-1 accent audit clean (exceptions only per §12.3.1)
+- [ ] IL-2 timeline axis + gallery bracket frame shipped on passport detail
+- [ ] IL-3 mobile commerce order + touch target pass
+- [ ] IL-4 passport detail IA restructure on mobile and desktop
+- [ ] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
+- [ ] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
+
+---
+
+## 13. Mobile layout contracts
+
+Mobile-specific rules supplement §4.7–4.8 and §6. Instrument Layer rules (§10) apply unchanged on small viewports.
+
+### 13.1 Safe areas and chrome
+
+| Element | Contract |
+|---------|----------|
+| Main scroll | `min-h-dvh pb-16 md:pb-0` via [`site-chrome.tsx`](../components/shell/site-chrome.tsx) |
+| Bottom nav | `pb-[env(safe-area-inset-bottom)]`; `md:hidden` |
+| Sticky top nav | `sticky top-0 z-50`; height `h-14` |
+| Section anchors | `scroll-mt-24` minimum; `scroll-mt-28` on mobile when FAB overlaps (`md:scroll-mt-24`) |
+
+### 13.2 Navigation duplication
+
+Below `md`, primary actions live in **bottom nav only** (Messages, Create FAB, Alerts, Profile). Top nav: logo, Verifiers, optional KarPro, wallet — per §4.7.
+
+### 13.3 Commerce-first mobile detail
+
+On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) render **before** photo gallery and long-form attributes. See §12.5 wireframe.
+
+### 13.4 Density tiers on mobile
+
+| Tier | Padding | Use |
+|------|---------|-----|
+| Level A card | `p-4` (not `p-6`) when sole column width &lt; 640px | Optional IL-4 tightening — must not break §10.6 desktop rules |
+| Level C row | `px-4 py-3` | Inbox, notifications, consignment lists |
+| Filter drawer | Full-width mono inputs, `min-h-11` | §4.10 |
+
+### 13.5 Instrument readability
+
+- Serial and price lines: allow `text-xs` mono on very narrow screens; never switch factual fields to sans.
+- Horizontal thumb strips (gallery): `overflow-x-auto` with `pb-1` — keep selected thumb `border-accent-warm` (selection state).
+
+---
+
+*Document version: 3.0 (July 2026 — §11 philosophy, §12–§13 Instrument Layer roadmap + mobile contracts). Update when tokens, app shell, or component contracts change.*

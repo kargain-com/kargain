@@ -23,7 +23,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [design-spec.md](./design-spec.md) | Layout, tokens, components — marketplace §4.16; §4.12 messaging; §4.17 verification fee; Instrument Layer §10 (empty §10.7, loading §10.8) |
+| [design-spec.md](./design-spec.md) | Layout, tokens, components — Instrument Layer §10–§13 (philosophy, IL roadmap, mobile) |
 
 ## Deploy records
 
