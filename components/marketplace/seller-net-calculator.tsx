@@ -35,7 +35,7 @@ export function SellerNetCalculator({
 }: Props) {
   if (price1e8 == null || price1e8 <= 0n) {
     return (
-      <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
+      <div className="rounded-md border border-border-default bg-bg-primary/80 p-4 text-sm text-text-secondary">
         Enter an asking price and commission to see the fee breakdown.
       </div>
     );
@@ -43,7 +43,7 @@ export function SellerNetCalculator({
 
   if (platformFeeBps == null) {
     return (
-      <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
+      <div className="rounded-md border border-border-default bg-bg-primary/80 p-4 text-sm text-text-secondary">
         Loading platform fee…
       </div>
     );

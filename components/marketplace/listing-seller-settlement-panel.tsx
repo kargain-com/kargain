@@ -89,7 +89,7 @@ export function ListingSellerSettlementPanel({
       )}
 
       {showSettlementFields && (
-      <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
+      <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-4">
         <p className="font-sans text-sm font-medium text-text-primary">How you can get paid</p>
 
         {showAskingFields && (

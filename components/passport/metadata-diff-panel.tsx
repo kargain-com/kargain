@@ -85,7 +85,7 @@ export function MetadataDiffPanel({
   if (!uriPair && !showReInspect) return null;
 
   return (
-    <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
+    <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-4">
       {showReInspect && (
         <p className="text-sm font-medium text-accent-warm">
           Re-inspection recommended — verification was reset after a prior anchor change or dispute.

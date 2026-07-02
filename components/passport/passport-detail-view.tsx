@@ -129,7 +129,7 @@ function DisputeStatusSection({
 
           {disputeWithdrawn && (
             <div
-              className="flex gap-3 rounded-md border border-border-default bg-bg-surface p-4"
+              className="flex gap-3 rounded-md border border-border-default bg-bg-primary/80 p-4"
               role="status"
             >
               <div className="shrink-0 text-text-secondary mt-0.5">
