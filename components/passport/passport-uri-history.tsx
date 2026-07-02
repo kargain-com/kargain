@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 
+import { monoLink, monoLinkSm } from "@/lib/design/instrument-classes";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import type { PonderUriHistoryEntry } from "@/lib/types/ponder";
 import { shortAddress } from "@/lib/web3/wallet-display";
+import { cn } from "@/lib/utils";
 
 import { PassportLogSection } from "./passport-log-section";
 
@@ -61,7 +63,7 @@ export function PassportUriHistory({ entries, chainId }: Props) {
               <span className="text-text-tertiary">Author </span>
               <Link
                 href={`/profile/${entry.author}`}
-                className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+                className={cn(monoLink, "hover:underline")}
               >
                 {shortAddress(entry.author as `0x${string}`)}
               </Link>
@@ -71,7 +73,7 @@ export function PassportUriHistory({ entries, chainId }: Props) {
                 href={gatewayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 block break-all font-mono text-xs text-accent-warm hover:underline"
+                className={cn(monoLinkSm, "mt-2 block break-all hover:underline")}
                 title={entry.newUri}
               >
                 {displayUri}

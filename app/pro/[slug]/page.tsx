@@ -13,11 +13,13 @@ import { VerificationPayButton } from "@/components/verifier/verification-paymen
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import { cn } from "@/lib/utils";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const CONTAINER =
@@ -71,12 +73,13 @@ function AttestationRow({
     <div className="flex flex-col gap-1">
       <Link
         href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
-        className="font-mono text-sm text-accent-warm hover:underline"
+        className={cn(monoLink, "text-sm hover:underline")}
       >
         <PassportIdLabel
           tokenId={attestation.tokenId}
           chainId={chainId}
-          className="text-sm text-accent-warm hover:underline"
+          variant="mono"
+          className="text-sm"
         />
       </Link>
       {attestation.description.trim() && (
@@ -90,7 +93,7 @@ function AttestationRow({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-sans text-xs text-accent-warm hover:underline"
+          className={cn(sansLink, "text-xs hover:underline")}
         >
           Evidence ↗
         </a>
@@ -193,7 +196,7 @@ export default async function ProShowroomPage({
           </p>
           <Link
             href="/kar-pro"
-            className="mt-4 inline-block font-sans text-sm text-accent-warm hover:underline"
+            className={cn("mt-4 inline-block", sansLinkUnderline)}
           >
             Become a KarPro verifier →
           </Link>
@@ -233,7 +236,7 @@ export default async function ProShowroomPage({
                     href={profileMetadata.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block font-sans text-sm text-accent-warm hover:underline"
+                    className={cn("inline-block", sansLinkUnderline)}
                   >
                     {profileMetadata.website}
                   </a>
@@ -347,7 +350,7 @@ export default async function ProShowroomPage({
               {data.verifiedPassportTotal > 12 && (
                 <Link
                   href={`/profile/${address}`}
-                  className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
+                  className={cn("mt-8 inline-block", sansLinkUnderline)}
                 >
                   View all {data.verifiedPassportTotal} →
                 </Link>
@@ -391,7 +394,7 @@ export default async function ProShowroomPage({
               {data.activeConsignmentTotal > data.activeConsignments.length && (
                 <Link
                   href={`/profile/${address}?tab=consigned`}
-                  className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
+                  className={cn("mt-8 inline-block", sansLinkUnderline)}
                 >
                   View all {data.activeConsignmentTotal} consignments →
                 </Link>
@@ -420,7 +423,7 @@ export default async function ProShowroomPage({
             {data.attestationTotal > 5 && (
               <Link
                 href={`/profile/${address}?tab=attestations`}
-                className="mt-8 inline-block font-sans text-sm text-accent-warm hover:underline"
+                className={cn("mt-8 inline-block", sansLinkUnderline)}
               >
                 View all attestations →
               </Link>

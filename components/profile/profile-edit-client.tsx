@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { categoryLabel } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { publishNostrProfile } from "@/lib/nostr/profile";
@@ -26,7 +27,7 @@ type SaveStatus = "idle" | "success" | "error";
 
 function SectionEyebrow({ children }: { children: string }) {
   return (
-    <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-warm">{children}</p>
+    <p className={categoryLabel}>{children}</p>
   );
 }
 

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrKey } from "@/hooks/use-nostr-key";
+import { sansLink } from "@/lib/design/instrument-classes";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -390,7 +391,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
         {replyTo && (
           <p className="font-sans text-xs text-text-secondary">
             Replying to {replyTo.slice(0, 8)}...
-            <button className="ml-2 text-accent-warm" onClick={() => setReplyTo(null)} type="button">
+            <button className={cn("ml-2", sansLink)} onClick={() => setReplyTo(null)} type="button">
               cancel
             </button>
           </p>

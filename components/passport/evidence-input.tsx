@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { sansLink } from "@/lib/design/instrument-classes";
 
 export type EvidenceInputLabels = {
   evidenceLabel: string;
@@ -65,7 +66,7 @@ export function EvidenceInput({
             {" · "}
             <button
               type="button"
-              className="text-accent-warm hover:underline"
+              className={sansLink}
               disabled={disabled}
               onClick={() => {
                 onFileChange(null);

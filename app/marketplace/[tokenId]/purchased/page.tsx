@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { DEFAULT_CHAIN_ID, getViemChain } from "@/lib/web3/supported-chains";
 
 function PurchasedFallback() {
@@ -50,7 +51,7 @@ async function MarketplacePurchasedInner({
   return (
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
       <div className="mx-auto max-w-md space-y-6 text-center">
-        <h1 className="text-2xl font-medium text-accent-warm">You own this passport</h1>
+        <h1 className="text-2xl font-medium text-text-primary">You own this passport</h1>
         <p className="text-sm leading-relaxed text-text-secondary">
           The NFT is in your wallet. Passport history will update as the indexer catches up.
         </p>
@@ -60,7 +61,7 @@ async function MarketplacePurchasedInner({
               href={scan}
               target="_blank"
               rel="noreferrer"
-              className="text-sm text-accent-warm underline-offset-2 hover:underline"
+              className={sansLinkUnderline}
             >
               BaseScan
             </a>

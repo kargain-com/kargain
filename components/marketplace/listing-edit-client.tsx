@@ -434,7 +434,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
               Approve marketplace
             </Button>
           )}
-          {isApproved && <p className="text-xs text-accent-warm">Marketplace approved.</p>}
+          {isApproved && <p className="text-xs text-text-secondary">Marketplace approved.</p>}
           <ListingSellerSettlementPanel
             chainId={chainId}
             priceInput={priceInput}

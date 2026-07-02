@@ -1,3 +1,5 @@
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
+
 export default function AboutPage() {
   return (
     <>
@@ -90,7 +92,7 @@ export default function AboutPage() {
               href="https://github.com/kargain-com/kargain"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent-warm hover:underline"
+              className={sansLinkUnderline}
             >
               github.com/kargain-com/kargain
             </a>
@@ -99,7 +101,7 @@ export default function AboutPage() {
               href="https://github.com/kargain-com/kips"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent-warm hover:underline"
+              className={sansLinkUnderline}
             >
               github.com/kargain-com/kips
             </a>

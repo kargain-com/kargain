@@ -1,5 +1,6 @@
 import { AlertTriangle, Info, ShieldOff } from "lucide-react";
 
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +89,7 @@ export function PassportTrustBanner({
           </p>
           <a
             href="/verifiers"
-            className="font-sans text-sm text-accent-warm hover:underline"
+            className={sansLinkUnderline}
           >
             Find a verifier →
           </a>

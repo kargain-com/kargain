@@ -21,6 +21,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { ctaLink, monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
@@ -178,7 +179,7 @@ function ProfileBio({ about, website }: { about: string; website: string }) {
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex w-fit items-center gap-1.5 text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+          className={cn("inline-flex w-fit items-center gap-1.5", ctaLink)}
         >
           <Globe size={14} strokeWidth={1.5} aria-hidden />
           {label}
@@ -245,12 +246,13 @@ function AttestationRow({
     <div className="border-b border-border-default py-4">
       <Link
         href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
-        className="text-sm text-text-primary transition-colors duration-150 hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        className={cn(monoLink, "text-sm hover:underline")}
       >
         <PassportIdLabel
           tokenId={attestation.tokenId}
           chainId={chainId}
-          className="text-sm text-accent-warm hover:underline"
+          variant="mono"
+          className="text-sm"
         />
       </Link>
       {attestation.description.trim() && (
@@ -266,7 +268,7 @@ function AttestationRow({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1 inline-block text-xs text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+          className={cn(sansLink, "mt-1 inline-block text-xs hover:underline")}
         >
           View evidence →
         </a>

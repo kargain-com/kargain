@@ -35,6 +35,21 @@ export const sansLink = `font-sans text-sm text-text-secondary ${linkFocus}`;
 
 export const sansLinkUnderline = `${sansLink} underline underline-offset-4`;
 
+/** Narrative page/section eyebrow — matches global `.eyebrow` (§3). */
+export const narrativeEyebrow =
+  "font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm";
+
+/** KarPro broker type, verifier category — same as serialLabel (§10.2). */
+export const categoryLabel = serialLabel;
+
+/** EmptyState action + profile external CTA (§12.3.1 exception). */
+export const ctaLink =
+  "inline-flex min-h-11 items-center text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]";
+
+/** Bordered shell controls — no accent hover border (§10.6). */
+export const shellControlHover =
+  "hover:border-border-hover hover:text-text-primary";
+
 /** L-shaped corner stroke for InstrumentFrame (§12.4). */
 export const instrumentFrameCorner =
   "pointer-events-none absolute block size-3 border-border-default";
@@ -54,6 +69,10 @@ export const instrumentClasses = {
   monoLinkSm,
   sansLink,
   sansLinkUnderline,
+  narrativeEyebrow,
+  categoryLabel,
+  ctaLink,
+  shellControlHover,
   instrumentFrameCorner,
   instrumentFrameCornerVerified,
 } as const;

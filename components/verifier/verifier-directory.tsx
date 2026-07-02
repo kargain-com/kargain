@@ -8,6 +8,7 @@ import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { categoryLabel, shellControlHover } from "@/lib/design/instrument-classes";
 import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
@@ -15,6 +16,7 @@ import {
 import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import { cn } from "@/lib/utils";
 
 import { VerificationRequestButton } from "./verification-request-button";
 import { VerificationPayButton } from "./verification-payment-modal";
@@ -49,7 +51,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
         <IdentityAvatar address={verifier.address} size={40} alt={name} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-sans text-sm font-medium text-text-primary">{name}</p>
-          <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm">
+          <p className={categoryLabel}>
             {categoryIndexToLabel(verifier.category)}
           </p>
         </div>
@@ -78,7 +80,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
         <IdentityAvatar address={verifier.address} size={48} alt={name} />
         <div className="min-w-0">
           <p className="truncate font-sans text-sm font-medium text-text-primary">{name}</p>
-          <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm">
+          <p className={categoryLabel}>
             {categoryIndexToLabel(verifier.category)}
           </p>
         </div>
@@ -115,7 +117,10 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
           <>
             <Link
               href={showroomHref}
-              className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border-hover bg-transparent px-4 py-2 font-sans text-sm font-medium text-text-primary transition-colors duration-200 hover:border-accent-warm hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              className={cn(
+                "inline-flex min-h-11 items-center justify-center rounded-sm border border-border-hover bg-transparent px-4 py-2 font-sans text-sm font-medium text-text-primary transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+                shellControlHover,
+              )}
             >
               View showroom →
             </Link>

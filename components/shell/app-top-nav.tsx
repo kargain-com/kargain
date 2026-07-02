@@ -12,6 +12,7 @@ import { CurrencySelector } from "@/components/shell/currency-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
+import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -50,7 +51,10 @@ export function AppTopNav() {
               "h-9 w-9 md:w-auto md:px-4",
               path === "/verifiers"
                 ? "border-accent-warm bg-bg-surface text-accent-warm"
-                : "border-border-hover bg-transparent text-text-primary hover:border-accent-warm hover:text-accent-warm",
+                : cn(
+                    "border-border-hover bg-transparent text-text-primary",
+                    shellControlHover,
+                  ),
             )}
           >
             <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 md:hidden" aria-hidden />
@@ -89,7 +93,10 @@ export function AppTopNav() {
           {isConnected && (
             <Link
               href="/passport/new"
-              className="hidden h-9 items-center justify-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] hover:border-accent-warm hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
+              className={cn(
+                "hidden h-9 items-center justify-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex",
+                shellControlHover,
+              )}
             >
               <PlusCircle size={16} strokeWidth={1.5} aria-hidden />
               Create passport

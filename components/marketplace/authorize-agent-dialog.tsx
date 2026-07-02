@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
+import { sansLink } from "@/lib/design/instrument-classes";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   listingCurrencyCodesForChain,
@@ -37,6 +38,7 @@ import {
   marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Step = "approval" | "agent" | "terms";
@@ -401,7 +403,7 @@ export function AuthorizeAgentDialog({
                   setSelectedAgent(null);
                   setStep("agent");
                 }}
-                className="shrink-0 font-sans text-xs text-accent-warm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                className={cn(sansLink, "shrink-0 text-xs underline-offset-2 hover:underline")}
               >
                 Change
               </button>

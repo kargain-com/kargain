@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
+import { categoryLabel } from "@/lib/design/instrument-classes";
 import { agentProfileHref } from "@/lib/marketplace/agent-profile-href";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -85,7 +86,7 @@ export function ListingAgentBuyerAttribution({ agentAddress }: Props) {
           >
             {karProName}
           </Link>
-          <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm">
+          <p className={categoryLabel}>
             KarPro
           </p>
         </div>

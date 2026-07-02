@@ -14,6 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { shellControlHover } from "@/lib/design/instrument-classes";
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
   type DisplayCurrency,
@@ -58,7 +59,7 @@ function CurrencyOptionLabel({
 const triggerClassName = cn(
   "inline-flex h-9 w-[72px] shrink-0 items-center justify-center rounded-sm border border-border-hover bg-transparent",
   "font-sans text-sm font-medium text-text-primary transition-colors duration-200",
-  "hover:border-accent-warm hover:text-accent-warm",
+  shellControlHover,
   "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
 );
 

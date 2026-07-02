@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { categoryLabel } from "@/lib/design/instrument-classes";
 import { useMessagingActivation } from "@/hooks/use-messaging-activation";
 import {
   canWalletEnableMessaging,
@@ -33,7 +34,7 @@ import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 function SectionEyebrow({ children }: { children: string }) {
   return (
-    <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-warm">{children}</p>
+    <p className={categoryLabel}>{children}</p>
   );
 }
 

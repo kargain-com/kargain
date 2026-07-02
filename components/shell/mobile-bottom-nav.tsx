@@ -120,7 +120,7 @@ export function MobileBottomNav() {
               "relative z-10 -top-3 mb-1 flex h-12 w-12 shrink-0 items-center justify-center",
               "rounded-full border border-border-hover bg-bg-card text-accent-warm ring-2 ring-bg-primary",
               "transition-[border-color,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
-              "hover:border-accent-warm",
+              "hover:border-border-hover",
               "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
               "active:scale-95",
             )}

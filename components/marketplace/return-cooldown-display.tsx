@@ -41,7 +41,7 @@ export function ReturnCooldownDisplay({ returnRequestedAt }: Props) {
       }`}
     >
       {elapsed ? (
-        <p className="text-accent-warm">Force return is now available</p>
+        <p className="text-text-primary">Force return is now available</p>
       ) : (
         <p className="text-text-primary">
           Force return available in{" "}

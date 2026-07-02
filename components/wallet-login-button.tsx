@@ -25,6 +25,7 @@ import {
 import { useClientMounted } from "@/hooks/use-client-mounted";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { endWalletSession } from "@/lib/auth/end-wallet-session";
+import { shellControlHover } from "@/lib/design/instrument-classes";
 import { getViemChain } from "@/lib/web3/supported-chains";
 import {
   hasInjectedEthereumProvider,
@@ -176,7 +177,10 @@ export function WalletLoginButton() {
       <button
         type="button"
         onClick={() => setConnectOpen(true)}
-        className="inline-flex h-9 items-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 hover:border-accent-warm hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        className={cn(
+          "inline-flex h-9 items-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+          shellControlHover,
+        )}
       >
         <Wallet size={16} strokeWidth={1.5} aria-hidden />
         Connect wallet

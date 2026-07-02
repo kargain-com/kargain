@@ -224,7 +224,7 @@ export function MarketFilterBar() {
               {activeCount > 0 ? (
                 <span>
                   Filters ·{" "}
-                  <span className="font-mono text-xs text-accent-warm">{activeCount}</span>
+                  <span className="font-mono text-xs tabular-nums">{activeCount}</span>
                 </span>
               ) : (
                 "Filters"
@@ -392,7 +392,7 @@ export function MarketFilterBar() {
               {drawerCount > 0 ? (
                 <span>
                   Filters ·{" "}
-                  <span className="font-mono text-xs text-accent-warm">{drawerCount}</span>
+                  <span className="font-mono text-xs tabular-nums">{drawerCount}</span>
                 </span>
               ) : (
                 "More filters"

@@ -2,6 +2,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
+import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -10,12 +11,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: "bg-white text-bg-primary hover:bg-text-secondary hover:text-bg-primary",
-        secondary:
-          "border border-border-hover bg-transparent text-text-primary hover:border-accent-warm hover:text-accent-warm",
+        secondary: cn(
+          "border border-border-hover bg-transparent text-text-primary",
+          shellControlHover,
+        ),
         ghost: "bg-transparent text-text-primary hover:bg-bg-surface",
         default: "bg-white text-bg-primary hover:bg-text-secondary hover:text-bg-primary",
-        outline:
-          "border border-border-hover bg-transparent text-text-primary hover:border-accent-warm hover:text-accent-warm",
+        outline: cn(
+          "border border-border-hover bg-transparent text-text-primary",
+          shellControlHover,
+        ),
       },
       size: {
         default: "px-7 py-3.5",

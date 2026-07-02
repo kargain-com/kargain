@@ -7,6 +7,8 @@ import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
+import { sansLinkUnderline, shellControlHover } from "@/lib/design/instrument-classes";
+import { cn } from "@/lib/utils";
 
 type PassportWithStatus = { status?: string };
 
@@ -55,10 +57,7 @@ export function VerifiersIntentBanner() {
         <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-warm" />
         <p className="font-sans text-sm text-text-primary">
           You are an active verifier.{" "}
-          <Link
-            href={`/profile/${address}`}
-            className="text-accent-warm underline-offset-2 hover:underline"
-          >
+          <Link href={`/profile/${address}`} className={sansLinkUnderline}>
             View your profile →
           </Link>
         </p>
@@ -98,7 +97,10 @@ export function VerifiersIntentBanner() {
       </div>
       <a
         href="#verifier-grid"
-        className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-hover bg-transparent px-4 py-2 font-sans text-sm font-medium text-text-primary transition-colors duration-200 hover:border-accent-warm hover:text-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        className={cn(
+          "inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-hover bg-transparent px-4 py-2 font-sans text-sm font-medium text-text-primary transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+          shellControlHover,
+        )}
       >
         Browse verifiers
         <ChevronDown size={16} strokeWidth={1.5} aria-hidden />

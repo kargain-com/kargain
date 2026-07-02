@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import type { PassportStatus } from "@/lib/types/ponder";
 
 type Props = {
@@ -66,7 +67,7 @@ export function BuyRiskModal({
               Passport is disputed — review discrepancy records before proceeding.{" "}
               <Link
                 href="#passport-records"
-                className="font-medium text-accent-warm underline-offset-2 hover:underline"
+                className={sansLinkUnderline}
                 onClick={() => onOpenChange(false)}
               >
                 View dispute timeline

@@ -847,16 +847,16 @@ Public marketing pages (if added later) may use larger display type and coordina
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** IL-0 **shipped** (July 2026); IL-1–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
+**Status:** IL-0–IL-1 **shipped** (July 2026); IL-2–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
-**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (439), and `pnpm build` pass after IL-0.
+**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (442), and `pnpm build` pass after IL-1.
 
 ### 12.1 Phase overview
 
 | Phase | Goal | Risk | Depends on |
 |-------|------|------|------------|
 | **IL-0** Primitives | Single source for link, serial, frame, timeline classes | Low | — | **Shipped** |
-| **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 |
+| **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 | **Shipped** |
 | **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 |
 | **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 |
 | **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 |
@@ -869,7 +869,7 @@ Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport t
 
 | Module | Purpose |
 |--------|---------|
-| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame` |
+| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover` |
 | [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
 | [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame (CSS borders, no images) for gallery hero and VIN block — **IL-2 integration** |
 | [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks — **IL-2 integration** |
@@ -880,7 +880,7 @@ Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport t
 
 **IL-0 adoption:** `EnsWalletLink` defaults, `PassportIdLabel` serial, `ListingDisplayPrice` → `browsePrice`; passport/marketplace `link-underline` accent overrides removed.
 
-### 12.3 IL-1 — Accent audit
+### 12.3 IL-1 — Accent audit — shipped
 
 Run before each IL phase ships:
 
@@ -888,6 +888,8 @@ Run before each IL phase ships:
 rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' \
   | rg -v 'focus-visible|focus:border-accent-warm|border-accent-warm text-accent-warm|VERIFIED|verified|active \?|checked &&'
 ```
+
+**IL-1 shipped (July 2026):** extended `instrument-classes` (`categoryLabel`, `ctaLink`, `shellControlHover`, `narrativeEyebrow`); `Button` secondary/outline + `FILTER_TRIGGER_BASE` use neutral shell hover; shell controls, category labels, body links, and informational copy migrated; `hover:border-accent-warm` eliminated from codebase. Remaining `text-accent-warm` hits are trust status, nav/filter **active** state, documented exceptions (§12.3.1), or hover-only link accents.
 
 #### Compliant accent (keep)
 
@@ -901,28 +903,39 @@ rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' 
 | Switch on | `border-accent-warm bg-accent-warm` |
 | FAB center icon | Mobile create passport `Plus` icon color (primary nav affordance) |
 
-#### Fix required (accent at rest or hover border on non-status controls)
+#### Fixed in IL-1 (was accent at rest or hover border on non-status controls)
 
 | Area | Files | Issue |
 |------|-------|-------|
-| Global links | `app/globals.css` `.link`, `.link-underline` | Accent at rest |
-| Passport detail | `passport-detail-view.tsx`, `passport-records-timeline.tsx`, `passport-uri-history.tsx` | `link-underline` / URI links at rest |
-| Pro showroom | `app/pro/[slug]/page.tsx` | Multiple `text-accent-warm` body links at rest |
-| Verifier directory | `verifier-directory.tsx` | Category eyebrows use accent (should be tertiary per §10.2); button `hover:border-accent-warm` |
-| Profile / KarPro | `profile-page.tsx`, `karpro-status-widget.tsx`, `kar-pro-credential-card.tsx`, `messaging-settings-section.tsx` | Accent eyebrows for non-status labels |
-| Agent / consignment | `agent-authorization-status.tsx`, `listing-agent-buyer-attribution.tsx`, `consigned-vehicles-tab.tsx` | Accent at rest on labels and links |
-| Shell controls | `app-top-nav.tsx`, `wallet-login-button.tsx`, `currency-selector.tsx`, `verifiers-intent-banner.tsx` | `hover:border-accent-warm` on buttons (§10.6) |
-| Marketplace | `market-filter-bar.tsx` active count mono accent (OK if count only); `buy-risk-modal.tsx`, `listing-edit-client.tsx` approval line |
-| Metadata | `metadata-diff-panel.tsx` | `text-accent-warm` on diff heading |
-| EmptyState CTA | `empty-state.tsx` | Documented exception: text-style CTA may use accent at rest with `hover:text-text-primary` (§12.3.1) |
+| ~~Global links~~ | ~~`app/globals.css` `.link`, `.link-underline`~~ | ~~Accent at rest~~ — IL-0 |
+| ~~Passport detail~~ | ~~`passport-detail-view.tsx`, `passport-records-timeline.tsx`~~, `passport-uri-history.tsx` | URI/explorer links → `monoLink` |
+| Pro showroom | `app/pro/[slug]/page.tsx` | Body links → `sansLink` / `monoLink` |
+| Verifier directory | `verifier-directory.tsx` | Category → `categoryLabel`; custom button → `shellControlHover` |
+| Profile / KarPro | `profile-page.tsx`, `karpro-status-widget.tsx`, `messaging-settings-section.tsx`, `profile-edit-client.tsx` | Non-status labels → `categoryLabel`; website CTA → `ctaLink` |
+| Agent / consignment | `agent-authorization-status.tsx`, `listing-agent-buyer-attribution.tsx`, `consigned-vehicles-tab.tsx` | Category labels; hover-only name links |
+| Shell controls | `app-top-nav.tsx`, `wallet-login-button.tsx`, `currency-selector.tsx`, `verifiers-intent-banner.tsx`, `button.tsx`, `filter-constants.ts` | `shellControlHover` — no accent hover border |
+| Marketplace | `buy-risk-modal.tsx`, `listing-edit-client.tsx`, `return-cooldown-display.tsx`, `nostr-comments-section.tsx` | Informational copy + cancel reply |
+| Metadata | `metadata-diff-panel.tsx` | Re-inspect line → `text-text-primary` |
+| EmptyState CTA | `empty-state.tsx` | Uses shared `ctaLink` (§12.3.1 exception) |
+| Flow pages | `created/page.tsx`, `purchased/page.tsx` | H1 neutral; scan links → `sansLinkUnderline` |
 
 #### 12.3.1 Documented accent exceptions (after IL-1)
 
 | Exception | Rule |
 |-----------|------|
-| `EmptyState` `action` | Accent at rest allowed; hover → `text-text-primary` |
-| Nav / filter active slot | `border-accent-warm` + optional `text-accent-warm` on **current route or selected value** only |
-| `EnsWalletLink` / `InstrumentLink` | Rest `text-text-secondary`; accent hover/focus only |
+| `EmptyState` `action` / `ctaLink` | Accent at rest allowed; hover → `text-text-primary` |
+| Nav / filter / tab **active** slot | `border-accent-warm` + optional `text-accent-warm` on **current route or selected value** only |
+| `EnsWalletLink` / `InstrumentLink` / `monoLink` / `sansLink` | Rest `text-text-secondary`; accent hover/focus only |
+| Trust badges / VERIFIED cards | `listing-card`, `passport-status-badge`, `kar-pro-badge`, log verified border |
+| KarPro membership stamp | `kar-pro-credential-card` ✓ KarPro line |
+| Unread feed | `notification-row` left border when unread |
+| Gallery thumb selection | `passport-photo-gallery`, `listing-detail-gallery` |
+| Switch on | `switch.tsx` |
+| FAB Plus icon | `mobile-bottom-nav` center create affordance |
+| Watchlist active | `watchlist-button` selected state |
+| KarPro active verifier icon | `verifiers-intent-banner` `ShieldCheck` |
+| Narrative eyebrows | Static pages (`about`, `terms`, `privacy`, `kar-pro`), global `.eyebrow`, `sheet` title |
+| Focus rings | Inputs, `focus:border-accent-warm` |
 
 ### 12.4 IL-2 — Signature visuals
 
@@ -1031,7 +1044,7 @@ Separate Next.js route group `app/(marketing)/` if needed:
 ### 12.10 Definition of done (full IL program)
 
 - [x] IL-0 primitives merged; `globals.css` link utilities compliant
-- [ ] IL-1 accent audit clean (exceptions only per §12.3.1)
+- [x] IL-1 accent audit clean (exceptions only per §12.3.1)
 - [ ] IL-2 timeline axis + gallery bracket frame shipped on passport detail
 - [ ] IL-3 mobile commerce order + touch target pass
 - [ ] IL-4 passport detail IA restructure on mobile and desktop
@@ -1076,4 +1089,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.1 (July 2026 — IL-0 primitives shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.2 (July 2026 — IL-1 accent audit shipped). Update when tokens, app shell, or component contracts change.*

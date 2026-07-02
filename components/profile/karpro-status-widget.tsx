@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { categoryLabel } from "@/lib/design/instrument-classes";
 
 export type KarProStatusWidgetProps = {
   isOwner: boolean;
@@ -21,7 +22,7 @@ export function KarProStatusWidget({
   return (
     <div className="flex items-center justify-between gap-4 rounded-md border border-border-default bg-bg-surface p-4">
       <div>
-        <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent-warm">
+        <span className={categoryLabel}>
           KarPro status
         </span>
         <p className="mt-1 font-sans text-sm text-text-secondary">

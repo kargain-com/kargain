@@ -3,9 +3,12 @@ import { describe, it } from "node:test";
 
 import {
   browsePrice,
+  categoryLabel,
+  ctaLink,
   instrumentClasses,
   monoLink,
   serialLabel,
+  shellControlHover,
 } from "../lib/design/instrument-classes.ts";
 
 describe("instrument-classes", () => {
@@ -35,5 +38,19 @@ describe("instrument-classes", () => {
   it("browsePrice uses tabular-nums", () => {
     assert.match(browsePrice, /tabular-nums/);
     assert.match(browsePrice, /text-text-primary/);
+  });
+
+  it("categoryLabel matches serialLabel", () => {
+    assert.equal(categoryLabel, serialLabel);
+  });
+
+  it("ctaLink allows accent at rest per §12.3.1", () => {
+    assert.match(ctaLink, /text-accent-warm/);
+    assert.match(ctaLink, /hover:text-text-primary/);
+  });
+
+  it("shellControlHover avoids accent border", () => {
+    assert.match(shellControlHover, /hover:border-border-hover/);
+    assert.doesNotMatch(shellControlHover, /accent-warm/);
   });
 });

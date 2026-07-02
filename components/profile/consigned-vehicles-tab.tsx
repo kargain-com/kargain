@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   mapAgentListingToRow,
@@ -155,7 +156,7 @@ function AuthorizedAwaitingCard({
         <EnsWalletLink
           address={owner}
           href={`/profile/${owner}`}
-          className="text-accent-warm hover:underline"
+          className="hover:underline"
         />
       </p>
       {chainStatusUnavailable && (

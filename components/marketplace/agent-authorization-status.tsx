@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { categoryLabel } from "@/lib/design/instrument-classes";
 import { listingCurrencyCodesForChain } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -177,7 +178,7 @@ export function AgentAuthorizationStatus({
               {displayName}
             </Link>
             {isKarPro && (
-              <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-accent-warm">
+              <p className={categoryLabel}>
                 KarPro
               </p>
             )}

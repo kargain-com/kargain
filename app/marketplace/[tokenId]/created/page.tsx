@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { PassportCreatedClient } from "@/components/passport/passport-created-client";
 import { Button } from "@/components/ui/button";
+import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 import { getViemChain } from "@/lib/web3/supported-chains";
@@ -61,7 +62,7 @@ async function MarketplaceCreatedInner({
   return (
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
       <div className="mx-auto max-w-md space-y-6 text-center">
-        <h1 className="text-2xl font-medium text-accent-warm">Passport created</h1>
+        <h1 className="text-2xl font-medium text-text-primary">Passport created</h1>
         <p className="font-mono text-xs text-text-tertiary">{label}</p>
         <p className="text-sm leading-relaxed text-text-secondary">
           The NFT is in your wallet. Full passport history appears once indexing finishes.
@@ -73,7 +74,7 @@ async function MarketplaceCreatedInner({
               href={scan}
               target="_blank"
               rel="noreferrer"
-              className="text-sm text-accent-warm underline-offset-2 hover:underline"
+              className={sansLinkUnderline}
             >
               BaseScan
             </a>

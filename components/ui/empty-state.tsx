@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ctaLink } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,8 +46,7 @@ export type EmptyStateProps = {
   nested?: boolean;
 };
 
-const actionClassName =
-  "inline-flex min-h-11 items-center text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]";
+const actionClassName = ctaLink;
 
 function EmptyStateActionControl({ action }: { action: EmptyStateAction }) {
   if (action.href) {
