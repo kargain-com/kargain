@@ -6,7 +6,10 @@ import {
   categoryLabel,
   ctaLink,
   instrumentClasses,
+  instrumentReadoutPanel,
   monoLink,
+  profileTabActive,
+  profileTabInactive,
   serialLabel,
   shellControlHover,
   trustStampBase,
@@ -74,5 +77,23 @@ describe("instrument-classes", () => {
   it("sectionScrollAnchor offsets for mobile FAB", () => {
     assert.match(sectionScrollAnchor, /scroll-mt-28/);
     assert.match(sectionScrollAnchor, /md:scroll-mt-24/);
+  });
+
+  it("instrumentReadoutPanel is Level B shell", () => {
+    assert.match(instrumentReadoutPanel, /rounded-md/);
+    assert.match(instrumentReadoutPanel, /border-border-default/);
+    assert.match(instrumentReadoutPanel, /bg-bg-surface/);
+    assert.match(instrumentReadoutPanel, /p-4/);
+  });
+
+  it("profileTabActive uses accent bottom border only", () => {
+    assert.match(profileTabActive, /border-accent-warm/);
+    assert.match(profileTabActive, /border-b-2/);
+    assert.doesNotMatch(profileTabActive, /bg-/);
+  });
+
+  it("profileTabInactive is transparent border", () => {
+    assert.match(profileTabInactive, /border-transparent/);
+    assert.doesNotMatch(profileTabInactive, /bg-/);
   });
 });

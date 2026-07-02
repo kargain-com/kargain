@@ -347,6 +347,9 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
 | KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
 | Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier or has verifier history in Ponder (visible to all visitors); **Disputes** owner + active verifier only |
+| Tab active state | `profileTabActive` / `profileTabInactive` from [`instrument-classes.ts`](../lib/design/instrument-classes.ts) — accent bottom border only, no active background fill |
+| Attestations panel | `serialLabel` eyebrow *Attestation feed*; Level C rows in `divide-y` list (`bg-bg-primary/80` shell) — feed pattern per §10.4 |
+| Disputes panel | `serialLabel` eyebrow *Open disputes*; Level A `DisputeCard` grid — operational queue |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
 **Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). **Verification fee** line below the stats grid. Hero CTAs: contact verifier, **Pay for inspection** when fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
@@ -407,18 +410,23 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 
 ### 4.14 Passport detail
 
-Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
+Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-instrument-readouts.tsx`](../components/passport/passport-instrument-readouts.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
 
 - Page shell: `py-24`, `max-w-7xl`
-- **Listed in escrow:** title block shows **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer (not profile)
-- **Normal ownership:** **On-chain owner** → `/profile/{owner}`
-- **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`
-- `PassportActionsPanel` wrapped with `id="passport-actions"` and `scroll-mt-24` for dispute anchor
+- **Title block:** vehicle title + `PassportStatusBadge` only
+- **Instrument readouts:** Level B panel (`instrumentReadoutPanel`) under title — serial (`PassportIdLabel`), custody (seller/escrow or on-chain owner), chain drift banner, verifier line when VERIFIED, one-line UNVERIFIED hint + `/verifiers` link; ancillary trust (metadata reset, prior dispute, G2 fixed-after-dispute, duplicate VIN) grouped here — not duplicated in commerce aside
+- **Listed in escrow:** readouts show **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer
+- **Normal ownership:** readouts show **On-chain owner** → `/profile/{owner}`
+- **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`; trust banner suppressed while DISPUTED
+- Grid: three children — **commerce** (`WatchlistButton` + `ListingDetailClientIsland`, sticky `lg:top-24` right column), **main** (gallery, description, attributes, log, actions, comments, URI), **ancillary** (reserved empty tail on desktop)
+- Mobile (`< lg`): readouts → commerce → main (gallery after buy panel)
+- `PassportActionsPanel` wrapped with `id="passport-actions"` and `sectionScrollAnchor` for dispute anchor
 - **Owner actions** (`PassportActionsPanel`): wallet role from on-chain `ownerOf` via [`passport-owner.ts`](../lib/passport/passport-owner.ts) + [`use-passport-on-chain-owner.ts`](../hooks/use-passport-on-chain-owner.ts); Ponder `passport.owner` is SSR fallback only
 - **Passport holder** (human owner: NFT `ownerOf` when unlisted, listing `seller` when in escrow) sees **Edit metadata**, **Add record +** (when not listed and not DISPUTED); **Report discrepancy** hidden for holder
 - While listed in escrow: holder sees *Service records can be added after delisting.* — `appendRecord` requires NFT custody
-- Trust banner, URI history (collapsed default), Nostr comments
-- Mobile: identity block before gallery when not disputed; disputed layout leads with dispute section then gallery
+- Trust dedup: VERIFIED → badge + gallery `InstrumentFrame`; UNVERIFIED → badge + readout hint (no full trust card); DISPUTED → dispute section + badge
+- URI history (collapsed default), Nostr comments
+- Mobile: disputed layout leads with dispute section then gallery; non-disputed gallery in main column after commerce on `< lg`
 
 ---
 
@@ -847,9 +855,9 @@ Public marketing pages (if added later) may use larger display type and coordina
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** IL-0–IL-3 **shipped** (July 2026); IL-4–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
+**Status:** IL-0–IL-4 **shipped** (July 2026); IL-5–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
-**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (445), and `pnpm build` pass after IL-3.
+**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test`, and `pnpm build` pass after IL-4.
 
 ### 12.1 Phase overview
 
@@ -859,17 +867,17 @@ Public marketing pages (if added later) may use larger display type and coordina
 | **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 | **Shipped** |
 | **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 | **Shipped** |
 | **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 | **Shipped** |
-| **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 |
+| **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 | **Shipped** |
 | **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 |
 | **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
 
-Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport timeline + gallery.
+Implement in order. IL-4 shipped July 2026; **next:** IL-5 purchase-confirmed semantics.
 
 ### 12.2 IL-0 — Shared primitives — shipped
 
 | Module | Purpose |
 |--------|---------|
-| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*`, `sectionScrollAnchor` |
+| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*`, `sectionScrollAnchor`, `instrumentReadoutPanel`, `profileTabActive` / `profileTabInactive` |
 | [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
 | [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame — passport gallery hero + VIN block (**shipped** IL-2) |
 | [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks — passport log sections (**shipped** IL-2) |
@@ -996,22 +1004,37 @@ Consolidate VERIFIED / KarPro into one stamp pattern: mono caps, hairline border
 [URI history]
 ```
 
-### 12.6 IL-4 — Page restructuring
+### 12.6 IL-4 — Page restructuring — shipped
+
+**IL-4 shipped (July 2026):** [`passport-instrument-readouts.tsx`](../components/passport/passport-instrument-readouts.tsx) Level B panel under title (serial, custody, chain banner, verifier, UNVERIFIED hint, ancillary trust); passport detail grid split into commerce / main / ancillary columns (single `ListingDetailClientIsland`); `PassportTrustBanner` UNVERIFIED branch removed (readout hint + badge only); attributes + log Level A shells `p-4 sm:p-6` on mobile; profile tab classes centralized; attestations feed `divide-y` + dispute/attestation `serialLabel` eyebrows.
 
 #### Passport / marketplace detail (`passport-detail-view.tsx`)
 
-1. Extract **commerce island** (buy, offers, agent, return) into ordered block rendered **above** gallery on `< lg`, **in aside** on `lg+`.
-2. Group **instrument readouts** (serial, chain banner, custody, verifier line) into a single Level B panel (`bg-bg-surface p-4`) under title.
-3. Collapse duplicate trust signals (banner + badge + card border) — one primary status readout per viewport.
-
-#### Marketplace browse (`/`)
-
-- Stats line + filter bar: already non-blocking (Suspense). No change unless IL-2 adds coordinate micro-grid in stats line (optional, CSS-only).
+1. **Commerce island** — `WatchlistButton` + buy/offers/agent/return in `order-1` column; sticky right on `lg+`; after readouts panel on `< lg`.
+2. **Instrument readouts** — grouped Level B panel under title (`instrumentReadoutPanel`).
+3. **Trust dedup** — one primary status readout per viewport; UNVERIFIED full trust card removed.
 
 #### Profile (`profile-page.tsx`)
 
-- Tab bar: active tab border — align with nav active pattern (accent border bottom, not full tab fill).
-- Disputes / attestations: ensure log vs feed separation (§10.4).
+- Tab bar: `profileTabActive` / `profileTabInactive` — accent bottom border only.
+- Disputes / attestations: log vs feed separation (§10.4) with panel eyebrows.
+
+**Mobile layout wireframe (listing detail, `< lg`):**
+
+```
+[Back link]
+[Dispute alert if DISPUTED]
+[Title + status badge]
+[Instrument readouts panel]
+[Watchlist + buy panel / offers]
+[Photo gallery + brackets]
+[Description]
+[Attributes + VIN frame]
+[History log + axis]
+[Actions]
+[Comments]
+[URI history]
+```
 
 ### 12.7 IL-5 — Status success semantics
 
@@ -1051,7 +1074,7 @@ Separate Next.js route group `app/(marketing)/` if needed:
 - [x] IL-1 accent audit clean (exceptions only per §12.3.1)
 - [x] IL-2 timeline axis + gallery bracket frame shipped on passport detail
 - [x] IL-3 mobile commerce order + touch target pass
-- [ ] IL-4 passport detail IA restructure on mobile and desktop
+- [x] IL-4 passport detail IA restructure on mobile and desktop
 - [ ] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
 - [ ] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
 
@@ -1082,7 +1105,7 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 | Tier | Padding | Use |
 |------|---------|-----|
-| Level A card | `p-4` (not `p-6`) when sole column width &lt; 640px | Optional IL-4 tightening — must not break §10.6 desktop rules |
+| Level A card | `p-4 sm:p-6` when sole column width &lt; 640px (`p-6` from `sm` up) | Shipped IL-4 on passport attributes + log shells |
 | Level C row | `px-4 py-3` | Inbox, notifications, consignment lists |
 | Filter drawer | Full-width mono inputs, `min-h-11` | §4.10 |
 
@@ -1093,4 +1116,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.4 (July 2026 — IL-3 mobile instrument pass shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.5 (July 2026 — IL-4 page restructuring shipped). Update when tokens, app shell, or component contracts change.*

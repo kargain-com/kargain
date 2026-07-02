@@ -4,15 +4,12 @@ import { AlertTriangle, Info } from "lucide-react";
 import NostrCommentsSection from "@/components/marketplace/nostr-comments-section";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
-import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
-import { PassportIdLabel } from "@/components/passport/passport-id-label";
+import { PassportInstrumentReadouts } from "@/components/passport/passport-instrument-readouts";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
-import { PassportTrustBanner } from "@/components/passport/passport-trust-banner";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
-import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
@@ -23,7 +20,6 @@ import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
 import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PonderPassportDetail } from "@/lib/types/ponder";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
 type Props = {
   tokenId: string;
@@ -42,15 +38,6 @@ type Props = {
     externalPaymentConfirmedAt?: string | number;
   } | null;
 };
-
-function formatChainDate(timestampSec: string, locale: string): string {
-  const sec = Number.parseInt(timestampSec, 10);
-  if (!Number.isFinite(sec) || sec <= 0) return "";
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(new Date(sec * 1000));
-}
 
 function buildTitle(metadata: PassportMetadata | null, tokenId: string, chainId: number): string {
   if (metadata?.name?.trim()) return metadata.name.trim();
@@ -213,11 +200,6 @@ export function PassportDetailView({
   const disputeWithdrawn =
     passport.disputeWithdrawnAt !== "0" &&
     Number.parseInt(passport.disputeWithdrawnAt, 10) > 0;
-  const verifiedDate = formatChainDate(passport.verifiedAt, "en");
-  const hasVerifier =
-    passport.status === "VERIFIED" &&
-    passport.verifier.trim() &&
-    passport.verifier !== "0x0000000000000000000000000000000000000000";
   const showG2Banner = showFixedAfterDisputeBanner(passport);
   const custody = resolvePassportCustody({
     chainId,
@@ -231,46 +213,6 @@ export function PassportDetailView({
       chainId={chainId}
       verified={passport.status === "VERIFIED"}
     />
-  );
-
-  const titleBlock = (
-    <div className="mt-8 flex flex-col gap-2 lg:flex lg:flex-row lg:items-end lg:justify-between">
-      <div className="space-y-3">
-        <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
-        <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
-          {title}
-        </h1>
-        <PassportStatusBadge status={passport.status} />
-      </div>
-      <p className="font-sans text-sm text-text-secondary">
-        {custody.isEscrowed ? (
-          <>
-            Seller{" "}
-            <EnsWalletLink
-              address={custody.profileAddress}
-              href={`/profile/${custody.profileAddress}`}
-              className="hover:underline"
-            />
-            <span className="mx-1 text-text-tertiary">·</span>
-            Held in escrow{" "}
-            <EnsWalletLink
-              address={custody.custodyAddress ?? passport.owner}
-              externalHref={explorerAddressUrl(chainId, custody.custodyAddress ?? passport.owner)}
-              className="hover:underline"
-            />
-          </>
-        ) : (
-          <>
-            On-chain owner{" "}
-            <EnsWalletLink
-              address={custody.profileAddress}
-              href={`/profile/${custody.profileAddress}`}
-              className="hover:underline"
-            />
-          </>
-        )}
-      </p>
-    </div>
   );
 
   return (
@@ -298,10 +240,43 @@ export function PassportDetailView({
 
       {isDisputed && <div className="mt-8">{gallery}</div>}
 
-      {titleBlock}
+      <div className="mt-8 space-y-3">
+        <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
+          {title}
+        </h1>
+        <PassportStatusBadge status={passport.status} />
+      </div>
+
+      <PassportInstrumentReadouts
+        tokenId={tokenId}
+        chainId={chainId}
+        status={passport.status}
+        verifier={passport.verifier}
+        verifiedAt={passport.verifiedAt}
+        custody={custody}
+        passportOwner={passport.owner as `0x${string}`}
+        verificationResetCount={passport.verificationResetCount}
+        hadDispute={passport.hadDispute}
+        duplicateVin={passport.duplicateVin}
+        showG2Banner={showG2Banner}
+      />
 
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_22rem] lg:items-start">
-        <div className="order-2 space-y-6 lg:order-1">
+        <div className="order-1 space-y-6 lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
+          <WatchlistButton tokenId={tokenId} />
+
+          <ListingDetailClientIsland
+            chainId={chainId}
+            tokenId={tokenId}
+            listing={listing}
+            passportOwner={passport.owner as `0x${string}`}
+            passportStatus={passport.status}
+            duplicateVin={passport.duplicateVin}
+            hadDispute={passport.hadDispute}
+          />
+        </div>
+
+        <div className="order-2 space-y-6 lg:col-start-1 lg:row-start-1">
           {!isDisputed && gallery}
 
           {metadata?.description && (
@@ -315,7 +290,7 @@ export function PassportDetailView({
             </section>
           )}
 
-          <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
+          <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6">
             <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
               Attributes
             </h2>
@@ -328,26 +303,6 @@ export function PassportDetailView({
             lastDisputer={passport.lastDisputer}
             disputeReason={passport.disputeReason}
           />
-
-          {hasVerifier && (
-            <section className="space-y-3 rounded-md border border-border-default bg-bg-surface p-6">
-              <p className="font-sans text-sm text-text-secondary">
-                Verified by{" "}
-                <EnsWalletLink
-                  address={passport.verifier}
-                  href={`/profile/${passport.verifier}`}
-                  className="hover:underline"
-                />
-                {verifiedDate && (
-                  <>
-                    {" "}
-                    on <span className="font-mono tabular-nums">{verifiedDate}</span>
-                  </>
-                )}
-                <VerifierInactiveInline chainId={chainId} verifier={passport.verifier} />
-              </p>
-            </section>
-          )}
 
           <div id="passport-actions" className={sectionScrollAnchor}>
             <PassportActionsPanel
@@ -375,48 +330,7 @@ export function PassportDetailView({
           <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
         </div>
 
-        <aside className="order-1 space-y-6 lg:order-2 lg:sticky lg:top-24">
-          <PassportTrustBanner
-            verificationResetCount={passport.verificationResetCount}
-            hadDispute={passport.hadDispute}
-            status={passport.status}
-          />
-          <PassportChainStatusBanner
-            tokenId={tokenId}
-            ponderStatus={passport.status}
-            chainId={chainId}
-          />
-
-          {showG2Banner && (
-            <div
-              className="rounded-md border border-accent-warm/40 bg-bg-surface p-4"
-              role="status"
-            >
-              <p className="font-sans text-sm text-text-primary">
-                Fixed after dispute — awaiting re-verification. Metadata was updated after the last
-                dispute or reset.
-              </p>
-            </div>
-          )}
-
-          {passport.duplicateVin && (
-            <p className="rounded-md border border-status-error/40 bg-bg-surface p-4 text-sm text-status-error">
-              Duplicate VIN warning — another passport shares this VIN in the index.
-            </p>
-          )}
-
-          <WatchlistButton tokenId={tokenId} />
-
-          <ListingDetailClientIsland
-            chainId={chainId}
-            tokenId={tokenId}
-            listing={listing}
-            passportOwner={passport.owner as `0x${string}`}
-            passportStatus={passport.status}
-            duplicateVin={passport.duplicateVin}
-            hadDispute={passport.hadDispute}
-          />
-        </aside>
+        <div className="order-3 space-y-6 lg:col-start-2 lg:row-start-2" aria-hidden />
       </div>
     </div>
   );

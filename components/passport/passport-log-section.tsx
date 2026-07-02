@@ -126,7 +126,7 @@ export function PassportLogSection<T>({
     <section
       id={sectionId}
       className={cn(
-        "space-y-4 rounded-md border border-border-default bg-bg-surface p-6",
+        "space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6",
         className,
       )}
     >

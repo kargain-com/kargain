@@ -72,6 +72,19 @@ export const trustStampKarPro = "border-accent-warm/40 text-accent-warm";
 /** Section anchors below sticky top nav; extra offset on mobile for bottom FAB (§13.1). */
 export const sectionScrollAnchor = "scroll-mt-28 md:scroll-mt-24";
 
+/** Level B instrument readouts shell on passport detail (§12.6). */
+export const instrumentReadoutPanel =
+  "rounded-md border border-border-default bg-bg-surface p-4";
+
+const profileTabBase =
+  "min-h-11 border-b-2 -mb-px px-4 py-3 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]";
+
+/** Profile tab active — accent bottom border only (§12.6). */
+export const profileTabActive = `${profileTabBase} border-accent-warm text-text-primary`;
+
+/** Profile tab inactive. */
+export const profileTabInactive = `${profileTabBase} border-transparent text-text-secondary hover:text-text-primary`;
+
 export const instrumentClasses = {
   serialLabel,
   monoNumeric,
@@ -96,4 +109,7 @@ export const instrumentClasses = {
   trustStampNeutral,
   trustStampKarPro,
   sectionScrollAnchor,
+  instrumentReadoutPanel,
+  profileTabActive,
+  profileTabInactive,
 } as const;

@@ -21,7 +21,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { ctaLink, monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
+import {
+  ctaLink,
+  monoLink,
+  profileTabActive,
+  profileTabInactive,
+  sansLink,
+  sansLinkUnderline,
+  serialLabel,
+} from "@/lib/design/instrument-classes";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
@@ -119,12 +127,7 @@ function profileTabUrl(wallet: Address, tab: TabId): string {
 }
 
 function tabButtonClass(active: boolean): string {
-  return cn(
-    "min-h-11 border-b-2 -mb-px px-4 py-3 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-    active
-      ? "border-accent-warm text-text-primary"
-      : "border-transparent text-text-secondary hover:text-text-primary",
-  );
+  return active ? profileTabActive : profileTabInactive;
 }
 
 function formatAttestationDate(timestampSec: string): string {
@@ -243,7 +246,7 @@ function AttestationRow({
   const date = formatAttestationDate(attestation.timestamp);
 
   return (
-    <div className="border-b border-border-default py-4">
+    <li className="px-4 py-3">
       <Link
         href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
         className={cn(monoLink, "text-sm hover:underline")}
@@ -273,7 +276,7 @@ function AttestationRow({
           View evidence →
         </a>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -639,6 +642,7 @@ export function ProfilePage({
               id="profile-panel-disputes"
               aria-labelledby="profile-tab-disputes"
             >
+              <p className={cn(serialLabel, "mb-4")}>Open disputes</p>
               {disputedPassports.length === 0 ? (
                 <EmptyState
                   variant="content"
@@ -673,6 +677,7 @@ export function ProfilePage({
               id="profile-panel-attestations"
               aria-labelledby="profile-tab-attestations"
             >
+              <p className={cn(serialLabel, "mb-4")}>Attestation feed</p>
               {attestations.length === 0 ? (
                 <EmptyState
                   variant="content"
@@ -681,7 +686,7 @@ export function ProfilePage({
                   title="No attestations yet"
                 />
               ) : (
-                <div>
+                <ul className="divide-y divide-border-default rounded-md border border-border-default bg-bg-primary/80">
                   {attestations.map((attestation) => (
                     <AttestationRow
                       key={`${attestation.tokenId}-${attestation.timestamp}`}
@@ -689,7 +694,7 @@ export function ProfilePage({
                       chainId={chainId}
                     />
                   ))}
-                </div>
+                </ul>
               )}
             </section>
           )}
