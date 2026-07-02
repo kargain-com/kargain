@@ -105,7 +105,7 @@ export function MetadataDiffPanel({
         <EmptyState
           variant="infrastructure"
           level="B"
-          className="border-0 bg-transparent p-0 space-y-1"
+          nested
           title="Current metadata unavailable for comparison."
         />
       )}
@@ -114,8 +114,8 @@ export function MetadataDiffPanel({
         <EmptyState
           variant="infrastructure"
           level="B"
+          nested
           role="alert"
-          className="border-0 bg-transparent p-0 space-y-1"
           title="Previous metadata could not be loaded."
           description={uriPair.beforeUri}
         />

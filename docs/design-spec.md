@@ -745,7 +745,11 @@ Canonical empty UI lives in [`components/ui/empty-state.tsx`](../components/ui/e
 | Variant | Container | Typography | Icon |
 |---------|-----------|------------|------|
 | **`content`** | No forced border or background — caller supplies Level A/B shell when needed (e.g. profile verified tab keeps an outer `rounded-md border p-8` wrapper). Level A adds `py-8 text-center`; Level B adds `text-center`. | Level A: `title` → `font-display text-fluid-h2`; `description` → `text-sm text-text-secondary`. Level B: `title` → `text-sm font-medium text-text-primary`; optional `description` → `text-sm text-text-secondary`. | Optional; size **48** (Level A) or **32** (Level B). Component always renders `strokeWidth={1.5}` — callers must not pass stroke width. |
-| **`infrastructure`** | Always **Level B panel**: `rounded-md border border-border-default bg-bg-surface p-4` (ignores `level` for container weight). | `title` and `description` both `text-sm text-text-secondary` — diagnostic copy, not a primary empty-page moment. | Optional; size **32**, `strokeWidth={1.5}`. |
+| **`infrastructure`** | Default: **Level B panel** — `rounded-md border border-border-default bg-bg-surface p-4` (ignores `level` for container weight). With `nested={true}`: typography only inside a caller-owned Level B shell (no second panel). | `title` and `description` both `text-sm text-text-secondary` — diagnostic copy, not a primary empty-page moment. | Optional; size **32**, `strokeWidth={1.5}`. |
+
+**`nested` (infrastructure only):** Use when an infrastructure message lives inside a parent that already provides the Level B bordered shell (e.g. [`metadata-diff-panel.tsx`](../components/passport/metadata-diff-panel.tsx)). Renders the same infrastructure typography and semantics (`role`, icon, action, `children`) without adding a second `rounded-md border bg-bg-surface p-4` wrapper. Ignored when `variant="content"`. Do not strip panel chrome via `className` — use `nested` instead.
+
+**`className` on infrastructure (non-nested):** layout/spacing only (`mx-auto`, `max-w-sm`, margins). Never border or background overrides.
 
 **`action`:** optional text-style CTA (`href` → Link, `onClick` → button) using the accent-hover pattern from profile passport empty CTAs.
 
@@ -768,4 +772,4 @@ Loading-state skeleton canonicalization remains a separate follow-up (not covere
 
 ---
 
-*Document version: 2.5 (July 2026 — §10.7 backlog migration). Update when tokens, app shell, or component contracts change.*
+*Document version: 2.6 (July 2026 — EmptyState nested prop). Update when tokens, app shell, or component contracts change.*

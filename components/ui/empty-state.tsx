@@ -30,10 +30,19 @@ export type EmptyStateProps = {
   description?: string;
   action?: EmptyStateAction;
   level: "A" | "B";
+  /**
+   * Layout/spacing only (margin, max-width, alignment). Never use to remove the
+   * fixed infrastructure panel — use `nested` instead.
+   */
   className?: string;
   children?: ReactNode;
   /** Defaults to "status" for infrastructure; use "alert" for indexer/ponder failures. */
   role?: "status" | "alert";
+  /**
+   * Infrastructure only: when the caller already provides a Level B bordered shell,
+   * render typography only (no panel chrome). Ignored when `variant="content"`.
+   */
+  nested?: boolean;
 };
 
 const actionClassName =
@@ -55,6 +64,30 @@ function EmptyStateActionControl({ action }: { action: EmptyStateAction }) {
   );
 }
 
+type InfrastructureBodyProps = {
+  icon?: LucideIcon;
+  title: string;
+  description?: string;
+  action?: EmptyStateAction;
+  children?: ReactNode;
+};
+
+function InfrastructureBody({ icon: Icon, title, description, action, children }: InfrastructureBodyProps) {
+  return (
+    <>
+      {Icon ? (
+        <Icon size={32} strokeWidth={1.5} className="text-text-tertiary" aria-hidden />
+      ) : null}
+      <p className="font-sans text-sm text-text-secondary">{title}</p>
+      {description ? (
+        <p className="font-sans text-sm text-text-secondary">{description}</p>
+      ) : null}
+      {action ? <EmptyStateActionControl action={action} /> : null}
+      {children ? <div className="mt-2">{children}</div> : null}
+    </>
+  );
+}
+
 export function EmptyState({
   variant,
   icon: Icon,
@@ -65,11 +98,27 @@ export function EmptyState({
   className,
   children,
   role,
+  nested = false,
 }: EmptyStateProps) {
   const iconSize = level === "A" ? 48 : 32;
   const resolvedRole = role ?? (variant === "infrastructure" ? "status" : undefined);
 
   if (variant === "infrastructure") {
+    if (nested) {
+      return (
+        <div className={cn("space-y-1", className)} role={resolvedRole}>
+          <InfrastructureBody
+            icon={Icon}
+            title={title}
+            description={description}
+            action={action}
+          >
+            {children}
+          </InfrastructureBody>
+        </div>
+      );
+    }
+
     return (
       <div
         className={cn(
@@ -78,20 +127,14 @@ export function EmptyState({
         )}
         role={resolvedRole}
       >
-        {Icon ? (
-          <Icon
-            size={32}
-            strokeWidth={1.5}
-            className="text-text-tertiary"
-            aria-hidden
-          />
-        ) : null}
-        <p className="font-sans text-sm text-text-secondary">{title}</p>
-        {description ? (
-          <p className="font-sans text-sm text-text-secondary">{description}</p>
-        ) : null}
-        {action ? <EmptyStateActionControl action={action} /> : null}
-        {children ? <div className="mt-2">{children}</div> : null}
+        <InfrastructureBody
+          icon={Icon}
+          title={title}
+          description={description}
+          action={action}
+        >
+          {children}
+        </InfrastructureBody>
       </div>
     );
   }
