@@ -266,11 +266,9 @@ export default async function ProShowroomPage({
                 </p>
               </div>
             </div>
-            <p className="mt-4 font-mono text-sm">
-              <span className="text-text-secondary">Verification fee </span>
-              <span className="text-text-primary">
-                {formatVerificationFee(data.verificationFee)}
-              </span>
+            <p className="mt-4 font-mono text-xs text-text-secondary">
+              <span>Verification fee </span>
+              <span>{formatVerificationFee(data.verificationFee)}</span>
             </p>
           </div>
 

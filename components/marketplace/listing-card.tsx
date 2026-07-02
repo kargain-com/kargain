@@ -130,7 +130,6 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
           <ListingDisplayPrice
             fiatPrice1e8={row.fiatPrice1e8}
             fiatCurrency={row.fiatCurrency}
-            className="group-hover:text-accent-warm group-focus-visible:text-accent-warm"
           />
           <PassportIdLabel
             tokenId={row.tokenId}

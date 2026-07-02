@@ -352,7 +352,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         {active ? (
           <>
             <p className="text-xs text-text-secondary pt-2">Asking price</p>
-            <p className="text-lg font-medium text-accent-warm">
+            <p className="font-mono text-lg font-medium tabular-nums text-text-primary">
               {formatFiat1e8(fiatPrice1e8)} {displayCurrency}
             </p>
           </>

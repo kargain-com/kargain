@@ -400,7 +400,7 @@ export function VerificationPaymentModal({
                       <>
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
-                          <span className="font-mono text-sm font-medium text-accent-warm">
+                          <span className="font-mono text-xs text-text-secondary">
                             {formatVerificationFee(feeWei)}
                           </span>
                         </div>
@@ -417,7 +417,7 @@ export function VerificationPaymentModal({
                       <>
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
-                          <span className="font-mono text-sm font-medium text-accent-warm">
+                          <span className="font-mono text-xs text-text-secondary">
                             {ratesLoading || usdcOptionDisabled
                               ? "—"
                               : `${formatUnits(usdcAmount, 6)} USDC`}

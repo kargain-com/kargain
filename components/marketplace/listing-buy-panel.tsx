@@ -591,7 +591,7 @@ export function ListingBuyPanel({
               <DisclosureRow
                 label="You pay"
                 value={ethYouPay}
-                valueClassName="font-medium text-accent-warm"
+                valueClassName="text-xs text-text-secondary"
               />
               <DisclosureRow
                 label="Rate at settlement"
@@ -613,7 +613,7 @@ export function ListingBuyPanel({
               <DisclosureRow
                 label="You pay"
                 value={usdcYouPay}
-                valueClassName="font-medium text-accent-warm"
+                valueClassName="text-xs text-text-secondary"
               />
               <DisclosureRow
                 label="Rate at settlement"

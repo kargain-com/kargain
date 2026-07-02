@@ -5,7 +5,7 @@ import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize"
 import { cn } from "@/lib/utils";
 
 const PRICE_CLASS =
-  "text-lg font-medium text-accent-warm transition-colors duration-200";
+  "font-mono text-lg font-medium tabular-nums text-text-primary";
 
 type Props = {
   fiatPrice1e8: string | bigint;

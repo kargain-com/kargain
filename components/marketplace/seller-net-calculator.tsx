@@ -92,7 +92,7 @@ export function SellerNetCalculator({
       </dl>
 
       {meetsMin ? (
-        <p className="mt-2 text-xs text-accent-warm">
+        <p className="mt-2 text-xs text-text-secondary">
           Owner receives {formatAmount(sellerNet, currencyCode)}, above the minimum of{" "}
           {formatAmount(ownerMinPrice1e8, currencyCode)}.
         </p>
