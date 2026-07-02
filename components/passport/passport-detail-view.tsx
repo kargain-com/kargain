@@ -334,7 +334,7 @@ export function PassportDetailView({
                 <EnsWalletLink
                   address={passport.verifier}
                   href={`/profile/${passport.verifier}`}
-                  className="font-mono text-accent-warm hover:underline"
+                  className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
                 />
                 {verifiedDate && (
                   <>
