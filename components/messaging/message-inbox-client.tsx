@@ -8,6 +8,7 @@ import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
+import { MessagingCatchUpBanner } from "@/components/messaging/messaging-catch-up-banner";
 import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -110,7 +111,7 @@ export function MessageInboxClient() {
   const { address, isConnected, connector } = useAccount();
   const { client, ensureInitialized } = useXmtpClient();
   const { isReady, needsSetup, status } = useMessagingStatus();
-  const { conversations, isLoading } = useXmtpConversations(client);
+  const { conversations, isLoading } = useXmtpConversations();
   const myAddress = client ? getClientEthereumAddress(client) : address;
 
   const initialToRef = useRef<string | null | undefined>(undefined);
@@ -250,6 +251,8 @@ export function MessageInboxClient() {
       {needsSetup && !openingPeer && <MessagingSetupCard variant="full" context="account" />}
 
       {!needsSetup && <MessagingDriftBanner />}
+
+      {!needsSetup && <MessagingCatchUpBanner />}
 
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">

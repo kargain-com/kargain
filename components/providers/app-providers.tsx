@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { WalletSessionSync } from "@/components/providers/wallet-session-sync";
 import { NostrKeyProvider } from "@/hooks/use-nostr-key";
+import { XmtpConversationsProvider } from "@/components/providers/xmtp-conversations-provider";
 import { NotificationsProvider } from "@/hooks/use-notification-state";
 import { DisplayCurrencyProvider } from "@/lib/marketplace/display-currency-context";
 import { createWagmiConfig } from "@/lib/web3/wagmi-config";
@@ -36,7 +37,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <DisplayCurrencyProvider>
           <WalletSessionSync />
           <NostrKeyProvider>
-            <NotificationsProvider>{children}</NotificationsProvider>
+            <NotificationsProvider>
+              <XmtpConversationsProvider>{children}</XmtpConversationsProvider>
+            </NotificationsProvider>
           </NostrKeyProvider>
         </DisplayCurrencyProvider>
       </WagmiProvider>

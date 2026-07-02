@@ -13,7 +13,7 @@ type Props = {
 export function MessagingNavStatus({ className }: Props) {
   const { needsSetup } = useMessagingStatus();
   const { client } = useXmtpClient();
-  const unreadTotal = useXmtpUnreadTotal(client);
+  const unreadTotal = useXmtpUnreadTotal();
 
   if (needsSetup) {
     return (

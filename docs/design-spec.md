@@ -374,7 +374,8 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else specific copy from [`peerReachabilityMessage`](../lib/xmtp/can-message-peer.ts) |
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
 | XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; default accepting when Nostr field absent; enable verifies network + relay after publish; disable publishes opt-out first then tears down XMTP; opted-in auto-reconnect |
-| Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot |
+| Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot; unread from shared [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (syncs on focus / visibility) |
+| Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; Messages nav dot updates on any page; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect (not in Bell `/notifications`) |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |

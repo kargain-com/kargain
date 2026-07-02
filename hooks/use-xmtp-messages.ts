@@ -150,6 +150,10 @@ export function useXmtpMessages(
                 if (eth) addressByInboxRef.current.set(message.senderInboxId, eth);
               });
             }
+            const isPeerMessage = Boolean(client.inboxId && message.senderInboxId !== client.inboxId);
+            if (isPeerMessage) {
+              window.dispatchEvent(new CustomEvent("xmtp:conversations-changed"));
+            }
             setMessages((prev) => {
               if (prev.some((m) => m.id === message.id)) return prev;
               return [...prev, mapDecodedMessage(message, client, addressByInboxRef.current)];

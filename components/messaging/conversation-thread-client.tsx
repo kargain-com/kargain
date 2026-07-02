@@ -37,7 +37,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
   const { isConnected } = useAccount();
   const { client } = useXmtpClient();
   const { isReady, needsSetup } = useMessagingStatus();
-  const { conversations } = useXmtpConversations(client);
+  const { conversations } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
