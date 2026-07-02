@@ -52,7 +52,7 @@ function ConversationInboxRow({ conversation }: { conversation: ConversationSumm
     <li>
       <Link
         href={`/messages/${conversation.id}`}
-        className="block rounded-md border border-border-default bg-bg-surface p-4 transition-colors hover:border-border-hover"
+        className="block rounded-md border border-border-default bg-bg-surface p-3 transition-colors hover:border-border-hover"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -94,7 +94,7 @@ function InboxSkeleton() {
   return (
     <ul className="space-y-2" aria-hidden>
       {Array.from({ length: 4 }).map((_, index) => (
-        <li key={index} className="animate-pulse rounded-md border border-border-default bg-bg-surface p-4">
+        <li key={index} className="animate-pulse rounded-md border border-border-default bg-bg-surface p-3">
           <div className="h-3 w-24 rounded bg-bg-surface" />
           <div className="mt-3 h-4 w-full rounded bg-bg-surface" />
         </li>

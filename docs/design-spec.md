@@ -698,7 +698,7 @@ Two intentional visual languages. Do not merge notification row structure into t
 
 | Pattern | Purpose | Reference implementation | Visual language |
 |---------|---------|--------------------------|-----------------|
-| **Log** | Immutable on-chain history | [`passport-records-timeline.tsx`](../components/passport/passport-records-timeline.tsx), [`passport-uri-history.tsx`](../components/passport/passport-uri-history.tsx) | Chronological entries; bordered items on `bg-bg-surface` shell |
+| **Log** | Immutable on-chain history | [`passport-log-section.tsx`](../components/passport/passport-log-section.tsx) via [`passport-records-timeline.tsx`](../components/passport/passport-records-timeline.tsx) and [`passport-uri-history.tsx`](../components/passport/passport-uri-history.tsx) | Chronological entries; Level A `bg-bg-surface` shell; Level B list items on `bg-bg-primary/80` (§10.6) |
 | **Feed** | Ephemeral alerts / social activity | [`notifications-client.tsx`](../components/notifications/notifications-client.tsx), [`notification-row.tsx`](../components/notifications/notification-row.tsx) | Grouped rows; unread affordances; distinct from log layout |
 
 **Shared rule:** All timestamps in log and feed patterns use `font-mono tabular-nums` (with `text-text-tertiary` or `text-text-secondary` as appropriate).
@@ -720,4 +720,20 @@ Icon size and `strokeWidth` rules: §7 Iconography (unchanged).
 
 ---
 
-*Document version: 2.1 (July 2026 — Instrument Layer spec addition). Update when tokens, app shell, or component contracts change.*
+### 10.6 Container scale
+
+Three padding levels, one radius. **Radius** is uniform (`rounded-md`) across all card, panel, and row containers — no `rounded-sm` on those surfaces. `rounded-full` remains reserved for pills, avatars, and circular icon holders (out of scope here).
+
+| Level | Radius | Padding | Use for |
+|-------|--------|---------|---------|
+| **A — Primary card** | `rounded-md` | `p-6` (`md:p-8` where already present) | Self-contained top-level unit: listing card, verifier directory card, pro showroom card, passport log section, generic [`Card`](../components/ui/card.tsx) primitive |
+| **B — Panel** | `rounded-md` | `p-4` | Functional sub-panel: buy-panel blocks, banners/alerts, side panels, log list items |
+| **C — Dense row** | `rounded-md` | `p-3` or `px-4 py-3` (keep existing horizontal/vertical split where present) | Compact list row: verifier picker, profile passport row, inbox row, consignment row |
+
+**Background:** `bg-bg-card` for Level A primary cards and banners that carry a status/trust signal (trust banner, chain-status banner, pro mini-card). `bg-bg-surface` for Level B/C functional panels and rows with no status signal of their own (profile rows, inbox, drift/account banners, log section shells). Log list items (Level B) use `bg-bg-primary/80` as nested contrast inside the log shell. No container may render with no explicit background token when it visually reads as a bordered card.
+
+**Hover:** `hover:border-border-hover` for interactive Level A/C containers (cards, rows). No `hover:border-accent-warm` on any container — accent is a status indicator (§10.2), never a hover/decoration effect.
+
+---
+
+*Document version: 2.2 (July 2026 — §10.6 container scale). Update when tokens, app shell, or component contracts change.*

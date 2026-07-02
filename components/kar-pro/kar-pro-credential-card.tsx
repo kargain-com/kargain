@@ -405,7 +405,7 @@ export function KarProCredentialCard({
         </p>
 
         {leaveConfirm ? (
-          <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+          <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
             <p className="font-sans text-sm text-text-primary">
               This will burn your KarProPass #{resolvedPassId.toString()}. Continue?
             </p>

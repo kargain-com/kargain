@@ -276,7 +276,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       )}
       {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
       {!feedLoading && roots.length === 0 && (
-        <p className="rounded-md border border-border-default bg-bg-surface px-3 py-3 font-sans text-sm text-text-secondary">
+        <p className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary">
           No comments yet. Be the first to share context or ask a question.
         </p>
       )}
@@ -288,7 +288,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
               key={root.event.id}
               id={`comment-${root.event.id}`}
               className={cn(
-                "rounded-md border border-border-default bg-bg-surface p-3 transition-colors duration-300",
+                "rounded-md border border-border-default bg-bg-surface p-4 transition-colors duration-300",
                 flashEventId === root.event.id && "border-accent-warm",
               )}
             >

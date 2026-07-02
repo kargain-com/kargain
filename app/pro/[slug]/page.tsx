@@ -318,7 +318,7 @@ export default async function ProShowroomPage({
                     <Link
                       key={passport.tokenId}
                       href={`/marketplace/${passport.tokenId}?chain=${chainId}`}
-                      className="block rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-accent-warm focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:p-8"
+                      className="block rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:p-8"
                     >
                       <div className="flex flex-col gap-3">
                         <p className="font-sans text-base font-medium text-text-primary">

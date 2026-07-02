@@ -20,7 +20,7 @@ function ListingCardSkeleton() {
   return (
     <div className="h-full overflow-hidden rounded-md border border-border-default bg-bg-card">
       <div className="aspect-[16/10] w-full animate-pulse bg-bg-surface" />
-      <div className="space-y-2.5 p-4">
+      <div className="space-y-2.5 p-6">
         <div className="h-4 w-3/4 animate-pulse rounded bg-bg-surface" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-bg-surface" />
         <div className="h-6 w-1/3 animate-pulse rounded bg-bg-surface" />
@@ -89,7 +89,7 @@ export function WatchlistClient({ layout = "wide" }: Props) {
       {isConnected && !listingsLoading && watchedIds.length > 0 && (
         <div className="space-y-6">
           {listingData?.ponderError && (
-            <p className="rounded-sm border border-border-default bg-bg-surface p-3 font-sans text-sm text-text-secondary">
+            <p className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary">
               Indexer unavailable. Start the Ponder indexer to load saved listings.
             </p>
           )}

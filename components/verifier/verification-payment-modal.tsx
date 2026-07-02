@@ -351,7 +351,7 @@ export function VerificationPaymentModal({
               </div>
 
               {wrongChain ? (
-                <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+                <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
                   <p className="font-sans text-sm text-text-secondary">Switch to Base Sepolia</p>
                   <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
                     Switch network
@@ -395,7 +395,7 @@ export function VerificationPaymentModal({
                     </button>
                   </div>
 
-                  <div className="space-y-2 rounded-sm border border-border-default bg-bg-card p-4">
+                  <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-4">
                     {paymentMethod === "ETH" ? (
                       <>
                         <div className="flex items-baseline justify-between gap-3">

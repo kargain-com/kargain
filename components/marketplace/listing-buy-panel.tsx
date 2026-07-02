@@ -462,7 +462,7 @@ export function ListingBuyPanel({
   const usdcOptionDisabled = !usdc || (usdcUnavailable && !isQuotesLoading);
 
   const priceBlock = (
-    <div className="rounded-sm border border-border-default bg-bg-surface p-4 space-y-2">
+    <div className="rounded-md border border-border-default bg-bg-surface p-4 space-y-2">
       <ListingDisplayPrice
         fiatPrice1e8={listing.fiatPrice1e8}
         fiatCurrency={listing.fiatCurrency}
@@ -477,7 +477,7 @@ export function ListingBuyPanel({
 
   const directPaymentBlock =
     directPaymentNote.length > 0 ? (
-      <div className="space-y-2 rounded-sm border border-border-default bg-bg-card p-4">
+      <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-4">
         <p className="font-sans text-sm font-medium text-text-primary">Direct payment</p>
         <p className="font-sans text-xs text-text-secondary whitespace-pre-wrap">
           {directPaymentNote}
@@ -493,7 +493,7 @@ export function ListingBuyPanel({
       <div className="space-y-3">
         {priceBlock}
         {directPaymentBlock}
-        <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <p className="text-sm text-text-secondary">Connect wallet to buy</p>
           <WalletLoginButton />
         </div>
@@ -514,7 +514,7 @@ export function ListingBuyPanel({
     return (
       <div className="space-y-3">
         {priceBlock}
-        <div className="space-y-3 rounded-sm border border-border-default bg-bg-surface p-4">
+        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
           <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
             Switch network
@@ -535,7 +535,7 @@ export function ListingBuyPanel({
 
   return (
     <>
-      <div className="space-y-4 rounded-sm border border-border-default bg-bg-surface p-4">
+      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
         <ListingDisplayPrice
           fiatPrice1e8={listing.fiatPrice1e8}
           fiatCurrency={listing.fiatCurrency}
@@ -583,7 +583,7 @@ export function ListingBuyPanel({
           </button>
         </div>
 
-        <div className="space-y-3 rounded-sm border border-border-default bg-bg-card p-4">
+        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <DisclosureRow label="Seller receives" value={sellerReceives} />
 
           {paymentMethod === "ETH" ? (

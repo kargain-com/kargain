@@ -19,7 +19,7 @@ export function KarProStatusWidget({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-sm border border-border-default p-4">
+    <div className="flex items-center justify-between gap-4 rounded-md border border-border-default bg-bg-surface p-4">
       <div>
         <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent-warm">
           KarPro status

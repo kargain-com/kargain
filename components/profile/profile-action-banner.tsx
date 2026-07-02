@@ -32,7 +32,7 @@ export function ProfileActionBanner({
 
   if (!isOwner && isConnected && subjectIsKarPro) {
     return (
-      <div className="flex items-center gap-4 rounded-sm border border-border-default p-4">
+      <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
         <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Ask {subjectName} to verify your passport
@@ -56,7 +56,7 @@ export function ProfileActionBanner({
 
   if (!subjectIsKarPro) {
     return (
-      <div className="flex items-center gap-4 rounded-sm border border-border-default p-4">
+      <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
         <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Join the trust network as a verified professional
@@ -71,7 +71,7 @@ export function ProfileActionBanner({
   if (openDisputeCount > 0) {
     const passportLabel = openDisputeCount === 1 ? "passport" : "passports";
     return (
-      <div className="flex items-center gap-4 rounded-sm border border-border-default p-4">
+      <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
         <AlertTriangle size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           {openDisputeCount} {passportLabel} awaiting your resolution

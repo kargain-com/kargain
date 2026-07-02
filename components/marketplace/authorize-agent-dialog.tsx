@@ -449,7 +449,7 @@ export function AuthorizeAgentDialog({
             </div>
 
             {formattedMinPrice && (
-              <p className="rounded-md border border-border-default bg-bg-surface p-3 text-sm text-text-secondary">
+              <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
                 {agentName} can list, price, and sell your vehicle on your behalf. When they list
                 it, you&apos;re guaranteed to receive at least {formattedMinPrice} in the currency
                 they choose — after their fee and platform fees.

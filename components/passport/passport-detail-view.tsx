@@ -129,7 +129,7 @@ function DisputeStatusSection({
 
           {disputeWithdrawn && (
             <div
-              className="flex gap-3 rounded-md border border-border-default bg-bg-primary p-4"
+              className="flex gap-3 rounded-md border border-border-default bg-bg-surface p-4"
               role="status"
             >
               <div className="shrink-0 text-text-secondary mt-0.5">
@@ -147,7 +147,7 @@ function DisputeStatusSection({
             </h3>
 
             <div className="flex flex-col gap-2">
-              <div className="rounded-sm border border-border-default p-4">
+              <div className="rounded-md border border-border-default bg-bg-surface p-4">
                 <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
                   Buyers
                 </p>
@@ -162,7 +162,7 @@ function DisputeStatusSection({
                 </p>
               </div>
 
-              <div className="rounded-sm border border-border-default p-4">
+              <div className="rounded-md border border-border-default bg-bg-surface p-4">
                 <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
                   Verifiers
                 </p>
@@ -174,7 +174,7 @@ function DisputeStatusSection({
                 </p>
               </div>
 
-              <div className="rounded-sm border border-border-default p-4">
+              <div className="rounded-md border border-border-default bg-bg-surface p-4">
                 <p className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
                   Owners
                 </p>
@@ -398,7 +398,7 @@ export function PassportDetailView({
           )}
 
           {passport.duplicateVin && (
-            <p className="rounded-md border border-status-error/40 p-3 text-sm text-status-error">
+            <p className="rounded-md border border-status-error/40 bg-bg-surface p-4 text-sm text-status-error">
               Duplicate VIN warning — another passport shares this VIN in the index.
             </p>
           )}

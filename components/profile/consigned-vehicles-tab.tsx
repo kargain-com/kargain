@@ -69,7 +69,7 @@ function ListingCardSkeleton() {
   return (
     <div className="h-full overflow-hidden rounded-md border border-border-default bg-bg-card">
       <div className="aspect-[16/10] w-full animate-pulse bg-bg-surface" />
-      <div className="space-y-2.5 p-4">
+      <div className="space-y-2.5 p-6">
         <div className="h-4 w-3/4 animate-pulse rounded bg-bg-surface" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-bg-surface" />
         <div className="h-6 w-1/3 animate-pulse rounded bg-bg-surface" />
@@ -91,7 +91,7 @@ function AwaitingCardSkeleton() {
 function PonderErrorBanner({ message }: { message: string }) {
   return (
     <div
-      className="rounded-sm border border-border-default bg-bg-surface p-4 text-sm text-text-secondary"
+      className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary"
       role="alert"
     >
       <p className="font-medium text-text-primary">{message}</p>
@@ -488,7 +488,7 @@ function AwaitingAuthorizationsSection({
       )}
 
       {isError && !ponderError && (
-        <div className="rounded-sm border border-border-default bg-bg-surface p-4 text-sm text-text-secondary" role="alert">
+        <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary" role="alert">
           <p className="font-medium text-text-primary">Could not load authorizations right now.</p>
         </div>
       )}
@@ -615,7 +615,7 @@ function ListingsSection({
       )}
 
       {isError && !ponderError && (
-        <div className="rounded-sm border border-border-default bg-bg-surface p-4 text-sm text-text-secondary" role="alert">
+        <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary" role="alert">
           <p className="font-medium text-text-primary">Could not load consignments right now.</p>
         </div>
       )}
@@ -685,7 +685,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   return (
     <div className="space-y-2">
       {wrongChain && (
-        <p className="mb-4 rounded-sm border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary">
+        <p className="mb-4 rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary">
           Switch to Base Sepolia to verify authorization status.
         </p>
       )}

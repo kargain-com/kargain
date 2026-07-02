@@ -346,7 +346,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         </Button>
       </div>
 
-      <section className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-4">
+      <section className="space-y-2 rounded-md border border-border-default bg-bg-surface p-4">
         <p className="text-xs text-text-secondary">Token</p>
         <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" variant="mono" className="text-sm text-text-primary" />
         {active ? (

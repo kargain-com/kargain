@@ -146,8 +146,7 @@ export function MessagingSetupCard({
   return (
     <div
       className={cn(
-        "space-y-4 rounded-md border border-border-default bg-bg-surface",
-        isCompact ? "p-4" : "p-6",
+        "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
         className,
       )}
     >

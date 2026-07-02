@@ -50,7 +50,7 @@ export function VerifiersIntentBanner() {
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-md border border-border-default bg-bg-card px-6 py-4"
+        className="flex items-center gap-3 rounded-md border border-border-default bg-bg-card p-4"
       >
         <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-warm" />
         <p className="font-sans text-sm text-text-primary">
@@ -70,7 +70,7 @@ export function VerifiersIntentBanner() {
     return (
       <div
         aria-hidden="true"
-        className="h-16 animate-pulse rounded-md border border-border-default bg-bg-card px-6 py-4"
+        className="h-16 animate-pulse rounded-md border border-border-default bg-bg-card p-4"
       />
     );
   }
@@ -84,7 +84,7 @@ export function VerifiersIntentBanner() {
   return (
     <div
       role="status"
-      className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card px-6 py-5 sm:flex-row sm:items-center"
+      className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card p-4 sm:flex-row sm:items-center"
     >
       <div className="flex-1">
         <p className="font-sans text-sm font-medium text-text-primary">

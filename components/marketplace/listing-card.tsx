@@ -70,7 +70,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             </span>
           )}
         </div>
-        <CardContent className="space-y-2.5 p-4">
+        <CardContent className="space-y-2.5 p-6">
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-text-primary">
               {row.title}

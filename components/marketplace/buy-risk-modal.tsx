@@ -57,12 +57,12 @@ export function BuyRiskModal({
 
         <ul className="space-y-2 text-sm text-text-secondary">
           {passportStatus === "UNVERIFIED" && (
-            <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
+            <li className="rounded-md border border-status-error/30 p-4 text-text-primary">
               Passport is unverified — no independent inspection has confirmed the metadata.
             </li>
           )}
           {passportStatus === "DISPUTED" && (
-            <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
+            <li className="rounded-md border border-status-error/30 p-4 text-text-primary">
               Passport is disputed — review discrepancy records before proceeding.{" "}
               <Link
                 href="#passport-records"
@@ -74,12 +74,12 @@ export function BuyRiskModal({
             </li>
           )}
           {duplicateVin && (
-            <li className="rounded-md border border-status-error/30 p-3 text-text-primary">
+            <li className="rounded-md border border-status-error/30 p-4 text-text-primary">
               Duplicate VIN — another passport shares this VIN in the index.
             </li>
           )}
           {hadDispute && passportStatus === "UNVERIFIED" && (
-            <li className="rounded-md border border-border-default p-3 text-text-secondary">
+            <li className="rounded-md border border-border-default p-4 text-text-secondary">
               This passport had a prior dispute. Metadata may have changed since resolution.
             </li>
           )}

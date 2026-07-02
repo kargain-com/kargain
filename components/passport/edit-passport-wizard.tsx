@@ -462,7 +462,7 @@ export function EditPassportWizard({
       )}
 
       {wrongChain && (
-        <p className="rounded-md border border-border-hover bg-bg-surface p-3 text-sm text-text-secondary">
+        <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
           Switch to Base Sepolia to save.{" "}
           <button
             type="button"

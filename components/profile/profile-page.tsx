@@ -307,7 +307,7 @@ function DisputeCard({
   const showDisputer = isNonemptyDisputer(dispute.lastDisputer);
 
   return (
-    <div className="space-y-3 rounded-sm border border-border-default p-4">
+    <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <AlertTriangle
@@ -484,7 +484,7 @@ export function ProfilePage({
         />
 
         {ponderErr && (
-          <div className="rounded-sm border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
+          <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
             <p className="font-medium text-text-primary">Indexer unavailable</p>
             <p className="mt-1">Start the Ponder indexer to load profile listings.</p>
             <code className="mt-2 inline-block rounded-sm bg-bg-card px-2 py-1 font-mono text-xs">
