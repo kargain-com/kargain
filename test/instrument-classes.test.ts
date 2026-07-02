@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   browsePrice,
   categoryLabel,
+  commerceConfirmedLabel,
+  commerceConfirmedPanel,
   ctaLink,
   instrumentClasses,
   instrumentReadoutPanel,
@@ -14,6 +16,7 @@ import {
   shellControlHover,
   trustStampBase,
   trustStampKarPro,
+  trustStampSuccess,
   trustStampVerified,
   sectionScrollAnchor,
 } from "../lib/design/instrument-classes.ts";
@@ -95,5 +98,22 @@ describe("instrument-classes", () => {
   it("profileTabInactive is transparent border", () => {
     assert.match(profileTabInactive, /border-transparent/);
     assert.doesNotMatch(profileTabInactive, /bg-/);
+  });
+
+  it("commerceConfirmedPanel uses status-success border", () => {
+    assert.match(commerceConfirmedPanel, /border-status-success/);
+    assert.doesNotMatch(commerceConfirmedPanel, /accent-warm/);
+  });
+
+  it("commerceConfirmedLabel uses status-success mono eyebrow", () => {
+    assert.match(commerceConfirmedLabel, /text-status-success/);
+    assert.match(commerceConfirmedLabel, /tracking-\[0\.18em\]/);
+    assert.doesNotMatch(commerceConfirmedLabel, /accent-warm/);
+  });
+
+  it("trustStampSuccess uses status-success only", () => {
+    assert.match(trustStampSuccess, /border-status-success/);
+    assert.match(trustStampSuccess, /text-status-success/);
+    assert.doesNotMatch(trustStampSuccess, /accent-warm/);
   });
 });

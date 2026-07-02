@@ -472,7 +472,7 @@ When the seller has set `settlementNotes`, buyers can register interest off-chai
 |------|-------|
 | Buyer offer | [`listing-make-offer-button.tsx`](../components/marketplace/listing-make-offer-button.tsx) — **Make an offer** / **Withdraw offer** when listing active and direct-payment note set; Nostr kind **30405** via [`listing-offers.ts`](../lib/nostr/listing-offers.ts) (`#d` `kargain:offer:{tokenId}`, `#i` passport + buyer `ethereum:` tag, `#p` seller pubkey); requires seller NIP-39–linked Nostr identity — else *Seller has not linked a Nostr identity. Offers are unavailable.* |
 | Seller offers panel | [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) — visible to listing seller **or** consignment agent when direct payment note set; lists relay offers with profile links; **Confirm payment** → inline *Confirm received payment from {address}?* → `confirmExternalPayment(tokenId, buyer)`; trust copy: *Confirming transfers the NFT immediately. Only confirm after you have received payment.* |
-| Post-confirm | Delisted listing shows read-only *Payment confirmed externally* (with chain timestamp when indexed); Ponder field `externalPaymentConfirmedAt` on listing detail |
+| Post-confirm | Delisted listing shows `commerceConfirmedPanel` + `commerceConfirmedLabel` (*Payment confirmed*) with mono timestamp when indexed; offers panel row uses same label after `confirmExternalPayment`; Ponder field `externalPaymentConfirmedAt` on listing detail |
 | Offer gating | Hidden for seller and agent viewers; buyer offer button only when `hasDirectPayment` |
 
 #### Agent consignment — buyers
@@ -693,13 +693,14 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | VERIFIED / active on-chain confirmed | `border-accent-warm` (badges; VERIFIED listing card border per §4.10) | `text-accent-warm` | Status indicator only |
 | DISPUTED | `border-status-error` or `border-status-error/40` | `text-status-error` | **No accent-warm exception** — includes `DisputeStatusSection` status label in [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx) |
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
+| Purchase / external payment confirmed | `border-status-success/40` (`commerceConfirmedPanel`) | `text-status-success` (`commerceConfirmedLabel`) | Post-confirmation commerce only — §12.7 |
 | Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Not accent |
 
 **§4.14 amendment:** Disputed passport layout (`DisputeStatusSection`) must use `status-error` for the status label. Any `text-accent-warm` on a "Disputed" eyebrow is non-compliant once component code catches up.
 
-**Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Reserve color for `accent-warm` (verified) and `status-error` (disputed / error). Do not use `border-emerald-500` or other non-token greens.
+**Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Do not use `border-emerald-500` or other non-token greens. `status-success` is reserved for commerce-confirmed readouts (§12.7), not passport log ticks.
 
-**Planned token parity (code deferred):** `--color-status-success` / `status-success` exported in [`lib/design-tokens.ts`](../lib/design-tokens.ts) (IL-0). **Not consumed in UI yet** — IL-5.
+**Token parity:** `--color-status-success` / `status-success` in [`lib/design-tokens.ts`](../lib/design-tokens.ts) and [`instrument-classes.ts`](../lib/design/instrument-classes.ts) (`commerceConfirmedPanel`, `commerceConfirmedLabel`, `trustStampSuccess`) — **shipped** IL-5.
 
 ---
 
@@ -855,9 +856,9 @@ Public marketing pages (if added later) may use larger display type and coordina
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** IL-0–IL-4 **shipped** (July 2026); IL-5–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
+**Status:** IL-0–IL-5 **shipped** (July 2026); IL-6 optional. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
-**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test`, and `pnpm build` pass after IL-4.
+**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test`, and `pnpm build` pass after IL-5.
 
 ### 12.1 Phase overview
 
@@ -868,23 +869,23 @@ Public marketing pages (if added later) may use larger display type and coordina
 | **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 | **Shipped** |
 | **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 | **Shipped** |
 | **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 | **Shipped** |
-| **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 |
+| **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 | **Shipped** |
 | **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
 
-Implement in order. IL-4 shipped July 2026; **next:** IL-5 purchase-confirmed semantics.
+Implement in order. IL-5 shipped July 2026; **next:** IL-6 marketing shell (optional).
 
 ### 12.2 IL-0 — Shared primitives — shipped
 
 | Module | Purpose |
 |--------|---------|
-| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*`, `sectionScrollAnchor`, `instrumentReadoutPanel`, `profileTabActive` / `profileTabInactive` |
+| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*`, `commerceConfirmed*`, `sectionScrollAnchor`, `instrumentReadoutPanel`, `profileTabActive` / `profileTabInactive` |
 | [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
 | [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame — passport gallery hero + VIN block (**shipped** IL-2) |
 | [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks — passport log sections (**shipped** IL-2) |
 
 **`globals.css`:** `.link` / `.link-underline` rest `text-text-secondary`; accent on hover/focus — **shipped**.
 
-**`lib/design-tokens.ts`:** `statusSuccess` exported — **shipped** (UI consumption deferred to IL-5).
+**`lib/design-tokens.ts`:** `statusSuccess` exported — **shipped** (UI consumption shipped IL-5).
 
 **IL-0 adoption:** `EnsWalletLink` defaults, `PassportIdLabel` serial, `ListingDisplayPrice` → `browsePrice`; passport/marketplace `link-underline` accent overrides removed.
 
@@ -1036,17 +1037,17 @@ Consolidate VERIFIED / KarPro into one stamp pattern: mono caps, hairline border
 [URI history]
 ```
 
-### 12.7 IL-5 — Status success semantics
+### 12.7 IL-5 — Status success semantics — shipped
 
-Use `status-success` **only** for post-confirmation commerce states (e.g. external payment confirmed, purchase complete) — not for VERIFIED passport (that remains `accent-warm`).
+**IL-5 shipped (July 2026):** `commerceConfirmedPanel`, `commerceConfirmedLabel`, `trustStampSuccess` in [`instrument-classes.ts`](../lib/design/instrument-classes.ts); external payment readout in [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx); purchase complete panel on [`purchased/page.tsx`](../app/marketplace/[tokenId]/purchased/page.tsx); offers panel confirmed row; KarPro slug *Available* moved off success chroma.
+
+Use `status-success` **only** for post-confirmation commerce states — not for VERIFIED passport (that remains `accent-warm`).
 
 | State | Color |
 |-------|-------|
 | VERIFIED passport / KarPro active | `accent-warm` |
 | Purchase / external payment confirmed | `status-success` border or mono label |
 | DISPUTED | `status-error` |
-
-Files: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx), [`app/marketplace/[tokenId]/purchased/page.tsx`](../app/marketplace/[tokenId]/purchased/page.tsx).
 
 ### 12.8 IL-6 — Marketing shell (optional)
 
@@ -1075,7 +1076,7 @@ Separate Next.js route group `app/(marketing)/` if needed:
 - [x] IL-2 timeline axis + gallery bracket frame shipped on passport detail
 - [x] IL-3 mobile commerce order + touch target pass
 - [x] IL-4 passport detail IA restructure on mobile and desktop
-- [ ] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
+- [x] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
 - [ ] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
 
 ---
@@ -1116,4 +1117,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.5 (July 2026 — IL-4 page restructuring shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.6 (July 2026 — IL-5 status success semantics shipped). Update when tokens, app shell, or component contracts change.*

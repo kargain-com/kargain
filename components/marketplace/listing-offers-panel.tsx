@@ -17,6 +17,7 @@ import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
 import type { ListingOffer } from "@/lib/nostr/listing-offers";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -80,7 +81,7 @@ function ListingOfferRow({
       </div>
 
       {isConfirmed ? (
-        <p className="font-sans text-xs text-text-secondary">Payment confirmed ✓</p>
+        <p className={commerceConfirmedLabel}>Payment confirmed</p>
       ) : isConfirming ? (
         <div className="space-y-2">
           <p className="font-sans text-xs text-text-secondary">

@@ -69,6 +69,17 @@ export const trustStampNeutral = "border-border-default text-text-secondary";
 
 export const trustStampKarPro = "border-accent-warm/40 text-accent-warm";
 
+/** Post-confirmation commerce stamp (§12.7). */
+export const trustStampSuccess = "border-status-success text-status-success";
+
+/** Level B shell for purchase / external payment confirmed (§12.7). */
+export const commerceConfirmedPanel =
+  "rounded-md border border-status-success/40 bg-bg-primary/80 p-4";
+
+/** Mono eyebrow for commerce-confirmed readouts (§12.7). */
+export const commerceConfirmedLabel =
+  "font-mono text-xs font-medium tracking-[0.18em] uppercase text-status-success";
+
 /** Section anchors below sticky top nav; extra offset on mobile for bottom FAB (§13.1). */
 export const sectionScrollAnchor = "scroll-mt-28 md:scroll-mt-24";
 
@@ -108,6 +119,9 @@ export const instrumentClasses = {
   trustStampDisputed,
   trustStampNeutral,
   trustStampKarPro,
+  trustStampSuccess,
+  commerceConfirmedPanel,
+  commerceConfirmedLabel,
   sectionScrollAnchor,
   instrumentReadoutPanel,
   profileTabActive,

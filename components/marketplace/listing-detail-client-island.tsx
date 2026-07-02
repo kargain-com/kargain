@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
+import { CheckCircle, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,6 +16,10 @@ import { OwnerReturnRequestPanel } from "@/components/marketplace/owner-return-r
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
+import {
+  commerceConfirmedLabel,
+  commerceConfirmedPanel,
+} from "@/lib/design/instrument-classes";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
@@ -280,11 +284,26 @@ export function ListingDetailClientIsland({
       )}
 
       {!listingActive && externalPaymentConfirmed && (
-        <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-          {externalPaymentDate
-            ? `Payment confirmed externally on ${externalPaymentDate}.`
-            : "Payment confirmed externally."}
-        </p>
+        <div className={commerceConfirmedPanel} role="status">
+          <div className="flex gap-3">
+            <div className="shrink-0 text-status-success mt-0.5">
+              <CheckCircle size={20} strokeWidth={1.5} aria-hidden />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className={commerceConfirmedLabel}>Payment confirmed</p>
+              <p className="font-sans text-sm text-text-secondary">
+                {externalPaymentDate ? (
+                  <>
+                    Payment received externally on{" "}
+                    <span className="font-mono tabular-nums">{externalPaymentDate}</span>.
+                  </>
+                ) : (
+                  "Payment received externally."
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {listingActive && hasDirectPayment && listingSeller && (

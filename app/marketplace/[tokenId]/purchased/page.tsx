@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { CheckCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { sansLinkUnderline } from "@/lib/design/instrument-classes";
+import {
+  commerceConfirmedLabel,
+  commerceConfirmedPanel,
+  sansLinkUnderline,
+} from "@/lib/design/instrument-classes";
 import { DEFAULT_CHAIN_ID, getViemChain } from "@/lib/web3/supported-chains";
 
 function PurchasedFallback() {
@@ -52,9 +57,19 @@ async function MarketplacePurchasedInner({
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
       <div className="mx-auto max-w-md space-y-6 text-center">
         <h1 className="text-2xl font-medium text-text-primary">You own this passport</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          The NFT is in your wallet. Passport history will update as the indexer catches up.
-        </p>
+        <div className={`${commerceConfirmedPanel} text-left`} role="status">
+          <div className="flex gap-3">
+            <div className="shrink-0 text-status-success mt-0.5">
+              <CheckCircle size={20} strokeWidth={1.5} aria-hidden />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className={commerceConfirmedLabel}>Purchase complete</p>
+              <p className="font-sans text-sm leading-relaxed text-text-secondary">
+                The NFT is in your wallet. Passport history will update as the indexer catches up.
+              </p>
+            </div>
+          </div>
+        </div>
         {scan && (
           <p>
             <a

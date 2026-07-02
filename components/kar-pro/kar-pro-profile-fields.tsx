@@ -123,7 +123,7 @@ export function KarProProfileFields({
     }
     if (slugStatus === "available") {
       return (
-        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-success">
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-secondary">
           <CheckCircle size={14} strokeWidth={1.5} aria-hidden />
           Available
         </span>
