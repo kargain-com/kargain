@@ -57,6 +57,18 @@ export const instrumentFrameCorner =
 export const instrumentFrameCornerVerified =
   "pointer-events-none absolute block size-3 border-accent-warm/40";
 
+/** Registration stamp base — squared trust badges (§12.4). */
+export const trustStampBase =
+  "inline-flex items-center gap-1.5 rounded-sm border bg-bg-surface px-2.5 py-1 font-mono text-xs font-medium tracking-[0.18em] uppercase";
+
+export const trustStampVerified = "border-accent-warm text-accent-warm";
+
+export const trustStampDisputed = "border-status-error text-status-error";
+
+export const trustStampNeutral = "border-border-default text-text-secondary";
+
+export const trustStampKarPro = "border-accent-warm/40 text-accent-warm";
+
 export const instrumentClasses = {
   serialLabel,
   monoNumeric,
@@ -75,4 +87,9 @@ export const instrumentClasses = {
   shellControlHover,
   instrumentFrameCorner,
   instrumentFrameCornerVerified,
+  trustStampBase,
+  trustStampVerified,
+  trustStampDisputed,
+  trustStampNeutral,
+  trustStampKarPro,
 } as const;

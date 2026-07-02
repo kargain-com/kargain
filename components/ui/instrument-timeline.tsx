@@ -35,7 +35,7 @@ function InstrumentTimelineItem({ children, tickLabel, className }: ItemProps) {
         <span className="w-2 border-t border-border-default" />
       </div>
       {tickLabel ? (
-        <div className="mb-1 font-mono text-xs tabular-nums text-text-tertiary">
+        <div className="mb-2 font-mono text-xs tabular-nums text-text-tertiary">
           {tickLabel}
         </div>
       ) : null}

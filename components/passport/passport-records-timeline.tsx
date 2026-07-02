@@ -55,28 +55,24 @@ export function PassportRecordsTimeline({
       getItemBorder={(record) =>
         severityToBorder(getRecordDisplay(record, ctx).severity)
       }
+      getItemTickLabel={(record) => formatChainDate(record.timestamp) || "Time"}
       renderItem={(record) => {
         const display = getRecordDisplay(record, ctx);
 
         return (
           <>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-text-tertiary">
-                  {display.label}
-                </p>
-                {display.badges.map((badge) => (
-                  <span
-                    key={badge}
-                    className="rounded-sm border border-border-default px-1.5 py-0.5 font-sans text-[10px] uppercase tracking-wide text-text-secondary"
-                  >
-                    {badge}
-                  </span>
-                ))}
-              </div>
-              <p className="font-mono text-xs font-normal tabular-nums text-text-secondary">
-                {formatChainDate(record.timestamp) || "Time"}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-text-tertiary">
+                {display.label}
               </p>
+              {display.badges.map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded-sm border border-border-default px-1.5 py-0.5 font-sans text-[10px] uppercase tracking-wide text-text-secondary"
+                >
+                  {badge}
+                </span>
+              ))}
             </div>
             <p className="mt-2 font-sans text-sm text-text-secondary">
               Author:{" "}

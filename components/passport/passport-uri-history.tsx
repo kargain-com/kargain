@@ -40,6 +40,7 @@ export function PassportUriHistory({ entries, chainId }: Props) {
       getItemBorder={(entry) =>
         entry.verificationReset ? "error" : "default"
       }
+      getItemTickLabel={(entry) => formatDate(entry.timestamp) || "Unknown date"}
       renderItem={(entry) => {
         const gatewayUrl = arUriToHttp(entry.newUri, chainId);
         const displayUri =
@@ -49,16 +50,9 @@ export function PassportUriHistory({ entries, chainId }: Props) {
 
         return (
           <>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-tertiary">
-                {formatDate(entry.timestamp) || "Unknown date"}
-              </p>
-              {entry.verificationReset && (
-                <span className="text-xs font-medium text-status-error">
-                  Verification reset
-                </span>
-              )}
-            </div>
+            {entry.verificationReset ? (
+              <p className="text-xs font-medium text-status-error">Verification reset</p>
+            ) : null}
             <p className="mt-2 font-sans text-xs text-text-secondary">
               <span className="text-text-tertiary">Author </span>
               <Link

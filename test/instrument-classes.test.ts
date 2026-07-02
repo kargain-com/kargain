@@ -9,6 +9,9 @@ import {
   monoLink,
   serialLabel,
   shellControlHover,
+  trustStampBase,
+  trustStampKarPro,
+  trustStampVerified,
 } from "../lib/design/instrument-classes.ts";
 
 describe("instrument-classes", () => {
@@ -52,5 +55,18 @@ describe("instrument-classes", () => {
   it("shellControlHover avoids accent border", () => {
     assert.match(shellControlHover, /hover:border-border-hover/);
     assert.doesNotMatch(shellControlHover, /accent-warm/);
+  });
+
+  it("trustStampBase uses squared registration stamp shape", () => {
+    assert.match(trustStampBase, /rounded-sm/);
+    assert.match(trustStampBase, /tracking-\[0\.18em\]/);
+    assert.doesNotMatch(trustStampBase, /rounded-full/);
+    assert.doesNotMatch(trustStampBase, /shadow/);
+  });
+
+  it("trustStamp variants use status chroma only", () => {
+    assert.match(trustStampVerified, /border-accent-warm/);
+    assert.match(trustStampKarPro, /border-accent-warm\/40/);
+    assert.doesNotMatch(trustStampKarPro, /shadow/);
   });
 });

@@ -1,11 +1,14 @@
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 
+import {
+  trustStampBase,
+  trustStampDisputed,
+  trustStampNeutral,
+  trustStampVerified,
+} from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 export type PassportStatus = "UNVERIFIED" | "VERIFIED" | "DISPUTED";
-
-const base =
-  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bg-surface border font-mono text-xs font-medium tracking-[0.18em] uppercase";
 
 const labels: Record<PassportStatus, string> = {
   UNVERIFIED: "unverified",
@@ -22,7 +25,7 @@ export function PassportStatusBadge({
 }) {
   if (status === "VERIFIED") {
     return (
-      <span className={cn(base, "border-accent-warm text-accent-warm", className)}>
+      <span className={cn(trustStampBase, trustStampVerified, className)}>
         <ShieldCheck size={12} strokeWidth={1.5} aria-hidden="true" />
         {labels.VERIFIED}
       </span>
@@ -31,7 +34,7 @@ export function PassportStatusBadge({
 
   if (status === "DISPUTED") {
     return (
-      <span className={cn(base, "border-status-error text-status-error", className)}>
+      <span className={cn(trustStampBase, trustStampDisputed, className)}>
         <AlertTriangle size={12} strokeWidth={1.5} aria-hidden="true" />
         {labels.DISPUTED}
       </span>
@@ -39,7 +42,7 @@ export function PassportStatusBadge({
   }
 
   return (
-    <span className={cn(base, "border-border-default text-text-secondary", className)}>
+    <span className={cn(trustStampBase, trustStampNeutral, className)}>
       {labels.UNVERIFIED}
     </span>
   );

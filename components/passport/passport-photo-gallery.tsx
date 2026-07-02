@@ -4,15 +4,17 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { InstrumentFrame } from "@/components/ui/instrument-frame";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { cn } from "@/lib/utils";
 
 type Props = {
   photos: string[];
   chainId: number;
+  verified?: boolean;
 };
 
-export function PassportPhotoGallery({ photos, chainId }: Props) {
+export function PassportPhotoGallery({ photos, chainId, verified = false }: Props) {
   const [selected, setSelected] = useState(0);
   const urls = photos.map((uri) => resolveUri(uri, chainId));
 
@@ -36,7 +38,8 @@ export function PassportPhotoGallery({ photos, chainId }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="relative aspect-[4/3] overflow-hidden rounded-md border border-border-default bg-bg-surface">
+      <InstrumentFrame verified={verified}>
+        <div className="relative aspect-[4/3] overflow-hidden bg-bg-surface">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={mainUrl}
@@ -63,7 +66,8 @@ export function PassportPhotoGallery({ photos, chainId }: Props) {
             </button>
           </>
         )}
-      </div>
+        </div>
+      </InstrumentFrame>
 
       {urls.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">

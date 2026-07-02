@@ -4,6 +4,7 @@ import { ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { InstrumentTimeline } from "@/components/ui/instrument-timeline";
 import { cn } from "@/lib/utils";
 
 export type PassportLogItemBorder = "default" | "verified" | "error";
@@ -22,6 +23,7 @@ export type PassportLogSectionProps<T> = {
   renderItem: (item: T) => ReactNode;
   getItemKey: (item: T) => string;
   getItemBorder: (item: T) => PassportLogItemBorder;
+  getItemTickLabel?: (item: T) => ReactNode;
   emptyBehavior: "copy" | "hide";
   emptyMessage?: string;
   expandBehavior: "always" | "collapsible";
@@ -32,25 +34,30 @@ function LogList<T>({
   items,
   getItemKey,
   getItemBorder,
+  getItemTickLabel,
   renderItem,
 }: Pick<
   PassportLogSectionProps<T>,
-  "items" | "getItemKey" | "getItemBorder" | "renderItem"
+  "items" | "getItemKey" | "getItemBorder" | "getItemTickLabel" | "renderItem"
 >) {
   return (
-    <ul className="space-y-3">
+    <InstrumentTimeline>
       {items.map((item) => (
-        <li
+        <InstrumentTimeline.Item
           key={getItemKey(item)}
-          className={cn(
-            "rounded-md border bg-bg-primary/80 p-4",
-            ITEM_BORDER_CLASS[getItemBorder(item)],
-          )}
+          tickLabel={getItemTickLabel?.(item)}
         >
-          {renderItem(item)}
-        </li>
+          <div
+            className={cn(
+              "rounded-md border bg-bg-primary/80 p-4",
+              ITEM_BORDER_CLASS[getItemBorder(item)],
+            )}
+          >
+            {renderItem(item)}
+          </div>
+        </InstrumentTimeline.Item>
       ))}
-    </ul>
+    </InstrumentTimeline>
   );
 }
 
@@ -62,6 +69,7 @@ export function PassportLogSection<T>({
   renderItem,
   getItemKey,
   getItemBorder,
+  getItemTickLabel,
   emptyBehavior,
   emptyMessage,
   expandBehavior,
@@ -105,6 +113,7 @@ export function PassportLogSection<T>({
               items={items}
               getItemKey={getItemKey}
               getItemBorder={getItemBorder}
+              getItemTickLabel={getItemTickLabel}
               renderItem={renderItem}
             />
           </div>
@@ -131,6 +140,7 @@ export function PassportLogSection<T>({
           items={items}
           getItemKey={getItemKey}
           getItemBorder={getItemBorder}
+          getItemTickLabel={getItemTickLabel}
           renderItem={renderItem}
         />
       )}

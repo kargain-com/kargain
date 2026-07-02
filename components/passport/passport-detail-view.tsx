@@ -228,6 +228,7 @@ export function PassportDetailView({
     <PassportPhotoGallery
       photos={metadata?.photos ?? []}
       chainId={chainId}
+      verified={passport.status === "VERIFIED"}
     />
   );
 

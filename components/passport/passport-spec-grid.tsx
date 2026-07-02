@@ -1,3 +1,5 @@
+import { InstrumentFrame } from "@/components/ui/instrument-frame";
+import { serialLabel } from "@/lib/design/instrument-classes";
 import { formatMileage } from "@/lib/passport/format-mileage";
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 
@@ -24,9 +26,6 @@ function formatLocation(metadata: PassportMetadata): string | null {
 function buildRows(metadata: PassportMetadata): SpecRow[] {
   const rows: SpecRow[] = [];
 
-  if (metadata.vin) {
-    rows.push({ label: "VIN", value: metadata.vin });
-  }
   if (metadata.year != null) {
     rows.push({ label: "Year", value: String(metadata.year) });
   }
@@ -92,7 +91,7 @@ export function PassportSpecGrid({ metadata, metadataError }: Props) {
   }
 
   const rows = buildRows(metadata);
-  if (rows.length === 0) {
+  if (rows.length === 0 && !metadata.vin) {
     return (
       <p className="font-sans text-sm text-text-secondary">
         Vehicle details unavailable
@@ -101,17 +100,31 @@ export function PassportSpecGrid({ metadata, metadataError }: Props) {
   }
 
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-      {rows.map((row) => (
-        <div key={row.label}>
-          <dt className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
-            {row.label}
-          </dt>
-          <dd className="mt-1 font-mono text-sm font-normal text-text-primary">
-            {row.value}
-          </dd>
+    <div className="space-y-6">
+      {metadata.vin ? (
+        <div>
+          <p className={serialLabel}>VIN</p>
+          <InstrumentFrame className="mt-2">
+            <p className="px-3 py-2 font-mono text-sm font-normal tabular-nums text-text-primary">
+              {metadata.vin}
+            </p>
+          </InstrumentFrame>
         </div>
-      ))}
-    </dl>
+      ) : null}
+      {rows.length > 0 ? (
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+          {rows.map((row) => (
+            <div key={row.label}>
+              <dt className="font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary">
+                {row.label}
+              </dt>
+              <dd className="mt-1 font-mono text-sm font-normal text-text-primary">
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </div>
   );
 }
