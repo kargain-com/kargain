@@ -10,8 +10,9 @@ import { useAccount } from "wagmi";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
-import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
+import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
@@ -225,10 +226,14 @@ export function MessageInboxClient() {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
         <h1 className="text-xl font-medium text-text-primary">Messages</h1>
-        <p className="text-sm text-text-secondary">Connect from the Profile tab or wallet menu.</p>
-        <Button type="button" variant="outline" asChild>
-          <Link href="/profile/edit">Connect wallet</Link>
-        </Button>
+        <div className="space-y-3">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            title="Connect your wallet to view your messages."
+          />
+          <WalletLoginButton />
+        </div>
       </div>
     );
   }
@@ -272,7 +277,12 @@ export function MessageInboxClient() {
         <ul className="space-y-2" role="list">
           {conversations.length === 0 && (
             <li className="rounded-md border border-dashed border-border-default p-6 text-center text-sm text-text-secondary">
-              No conversations yet.
+              <EmptyState
+                variant="content"
+                level="A"
+                className="py-0"
+                title="No conversations yet."
+              />
             </li>
           )}
           {conversations.map((conversation) => (

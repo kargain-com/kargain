@@ -11,6 +11,7 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
@@ -299,9 +300,11 @@ export default async function ProShowroomPage({
           <SectionHeader id="verified-passports-heading" title="Verified passports" />
 
           {displayedPassports.length === 0 ? (
-            <p className="font-sans text-sm text-text-secondary">
-              No verified passports yet.
-            </p>
+            <EmptyState
+              variant="content"
+              level="B"
+              title="No verified passports yet."
+            />
           ) : (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -360,7 +363,7 @@ export default async function ProShowroomPage({
           <SectionHeader id="active-listings-heading" title="Active listings" />
 
           {data.activeListings.length === 0 ? (
-            <p className="font-sans text-sm text-text-secondary">No active listings.</p>
+            <EmptyState variant="content" level="B" title="No active listings." />
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {data.activeListings.map((listing) => (
@@ -377,7 +380,7 @@ export default async function ProShowroomPage({
           <SectionHeader id="active-consignments-heading" title="Active consignments" />
 
           {data.activeConsignments.length === 0 ? (
-            <p className="font-sans text-sm text-text-secondary">No active consignments.</p>
+            <EmptyState variant="content" level="B" title="No active consignments." />
           ) : (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

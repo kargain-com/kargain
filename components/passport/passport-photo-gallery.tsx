@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 
+import { EmptyState } from "@/components/ui/empty-state";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,7 @@ export function PassportPhotoGallery({ photos, chainId }: Props) {
   if (urls.length === 0) {
     return (
       <div className="flex aspect-[4/3] items-center justify-center rounded-md border border-border-default bg-bg-surface">
-        <p className="font-sans text-sm text-text-secondary">No photos</p>
+        <EmptyState variant="content" level="B" title="No photos" />
       </div>
     );
   }

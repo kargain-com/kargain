@@ -755,23 +755,17 @@ Canonical empty UI lives in [`components/ui/empty-state.tsx`](../components/ui/e
 
 **ARIA:** infrastructure panels default to `role="status"`; pass `role="alert"` for indexer/ponder failures.
 
-#### Unmigrated content-empty backlog (follow-up)
+#### Empty-state migration status
 
-These sites still use ad-hoc plain text or local markup — migrate in a later pass once more call sites validate the component:
+Content-empty and infrastructure-empty migrations are **complete** for all verified call sites (July 2026 backlog pass).
 
-- [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx) — passports, listings, attestations tabs
-- [`app/pro/[slug]/page.tsx`](../app/pro/[slug]/page.tsx) — verified passports, active listings, active consignments sections
-- [`components/verifier/verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) — no verifiers + filter-empty
-- [`components/messaging/message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx) — disconnected gate + no conversations
-- [`components/messaging/conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx) — no messages
-- [`components/marketplace/listing-detail-gallery.tsx`](../components/marketplace/listing-detail-gallery.tsx), [`components/passport/passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx), [`components/marketplace/listing-card.tsx`](../components/marketplace/listing-card.tsx) — media placeholders
-- [`components/passport/metadata-diff-panel.tsx`](../components/passport/metadata-diff-panel.tsx) — revision / unavailable / diff copy
-- [`components/marketplace/market-browse.tsx`](../components/marketplace/market-browse.tsx) — filter-empty (content)
-- [`components/profile/consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx) — authorization / listing empties
-- [`components/marketplace/listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) — no offers
-- [`components/marketplace/nostr-comments-section.tsx`](../components/marketplace/nostr-comments-section.tsx) — no comments
-- [`components/passport/passport-log-section.tsx`](../components/passport/passport-log-section.tsx) — records empty copy (via timeline)
+**Remaining exclusions** (intentionally not using `EmptyState`):
+
+- [`components/marketplace/listing-card.tsx`](../components/marketplace/listing-card.tsx) — inline card media micro-placeholder (`No image`); not a section-level empty state
+- [`components/profile/consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx) — past consignments section uses `omitWhenEmpty`; no empty UI is rendered when the list is empty
+
+Loading-state skeleton canonicalization remains a separate follow-up (not covered in §10.7).
 
 ---
 
-*Document version: 2.4 (July 2026 — §10.7 EmptyState shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 2.5 (July 2026 — §10.7 backlog migration). Update when tokens, app shell, or component contracts change.*

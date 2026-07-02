@@ -11,6 +11,7 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useListingOffers } from "@/hooks/use-listing-offers";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
@@ -201,7 +202,7 @@ export function ListingOffersPanel({
       {isLoading && offers.length === 0 ? (
         <p className="font-sans text-sm text-text-secondary">Loading offers…</p>
       ) : offers.length === 0 ? (
-        <p className="font-sans text-sm text-text-secondary">No offers yet</p>
+        <EmptyState variant="content" level="B" title="No offers yet" />
       ) : (
         <ul className="space-y-3">
           {offers.map((offer) => (

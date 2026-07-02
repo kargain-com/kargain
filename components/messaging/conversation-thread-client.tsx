@@ -9,6 +9,7 @@ import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
@@ -160,7 +161,12 @@ export function ConversationThreadClient({ conversationId }: Props) {
           </p>
         )}
         {!isLoading && messages.length === 0 && (
-          <p className="text-center text-sm text-text-secondary">No messages yet. Say hello to start.</p>
+          <EmptyState
+            variant="content"
+            level="B"
+            title="No messages yet."
+            description="Say hello to start."
+          />
         )}
         <ul className="space-y-3">
           {messages.map((message) => (

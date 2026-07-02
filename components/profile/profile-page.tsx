@@ -527,17 +527,16 @@ export function ProfilePage({
               aria-labelledby="profile-tab-passports"
             >
               {passports.length === 0 && !ponderErr ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-text-secondary">No passports yet</p>
-                  {isOwner && (
-                    <Link
-                      href="/passport/new"
-                      className="inline-flex min-h-11 items-center text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                    >
-                      Mint your first passport →
-                    </Link>
-                  )}
-                </div>
+                <EmptyState
+                  variant="content"
+                  level="B"
+                  title="No passports yet"
+                  action={
+                    isOwner
+                      ? { label: "Mint your first passport →", href: "/passport/new" }
+                      : undefined
+                  }
+                />
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {passports.map((p) => (
@@ -562,17 +561,14 @@ export function ProfilePage({
               aria-labelledby="profile-tab-listings"
             >
               {listings.length === 0 && !ponderErr ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-text-secondary">No active listings</p>
-                  {isOwner && (
-                    <Link
-                      href="/"
-                      className="inline-flex min-h-11 items-center text-sm text-accent-warm transition-colors duration-150 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                    >
-                      List a passport →
-                    </Link>
-                  )}
-                </div>
+                <EmptyState
+                  variant="content"
+                  level="B"
+                  title="No active listings"
+                  action={
+                    isOwner ? { label: "List a passport →", href: "/" } : undefined
+                  }
+                />
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {listings.map((l) => (
@@ -676,7 +672,12 @@ export function ProfilePage({
               aria-labelledby="profile-tab-attestations"
             >
               {attestations.length === 0 ? (
-                <p className="py-8 text-sm text-text-secondary">No attestations yet</p>
+                <EmptyState
+                  variant="content"
+                  level="B"
+                  className="py-8"
+                  title="No attestations yet"
+                />
               ) : (
                 <div>
                   {attestations.map((attestation) => (

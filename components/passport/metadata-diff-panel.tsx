@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { MetadataChangeSummary } from "@/components/passport/metadata-change-summary";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { fetchArweaveMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { formatMetadataDiffForDisplay } from "@/lib/passport/format-metadata-diff-display";
@@ -93,19 +94,31 @@ export function MetadataDiffPanel({
       )}
 
       {!uriPair && (
-        <p className="text-sm text-text-secondary">
-          No metadata revision to compare yet.
-        </p>
+        <EmptyState
+          variant="content"
+          level="B"
+          title="No metadata revision to compare yet."
+        />
       )}
 
       {uriPair && !currentMetadata && (
-        <p className="text-sm text-text-secondary">Current metadata unavailable for comparison.</p>
+        <EmptyState
+          variant="infrastructure"
+          level="B"
+          className="border-0 bg-transparent p-0 space-y-1"
+          title="Current metadata unavailable for comparison."
+        />
       )}
 
       {uriPair && loadError && (
-        <p className="text-sm text-text-secondary">
-          Previous metadata could not be loaded from {uriPair.beforeUri}.
-        </p>
+        <EmptyState
+          variant="infrastructure"
+          level="B"
+          role="alert"
+          className="border-0 bg-transparent p-0 space-y-1"
+          title="Previous metadata could not be loaded."
+          description={uriPair.beforeUri}
+        />
       )}
 
       {display && (display.identityChanges.length > 0 || display.otherChanges.length > 0) ? (
@@ -120,7 +133,11 @@ export function MetadataDiffPanel({
       {display &&
         display.identityChanges.length === 0 &&
         display.otherChanges.length === 0 && (
-          <p className="text-sm text-text-secondary">No field differences detected vs previous URI.</p>
+          <EmptyState
+            variant="content"
+            level="B"
+            title="No field differences detected vs previous URI."
+          />
         )}
     </div>
   );

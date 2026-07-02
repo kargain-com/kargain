@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -29,7 +30,7 @@ export function ListingDetailGallery({ urls, prevLabel, nextLabel, altBase }: Pr
   if (!current) {
     return (
       <div className="flex aspect-[16/10] w-full items-center justify-center rounded-md border border-border-default bg-bg-surface text-sm text-text-secondary">
-        No images
+        <EmptyState variant="content" level="B" title="No images" />
       </div>
     );
   }

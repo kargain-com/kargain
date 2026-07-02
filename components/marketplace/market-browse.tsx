@@ -133,10 +133,12 @@ export function MarketBrowse({
 
         {!isPending && !ponderError && rows.length === 0 && (
           <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-            <p className="font-medium text-text-primary">No active listings match these filters yet.</p>
-            <p className="mt-1 text-xs text-text-secondary">
-              Broaden your filters or clear them to explore more vehicles.
-            </p>
+            <EmptyState
+              variant="content"
+              level="B"
+              title="No active listings match these filters yet."
+              description="Broaden your filters or clear them to explore more vehicles."
+            />
           </div>
         )}
 

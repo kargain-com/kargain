@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
@@ -176,11 +177,12 @@ export function VerifierDirectory({
 
   if (verifiers.length === 0) {
     return (
-      <p
-        className={`text-center font-sans text-sm text-text-secondary ${isPicker ? "py-8" : "py-16"}`}
-      >
-        No active verifiers yet.
-      </p>
+      <EmptyState
+        variant="content"
+        level="B"
+        className={isPicker ? "py-8 text-center" : "py-16 text-center"}
+        title="No active verifiers yet."
+      />
     );
   }
 
@@ -266,19 +268,19 @@ export function VerifierDirectory({
   );
 
   const emptyFilters = (
-    <div className={isPicker ? "py-8 text-center" : "py-16 text-center"}>
-      <p className="font-sans text-sm text-text-secondary">No verifiers match your filters.</p>
-      <button
-        type="button"
-        onClick={() => {
+    <EmptyState
+      variant="content"
+      level="B"
+      className={isPicker ? "py-8 text-center" : "py-16 text-center"}
+      title="No verifiers match your filters."
+      action={{
+        label: "Clear filters",
+        onClick: () => {
           setSearch("");
           setCategoryFilter(null);
-        }}
-        className="mt-4 font-sans text-sm text-accent-warm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-      >
-        Clear filters
-      </button>
-    </div>
+        },
+      }}
+    />
   );
 
   const cardList = (

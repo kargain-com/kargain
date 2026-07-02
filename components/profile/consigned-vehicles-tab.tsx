@@ -19,6 +19,7 @@ import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-l
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { ReturnCooldownDisplay } from "@/components/marketplace/return-cooldown-display";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
@@ -498,9 +499,12 @@ function AwaitingAuthorizationsSection({
         !ponderError &&
         visibleAwaiting !== null &&
         visibleAwaiting.length === 0 && (
-          <p className="py-8 text-center text-sm text-text-secondary">
-            No vehicles authorized yet
-          </p>
+          <EmptyState
+            variant="content"
+            level="B"
+            className="py-8"
+            title="No vehicles authorized yet"
+          />
         )}
 
       {!ponderError && visibleAwaiting === null && !isPending && (
@@ -621,7 +625,12 @@ function ListingsSection({
       )}
 
       {!isPending && !ponderError && listingPairs.length === 0 && (
-        <p className="py-4 text-center text-sm text-text-secondary">{emptyMessage}</p>
+        <EmptyState
+          variant="content"
+          level="B"
+          className="py-4"
+          title={emptyMessage}
+        />
       )}
 
       {!ponderError && listingPairs.length > 0 && (

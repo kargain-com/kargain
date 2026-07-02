@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
@@ -276,9 +277,14 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       )}
       {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
       {!feedLoading && roots.length === 0 && (
-        <p className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary">
-          No comments yet. Be the first to share context or ask a question.
-        </p>
+        <div className="rounded-md border border-border-default bg-bg-surface p-4">
+          <EmptyState
+            variant="content"
+            level="B"
+            title="No comments yet."
+            description="Be the first to share context or ask a question."
+          />
+        </div>
       )}
       <ul className="space-y-3">
         {roots.map((root) => {

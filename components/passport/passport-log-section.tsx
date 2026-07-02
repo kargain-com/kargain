@@ -3,6 +3,7 @@
 import { ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 
 export type PassportLogItemBorder = "default" | "verified" | "error";
@@ -124,7 +125,7 @@ export function PassportLogSection<T>({
         {title}
       </h2>
       {items.length === 0 ? (
-        <p className="font-sans text-sm text-text-secondary">{emptyMessage}</p>
+        <EmptyState variant="content" level="B" title={emptyMessage ?? ""} />
       ) : (
         <LogList
           items={items}
