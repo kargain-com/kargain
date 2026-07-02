@@ -65,6 +65,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | `/kar-pro` | KarPro onboarding |
 | `/verifiers` | Verifier directory |
 | `/profile/[handle]` | Public profile |
+| `/about` | Product overview (public prose) |
 | `/messages`, `/notifications` | XMTP inbox, alerts + watchlist |
 
 ---

@@ -4,6 +4,8 @@ Canonical reference for website UI components. All new work must conform to this
 
 **Related public docs:** [README.md](../README.md) · [contracts/SPEC.md](./contracts/SPEC.md) · [CONTRIBUTING.md](../CONTRIBUTING.md) · [KIPs](https://github.com/kargain-com/kips)
 
+**Instrument Layer reading order:** §10 (rules) → §11 (philosophy) → §12 (shipped IL-0–IL-5 log; IL-6 skipped) → §13 (mobile contracts).
+
 ---
 
 ## 1. Foundation Reference
@@ -804,8 +806,6 @@ Loading spinners (`Loader2` or custom SVG) use `strokeWidth={1.5}` per §7 — n
 
 ---
 
----
-
 ## 11. Design philosophy
 
 Kargain is a **provenance navigator** for transport technology — not a dealership showroom. The UI is an instrument panel over immutable protocol facts: on-chain state, Arweave metadata, KarPro verification, and indexed history.
@@ -850,15 +850,17 @@ Before shipping any component, answer:
 
 ### 11.5 Marketing surface (out of scope for `app/`)
 
-Public marketing pages (if added later) may use larger display type and coordinate-grid backgrounds built from CSS tokens. They must **not** introduce shadows, font weights above 500, vehicle hero photography, or tokens outside `globals.css`. Product UI (`app/`) stays flat and instrument-first per §9.
+Product UI (`app/`) stays flat and instrument-first per §9. **IL-6 marketing shell was skipped (July 2026)** — no separate landing route; **`/`** is marketplace browse and **`/about`** is public prose.
+
+If a marketing shell is added later, it may use larger display type and coordinate-grid backgrounds built from CSS tokens. It must **not** introduce shadows, font weights above 500, vehicle hero photography, or tokens outside `globals.css`. Reference: §12.8.
 
 ---
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** IL-0–IL-5 **shipped** (July 2026); IL-6 optional. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
+**Phase 2 complete (July 2026).** Read **§10** (rules) before **§12** (shipped iteration log). **§13** is mobile contracts that reference §12.
 
-**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test`, and `pnpm build` pass after IL-5.
+**Status:** IL-0–IL-5 **shipped**; **IL-6 skipped** (no marketing shell). §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
 ### 12.1 Phase overview
 
@@ -870,9 +872,9 @@ Public marketing pages (if added later) may use larger display type and coordina
 | **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 | **Shipped** |
 | **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 | **Shipped** |
 | **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 | **Shipped** |
-| **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
+| **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 | **Skipped** |
 
-Implement in order. IL-5 shipped July 2026; **next:** IL-6 marketing shell (optional).
+Instrument Layer Phase 2 **complete** (July 2026). IL-6 marketing shell declined — product entry remains `/` marketplace + `/about`.
 
 ### 12.2 IL-0 — Shared primitives — shipped
 
@@ -1049,9 +1051,11 @@ Use `status-success` **only** for post-confirmation commerce states — not for 
 | Purchase / external payment confirmed | `status-success` border or mono label |
 | DISPUTED | `status-error` |
 
-### 12.8 IL-6 — Marketing shell (optional)
+### 12.8 IL-6 — Marketing shell (optional) — skipped
 
-Separate Next.js route group `app/(marketing)/` if needed:
+**Skipped (July 2026):** No `app/(marketing)/` landing shipped. Product UI stays instrument-first at `/` (marketplace browse) and `/about` for prose. Reference spec retained if a public landing is requested later:
+
+- Separate Next.js route group `app/(marketing)/` if needed
 
 - Coordinate grid background via CSS `linear-gradient` on tokens only.
 - Large `text-fluid-display` headlines; same Geist/Inter/Mono stack.
@@ -1077,7 +1081,8 @@ Separate Next.js route group `app/(marketing)/` if needed:
 - [x] IL-3 mobile commerce order + touch target pass
 - [x] IL-4 passport detail IA restructure on mobile and desktop
 - [x] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
-- [ ] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
+- [x] IL-6 skipped (marketing shell not required)
+- [x] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
 
 ---
 
@@ -1117,4 +1122,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.6 (July 2026 — IL-5 status success semantics shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.7 (July 2026 — Instrument Layer Phase 2 complete; IL-6 marketing shell skipped). Update when tokens, app shell, or component contracts change.*
