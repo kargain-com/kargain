@@ -20,6 +20,7 @@ import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -415,10 +416,12 @@ export function PassportActionsPanel({
   return (
     <>
       {!isConnected && (
-        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="font-sans text-sm text-text-secondary">
-            Connect your wallet to verify, dispute, or interact with this passport.
-          </p>
+        <div className="space-y-3">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            title="Connect your wallet to verify, dispute, or interact with this passport."
+          />
           <WalletLoginButton />
         </div>
       )}

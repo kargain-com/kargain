@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 
 import { loadFavoriteListingCards } from "@/app/actions/favorite-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useWatchlist } from "@/hooks/use-watchlist";
 
@@ -51,10 +52,12 @@ export function WatchlistClient({ layout = "wide" }: Props) {
   return (
     <>
       {!isConnected && (
-        <div className="mt-8 space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="font-sans text-sm text-text-secondary">
-            Connect your wallet to save vehicles to your watchlist.
-          </p>
+        <div className="mt-8 space-y-3">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            title="Connect your wallet to save vehicles to your watchlist."
+          />
           <WalletLoginButton />
         </div>
       )}
@@ -70,28 +73,25 @@ export function WatchlistClient({ layout = "wide" }: Props) {
       )}
 
       {isConnected && !listingsLoading && watchedIds.length === 0 && (
-        <div className="py-8 text-center">
-          <Bookmark
-            size={48}
-            strokeWidth={1.5}
-            className="mx-auto text-text-tertiary"
-            aria-hidden
-          />
-          <h2 className="mt-4 font-display text-fluid-h2 font-medium text-text-primary">
-            Your watchlist is empty
-          </h2>
-          <p className="mx-auto mt-2 max-w-sm font-sans text-sm text-text-secondary">
-            Save vehicles from any listing to track them here.
-          </p>
-        </div>
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={Bookmark}
+          title="Your watchlist is empty"
+          description="Save vehicles from any listing to track them here."
+        />
       )}
 
       {isConnected && !listingsLoading && watchedIds.length > 0 && (
         <div className="space-y-6">
           {listingData?.ponderError && (
-            <p className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary">
-              Indexer unavailable. Start the Ponder indexer to load saved listings.
-            </p>
+            <EmptyState
+              variant="infrastructure"
+              level="B"
+              role="alert"
+              title="Indexer unavailable"
+              description="Start the Ponder indexer to load saved listings."
+            />
           )}
           <ul className={gridClass}>
             {listings.map((row) => (

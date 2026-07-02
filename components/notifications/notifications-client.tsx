@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useAccount } from "wagmi";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
+import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
@@ -41,10 +42,12 @@ export function NotificationsClient() {
 
   if (!isConnected) {
     return (
-      <div className="mt-8 space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="font-sans text-sm text-text-secondary">
-          Connect your wallet to see alerts from your passports and watchlist.
-        </p>
+      <div className="mt-8 space-y-3">
+        <EmptyState
+          variant="infrastructure"
+          level="B"
+          title="Connect your wallet to see alerts from your passports and watchlist."
+        />
         <WalletLoginButton />
       </div>
     );
@@ -69,15 +72,13 @@ export function NotificationsClient() {
       {isLoading && <NotificationRowSkeletonList count={3} />}
 
       {!isLoading && items.length === 0 && (
-        <div className="py-8 text-center">
-          <Bell size={48} strokeWidth={1.5} className="mx-auto text-text-tertiary" aria-hidden />
-          <h2 className="mt-4 font-display text-fluid-h2 font-medium text-text-primary">
-            No alerts yet
-          </h2>
-          <p className="mx-auto mt-2 max-w-sm font-sans text-sm text-text-secondary">
-            Activity from your passports and watchlist will appear here.
-          </p>
-        </div>
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={Bell}
+          title="No alerts yet"
+          description="Activity from your passports and watchlist will appear here."
+        />
       )}
 
       {!isLoading && items.length > 0 && (

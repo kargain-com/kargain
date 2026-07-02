@@ -12,6 +12,7 @@ import {
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { MarketFilterBar } from "@/components/marketplace/market-filter-bar";
 import { MarketFilterChips } from "@/components/marketplace/market-filter-chips";
+import { EmptyState } from "@/components/ui/empty-state";
 import { FadeUp } from "@/components/ui/fade-up";
 import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
@@ -98,21 +99,19 @@ export function MarketBrowse({
         )}
 
         {ponderError && (
-          <div
-            className="mx-auto mb-4 flex max-w-sm flex-col items-center gap-4 py-16 text-center"
+          <EmptyState
+            variant="infrastructure"
+            level="B"
             role="alert"
+            icon={AlertTriangle}
+            title="Marketplace unavailable"
+            description="Start the indexer to browse listings."
+            className="mx-auto mb-4 max-w-sm"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-border-default text-text-secondary">
-              <AlertTriangle size={20} strokeWidth={1.5} aria-hidden />
-            </div>
-            <div className="space-y-1">
-              <p className="font-sans text-sm font-medium text-text-primary">Marketplace unavailable</p>
-              <p className="font-sans text-sm text-text-secondary">Start the indexer to browse listings.</p>
-            </div>
-            <code className="rounded-sm border border-border-default bg-bg-surface px-3 py-1.5 font-mono text-xs text-text-secondary">
+            <code className="inline-block rounded-sm border border-border-default bg-bg-surface px-3 py-1.5 font-mono text-xs text-text-secondary">
               pnpm ponder:dev
             </code>
-          </div>
+          </EmptyState>
         )}
 
         {isPending && needsRates && !ratesReady && (

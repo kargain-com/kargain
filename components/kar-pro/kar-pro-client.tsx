@@ -7,6 +7,7 @@ import { KarProCredentialCard } from "@/components/kar-pro/kar-pro-credential-ca
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
@@ -82,10 +83,14 @@ export function KarProClient({
   if (!isConnected) {
     return (
       <div className={containerClass}>
-        <p className="font-sans text-base text-text-secondary">
-          Connect your wallet to become a KarPro verifier
-        </p>
-        <WalletLoginButton />
+        <div className="space-y-3">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            title="Connect your wallet to become a KarPro verifier."
+          />
+          <WalletLoginButton />
+        </div>
       </div>
     );
   }

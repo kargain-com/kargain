@@ -17,6 +17,7 @@ import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
@@ -484,13 +485,17 @@ export function ProfilePage({
         />
 
         {ponderErr && (
-          <div className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-            <p className="font-medium text-text-primary">Indexer unavailable</p>
-            <p className="mt-1">Start the Ponder indexer to load profile listings.</p>
-            <code className="mt-2 inline-block rounded-sm bg-bg-card px-2 py-1 font-mono text-xs">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            role="alert"
+            title="Indexer unavailable"
+            description="Start the Ponder indexer to load profile listings."
+          >
+            <code className="inline-block rounded-sm bg-bg-card px-2 py-1 font-mono text-xs">
               pnpm ponder:dev
             </code>
-          </div>
+          </EmptyState>
         )}
 
         <div>
@@ -604,13 +609,12 @@ export function ProfilePage({
             >
               {verifiedPassports.length === 0 ? (
                 <div className="rounded-md border border-border-default p-8 text-center">
-                  <ShieldCheck
-                    size={32}
-                    strokeWidth={1.5}
-                    className="mx-auto mb-3 text-text-tertiary"
-                    aria-hidden
+                  <EmptyState
+                    variant="content"
+                    level="B"
+                    icon={ShieldCheck}
+                    title="No verified passports yet"
                   />
-                  <p className="text-sm text-text-secondary">No verified passports yet</p>
                 </div>
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
@@ -638,15 +642,13 @@ export function ProfilePage({
               aria-labelledby="profile-tab-disputes"
             >
               {disputedPassports.length === 0 ? (
-                <div className="py-8 text-center">
-                  <CheckCircle
-                    size={32}
-                    strokeWidth={1.5}
-                    className="mx-auto mb-3 text-text-tertiary"
-                    aria-hidden
-                  />
-                  <p className="text-sm text-text-secondary">No open disputes</p>
-                </div>
+                <EmptyState
+                  variant="content"
+                  level="B"
+                  icon={CheckCircle}
+                  title="No open disputes"
+                  className="py-8"
+                />
               ) : (
                 <div className="grid gap-3">
                   {disputedPassports.map((p) => (

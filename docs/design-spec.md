@@ -736,15 +736,42 @@ Three padding levels, one radius. **Radius** is uniform (`rounded-md`) across al
 
 ---
 
-### 10.7 Empty and loading states — pending
+### 10.7 Empty and loading states
 
-A full audit (July 2026) inventoried empty and loading state patterns across the app and found real divergence: inconsistent copy tone for equivalent "nothing here" states, container-level mismatches between loading skeletons and the content they replace, mixed skeleton-vs-text loading treatments within the same data domain, and four different disconnected-wallet UI patterns. Two confirmed violations of already-shipped rules were fixed as part of this pass: icon strokeWidth (§7) and container radius (§10.6) on notification/watchlist/profile-verified empty states.
+Canonical empty UI lives in [`components/ui/empty-state.tsx`](../components/ui/empty-state.tsx). Use `variant` to distinguish **content-empty** (nothing to show yet in a feature area) from **infrastructure-empty** (wallet disconnected, indexer down, or similar blocker). Loading-state skeleton canonicalization is a separate follow-up — not covered here.
 
-**Status:** canonical pattern not yet defined. This section is a placeholder pending a follow-up design session to formalize:
-- content-empty vs infrastructure-empty distinction
-- a shared empty-state component (icon + heading + supporting copy + optional CTA)
-- skeleton-shape parity with loaded content per §10.6 levels
+#### Variant rules
+
+| Variant | Container | Typography | Icon |
+|---------|-----------|------------|------|
+| **`content`** | No forced border or background — caller supplies Level A/B shell when needed (e.g. profile verified tab keeps an outer `rounded-md border p-8` wrapper). Level A adds `py-8 text-center`; Level B adds `text-center`. | Level A: `title` → `font-display text-fluid-h2`; `description` → `text-sm text-text-secondary`. Level B: `title` → `text-sm font-medium text-text-primary`; optional `description` → `text-sm text-text-secondary`. | Optional; size **48** (Level A) or **32** (Level B). Component always renders `strokeWidth={1.5}` — callers must not pass stroke width. |
+| **`infrastructure`** | Always **Level B panel**: `rounded-md border border-border-default bg-bg-surface p-4` (ignores `level` for container weight). | `title` and `description` both `text-sm text-text-secondary` — diagnostic copy, not a primary empty-page moment. | Optional; size **32**, `strokeWidth={1.5}`. |
+
+**`action`:** optional text-style CTA (`href` → Link, `onClick` → button) using the accent-hover pattern from profile passport empty CTAs.
+
+**`children`:** optional slot inside the panel (e.g. `pnpm ponder:dev` code snippet on ponder-unavailable states).
+
+**Wallet connect:** do not embed [`WalletLoginButton`](../components/wallet-login-button.tsx) in `EmptyState`. Render it as a **sibling** in a `space-y-3` wrapper — see the file comment in `empty-state.tsx`.
+
+**ARIA:** infrastructure panels default to `role="status"`; pass `role="alert"` for indexer/ponder failures.
+
+#### Unmigrated content-empty backlog (follow-up)
+
+These sites still use ad-hoc plain text or local markup — migrate in a later pass once more call sites validate the component:
+
+- [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx) — passports, listings, attestations tabs
+- [`app/pro/[slug]/page.tsx`](../app/pro/[slug]/page.tsx) — verified passports, active listings, active consignments sections
+- [`components/verifier/verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) — no verifiers + filter-empty
+- [`components/messaging/message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx) — disconnected gate + no conversations
+- [`components/messaging/conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx) — no messages
+- [`components/marketplace/listing-detail-gallery.tsx`](../components/marketplace/listing-detail-gallery.tsx), [`components/passport/passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx), [`components/marketplace/listing-card.tsx`](../components/marketplace/listing-card.tsx) — media placeholders
+- [`components/passport/metadata-diff-panel.tsx`](../components/passport/metadata-diff-panel.tsx) — revision / unavailable / diff copy
+- [`components/marketplace/market-browse.tsx`](../components/marketplace/market-browse.tsx) — filter-empty (content)
+- [`components/profile/consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx) — authorization / listing empties
+- [`components/marketplace/listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) — no offers
+- [`components/marketplace/nostr-comments-section.tsx`](../components/marketplace/nostr-comments-section.tsx) — no comments
+- [`components/passport/passport-log-section.tsx`](../components/passport/passport-log-section.tsx) — records empty copy (via timeline)
 
 ---
 
-*Document version: 2.3 (July 2026 — §10.7 scaffold + empty-state icon/radius fixes). Update when tokens, app shell, or component contracts change.*
+*Document version: 2.4 (July 2026 — §10.7 EmptyState shipped). Update when tokens, app shell, or component contracts change.*
