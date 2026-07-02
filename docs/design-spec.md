@@ -736,4 +736,15 @@ Three padding levels, one radius. **Radius** is uniform (`rounded-md`) across al
 
 ---
 
-*Document version: 2.2 (July 2026 — §10.6 container scale). Update when tokens, app shell, or component contracts change.*
+### 10.7 Empty and loading states — pending
+
+A full audit (July 2026) inventoried empty and loading state patterns across the app and found real divergence: inconsistent copy tone for equivalent "nothing here" states, container-level mismatches between loading skeletons and the content they replace, mixed skeleton-vs-text loading treatments within the same data domain, and four different disconnected-wallet UI patterns. Two confirmed violations of already-shipped rules were fixed as part of this pass: icon strokeWidth (§7) and container radius (§10.6) on notification/watchlist/profile-verified empty states.
+
+**Status:** canonical pattern not yet defined. This section is a placeholder pending a follow-up design session to formalize:
+- content-empty vs infrastructure-empty distinction
+- a shared empty-state component (icon + heading + supporting copy + optional CTA)
+- skeleton-shape parity with loaded content per §10.6 levels
+
+---
+
+*Document version: 2.3 (July 2026 — §10.7 scaffold + empty-state icon/radius fixes). Update when tokens, app shell, or component contracts change.*

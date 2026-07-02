@@ -603,7 +603,7 @@ export function ProfilePage({
               aria-labelledby="profile-tab-verified"
             >
               {verifiedPassports.length === 0 ? (
-                <div className="rounded-sm border border-border-default p-8 text-center">
+                <div className="rounded-md border border-border-default p-8 text-center">
                   <ShieldCheck
                     size={32}
                     strokeWidth={1.5}

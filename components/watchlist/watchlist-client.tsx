@@ -73,7 +73,7 @@ export function WatchlistClient({ layout = "wide" }: Props) {
         <div className="py-8 text-center">
           <Bookmark
             size={48}
-            strokeWidth={1}
+            strokeWidth={1.5}
             className="mx-auto text-text-tertiary"
             aria-hidden
           />

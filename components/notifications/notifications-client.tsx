@@ -70,7 +70,7 @@ export function NotificationsClient() {
 
       {!isLoading && items.length === 0 && (
         <div className="py-8 text-center">
-          <Bell size={48} strokeWidth={1} className="mx-auto text-text-tertiary" aria-hidden />
+          <Bell size={48} strokeWidth={1.5} className="mx-auto text-text-tertiary" aria-hidden />
           <h2 className="mt-4 font-display text-fluid-h2 font-medium text-text-primary">
             No alerts yet
           </h2>
