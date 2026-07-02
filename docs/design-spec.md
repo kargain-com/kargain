@@ -691,7 +691,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 
 **Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Reserve color for `accent-warm` (verified) and `status-error` (disputed / error). Do not use `border-emerald-500` or other non-token greens.
 
-**Planned token parity (code deferred):** `--color-status-success` / `status-success` already exist in [`app/globals.css`](../app/globals.css). Export as `statusSuccess` in [`lib/design-tokens.ts`](../lib/design-tokens.ts) in a later instrument-layer pass — **not consumed in UI yet**.
+**Planned token parity (code deferred):** `--color-status-success` / `status-success` exported in [`lib/design-tokens.ts`](../lib/design-tokens.ts) (IL-0). **Not consumed in UI yet** — IL-5.
 
 ---
 
@@ -847,44 +847,38 @@ Public marketing pages (if added later) may use larger display type and coordina
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** Planned (July 2026). §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**. This roadmap covers the next pass: shared primitives, accent compliance, signature visuals, mobile refinement, and page restructuring.
+**Status:** IL-0 **shipped** (July 2026); IL-1–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
-**Baseline verified:** `pnpm tsc --noEmit` and `pnpm test` (435 tests) pass on the planning branch.
+**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (439), and `pnpm build` pass after IL-0.
 
 ### 12.1 Phase overview
 
 | Phase | Goal | Risk | Depends on |
 |-------|------|------|------------|
-| **IL-0** Primitives | Single source for link, serial, frame, timeline classes | Low | — |
+| **IL-0** Primitives | Single source for link, serial, frame, timeline classes | Low | — | **Shipped** |
 | **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 |
 | **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 |
 | **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 |
 | **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 |
-| **IL-5** Token parity | `status-success` export + purchase-confirmed semantics | Low | IL-1 |
+| **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 |
 | **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
 
 Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport timeline + gallery.
 
-### 12.2 IL-0 — Shared primitives
-
-New modules (proposed paths):
+### 12.2 IL-0 — Shared primitives — shipped
 
 | Module | Purpose |
 |--------|---------|
 | [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame` |
 | [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
-| [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame (CSS borders, no images) for gallery hero and VIN block |
-| [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks wrapping log list items |
+| [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame (CSS borders, no images) for gallery hero and VIN block — **IL-2 integration** |
+| [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks — **IL-2 integration** |
 
-**`globals.css` amendments:**
+**`globals.css`:** `.link` / `.link-underline` rest `text-text-secondary`; accent on hover/focus — **shipped**.
 
-| Rule | Today | Target |
-|------|-------|--------|
-| `.link` | `text-accent-warm` at rest | `text-text-secondary` at rest; `hover:text-accent-warm` |
-| `.link-underline` | accent at rest | same as `.link` + underline |
-| `.eyebrow` | unchanged | narrative section labels only — never on-chain serials |
+**`lib/design-tokens.ts`:** `statusSuccess` exported — **shipped** (UI consumption deferred to IL-5).
 
-**`lib/design-tokens.ts`:** export `statusSuccess` from `--color-status-success` (CSS already defined).
+**IL-0 adoption:** `EnsWalletLink` defaults, `PassportIdLabel` serial, `ListingDisplayPrice` → `browsePrice`; passport/marketplace `link-underline` accent overrides removed.
 
 ### 12.3 IL-1 — Accent audit
 
@@ -1036,7 +1030,7 @@ Separate Next.js route group `app/(marketing)/` if needed:
 
 ### 12.10 Definition of done (full IL program)
 
-- [ ] IL-0 primitives merged; `globals.css` link utilities compliant
+- [x] IL-0 primitives merged; `globals.css` link utilities compliant
 - [ ] IL-1 accent audit clean (exceptions only per §12.3.1)
 - [ ] IL-2 timeline axis + gallery bracket frame shipped on passport detail
 - [ ] IL-3 mobile commerce order + touch target pass
@@ -1082,4 +1076,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.0 (July 2026 — §11 philosophy, §12–§13 Instrument Layer roadmap + mobile contracts). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.1 (July 2026 — IL-0 primitives shipped). Update when tokens, app shell, or component contracts change.*

@@ -9,6 +9,7 @@ export const colors = {
   borderHover: "var(--color-border-hover)",
   accentWarm: "var(--color-accent-warm)",
   statusError: "var(--color-status-error)",
+  statusSuccess: "var(--color-status-success)",
   statusWarning: "var(--color-status-warning)",
 } as const;
 

@@ -82,7 +82,7 @@ export function PassportRecordsTimeline({
               Author:{" "}
               <Link
                 href={`/profile/${record.author}`}
-                className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+                className="hover:underline"
               >
                 {navShortAddress(record.author)}
               </Link>
@@ -98,7 +98,7 @@ export function PassportRecordsTimeline({
                   href={display.evidenceHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-sans text-sm text-accent-warm link-underline"
+                  className="font-sans text-sm link-underline"
                 >
                   View evidence
                 </a>

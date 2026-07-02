@@ -122,7 +122,7 @@ function DisputeStatusSection({
               <EnsWalletLink
                 address={lastDisputer}
                 href={`/profile/${lastDisputer}`}
-                className="font-mono text-base text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+                className="text-base hover:underline"
               />
             </div>
           )}
@@ -155,7 +155,7 @@ function DisputeStatusSection({
                   This passport is under review. Review records and evidence before buying.{" "}
                   <Link
                     href="#passport-records"
-                    className="text-accent-warm link-underline"
+                    className="link-underline"
                   >
                     View dispute timeline
                   </Link>
@@ -168,7 +168,7 @@ function DisputeStatusSection({
                 </p>
                 <p className="mt-1.5 font-sans text-sm font-normal leading-[1.5] text-text-secondary">
                   Awaiting your resolution. Use the actions section below to uphold or reject.{" "}
-                  <Link href="#passport-actions" className="text-accent-warm link-underline">
+                  <Link href="#passport-actions" className="link-underline">
                     Go to actions
                   </Link>
                 </p>
@@ -180,7 +180,7 @@ function DisputeStatusSection({
                 </p>
                 <p className="mt-1.5 font-sans text-sm font-normal leading-[1.5] text-text-secondary">
                   Add clarification below so verifiers can review your response.{" "}
-                  <Link href="#passport-actions" className="text-accent-warm link-underline">
+                  <Link href="#passport-actions" className="link-underline">
                     Go to actions
                   </Link>
                 </p>
@@ -247,14 +247,14 @@ export function PassportDetailView({
             <EnsWalletLink
               address={custody.profileAddress}
               href={`/profile/${custody.profileAddress}`}
-              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+              className="hover:underline"
             />
             <span className="mx-1 text-text-tertiary">·</span>
             Held in escrow{" "}
             <EnsWalletLink
               address={custody.custodyAddress ?? passport.owner}
               externalHref={explorerAddressUrl(chainId, custody.custodyAddress ?? passport.owner)}
-              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+              className="hover:underline"
             />
           </>
         ) : (
@@ -263,7 +263,7 @@ export function PassportDetailView({
             <EnsWalletLink
               address={custody.profileAddress}
               href={`/profile/${custody.profileAddress}`}
-              className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+              className="hover:underline"
             />
           </>
         )}
@@ -275,7 +275,7 @@ export function PassportDetailView({
     <div className="mx-auto w-full max-w-7xl px-6 py-24 text-text-primary md:px-8 xl:max-w-[80rem]">
       <Link
         href={`/?chain=${chainId}`}
-        className="font-sans text-sm text-accent-warm link-underline"
+        className="font-sans text-sm link-underline"
       >
         ← Back to marketplace
       </Link>
@@ -334,7 +334,7 @@ export function PassportDetailView({
                 <EnsWalletLink
                   address={passport.verifier}
                   href={`/profile/${passport.verifier}`}
-                  className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
+                  className="hover:underline"
                 />
                 {verifiedDate && (
                   <>

@@ -1,11 +1,11 @@
 "use client";
 
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
+import { browsePrice } from "@/lib/design/instrument-classes";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { cn } from "@/lib/utils";
 
-const PRICE_CLASS =
-  "font-mono text-lg font-medium tabular-nums text-text-primary";
+const PRICE_CLASS = browsePrice;
 
 type Props = {
   fiatPrice1e8: string | bigint;

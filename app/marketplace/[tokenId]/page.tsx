@@ -104,7 +104,7 @@ async function MarketplaceListingInner({
           </div>
           <Link
             href={`/?chain=${chainId}`}
-            className="font-sans text-sm text-accent-warm link-underline"
+            className="font-sans text-sm link-underline"
           >
             ← Back to marketplace
           </Link>
@@ -123,7 +123,7 @@ async function MarketplaceListingInner({
           </p>
           <Link
             href={`/?chain=${chainId}`}
-            className="mt-6 inline-block font-sans text-sm text-accent-warm hover:underline"
+            className="mt-6 inline-block font-sans text-sm link-underline"
           >
             ← Back to marketplace
           </Link>

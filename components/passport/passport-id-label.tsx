@@ -4,6 +4,7 @@ import {
   formatPassportTitle,
   parsePassportTokenId,
 } from "@/lib/passport/passport-token-id";
+import { serialLabel } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -41,7 +42,7 @@ function labelText(
 
 const variantClass: Record<NonNullable<Props["variant"]>, string> = {
   default: "font-sans text-sm text-text-secondary",
-  eyebrow: "font-mono text-xs uppercase tracking-widest text-text-tertiary",
+  eyebrow: serialLabel,
   mono: "font-mono text-[10px] text-text-secondary",
 };
 

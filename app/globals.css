@@ -84,19 +84,31 @@ h3 {
 }
 
 .link {
-  @apply text-accent-warm transition-colors duration-200;
+  @apply text-text-secondary transition-colors duration-200;
 }
 
-.link:hover {
-  color: var(--color-text-primary);
+.link:hover,
+.link:focus-visible {
+  color: var(--color-accent-warm);
+}
+
+.link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .link-underline {
-  @apply text-accent-warm underline underline-offset-4 transition-colors duration-200;
+  @apply text-text-secondary underline underline-offset-4 transition-colors duration-200;
 }
 
-.link-underline:hover {
-  color: var(--color-text-primary);
+.link-underline:hover,
+.link-underline:focus-visible {
+  color: var(--color-accent-warm);
+}
+
+.link-underline:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .container {
