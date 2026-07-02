@@ -17,6 +17,7 @@ import { AgentDelistButton } from "@/components/marketplace/agent-delist-button"
 import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
 import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-listing-panel";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
 import { ReturnCooldownDisplay } from "@/components/marketplace/return-cooldown-display";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -64,19 +65,6 @@ async function invalidateAgentConsignmentQueries(
     queryClient.invalidateQueries({ queryKey: ["agent-listings", wallet] }),
   ]);
   router.refresh();
-}
-
-function ListingCardSkeleton() {
-  return (
-    <div className="h-full overflow-hidden rounded-md border border-border-default bg-bg-card">
-      <div className="aspect-[16/10] w-full animate-pulse bg-bg-surface" />
-      <div className="space-y-2.5 p-6">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-bg-surface" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-bg-surface" />
-        <div className="h-6 w-1/3 animate-pulse rounded bg-bg-surface" />
-      </div>
-    </div>
-  );
 }
 
 function AwaitingCardSkeleton() {

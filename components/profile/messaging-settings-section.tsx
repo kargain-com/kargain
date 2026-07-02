@@ -179,14 +179,14 @@ export function MessagingSettingsSection() {
           <p className="text-sm text-text-secondary">{helperCopy}</p>
           {showSpinner && (
             <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
               Confirm in your wallet…
             </p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {showSpinner && (
-            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" aria-hidden />
+            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" strokeWidth={1.5} aria-hidden />
           )}
           <Switch
             id="private-messages"

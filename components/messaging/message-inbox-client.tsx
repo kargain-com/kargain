@@ -253,14 +253,14 @@ export function MessageInboxClient() {
 
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
           Opening conversation…
         </p>
       )}
 
       {status === "initializing" && !needsSetup && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
           Confirm in your wallet…
         </p>
       )}

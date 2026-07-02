@@ -10,6 +10,7 @@ import {
   type MarketplaceListingRow,
 } from "@/app/actions/marketplace-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
 import { MarketFilterBar } from "@/components/marketplace/market-filter-bar";
 import { MarketFilterChips } from "@/components/marketplace/market-filter-chips";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -120,9 +121,17 @@ export function MarketBrowse({
           </div>
         )}
         {isPending && (!needsRates || ratesReady) && (
-          <div className="mb-4 rounded-md border border-border-default bg-bg-surface p-4" role="status" aria-live="polite">
-            <p className="text-sm text-text-primary">Loading listings…</p>
-          </div>
+          <ul
+            className="mb-4 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
+            role="status"
+            aria-live="polite"
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} aria-hidden>
+                <ListingCardSkeleton />
+              </li>
+            ))}
+          </ul>
         )}
         {isError && (
           <div className="mb-4 rounded-md border border-status-error bg-bg-card p-4" role="alert">

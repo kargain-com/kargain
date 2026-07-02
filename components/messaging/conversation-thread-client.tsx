@@ -156,7 +156,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto py-4">
         {isLoading && (
           <p className="flex items-center gap-2 text-sm text-text-secondary">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
             Loading messages…
           </p>
         )}

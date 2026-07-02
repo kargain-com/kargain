@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 
 import { loadFavoriteListingCards } from "@/app/actions/favorite-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
+import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useWatchlist } from "@/hooks/use-watchlist";
@@ -16,19 +17,6 @@ const GRID_CLASS = {
 } as const;
 
 type WatchlistLayout = keyof typeof GRID_CLASS;
-
-function ListingCardSkeleton() {
-  return (
-    <div className="h-full overflow-hidden rounded-md border border-border-default bg-bg-card">
-      <div className="aspect-[16/10] w-full animate-pulse bg-bg-surface" />
-      <div className="space-y-2.5 p-6">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-bg-surface" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-bg-surface" />
-        <div className="h-6 w-1/3 animate-pulse rounded bg-bg-surface" />
-      </div>
-    </div>
-  );
-}
 
 type Props = {
   /** `narrow` for profile (`max-w-2xl`); `wide` for notifications / full-width pages. */

@@ -768,8 +768,28 @@ Content-empty and infrastructure-empty migrations are **complete** for all verif
 - [`components/marketplace/listing-card.tsx`](../components/marketplace/listing-card.tsx) — inline card media micro-placeholder (`No image`); not a section-level empty state
 - [`components/profile/consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx) — past consignments section uses `omitWhenEmpty`; no empty UI is rendered when the list is empty
 
-Loading-state skeleton canonicalization remains a separate follow-up (not covered in §10.7).
+Loading-state rules: see §10.8.
 
 ---
 
-*Document version: 2.6 (July 2026 — EmptyState nested prop). Update when tokens, app shell, or component contracts change.*
+### 10.8 Loading states
+
+Skeleton shape must match the §10.6 level of the content it replaces. If a skeleton already exists for a content type, reuse it — do not duplicate the same shape.
+
+| Content type | Canonical skeleton | Reference loaded component |
+|---|---|---|
+| Listing card grid | [`ListingCardSkeleton`](../components/marketplace/listing-card-skeleton.tsx) | [`ListingCard`](../components/marketplace/listing-card.tsx) (Level A) |
+| Consignment authorization row | `AwaitingCardSkeleton` | `AuthorizedAwaitingCard` (Level C) |
+| Notification feed | `NotificationRowSkeletonList` | Notification list (Level A shell + Level C rows) |
+| Verifier directory grid | Level A `bg-bg-card` card with internal bars matching `VerifierCard` | [`VerifierCard`](../components/verifier/verifier-directory.tsx) grid layout |
+| Verifier picker (dialog) | Level C `bg-bg-card` row matching picker `VerifierCard` | Picker row — distinct from directory grid |
+| Inline text placeholder | `rounded-sm` inline bar | ENS name, stake amount, single value — not card-level |
+| Detail pages, forms, single-value reads | Text or `—` acceptable | No skeleton unless content is card/grid-shaped |
+
+Pagination ("Loading more…") and pre-query gates (e.g. FX rates panel) are out of scope for skeleton grids.
+
+Loading spinners (`Loader2` or custom SVG) use `strokeWidth={1.5}` per §7 — no loading-context exception.
+
+---
+
+*Document version: 2.7 (July 2026 — §10.8 loading states). Update when tokens, app shell, or component contracts change.*

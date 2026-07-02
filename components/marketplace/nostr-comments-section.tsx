@@ -399,7 +399,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
           <Button type="button" onClick={() => void postComment()} disabled={!canPost || posting || !message.trim()}>
             {posting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
                 Posting...
               </>
             ) : (

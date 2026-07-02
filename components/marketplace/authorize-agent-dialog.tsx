@@ -359,11 +359,18 @@ export function AuthorizeAgentDialog({
             {verifiersLoading ? (
               <div className="space-y-2" role="status" aria-live="polite">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div
+                  <article
                     key={i}
-                    className="h-14 animate-pulse rounded-md border border-border-default bg-bg-surface"
+                    className="flex animate-pulse items-center gap-3 rounded-md border border-border-default bg-bg-card p-3"
                     aria-hidden
-                  />
+                  >
+                    <div className="size-10 shrink-0 rounded-full bg-bg-surface" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-2/3 rounded bg-bg-surface" />
+                      <div className="h-3 w-1/3 rounded bg-bg-surface" />
+                    </div>
+                    <div className="h-9 w-28 shrink-0 rounded bg-bg-surface" />
+                  </article>
                 ))}
               </div>
             ) : (
