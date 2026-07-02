@@ -57,7 +57,7 @@ export function ProfileVerifierStatsBand({
         </>
       )}
       <StatsSeparator />
-      <span className="font-mono text-xs text-text-secondary">
+      <span className="font-mono text-sm text-text-secondary">
         <span>Verification fee </span>
         <span>{formatVerificationFee(verificationFee)}</span>
       </span>

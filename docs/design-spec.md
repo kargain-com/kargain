@@ -313,7 +313,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback. Each card shows verification count, member since, **verification fee** (`formatVerificationFee` — `0` → *Contact for quote*), **View showroom →**, **Request verification**, and **Pay for inspection** when fee &gt; 0 (see §4.17).
 
-> **Price display:** canonical classes in [§10.2](./design-spec.md#102-accent-as-status-not-decoration) — `font-mono text-lg font-medium tabular-nums text-text-primary` for asking/browse amounts; fee lines `font-mono text-xs text-text-secondary`. No `text-accent-warm` on amounts or card price hover.
+> **Price display:** canonical classes in [§10.2](./design-spec.md#102-accent-as-status-not-decoration) — `font-mono text-lg font-medium tabular-nums text-text-primary` for asking/browse amounts; fee lines mono `text-text-secondary` (`text-xs` compact, `text-sm` showroom/profile stats). No `text-accent-warm` on amounts or card price hover.
 
 **Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). (Price display: §10.2.) Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
 
@@ -642,7 +642,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | Wallet addresses | ENS name sub-line, `shortAddress`, `navShortAddress` | `font-mono text-xs text-text-secondary` or `font-mono text-sm text-text-secondary` |
 | Timestamps | Record dates, notification times, message times | `font-mono tabular-nums` + `text-text-tertiary` or `text-text-secondary` (see §10.4) |
 | Browse / asking price | Listing card, detail sidebar | `font-mono text-lg font-medium tabular-nums text-text-primary` |
-| Fee lines | Verification fee, checkout disclosure amounts | `font-mono text-xs text-text-secondary` |
+| Fee lines | Verification fee, checkout disclosure amounts | `font-mono text-xs text-text-secondary` (compact contexts) or `font-mono text-sm text-text-secondary` (pro showroom hero, profile stats band) |
 | Vehicle spec values | VIN, mileage, year, spec grid values | `font-mono text-sm font-normal text-text-primary` (labels: §3-style tertiary uppercase mono) |
 
 **Cross-reference:** §3 **Mono numeric** and **Code inline** rows remain the base scale for non-status factual text.
@@ -662,7 +662,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | Use case | Accent allowed? | Canonical classes |
 |----------|-----------------|-------------------|
 | Browse / asking price | No | `font-mono text-lg font-medium tabular-nums text-text-primary` |
-| Fee lines (verification, checkout disclosure) | No | `font-mono text-xs text-text-secondary` (emphasis within mono: `text-text-primary`) |
+| Fee lines (verification, checkout disclosure) | No | `font-mono text-xs text-text-secondary` compact; `font-mono text-sm text-text-secondary` pro showroom / profile stats (emphasis within mono: `text-text-primary`) |
 | Listing card price hover | No | No `group-hover:text-accent-warm` on price amounts |
 | Passport token ID serial | No | `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` |
 | KarPro **membership** badge (verified pro) | Yes | [`KarProBadge`](../components/ui/kar-pro-badge.tsx) / [`PassportStatusBadge`](../components/ui/passport-status-badge.tsx) VERIFIED: `border-accent-warm text-accent-warm` |
