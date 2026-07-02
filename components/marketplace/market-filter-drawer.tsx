@@ -188,7 +188,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder={facets ? String(priceRange.min || "") : pricePlaceholder}
                   value={draft.priceMin}
                   onChange={(e) => patchDraft({ priceMin: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
               <div className="space-y-1.5">
@@ -202,7 +202,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder={facets ? String(priceRange.max || "") : pricePlaceholder}
                   value={draft.priceMax}
                   onChange={(e) => patchDraft({ priceMax: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
             </div>
@@ -258,7 +258,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder={facets ? String(facets.yearMin || "") : ""}
                   value={draft.yearMin}
                   onChange={(e) => patchDraft({ yearMin: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
               <div className="space-y-1.5">
@@ -272,7 +272,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder={facets ? String(facets.yearMax || "") : ""}
                   value={draft.yearMax}
                   onChange={(e) => patchDraft({ yearMax: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
             </div>
@@ -291,7 +291,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder="0"
                   value={draft.mileageMin}
                   onChange={(e) => patchDraft({ mileageMin: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
               <div className="space-y-1.5">
@@ -305,7 +305,7 @@ export function MarketFilterDrawer({ open, onOpenChange }: Props) {
                   placeholder={mileageMaxPlaceholder}
                   value={draft.mileageMax}
                   onChange={(e) => patchDraft({ mileageMax: e.target.value })}
-                  className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                  className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                 />
               </div>
             </div>

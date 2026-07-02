@@ -297,7 +297,7 @@ export function MarketFilterBar() {
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMin: e.target.value }))
                       }
-                      className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                      className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -313,7 +313,7 @@ export function MarketFilterBar() {
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMax: e.target.value }))
                       }
-                      className="min-w-0 h-9 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
+                      className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
                     />
                   </div>
                 </div>

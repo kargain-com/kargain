@@ -148,13 +148,13 @@ export function CurrencySelector() {
                 Display currency
               </SheetTitle>
             </SheetHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+            <div className="max-h-[90dvh] min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
               {OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   className={cn(
-                    "flex w-full items-center rounded-sm px-4 py-2.5 font-sans text-sm transition-colors duration-200",
+                    "flex min-h-11 w-full items-center rounded-sm px-4 font-sans text-sm transition-colors duration-200",
                     displayCurrency === option.value
                       ? "bg-bg-surface text-accent-warm"
                       : "text-text-primary",

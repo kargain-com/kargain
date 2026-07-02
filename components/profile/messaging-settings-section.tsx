@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { categoryLabel } from "@/lib/design/instrument-classes";
+import { categoryLabel, sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { useMessagingActivation } from "@/hooks/use-messaging-activation";
+import { cn } from "@/lib/utils";
 import {
   canWalletEnableMessaging,
   messagingUnsupportedCopy,
@@ -144,7 +145,7 @@ export function MessagingSettingsSection() {
 
   if (status === "unsupported" || !canEnable) {
     return (
-      <section id="messages" className="flex flex-col gap-4 scroll-mt-24">
+      <section id="messages" className={cn("flex flex-col gap-4", sectionScrollAnchor)}>
         <SectionEyebrow>Messages</SectionEyebrow>
         <div
           className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary"
@@ -167,7 +168,7 @@ export function MessagingSettingsSection() {
       : "Finish setup to activate private messages.";
 
   return (
-    <section id="messages" className="flex flex-col gap-4 scroll-mt-24">
+    <section id="messages" className={cn("flex flex-col gap-4", sectionScrollAnchor)}>
       <SectionEyebrow>Messages</SectionEyebrow>
 
       <MessagingDriftBanner />

@@ -51,7 +51,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             <button
               type="button"
               onClick={goPrev}
-              className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:h-9 md:w-9"
               aria-label="Previous image"
             >
               <ChevronLeft size={20} strokeWidth={1.5} aria-hidden />
@@ -59,7 +59,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             <button
               type="button"
               onClick={goNext}
-              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-sm border border-border-default bg-bg-primary/90 text-text-primary transition-colors hover:bg-bg-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:h-9 md:w-9"
               aria-label="Next image"
             >
               <ChevronRight size={20} strokeWidth={1.5} aria-hidden />

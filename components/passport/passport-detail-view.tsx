@@ -16,6 +16,7 @@ import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
+import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { formatKarPassportTitle } from "@/lib/passport/passport-token-id";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
@@ -299,8 +300,8 @@ export function PassportDetailView({
 
       {titleBlock}
 
-      <div className="mt-8 space-y-8 lg:grid lg:grid-cols-[1fr_22rem] lg:items-start lg:gap-12 lg:space-y-0">
-        <div className="space-y-6">
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_22rem] lg:items-start">
+        <div className="order-2 space-y-6 lg:order-1">
           {!isDisputed && gallery}
 
           {metadata?.description && (
@@ -348,7 +349,7 @@ export function PassportDetailView({
             </section>
           )}
 
-          <div id="passport-actions" className="scroll-mt-24">
+          <div id="passport-actions" className={sectionScrollAnchor}>
             <PassportActionsPanel
               tokenId={tokenId}
               chainId={chainId}
@@ -367,14 +368,14 @@ export function PassportDetailView({
             />
           </div>
 
-          <div id="passport-comments" className="scroll-mt-24">
+          <div id="passport-comments" className={sectionScrollAnchor}>
             <NostrCommentsSection tokenId={tokenId} />
           </div>
 
           <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
         </div>
 
-        <aside className="space-y-6 lg:sticky lg:top-24">
+        <aside className="order-1 space-y-6 lg:order-2 lg:sticky lg:top-24">
           <PassportTrustBanner
             verificationResetCount={passport.verificationResetCount}
             hadDispute={passport.hadDispute}

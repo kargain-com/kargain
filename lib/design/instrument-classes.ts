@@ -69,6 +69,9 @@ export const trustStampNeutral = "border-border-default text-text-secondary";
 
 export const trustStampKarPro = "border-accent-warm/40 text-accent-warm";
 
+/** Section anchors below sticky top nav; extra offset on mobile for bottom FAB (§13.1). */
+export const sectionScrollAnchor = "scroll-mt-28 md:scroll-mt-24";
+
 export const instrumentClasses = {
   serialLabel,
   monoNumeric,
@@ -92,4 +95,5 @@ export const instrumentClasses = {
   trustStampDisputed,
   trustStampNeutral,
   trustStampKarPro,
+  sectionScrollAnchor,
 } as const;

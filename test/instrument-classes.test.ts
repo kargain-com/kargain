@@ -12,6 +12,7 @@ import {
   trustStampBase,
   trustStampKarPro,
   trustStampVerified,
+  sectionScrollAnchor,
 } from "../lib/design/instrument-classes.ts";
 
 describe("instrument-classes", () => {
@@ -68,5 +69,10 @@ describe("instrument-classes", () => {
     assert.match(trustStampVerified, /border-accent-warm/);
     assert.match(trustStampKarPro, /border-accent-warm\/40/);
     assert.doesNotMatch(trustStampKarPro, /shadow/);
+  });
+
+  it("sectionScrollAnchor offsets for mobile FAB", () => {
+    assert.match(sectionScrollAnchor, /scroll-mt-28/);
+    assert.match(sectionScrollAnchor, /md:scroll-mt-24/);
   });
 });

@@ -847,9 +847,9 @@ Public marketing pages (if added later) may use larger display type and coordina
 
 ## 12. Instrument Layer — implementation roadmap
 
-**Status:** IL-0–IL-2 **shipped** (July 2026); IL-3–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
+**Status:** IL-0–IL-3 **shipped** (July 2026); IL-4–IL-6 planned. §10 spec and Groups A–F (empty, loading, mono timestamps) are **shipped**.
 
-**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (444), and `pnpm build` pass after IL-2.
+**Baseline verified:** `pnpm tsc --noEmit`, `pnpm test` (445), and `pnpm build` pass after IL-3.
 
 ### 12.1 Phase overview
 
@@ -858,7 +858,7 @@ Public marketing pages (if added later) may use larger display type and coordina
 | **IL-0** Primitives | Single source for link, serial, frame, timeline classes | Low | — | **Shipped** |
 | **IL-1** Accent audit | Full §10.2 compliance; fix global `.link` utilities | Medium | IL-0 | **Shipped** |
 | **IL-2** Signature visuals | Timeline axis, corner brackets, stamp badges | Medium | IL-0 | **Shipped** |
-| **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 |
+| **IL-3** Mobile pass | Touch order, sticky commerce, safe areas, drawer density | Medium | IL-1 | **Shipped** |
 | **IL-4** Page restructuring | Passport detail + marketplace detail information architecture | High | IL-2, IL-3 |
 | **IL-5** Token parity | `status-success` UI consumption + purchase-confirmed semantics | Low | IL-1 |
 | **IL-6** Marketing shell | Optional public landing (separate route group) | Low | IL-0 |
@@ -869,7 +869,7 @@ Implement in order. Do not start IL-4 until IL-2 pilot is approved on passport t
 
 | Module | Purpose |
 |--------|---------|
-| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*` |
+| [`lib/design/instrument-classes.ts`](../lib/design/instrument-classes.ts) | Canonical Tailwind class strings: `serialLabel`, `monoLink`, `monoTimestamp`, `instrumentFrame`, `categoryLabel`, `ctaLink`, `shellControlHover`, `trustStamp*`, `sectionScrollAnchor` |
 | [`components/ui/instrument-link.tsx`](../components/ui/instrument-link.tsx) | Mono address / explorer link — rest `text-text-secondary`, accent on `:hover` / `:focus-visible` only |
 | [`components/ui/instrument-frame.tsx`](../components/ui/instrument-frame.tsx) | Corner-bracket registration frame — passport gallery hero + VIN block (**shipped** IL-2) |
 | [`components/ui/instrument-timeline.tsx`](../components/ui/instrument-timeline.tsx) | Vertical hairline axis + tick marks — passport log sections (**shipped** IL-2) |
@@ -966,7 +966,9 @@ Wrap [`passport-photo-gallery.tsx`](../components/passport/passport-photo-galler
 
 Consolidate VERIFIED / KarPro into one stamp pattern: mono caps, hairline border, no fill glow. Shared classes: `trustStampBase` + variants in [`instrument-classes.ts`](../lib/design/instrument-classes.ts); **`rounded-sm`** registration shape (not pill). Reference: [`kar-pro-badge.tsx`](../components/ui/kar-pro-badge.tsx), [`passport-status-badge.tsx`](../components/ui/passport-status-badge.tsx).
 
-### 12.5 IL-3 — Mobile instrument pass
+### 12.5 IL-3 — Mobile instrument pass — shipped
+
+**IL-3 shipped (July 2026):** commerce aside `order-1` before main column on `< lg`; `sectionScrollAnchor` for hash targets; gallery chevrons `h-11` on mobile; filter drawer/bar mono inputs `min-h-11`; currency sheet `max-h-[90dvh]` + `min-h-11` rows; notification body `line-clamp-2`. **Exception:** disputed passports keep early gallery before title for evidence review.
 
 | Surface | Current | Target |
 |---------|---------|--------|
@@ -1048,7 +1050,7 @@ Separate Next.js route group `app/(marketing)/` if needed:
 - [x] IL-0 primitives merged; `globals.css` link utilities compliant
 - [x] IL-1 accent audit clean (exceptions only per §12.3.1)
 - [x] IL-2 timeline axis + gallery bracket frame shipped on passport detail
-- [ ] IL-3 mobile commerce order + touch target pass
+- [x] IL-3 mobile commerce order + touch target pass
 - [ ] IL-4 passport detail IA restructure on mobile and desktop
 - [ ] IL-5 `statusSuccess` in `design-tokens.ts` + purchase flows
 - [ ] ROADMAP + HANDOFF updated; milestone row in AGENTS.md after ship
@@ -1066,7 +1068,7 @@ Mobile-specific rules supplement §4.7–4.8 and §6. Instrument Layer rules (§
 | Main scroll | `min-h-dvh pb-16 md:pb-0` via [`site-chrome.tsx`](../components/shell/site-chrome.tsx) |
 | Bottom nav | `pb-[env(safe-area-inset-bottom)]`; `md:hidden` |
 | Sticky top nav | `sticky top-0 z-50`; height `h-14` |
-| Section anchors | `scroll-mt-24` minimum; `scroll-mt-28` on mobile when FAB overlaps (`md:scroll-mt-24`) |
+| Section anchors | `scroll-mt-24` minimum; `scroll-mt-28` on mobile when FAB overlaps (`md:scroll-mt-24`) — use `sectionScrollAnchor` from [`instrument-classes.ts`](../lib/design/instrument-classes.ts) |
 
 ### 13.2 Navigation duplication
 
@@ -1091,4 +1093,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 3.3 (July 2026 — IL-2 signature visuals shipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.4 (July 2026 — IL-3 mobile instrument pass shipped). Update when tokens, app shell, or component contracts change.*

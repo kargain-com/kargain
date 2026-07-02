@@ -61,7 +61,7 @@ export function NotificationRow({ item, isLast = false, onRead }: NotificationRo
         <div className="min-w-0 flex-1">
           <p
             className={cn(
-              "font-sans text-sm",
+              "line-clamp-2 font-sans text-sm",
               item.read ? "text-text-secondary" : "text-text-primary",
             )}
           >
