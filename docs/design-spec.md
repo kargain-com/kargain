@@ -244,7 +244,7 @@ Implementation: [`components/shell/mobile-bottom-nav.tsx`](../components/shell/m
 
 | Slot | Icon | Target | Notes |
 |------|------|--------|-------|
-| Marketplace | `Car` | `/` | Not Home icon |
+| Marketplace | `Compass` | `/` | Not Home icon; navigation motif per §10.5 |
 | Messages | `Inbox` | `/messages` | Always visible; dot badge when wallet connected and unread |
 | FAB (center) | `Plus` | `/passport/new` | `h-12 w-12 rounded-full bg-bg-card border border-border-hover`, accent plus, `ring-2 ring-bg-primary`, `-mt-3`; icon-only |
 | Alerts | `Bell` | `/notifications` | Unread dot via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx); default tab = Alerts inbox |
@@ -713,8 +713,8 @@ No literal vehicle iconography (car, wheel, road silhouettes) in **system chrome
 
 | Item | Status |
 |------|--------|
-| Mobile bottom nav Marketplace tab: `Car` → `Compass` | **Planned** — not yet shipped ([`mobile-bottom-nav.tsx`](../components/shell/mobile-bottom-nav.tsx)) |
-| §4.8 current `Car` reference | Unchanged until icon code session; update §4.8 table to `Compass` when shipped |
+| Mobile bottom nav Marketplace tab | **`Compass`** — shipped in [`mobile-bottom-nav.tsx`](../components/shell/mobile-bottom-nav.tsx) |
+| §4.8 Marketplace icon | Updated to `Compass` |
 
 Icon size and `strokeWidth` rules: §7 Iconography (unchanged).
 

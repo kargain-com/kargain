@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Car, Inbox, Plus, User } from "lucide-react";
+import { Bell, Compass, Inbox, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -22,7 +22,7 @@ function NavTab({
   href: string;
   label: string;
   active: boolean;
-  icon: typeof Car;
+  icon: typeof Compass;
   badge?: ReactNode;
 }) {
   return (
@@ -100,7 +100,7 @@ export function MobileBottomNav() {
         <NavTab
           href="/"
           label="Marketplace"
-          icon={Car}
+          icon={Compass}
           active={path === "/"}
         />
 
