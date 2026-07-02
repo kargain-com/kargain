@@ -738,7 +738,7 @@ Three padding levels, one radius. **Radius** is uniform (`rounded-md`) across al
 
 ### 10.7 Empty and loading states
 
-Canonical empty UI lives in [`components/ui/empty-state.tsx`](../components/ui/empty-state.tsx). Use `variant` to distinguish **content-empty** (nothing to show yet in a feature area) from **infrastructure-empty** (wallet disconnected, indexer down, or similar blocker). Loading-state skeleton canonicalization is a separate follow-up — not covered here.
+Canonical empty UI lives in [`components/ui/empty-state.tsx`](../components/ui/empty-state.tsx). Use `variant` to distinguish **content-empty** (nothing to show yet in a feature area) from **infrastructure-empty** (wallet disconnected, indexer down, or similar blocker). Loading-state rules: §10.8.
 
 #### Variant rules
 
