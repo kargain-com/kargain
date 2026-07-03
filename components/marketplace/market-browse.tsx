@@ -21,13 +21,12 @@ import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-c
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
-import {
-  rateRequiredForPriceCurrency,
-  ratesReadyForPriceCurrency,
-} from "@/lib/marketplace/price-normalize";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
-import { marketplaceListingsNeedClientRates } from "@/lib/marketplace/listings-prefetch";
+import {
+  marketplaceListingsNeedClientRates,
+  marketplaceListingsRatesReady,
+} from "@/lib/marketplace/listings-prefetch";
 import { shouldEnableListingChainStatusConfirm } from "@/lib/marketplace/listing-chain-status-confirm-fetch";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
@@ -37,23 +36,12 @@ type MarketBrowseProps = {
 
 export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
-  useMarketRatesRequest(marketplaceListingsNeedClientRates(filters));
+  const needsRates = marketplaceListingsNeedClientRates(filters);
+  useMarketRatesRequest(needsRates);
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);
 
-  const needsRates = marketplaceListingsNeedClientRates(filters);
-  const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
-  const effectivePriceCurrency = filters.priceCurrency || "USD";
-  const needsRatesForFilter =
-    hasPriceFilter && rateRequiredForPriceCurrency(effectivePriceCurrency);
-  const needsRatesForSort =
-    filters.sort === "price_asc" || filters.sort === "price_desc";
-
-  const ratesReadyForFilter =
-    !needsRatesForFilter ||
-    ratesReadyForPriceCurrency(effectivePriceCurrency, filterRates);
-  const ratesReadyForSort = !needsRatesForSort || (filterRates.ethUsd != null && filterRates.eurUsd != null);
-  const ratesReady = ratesReadyForFilter && ratesReadyForSort;
+  const ratesReady = marketplaceListingsRatesReady(filters, filterRates);
 
   const apiInput = useMemo(
     () => marketFiltersToApiInput(filters, needsRates ? filterRates : undefined),

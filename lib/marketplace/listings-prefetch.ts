@@ -1,5 +1,10 @@
 import type { MarketFilterState } from "@/lib/marketplace/filter-params";
-import { rateRequiredForPriceCurrency, type PriceCurrency } from "@/lib/marketplace/price-normalize";
+import {
+  rateRequiredForPriceCurrency,
+  ratesReadyForPriceCurrency,
+  type PartialFxRates,
+  type PriceCurrency,
+} from "@/lib/marketplace/price-normalize";
 
 function effectivePriceCurrency(filters: MarketFilterState): PriceCurrency {
   if (filters.priceCurrency) return filters.priceCurrency;
@@ -13,6 +18,26 @@ export function marketplaceListingsNeedClientRates(filters: MarketFilterState): 
     hasPriceFilter && rateRequiredForPriceCurrency(effectivePriceCurrency(filters));
   const needsRatesForSort = filters.sort === "price_asc" || filters.sort === "price_desc";
   return needsRatesForFilter || needsRatesForSort;
+}
+
+/** True when required FX rates for browse filters/sort are available. */
+export function marketplaceListingsRatesReady(
+  filters: MarketFilterState,
+  rates: PartialFxRates | null,
+): boolean {
+  if (!marketplaceListingsNeedClientRates(filters)) return true;
+
+  const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
+  const priceCurrency = effectivePriceCurrency(filters);
+  const needsRatesForFilter = hasPriceFilter && rateRequiredForPriceCurrency(priceCurrency);
+  const needsRatesForSort = filters.sort === "price_asc" || filters.sort === "price_desc";
+
+  const ratesReadyForFilter =
+    !needsRatesForFilter || ratesReadyForPriceCurrency(priceCurrency, rates);
+  const ratesReadyForSort =
+    !needsRatesForSort || (rates?.ethUsd != null && rates?.eurUsd != null);
+
+  return ratesReadyForFilter && ratesReadyForSort;
 }
 
 export function searchParamsToUrlSearchParams(

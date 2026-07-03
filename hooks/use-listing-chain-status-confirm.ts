@@ -47,7 +47,7 @@ export function useListingChainStatusConfirm(
     [targets],
   );
 
-  const { data, isLoading, isFetching } = useReadContracts({
+  const { data } = useReadContracts({
     contracts,
     query: {
       enabled: enabled && contracts.length > 0,
@@ -72,8 +72,5 @@ export function useListingChainStatusConfirm(
     return map;
   }, [data, enabled, targets]);
 
-  return {
-    drifts,
-    isConfirming: enabled && (isLoading || isFetching),
-  };
+  return { drifts };
 }

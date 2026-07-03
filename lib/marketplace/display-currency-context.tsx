@@ -20,6 +20,7 @@ import {
 import { CRYPTO_DISPLAY_CONFIG, pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import {
+  DISPLAY_CURRENCY_STORAGE_KEY,
   displayCurrencyNeedsRates,
   readStoredDisplayCurrency,
   shouldEnableMarketRates,
@@ -34,8 +35,6 @@ import {
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 
 export type { DisplayCurrency };
-
-const STORAGE_KEY = "kargain_display_currency";
 
 function formatFiat1e8WithSymbol(value: bigint, symbol: string): string {
   const neg = value < 0n;
@@ -102,7 +101,7 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
 
   const setDisplayCurrency = useCallback((currency: DisplayCurrency) => {
     setDisplayCurrencyState(currency);
-    window.localStorage.setItem(STORAGE_KEY, currency);
+    window.localStorage.setItem(DISPLAY_CURRENCY_STORAGE_KEY, currency);
   }, []);
 
   const convertPrice = useCallback(

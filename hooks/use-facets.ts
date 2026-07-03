@@ -15,7 +15,7 @@ type UseFacetsOptions = {
 export function useFacets(options?: UseFacetsOptions) {
   const enabled = options?.enabled ?? true;
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: LISTING_FACETS_QUERY_KEY,
     queryFn: async () => {
       const data = await fetchListingFacets();
@@ -28,6 +28,5 @@ export function useFacets(options?: UseFacetsOptions) {
 
   return {
     facets: data ?? null,
-    isLoading: enabled && isLoading,
   };
 }
