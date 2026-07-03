@@ -38,11 +38,12 @@ function parseAnswer(result: unknown): bigint | null {
   return answer;
 }
 
-export function useChainlinkRates(): {
+export function useChainlinkRates(options?: { enabled?: boolean }): {
   ethUsd: bigint | null;
   eurUsd: bigint | null;
   isLoading: boolean;
 } {
+  const enabled = options?.enabled ?? true;
   // Always read feeds on the marketplace chain — not the wallet's active chain.
   // Wallet on Ethereum mainnet (or other networks) has no feed addresses configured.
   const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
@@ -83,7 +84,7 @@ export function useChainlinkRates(): {
   const { data, isLoading } = useReadContracts({
     contracts,
     query: {
-      enabled: contracts.length > 0,
+      enabled: enabled && contracts.length > 0,
       staleTime: 60_000,
     },
   });
@@ -108,5 +109,5 @@ export function useChainlinkRates(): {
     }
   }
 
-  return { ethUsd, eurUsd, isLoading: contracts.length > 0 && isLoading };
+  return { ethUsd, eurUsd, isLoading: enabled && contracts.length > 0 && isLoading };
 }

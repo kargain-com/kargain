@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useFacets } from "@/hooks/use-facets";
+import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
 import { shouldFetchListingFacets } from "@/lib/marketplace/listing-facets-fetch";
 import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
@@ -123,6 +124,8 @@ export function MarketFilterBar() {
     drawerOpen,
   });
   const { facets } = useFacets({ enabled: facetsEnabled });
+
+  useMarketRatesRequest(priceOpen && rateRequiredForPriceCurrency(displayCurrency));
 
   const debouncedSearch = useDebouncedValue(searchInput, 300);
 

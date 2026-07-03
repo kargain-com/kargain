@@ -13,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
 import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
@@ -153,6 +154,8 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
   const showResultsDisabled =
     showResultsNeedsRates &&
     (isRatesLoading || !ratesReadyForPriceCurrency(displayCurrency, filterRates));
+
+  useMarketRatesRequest(showResultsNeedsRates && open);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

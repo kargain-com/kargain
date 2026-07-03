@@ -22,6 +22,7 @@ import {
   type DisplayCurrency,
   useDisplayCurrency,
 } from "@/lib/marketplace/display-currency-context";
+import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
@@ -224,6 +225,8 @@ export function CurrencySelector() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [query, setQuery] = useState("");
+
+  useMarketRatesRequest(desktopOpen || mobileOpen);
 
   const normalizedQuery = query.trim().toUpperCase();
 

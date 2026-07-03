@@ -17,6 +17,7 @@ import { MarketFilterChips } from "@/components/marketplace/market-filter-chips"
 import { EmptyState } from "@/components/ui/empty-state";
 import { FadeUp } from "@/components/ui/fade-up";
 import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
+import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import {
@@ -34,6 +35,7 @@ type MarketBrowseProps = {
 
 export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
+  useMarketRatesRequest(marketplaceListingsNeedClientRates(filters));
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);
 

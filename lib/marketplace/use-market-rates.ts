@@ -16,14 +16,21 @@ export type MarketRates = PartialFxRates & {
   isLoading: boolean;
 };
 
-export function useMarketRates(): MarketRates {
+type UseMarketRatesOptions = {
+  enabled?: boolean;
+};
+
+export function useMarketRates(options?: UseMarketRatesOptions): MarketRates {
+  const enabled = options?.enabled ?? true;
+
   const {
     ethUsd: chainlinkEthUsd,
     eurUsd: chainlinkEurUsd,
     isLoading: chainlinkLoading,
-  } = useChainlinkRates();
+  } = useChainlinkRates({ enabled });
 
   const needsCoinGecko =
+    enabled &&
     !chainlinkLoading &&
     (chainlinkEthUsd == null ||
       chainlinkEurUsd == null ||
@@ -36,19 +43,19 @@ export function useMarketRates(): MarketRates {
     staleTime: COINGECKO_STALE_MS,
   });
 
-  const ethUsd = chainlinkEthUsd ?? coingeckoRates?.ethUsd ?? null;
-  const eurUsd = chainlinkEurUsd ?? coingeckoRates?.eurUsd ?? null;
-  const btcUsd = coingeckoRates?.btcUsd ?? null;
-  const cnyUsd = coingeckoRates?.cnyUsd ?? null;
-  const inrUsd = coingeckoRates?.inrUsd ?? null;
-  const brlUsd = coingeckoRates?.brlUsd ?? null;
-  const idrUsd = coingeckoRates?.idrUsd ?? null;
-  const audUsd = coingeckoRates?.audUsd ?? null;
-  const aedUsd = coingeckoRates?.aedUsd ?? null;
-  const krwUsd = coingeckoRates?.krwUsd ?? null;
-  const rubUsd = coingeckoRates?.rubUsd ?? null;
-  const jpyUsd = coingeckoRates?.jpyUsd ?? null;
-  const isLoading = chainlinkLoading || (needsCoinGecko && coingeckoLoading);
+  const ethUsd = enabled ? (chainlinkEthUsd ?? coingeckoRates?.ethUsd ?? null) : null;
+  const eurUsd = enabled ? (chainlinkEurUsd ?? coingeckoRates?.eurUsd ?? null) : null;
+  const btcUsd = enabled ? (coingeckoRates?.btcUsd ?? null) : null;
+  const cnyUsd = enabled ? (coingeckoRates?.cnyUsd ?? null) : null;
+  const inrUsd = enabled ? (coingeckoRates?.inrUsd ?? null) : null;
+  const brlUsd = enabled ? (coingeckoRates?.brlUsd ?? null) : null;
+  const idrUsd = enabled ? (coingeckoRates?.idrUsd ?? null) : null;
+  const audUsd = enabled ? (coingeckoRates?.audUsd ?? null) : null;
+  const aedUsd = enabled ? (coingeckoRates?.aedUsd ?? null) : null;
+  const krwUsd = enabled ? (coingeckoRates?.krwUsd ?? null) : null;
+  const rubUsd = enabled ? (coingeckoRates?.rubUsd ?? null) : null;
+  const jpyUsd = enabled ? (coingeckoRates?.jpyUsd ?? null) : null;
+  const isLoading = enabled && (chainlinkLoading || (needsCoinGecko && coingeckoLoading));
 
   return useMemo(
     () => ({

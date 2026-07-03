@@ -4,22 +4,26 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 
+import { MarketRatesRequestProvider } from "@/hooks/use-market-rates-request";
 import {
   DISPLAY_CURRENCIES,
   isCryptoDisplayCurrency,
-  isDisplayCurrency,
   legacyFiatToCode,
   type DisplayCurrency,
   type LegacyFiatCurrency,
 } from "@/lib/marketplace/currency-code";
 import { CRYPTO_DISPLAY_CONFIG, pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
+import {
+  displayCurrencyNeedsRates,
+  readStoredDisplayCurrency,
+  shouldEnableMarketRates,
+} from "@/lib/marketplace/market-rates-fetch";
 import {
   FIAT_SCALE,
   listingToUsd1e8,
@@ -78,17 +82,23 @@ type DisplayCurrencyContextValue = PartialFxRates & {
 const DisplayCurrencyContext = createContext<DisplayCurrencyContextValue | null>(null);
 
 export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
-  const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>("USD");
-  const marketRates = useMarketRates();
+  const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>(
+    readStoredDisplayCurrency,
+  );
+  const [ephemeralRequests, setEphemeralRequests] = useState(0);
+
+  const requestRates = useCallback(() => {
+    setEphemeralRequests((count) => count + 1);
+    return () => setEphemeralRequests((count) => count - 1);
+  }, []);
+
+  const ratesEnabled = shouldEnableMarketRates({
+    displayCurrencyNeedsRates: displayCurrencyNeedsRates(displayCurrency),
+    ephemeralRequests,
+  });
+  const marketRates = useMarketRates({ enabled: ratesEnabled });
   const { isLoading: isRatesLoading } = marketRates;
   const rates = useMemo(() => pickPartialFxRates(marketRates), [marketRates]);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored && isDisplayCurrency(stored)) {
-      setDisplayCurrencyState(stored);
-    }
-  }, []);
 
   const setDisplayCurrency = useCallback((currency: DisplayCurrency) => {
     setDisplayCurrencyState(currency);
@@ -140,7 +150,9 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <DisplayCurrencyContext.Provider value={value}>{children}</DisplayCurrencyContext.Provider>
+    <DisplayCurrencyContext.Provider value={value}>
+      <MarketRatesRequestProvider requestRates={requestRates}>{children}</MarketRatesRequestProvider>
+    </DisplayCurrencyContext.Provider>
   );
 }
 
