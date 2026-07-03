@@ -52,7 +52,7 @@ function CurrencyOptionLabel({ code }: { code: DisplayCurrency }) {
   );
 }
 
-function CurrencyGridCell({
+function CurrencyDropdownCell({
   code,
   selected,
   onSelect,
@@ -71,6 +71,119 @@ function CurrencyGridCell({
     >
       <CurrencyOptionLabel code={code} />
     </DropdownMenuItem>
+  );
+}
+
+function CurrencySheetCell({
+  code,
+  selected,
+  onSelect,
+}: {
+  code: DisplayCurrency;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex min-h-11 items-center rounded-sm px-2.5 font-sans text-sm transition-colors duration-200",
+        selected ? "bg-bg-surface text-accent-warm" : "text-text-primary",
+      )}
+      onClick={onSelect}
+    >
+      <CurrencyOptionLabel code={code} />
+    </button>
+  );
+}
+
+function CurrencySearchField({
+  query,
+  onQueryChange,
+  className,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("relative", className)}>
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary"
+        strokeWidth={1.5}
+        aria-hidden
+      />
+      <Input
+        type="text"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        placeholder="Search currency"
+        className="h-9 min-h-9 py-2 pl-8 text-sm"
+        onKeyDown={(event) => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+function CurrencyPickerGroups({
+  displayCurrency,
+  filteredFiat,
+  filteredCrypto,
+  noResults,
+  query,
+  onSelect,
+  variant,
+}: {
+  displayCurrency: DisplayCurrency;
+  filteredFiat: typeof FIAT_OPTIONS;
+  filteredCrypto: typeof CRYPTO_OPTIONS;
+  noResults: boolean;
+  query: string;
+  onSelect: (currency: DisplayCurrency) => void;
+  variant: "dropdown" | "sheet";
+}) {
+  const Cell = variant === "dropdown" ? CurrencyDropdownCell : CurrencySheetCell;
+
+  return (
+    <>
+      {filteredFiat.length > 0 && (
+        <>
+          <p className={cn(narrativeEyebrow, "mb-1.5 mt-2 px-1")}>Fiat</p>
+          <div className="grid grid-cols-2 gap-0.5">
+            {filteredFiat.map((option) => (
+              <Cell
+                key={option.value}
+                code={option.value}
+                selected={displayCurrency === option.value}
+                onSelect={() => onSelect(option.value)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {filteredCrypto.length > 0 && (
+        <>
+          <p className={cn(narrativeEyebrow, "mb-1.5 mt-3 px-1")}>Crypto</p>
+          <div className="grid grid-cols-2 gap-0.5">
+            {filteredCrypto.map((option) => (
+              <Cell
+                key={option.value}
+                code={option.value}
+                selected={displayCurrency === option.value}
+                onSelect={() => onSelect(option.value)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {noResults && (
+        <p className="px-1 py-5 text-center text-sm text-text-tertiary">
+          No currency matches &quot;{query}&quot;
+        </p>
+      )}
+    </>
   );
 }
 
@@ -159,59 +272,16 @@ export function CurrencySelector() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[308px] p-3">
-            <div className="relative mb-1">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary"
-                strokeWidth={1.5}
-                aria-hidden
-              />
-              <Input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search currency"
-                className="h-9 min-h-9 py-2 pl-8 text-sm"
-                onKeyDown={(event) => event.stopPropagation()}
-              />
-            </div>
-
-            {filteredFiat.length > 0 && (
-              <>
-                <p className={cn(narrativeEyebrow, "mb-1.5 mt-2 px-1")}>Fiat</p>
-                <div className="grid grid-cols-2 gap-0.5">
-                  {filteredFiat.map((option) => (
-                    <CurrencyGridCell
-                      key={option.value}
-                      code={option.value}
-                      selected={displayCurrency === option.value}
-                      onSelect={() => selectCurrency(option.value)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {filteredCrypto.length > 0 && (
-              <>
-                <p className={cn(narrativeEyebrow, "mb-1.5 mt-3 px-1")}>Crypto</p>
-                <div className="grid grid-cols-2 gap-0.5">
-                  {filteredCrypto.map((option) => (
-                    <CurrencyGridCell
-                      key={option.value}
-                      code={option.value}
-                      selected={displayCurrency === option.value}
-                      onSelect={() => selectCurrency(option.value)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {noResults && (
-              <p className="px-1 py-5 text-center text-sm text-text-tertiary">
-                No currency matches &quot;{query}&quot;
-              </p>
-            )}
+            <CurrencySearchField query={query} onQueryChange={setQuery} className="mb-1" />
+            <CurrencyPickerGroups
+              displayCurrency={displayCurrency}
+              filteredFiat={filteredFiat}
+              filteredCrypto={filteredCrypto}
+              noResults={noResults}
+              query={query}
+              onSelect={selectCurrency}
+              variant="dropdown"
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -223,7 +293,13 @@ export function CurrencySelector() {
           aria-haspopup="dialog"
           aria-expanded={mobileOpen}
         />
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <Sheet
+          open={mobileOpen}
+          onOpenChange={(next) => {
+            setMobileOpen(next);
+            if (!next) setQuery("");
+          }}
+        >
           <SheetContent
             side="bottom"
             className="flex flex-col gap-0 p-0 pb-[env(safe-area-inset-bottom)] [&>button.absolute]:hidden"
@@ -234,22 +310,17 @@ export function CurrencySelector() {
                 Display currency
               </SheetTitle>
             </SheetHeader>
-            <div className="max-h-[90dvh] min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
-              {OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={cn(
-                    "flex min-h-11 w-full items-center rounded-sm px-4 font-sans text-sm transition-colors duration-200",
-                    displayCurrency === option.value
-                      ? "bg-bg-surface text-accent-warm"
-                      : "text-text-primary",
-                  )}
-                  onClick={() => selectCurrency(option.value)}
-                >
-                  <CurrencyOptionLabel code={option.value} />
-                </button>
-              ))}
+            <div className="max-h-[90dvh] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+              <CurrencySearchField query={query} onQueryChange={setQuery} className="mb-2" />
+              <CurrencyPickerGroups
+                displayCurrency={displayCurrency}
+                filteredFiat={filteredFiat}
+                filteredCrypto={filteredCrypto}
+                noResults={noResults}
+                query={query}
+                onSelect={selectCurrency}
+                variant="sheet"
+              />
             </div>
           </SheetContent>
         </Sheet>
