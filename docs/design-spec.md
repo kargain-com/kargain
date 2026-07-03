@@ -420,9 +420,9 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - **Listed in escrow:** readouts show **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer
 - **Normal ownership:** readouts show **On-chain owner** → `/profile/{owner}`
 - **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; desktop links scroll to `#passport-actions`; mobile **Go to actions** opens `?panel=actions` via [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx); trust banner suppressed while DISPUTED
-- Grid: three children — **commerce** (`WatchlistButton` + `ListingDetailClientIsland`, sticky `lg:top-24` right column), **main** (gallery, description, attributes, log, actions, comments, URI), **ancillary** (reserved empty tail on desktop)
-- Mobile (`< lg`): readouts → commerce → main (gallery after buy panel)
-- `PassportActionsPanel` wrapped with `id="passport-actions"` and `sectionScrollAnchor` for dispute anchor
+- Grid: three children — **commerce** (`WatchlistButton` + `ListingDetailClientIsland`, sticky `lg:top-24` right column), **main** (gallery, description, attributes, log; on `md+` also inline actions + comments + URI), **ancillary** (reserved empty tail on desktop)
+- Mobile (`< lg`): readouts → commerce → main (gallery after buy panel); **Actions** and **Discussion** live in bottom sheets (not inline in main column)
+- Desktop: `PassportActionsPanel` at `#passport-actions` + `sectionScrollAnchor`; comments at `#passport-comments` — dispute **Go to actions** uses [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx)
 - **Owner actions** (`PassportActionsPanel`): wallet role from on-chain `ownerOf` via [`passport-owner.ts`](../lib/passport/passport-owner.ts) + [`use-passport-on-chain-owner.ts`](../hooks/use-passport-on-chain-owner.ts); Ponder `passport.owner` is SSR fallback only
 - **Passport holder** (human owner: NFT `ownerOf` when unlisted, listing `seller` when in escrow) sees **Edit metadata**, **Add record +** (when not listed and not DISPUTED); **Report discrepancy** hidden for holder
 - While listed in escrow: holder sees *Service records can be added after delisting.* — `appendRecord` requires NFT custody
@@ -1162,6 +1162,18 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 - Serial and price lines: allow `text-xs` mono on very narrow screens; never switch factual fields to sans.
 - Horizontal thumb strips (gallery): `overflow-x-auto` with `pb-1` — keep selected thumb `border-accent-warm` (selection state).
 
+### 13.6 Passport detail quick-nav and sheets
+
+| Element | Contract |
+|---------|----------|
+| Quick-nav | [`passport-quick-nav.tsx`](../components/passport/passport-quick-nav.tsx) — `fixed bottom-16 left-0 right-0 z-50 md:hidden`; hidden while a sheet is open |
+| Records | Scroll to `#passport-records` (`sectionScrollAnchor` on log section) |
+| Actions / Discussion | `?panel=actions` \| `?panel=comments` — bottom sheet via [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx); `router.push` on open; `router.back()` when session pushed, else `replace` on close |
+| Sheets | Radix `Sheet` with `forceMount` on **content only**; `max-h-[90dvh]`; overlay `pointer-events-none` when closed |
+| Dismiss | `confirm()` when actions/comments form dirty; block close during pending wallet tx or comment post |
+| Desktop `?panel=` | Scroll to `#passport-actions` or `#passport-comments`, then strip param (preserve `e` on comment events) |
+| Deep links | Notifications → `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)) |
+
 ---
 
-*Document version: 3.7 (July 2026 — Instrument Layer Phase 2 complete; IL-6 marketing shell skipped). Update when tokens, app shell, or component contracts change.*
+*Document version: 3.8 (July 2026 — passport gallery lightbox + mobile panel sheets). Update when tokens, app shell, or component contracts change.*
