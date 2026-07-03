@@ -421,7 +421,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - **Right rail:** commerce (`WatchlistButton` + `ListingDetailClientIsland`) + always-visible Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx))
 - No comment teaser on desktop (discussion is already on-screen)
 
-**Mobile (`< md`):** single column — same document header/MRZ/buttons/gallery/description; comment teaser opens Discussion sheet; attributes; commerce inline after attributes
+**Mobile (`< md`):** single column — same document header/MRZ/buttons/gallery/description/attributes; commerce inline; comment teaser at the **bottom** (opens centered Discussion dialog)
 
 **Header details:**
 - Seal `sublabel`: DISPUTED → `under review`; VERIFIED → short verifier address
@@ -429,11 +429,11 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - MRZ: all breakpoints; omit when fewer than 2 cells
 - Gallery: constrained plate `max-w-3xl` / `md:max-w-4xl`; §13.7
 
-**Modals** ([`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — prototype chrome, our content):
+**Modals** ([`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — centered `Dialog`, site-standard):
 - `?panel=records` | `actions` on all breakpoints; `comments` **mobile only**
-- Handle, sans title (`History & records` / `Actions` / `Discussion · N`), bordered close, `max-h-[78dvh]`, `max-w-3xl` centered
+- Centered overlay dialog (`max-w-lg` / `sm:max-w-xl`, scrollable body) — not bottom sheets
 - Records: timeline + URI history; Actions: `PassportActionsPanel`; Discussion (mobile): `NostrCommentsSection`
-- Desktop `?panel=comments` / `?e=`: scroll to right-rail discussion (no sheet)
+- Desktop `?panel=comments` / `?e=`: scroll to right-rail discussion (no dialog)
 - Legacy `?panel=commerce` ignored (commerce is inline / rail)
 - History push/back + dirty/busy dismiss unchanged
 
@@ -1171,18 +1171,18 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ### 13.6 Passport right rail and modals
 
-**Scope:** no bottom passport bar. Desktop right rail; mobile simplified document + sheets.
+**Scope:** no bottom passport bar. Desktop right rail; mobile simplified document + centered modals.
 
 | Element | Contract |
 |---------|----------|
 | Desktop layout | `md:grid-cols-[1fr_22rem]`; rail sticky `top-24` — commerce + Discussion |
 | Document buttons | Outline **History & records** / **Actions** under MRZ |
-| Modals | [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — handle, sans title, bordered close, `max-h-[78dvh]`, `max-w-3xl` |
+| Modals | [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — centered `Dialog` (same pattern as buy-risk / authorize-agent); not bottom sheets |
 | Panels | `?panel=records` \| `actions` (all breakpoints); `comments` mobile only |
 | Desktop comments deep link | Scroll to `#passport-comments` / `#comment-{e}`; strip `panel` |
 | Open / close | `router.push` on open; `router.back()` when session pushed, else `replace` |
 | Dismiss | `confirm()` when actions/comments form dirty; block close during pending wallet tx or comment post |
-| Mobile discussion | Teaser or `?panel=comments` (+ `e=`) sheet |
+| Mobile discussion | Teaser at **bottom** of document (after commerce); opens `?panel=comments` (+ `e=`) centered dialog |
 
 ### 13.7 Passport detail gallery (all breakpoints)
 
@@ -1197,4 +1197,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.1 (July 2026 — passport right rail + modal History/Actions; no action bar). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.2 (July 2026 — centered History/Actions/Discussion dialogs; mobile comment teaser at bottom). Update when tokens, app shell, or component contracts change.*

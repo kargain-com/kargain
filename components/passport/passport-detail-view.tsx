@@ -226,10 +226,6 @@ export function PassportDetailView({
               </section>
             )}
 
-            <div className="mt-5 md:hidden">
-              <PassportCommentTeaser />
-            </div>
-
             <section className="mt-7 space-y-4">
               <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
                 Attributes
@@ -238,6 +234,10 @@ export function PassportDetailView({
             </section>
 
             <div className="mt-8 md:hidden">{commerce}</div>
+
+            <div className="mt-8 md:hidden">
+              <PassportCommentTeaser />
+            </div>
           </div>
 
           <aside className="hidden space-y-6 md:sticky md:top-24 md:block">
