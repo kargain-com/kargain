@@ -1,23 +1,22 @@
 import { Suspense } from "react";
 
-import { MarketBrowse } from "@/components/marketplace/market-browse";
+import { MarketBrowseFallback } from "@/components/marketplace/market-browse-fallback";
+import { MarketBrowseLoader } from "@/components/marketplace/market-browse-loader";
 import { MarketplaceStatsLine } from "@/components/marketplace/marketplace-stats-line";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
-export default async function HomePage({
+export default function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ chain?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
-  const initialChainId = parseChainParam(sp.chain);
-
   return (
     <>
       <Suspense fallback={null}>
         <MarketplaceStatsLine />
       </Suspense>
-      <MarketBrowse initialChainId={initialChainId} />
+      <Suspense fallback={<MarketBrowseFallback />}>
+        <MarketBrowseLoader searchParams={searchParams} />
+      </Suspense>
     </>
   );
 }

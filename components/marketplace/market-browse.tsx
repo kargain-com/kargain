@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   searchMarketplaceListings,
   type MarketplaceListingRow,
+  type MarketplaceListingsResult,
 } from "@/app/actions/marketplace-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
@@ -24,26 +25,25 @@ import {
 } from "@/lib/marketplace/price-normalize";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
+import { marketplaceListingsNeedClientRates } from "@/lib/marketplace/listings-prefetch";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
 type MarketBrowseProps = {
-  initialChainId: number;
+  initialListingsPage?: MarketplaceListingsResult;
 };
 
-export function MarketBrowse({
-  initialChainId: _initialChainId,
-}: MarketBrowseProps) {
+export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);
 
+  const needsRates = marketplaceListingsNeedClientRates(filters);
   const hasPriceFilter = Boolean(filters.priceMin.trim() || filters.priceMax.trim());
   const effectivePriceCurrency = filters.priceCurrency || "USD";
   const needsRatesForFilter =
     hasPriceFilter && rateRequiredForPriceCurrency(effectivePriceCurrency);
   const needsRatesForSort =
     filters.sort === "price_asc" || filters.sort === "price_desc";
-  const needsRates = needsRatesForFilter || needsRatesForSort;
 
   const ratesReadyForFilter =
     !needsRatesForFilter ||
@@ -52,10 +52,20 @@ export function MarketBrowse({
   const ratesReady = ratesReadyForFilter && ratesReadyForSort;
 
   const apiInput = useMemo(
-    () => marketFiltersToApiInput(filters, filterRates),
-    [filters, filterRates],
+    () => marketFiltersToApiInput(filters, needsRates ? filterRates : undefined),
+    [filters, filterRates, needsRates],
   );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
+
+  const prefetchedQueryKey = useMemo(
+    () => JSON.stringify(marketFiltersToApiInput(filters)),
+    [filters],
+  );
+
+  const initialData =
+    initialListingsPage && prefetchedQueryKey === queryKey
+      ? { pages: [initialListingsPage], pageParams: [1] as number[] }
+      : undefined;
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending, isError, error } =
     useInfiniteQuery({
@@ -64,6 +74,8 @@ export function MarketBrowse({
         return searchMarketplaceListings({ ...apiInput, page: pageParam as number });
       },
       initialPageParam: 1,
+      initialData,
+      staleTime: 30_000,
       getNextPageParam: (last) => {
         if (last.page < last.totalPages) return last.page + 1;
         return undefined;
