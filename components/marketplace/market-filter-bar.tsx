@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useFacets } from "@/hooks/use-facets";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
+import { shouldFetchListingFacets } from "@/lib/marketplace/listing-facets-fetch";
 import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
@@ -101,7 +102,6 @@ function FilterSearchInput({
 }
 
 export function MarketFilterBar() {
-  const { facets } = useFacets();
   const { filters, patchFilters } = useMarketFilterNavigation();
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);
@@ -115,6 +115,14 @@ export function MarketFilterBar() {
     priceMin: filters.priceMin,
     priceMax: filters.priceMax,
   });
+
+  const facetsEnabled = shouldFetchListingFacets({
+    priceOpen,
+    makeOpen,
+    fuelOpen,
+    drawerOpen,
+  });
+  const { facets } = useFacets({ enabled: facetsEnabled });
 
   const debouncedSearch = useDebouncedValue(searchInput, 300);
 
@@ -410,7 +418,7 @@ export function MarketFilterBar() {
         </div>
       </div>
 
-      <MarketFilterDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+      <MarketFilterDrawer open={drawerOpen} onOpenChange={setDrawerOpen} facets={facets} />
     </>
   );
 }

@@ -13,7 +13,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useFacets } from "@/hooks/use-facets";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
 import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
@@ -29,6 +28,7 @@ import {
   ratesReadyForPriceCurrency,
   usdFacetRangeToCrypto,
 } from "@/lib/marketplace/price-normalize";
+import type { FacetsResponse } from "@/lib/types/ponder";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
@@ -91,10 +91,10 @@ function toggleInList(list: string[], item: string): string[] {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  facets: FacetsResponse | null;
 };
 
-export function MarketFilterDrawer({ open, onOpenChange }: Props) {
-  const { facets } = useFacets();
+export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
   const { filters, pushFilters } = useMarketFilterNavigation();
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);

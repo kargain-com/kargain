@@ -1,27 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { fetchListingFacets } from "@/app/actions/marketplace-listings";
 import type { FacetsResponse } from "@/lib/types/ponder";
 
-export function useFacets() {
-  const [facets, setFacets] = useState<FacetsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const LISTING_FACETS_QUERY_KEY = ["listing-facets"] as const;
+const LISTING_FACETS_STALE_MS = 60_000;
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchListingFacets().then((data) => {
-      if (cancelled) return;
-      if (data && typeof data === "object") {
-        setFacets(data as FacetsResponse);
-      }
-      setIsLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+type UseFacetsOptions = {
+  enabled?: boolean;
+};
 
-  return { facets, isLoading };
+export function useFacets(options?: UseFacetsOptions) {
+  const enabled = options?.enabled ?? true;
+
+  const { data, isLoading } = useQuery({
+    queryKey: LISTING_FACETS_QUERY_KEY,
+    queryFn: async () => {
+      const data = await fetchListingFacets();
+      if (!data || typeof data !== "object") return null;
+      return data as FacetsResponse;
+    },
+    enabled,
+    staleTime: LISTING_FACETS_STALE_MS,
+  });
+
+  return {
+    facets: data ?? null,
+    isLoading: enabled && isLoading,
+  };
 }
