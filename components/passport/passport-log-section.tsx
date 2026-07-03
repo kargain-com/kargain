@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { InstrumentTimeline } from "@/components/ui/instrument-timeline";
+import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 export type PassportLogItemBorder = "default" | "verified" | "error";
@@ -127,6 +128,7 @@ export function PassportLogSection<T>({
       id={sectionId}
       className={cn(
         "space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6",
+        sectionId && sectionScrollAnchor,
         className,
       )}
     >

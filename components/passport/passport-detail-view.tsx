@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { AlertTriangle, Info } from "lucide-react";
 
-import NostrCommentsSection from "@/components/marketplace/nostr-comments-section";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
-import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
 import { PassportInstrumentReadouts } from "@/components/passport/passport-instrument-readouts";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
+import {
+  PassportActionsSlot,
+  PassportCommentsSlot,
+  PassportDetailPanelChrome,
+} from "@/components/passport/passport-detail-panel-chrome";
+import { PassportPanelLink } from "@/components/passport/passport-panel-link";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
-import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { formatKarPassportTitle } from "@/lib/passport/passport-token-id";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
@@ -156,9 +159,7 @@ function DisputeStatusSection({
                 </p>
                 <p className="mt-1.5 font-sans text-sm font-normal leading-[1.5] text-text-secondary">
                   Awaiting your resolution. Use the actions section below to uphold or reject.{" "}
-                  <Link href="#passport-actions" className="link-underline">
-                    Go to actions
-                  </Link>
+                  <PassportPanelLink panel="actions">Go to actions</PassportPanelLink>
                 </p>
               </div>
 
@@ -168,9 +169,7 @@ function DisputeStatusSection({
                 </p>
                 <p className="mt-1.5 font-sans text-sm font-normal leading-[1.5] text-text-secondary">
                   Add clarification below so verifiers can review your response.{" "}
-                  <Link href="#passport-actions" className="link-underline">
-                    Go to actions
-                  </Link>
+                  <PassportPanelLink panel="actions">Go to actions</PassportPanelLink>
                 </p>
               </div>
             </div>
@@ -230,6 +229,12 @@ export function PassportDetailView({
         </div>
       )}
 
+      <PassportDetailPanelChrome
+        status={passport.status}
+        passportOwner={passport.owner as `0x${string}`}
+        chainId={chainId}
+        tokenId={tokenId}
+      >
       {isDisputed && (
         <DisputeStatusSection
           disputeBannerText={disputeBannerText}
@@ -261,51 +266,50 @@ export function PassportDetailView({
         showG2Banner={showG2Banner}
       />
 
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_22rem] lg:items-start">
-        <div className="order-1 space-y-6 lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
-          <WatchlistButton tokenId={tokenId} />
+        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_22rem] lg:items-start">
+          <div className="order-1 space-y-6 lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
+            <WatchlistButton tokenId={tokenId} />
 
-          <ListingDetailClientIsland
-            chainId={chainId}
-            tokenId={tokenId}
-            listing={listing}
-            passportOwner={passport.owner as `0x${string}`}
-            passportStatus={passport.status}
-            duplicateVin={passport.duplicateVin}
-            hadDispute={passport.hadDispute}
-          />
-        </div>
+            <ListingDetailClientIsland
+              chainId={chainId}
+              tokenId={tokenId}
+              listing={listing}
+              passportOwner={passport.owner as `0x${string}`}
+              passportStatus={passport.status}
+              duplicateVin={passport.duplicateVin}
+              hadDispute={passport.hadDispute}
+            />
+          </div>
 
-        <div className="order-2 space-y-6 lg:col-start-1 lg:row-start-1">
-          {!isDisputed && gallery}
+          <div className="order-2 space-y-6 lg:col-start-1 lg:row-start-1">
+            {!isDisputed && gallery}
 
-          {metadata?.description && (
-            <section className="space-y-2">
+            {metadata?.description && (
+              <section className="space-y-2">
+                <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
+                  Description
+                </h2>
+                <p className="font-sans text-base font-normal leading-[1.6] text-text-primary">
+                  {metadata.description}
+                </p>
+              </section>
+            )}
+
+            <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6">
               <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-                Description
+                Attributes
               </h2>
-              <p className="font-sans text-base font-normal leading-[1.6] text-text-primary">
-                {metadata.description}
-              </p>
+              <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
             </section>
-          )}
 
-          <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6">
-            <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">
-              Attributes
-            </h2>
-            <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
-          </section>
+            <PassportRecordsTimeline
+              records={passport.records}
+              passportOwner={passport.owner}
+              lastDisputer={passport.lastDisputer}
+              disputeReason={passport.disputeReason}
+            />
 
-          <PassportRecordsTimeline
-            records={passport.records}
-            passportOwner={passport.owner}
-            lastDisputer={passport.lastDisputer}
-            disputeReason={passport.disputeReason}
-          />
-
-          <div id="passport-actions" className={sectionScrollAnchor}>
-            <PassportActionsPanel
+            <PassportActionsSlot
               tokenId={tokenId}
               chainId={chainId}
               passportOwner={passport.owner as `0x${string}`}
@@ -321,17 +325,15 @@ export function PassportDetailView({
               verificationResetCount={passport.verificationResetCount}
               lastVerificationResetAt={passport.lastVerificationResetAt}
             />
+
+            <PassportCommentsSlot tokenId={tokenId} />
+
+            <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
           </div>
 
-          <div id="passport-comments" className={sectionScrollAnchor}>
-            <NostrCommentsSection tokenId={tokenId} />
-          </div>
-
-          <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
+          <div className="order-3 space-y-6 lg:col-start-2 lg:row-start-2" aria-hidden />
         </div>
-
-        <div className="order-3 space-y-6 lg:col-start-2 lg:row-start-2" aria-hidden />
-      </div>
+      </PassportDetailPanelChrome>
     </div>
   );
 }

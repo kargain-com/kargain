@@ -18,7 +18,7 @@ const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-bg-primary/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-bg-primary/80 backdrop-blur-sm data-[state=closed]:pointer-events-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -30,12 +30,14 @@ const SheetContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     side?: "bottom" | "right";
+    forceMount?: boolean;
   }
->(({ className, children, side = "bottom", ...props }, ref) => (
+>(({ className, children, side = "bottom", forceMount, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      forceMount={forceMount}
       className={cn(
         "fixed z-50 flex flex-col border border-border-default bg-bg-card duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
         side === "bottom" &&

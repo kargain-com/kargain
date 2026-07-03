@@ -3,59 +3,58 @@
 import { Heart, Loader2, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
+import { useListingComments, parseListingCommentParentId } from "@/hooks/use-listing-comments";
 import { useNostrKey } from "@/hooks/use-nostr-key";
+import { usePassportQuickNavOptional } from "@/components/passport/passport-detail-panel-chrome";
 import { sansLink } from "@/lib/design/instrument-classes";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import type { ListingCommentEvent } from "@/hooks/use-listing-comments";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { type Filter, finalizeEvent, getPublicKey } from "nostr-tools";
-import { SimplePool } from "nostr-tools/pool";
+import { finalizeEvent, getPublicKey } from "nostr-tools";
 
-type NostrEvent = {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  content: string;
-  tags: string[][];
+type Props = {
+  tokenId: string;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  embeddedInSheet?: boolean;
 };
 
-type CommentNode = {
-  event: NostrEvent;
-  parentId: string | null;
-  optimistic?: boolean;
-};
-
-function parseParentId(ev: NostrEvent): string | null {
-  const reply = ev.tags.find((t) => t[0] === "e" && t[3] === "reply");
-  if (reply?.[1]) return reply[1];
-  const firstE = ev.tags.find((t) => t[0] === "e");
-  return firstE?.[1] ?? null;
-}
-
-function NostrCommentsSection({ tokenId }: { tokenId: string }) {
+function NostrCommentsSection({
+  tokenId,
+  onDirtyChange,
+  onBusyChange,
+  embeddedInSheet = false,
+}: Props) {
   const searchParams = useSearchParams();
   const highlightEventId = searchParams.get("e");
   const { isConnected, address } = useAccount();
   const { nostrPrivateKey, loading, ensureNostrKey } = useNostrKey();
-  const [events, setEvents] = useState<Record<string, CommentNode>>({});
-  const [likesByTarget, setLikesByTarget] = useState<Record<string, Set<string>>>({});
+  const {
+    pool,
+    events,
+    setEvents,
+    likesByTarget,
+    setLikesByTarget,
+    feedError,
+    feedLoading,
+    ordered,
+    roots,
+    byParent,
+  } = useListingComments(tokenId);
   const [message, setMessage] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-  const [feedError, setFeedError] = useState<string | null>(null);
-  const [feedLoading, setFeedLoading] = useState(true);
   const [sendingError, setSendingError] = useState<string | null>(null);
   const [flashEventId, setFlashEventId] = useState<string | null>(null);
 
-  const pool = useMemo(() => new SimplePool(), []);
-  const mountedRef = useRef(true);
+  const passportQuickNav = usePassportQuickNavOptional();
   const canPost = isConnected && !loading;
   const composerPlaceholder = canPost
     ? replyTo
@@ -63,75 +62,19 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       : "Share your thoughts..."
     : "Connect wallet to join the discussion";
 
+  const dirty = Boolean(message.trim() || replyTo);
+
   useEffect(() => {
-    mountedRef.current = true;
-    setFeedLoading(true);
-    setFeedError(null);
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
-    const listingTag = `listing:${tokenId}`;
-    const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30;
-    const filter: Filter = { kinds: [1, 7], "#d": [listingTag], since, limit: 500 };
-    const sub = pool.subscribeMany(
-      [...NOSTR_RELAYS],
-      filter,
-      {
-        onevent: (ev: NostrEvent) => {
-          if (ev.kind === 1) {
-            const parentId = parseParentId(ev);
-            setEvents((prev) => ({ ...prev, [ev.id]: { event: ev, parentId } }));
-            return;
-          }
-          if (ev.kind === 7) {
-            const target = ev.tags.find((t) => t[0] === "e")?.[1];
-            if (!target) return;
-            setLikesByTarget((prev) => {
-              const next = { ...prev };
-              const current = new Set(next[target] ?? []);
-              current.add(ev.pubkey);
-              next[target] = current;
-              return next;
-            });
-          }
-        },
-        oneose: () => setFeedLoading(false),
-        onclose: (reasons: string[]) => {
-          setFeedLoading(false);
-          if (reasons.length > 0) {
-            setFeedError("Could not load comments. Please refresh the page.");
-          }
-        },
-      },
-    );
-    const timeout = window.setTimeout(() => {
-      if (mountedRef.current) setFeedLoading(false);
-    }, 4500);
-    return () => {
-      mountedRef.current = false;
-      window.clearTimeout(timeout);
-      try {
-        sub.close();
-      } catch {
-        // ignore
-      }
-    };
-  }, [pool, tokenId]);
+  useEffect(() => {
+    onBusyChange?.(posting);
+  }, [posting, onBusyChange]);
 
-  const ordered = useMemo(
-    () =>
-      Object.values(events)
-        .sort((a, b) => a.event.created_at - b.event.created_at),
-    [events],
-  );
-  const roots = ordered.filter((c) => !c.parentId);
-  const byParent = useMemo(() => {
-    const map: Record<string, CommentNode[]> = {};
-    for (const c of ordered) {
-      if (!c.parentId) continue;
-      map[c.parentId] ??= [];
-      map[c.parentId].push(c);
-    }
-    return map;
-  }, [ordered]);
+  useEffect(() => {
+    passportQuickNav?.setCommentCount(roots.length);
+  }, [passportQuickNav, roots.length]);
 
   useEffect(() => {
     if (!highlightEventId || feedLoading) return;
@@ -191,7 +134,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     };
     const signed = finalizeEvent(unsigned, hexToBytes(privateKey));
     await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
-    return signed as unknown as NostrEvent;
+    return signed as unknown as ListingCommentEvent;
   };
 
   const postComment = async () => {
@@ -212,7 +155,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
     if (replyTo) {
       optimisticTags.push(["e", replyTo, "", "reply"]);
     }
-    const optimistic: NostrEvent = {
+    const optimistic: ListingCommentEvent = {
       id: tempId,
       pubkey: authorPubkey,
       created_at: Math.floor(Date.now() / 1000),
@@ -229,7 +172,7 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
       setEvents((prev) => {
         const next = { ...prev };
         delete next[tempId];
-        next[published.id] = { event: published, parentId: parseParentId(published) };
+        next[published.id] = { event: published, parentId: parseListingCommentParentId(published) };
         return next;
       });
     } catch {
@@ -271,7 +214,9 @@ function NostrCommentsSection({ tokenId }: { tokenId: string }) {
 
   return (
     <section className="space-y-4" aria-label="Discussion">
-      <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
+      {!embeddedInSheet && (
+        <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
+      )}
 
       {feedLoading && (
         <p className="font-sans text-xs text-text-secondary">Loading discussion...</p>

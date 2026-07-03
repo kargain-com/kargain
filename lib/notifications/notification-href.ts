@@ -1,8 +1,11 @@
 /** Deep link to passport discussion; optional Nostr event id scrolls to a comment. */
 export function marketplaceCommentHref(tokenId: string, eventId?: string): string {
   const base = `/marketplace/${encodeURIComponent(tokenId)}`;
+  const params = new URLSearchParams();
+  params.set("panel", "comments");
   if (eventId?.trim()) {
-    return `${base}?e=${encodeURIComponent(eventId.trim())}#passport-comments`;
+    params.set("e", eventId.trim());
   }
-  return `${base}#passport-comments`;
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }

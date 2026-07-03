@@ -73,6 +73,9 @@ type Props = {
   uriHistory: PonderUriHistoryEntry[];
   verificationResetCount: number;
   lastVerificationResetAt: string;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  embeddedInSheet?: boolean;
 };
 
 export function PassportActionsPanel({
@@ -90,6 +93,9 @@ export function PassportActionsPanel({
   uriHistory,
   verificationResetCount,
   lastVerificationResetAt,
+  onDirtyChange,
+  onBusyChange,
+  embeddedInSheet = false,
 }: Props) {
   const router = useRouter();
   const config = useConfig();
@@ -417,6 +423,32 @@ export function PassportActionsPanel({
 
   const actionsBusy = isPending || isUploadingEvidence;
 
+  const actionsDirty =
+    Boolean(
+      disputeReason.trim() ||
+        clarificationText.trim() ||
+        discrepancyText.trim() ||
+        discrepancyEvidencePaste.trim() ||
+        discrepancyEvidenceFile ||
+        clarificationEvidencePaste.trim() ||
+        clarificationEvidenceFile ||
+        attestationText.trim() ||
+        attestationEvidencePaste.trim() ||
+        attestationEvidenceFile ||
+        recordFormOpen ||
+        recordDescription.trim() ||
+        recordEvidencePaste.trim() ||
+        recordEvidenceFile,
+    );
+
+  useEffect(() => {
+    onDirtyChange?.(actionsDirty);
+  }, [actionsDirty, onDirtyChange]);
+
+  useEffect(() => {
+    onBusyChange?.(actionsBusy);
+  }, [actionsBusy, onBusyChange]);
+
   return (
     <>
       {!isConnected && (
@@ -436,7 +468,9 @@ export function PassportActionsPanel({
 
       {passport && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-      <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
+      {!embeddedInSheet && (
+        <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
+      )}
 
       {duplicateVin && (
         <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
