@@ -16,6 +16,7 @@ import { MarketFilterBar } from "@/components/marketplace/market-filter-bar";
 import { MarketFilterChips } from "@/components/marketplace/market-filter-chips";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FadeUp } from "@/components/ui/fade-up";
+import { useDeferListingChainStatusConfirm } from "@/hooks/use-defer-listing-chain-status-confirm";
 import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
@@ -27,6 +28,7 @@ import {
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { marketplaceListingsNeedClientRates } from "@/lib/marketplace/listings-prefetch";
+import { shouldEnableListingChainStatusConfirm } from "@/lib/marketplace/listing-chain-status-confirm-fetch";
 import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
 
 type MarketBrowseProps = {
@@ -90,7 +92,12 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
     [data],
   );
 
-  const { drifts } = useListingChainStatusConfirm(rows);
+  const deferReady = useDeferListingChainStatusConfirm();
+  const chainConfirmEnabled = shouldEnableListingChainStatusConfirm({
+    deferReady,
+    hasRows: rows.length > 0,
+  });
+  const { drifts } = useListingChainStatusConfirm(rows, { enabled: chainConfirmEnabled });
 
   const total = data?.pages[0]?.total ?? 0;
   const ponderError = data?.pages[0]?.ponderError;

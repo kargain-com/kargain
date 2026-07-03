@@ -28,8 +28,12 @@ function buildConfirmTargets(rows: MarketplaceListingRow[]): ConfirmTarget[] {
   });
 }
 
-export function useListingChainStatusConfirm(rows: MarketplaceListingRow[]) {
-  const targets = useMemo(() => buildConfirmTargets(rows), [rows]);
+export function useListingChainStatusConfirm(
+  rows: MarketplaceListingRow[],
+  options?: { enabled?: boolean },
+) {
+  const enabled = options?.enabled ?? true;
+  const targets = useMemo(() => (enabled ? buildConfirmTargets(rows) : []), [enabled, rows]);
 
   const contracts = useMemo(
     () =>
@@ -46,13 +50,13 @@ export function useListingChainStatusConfirm(rows: MarketplaceListingRow[]) {
   const { data, isLoading, isFetching } = useReadContracts({
     contracts,
     query: {
-      enabled: contracts.length > 0,
+      enabled: enabled && contracts.length > 0,
     },
   });
 
   const drifts = useMemo(() => {
     const map = new Map<ListingStatusKey, ListingChainStatusDrift>();
-    if (!data) return map;
+    if (!enabled || !data) return map;
 
     targets.forEach(({ row }, index) => {
       const read = data[index];
@@ -66,10 +70,10 @@ export function useListingChainStatusConfirm(rows: MarketplaceListingRow[]) {
     });
 
     return map;
-  }, [data, targets]);
+  }, [data, enabled, targets]);
 
   return {
     drifts,
-    isConfirming: isLoading || isFetching,
+    isConfirming: enabled && (isLoading || isFetching),
   };
 }
