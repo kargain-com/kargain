@@ -23,10 +23,7 @@ type Props = {
   verified?: boolean;
 };
 
-function useSwipeNavigation(
-  goPrev: () => void,
-  goNext: () => void,
-) {
+function useSwipeNavigation(goPrev: () => void, goNext: () => void) {
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const isHorizontalSwipe = useRef(false);
@@ -91,13 +88,15 @@ function GalleryNavButton({ direction, onClick, className }: GalleryNavButtonPro
   );
 }
 
-type PhotoCounterProps = {
+function PhotoCounter({
+  index,
+  total,
+  className,
+}: {
   index: number;
   total: number;
   className?: string;
-};
-
-function PhotoCounter({ index, total, className }: PhotoCounterProps) {
+}) {
   return (
     <span
       className={cn(
@@ -110,13 +109,15 @@ function PhotoCounter({ index, total, className }: PhotoCounterProps) {
   );
 }
 
-type PhotoDotsProps = {
+function PhotoDots({
+  total,
+  selected,
+  onSelect,
+}: {
   total: number;
   selected: number;
   onSelect: (index: number) => void;
-};
-
-function PhotoDots({ total, selected, onSelect }: PhotoDotsProps) {
+}) {
   return (
     <div className="flex gap-1.5" role="tablist" aria-label="Photo navigation">
       {Array.from({ length: total }, (_, index) => (
@@ -137,6 +138,10 @@ function PhotoDots({ total, selected, onSelect }: PhotoDotsProps) {
   );
 }
 
+/**
+ * Shared gallery enhancements (handoff): swipe, counter/dots, fullscreen lightbox.
+ * Applies on all breakpoints; mobile quick-nav/sheets remain separate.
+ */
 export function PassportPhotoGallery({ photos, chainId, verified = false }: Props) {
   const [selected, setSelected] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -275,7 +280,11 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
           aria-label="Full screen photo viewer"
         >
           <div className="flex shrink-0 items-center justify-between px-5 py-4">
-            <PhotoCounter index={selected} total={urls.length} className="bg-bg-primary/20 text-text-secondary" />
+            <PhotoCounter
+              index={selected}
+              total={urls.length}
+              className="bg-bg-primary/20 text-text-secondary"
+            />
             <button
               type="button"
               onClick={closeLightbox}
@@ -293,11 +302,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             onTouchEnd={hasMultiple ? swipe.onTouchEnd : undefined}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={mainUrl}
-              alt=""
-              className="max-h-full max-w-full object-contain"
-            />
+            <img src={mainUrl} alt="" className="max-h-full max-w-full object-contain" />
             {hasMultiple && (
               <>
                 <GalleryNavButton

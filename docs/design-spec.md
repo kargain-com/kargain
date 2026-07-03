@@ -428,7 +428,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - **Passport holder** (human owner: NFT `ownerOf` when unlisted, listing `seller` when in escrow) sees **Edit metadata**, **Add record +** (when not listed and not DISPUTED); **Report discrepancy** hidden for holder
 - While listed in escrow: holder sees *Service records can be added after delisting.* — `appendRecord` requires NFT custody
 - Trust dedup: VERIFIED → badge + gallery `InstrumentFrame`; UNVERIFIED → badge + readout hint (no full trust card); DISPUTED → dispute section + badge
-- **Photo gallery** ([`passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx)): hero in `InstrumentFrame`; thumbnail strip unchanged on all breakpoints. **Desktop (`md+`):** unchanged IL-4 behavior — static hero image, chevron prev/next, no counter/dots overlay, no lightbox. **Mobile (`< md`):** touch swipe (40px threshold); mono `N / total` counter and tappable dot row on hero when multiple photos; tap hero opens fullscreen lightbox (`z-[60]`, body scroll lock, Escape close, arrow keys navigate).
+- **Photo gallery** ([`passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx)): shared on all breakpoints — hero in `InstrumentFrame`; touch swipe (40px threshold) + chevrons (`h-11` mobile / `md:h-9` desktop); mono `N / total` counter and tappable dots on hero when multiple photos; tap hero opens fullscreen lightbox (`z-[60]`, body scroll lock, Escape close, arrow keys navigate); thumbnail strip unchanged.
 - **Featured comment teaser** ([`passport-comment-teaser.tsx`](../components/passport/passport-comment-teaser.tsx)): bordered quote panel between Description and Attributes; lifts the single top-level comment with the most replies (fallback: most recent root) from the existing `NostrCommentsSection` subscription path — no second relay subscription. Desktop click scrolls to `#passport-comments`; mobile opens the Discussion sheet.
 - **Mobile-only IA** (`< md`) — quick-nav + panel sheets; desktop layout unchanged (see §13.6): fixed `bottom-16` above global bottom nav (`md:hidden`); **Records** → `#passport-records` anchor; **Actions** / **Discussion** → `?panel=actions` | `?panel=comments` via `router.push` (browser back closes sheet; direct notification land uses `replace` on close); keep-mounted bottom sheets (`forceMount` on **content only**, `max-h-[90dvh]`, `z-[60]`); quick-nav hidden while a sheet is open. Desktop `?panel=` deep links scroll to inline section then clear param. Indicators: Records warm dot when DISPUTED; Actions error dot when DISPUTED + on-chain NFT owner; Discussion mono count from live Nostr feed (single subscription via [`use-listing-comments.ts`](../hooks/use-listing-comments.ts)). Sheet dismiss: `confirm()` when form dirty; block close while wallet tx or comment post in flight. Desktop (`md+`): Actions and Discussion stay inline with `#passport-actions` / `#passport-comments` anchors; sheets inactive. Notification deep links use `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)). `#passport-records` uses `sectionScrollAnchor` via `PassportLogSection` when `sectionId` is set. Mobile sheet panels use `embeddedInSheet` to omit duplicate inner headings.
 - URI history (collapsed default), Nostr comments
@@ -1178,16 +1178,17 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 | Desktop `?panel=` | Scroll to `#passport-actions` or `#passport-comments`, then strip param (preserve `e` on comment events) |
 | Deep links | Notifications → `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)) |
 
-### 13.7 Passport detail mobile gallery
+### 13.7 Passport detail gallery (all breakpoints)
 
-**Scope:** `< md` only. Desktop gallery unchanged (§4.14).
+**Scope:** shared component — not mobile-only. Mobile quick-nav/sheets remain §13.6.
 
 | Element | Contract |
 |---------|----------|
-| Swipe | 40px horizontal threshold on hero and lightbox |
+| Swipe | 40px horizontal threshold on hero and lightbox (touch devices) |
 | Overlays | Mono `N / total` counter + tappable dots when multiple photos |
-| Lightbox | Tap hero → fullscreen viewer; body scroll lock; Escape / arrow keys |
+| Lightbox | Tap/click hero → fullscreen viewer; body scroll lock; Escape / arrow keys |
+| Chevrons | `h-11 w-11` on mobile; `md:h-9 md:w-9` on desktop |
 
 ---
 
-*Document version: 4.0 (July 2026 — passport desktop MRZ strip + featured comment teaser). Update when tokens, app shell, or component contracts change.*
+*Document version: 4.1 (July 2026 — shared gallery enhancements + desktop MRZ strip / teaser). Update when tokens, app shell, or component contracts change.*
