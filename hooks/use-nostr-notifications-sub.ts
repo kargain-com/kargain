@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 
 import { useNotificationState } from "@/hooks/use-notification-state";
 import { useNostrKey } from "@/hooks/use-nostr-key";
+import { createDebouncedNostrEventBuffer } from "@/lib/nostr/batch-nostr-live-events";
 import { mapNostrEventToNotification } from "@/lib/notifications/map-nostr-event";
 import { buildNostrNotificationFilters } from "@/lib/notifications/nostr-notification-filters";
 import type { NotificationItem } from "@/lib/notifications/types";
@@ -23,11 +24,13 @@ function mergeEvents(existing: Event[], incoming: Event[]): Event[] {
 
 export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   items: NotificationItem[];
+  isLoading: boolean;
 } {
   const { isConnected } = useAccount();
   const { nostrPubkey } = useNostrKey();
   const { state } = useNotificationState();
   const [events, setEvents] = useState<Event[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const mountedRef = useRef(true);
 
   const pubkey = nostrPubkey;
@@ -37,15 +40,24 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   useEffect(() => {
     if (!ready || !pubkey) {
       setEvents((prev) => (prev.length === 0 ? prev : []));
+      setIsLoading(false);
       return;
     }
 
     mountedRef.current = true;
+    setIsLoading(true);
+    setEvents([]);
+
     const pool = getNostrPool();
     const sinceLive = state.lastSeenAt.nostr;
     const sinceBackfill = Math.max(0, state.lastSeenAt.nostr - LOOKBACK_SECONDS);
     const liveFilters = buildNostrNotificationFilters(pubkey, ownedTokenIds, sinceLive);
     const backfillFilters = buildNostrNotificationFilters(pubkey, ownedTokenIds, sinceBackfill);
+
+    const liveBuffer = createDebouncedNostrEventBuffer<Event>((batch) => {
+      if (!mountedRef.current) return;
+      setEvents((prev) => mergeEvents(prev, batch));
+    });
 
     void Promise.all(
       backfillFilters.map((filter) =>
@@ -59,18 +71,22 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
       })
       .catch((err) => {
         console.error("useNostrNotificationsSub backfill failed", err);
+      })
+      .finally(() => {
+        if (mountedRef.current) setIsLoading(false);
       });
 
     const subs = liveFilters.map((filter) =>
       pool.subscribeMany([...NOSTR_RELAYS], filter, {
         onevent: (ev: Event) => {
-          setEvents((prev) => mergeEvents(prev, [ev]));
+          liveBuffer.push(ev);
         },
       }),
     );
 
     return () => {
       mountedRef.current = false;
+      liveBuffer.clear();
       for (const sub of subs) {
         try {
           sub.close();
@@ -88,5 +104,5 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
       .filter((item): item is NotificationItem => item != null);
   }, [events, pubkey, state.lastSeenAt.nostr]);
 
-  return { items };
+  return { items, isLoading };
 }

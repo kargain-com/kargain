@@ -26,6 +26,16 @@ type Props = {
   embeddedInSheet?: boolean;
 };
 
+function CommentRowSkeleton() {
+  return (
+    <li className="rounded-md border border-border-default bg-bg-surface p-4">
+      <div className="h-3 w-24 animate-pulse rounded-sm bg-bg-card" />
+      <div className="mt-2 h-4 w-full animate-pulse rounded-sm bg-bg-card" />
+      <div className="mt-1 h-4 max-w-[85%] animate-pulse rounded-sm bg-bg-card" />
+    </li>
+  );
+}
+
 function NostrCommentsSection({
   tokenId,
   onDirtyChange,
@@ -73,8 +83,12 @@ function NostrCommentsSection({
   }, [posting, onBusyChange]);
 
   useEffect(() => {
+    if (feedLoading) {
+      passportQuickNav?.setCommentCount(null);
+      return;
+    }
     passportQuickNav?.setCommentCount(roots.length);
-  }, [passportQuickNav, roots.length]);
+  }, [passportQuickNav, roots.length, feedLoading]);
 
   useEffect(() => {
     if (!highlightEventId || feedLoading) return;
@@ -218,22 +232,27 @@ function NostrCommentsSection({
         <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
       )}
 
-      {feedLoading && (
-        <p className="font-sans text-xs text-text-secondary">Loading discussion...</p>
-      )}
-      {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
-      {!feedLoading && roots.length === 0 && (
-        <div className="rounded-md border border-border-default bg-bg-surface p-4">
-          <EmptyState
-            variant="content"
-            level="B"
-            title="No comments yet."
-            description="Be the first to share context or ask a question."
-          />
-        </div>
-      )}
-      <ul className="space-y-3">
-        {roots.map((root) => {
+      {feedLoading ? (
+        <ul className="space-y-3" aria-busy="true" aria-label="Loading discussion">
+          <CommentRowSkeleton />
+          <CommentRowSkeleton />
+          <CommentRowSkeleton />
+        </ul>
+      ) : (
+        <>
+          {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
+          {roots.length === 0 && (
+            <div className="rounded-md border border-border-default bg-bg-surface p-4">
+              <EmptyState
+                variant="content"
+                level="B"
+                title="No comments yet."
+                description="Be the first to share context or ask a question."
+              />
+            </div>
+          )}
+          <ul className="space-y-3">
+            {roots.map((root) => {
           const evmAddress = root.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
           return (
             <li
@@ -322,7 +341,9 @@ function NostrCommentsSection({
             </li>
           );
         })}
-      </ul>
+          </ul>
+        </>
+      )}
 
       <div className="space-y-3 border-t border-border-default pt-4">
         <Textarea

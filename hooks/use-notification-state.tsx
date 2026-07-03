@@ -181,6 +181,7 @@ function NotificationsFeedComposer({ children }: { children: ReactNode }) {
   const isLoading =
     ponder.isLoading ||
     watchlist.isLoading ||
+    nostr.isLoading ||
     (Boolean(nostrPubkey) && stateLoading);
 
   const value = useMemo(

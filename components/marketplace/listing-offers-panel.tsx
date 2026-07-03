@@ -201,7 +201,16 @@ export function ListingOffersPanel({
         </p>
       )}
       {isLoading && offers.length === 0 ? (
-        <p className="font-sans text-sm text-text-secondary">Loading offers…</p>
+        <ul className="space-y-3" aria-busy="true" aria-label="Loading offers">
+          {[0, 1].map((key) => (
+            <li key={key} className="space-y-2 border-t border-border-default pt-3 first:border-t-0 first:pt-0">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="h-4 w-32 animate-pulse rounded-sm bg-bg-card" />
+                <div className="h-3 w-12 animate-pulse rounded-sm bg-bg-card" />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : offers.length === 0 ? (
         <EmptyState variant="content" level="B" title="No offers yet" />
       ) : (

@@ -16,7 +16,7 @@ type QuickNavProps = {
   passportOwner: `0x${string}`;
   chainId: number;
   tokenId: string;
-  commentCount: number;
+  commentCount: number | null;
   onOpenPanel: (panel: PassportPanel) => void;
 };
 
@@ -90,7 +90,15 @@ function NavDot({
   );
 }
 
-function CommentCountBadge({ count }: { count: number }) {
+function CommentCountBadge({ count }: { count: number | null }) {
+  if (count == null) {
+    return (
+      <span
+        className="absolute -right-3 -top-2 h-3.5 w-3.5 animate-pulse rounded-full bg-bg-surface"
+        aria-hidden
+      />
+    );
+  }
   if (count <= 0) return null;
   return (
     <span

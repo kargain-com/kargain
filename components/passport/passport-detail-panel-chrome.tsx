@@ -40,7 +40,7 @@ type PanelChromeContextValue = {
   panel: PassportPanel | null;
   openPanel: (panel: PassportPanel, options?: OpenPanelOptions) => void;
   closePanel: () => void;
-  setCommentCount: (count: number) => void;
+  setCommentCount: (count: number | null) => void;
 };
 
 const PanelChromeContext = createContext<PanelChromeContextValue | null>(null);
@@ -107,7 +107,7 @@ export function PassportDetailPanelChrome({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { isMd } = useMediaMd();
-  const [commentCount, setCommentCount] = useState(0);
+  const [commentCount, setCommentCount] = useState<number | null>(null);
   const autoOpenedEventRef = useRef(false);
   const panelHistoryPushedRef = useRef(false);
   const desktopPanelHandledRef = useRef<string | null>(null);
