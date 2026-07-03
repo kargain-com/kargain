@@ -422,7 +422,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - **Dispute one-liner** (DISPUTED only): `Under review — {reason}` + `Read the record →` opens `?panel=records` via [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx)
 - **MRZ strip** ([`passport-data-strip.tsx`](../components/passport/passport-data-strip.tsx)): all breakpoints; dashed row — active price, mileage, verifier, seller/owner; omit when fewer than 2 cells
 - **Compact advisories:** chain drift, G2 fixed-after-dispute (`border-accent-warm/40`), duplicate VIN elevated advisory — not a full instrument-readouts panel
-- **Gallery** (shared): swipe, counter/dots, lightbox — §13.7
+- **Gallery** (shared): constrained photo plate `max-w-3xl` / `md:max-w-4xl` (not full document width); `aspect-[4/3]` mobile / `md:aspect-[16/10]` desktop; swipe, counter/dots, lightbox — §13.7
 - **Description:** plain prose (no heavy section heading)
 - **Featured comment teaser:** opens Discussion sheet; no second Nostr subscription
 - **Attributes:** mono eyebrow + `PassportSpecGrid`
@@ -1191,9 +1191,11 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 | Element | Contract |
 |---------|----------|
+| Plate | Constrained photo plate — `w-full max-w-3xl md:max-w-4xl` (not full document width) |
+| Aspect | `aspect-[4/3]` mobile; `md:aspect-[16/10]` desktop |
 | Swipe | 40px horizontal threshold on hero and lightbox (touch devices) |
 | Overlays | Mono `N / total` counter + tappable dots when multiple photos |
-| Lightbox | Tap/click hero → fullscreen viewer; body scroll lock; Escape / arrow keys |
+| Lightbox | Tap/click hero → fullscreen viewer (full viewport); body scroll lock; Escape / arrow keys |
 | Chevrons | `h-11 w-11` on mobile; `md:h-9 md:w-9` on desktop |
 
 ---

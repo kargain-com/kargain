@@ -187,7 +187,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
 
   if (urls.length === 0) {
     return (
-      <div className="flex aspect-[4/3] items-center justify-center rounded-md border border-border-default bg-bg-surface">
+      <div className="flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-md border border-border-default bg-bg-surface md:aspect-[16/10] md:max-w-4xl">
         <EmptyState variant="content" level="B" title="No photos" />
       </div>
     );
@@ -206,10 +206,10 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
   };
 
   return (
-    <div className="space-y-3">
+    <div className="w-full max-w-3xl space-y-3 md:max-w-4xl">
       <InstrumentFrame verified={verified}>
         <div
-          className="relative aspect-[4/3] overflow-hidden bg-bg-surface"
+          className="relative aspect-[4/3] overflow-hidden bg-bg-surface md:aspect-[16/10]"
           onTouchStart={hasMultiple ? swipe.onTouchStart : undefined}
           onTouchMove={hasMultiple ? swipe.onTouchMove : undefined}
           onTouchEnd={hasMultiple ? swipe.onTouchEnd : undefined}
