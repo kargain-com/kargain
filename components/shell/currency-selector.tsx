@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import {
   DropdownMenu,
@@ -8,13 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { shellControlHover } from "@/lib/design/instrument-classes";
+import { shellControlHover, narrativeEyebrow } from "@/lib/design/instrument-classes";
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
   type DisplayCurrency,
@@ -26,6 +28,9 @@ import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import { cn } from "@/lib/utils";
 
 const OPTIONS = DISPLAY_CURRENCIES.map((value) => ({ value }));
+
+const FIAT_OPTIONS = OPTIONS.filter((option) => !isCryptoDisplayCurrency(option.value));
+const CRYPTO_OPTIONS = OPTIONS.filter((option) => isCryptoDisplayCurrency(option.value));
 
 function currencyOptionSymbol(code: DisplayCurrency): string {
   if (isCryptoDisplayCurrency(code)) return CRYPTO_DISPLAY_CONFIG[code].selectorSymbol;
@@ -44,6 +49,28 @@ function CurrencyOptionLabel({ code }: { code: DisplayCurrency }) {
       </span>
       <span>{code}</span>
     </span>
+  );
+}
+
+function CurrencyGridCell({
+  code,
+  selected,
+  onSelect,
+}: {
+  code: DisplayCurrency;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      className={cn(
+        "cursor-pointer px-2.5 py-2 font-sans text-sm",
+        selected && "text-accent-warm",
+      )}
+      onSelect={onSelect}
+    >
+      <CurrencyOptionLabel code={code} />
+    </DropdownMenuItem>
   );
 }
 
@@ -82,16 +109,46 @@ function CurrencyTrigger({
 export function CurrencySelector() {
   const { displayCurrency, setDisplayCurrency } = useDisplayCurrency();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const normalizedQuery = query.trim().toUpperCase();
+
+  const filteredFiat = useMemo(
+    () =>
+      FIAT_OPTIONS.filter(
+        (option) => normalizedQuery === "" || option.value.includes(normalizedQuery),
+      ),
+    [normalizedQuery],
+  );
+
+  const filteredCrypto = useMemo(
+    () =>
+      CRYPTO_OPTIONS.filter(
+        (option) => normalizedQuery === "" || option.value.includes(normalizedQuery),
+      ),
+    [normalizedQuery],
+  );
+
+  const noResults = filteredFiat.length === 0 && filteredCrypto.length === 0;
 
   const selectCurrency = (currency: DisplayCurrency) => {
     setDisplayCurrency(currency);
     setMobileOpen(false);
+    setDesktopOpen(false);
+    setQuery("");
   };
 
   return (
     <>
       <div className="hidden md:block">
-        <DropdownMenu>
+        <DropdownMenu
+          open={desktopOpen}
+          onOpenChange={(next) => {
+            setDesktopOpen(next);
+            if (!next) setQuery("");
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -101,19 +158,60 @@ export function CurrencySelector() {
               {displayCurrency}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[168px] p-1">
-            {OPTIONS.map((option) => (
-              <DropdownMenuItem
-                key={option.value}
-                className={cn(
-                  "font-sans text-sm",
-                  displayCurrency === option.value && "text-accent-warm",
-                )}
-                onSelect={() => setDisplayCurrency(option.value)}
-              >
-                <CurrencyOptionLabel code={option.value} />
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent align="end" className="w-[308px] p-3">
+            <div className="relative mb-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary"
+                strokeWidth={1.5}
+                aria-hidden
+              />
+              <Input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search currency"
+                className="h-9 min-h-9 py-2 pl-8 text-sm"
+                onKeyDown={(event) => event.stopPropagation()}
+              />
+            </div>
+
+            {filteredFiat.length > 0 && (
+              <>
+                <p className={cn(narrativeEyebrow, "mb-1.5 mt-2 px-1")}>Fiat</p>
+                <div className="grid grid-cols-2 gap-0.5">
+                  {filteredFiat.map((option) => (
+                    <CurrencyGridCell
+                      key={option.value}
+                      code={option.value}
+                      selected={displayCurrency === option.value}
+                      onSelect={() => selectCurrency(option.value)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {filteredCrypto.length > 0 && (
+              <>
+                <p className={cn(narrativeEyebrow, "mb-1.5 mt-3 px-1")}>Crypto</p>
+                <div className="grid grid-cols-2 gap-0.5">
+                  {filteredCrypto.map((option) => (
+                    <CurrencyGridCell
+                      key={option.value}
+                      code={option.value}
+                      selected={displayCurrency === option.value}
+                      onSelect={() => selectCurrency(option.value)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {noResults && (
+              <p className="px-1 py-5 text-center text-sm text-text-tertiary">
+                No currency matches &quot;{query}&quot;
+              </p>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

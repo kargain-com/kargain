@@ -6,6 +6,8 @@ import { PassportTrustBanner } from "@/components/passport/passport-trust-banner
 import { VerifierInactiveInline } from "@/components/passport/verifier-inactive-badge";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import {
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
   instrumentReadoutPanel,
   sansLinkUnderline,
 } from "@/lib/design/instrument-classes";
@@ -152,7 +154,7 @@ export function PassportInstrumentReadouts({
 
       {duplicateVin && (
         <p
-          className="rounded-md border border-status-error/40 bg-bg-primary/80 p-4 text-sm text-status-error"
+          className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)}
           role="status"
         >
           Duplicate VIN warning — another passport shares this VIN in the index.

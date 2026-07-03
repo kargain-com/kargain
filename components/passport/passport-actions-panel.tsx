@@ -25,6 +25,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
+} from "@/lib/design/instrument-classes";
+import {
   KarPassportAbi,
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
@@ -435,8 +439,9 @@ export function PassportActionsPanel({
       <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
 
       {duplicateVin && (
-        <p className="rounded-md border border-status-error/40 bg-bg-primary/80 p-3 text-sm text-status-error">
-          Duplicate VIN detected on-chain. Review metadata carefully before buying or verifying.
+        <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
+          Duplicate VIN warning — another passport shares this VIN in the index. Review metadata
+          carefully before buying or verifying.
         </p>
       )}
 

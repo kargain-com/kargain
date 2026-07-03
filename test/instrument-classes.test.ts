@@ -16,6 +16,9 @@ import {
   shellControlHover,
   trustStampBase,
   trustStampKarPro,
+  elevatedAdvisoryChip,
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
   trustStampSuccess,
   trustStampVerified,
   sectionScrollAnchor,
@@ -115,5 +118,13 @@ describe("instrument-classes", () => {
     assert.match(trustStampSuccess, /border-status-success/);
     assert.match(trustStampSuccess, /text-status-success/);
     assert.doesNotMatch(trustStampSuccess, /accent-warm/);
+  });
+
+  it("elevatedAdvisory uses status-error chroma not accent", () => {
+    assert.match(elevatedAdvisoryChip, /border-status-error\/40/);
+    assert.match(elevatedAdvisoryChip, /bg-status-error\/10/);
+    assert.match(elevatedAdvisoryPanel, /border-status-error\/40/);
+    assert.match(elevatedAdvisoryText, /text-status-error/);
+    assert.doesNotMatch(elevatedAdvisoryChip, /accent-warm/);
   });
 });

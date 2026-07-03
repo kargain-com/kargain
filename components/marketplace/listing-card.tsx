@@ -9,6 +9,10 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
+import {
+  elevatedAdvisoryChip,
+  elevatedAdvisoryText,
+} from "@/lib/design/instrument-classes";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { cn } from "@/lib/utils";
@@ -57,10 +61,17 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
         </div>
         <CardContent className="space-y-2.5 p-6">
           {row.duplicateVin && (
-            <p className="flex min-w-0 items-start gap-1.5 font-sans text-xs text-status-warning">
-              <AlertTriangle size={12} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden />
-              <span className="min-w-0 leading-snug">Duplicate VIN</span>
-            </p>
+            <div className={elevatedAdvisoryChip}>
+              <AlertTriangle
+                size={12}
+                strokeWidth={1.5}
+                className={cn("shrink-0", elevatedAdvisoryText)}
+                aria-hidden
+              />
+              <span className={cn("font-sans text-xs font-medium", elevatedAdvisoryText)}>
+                Duplicate VIN
+              </span>
+            </div>
           )}
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-text-primary">

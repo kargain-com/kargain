@@ -72,6 +72,16 @@ export const trustStampKarPro = "border-accent-warm/40 text-accent-warm";
 /** Post-confirmation commerce stamp (§12.7). */
 export const trustStampSuccess = "border-status-success text-status-success";
 
+/** Elevated fraud-adjacent advisory chip (§10.3 — duplicate VIN on browse card). */
+export const elevatedAdvisoryChip =
+  "inline-flex w-fit items-center gap-1.5 rounded-sm border border-status-error/40 bg-status-error/10 px-2.5 py-1";
+
+/** Elevated fraud-adjacent advisory panel (§10.3 — passport readouts / actions). */
+export const elevatedAdvisoryPanel =
+  "rounded-md border border-status-error/40 bg-status-error/10 p-4 text-sm";
+
+export const elevatedAdvisoryText = "text-status-error";
+
 /** Level B shell for purchase / external payment confirmed (§12.7). */
 export const commerceConfirmedPanel =
   "rounded-md border border-status-success/40 bg-bg-primary/80 p-4";
@@ -120,6 +130,9 @@ export const instrumentClasses = {
   trustStampNeutral,
   trustStampKarPro,
   trustStampSuccess,
+  elevatedAdvisoryChip,
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
   commerceConfirmedPanel,
   commerceConfirmedLabel,
   sectionScrollAnchor,
