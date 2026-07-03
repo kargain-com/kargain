@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { useMediaMd } from "@/hooks/use-media-md";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
+import type { PassportTopComment } from "@/lib/passport/passport-comment-summary";
 import {
   buildPassportPanelQuery,
   parsePassportPanel,
@@ -40,7 +41,10 @@ type PanelChromeContextValue = {
   panel: PassportPanel | null;
   openPanel: (panel: PassportPanel, options?: OpenPanelOptions) => void;
   closePanel: () => void;
+  commentCount: number | null;
+  topComment: PassportTopComment | null;
   setCommentCount: (count: number | null) => void;
+  setTopComment: (comment: PassportTopComment | null) => void;
 };
 
 const PanelChromeContext = createContext<PanelChromeContextValue | null>(null);
@@ -58,10 +62,22 @@ export function usePassportPanelUrl() {
   return ctx;
 }
 
-export function usePassportQuickNavOptional(): Pick<PanelChromeContextValue, "setCommentCount"> | null {
+export function usePassportQuickNavOptional(): Pick<
+  PanelChromeContextValue,
+  "setCommentCount" | "setTopComment"
+> | null {
   const ctx = useContext(PanelChromeContext);
   if (!ctx) return null;
-  return { setCommentCount: ctx.setCommentCount };
+  return { setCommentCount: ctx.setCommentCount, setTopComment: ctx.setTopComment };
+}
+
+export function usePassportCommentSummaryOptional(): Pick<
+  PanelChromeContextValue,
+  "commentCount" | "topComment"
+> | null {
+  const ctx = useContext(PanelChromeContext);
+  if (!ctx) return null;
+  return { commentCount: ctx.commentCount, topComment: ctx.topComment };
 }
 
 function panelUrl(
@@ -108,6 +124,7 @@ export function PassportDetailPanelChrome({
   const searchParams = useSearchParams();
   const { isMd } = useMediaMd();
   const [commentCount, setCommentCount] = useState<number | null>(null);
+  const [topComment, setTopComment] = useState<PassportTopComment | null>(null);
   const autoOpenedEventRef = useRef(false);
   const panelHistoryPushedRef = useRef(false);
   const desktopPanelHandledRef = useRef<string | null>(null);
@@ -172,8 +189,16 @@ export function PassportDetailPanelChrome({
   }, [isMd, panel, pathname, router, searchParams]);
 
   const contextValue = useMemo(
-    () => ({ panel, openPanel, closePanel, setCommentCount }),
-    [panel, openPanel, closePanel],
+    () => ({
+      panel,
+      openPanel,
+      closePanel,
+      commentCount,
+      topComment,
+      setCommentCount,
+      setTopComment,
+    }),
+    [panel, openPanel, closePanel, commentCount, topComment],
   );
 
   const hideQuickNav = !isMd && panel != null;

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { AlertTriangle, Info } from "lucide-react";
 
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
+import { PassportCommentTeaser } from "@/components/passport/passport-comment-teaser";
+import { PassportDataStrip } from "@/components/passport/passport-data-strip";
 import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
 import { PassportInstrumentReadouts } from "@/components/passport/passport-instrument-readouts";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
@@ -252,6 +254,14 @@ export function PassportDetailView({
         <PassportStatusBadge status={passport.status} />
       </div>
 
+      <PassportDataStrip
+        listing={listing}
+        mileageKm={metadata?.mileageKm ?? null}
+        status={passport.status}
+        verifier={passport.verifier}
+        custody={custody}
+      />
+
       <PassportInstrumentReadouts
         tokenId={tokenId}
         chainId={chainId}
@@ -294,6 +304,8 @@ export function PassportDetailView({
                 </p>
               </section>
             )}
+
+            <PassportCommentTeaser />
 
             <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4 sm:p-6">
               <h2 className="font-display text-fluid-h2 font-medium tracking-[-0.015em] text-text-primary">

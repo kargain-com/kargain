@@ -3,7 +3,7 @@
 import { Heart, Loader2, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { useNostrKey } from "@/hooks/use-nostr-key";
 import { usePassportQuickNavOptional } from "@/components/passport/passport-detail-panel-chrome";
 import { sansLink } from "@/lib/design/instrument-classes";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { selectPassportTopComment } from "@/lib/passport/passport-comment-summary";
 import type { ListingCommentEvent } from "@/hooks/use-listing-comments";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -71,6 +72,10 @@ function NostrCommentsSection({
       ? "Write a reply..."
       : "Share your thoughts..."
     : "Connect wallet to join the discussion";
+  const topComment = useMemo(
+    () => selectPassportTopComment(roots, byParent),
+    [roots, byParent],
+  );
 
   const dirty = Boolean(message.trim() || replyTo);
 
@@ -85,10 +90,12 @@ function NostrCommentsSection({
   useEffect(() => {
     if (feedLoading) {
       passportQuickNav?.setCommentCount(null);
+      passportQuickNav?.setTopComment(null);
       return;
     }
     passportQuickNav?.setCommentCount(roots.length);
-  }, [passportQuickNav, roots.length, feedLoading]);
+    passportQuickNav?.setTopComment(topComment);
+  }, [passportQuickNav, roots.length, topComment, feedLoading]);
 
   useEffect(() => {
     if (!highlightEventId || feedLoading) return;
