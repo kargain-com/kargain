@@ -2,12 +2,11 @@
 
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 
 import { WalletSessionSync } from "@/components/providers/wallet-session-sync";
+import { MessagingNotificationsGate } from "@/components/providers/messaging-notifications-gate";
 import { NostrKeyProvider } from "@/hooks/use-nostr-key";
-import { XmtpConversationsProvider } from "@/components/providers/xmtp-conversations-provider";
-import { NotificationsProvider } from "@/hooks/use-notification-state";
 import { DisplayCurrencyProvider } from "@/lib/marketplace/display-currency-context";
 import { createWagmiConfig } from "@/lib/web3/wagmi-config";
 
@@ -37,9 +36,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <DisplayCurrencyProvider>
           <WalletSessionSync />
           <NostrKeyProvider>
-            <NotificationsProvider>
-              <XmtpConversationsProvider>{children}</XmtpConversationsProvider>
-            </NotificationsProvider>
+            <Suspense fallback={children}>
+              <MessagingNotificationsGate>{children}</MessagingNotificationsGate>
+            </Suspense>
           </NostrKeyProvider>
         </DisplayCurrencyProvider>
       </WagmiProvider>
