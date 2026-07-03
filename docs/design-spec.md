@@ -416,7 +416,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 - Page shell: `py-24`, `max-w-7xl`
 - **Title block:** vehicle title + `PassportStatusBadge` only
-- **Instrument readouts:** Level B panel (`instrumentReadoutPanel`) under title — serial (`PassportIdLabel`), custody (seller/escrow or on-chain owner), chain drift banner, verifier line when VERIFIED, one-line UNVERIFIED hint + `/verifiers` link; ancillary trust (metadata reset, prior dispute, G2 fixed-after-dispute, duplicate VIN) grouped here — not duplicated in commerce aside
+- **Instrument readouts:** Level B panel (`instrumentReadoutPanel`) under title — serial (`PassportIdLabel`), custody (seller/escrow or on-chain owner), chain drift banner, verifier line when VERIFIED, one-line UNVERIFIED hint + `/verifiers` link; ancillary trust (metadata reset, prior dispute, G2 fixed-after-dispute, duplicate VIN) grouped here — not duplicated in commerce aside. **G2 fixed-after-dispute** intentionally uses `border-accent-warm/40` — resolved-trust narrative (issue fixed, awaiting re-verification), not caution (`status-warning`) or neutral informational.
 - **Listed in escrow:** readouts show **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer
 - **Normal ownership:** readouts show **On-chain owner** → `/profile/{owner}`
 - **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; links scroll to `#passport-actions`; trust banner suppressed while DISPUTED
@@ -695,14 +695,43 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | VERIFIED / active on-chain confirmed | `border-accent-warm` (badges; VERIFIED listing card border per §4.10) | `text-accent-warm` | Status indicator only |
 | DISPUTED | `border-status-error` or `border-status-error/40` | `text-status-error` | **No accent-warm exception** — includes `DisputeStatusSection` status label in [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx) |
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
+| Caution / advisory (display-only) | `border-status-warning` (or `border-status-warning/40` where a softer panel is needed) | `text-status-warning` (icon); body may use `text-text-primary` / `text-text-secondary` | Non-gating caution — see sub-table below |
 | Purchase / external payment confirmed | `border-status-success/40` (`commerceConfirmedPanel`) | `text-status-success` (`commerceConfirmedLabel`) | Post-confirmation commerce only — §12.7 |
-| Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Not accent |
+| Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute resolved, indexer sync pending, dispute withdrawn signal, KarPro open disputes banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up) — `border-border-default` / `text-text-secondary` — Not accent. These are neutral operational or historical context, not caution signals — do not upgrade to `status-warning` without a product decision changing their meaning. |
+
+#### Gated acknowledgments (`status-error`)
+
+Non-FSM signals that **block** an action or require an explicit checkbox acknowledgment before the user can proceed. Color axis: gate behavior, not subsystem.
+
+| Signal | Trigger | Gate mechanism |
+|--------|---------|----------------|
+| UNVERIFIED / DISPUTED at buy time | `passportStatus` | [`needsBuyRiskAck`](../lib/passport/trust-signals.ts) → [`BuyRiskModal`](../components/marketplace/buy-risk-modal.tsx) checkbox required |
+| Duplicate VIN at buy time | Indexer `vin_index` duplicate detection | Same `needsBuyRiskAck` → `BuyRiskModal` checkbox required |
+| Verified save — identity change ack | Client: VERIFIED + identity-field diff | [`metadata-change-confirm-dialog.tsx`](../components/passport/metadata-change-confirm-dialog.tsx) checkbox required |
+| Seller-net below minimum | Client: `satisfiesOwnerMin` calculation | Blocks agent list/update submit |
+
+Modal risk-list items inside `BuyRiskModal` use `border-status-error/30` + `text-text-primary` (not full `text-status-error`) — shipped pattern for UNVERIFIED, DISPUTED, and duplicate VIN rows inside that modal; do not change. The `hadDispute` informational row inside the same modal ([`buy-risk-modal.tsx`](../components/marketplace/buy-risk-modal.tsx)) keeps informational styling; the gate is modal-level.
+
+#### Caution, display-only (`status-warning`)
+
+| Signal | Trigger |
+|--------|---------|
+| Metadata updated after verification (reset count) | Indexer `verificationResetCount` — already shipped on `status-warning` in [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) |
+| Duplicate VIN (card / readouts / actions panel — outside buy flow) | Indexer `vin_index` duplicate detection |
+| On-chain vs indexer status drift (detail + browse card) | Client `compareListingStatus` / chain RPC vs Ponder |
+| Verifier inactive | On-chain `isActiveVerifier` false |
+| Re-inspection recommended | Client `recommendsReInspection` — **spec target**: currently neutral `border-border-default`; moves to `status-warning` in a follow-up code pass |
+| Smart-wallet upload preflight | Client: contract account kind — **spec target**: currently `status-error` border; downgrades to `status-warning` in a follow-up code pass (not gated, was over-colored) |
+| Identity metadata diff summary (pre-save display, outside the confirm dialog) | Client metadata diff — dual with the gated dialog above, same pattern as duplicate VIN |
+| Messaging nav unread dot | Client unread total — already shipped on `status-warning` in [`messaging-nav-status.tsx`](../components/messaging/messaging-nav-status.tsx) |
+
+Where a signal appears in both the gated-acknowledgment table and here (duplicate VIN, identity diff), `status-error` styling applies only inside the specific gating component; all other render locations use `status-warning`. Where a gating dialog is preceded by an earlier informational/caution banner about the same consequence, the earlier banner's color reflects what *that element* does, not the downstream gate — e.g. [`edit-passport-wizard.tsx`](../components/passport/edit-passport-wizard.tsx) inline verified-anchor warning targets `status-warning`; the gate is [`metadata-change-confirm-dialog.tsx`](../components/passport/metadata-change-confirm-dialog.tsx).
 
 **§4.14 amendment:** Disputed passport layout (`DisputeStatusSection`) must use `status-error` for the status label. Any `text-accent-warm` on a "Disputed" eyebrow is non-compliant once component code catches up.
 
-**Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Do not use `border-emerald-500` or other non-token greens. `status-success` is reserved for commerce-confirmed readouts (§12.7), not passport log ticks.
+**Record / timeline log items:** No success chroma on entries — neutral `border-border-default` only. Do not use `border-emerald-500` or other non-token greens. `status-success` is reserved for commerce-confirmed readouts (§12.7), not passport log ticks. Verification-reset ticks in URI history follow the same log-neutral rule — `border-border-default`, no `status-error` on border or label. The event remains legible via the row's text label; log visual language does not carry status chroma at any severity.
 
-**Token parity:** `--color-status-success` / `status-success` in [`lib/design-tokens.ts`](../lib/design-tokens.ts) and [`instrument-classes.ts`](../lib/design/instrument-classes.ts) (`commerceConfirmedPanel`, `commerceConfirmedLabel`, `trustStampSuccess`) — **shipped** IL-5.
+**Token parity:** `--color-status-success` / `status-success` in [`lib/design-tokens.ts`](../lib/design-tokens.ts) and [`instrument-classes.ts`](../lib/design/instrument-classes.ts) (`commerceConfirmedPanel`, `commerceConfirmedLabel`, `trustStampSuccess`) — **shipped** IL-5. `--color-status-warning` / `status-warning` already defined in [`lib/design-tokens.ts`](../lib/design-tokens.ts) and [`app/globals.css`](../app/globals.css) (`@theme inline` mapping) — previously undocumented in this table. No new token introduced by this amendment; existing usage in [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) (metadata reset) and [`messaging-nav-status.tsx`](../components/messaging/messaging-nav-status.tsx) (unread dot) is retroactively confirmed compliant.
 
 ---
 
@@ -716,6 +745,8 @@ Two intentional visual languages. Do not merge notification row structure into t
 | **Feed** | Ephemeral alerts / social activity | [`notifications-client.tsx`](../components/notifications/notifications-client.tsx), [`notification-row.tsx`](../components/notifications/notification-row.tsx) | Grouped rows; unread affordances; distinct from log layout |
 
 **Shared rule:** All timestamps in log and feed patterns use `font-mono tabular-nums` (with `text-text-tertiary` or `text-text-secondary` as appropriate).
+
+**Log-neutral rule:** Verification-reset ticks in URI history ([`passport-uri-history.tsx`](../components/passport/passport-uri-history.tsx)) use `border-border-default` and neutral label text — no status chroma on borders or labels. The event is legible via the "Verification reset" row label; at scale, red-bordered log rows would visually compete with DISPUTED, which this separation exists to prevent (see §10.3 record/timeline log items).
 
 **Status:** §4.12 Messages timestamps and the components covered by the mono-timestamp session are already in compliance with this rule if that session's changes are present in the working tree (verify per step 4 above) — if so, do not add a "supersedes/stale" note here, since there is nothing stale to flag.
 
