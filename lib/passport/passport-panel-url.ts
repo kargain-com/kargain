@@ -1,6 +1,11 @@
-export type PassportPanel = "actions" | "comments";
+export type PassportPanel = "records" | "commerce" | "actions" | "comments";
 
-const PANEL_VALUES: readonly PassportPanel[] = ["actions", "comments"];
+const PANEL_VALUES: readonly PassportPanel[] = [
+  "records",
+  "commerce",
+  "actions",
+  "comments",
+];
 
 export function parsePassportPanel(param: string | null): PassportPanel | null {
   if (!param) return null;

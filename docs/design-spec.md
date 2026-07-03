@@ -412,27 +412,36 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 
 ### 4.14 Passport detail
 
-Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-instrument-readouts.tsx`](../components/passport/passport-instrument-readouts.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
+Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx), [`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
 
-- Page shell: `py-24`, `max-w-7xl`
-- **Title block:** vehicle title + `PassportStatusBadge` only
-- **Desktop data strip** ([`passport-data-strip.tsx`](../components/passport/passport-data-strip.tsx)): `md+` dashed MRZ-style quick-scan row under the status badge and above `PassportInstrumentReadouts`; cells come from existing page data only — active listing price, mileage, verifier, seller/owner. Uses `serialLabel`, `monoNumeric`, and `monoLink`; hidden when fewer than 2 cells resolve.
-- **Instrument readouts:** Level B panel (`instrumentReadoutPanel`) under title — serial (`PassportIdLabel`), custody (seller/escrow or on-chain owner), chain drift banner, verifier line when VERIFIED, one-line UNVERIFIED hint + `/verifiers` link; ancillary trust (metadata reset, prior dispute, G2 fixed-after-dispute, duplicate VIN) grouped here — not duplicated in commerce aside. **G2 fixed-after-dispute** intentionally uses `border-accent-warm/40` — resolved-trust narrative (issue fixed, awaiting re-verification), not caution (`status-warning`) or neutral informational.
-- **Listed in escrow:** readouts show **Seller** → `/profile/{seller}` and **Held in escrow** → block explorer
-- **Normal ownership:** readouts show **On-chain owner** → `/profile/{owner}`
-- **Disputed:** full-width `DisputeStatusSection` at top (before gallery and title) — reason, disputer, withdrawn state, role-specific "what happens next"; desktop links scroll to `#passport-actions`; mobile **Go to actions** opens `?panel=actions` via [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx); trust banner suppressed while DISPUTED
-- Grid: three children — **commerce** (`WatchlistButton` + `ListingDetailClientIsland`, sticky `lg:top-24` right column), **main** (gallery, description, attributes, log; on `md+` also inline actions + comments + URI), **ancillary** (reserved empty tail on desktop)
-- Mobile (`< lg`): readouts → commerce → main (gallery after buy panel); **Actions** and **Discussion** live in bottom sheets (not inline in main column)
-- Desktop: `PassportActionsPanel` at `#passport-actions` + `sectionScrollAnchor`; comments at `#passport-comments` — dispute **Go to actions** uses [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx)
-- **Owner actions** (`PassportActionsPanel`): wallet role from on-chain `ownerOf` via [`passport-owner.ts`](../lib/passport/passport-owner.ts) + [`use-passport-on-chain-owner.ts`](../hooks/use-passport-on-chain-owner.ts); Ponder `passport.owner` is SSR fallback only
-- **Passport holder** (human owner: NFT `ownerOf` when unlisted, listing `seller` when in escrow) sees **Edit metadata**, **Add record +** (when not listed and not DISPUTED); **Report discrepancy** hidden for holder
-- While listed in escrow: holder sees *Service records can be added after delisting.* — `appendRecord` requires NFT custody
-- Trust dedup: VERIFIED → badge + gallery `InstrumentFrame`; UNVERIFIED → badge + readout hint (no full trust card); DISPUTED → dispute section + badge
-- **Photo gallery** ([`passport-photo-gallery.tsx`](../components/passport/passport-photo-gallery.tsx)): shared on all breakpoints — hero in `InstrumentFrame`; touch swipe (40px threshold) + chevrons (`h-11` mobile / `md:h-9` desktop); mono `N / total` counter and tappable dots on hero when multiple photos; tap hero opens fullscreen lightbox (`z-[60]`, body scroll lock, Escape close, arrow keys navigate); thumbnail strip unchanged.
-- **Featured comment teaser** ([`passport-comment-teaser.tsx`](../components/passport/passport-comment-teaser.tsx)): bordered quote panel between Description and Attributes; lifts the single top-level comment with the most replies (fallback: most recent root) from the existing `NostrCommentsSection` subscription path — no second relay subscription. Desktop click scrolls to `#passport-comments`; mobile opens the Discussion sheet.
-- **Mobile-only IA** (`< md`) — quick-nav + panel sheets; desktop layout unchanged (see §13.6): fixed `bottom-16` above global bottom nav (`md:hidden`); **Records** → `#passport-records` anchor; **Actions** / **Discussion** → `?panel=actions` | `?panel=comments` via `router.push` (browser back closes sheet; direct notification land uses `replace` on close); keep-mounted bottom sheets (`forceMount` on **content only**, `max-h-[90dvh]`, `z-[60]`); quick-nav hidden while a sheet is open. Desktop `?panel=` deep links scroll to inline section then clear param. Indicators: Records warm dot when DISPUTED; Actions error dot when DISPUTED + on-chain NFT owner; Discussion mono count from live Nostr feed (single subscription via [`use-listing-comments.ts`](../hooks/use-listing-comments.ts)). Sheet dismiss: `confirm()` when form dirty; block close while wallet tx or comment post in flight. Desktop (`md+`): Actions and Discussion stay inline with `#passport-actions` / `#passport-comments` anchors; sheets inactive. Notification deep links use `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)). `#passport-records` uses `sectionScrollAnchor` via `PassportLogSection` when `sectionId` is set. Mobile sheet panels use `embeddedInSheet` to omit duplicate inner headings.
-- URI history (collapsed default), Nostr comments
-- Mobile: disputed layout leads with dispute section then gallery; non-disputed gallery in main column after commerce on `< lg`
+**IA (all breakpoints):** full-width document (`max-w-7xl` / `xl:max-w-[80rem]`) + fixed passport action bar + bottom sheets. **Not** the narrow `760px` prototype column. Heavy sections leave the main scroll.
+
+**Document (main scroll):**
+- **Title + seal:** title left, two-line `PassportStatusBadge` right (`sublabel`: DISPUTED → `under review`; VERIFIED → short verifier address)
+- **Serial:** `PassportIdLabel` eyebrow under title
+- **Dispute one-liner** (DISPUTED only): `Under review — {reason}` + `Read the record →` opens `?panel=records` via [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx)
+- **MRZ strip** ([`passport-data-strip.tsx`](../components/passport/passport-data-strip.tsx)): all breakpoints; dashed row — active price, mileage, verifier, seller/owner; omit when fewer than 2 cells
+- **Compact advisories:** chain drift, G2 fixed-after-dispute (`border-accent-warm/40`), duplicate VIN elevated advisory — not a full instrument-readouts panel
+- **Gallery** (shared): swipe, counter/dots, lightbox — §13.7
+- **Description:** plain prose (no heavy section heading)
+- **Featured comment teaser:** opens Discussion sheet; no second Nostr subscription
+- **Attributes:** mono eyebrow + `PassportSpecGrid`
+
+**Passport action bar** ([`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx)):
+- Fixed; mobile `bottom-16` above global bottom nav; desktop `bottom-0`; hidden while a sheet is open
+- Price (active listing) · **Buy now** → `?panel=commerce` (or **Actions** when not listed) · Records · Actions · Discussion icons
+- Indicators: Records warm when DISPUTED; Actions error when DISPUTED + owner; Discussion count from live feed
+
+**Sheets** (`?panel=` — `records` | `commerce` | `actions` | `comments`):
+- Bottom sheets on **all** breakpoints (`forceMount` on content only, `max-h-[90dvh]`)
+- Records: timeline + URI history
+- Commerce: watchlist + `ListingDetailClientIsland` (buy / offers / agent / delist)
+- Actions: `PassportActionsPanel` (`embeddedInSheet`)
+- Discussion: `NostrCommentsSection` (`embeddedInSheet`)
+- History: `router.push` on open; `back` when session-pushed else `replace`; dirty/busy dismiss rules unchanged
+- Notifications: `?panel=comments` (+ `e=`)
+
+**Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
 ---
 
@@ -1164,23 +1173,21 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 - Serial and price lines: allow `text-xs` mono on very narrow screens; never switch factual fields to sans.
 - Horizontal thumb strips (gallery): `overflow-x-auto` with `pb-1` — keep selected thumb `border-accent-warm` (selection state).
 
-### 13.6 Passport detail quick-nav and sheets (mobile only)
+### 13.6 Passport action bar and sheets (all breakpoints)
 
-**Scope:** `< md` only. Desktop (`md+`) keeps IL-4 inline grid — Actions and Discussion remain in the main scroll column; no quick-nav bar, no bottom sheets.
+**Scope:** unified on mobile and desktop. Full-width document; no narrow prototype column; no desktop inline Actions/Discussion.
 
 | Element | Contract |
 |---------|----------|
-| Quick-nav | [`passport-quick-nav.tsx`](../components/passport/passport-quick-nav.tsx) — `fixed bottom-16 left-0 right-0 z-50 md:hidden`; hidden while a sheet is open |
-| Records | Scroll to `#passport-records` (`sectionScrollAnchor` on log section) |
-| Actions / Discussion | `?panel=actions` \| `?panel=comments` — bottom sheet via [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx); `router.push` on open; `router.back()` when session pushed, else `replace` on close |
-| Sheets | Radix `Sheet` with `forceMount` on **content only**; `max-h-[90dvh]`; overlay `pointer-events-none` when closed |
+| Action bar | [`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx) — `fixed` `bottom-16` mobile / `bottom-0` desktop; hidden while a sheet is open |
+| Page padding | `pb-36` mobile / `md:pb-28` desktop to clear bar |
+| Panels | `?panel=records` \| `commerce` \| `actions` \| `comments` |
+| Sheets | Radix `Sheet` bottom, `forceMount` on **content only**; `max-h-[90dvh]` |
+| Open / close | `router.push` on open; `router.back()` when session pushed, else `replace` |
 | Dismiss | `confirm()` when actions/comments form dirty; block close during pending wallet tx or comment post |
-| Desktop `?panel=` | Scroll to `#passport-actions` or `#passport-comments`, then strip param (preserve `e` on comment events) |
-| Deep links | Notifications → `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)) |
+| Deep links | Notifications → `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)); auto-open comments when `e=` present |
 
 ### 13.7 Passport detail gallery (all breakpoints)
-
-**Scope:** shared component — not mobile-only. Mobile quick-nav/sheets remain §13.6.
 
 | Element | Contract |
 |---------|----------|
@@ -1191,4 +1198,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 4.1 (July 2026 — shared gallery enhancements + desktop MRZ strip / teaser). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.0 (July 2026 — passport document + action bar + sheets on all breakpoints). Update when tokens, app shell, or component contracts change.*

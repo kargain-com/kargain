@@ -8,29 +8,36 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import NostrCommentsSection from "@/components/marketplace/nostr-comments-section";
+import { PassportActionBar } from "@/components/passport/passport-action-bar";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
-import { PassportQuickNav } from "@/components/passport/passport-quick-nav";
+import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
+import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useMediaMd } from "@/hooks/use-media-md";
+import type { PassportStatus } from "@/components/ui/passport-status-badge";
+import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
+import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import type { PassportTopComment } from "@/lib/passport/passport-comment-summary";
 import {
   buildPassportPanelQuery,
   parsePassportPanel,
   type PassportPanel,
 } from "@/lib/passport/passport-panel-url";
-import type { PassportStatus } from "@/components/ui/passport-status-badge";
+import type {
+  PonderPassportRecord,
+  PonderUriHistoryEntry,
+} from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
 type OpenPanelOptions = {
@@ -50,6 +57,8 @@ type PanelChromeContextValue = {
 const PanelChromeContext = createContext<PanelChromeContextValue | null>(null);
 
 const PANEL_SECTION_ID: Record<PassportPanel, string> = {
+  records: "passport-records",
+  commerce: "passport-commerce",
   actions: "passport-actions",
   comments: "passport-comments",
 };
@@ -104,11 +113,33 @@ function requestClosePassportPanel({
   onClose();
 }
 
+type ListingProp = {
+  active: boolean;
+  fiatPrice1e8: string;
+  fiatCurrency: number;
+  seller: `0x${string}`;
+  agent?: string;
+  returnRequestedAt?: string | number;
+  externalPaymentConfirmedAt?: string | number;
+} | null;
+
 type ChromeProps = {
   status: PassportStatus;
   passportOwner: `0x${string}`;
   chainId: number;
   tokenId: string;
+  listing?: ListingProp;
+  duplicateVin?: boolean;
+  hadDispute?: boolean;
+  records: PonderPassportRecord[];
+  lastDisputer: string;
+  disputeReason: string;
+  disputeWithdrawnAt: string;
+  tokenUri: string;
+  currentMetadata: PassportMetadata | null;
+  uriHistory: PonderUriHistoryEntry[];
+  verificationResetCount: number;
+  lastVerificationResetAt: string;
   children: ReactNode;
 };
 
@@ -117,17 +148,31 @@ export function PassportDetailPanelChrome({
   passportOwner,
   chainId,
   tokenId,
+  listing = null,
+  duplicateVin = false,
+  hadDispute = false,
+  records,
+  lastDisputer,
+  disputeReason,
+  disputeWithdrawnAt,
+  tokenUri,
+  currentMetadata,
+  uriHistory,
+  verificationResetCount,
+  lastVerificationResetAt,
   children,
 }: ChromeProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isMd } = useMediaMd();
   const [commentCount, setCommentCount] = useState<number | null>(null);
   const [topComment, setTopComment] = useState<PassportTopComment | null>(null);
+  const [actionsDirty, setActionsDirty] = useState(false);
+  const [actionsBusy, setActionsBusy] = useState(false);
+  const [commentsDirty, setCommentsDirty] = useState(false);
+  const [commentsBusy, setCommentsBusy] = useState(false);
   const autoOpenedEventRef = useRef(false);
   const panelHistoryPushedRef = useRef(false);
-  const desktopPanelHandledRef = useRef<string | null>(null);
 
   const panel = parsePassportPanel(searchParams.get("panel"));
 
@@ -164,29 +209,13 @@ export function PassportDetailPanelChrome({
   }, [panel]);
 
   useEffect(() => {
-    if (isMd) return;
     const eventId = searchParams.get("e");
     if (!eventId || autoOpenedEventRef.current) return;
     autoOpenedEventRef.current = true;
     if (panel !== "comments") {
       openPanel("comments", { replace: true });
     }
-  }, [isMd, openPanel, panel, searchParams]);
-
-  useEffect(() => {
-    if (!isMd || !panel) return;
-    const key = `${panel}:${searchParams.get("e") ?? ""}`;
-    if (desktopPanelHandledRef.current === key) return;
-    desktopPanelHandledRef.current = key;
-
-    const sectionId = PANEL_SECTION_ID[panel];
-    requestAnimationFrame(() => {
-      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    const url = panelUrl(pathname, new URLSearchParams(searchParams.toString()), null);
-    router.replace(url, { scroll: false });
-  }, [isMd, panel, pathname, router, searchParams]);
+  }, [openPanel, panel, searchParams]);
 
   const contextValue = useMemo(
     () => ({
@@ -201,21 +230,117 @@ export function PassportDetailPanelChrome({
     [panel, openPanel, closePanel, commentCount, topComment],
   );
 
-  const hideQuickNav = !isMd && panel != null;
+  const listingPrice = listing
+    ? {
+        active: listing.active,
+        fiatPrice1e8: listing.fiatPrice1e8,
+        fiatCurrency: listing.fiatCurrency,
+      }
+    : null;
 
   return (
     <PanelChromeContext.Provider value={contextValue}>
-      {!hideQuickNav && (
-        <PassportQuickNav
-          status={status}
-          passportOwner={passportOwner}
-          chainId={chainId}
-          tokenId={tokenId}
-          commentCount={commentCount}
-          onOpenPanel={(nextPanel) => openPanel(nextPanel)}
-        />
-      )}
+      <PassportActionBar
+        status={status}
+        passportOwner={passportOwner}
+        chainId={chainId}
+        tokenId={tokenId}
+        listing={listingPrice}
+        commentCount={commentCount}
+        panelOpen={panel != null}
+        onOpenPanel={(nextPanel) => openPanel(nextPanel)}
+      />
       {children}
+
+      <PassportPanelSheet
+        panelId="records"
+        title="Records"
+        sectionId={PANEL_SECTION_ID.records}
+        open={panel === "records"}
+        onOpen={() => openPanel("records")}
+        onClose={closePanel}
+      >
+        <div className="space-y-6">
+          <PassportRecordsTimeline
+            records={records}
+            passportOwner={passportOwner}
+            lastDisputer={lastDisputer}
+            disputeReason={disputeReason}
+          />
+          <PassportUriHistory entries={uriHistory} chainId={chainId} />
+        </div>
+      </PassportPanelSheet>
+
+      <PassportPanelSheet
+        panelId="commerce"
+        title="Buy"
+        sectionId={PANEL_SECTION_ID.commerce}
+        open={panel === "commerce"}
+        onOpen={() => openPanel("commerce")}
+        onClose={closePanel}
+      >
+        <div className="space-y-4">
+          <WatchlistButton tokenId={tokenId} />
+          <ListingDetailClientIsland
+            chainId={chainId}
+            tokenId={tokenId}
+            listing={listing}
+            passportOwner={passportOwner}
+            passportStatus={status}
+            duplicateVin={duplicateVin}
+            hadDispute={hadDispute}
+          />
+        </div>
+      </PassportPanelSheet>
+
+      <PassportPanelSheet
+        panelId="actions"
+        title="Actions"
+        sectionId={PANEL_SECTION_ID.actions}
+        open={panel === "actions"}
+        onOpen={() => openPanel("actions")}
+        onClose={closePanel}
+        dirty={actionsDirty}
+        busy={actionsBusy}
+      >
+        <PassportActionsPanel
+          tokenId={tokenId}
+          chainId={chainId}
+          passportOwner={passportOwner}
+          status={status}
+          lastDisputer={lastDisputer}
+          disputeWithdrawnAt={disputeWithdrawnAt}
+          duplicateVin={duplicateVin}
+          listingActive={listing?.active}
+          listingSeller={listing?.seller}
+          tokenUri={tokenUri}
+          currentMetadata={currentMetadata}
+          uriHistory={uriHistory}
+          verificationResetCount={verificationResetCount}
+          lastVerificationResetAt={lastVerificationResetAt}
+          embeddedInSheet
+          onDirtyChange={setActionsDirty}
+          onBusyChange={setActionsBusy}
+        />
+      </PassportPanelSheet>
+
+      <PassportPanelSheet
+        panelId="comments"
+        title="Discussion"
+        sectionId={PANEL_SECTION_ID.comments}
+        open={panel === "comments"}
+        onOpen={() => openPanel("comments")}
+        onClose={closePanel}
+        dirty={commentsDirty}
+        busy={commentsBusy}
+      >
+        <NostrCommentsSection
+          tokenId={tokenId}
+          embeddedInSheet
+          onDirtyChange={setCommentsDirty}
+          onBusyChange={setCommentsBusy}
+        />
+      </PassportPanelSheet>
     </PanelChromeContext.Provider>
   );
 }
@@ -224,8 +349,11 @@ type PassportPanelSheetProps = {
   panelId: PassportPanel;
   title: string;
   sectionId: string;
-  dirty: boolean;
-  busy: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  dirty?: boolean;
+  busy?: boolean;
   children: ReactNode;
 };
 
@@ -233,26 +361,25 @@ function PassportPanelSheet({
   panelId,
   title,
   sectionId,
-  dirty,
-  busy,
+  open,
+  onOpen,
+  onClose,
+  dirty = false,
+  busy = false,
   children,
 }: PassportPanelSheetProps) {
-  const { panel, openPanel, closePanel } = usePassportPanelUrl();
-
   return (
     <Sheet
-      open={panel === panelId}
-      onOpenChange={(open) => {
-        if (open) {
-          if (panel !== panelId) {
-            openPanel(panelId);
-          }
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          onOpen();
           return;
         }
         requestClosePassportPanel({
           busy,
           dirty,
-          onClose: closePanel,
+          onClose,
         });
       }}
     >
@@ -272,75 +399,5 @@ function PassportPanelSheet({
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-export function PassportActionsSlot(props: ComponentProps<typeof PassportActionsPanel>) {
-  const { isMd } = useMediaMd();
-  const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  if (isMd) {
-    return (
-      <div id="passport-actions" className={sectionScrollAnchor}>
-        <PassportActionsPanel
-          {...props}
-          onDirtyChange={setDirty}
-          onBusyChange={setBusy}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <PassportPanelSheet
-      panelId="actions"
-      title="Actions"
-      sectionId="passport-actions"
-      dirty={dirty}
-      busy={busy}
-    >
-      <PassportActionsPanel
-        {...props}
-        embeddedInSheet
-        onDirtyChange={setDirty}
-        onBusyChange={setBusy}
-      />
-    </PassportPanelSheet>
-  );
-}
-
-export function PassportCommentsSlot({ tokenId }: { tokenId: string }) {
-  const { isMd } = useMediaMd();
-  const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  if (isMd) {
-    return (
-      <div id="passport-comments" className={sectionScrollAnchor}>
-        <NostrCommentsSection
-          tokenId={tokenId}
-          onDirtyChange={setDirty}
-          onBusyChange={setBusy}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <PassportPanelSheet
-      panelId="comments"
-      title="Discussion"
-      sectionId="passport-comments"
-      dirty={dirty}
-      busy={busy}
-    >
-      <NostrCommentsSection
-        tokenId={tokenId}
-        embeddedInSheet
-        onDirtyChange={setDirty}
-        onBusyChange={setBusy}
-      />
-    </PassportPanelSheet>
   );
 }

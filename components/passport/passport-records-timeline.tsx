@@ -19,6 +19,8 @@ type Props = {
   passportOwner: string;
   lastDisputer: string;
   disputeReason: string;
+  /** Omit when mounted inside a sheet that already owns the section id. */
+  sectionId?: string;
 };
 
 function formatChainDate(timestampSec: string): string {
@@ -40,12 +42,13 @@ export function PassportRecordsTimeline({
   passportOwner,
   lastDisputer,
   disputeReason,
+  sectionId,
 }: Props) {
   const ctx = { passportOwner, lastDisputer, disputeReason };
 
   return (
     <PassportLogSection
-      sectionId="passport-records"
+      sectionId={sectionId}
       title="History & records"
       items={records}
       getItemKey={(record) => record.id}

@@ -106,7 +106,7 @@ export function PassportDataStrip({
 
   return (
     <section
-      className="hidden md:flex md:flex-wrap md:gap-x-8 md:gap-y-3 md:border-y md:border-dashed md:border-border-default md:py-3.5"
+      className="flex flex-wrap gap-x-5 gap-y-3 border-y border-dashed border-border-default py-3.5 md:gap-x-8"
       aria-label="Passport quick data strip"
     >
       {cells.map((cell) => (
