@@ -34,11 +34,11 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
   return (
     <Link
       href={`/marketplace/${row.tokenId}?chain=${row.chainId}`}
-      className="group block focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+      className="group flex h-full focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
     >
       <Card
         className={cn(
-          "h-full overflow-hidden bg-bg-card p-0 transition-colors duration-300",
+          "flex h-full w-full flex-col overflow-hidden bg-bg-card p-0 transition-colors duration-300",
           displayStatus === "VERIFIED"
             ? "border-accent-warm group-focus-visible:border-accent-warm"
             : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
@@ -59,7 +59,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             </div>
           )}
         </div>
-        <CardContent className="space-y-2.5 p-6">
+        <CardContent className="flex flex-1 flex-col gap-2.5 p-6">
           {row.duplicateVin && (
             <div className={elevatedAdvisoryChip}>
               <AlertTriangle
@@ -129,16 +129,19 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
               </p>
             </div>
           )}
-          <ListingDisplayPrice
-            fiatPrice1e8={row.fiatPrice1e8}
-            fiatCurrency={row.fiatCurrency}
-          />
-          <PassportIdLabel
-            tokenId={row.tokenId}
-            chainId={row.chainId}
-            prefix="none"
-            variant="mono"
-          />
+
+          <div className="mt-auto flex flex-col gap-2.5 pt-1.5">
+            <ListingDisplayPrice
+              fiatPrice1e8={row.fiatPrice1e8}
+              fiatCurrency={row.fiatCurrency}
+            />
+            <PassportIdLabel
+              tokenId={row.tokenId}
+              chainId={row.chainId}
+              prefix="none"
+              variant="mono"
+            />
+          </div>
         </CardContent>
       </Card>
     </Link>
