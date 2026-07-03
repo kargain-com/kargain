@@ -40,7 +40,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
         )}
       >
-        <div className="relative aspect-[16/10] w-full bg-bg-surface">
+        <div className="aspect-[16/10] w-full bg-bg-surface">
           {row.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -54,23 +54,14 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
               No image
             </div>
           )}
-          {displayStatus === "VERIFIED" && !statusStale && (
-            <span className="absolute right-2 top-2 rounded border border-accent-warm/40 bg-bg-primary/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-warm">
-              Verified
-            </span>
-          )}
-          {displayStatus !== "VERIFIED" && (
-            <span className="absolute left-2 top-2 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase text-status-error">
-              {displayStatus === "DISPUTED" ? "Disputed" : "Unverified"}
-            </span>
-          )}
-          {row.duplicateVin && (
-            <span className="absolute bottom-2 left-2 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] text-status-error">
-              Duplicate VIN
-            </span>
-          )}
         </div>
         <CardContent className="space-y-2.5 p-6">
+          {row.duplicateVin && (
+            <p className="flex min-w-0 items-start gap-1.5 font-sans text-xs text-status-warning">
+              <AlertTriangle size={12} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden />
+              <span className="min-w-0 leading-snug">Duplicate VIN</span>
+            </p>
+          )}
           <div className="flex flex-wrap items-start gap-2">
             <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-text-primary">
               {row.title}

@@ -33,20 +33,11 @@ function currencyOptionSymbol(code: DisplayCurrency): string {
   return symbol === code ? "" : symbol;
 }
 
-function CurrencyOptionLabel({
-  code,
-  selected,
-}: {
-  code: DisplayCurrency;
-  selected: boolean;
-}) {
+function CurrencyOptionLabel({ code }: { code: DisplayCurrency }) {
   return (
     <span className="inline-flex items-center gap-2">
       <span
-        className={cn(
-          "inline-block w-6 shrink-0 text-right font-mono",
-          selected ? "text-accent-warm" : "text-text-secondary",
-        )}
+        className="inline-block w-6 shrink-0 text-right font-mono text-text-secondary"
         aria-hidden
       >
         {currencyOptionSymbol(code) || "\u00A0"}
@@ -120,10 +111,7 @@ export function CurrencySelector() {
                 )}
                 onSelect={() => setDisplayCurrency(option.value)}
               >
-                <CurrencyOptionLabel
-                  code={option.value}
-                  selected={displayCurrency === option.value}
-                />
+                <CurrencyOptionLabel code={option.value} />
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -161,10 +149,7 @@ export function CurrencySelector() {
                   )}
                   onClick={() => selectCurrency(option.value)}
                 >
-                  <CurrencyOptionLabel
-                    code={option.value}
-                    selected={displayCurrency === option.value}
-                  />
+                  <CurrencyOptionLabel code={option.value} />
                 </button>
               ))}
             </div>
