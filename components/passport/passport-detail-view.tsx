@@ -1,8 +1,11 @@
 import Link from "next/link";
 
+import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportCommentTeaser } from "@/components/passport/passport-comment-teaser";
-import { PassportDataStrip } from "@/components/passport/passport-data-strip";
 import { PassportDetailPanelChrome } from "@/components/passport/passport-detail-panel-chrome";
+import { PassportDiscussionRail } from "@/components/passport/passport-discussion-rail";
+import { PassportDocumentActions } from "@/components/passport/passport-document-actions";
+import { PassportDataStrip } from "@/components/passport/passport-data-strip";
 import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportPanelLink } from "@/components/passport/passport-panel-link";
@@ -10,9 +13,11 @@ import { PassportPhotoGallery } from "@/components/passport/passport-photo-galle
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
+  sectionScrollAnchor,
 } from "@/lib/design/instrument-classes";
 import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
@@ -91,8 +96,23 @@ export function PassportDetailView({
   });
   const statusSublabel = sealSublabel(passport.status, passport.verifier);
 
+  const commerce = (
+    <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
+      <WatchlistButton tokenId={tokenId} />
+      <ListingDetailClientIsland
+        chainId={chainId}
+        tokenId={tokenId}
+        listing={listing}
+        passportOwner={passport.owner as `0x${string}`}
+        passportStatus={passport.status}
+        duplicateVin={passport.duplicateVin}
+        hadDispute={passport.hadDispute}
+      />
+    </div>
+  );
+
   return (
-    <div className="mx-auto w-full max-w-7xl px-6 pb-36 pt-8 text-text-primary md:px-8 md:pb-28 md:pt-12 xl:max-w-[80rem]">
+    <div className="mx-auto w-full max-w-7xl px-6 pb-16 pt-8 text-text-primary md:px-8 md:pt-12 xl:max-w-[80rem]">
       <Link href={`/?chain=${chainId}`} className="font-sans text-sm link-underline">
         ← Back to marketplace
       </Link>
@@ -108,9 +128,7 @@ export function PassportDetailView({
         passportOwner={passport.owner as `0x${string}`}
         chainId={chainId}
         tokenId={tokenId}
-        listing={listing}
         duplicateVin={passport.duplicateVin}
-        hadDispute={passport.hadDispute}
         records={passport.records}
         lastDisputer={passport.lastDisputer}
         disputeReason={passport.disputeReason}
@@ -120,91 +138,113 @@ export function PassportDetailView({
         uriHistory={passport.uriHistory}
         verificationResetCount={passport.verificationResetCount}
         lastVerificationResetAt={passport.lastVerificationResetAt}
+        listingActive={listing?.active}
+        listingSeller={listing?.seller}
       >
-        <div className="mt-8 flex items-start justify-between gap-4">
-          <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
-            {title}
-          </h1>
-          <PassportStatusBadge
-            status={passport.status}
-            sublabel={statusSublabel}
-            className="shrink-0"
-          />
-        </div>
-
-        <div className="mt-2">
-          <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
-        </div>
-
-        {isDisputed && (
-          <p className="mt-2.5 font-sans text-sm leading-[1.5] text-status-error" role="status">
-            Under review — {disputeBannerText}{" "}
-            <PassportPanelLink panel="records" className="text-status-error underline">
-              Read the record →
-            </PassportPanelLink>
-          </p>
-        )}
-
-        <div className="mt-5">
-          <PassportDataStrip
-            listing={listing}
-            mileageKm={metadata?.mileageKm ?? null}
-            status={passport.status}
-            verifier={passport.verifier}
-            custody={custody}
-          />
-        </div>
-
-        <div className="mt-4 space-y-3">
-          <PassportChainStatusBanner
-            tokenId={tokenId}
-            ponderStatus={passport.status}
-            chainId={chainId}
-          />
-          {showG2Banner && (
-            <div
-              className="rounded-md border border-accent-warm/40 bg-bg-primary/80 p-4"
-              role="status"
-            >
-              <p className="font-sans text-sm text-text-primary">
-                Fixed after dispute — awaiting re-verification. Metadata was updated after the last
-                dispute or reset.
-              </p>
+        <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-[1fr_22rem] md:items-start">
+          <div className="min-w-0 space-y-0">
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
+                {title}
+              </h1>
+              <PassportStatusBadge
+                status={passport.status}
+                sublabel={statusSublabel}
+                className="shrink-0"
+              />
             </div>
-          )}
-          {passport.duplicateVin && (
-            <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
-              Duplicate VIN warning — another passport shares this VIN in the index.
-            </p>
-          )}
+
+            <div className="mt-2">
+              <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
+            </div>
+
+            {isDisputed && (
+              <p className="mt-2.5 font-sans text-sm leading-[1.5] text-status-error" role="status">
+                Under review — {disputeBannerText}{" "}
+                <PassportPanelLink panel="records" className="text-status-error underline">
+                  Read the record →
+                </PassportPanelLink>
+              </p>
+            )}
+
+            <div className="mt-5">
+              <PassportDataStrip
+                listing={listing}
+                mileageKm={metadata?.mileageKm ?? null}
+                status={passport.status}
+                verifier={passport.verifier}
+                custody={custody}
+              />
+            </div>
+
+            <div className="mt-4">
+              <PassportDocumentActions
+                status={passport.status}
+                passportOwner={passport.owner as `0x${string}`}
+                chainId={chainId}
+                tokenId={tokenId}
+              />
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <PassportChainStatusBanner
+                tokenId={tokenId}
+                ponderStatus={passport.status}
+                chainId={chainId}
+              />
+              {showG2Banner && (
+                <div
+                  className="rounded-md border border-accent-warm/40 bg-bg-primary/80 p-4"
+                  role="status"
+                >
+                  <p className="font-sans text-sm text-text-primary">
+                    Fixed after dispute — awaiting re-verification. Metadata was updated after the
+                    last dispute or reset.
+                  </p>
+                </div>
+              )}
+              {passport.duplicateVin && (
+                <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
+                  Duplicate VIN warning — another passport shares this VIN in the index.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <PassportPhotoGallery
+                photos={metadata?.photos ?? []}
+                chainId={chainId}
+                verified={passport.status === "VERIFIED"}
+              />
+            </div>
+
+            {metadata?.description && (
+              <section className="mt-7">
+                <p className="max-w-3xl font-sans text-base font-normal leading-[1.7] text-text-primary">
+                  {metadata.description}
+                </p>
+              </section>
+            )}
+
+            <div className="mt-5 md:hidden">
+              <PassportCommentTeaser />
+            </div>
+
+            <section className="mt-7 space-y-4">
+              <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
+                Attributes
+              </p>
+              <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
+            </section>
+
+            <div className="mt-8 md:hidden">{commerce}</div>
+          </div>
+
+          <aside className="hidden space-y-6 md:sticky md:top-24 md:block">
+            {commerce}
+            <PassportDiscussionRail tokenId={tokenId} />
+          </aside>
         </div>
-
-        <div className="mt-6">
-          <PassportPhotoGallery
-            photos={metadata?.photos ?? []}
-            chainId={chainId}
-            verified={passport.status === "VERIFIED"}
-          />
-        </div>
-
-        {metadata?.description && (
-          <section className="mt-7">
-            <p className="max-w-3xl font-sans text-base font-normal leading-[1.7] text-text-primary">
-              {metadata.description}
-            </p>
-          </section>
-        )}
-
-        <div className="mt-5">
-          <PassportCommentTeaser />
-        </div>
-
-        <section className="mt-7 space-y-4">
-          <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
-            Attributes
-          </p>
-          <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
-        </section>
       </PassportDetailPanelChrome>
     </div>
   );

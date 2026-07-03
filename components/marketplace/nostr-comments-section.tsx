@@ -99,12 +99,17 @@ function NostrCommentsSection({
 
   useEffect(() => {
     if (!highlightEventId || feedLoading) return;
-    const el = document.getElementById(`comment-${highlightEventId}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setFlashEventId(highlightEventId);
-    const timer = window.setTimeout(() => setFlashEventId(null), 2500);
-    return () => window.clearTimeout(timer);
+    const scrollTimer = window.setTimeout(() => {
+      const el = document.getElementById(`comment-${highlightEventId}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFlashEventId(highlightEventId);
+    }, 320);
+    const flashTimer = window.setTimeout(() => setFlashEventId(null), 3000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(flashTimer);
+    };
   }, [highlightEventId, feedLoading, ordered.length]);
 
   const resolveParentPubkey = async (parentEventId: string): Promise<string | null> => {
@@ -239,14 +244,19 @@ function NostrCommentsSection({
         <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
       )}
 
+      <div className="min-h-[12rem]">
       {feedLoading ? (
-        <ul className="space-y-3" aria-busy="true" aria-label="Loading discussion">
+        <ul
+          className="space-y-3 animate-in fade-in duration-200"
+          aria-busy="true"
+          aria-label="Loading discussion"
+        >
           <CommentRowSkeleton />
           <CommentRowSkeleton />
           <CommentRowSkeleton />
         </ul>
       ) : (
-        <>
+        <div className="animate-in fade-in duration-300 fill-mode-both">
           {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
           {roots.length === 0 && (
             <div className="rounded-md border border-border-default bg-bg-surface p-4">
@@ -266,7 +276,7 @@ function NostrCommentsSection({
               key={root.event.id}
               id={`comment-${root.event.id}`}
               className={cn(
-                "rounded-md border border-border-default bg-bg-surface p-4 transition-colors duration-300",
+                "rounded-md border border-border-default bg-bg-surface p-4 transition-[colors,opacity,transform] duration-300 ease-out",
                 flashEventId === root.event.id && "border-accent-warm",
               )}
             >
@@ -349,8 +359,9 @@ function NostrCommentsSection({
           );
         })}
           </ul>
-        </>
+        </div>
       )}
+      </div>
 
       <div className="space-y-3 border-t border-border-default pt-4">
         <Textarea

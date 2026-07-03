@@ -23,7 +23,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [design-spec.md](./design-spec.md) | UI layout, tokens, components — Instrument Layer §10–§13; passport document + action bar + sheets (§4.14, §13.6–§13.7) |
+| [design-spec.md](./design-spec.md) | UI layout, tokens, components — Instrument Layer §10–§13; passport right rail + modal History/Actions (§4.14, §13.6–§13.7) |
 
 **Reading order:** foundation §1–9 → Instrument rules §10 → philosophy §11 → shipped roadmap §12 → mobile §13.
 

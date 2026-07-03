@@ -8,11 +8,11 @@ import {
 } from "../lib/passport/passport-panel-url.ts";
 
 describe("passport-panel-url", () => {
-  it("parsePassportPanel accepts all panel ids", () => {
+  it("parsePassportPanel accepts records, actions, comments", () => {
     assert.equal(parsePassportPanel("records"), "records");
-    assert.equal(parsePassportPanel("commerce"), "commerce");
     assert.equal(parsePassportPanel("actions"), "actions");
     assert.equal(parsePassportPanel("comments"), "comments");
+    assert.equal(parsePassportPanel("commerce"), null);
     assert.equal(parsePassportPanel("unknown"), null);
     assert.equal(parsePassportPanel(null), null);
   });
@@ -34,7 +34,7 @@ describe("passport-panel-url", () => {
 
   it("passportPanelQueryString encodes panel", () => {
     assert.equal(passportPanelQueryString("actions"), "panel=actions");
-    assert.equal(passportPanelQueryString("commerce"), "panel=commerce");
+    assert.equal(passportPanelQueryString("records"), "panel=records");
     assert.equal(passportPanelQueryString(null), "");
   });
 });

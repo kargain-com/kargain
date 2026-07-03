@@ -22,10 +22,10 @@ export function PassportCommentTeaser() {
   return (
     <button
       type="button"
-      className="block w-full text-left"
+      className="block w-full animate-in fade-in duration-300 fill-mode-both text-left"
       onClick={() => openPanel("comments")}
     >
-      <div className="rounded-md border border-border-default bg-bg-surface p-4 transition-colors hover:border-border-hover sm:p-6">
+      <div className="rounded-md border border-border-default bg-bg-surface p-4 transition-colors duration-200 hover:border-border-hover sm:p-6">
         <div className="flex gap-3">
           <span className="shrink-0 text-base leading-none text-text-tertiary" aria-hidden>
             "

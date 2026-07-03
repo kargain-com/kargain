@@ -412,34 +412,30 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 
 ### 4.14 Passport detail
 
-Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx), [`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
+Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx), [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
 
-**IA (all breakpoints):** full-width document (`max-w-7xl` / `xl:max-w-[80rem]`) + fixed passport action bar + bottom sheets. **Not** the narrow `760px` prototype column. Heavy sections leave the main scroll.
+**IA:** full-width shell (`max-w-7xl` / `xl:max-w-[80rem]`). **No** bottom passport action bar. **Not** the narrow `760px` prototype column.
 
-**Document (main scroll):**
-- **Title + seal:** title left, two-line `PassportStatusBadge` right (`sublabel`: DISPUTED → `under review`; VERIFIED → short verifier address)
-- **Serial:** `PassportIdLabel` eyebrow under title
-- **Dispute one-liner** (DISPUTED only): `Under review — {reason}` + `Read the record →` opens `?panel=records` via [`passport-panel-link.tsx`](../components/passport/passport-panel-link.tsx)
-- **MRZ strip** ([`passport-data-strip.tsx`](../components/passport/passport-data-strip.tsx)): all breakpoints; dashed row — active price, mileage, verifier, seller/owner; omit when fewer than 2 cells
-- **Compact advisories:** chain drift, G2 fixed-after-dispute (`border-accent-warm/40`), duplicate VIN elevated advisory — not a full instrument-readouts panel
-- **Gallery** (shared): constrained photo plate `max-w-3xl` / `md:max-w-4xl` (not full document width); `aspect-[4/3]` mobile / `md:aspect-[16/10]` desktop; swipe, counter/dots, lightbox — §13.7
-- **Description:** plain prose (no heavy section heading)
-- **Featured comment teaser:** opens Discussion sheet; no second Nostr subscription
-- **Attributes:** mono eyebrow + `PassportSpecGrid`
+**Desktop (`md+`):** `grid` document | right rail (`22rem`, sticky `top-24`)
+- **Left document:** title + two-line seal; serial; dispute one-liner; MRZ; **History & records** / **Actions** outline buttons ([`passport-document-actions.tsx`](../components/passport/passport-document-actions.tsx)); advisories; gallery photo plate; description; attributes
+- **Right rail:** commerce (`WatchlistButton` + `ListingDetailClientIsland`) + always-visible Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx))
+- No comment teaser on desktop (discussion is already on-screen)
 
-**Passport action bar** ([`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx)):
-- Fixed; mobile `bottom-16` above global bottom nav; desktop `bottom-0`; hidden while a sheet is open
-- Price (active listing) · **Buy now** → `?panel=commerce` (or **Actions** when not listed) · Records · Actions · Discussion icons
-- Indicators: Records warm when DISPUTED; Actions error when DISPUTED + owner; Discussion count from live feed
+**Mobile (`< md`):** single column — same document header/MRZ/buttons/gallery/description; comment teaser opens Discussion sheet; attributes; commerce inline after attributes
 
-**Sheets** (`?panel=` — `records` | `commerce` | `actions` | `comments`):
-- Bottom sheets on **all** breakpoints (`forceMount` on content only, `max-h-[90dvh]`)
-- Records: timeline + URI history
-- Commerce: watchlist + `ListingDetailClientIsland` (buy / offers / agent / delist)
-- Actions: `PassportActionsPanel` (`embeddedInSheet`)
-- Discussion: `NostrCommentsSection` (`embeddedInSheet`)
-- History: `router.push` on open; `back` when session-pushed else `replace`; dirty/busy dismiss rules unchanged
-- Notifications: `?panel=comments` (+ `e=`)
+**Header details:**
+- Seal `sublabel`: DISPUTED → `under review`; VERIFIED → short verifier address
+- Dispute one-liner: `Under review — {reason}` + `Read the record →` → `?panel=records`
+- MRZ: all breakpoints; omit when fewer than 2 cells
+- Gallery: constrained plate `max-w-3xl` / `md:max-w-4xl`; §13.7
+
+**Modals** ([`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — prototype chrome, our content):
+- `?panel=records` | `actions` on all breakpoints; `comments` **mobile only**
+- Handle, sans title (`History & records` / `Actions` / `Discussion · N`), bordered close, `max-h-[78dvh]`, `max-w-3xl` centered
+- Records: timeline + URI history; Actions: `PassportActionsPanel`; Discussion (mobile): `NostrCommentsSection`
+- Desktop `?panel=comments` / `?e=`: scroll to right-rail discussion (no sheet)
+- Legacy `?panel=commerce` ignored (commerce is inline / rail)
+- History push/back + dirty/busy dismiss unchanged
 
 **Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
@@ -1173,19 +1169,20 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 - Serial and price lines: allow `text-xs` mono on very narrow screens; never switch factual fields to sans.
 - Horizontal thumb strips (gallery): `overflow-x-auto` with `pb-1` — keep selected thumb `border-accent-warm` (selection state).
 
-### 13.6 Passport action bar and sheets (all breakpoints)
+### 13.6 Passport right rail and modals
 
-**Scope:** unified on mobile and desktop. Full-width document; no narrow prototype column; no desktop inline Actions/Discussion.
+**Scope:** no bottom passport bar. Desktop right rail; mobile simplified document + sheets.
 
 | Element | Contract |
 |---------|----------|
-| Action bar | [`passport-action-bar.tsx`](../components/passport/passport-action-bar.tsx) — `fixed` `bottom-16` mobile / `bottom-0` desktop; hidden while a sheet is open |
-| Page padding | `pb-36` mobile / `md:pb-28` desktop to clear bar |
-| Panels | `?panel=records` \| `commerce` \| `actions` \| `comments` |
-| Sheets | Radix `Sheet` bottom, `forceMount` on **content only**; `max-h-[90dvh]` |
+| Desktop layout | `md:grid-cols-[1fr_22rem]`; rail sticky `top-24` — commerce + Discussion |
+| Document buttons | Outline **History & records** / **Actions** under MRZ |
+| Modals | [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — handle, sans title, bordered close, `max-h-[78dvh]`, `max-w-3xl` |
+| Panels | `?panel=records` \| `actions` (all breakpoints); `comments` mobile only |
+| Desktop comments deep link | Scroll to `#passport-comments` / `#comment-{e}`; strip `panel` |
 | Open / close | `router.push` on open; `router.back()` when session pushed, else `replace` |
 | Dismiss | `confirm()` when actions/comments form dirty; block close during pending wallet tx or comment post |
-| Deep links | Notifications → `?panel=comments` ([`notification-href.ts`](../lib/notifications/notification-href.ts)); auto-open comments when `e=` present |
+| Mobile discussion | Teaser or `?panel=comments` (+ `e=`) sheet |
 
 ### 13.7 Passport detail gallery (all breakpoints)
 
@@ -1200,4 +1197,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.0 (July 2026 — passport document + action bar + sheets on all breakpoints). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.1 (July 2026 — passport right rail + modal History/Actions; no action bar). Update when tokens, app shell, or component contracts change.*

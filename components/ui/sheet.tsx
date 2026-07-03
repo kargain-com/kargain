@@ -31,17 +31,19 @@ const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     side?: "bottom" | "right";
     forceMount?: boolean;
+    /** When true, omit the default top-right close control (caller supplies one). */
+    hideClose?: boolean;
   }
->(({ className, children, side = "bottom", forceMount, ...props }, ref) => (
+>(({ className, children, side = "bottom", forceMount, hideClose = false, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <DialogPrimitive.Content
       ref={ref}
       forceMount={forceMount}
       className={cn(
-        "fixed z-50 flex flex-col border border-border-default bg-bg-card duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "fixed z-50 flex flex-col border border-border-default bg-bg-card duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out",
         side === "bottom" &&
-          "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-md data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-md data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         side === "right" &&
           "inset-y-0 right-0 h-full w-full max-w-md data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-lg",
         className,
@@ -49,12 +51,14 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close
-        className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-        aria-label="Close"
-      >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
+      {!hideClose && (
+        <DialogPrimitive.Close
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </SheetPortal>
 ));

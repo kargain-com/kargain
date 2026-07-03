@@ -12,21 +12,13 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import NostrCommentsSection from "@/components/marketplace/nostr-comments-section";
-import { PassportActionBar } from "@/components/passport/passport-action-bar";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
+import { PassportPanelSheet } from "@/components/passport/passport-panel-sheet";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import type { PassportStatus } from "@/components/ui/passport-status-badge";
-import { WatchlistButton } from "@/components/watchlist/watchlist-button";
-import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
+import { useMediaMd } from "@/hooks/use-media-md";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import type { PassportTopComment } from "@/lib/passport/passport-comment-summary";
 import {
@@ -38,7 +30,6 @@ import type {
   PonderPassportRecord,
   PonderUriHistoryEntry,
 } from "@/lib/types/ponder";
-import { cn } from "@/lib/utils";
 
 type OpenPanelOptions = {
   replace?: boolean;
@@ -58,7 +49,6 @@ const PanelChromeContext = createContext<PanelChromeContextValue | null>(null);
 
 const PANEL_SECTION_ID: Record<PassportPanel, string> = {
   records: "passport-records",
-  commerce: "passport-commerce",
   actions: "passport-actions",
   comments: "passport-comments",
 };
@@ -99,38 +89,12 @@ function panelUrl(
   return qs ? `${pathname}?${qs}` : pathname;
 }
 
-function requestClosePassportPanel({
-  busy,
-  dirty,
-  onClose,
-}: {
-  busy: boolean;
-  dirty: boolean;
-  onClose: () => void;
-}) {
-  if (busy) return;
-  if (dirty && !window.confirm("Discard unsaved changes?")) return;
-  onClose();
-}
-
-type ListingProp = {
-  active: boolean;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  seller: `0x${string}`;
-  agent?: string;
-  returnRequestedAt?: string | number;
-  externalPaymentConfirmedAt?: string | number;
-} | null;
-
 type ChromeProps = {
   status: PassportStatus;
   passportOwner: `0x${string}`;
   chainId: number;
   tokenId: string;
-  listing?: ListingProp;
   duplicateVin?: boolean;
-  hadDispute?: boolean;
   records: PonderPassportRecord[];
   lastDisputer: string;
   disputeReason: string;
@@ -140,6 +104,8 @@ type ChromeProps = {
   uriHistory: PonderUriHistoryEntry[];
   verificationResetCount: number;
   lastVerificationResetAt: string;
+  listingActive?: boolean;
+  listingSeller?: `0x${string}`;
   children: ReactNode;
 };
 
@@ -148,9 +114,7 @@ export function PassportDetailPanelChrome({
   passportOwner,
   chainId,
   tokenId,
-  listing = null,
   duplicateVin = false,
-  hadDispute = false,
   records,
   lastDisputer,
   disputeReason,
@@ -160,11 +124,14 @@ export function PassportDetailPanelChrome({
   uriHistory,
   verificationResetCount,
   lastVerificationResetAt,
+  listingActive,
+  listingSeller,
   children,
 }: ChromeProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isMd } = useMediaMd();
   const [commentCount, setCommentCount] = useState<number | null>(null);
   const [topComment, setTopComment] = useState<PassportTopComment | null>(null);
   const [actionsDirty, setActionsDirty] = useState(false);
@@ -173,11 +140,23 @@ export function PassportDetailPanelChrome({
   const [commentsBusy, setCommentsBusy] = useState(false);
   const autoOpenedEventRef = useRef(false);
   const panelHistoryPushedRef = useRef(false);
+  const desktopCommentsHandledRef = useRef<string | null>(null);
 
   const panel = parsePassportPanel(searchParams.get("panel"));
 
   const openPanel = useCallback(
     (nextPanel: PassportPanel, options?: OpenPanelOptions) => {
+      // Desktop: comments live in the right rail — scroll instead of sheet.
+      if (isMd && nextPanel === "comments") {
+        document.getElementById(PANEL_SECTION_ID.comments)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        const url = panelUrl(pathname, new URLSearchParams(searchParams.toString()), null);
+        router.replace(url, { scroll: false });
+        return;
+      }
+
       const current = parsePassportPanel(searchParams.get("panel"));
       if (current === nextPanel && !options?.replace) return;
 
@@ -189,7 +168,7 @@ export function PassportDetailPanelChrome({
       panelHistoryPushedRef.current = true;
       router.push(url, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [isMd, pathname, router, searchParams],
   );
 
   const closePanel = useCallback(() => {
@@ -208,14 +187,42 @@ export function PassportDetailPanelChrome({
     }
   }, [panel]);
 
+  // Mobile: deep link `?e=` opens comments sheet.
   useEffect(() => {
+    if (isMd) return;
     const eventId = searchParams.get("e");
     if (!eventId || autoOpenedEventRef.current) return;
     autoOpenedEventRef.current = true;
     if (panel !== "comments") {
       openPanel("comments", { replace: true });
     }
-  }, [openPanel, panel, searchParams]);
+  }, [isMd, openPanel, panel, searchParams]);
+
+  // Desktop: `?panel=comments` or `?e=` scrolls to right-rail discussion, then clears panel.
+  useEffect(() => {
+    if (!isMd) return;
+    const eventId = searchParams.get("e");
+    const wantsComments = panel === "comments" || Boolean(eventId);
+    if (!wantsComments) return;
+
+    const key = `${panel ?? ""}:${eventId ?? ""}`;
+    if (desktopCommentsHandledRef.current === key) return;
+    desktopCommentsHandledRef.current = key;
+
+    requestAnimationFrame(() => {
+      const targetId = eventId ? `comment-${eventId}` : PANEL_SECTION_ID.comments;
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: "smooth",
+        block: eventId ? "center" : "start",
+      });
+    });
+
+    // Preserve `e` while scrolling; strip panel only.
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("panel");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [isMd, panel, pathname, router, searchParams]);
 
   const contextValue = useMemo(
     () => ({
@@ -230,33 +237,20 @@ export function PassportDetailPanelChrome({
     [panel, openPanel, closePanel, commentCount, topComment],
   );
 
-  const listingPrice = listing
-    ? {
-        active: listing.active,
-        fiatPrice1e8: listing.fiatPrice1e8,
-        fiatCurrency: listing.fiatCurrency,
-      }
-    : null;
+  const commentsSheetOpen = !isMd && panel === "comments";
+  const discussionTitle =
+    commentCount != null && commentCount > 0
+      ? `Discussion · ${commentCount}`
+      : "Discussion";
 
   return (
     <PanelChromeContext.Provider value={contextValue}>
-      <PassportActionBar
-        status={status}
-        passportOwner={passportOwner}
-        chainId={chainId}
-        tokenId={tokenId}
-        listing={listingPrice}
-        commentCount={commentCount}
-        panelOpen={panel != null}
-        onOpenPanel={(nextPanel) => openPanel(nextPanel)}
-      />
       {children}
 
       <PassportPanelSheet
-        panelId="records"
-        title="Records"
-        sectionId={PANEL_SECTION_ID.records}
         open={panel === "records"}
+        title="History & records"
+        sectionId={PANEL_SECTION_ID.records}
         onOpen={() => openPanel("records")}
         onClose={closePanel}
       >
@@ -272,36 +266,13 @@ export function PassportDetailPanelChrome({
       </PassportPanelSheet>
 
       <PassportPanelSheet
-        panelId="commerce"
-        title="Buy"
-        sectionId={PANEL_SECTION_ID.commerce}
-        open={panel === "commerce"}
-        onOpen={() => openPanel("commerce")}
-        onClose={closePanel}
-      >
-        <div className="space-y-4">
-          <WatchlistButton tokenId={tokenId} />
-          <ListingDetailClientIsland
-            chainId={chainId}
-            tokenId={tokenId}
-            listing={listing}
-            passportOwner={passportOwner}
-            passportStatus={status}
-            duplicateVin={duplicateVin}
-            hadDispute={hadDispute}
-          />
-        </div>
-      </PassportPanelSheet>
-
-      <PassportPanelSheet
-        panelId="actions"
+        open={panel === "actions"}
         title="Actions"
         sectionId={PANEL_SECTION_ID.actions}
-        open={panel === "actions"}
-        onOpen={() => openPanel("actions")}
-        onClose={closePanel}
         dirty={actionsDirty}
         busy={actionsBusy}
+        onOpen={() => openPanel("actions")}
+        onClose={closePanel}
       >
         <PassportActionsPanel
           tokenId={tokenId}
@@ -311,8 +282,8 @@ export function PassportDetailPanelChrome({
           lastDisputer={lastDisputer}
           disputeWithdrawnAt={disputeWithdrawnAt}
           duplicateVin={duplicateVin}
-          listingActive={listing?.active}
-          listingSeller={listing?.seller}
+          listingActive={listingActive}
+          listingSeller={listingSeller}
           tokenUri={tokenUri}
           currentMetadata={currentMetadata}
           uriHistory={uriHistory}
@@ -324,80 +295,25 @@ export function PassportDetailPanelChrome({
         />
       </PassportPanelSheet>
 
-      <PassportPanelSheet
-        panelId="comments"
-        title="Discussion"
-        sectionId={PANEL_SECTION_ID.comments}
-        open={panel === "comments"}
-        onOpen={() => openPanel("comments")}
-        onClose={closePanel}
-        dirty={commentsDirty}
-        busy={commentsBusy}
-      >
-        <NostrCommentsSection
-          tokenId={tokenId}
-          embeddedInSheet
-          onDirtyChange={setCommentsDirty}
-          onBusyChange={setCommentsBusy}
-        />
-      </PassportPanelSheet>
-    </PanelChromeContext.Provider>
-  );
-}
-
-type PassportPanelSheetProps = {
-  panelId: PassportPanel;
-  title: string;
-  sectionId: string;
-  open: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-  dirty?: boolean;
-  busy?: boolean;
-  children: ReactNode;
-};
-
-function PassportPanelSheet({
-  panelId,
-  title,
-  sectionId,
-  open,
-  onOpen,
-  onClose,
-  dirty = false,
-  busy = false,
-  children,
-}: PassportPanelSheetProps) {
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          onOpen();
-          return;
-        }
-        requestClosePassportPanel({
-          busy,
-          dirty,
-          onClose,
-        });
-      }}
-    >
-      <SheetContent
-        side="bottom"
-        forceMount
-        className={cn("z-[60] max-h-[90dvh] gap-0 p-0")}
-      >
-        <SheetHeader className="shrink-0 px-4 pt-4">
-          <SheetTitle>{title}</SheetTitle>
-        </SheetHeader>
-        <div
-          id={sectionId}
-          className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-6", sectionScrollAnchor)}
+      {/* Mobile-only discussion sheet; desktop uses PassportDiscussionRail. */}
+      {!isMd && (
+        <PassportPanelSheet
+          open={commentsSheetOpen}
+          title={discussionTitle}
+          sectionId={PANEL_SECTION_ID.comments}
+          dirty={commentsDirty}
+          busy={commentsBusy}
+          onOpen={() => openPanel("comments")}
+          onClose={closePanel}
         >
-          {children}
-        </div>
-      </SheetContent>
-    </Sheet>
+          <NostrCommentsSection
+            tokenId={tokenId}
+            embeddedInSheet
+            onDirtyChange={setCommentsDirty}
+            onBusyChange={setCommentsBusy}
+          />
+        </PassportPanelSheet>
+      )}
+    </PanelChromeContext.Provider>
   );
 }

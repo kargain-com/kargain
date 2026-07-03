@@ -1,14 +1,10 @@
-export type PassportPanel = "records" | "commerce" | "actions" | "comments";
+export type PassportPanel = "records" | "actions" | "comments";
 
-const PANEL_VALUES: readonly PassportPanel[] = [
-  "records",
-  "commerce",
-  "actions",
-  "comments",
-];
+const PANEL_VALUES: readonly PassportPanel[] = ["records", "actions", "comments"];
 
+/** Legacy `commerce` is ignored (commerce is inline / right rail). */
 export function parsePassportPanel(param: string | null): PassportPanel | null {
-  if (!param) return null;
+  if (!param || param === "commerce") return null;
   return PANEL_VALUES.includes(param as PassportPanel) ? (param as PassportPanel) : null;
 }
 
