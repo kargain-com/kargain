@@ -34,3 +34,4 @@ describe("passport-tab-url", () => {
     assert.equal(passportTabQueryString("records"), "tab=records");
   });
 });
+

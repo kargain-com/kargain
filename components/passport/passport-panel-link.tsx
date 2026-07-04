@@ -1,10 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import {
-  buildPassportTabQuery,
+  replacePassportTabUrl,
   type PassportTab,
 } from "@/lib/passport/passport-tab-url";
 import { cn } from "@/lib/utils";
@@ -22,9 +22,7 @@ const PANEL_TO_TAB: Record<"records" | "actions", PassportTab> = {
 };
 
 export function PassportPanelLink({ panel, children, className }: Props) {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   return (
     <button
@@ -38,12 +36,7 @@ export function PassportPanelLink({ panel, children, className }: Props) {
           });
           return;
         }
-        const next = buildPassportTabQuery(
-          PANEL_TO_TAB[panel],
-          new URLSearchParams(searchParams.toString()),
-        );
-        const qs = next.toString();
-        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        replacePassportTabUrl(pathname, window.location.search, PANEL_TO_TAB[panel]);
       }}
     >
       {children}

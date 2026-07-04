@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useAccount } from "wagmi";
 
 import type { PassportStatus } from "@/components/ui/passport-status-badge";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
@@ -10,21 +11,22 @@ import {
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import {
-  buildPassportTabQuery,
+  PASSPORT_TAB_CHANGE_EVENT,
   parsePassportTab,
+  readPassportTabFromLocation,
+  replacePassportTabUrl,
   type PassportTab,
 } from "@/lib/passport/passport-tab-url";
 import { cn } from "@/lib/utils";
-import { useAccount } from "wagmi";
 
 type Props = {
   status: PassportStatus;
   passportOwner: `0x${string}`;
   chainId: number;
   tokenId: string;
-  overview: React.ReactNode;
-  records: React.ReactNode;
-  actions: React.ReactNode;
+  overview: ReactNode;
+  records: ReactNode;
+  actions: ReactNode;
 };
 
 const TABS: { id: PassportTab; label: string }[] = [
@@ -42,10 +44,8 @@ export function PassportDetailTabs({
   records,
   actions,
 }: Props) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tab = parsePassportTab(searchParams.get("tab"));
   const { address } = useAccount();
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
@@ -53,30 +53,46 @@ export function PassportDetailTabs({
   const isDisputed = status === "DISPUTED";
   const showActionsDot = isDisputed && isOwner;
 
-  const [visitedRecords, setVisitedRecords] = useState(tab === "records");
-  const [visitedActions, setVisitedActions] = useState(tab === "actions");
+  const [tab, setTab] = useState<PassportTab>(() =>
+    parsePassportTab(searchParams.get("tab")),
+  );
+  const [visitedRecords, setVisitedRecords] = useState(() => tab === "records");
+  const [visitedActions, setVisitedActions] = useState(() => tab === "actions");
+
+  const syncTabFromLocation = useCallback(() => {
+    const next = readPassportTabFromLocation();
+    setTab(next);
+    if (next === "records") setVisitedRecords(true);
+    if (next === "actions") setVisitedActions(true);
+  }, []);
 
   useEffect(() => {
-    if (tab === "records") setVisitedRecords(true);
-    if (tab === "actions") setVisitedActions(true);
-  }, [tab]);
+    window.addEventListener(PASSPORT_TAB_CHANGE_EVENT, syncTabFromLocation);
+    window.addEventListener("popstate", syncTabFromLocation);
+    return () => {
+      window.removeEventListener(PASSPORT_TAB_CHANGE_EVENT, syncTabFromLocation);
+      window.removeEventListener("popstate", syncTabFromLocation);
+    };
+  }, [syncTabFromLocation]);
 
-  // Legacy ?panel=records|actions → tab
+  // Legacy ?panel=records|actions → tab (once)
   useEffect(() => {
     const panel = searchParams.get("panel");
     if (panel !== "records" && panel !== "actions") return;
-    const next = buildPassportTabQuery(panel, new URLSearchParams(searchParams.toString()));
-    const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+    replacePassportTabUrl(pathname, window.location.search, panel);
+    setTab(panel);
+    if (panel === "records") setVisitedRecords(true);
+    if (panel === "actions") setVisitedActions(true);
+  }, [pathname, searchParams]);
 
-  const setTab = useCallback(
+  const selectTab = useCallback(
     (nextTab: PassportTab) => {
-      const next = buildPassportTabQuery(nextTab, new URLSearchParams(searchParams.toString()));
-      const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      if (nextTab === "records") setVisitedRecords(true);
+      if (nextTab === "actions") setVisitedActions(true);
+      setTab(nextTab);
+      replacePassportTabUrl(pathname, window.location.search, nextTab);
     },
-    [pathname, router, searchParams],
+    [pathname],
   );
 
   return (
@@ -94,7 +110,7 @@ export function PassportDetailTabs({
               <button
                 key={id}
                 type="button"
-                onClick={() => setTab(id)}
+                onClick={() => selectTab(id)}
                 className={cn(
                   "relative inline-flex min-h-11 shrink-0 items-center gap-1.5 px-4 py-3 font-sans text-sm transition-colors",
                   active
@@ -122,12 +138,27 @@ export function PassportDetailTabs({
       </nav>
 
       <div className="mt-6">
-        <div className={tab === "overview" ? "block" : "hidden"}>{overview}</div>
+        <div
+          className={tab === "overview" ? "block" : "hidden"}
+          inert={tab === "overview" ? undefined : true}
+        >
+          {overview}
+        </div>
         {(tab === "records" || visitedRecords) && (
-          <div className={tab === "records" ? "block" : "hidden"}>{records}</div>
+          <div
+            className={tab === "records" ? "block" : "hidden"}
+            inert={tab === "records" ? undefined : true}
+          >
+            {records}
+          </div>
         )}
         {(tab === "actions" || visitedActions) && (
-          <div className={tab === "actions" ? "block" : "hidden"}>{actions}</div>
+          <div
+            className={tab === "actions" ? "block" : "hidden"}
+            inert={tab === "actions" ? undefined : true}
+          >
+            {actions}
+          </div>
         )}
       </div>
     </div>
