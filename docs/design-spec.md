@@ -412,30 +412,27 @@ Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.ts
 
 ### 4.14 Passport detail
 
-Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-detail-panel-chrome.tsx`](../components/passport/passport-detail-panel-chrome.tsx), [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
+Implementation: [`passport-detail-view.tsx`](../components/passport/passport-detail-view.tsx), [`passport-detail-tabs.tsx`](../components/passport/passport-detail-tabs.tsx), [`listing-comments-provider.tsx`](../components/passport/listing-comments-provider.tsx), [`passport-custody.ts`](../lib/marketplace/passport-custody.ts).
 
-**IA:** full-width shell (`max-w-7xl` / `xl:max-w-[80rem]`). **No** bottom passport action bar. **Not** the narrow `760px` prototype column.
+**IA:** full-width shell (`max-w-7xl` / `xl:max-w-[80rem]`). **No** bottom action bar. **No** modals for History/Actions/Discussion. **Not** the narrow `760px` prototype column.
 
-**Desktop (`md+`):** `grid` document | right rail (`22rem`, sticky `top-24`)
-- **Left document:** title + two-line seal; serial; dispute one-liner; MRZ; **History & records** / **Actions** outline buttons ([`passport-document-actions.tsx`](../components/passport/passport-document-actions.tsx)); advisories; gallery photo plate; description; attributes
-- **Right rail:** commerce (`WatchlistButton` + `ListingDetailClientIsland`) + always-visible Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx))
-- No comment teaser on desktop (discussion is already on-screen)
+**Shared header (always):** title + two-line seal; serial; dispute one-liner; MRZ; advisories; constrained gallery photo plate (§13.7).
 
-**Mobile (`< md`):** single column — same document header/MRZ/buttons/gallery/description/attributes; commerce inline; comment teaser at the **bottom** (opens centered Discussion dialog)
+**Sticky tabs** ([`passport-detail-tabs.tsx`](../components/passport/passport-detail-tabs.tsx)): `Overview` | `History & records` | `Actions` — URL `?tab=overview|records|actions` (overview omits `tab`). History/Actions **lazy-mounted** on first visit (kept mounted after to preserve form state). Lighter than dialogs (no portal/overlay).
 
-**Header details:**
-- Seal `sublabel`: DISPUTED → `under review`; VERIFIED → short verifier address
-- Dispute one-liner: `Under review — {reason}` + `Read the record →` → `?panel=records`
-- MRZ: all breakpoints; omit when fewer than 2 cells
-- Gallery: constrained plate `max-w-3xl` / `md:max-w-4xl`; §13.7
+**Overview tab:** description, attributes; **mobile:** commerce then **compact Discussion at bottom**; **desktop:** main column only (commerce + Discussion in right rail).
 
-**Modals** ([`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — centered `Dialog`, site-standard):
-- `?panel=records` | `actions` on all breakpoints; `comments` **mobile only**
-- Centered overlay dialog (`max-w-lg` / `sm:max-w-xl`, scrollable body) — not bottom sheets
-- Records: timeline + URI history; Actions: `PassportActionsPanel`; Discussion (mobile): `NostrCommentsSection`
-- Desktop `?panel=comments` / `?e=`: scroll to right-rail discussion (no dialog)
-- Legacy `?panel=commerce` ignored (commerce is inline / rail)
-- History push/back + dirty/busy dismiss unchanged
+**Desktop (`md+`):** `grid` main | right rail (`22rem`, sticky) — commerce + always-on compact Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx)).
+
+**Mobile (`< md`):** tabs + Overview ends with commerce + compact Discussion ([`passport-mobile-discussion.tsx`](../components/passport/passport-mobile-discussion.tsx)).
+
+**Discussion** ([`nostr-comments-section.tsx`](../components/marketplace/nostr-comments-section.tsx) `density="compact"`):
+- Shared feed via [`ListingCommentsProvider`](../components/passport/listing-comments-provider.tsx) (one Nostr subscription per page)
+- Compact rows (`divide-y`), replies collapsed by default, show-earlier cap, compact composer
+- Progressive Nostr paint (partial flush before EOSE; limit 100; timeout 2s) — [`use-listing-comments.ts`](../hooks/use-listing-comments.ts)
+- Deep link `?e=` scrolls to comment id; notifications use `marketplaceCommentHref` without `panel=`
+
+**Header details:** seal `sublabel` (DISPUTED → `under review`; VERIFIED → short verifier); dispute line → `?tab=records`; MRZ all breakpoints.
 
 **Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
@@ -1171,18 +1168,16 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ### 13.6 Passport right rail and modals
 
-**Scope:** no bottom passport bar. Desktop right rail; mobile simplified document + centered modals.
+**Scope:** sticky tabs (not modals). Desktop right rail for commerce + Discussion. Mobile compact Discussion at bottom of Overview.
 
 | Element | Contract |
 |---------|----------|
-| Desktop layout | `md:grid-cols-[1fr_22rem]`; rail sticky `top-24` — commerce + Discussion |
-| Document buttons | Outline **History & records** / **Actions** under MRZ |
-| Modals | [`passport-panel-sheet.tsx`](../components/passport/passport-panel-sheet.tsx) — centered `Dialog` (same pattern as buy-risk / authorize-agent); not bottom sheets |
-| Panels | `?panel=records` \| `actions` (all breakpoints); `comments` mobile only |
-| Desktop comments deep link | Scroll to `#passport-comments` / `#comment-{e}`; strip `panel` |
-| Open / close | `router.push` on open; `router.back()` when session pushed, else `replace` |
-| Dismiss | `confirm()` when actions/comments form dirty; block close during pending wallet tx or comment post |
-| Mobile discussion | Teaser at **bottom** of document (after commerce); opens `?panel=comments` (+ `e=`) centered dialog |
+| Tabs | Sticky under header: Overview / History & records / Actions — `?tab=` |
+| Lazy panels | Records/Actions mount on first visit, then `hidden` when inactive |
+| Desktop layout | `md:grid-cols-[1fr_22rem]`; rail sticky `top-24` — commerce + compact Discussion |
+| Mobile discussion | Always at bottom of Overview (after commerce); compact density |
+| Comments feed | Single `ListingCommentsProvider` per passport page |
+| Deep link | `?e=` → scroll to `#comment-{id}` on `#passport-comments` |
 
 ### 13.7 Passport detail gallery (all breakpoints)
 
@@ -1197,4 +1192,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.2 (July 2026 — centered History/Actions/Discussion dialogs; mobile comment teaser at bottom). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.3 (July 2026 — passport tabs; compact Discussion; progressive Nostr). Update when tokens, app shell, or component contracts change.*

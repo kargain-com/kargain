@@ -5,7 +5,7 @@ import { useMediaMd } from "@/hooks/use-media-md";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
-/** Desktop-only always-visible discussion; mobile uses the comments sheet. */
+/** Desktop right-rail discussion (shared feed via ListingCommentsProvider). */
 export function PassportDiscussionRail({ tokenId }: { tokenId: string }) {
   const { isMd } = useMediaMd();
   if (!isMd) return null;
@@ -19,7 +19,7 @@ export function PassportDiscussionRail({ tokenId }: { tokenId: string }) {
       )}
       aria-label="Discussion"
     >
-      <NostrCommentsSection tokenId={tokenId} />
+      <NostrCommentsSection tokenId={tokenId} density="compact" />
     </section>
   );
 }

@@ -34,14 +34,14 @@ describe("notification state", () => {
 });
 
 describe("notification href", () => {
-  it("marketplaceCommentHref without event id opens comments panel", () => {
-    assert.equal(marketplaceCommentHref("42"), "/marketplace/42?panel=comments");
+  it("marketplaceCommentHref without event id opens passport detail", () => {
+    assert.equal(marketplaceCommentHref("42"), "/marketplace/42");
   });
 
-  it("marketplaceCommentHref with event id adds panel and e query", () => {
+  it("marketplaceCommentHref with event id adds e query", () => {
     assert.equal(
       marketplaceCommentHref("42", "abc123"),
-      "/marketplace/42?panel=comments&e=abc123",
+      "/marketplace/42?e=abc123",
     );
   });
 });

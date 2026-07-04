@@ -1,52 +1,61 @@
 "use client";
 
-import { Heart, Loader2, MessageCircle } from "lucide-react";
+import { ChevronDown, Heart, Loader2, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { hexToBytes } from "viem";
 import { useAccount } from "wagmi";
+import { finalizeEvent, getPublicKey } from "nostr-tools";
+
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
-import { useListingComments, parseListingCommentParentId } from "@/hooks/use-listing-comments";
+import { useListingCommentsContextOptional } from "@/components/passport/listing-comments-provider";
+import {
+  parseListingCommentParentId,
+  useListingComments,
+  type ListingCommentEvent,
+} from "@/hooks/use-listing-comments";
 import { useNostrKey } from "@/hooks/use-nostr-key";
-import { usePassportQuickNavOptional } from "@/components/passport/passport-detail-panel-chrome";
 import { sansLink } from "@/lib/design/instrument-classes";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
-import { selectPassportTopComment } from "@/lib/passport/passport-comment-summary";
-import type { ListingCommentEvent } from "@/hooks/use-listing-comments";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { finalizeEvent, getPublicKey } from "nostr-tools";
 
 type Props = {
   tokenId: string;
-  onDirtyChange?: (dirty: boolean) => void;
-  onBusyChange?: (busy: boolean) => void;
-  embeddedInSheet?: boolean;
+  density?: "default" | "compact";
+  /** Hide the Discussion heading (e.g. inside a tab or rail card). */
+  hideHeading?: boolean;
+  initialVisibleRoots?: number;
 };
 
-function CommentRowSkeleton() {
+const DEFAULT_VISIBLE_ROOTS = 5;
+
+function CommentRowSkeleton({ compact }: { compact?: boolean }) {
   return (
-    <li className="rounded-md border border-border-default bg-bg-surface p-4">
+    <li className={cn(compact ? "py-2.5" : "rounded-md border border-border-default bg-bg-surface p-4")}>
       <div className="h-3 w-24 animate-pulse rounded-sm bg-bg-card" />
       <div className="mt-2 h-4 w-full animate-pulse rounded-sm bg-bg-card" />
-      <div className="mt-1 h-4 max-w-[85%] animate-pulse rounded-sm bg-bg-card" />
+      {!compact && <div className="mt-1 h-4 max-w-[85%] animate-pulse rounded-sm bg-bg-card" />}
     </li>
   );
 }
 
 function NostrCommentsSection({
   tokenId,
-  onDirtyChange,
-  onBusyChange,
-  embeddedInSheet = false,
+  density = "default",
+  hideHeading = false,
+  initialVisibleRoots = DEFAULT_VISIBLE_ROOTS,
 }: Props) {
+  const compact = density === "compact";
   const searchParams = useSearchParams();
   const highlightEventId = searchParams.get("e");
   const { isConnected, address } = useAccount();
   const { nostrPrivateKey, loading, ensureNostrKey } = useNostrKey();
+  const sharedFeed = useListingCommentsContextOptional();
+  const localFeed = useListingComments(tokenId, { enabled: sharedFeed == null });
   const {
     pool,
     events,
@@ -58,44 +67,30 @@ function NostrCommentsSection({
     ordered,
     roots,
     byParent,
-  } = useListingComments(tokenId);
+  } = sharedFeed ?? localFeed;
+
   const [message, setMessage] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [sendingError, setSendingError] = useState<string | null>(null);
   const [flashEventId, setFlashEventId] = useState<string | null>(null);
+  const [showAllRoots, setShowAllRoots] = useState(false);
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+  const [composerFocused, setComposerFocused] = useState(false);
 
-  const passportQuickNav = usePassportQuickNavOptional();
   const canPost = isConnected && !loading;
   const composerPlaceholder = canPost
     ? replyTo
       ? "Write a reply..."
       : "Share your thoughts..."
     : "Connect wallet to join the discussion";
-  const topComment = useMemo(
-    () => selectPassportTopComment(roots, byParent),
-    [roots, byParent],
-  );
 
-  const dirty = Boolean(message.trim() || replyTo);
+  const visibleRoots = useMemo(() => {
+    if (showAllRoots || roots.length <= initialVisibleRoots) return roots;
+    return roots.slice(-initialVisibleRoots);
+  }, [roots, showAllRoots, initialVisibleRoots]);
 
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-
-  useEffect(() => {
-    onBusyChange?.(posting);
-  }, [posting, onBusyChange]);
-
-  useEffect(() => {
-    if (feedLoading) {
-      passportQuickNav?.setCommentCount(null);
-      passportQuickNav?.setTopComment(null);
-      return;
-    }
-    passportQuickNav?.setCommentCount(roots.length);
-    passportQuickNav?.setTopComment(topComment);
-  }, [passportQuickNav, roots.length, topComment, feedLoading]);
+  const hiddenRootCount = Math.max(0, roots.length - visibleRoots.length);
 
   useEffect(() => {
     if (!highlightEventId || feedLoading) return;
@@ -104,13 +99,20 @@ function NostrCommentsSection({
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       setFlashEventId(highlightEventId);
-    }, 320);
+      const parentRoot = roots.find(
+        (r) => r.event.id === highlightEventId || (byParent[r.event.id] ?? []).some((c) => c.event.id === highlightEventId),
+      );
+      if (parentRoot && (byParent[parentRoot.event.id] ?? []).length > 0) {
+        setExpandedReplies((prev) => ({ ...prev, [parentRoot.event.id]: true }));
+      }
+      setShowAllRoots(true);
+    }, 100);
     const flashTimer = window.setTimeout(() => setFlashEventId(null), 3000);
     return () => {
       window.clearTimeout(scrollTimer);
       window.clearTimeout(flashTimer);
     };
-  }, [highlightEventId, feedLoading, ordered.length]);
+  }, [highlightEventId, feedLoading, ordered.length, roots, byParent]);
 
   const resolveParentPubkey = async (parentEventId: string): Promise<string | null> => {
     const localPubkey = events[parentEventId]?.event.pubkey;
@@ -120,7 +122,7 @@ function NostrCommentsSection({
       const results = await pool.querySync(
         [...NOSTR_RELAYS],
         { ids: [parentEventId], limit: 1 },
-        { maxWait: 3000 },
+        { maxWait: 2000 },
       );
       return results[0]?.pubkey ?? null;
     } catch {
@@ -189,16 +191,23 @@ function NostrCommentsSection({
       content: text,
       tags: optimisticTags,
     };
-    setEvents((prev) => ({ ...prev, [tempId]: { event: optimistic, parentId: replyTo, optimistic: true } }));
+    setEvents((prev) => ({
+      ...prev,
+      [tempId]: { event: optimistic, parentId: replyTo, optimistic: true },
+    }));
     setMessage("");
     setReplyTo(null);
+    setComposerFocused(false);
 
     try {
       const published = await publish(1, text, key, optimistic.tags.find((t) => t[0] === "e")?.[1]);
       setEvents((prev) => {
         const next = { ...prev };
         delete next[tempId];
-        next[published.id] = { event: published, parentId: parseListingCommentParentId(published) };
+        next[published.id] = {
+          event: published,
+          parentId: parseListingCommentParentId(published),
+        };
         return next;
       });
     } catch {
@@ -238,166 +247,242 @@ function NostrCommentsSection({
     }
   };
 
-  return (
-    <section className="space-y-4" aria-label="Discussion">
-      {!embeddedInSheet && (
-        <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
-      )}
-
-      <div className="min-h-[12rem]">
-      {feedLoading ? (
-        <ul
-          className="space-y-3 animate-in fade-in duration-200"
-          aria-busy="true"
-          aria-label="Loading discussion"
+  const authorLine = (evmAddress: string | null, optimistic?: boolean) => (
+    <p className={cn("font-sans text-text-secondary", compact ? "text-[11px]" : "text-xs")}>
+      {evmAddress ? (
+        <Link
+          href={`/profile/${evmAddress}`}
+          className="font-mono text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
         >
-          <CommentRowSkeleton />
-          <CommentRowSkeleton />
-          <CommentRowSkeleton />
-        </ul>
+          {shortAddress(evmAddress as `0x${string}`)}
+        </Link>
       ) : (
-        <div className="animate-in fade-in duration-300 fill-mode-both">
-          {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
-          {roots.length === 0 && (
-            <div className="rounded-md border border-border-default bg-bg-surface p-4">
-              <EmptyState
-                variant="content"
-                level="B"
-                title="No comments yet."
-                description="Be the first to share context or ask a question."
-              />
-            </div>
+        <span className="font-mono text-text-tertiary">Kargain user</span>
+      )}
+      {optimistic ? " · sending..." : ""}
+    </p>
+  );
+
+  return (
+    <section className={cn(compact ? "space-y-3" : "space-y-4")} aria-label="Discussion">
+      {!hideHeading && (
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="font-sans text-base font-medium text-text-primary">Discussion</h2>
+          {roots.length > 0 && (
+            <span className="font-mono text-xs tabular-nums text-text-tertiary">{roots.length}</span>
           )}
-          <ul className="space-y-3">
-            {roots.map((root) => {
-          const evmAddress = root.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
-          return (
-            <li
-              key={root.event.id}
-              id={`comment-${root.event.id}`}
-              className={cn(
-                "rounded-md border border-border-default bg-bg-surface p-4 transition-[colors,opacity,transform] duration-300 ease-out",
-                flashEventId === root.event.id && "border-accent-warm",
-              )}
-            >
-              <p className="font-sans text-xs text-text-secondary">
-                {evmAddress ? (
-                  <Link
-                    href={`/profile/${evmAddress}`}
-                    className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
-                  >
-                    {shortAddress(evmAddress as `0x${string}`)}
-                  </Link>
-                ) : (
-                  <span className="font-mono text-xs text-text-tertiary">
-                    Kargain user
-                  </span>
-                )}{" "}
-                {root.optimistic ? "• sending..." : ""}
-              </p>
-              <p className="mt-1 font-sans text-sm text-text-primary">{root.event.content}</p>
-              <div className="mt-2 flex items-center gap-3 font-sans text-xs">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
-                  disabled={!isConnected}
-                  onClick={() => setReplyTo(root.event.id)}
-                >
-                  <MessageCircle className="h-3.5 w-3.5" /> Reply
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
-                  disabled={!isConnected}
-                  onClick={() => void like(root.event.id)}
-                >
-                  <Heart className="h-3.5 w-3.5" /> {likesByTarget[root.event.id]?.size ?? 0}
-                </button>
-              </div>
-              {(byParent[root.event.id] ?? []).length > 0 && (
-                <ul className="mt-3 space-y-2 border-l border-border-default pl-3">
-                  {(byParent[root.event.id] ?? []).map((child) => {
-                    const childEvmAddress = child.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
-                    return (
-                      <li
-                        key={child.event.id}
-                        id={`comment-${child.event.id}`}
-                        className={cn(
-                          "transition-colors duration-300",
-                          flashEventId === child.event.id && "rounded-sm border border-accent-warm px-2 py-1",
-                        )}
-                      >
-                        <p className="font-sans text-xs text-text-secondary">
-                          {childEvmAddress ? (
-                            <Link
-                              href={`/profile/${childEvmAddress}`}
-                              className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm hover:underline"
-                            >
-                              {shortAddress(childEvmAddress as `0x${string}`)}
-                            </Link>
-                          ) : (
-                            <span className="font-mono text-xs text-text-tertiary">
-                              Kargain user
-                            </span>
-                          )}
-                        </p>
-                        <p className="font-sans text-sm text-text-primary">{child.event.content}</p>
-                        <button
-                          type="button"
-                          className="mt-1 inline-flex items-center gap-1 font-sans text-xs text-text-secondary disabled:opacity-50 disabled:pointer-events-none"
-                          disabled={!isConnected}
-                          onClick={() => void like(child.event.id)}
-                        >
-                          <Heart className="h-3 w-3" /> {likesByTarget[child.event.id]?.size ?? 0}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-          </ul>
         </div>
       )}
+
+      <div className={cn(compact ? "min-h-[6rem]" : "min-h-[12rem]")}>
+        {feedLoading && roots.length === 0 ? (
+          <ul
+            className={cn(compact ? "divide-y divide-border-default" : "space-y-3")}
+            aria-busy="true"
+            aria-label="Loading discussion"
+          >
+            <CommentRowSkeleton compact={compact} />
+            <CommentRowSkeleton compact={compact} />
+            {!compact && <CommentRowSkeleton />}
+          </ul>
+        ) : (
+          <div className="animate-in fade-in duration-200">
+            {feedError && <p className="font-sans text-xs text-status-error">{feedError}</p>}
+            {roots.length === 0 && (
+              <div
+                className={cn(
+                  compact
+                    ? "py-3"
+                    : "rounded-md border border-border-default bg-bg-surface p-4",
+                )}
+              >
+                <EmptyState
+                  variant="content"
+                  level="B"
+                  title="No comments yet."
+                  description="Be the first to share context or ask a question."
+                />
+              </div>
+            )}
+            {hiddenRootCount > 0 && (
+              <button
+                type="button"
+                className={cn("mb-2 inline-flex min-h-11 items-center gap-1", sansLink)}
+                onClick={() => setShowAllRoots(true)}
+              >
+                <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                Show earlier ({hiddenRootCount})
+              </button>
+            )}
+            <ul
+              className={cn(
+                compact
+                  ? "divide-y divide-border-default border-y border-border-default"
+                  : "space-y-3",
+              )}
+            >
+              {visibleRoots.map((root) => {
+                const evmAddress = root.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
+                const replies = byParent[root.event.id] ?? [];
+                const repliesOpen = expandedReplies[root.event.id] ?? false;
+                return (
+                  <li
+                    key={root.event.id}
+                    id={`comment-${root.event.id}`}
+                    className={cn(
+                      compact
+                        ? "py-2.5 transition-colors duration-200"
+                        : "rounded-md border border-border-default bg-bg-surface p-4 transition-colors duration-200",
+                      flashEventId === root.event.id && "bg-accent-warm/5",
+                    )}
+                  >
+                    {authorLine(evmAddress, root.optimistic)}
+                    <p
+                      className={cn(
+                        "mt-0.5 font-sans text-text-primary",
+                        compact ? "text-sm leading-snug" : "text-sm leading-[1.5]",
+                      )}
+                    >
+                      {root.event.content}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3 font-sans text-xs">
+                      <button
+                        type="button"
+                        className="inline-flex min-h-11 items-center gap-1 text-text-secondary disabled:pointer-events-none disabled:opacity-50"
+                        disabled={!isConnected}
+                        onClick={() => {
+                          setReplyTo(root.event.id);
+                          setComposerFocused(true);
+                        }}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.5} /> Reply
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex min-h-11 items-center gap-1 text-text-secondary disabled:pointer-events-none disabled:opacity-50"
+                        disabled={!isConnected}
+                        onClick={() => void like(root.event.id)}
+                      >
+                        <Heart className="h-3.5 w-3.5" strokeWidth={1.5} />{" "}
+                        {likesByTarget[root.event.id]?.size ?? 0}
+                      </button>
+                      {replies.length > 0 && (
+                        <button
+                          type="button"
+                          className="inline-flex min-h-11 items-center gap-1 text-text-tertiary"
+                          onClick={() =>
+                            setExpandedReplies((prev) => ({
+                              ...prev,
+                              [root.event.id]: !repliesOpen,
+                            }))
+                          }
+                        >
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 transition-transform",
+                              repliesOpen && "rotate-180",
+                            )}
+                            strokeWidth={1.5}
+                            aria-hidden
+                          />
+                          {replies.length} {replies.length === 1 ? "reply" : "replies"}
+                        </button>
+                      )}
+                    </div>
+                    {repliesOpen && replies.length > 0 && (
+                      <ul className="mt-2 space-y-2 border-l border-border-default pl-3">
+                        {replies.map((child) => {
+                          const childEvm =
+                            child.event.tags.find((t) => t[0] === "evm")?.[1] ?? null;
+                          return (
+                            <li
+                              key={child.event.id}
+                              id={`comment-${child.event.id}`}
+                              className={cn(
+                                flashEventId === child.event.id && "bg-accent-warm/5",
+                              )}
+                            >
+                              {authorLine(childEvm)}
+                              <p className="font-sans text-sm text-text-primary">
+                                {child.event.content}
+                              </p>
+                              <button
+                                type="button"
+                                className="mt-0.5 inline-flex min-h-11 items-center gap-1 font-sans text-xs text-text-secondary disabled:pointer-events-none disabled:opacity-50"
+                                disabled={!isConnected}
+                                onClick={() => void like(child.event.id)}
+                              >
+                                <Heart className="h-3 w-3" strokeWidth={1.5} />{" "}
+                                {likesByTarget[child.event.id]?.size ?? 0}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-3 border-t border-border-default pt-4">
+      <div
+        className={cn(
+          "border-t border-border-default",
+          compact ? "space-y-2 pt-3" : "space-y-3 pt-4",
+        )}
+      >
         <Textarea
           placeholder={composerPlaceholder}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          onFocus={() => setComposerFocused(true)}
           disabled={!canPost}
-          rows={3}
-          className="min-h-[5rem] resize-y"
+          rows={compact && !composerFocused && !message && !replyTo ? 1 : 3}
+          className={cn("resize-y", compact ? "min-h-11" : "min-h-[5rem]")}
         />
         {replyTo && (
           <p className="font-sans text-xs text-text-secondary">
             Replying to {replyTo.slice(0, 8)}...
-            <button className={cn("ml-2", sansLink)} onClick={() => setReplyTo(null)} type="button">
+            <button
+              className={cn("ml-2", sansLink)}
+              onClick={() => setReplyTo(null)}
+              type="button"
+            >
               cancel
             </button>
           </p>
         )}
-        <div className="flex justify-end">
-          <Button type="button" onClick={() => void postComment()} disabled={!canPost || posting || !message.trim()}>
-            {posting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
-                Posting...
-              </>
-            ) : (
-              "Post comment"
-            )}
-          </Button>
-        </div>
+        {(composerFocused || message.trim() || replyTo || !compact) && (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void postComment()}
+              disabled={!canPost || posting || !message.trim()}
+            >
+              {posting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+                  Posting...
+                </>
+              ) : (
+                "Post comment"
+              )}
+            </Button>
+          </div>
+        )}
         {sendingError && <p className="font-sans text-xs text-status-error">{sendingError}</p>}
       </div>
 
-      <p className="font-sans text-xs text-text-tertiary">
-        Comments are public and stored on decentralized relays. They cannot be deleted by the owner.
-      </p>
+      {!compact && (
+        <p className="font-sans text-xs text-text-tertiary">
+          Comments are public and stored on decentralized relays. They cannot be deleted by the
+          owner.
+        </p>
+      )}
     </section>
   );
 }
