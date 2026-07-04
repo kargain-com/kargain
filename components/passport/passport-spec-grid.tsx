@@ -104,7 +104,7 @@ export function PassportSpecGrid({ metadata, metadataError }: Props) {
       {metadata.vin ? (
         <div>
           <p className={serialLabel}>VIN</p>
-          <InstrumentFrame className="mt-2">
+          <InstrumentFrame className="mt-2 w-fit max-w-full">
             <p className="px-3 py-2 font-mono text-sm font-normal tabular-nums text-text-primary">
               {metadata.vin}
             </p>

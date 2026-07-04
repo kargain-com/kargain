@@ -422,7 +422,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 **Overview tab:** description, attributes; **mobile:** commerce then **compact Discussion at bottom**; **desktop:** main column only (commerce + Discussion in right rail).
 
-**Desktop (`md+`):** `grid` main | right rail (`22rem`, sticky) — commerce + always-on compact Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx)).
+**Desktop (`md+`):** `grid` starts at the **header** (title/MRZ/gallery/tabs in the left column) so `#passport-commerce` aligns with the title, not below the photo plate. Right rail (`22rem`, sticky `top-24`) — commerce + always-on compact Discussion ([`passport-discussion-rail.tsx`](../components/passport/passport-discussion-rail.tsx)).
 
 **Mobile (`< md`):** tabs + Overview ends with commerce + compact Discussion ([`passport-mobile-discussion.tsx`](../components/passport/passport-mobile-discussion.tsx)).
 
@@ -432,7 +432,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 - Progressive Nostr paint (partial flush before EOSE; limit 100; timeout 2s) — [`use-listing-comments.ts`](../hooks/use-listing-comments.ts)
 - Deep link `?e=` scrolls to comment id; notifications use `marketplaceCommentHref` without `panel=`
 
-**Header details:** seal `sublabel` (DISPUTED → `under review`; VERIFIED → short verifier); dispute line → `?tab=records`; MRZ all breakpoints.
+**Header details:** seal `sublabel` (DISPUTED → `under review`; VERIFIED → short verifier); dispute line → `?tab=records`; MRZ all breakpoints. VIN in attributes uses `InstrumentFrame` with `w-fit max-w-full` (brackets hug the VIN string, not the full section width).
 
 **Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
@@ -1174,7 +1174,7 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 |---------|----------|
 | Tabs | Sticky under header: Overview / History & records / Actions — `?tab=` |
 | Lazy panels | Records/Actions mount on first visit, then `hidden` when inactive |
-| Desktop layout | `md:grid-cols-[1fr_22rem]`; rail sticky `top-24` — commerce + compact Discussion |
+| Desktop layout | `md:grid-cols-[1fr_22rem]` from header down; rail sticky `top-24` — commerce + compact Discussion (aligned with title) |
 | Mobile discussion | Always at bottom of Overview (after commerce); compact density |
 | Comments feed | Single `ListingCommentsProvider` per passport page |
 | Deep link | `?e=` → scroll to `#comment-{id}` on `#passport-comments` |
@@ -1192,4 +1192,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.3 (July 2026 — passport tabs; compact Discussion; progressive Nostr). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.4 (July 2026 — commerce rail at header height; VIN frame `w-fit`). Update when tokens, app shell, or component contracts change.*

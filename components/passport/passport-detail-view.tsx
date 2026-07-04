@@ -181,74 +181,74 @@ export function PassportDetailView({
       )}
 
       <ListingCommentsProvider tokenId={tokenId}>
-        <div className="mt-8 flex items-start justify-between gap-4">
-          <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
-            {title}
-          </h1>
-          <PassportStatusBadge
-            status={passport.status}
-            sublabel={statusSublabel}
-            className="shrink-0"
-          />
-        </div>
-
-        <div className="mt-2">
-          <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
-        </div>
-
-        {isDisputed && (
-          <p className="mt-2.5 font-sans text-sm leading-[1.5] text-status-error" role="status">
-            Under review — {disputeBannerText}{" "}
-            <PassportPanelLink panel="records" className="text-status-error underline">
-              Read the record →
-            </PassportPanelLink>
-          </p>
-        )}
-
-        <div className="mt-5">
-          <PassportDataStrip
-            listing={listing}
-            mileageKm={metadata?.mileageKm ?? null}
-            status={passport.status}
-            verifier={passport.verifier}
-            custody={custody}
-          />
-        </div>
-
-        <div className="mt-4 space-y-3">
-          <PassportChainStatusBanner
-            tokenId={tokenId}
-            ponderStatus={passport.status}
-            chainId={chainId}
-          />
-          {showG2Banner && (
-            <div
-              className="rounded-md border border-accent-warm/40 bg-bg-primary/80 p-4"
-              role="status"
-            >
-              <p className="font-sans text-sm text-text-primary">
-                Fixed after dispute — awaiting re-verification. Metadata was updated after the last
-                dispute or reset.
-              </p>
-            </div>
-          )}
-          {passport.duplicateVin && (
-            <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
-              Duplicate VIN warning — another passport shares this VIN in the index.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-6">
-          <PassportPhotoGallery
-            photos={metadata?.photos ?? []}
-            chainId={chainId}
-            verified={passport.status === "VERIFIED"}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-[1fr_22rem] md:items-start">
+        <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-[1fr_22rem] md:items-start">
           <div className="min-w-0">
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
+                {title}
+              </h1>
+              <PassportStatusBadge
+                status={passport.status}
+                sublabel={statusSublabel}
+                className="shrink-0"
+              />
+            </div>
+
+            <div className="mt-2">
+              <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
+            </div>
+
+            {isDisputed && (
+              <p className="mt-2.5 font-sans text-sm leading-[1.5] text-status-error" role="status">
+                Under review — {disputeBannerText}{" "}
+                <PassportPanelLink panel="records" className="text-status-error underline">
+                  Read the record →
+                </PassportPanelLink>
+              </p>
+            )}
+
+            <div className="mt-5">
+              <PassportDataStrip
+                listing={listing}
+                mileageKm={metadata?.mileageKm ?? null}
+                status={passport.status}
+                verifier={passport.verifier}
+                custody={custody}
+              />
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <PassportChainStatusBanner
+                tokenId={tokenId}
+                ponderStatus={passport.status}
+                chainId={chainId}
+              />
+              {showG2Banner && (
+                <div
+                  className="rounded-md border border-accent-warm/40 bg-bg-primary/80 p-4"
+                  role="status"
+                >
+                  <p className="font-sans text-sm text-text-primary">
+                    Fixed after dispute — awaiting re-verification. Metadata was updated after the
+                    last dispute or reset.
+                  </p>
+                </div>
+              )}
+              {passport.duplicateVin && (
+                <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
+                  Duplicate VIN warning — another passport shares this VIN in the index.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <PassportPhotoGallery
+                photos={metadata?.photos ?? []}
+                chainId={chainId}
+                verified={passport.status === "VERIFIED"}
+              />
+            </div>
+
             <PassportDetailTabs
               status={passport.status}
               passportOwner={passport.owner as `0x${string}`}
