@@ -18,7 +18,7 @@ import { categoryLabel } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { publishNostrProfile } from "@/lib/nostr/profile";
-import { parseLud16 } from "@/lib/lightning/lud16";
+import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -92,8 +92,7 @@ export function ProfileEditClient() {
     userEditedRef.current = true;
   }, []);
 
-  const lud16Invalid =
-    lud16.trim().length > 0 && parseLud16(lud16.trim()) == null;
+  const lud16Invalid = isLightningAddressInvalid(lud16);
 
   const onSave = useCallback(async () => {
     if (!walletClient || !address || saving) return;
@@ -231,31 +230,19 @@ export function ProfileEditClient() {
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lightning-address">Lightning address</Label>
-            <Input
-              id="lightning-address"
-              type="text"
-              value={lud16}
-              placeholder="name@domain"
-              className="font-mono text-sm"
-              onChange={(e) => {
-                markEdited();
-                setLud16Touched(true);
-                setLud16(e.target.value);
-              }}
-              onBlur={() => setLud16Touched(true)}
-            />
-            <p className="font-sans text-sm text-text-secondary">
-              Optional. Lets others pay you over Lightning, e.g. your verification fee. Format:
-              name@domain.
-            </p>
-            {lud16Touched && lud16Invalid && (
-              <p className="font-sans text-sm text-status-error" role="alert">
-                Enter a valid Lightning address (name@domain).
-              </p>
-            )}
-          </div>
+          <LightningAddressField
+            id="lightning-address"
+            value={lud16}
+            touched={lud16Touched}
+            disabled={saving}
+            helperText="Optional. Lets others pay you over Lightning, e.g. your verification fee. Format: name@domain."
+            onChange={(value) => {
+              markEdited();
+              setLud16Touched(true);
+              setLud16(value);
+            }}
+            onBlur={() => setLud16Touched(true)}
+          />
 
           <div className="flex flex-col gap-3">
             <Button

@@ -9,6 +9,7 @@ import {
   nostrPubkeyFromPrivateKey,
 } from "@/lib/nostr/nostr-client";
 import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
+import { normalizeVerifierPaymentMethods } from "@/lib/nostr/payment-method-id";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
 export const KARGAIN_MANAGED_KIND0_KEYS = [
@@ -18,6 +19,7 @@ export const KARGAIN_MANAGED_KIND0_KEYS = [
   "website",
   "messagesEnabled",
   "lud16",
+  "verifierPaymentMethods",
 ] as const;
 
 function toWalletAddress(address: Address): `0x${string}` {
@@ -114,6 +116,15 @@ export function mergeKind0Content(
       merged.messagesEnabled = false;
     } else {
       delete merged.messagesEnabled;
+    }
+  }
+
+  if ("verifierPaymentMethods" in patch) {
+    const methods = normalizeVerifierPaymentMethods(patch.verifierPaymentMethods);
+    if (methods) {
+      merged.verifierPaymentMethods = methods;
+    } else {
+      delete merged.verifierPaymentMethods;
     }
   }
 

@@ -37,12 +37,14 @@ import {
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
+import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   formatVerificationFee,
   verificationFeeInSats,
   verificationFeeInUsdc,
 } from "@/lib/verifier/verification-fee";
-import { usdcAddress } from "@/lib/web3/deployment-addresses";
+import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
+import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -142,8 +144,19 @@ export function VerificationPaymentModal({
   });
 
   const usdc = usdcAddress(chainId);
+  const staking = karProStakingAddress(chainId);
   const wrongChain = walletChain !== chainId;
   const isPending = isEthPending || isWritePending;
+
+  const { data: chainFeeWei } = useReadContract({
+    address: staking,
+    abi: KarProStakingAbi,
+    functionName: "verificationFee",
+    args: [verifierAddress],
+    query: { enabled: Boolean(open && staking) },
+  });
+
+  const effectiveFeeWei = chainFeeWei ?? feeWei;
 
   const [phase, setPhase] = useState<ModalPhase>("form");
   const [successViaLightning, setSuccessViaLightning] = useState(false);
@@ -164,20 +177,38 @@ export function VerificationPaymentModal({
     () => parseLud16(verifierProfile?.lud16 ?? ""),
     [verifierProfile?.lud16],
   );
-  const lightningAvailable = verifierLud16 != null;
+
+  const acceptedMethods = useMemo(
+    () => acceptedPaymentMethods(verifierProfile),
+    [verifierProfile],
+  );
+
+  const ethSegmentVisible = acceptedMethods.has("eth");
+  const usdcSegmentVisible = acceptedMethods.has("usdc");
+  const lightningSegmentVisible =
+    acceptedMethods.has("lightning") && verifierLud16 != null;
+  const noOnlineMethods =
+    !ethSegmentVisible && !usdcSegmentVisible && !lightningSegmentVisible;
 
   const useDropdown = unverifiedPassports.length > 0;
   const tokenId = (useDropdown ? selectedTokenId : manualTokenId).trim();
   const hasTokenId = tokenId.length > 0;
 
   const usdcAmount =
-    ethUsd != null && ethUsd > 0n ? verificationFeeInUsdc(feeWei, ethUsd) : 0n;
+    ethUsd != null && ethUsd > 0n
+      ? verificationFeeInUsdc(effectiveFeeWei, ethUsd)
+      : 0n;
   const usdcOptionDisabled =
-    !usdc || ratesLoading || ethUsd == null || ethUsd === 0n || usdcAmount === 0n;
+    !usdcSegmentVisible ||
+    !usdc ||
+    ratesLoading ||
+    ethUsd == null ||
+    ethUsd === 0n ||
+    usdcAmount === 0n;
 
   const satsAmount =
     ethUsd != null && btcUsd != null && ethUsd > 0n && btcUsd > 0n
-      ? verificationFeeInSats(feeWei, ethUsd, btcUsd)
+      ? verificationFeeInSats(effectiveFeeWei, ethUsd, btcUsd)
       : 0n;
   const lightningRatesUnavailable =
     ratesLoading || ethUsd == null || ethUsd === 0n || btcUsd == null || btcUsd === 0n;
@@ -200,7 +231,7 @@ export function VerificationPaymentModal({
   const insufficientEthBalance =
     paymentMethod === "ETH" &&
     ethBalance != null &&
-    ethBalance.value < feeWei;
+    ethBalance.value < effectiveFeeWei;
 
   const insufficientUsdcBalance =
     paymentMethod === "USDC" &&
@@ -268,7 +299,7 @@ export function VerificationPaymentModal({
   }, [phase, open, handleOpenChange]);
 
   useEffect(() => {
-    if (!open || paymentMethod !== "LIGHTNING" || !lightningAvailable || !hasTokenId) {
+    if (!open || paymentMethod !== "LIGHTNING" || !lightningSegmentVisible || !hasTokenId) {
       return;
     }
     if (lightningRatesUnavailable || satsAmount === 0n || !verifierProfile?.lud16) {
@@ -307,7 +338,7 @@ export function VerificationPaymentModal({
   }, [
     open,
     paymentMethod,
-    lightningAvailable,
+    lightningSegmentVisible,
     hasTokenId,
     lightningRatesUnavailable,
     satsAmount,
@@ -345,10 +376,25 @@ export function VerificationPaymentModal({
   }, [open, lightningVerifyUrl, phase]);
 
   useEffect(() => {
-    if (paymentMethod === "LIGHTNING" && !lightningAvailable) {
-      setPaymentMethod("ETH");
+    const visible: PaymentMethod[] = [];
+    if (ethSegmentVisible) visible.push("ETH");
+    if (usdcSegmentVisible && !usdcOptionDisabled) visible.push("USDC");
+    if (lightningSegmentVisible) visible.push("LIGHTNING");
+
+    if (visible.length === 0) return;
+
+    if (!visible.includes(paymentMethod)) {
+      setPaymentMethod(visible[0] ?? "ETH");
+      resetLightningState();
     }
-  }, [paymentMethod, lightningAvailable]);
+  }, [
+    ethSegmentVisible,
+    usdcSegmentVisible,
+    lightningSegmentVisible,
+    usdcOptionDisabled,
+    paymentMethod,
+    resetLightningState,
+  ]);
 
   const payEth = useCallback(async () => {
     if (!hasTokenId) return;
@@ -357,7 +403,7 @@ export function VerificationPaymentModal({
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
       const hash = await sendTransactionAsync({
         to: verifierAddress,
-        value: feeWei,
+        value: effectiveFeeWei,
         data: stringToHex(`kargain:verify:${tokenId}`),
         chainId: wc,
       });
@@ -369,7 +415,7 @@ export function VerificationPaymentModal({
     }
   }, [
     config,
-    feeWei,
+    effectiveFeeWei,
     hasTokenId,
     sendTransactionAsync,
     switchChainAsync,
@@ -523,9 +569,15 @@ export function VerificationPaymentModal({
                     Switch network
                   </Button>
                 </div>
+              ) : noOnlineMethods ? (
+                <p className="font-sans text-sm text-text-secondary">
+                  This verifier has not enabled online payment methods. Contact them to arrange
+                  payment.
+                </p>
               ) : (
                 <>
                   <div className="flex rounded-sm border border-border-default p-0.5">
+                    {ethSegmentVisible && (
                     <button
                       type="button"
                       onClick={() => {
@@ -543,6 +595,8 @@ export function VerificationPaymentModal({
                     >
                       Pay with ETH
                     </button>
+                    )}
+                    {usdcSegmentVisible && (
                     <button
                       type="button"
                       disabled={usdcOptionDisabled || isPending}
@@ -561,7 +615,8 @@ export function VerificationPaymentModal({
                     >
                       Pay with USDC
                     </button>
-                    {lightningAvailable && (
+                    )}
+                    {lightningSegmentVisible && (
                       <button
                         type="button"
                         disabled={isPending}
@@ -588,7 +643,7 @@ export function VerificationPaymentModal({
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
                           <span className="font-mono text-xs text-text-secondary">
-                            {formatVerificationFee(feeWei)}
+                            {formatVerificationFee(effectiveFeeWei)}
                           </span>
                         </div>
                         <p className="font-sans text-xs text-text-secondary">
@@ -636,7 +691,7 @@ export function VerificationPaymentModal({
                           </span>
                         </div>
                         <p className="font-mono text-xs text-text-secondary">
-                          {formatVerificationFee(feeWei)}
+                          {formatVerificationFee(effectiveFeeWei)}
                         </p>
                         {hasTokenId && (
                           <p className="font-sans text-xs text-text-secondary">

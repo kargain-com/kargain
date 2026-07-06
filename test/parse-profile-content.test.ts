@@ -36,6 +36,33 @@ describe("parseProfileContent messagesEnabled", () => {
   });
 });
 
+describe("parseProfileContent verifierPaymentMethods", () => {
+  it("parses valid methods and dedupes", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({ verifierPaymentMethods: ["eth", "usdc", "eth"] }),
+    );
+    assert.deepEqual(profile?.verifierPaymentMethods, ["eth", "usdc"]);
+  });
+
+  it("omits empty or invalid arrays", () => {
+    assert.equal(
+      parseProfileContent(JSON.stringify({ verifierPaymentMethods: [] }))
+        ?.verifierPaymentMethods,
+      undefined,
+    );
+    assert.equal(
+      parseProfileContent(JSON.stringify({ verifierPaymentMethods: ["bitcoin"] }))
+        ?.verifierPaymentMethods,
+      undefined,
+    );
+    assert.equal(
+      parseProfileContent(JSON.stringify({ verifierPaymentMethods: "eth" }))
+        ?.verifierPaymentMethods,
+      undefined,
+    );
+  });
+});
+
 describe("peerReachabilityMessage", () => {
   it("maps known reasons to user copy", () => {
     assert.match(peerReachabilityMessage("not_registered") ?? "", /not enabled messages/i);

@@ -544,15 +544,17 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 | Rule | Value |
 |------|-------|
-| Set fee | [`kar-pro-credential-card.tsx`](../components/kar-pro/kar-pro-credential-card.tsx) — ETH decimal input, `setVerificationFee` on-chain; empty / `0` clears to *Contact for quote* |
-| Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only link to `/kar-pro` — writes live on credential card |
+| Fee composer | [`kar-pro-fee-panel.tsx`](../components/kar-pro/kar-pro-fee-panel.tsx) mounted from [`kar-pro-credential-card.tsx`](../components/kar-pro/kar-pro-credential-card.tsx) — service margin in nav display currency + live `verifyPassport` gas estimate → single wei via `setVerificationFee`; empty / zero margin → *Contact for quote*; gas captured at save only |
+| Payment methods | Same panel — Nostr kind 0 `verifierPaymentMethods` (`eth` \| `usdc` \| `lightning`); field absent = all three; ≥1 must stay enabled; Lightning requires `lud16` ([`LightningAddressField`](../components/profile/lightning-address-field.tsx)); separate **Save fee** (chain) and **Save payment methods** (Nostr) actions |
+| Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only link to `/kar-pro` — writes live on fee panel |
 
 #### Pay for inspection (passport owners)
 
 | Rule | Value |
 |------|-------|
-| Entry points | **Pay for inspection** on `/verifiers` cards and `/pro/[slug]` hero when `verificationFee &gt; 0` |
-| Modal | [`verification-payment-modal.tsx`](../components/verifier/verification-payment-modal.tsx) — [`Dialog`](../components/ui/dialog.tsx) shell |
+| Entry points | **Pay for inspection** on `/verifiers` cards and `/pro/[slug]` hero when `verificationFee &gt; 0` (prop from Ponder; modal re-reads chain on open) |
+| Modal | [`verification-payment-modal.tsx`](../components/verifier/verification-payment-modal.tsx) — [`Dialog`](../components/ui/dialog.tsx) shell; `useReadContract` → `verificationFee` when open (`effectiveFeeWei`) |
+| Method gating | Segments filtered by Nostr `verifierPaymentMethods` ∩ technical checks (USDC config/rates, valid `lud16` for Lightning); absent field = all three; empty intersection → neutral *Contact them to arrange payment* copy |
 | Passport step | UNVERIFIED passports from `getProfileData` → dropdown (`formatPassportTitle` + make/model); else manual passport ID input |
 | ETH | Native transfer to verifier; `data` = `stringToHex("kargain:verify:{tokenId}")` (human-readable memo on explorers) |
 | USDC | ERC-20 `transfer` to verifier; amount from `verificationFeeInUsdc` + live `ethUsd` from [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts); UI shows passport ID only — honest copy that USDC has no on-chain memo |
@@ -565,8 +567,8 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 | Rule | Value |
 |------|-------|
-| Visibility | Third segment **Pay with Lightning** only when verifier kind 0 has valid `lud16` ([`parseLud16`](../lib/lightning/lud16.ts)); no fallback field elsewhere |
-| Rates | `useMarketRates({ enabled: open })`; sats from `verificationFeeInSats(feeWei, ethUsd, btcUsd)` — mono `tabular-nums`; ETH fee as secondary line |
+| Visibility | Third segment **Pay with Lightning** when `"lightning"` ∈ accepted methods and verifier kind 0 has valid `lud16` |
+| Rates | `useMarketRates({ enabled: open })`; sats from `verificationFeeInSats(effectiveFeeWei, ethUsd, btcUsd)` — mono `tabular-nums`; ETH fee as secondary line |
 | Invoice | Server proxy [`/api/lightning/lnurl-pay`](../app/api/lightning/lnurl-pay/route.ts); comment `kargain:verify:{tokenId}` when provider allows |
 | QR | [`QrCode`](../components/ui/qr-code.tsx) on `bg-white` plate (scannability exception on dark theme); copy invoice + `lightning:` deeplink (`ctaLink`) |
 | Verify | Poll [`/api/lightning/lnurl-verify`](../app/api/lightning/lnurl-verify/route.ts) every 3s when provider returns LUD-21 `verify` URL; else neutral copy that Kargain cannot confirm Lightning payment |
@@ -1208,4 +1210,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.5 (July 2026 — Lightning C1 verification fee pay segment; profile `lud16`; QR white-plate exception). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.6 (July 2026 — C1.1 KarPro fee composer + payment methods; pay modal chain-read + gating). Update when tokens, app shell, or component contracts change.*

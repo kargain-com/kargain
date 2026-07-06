@@ -1,3 +1,10 @@
+import {
+  normalizeVerifierPaymentMethods,
+  type PaymentMethodId,
+} from "@/lib/nostr/payment-method-id";
+
+export type { PaymentMethodId };
+
 export type NostrProfileData = {
   name?: string;
   about?: string;
@@ -7,6 +14,8 @@ export type NostrProfileData = {
   lud16?: string;
   /** When explicitly false, the user is not accepting direct messages. */
   messagesEnabled?: boolean;
+  /** Accepted off-chain payment methods for verification fees. Absent = all accepted. */
+  verifierPaymentMethods?: PaymentMethodId[];
 };
 
 export function parseProfileContent(content: string): NostrProfileData | null {
@@ -26,6 +35,10 @@ export function parseProfileContent(content: string): NostrProfileData | null {
     }
     if (obj.messagesEnabled === false) result.messagesEnabled = false;
     else if (obj.messagesEnabled === true) result.messagesEnabled = true;
+
+    const methods = normalizeVerifierPaymentMethods(obj.verifierPaymentMethods);
+    if (methods) result.verifierPaymentMethods = methods;
+
     return result;
   } catch {
     return {};
