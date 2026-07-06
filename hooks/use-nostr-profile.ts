@@ -15,16 +15,22 @@ export interface UseNostrProfileReturn {
 
 const noop = () => {};
 
+type UseNostrProfileOptions = {
+  enabled?: boolean;
+};
+
 export function useNostrProfile(
   walletAddress: Address | undefined,
   initialProfile?: NostrProfileData | null,
+  options?: UseNostrProfileOptions,
 ): UseNostrProfileReturn {
   const serverPrefetched = initialProfile !== undefined;
+  const queryEnabled = Boolean(walletAddress) && (options?.enabled ?? true);
 
   const { data, isPending, isError, refetch } = useQuery({
     queryKey: ["nostr-profile", walletAddress],
     queryFn: () => fetchNostrProfile(walletAddress!),
-    enabled: Boolean(walletAddress),
+    enabled: queryEnabled,
     initialData: serverPrefetched ? (initialProfile ?? undefined) : undefined,
     staleTime: serverPrefetched ? 5 * 60 * 1000 : 60 * 1000,
     refetchOnMount: !serverPrefetched,

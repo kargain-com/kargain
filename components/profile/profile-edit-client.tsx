@@ -18,6 +18,7 @@ import { categoryLabel } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { publishNostrProfile } from "@/lib/nostr/profile";
+import { parseLud16 } from "@/lib/lightning/lud16";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -49,6 +50,8 @@ export function ProfileEditClient() {
   const [name, setName] = useState("");
   const [about, setAbout] = useState("");
   const [website, setWebsite] = useState("");
+  const [lud16, setLud16] = useState("");
+  const [lud16Touched, setLud16Touched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
@@ -75,6 +78,7 @@ export function ProfileEditClient() {
     setName(profile.name ?? "");
     setAbout(profile.about ?? "");
     setWebsite(profile.website ?? "");
+    setLud16(profile.lud16 ?? "");
   }, [profile]);
 
   useEffect(() => {
@@ -88,8 +92,15 @@ export function ProfileEditClient() {
     userEditedRef.current = true;
   }, []);
 
+  const lud16Invalid =
+    lud16.trim().length > 0 && parseLud16(lud16.trim()) == null;
+
   const onSave = useCallback(async () => {
     if (!walletClient || !address || saving) return;
+    if (lud16Invalid) {
+      setLud16Touched(true);
+      return;
+    }
     setSaving(true);
     setSaveStatus("idle");
     try {
@@ -99,6 +110,7 @@ export function ProfileEditClient() {
           about: about.trim() || undefined,
           picture: picture.trim() || undefined,
           website: website.trim() || undefined,
+          lud16: lud16.trim() || undefined,
         },
         address,
         {
@@ -114,7 +126,7 @@ export function ProfileEditClient() {
     } finally {
       setSaving(false);
     }
-  }, [walletClient, address, saving, name, about, picture, website, refetch]);
+  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, refetch]);
 
   if (!isConnected) {
     return (
@@ -219,13 +231,39 @@ export function ProfileEditClient() {
             />
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lightning-address">Lightning address</Label>
+            <Input
+              id="lightning-address"
+              type="text"
+              value={lud16}
+              placeholder="name@domain"
+              className="font-mono text-sm"
+              onChange={(e) => {
+                markEdited();
+                setLud16Touched(true);
+                setLud16(e.target.value);
+              }}
+              onBlur={() => setLud16Touched(true)}
+            />
+            <p className="font-sans text-sm text-text-secondary">
+              Optional. Lets others pay you over Lightning, e.g. your verification fee. Format:
+              name@domain.
+            </p>
+            {lud16Touched && lud16Invalid && (
+              <p className="font-sans text-sm text-status-error" role="alert">
+                Enter a valid Lightning address (name@domain).
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-col gap-3">
             <Button
               type="button"
               variant="primary"
               size="md"
               className="w-full md:w-auto"
-              disabled={saving}
+              disabled={saving || lud16Invalid}
               aria-busy={saving}
               onClick={() => void onSave()}
             >

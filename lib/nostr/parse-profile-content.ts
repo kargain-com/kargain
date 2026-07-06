@@ -3,6 +3,8 @@ export type NostrProfileData = {
   about?: string;
   picture?: string;
   website?: string;
+  /** Lightning address (LUD-16), e.g. name@domain. */
+  lud16?: string;
   /** When explicitly false, the user is not accepting direct messages. */
   messagesEnabled?: boolean;
 };
@@ -18,6 +20,10 @@ export function parseProfileContent(content: string): NostrProfileData | null {
     if (typeof obj.about === "string") result.about = obj.about;
     if (typeof obj.picture === "string") result.picture = obj.picture;
     if (typeof obj.website === "string") result.website = obj.website;
+    if (typeof obj.lud16 === "string") {
+      const lud16 = obj.lud16.trim();
+      if (lud16) result.lud16 = lud16;
+    }
     if (obj.messagesEnabled === false) result.messagesEnabled = false;
     else if (obj.messagesEnabled === true) result.messagesEnabled = true;
     return result;

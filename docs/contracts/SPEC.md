@@ -234,7 +234,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 - **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass.
 - **`leave()`** — full stake refund; **no slashing**; `proPass.burn` wrapped in try/catch so stake always returns.
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
-- **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). Workflow: verifier sets fee via `setVerificationFee` → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo or USDC `transfer`; not escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
+- **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). Workflow: verifier sets fee via `setVerificationFee` → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
 
 ### KarProStaking — function reference
 

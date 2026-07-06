@@ -345,6 +345,7 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob v2 encrypts sk with signature-derived AES — see [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts) |
+| Profile edit | [`profile-edit-client.tsx`](../components/profile/profile-edit-client.tsx) — optional **Lightning address** (`lud16` on kind 0); merge-preserving publish via [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) |
 | KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · `0.05 ETH` staked (owner only). Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
 | KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
@@ -526,7 +527,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 
 ### 4.17 Verification fee
 
-KarProStaking `verificationFee` is informational on-chain — Kargain does not escrow or enforce payment. Contract reference: [SPEC §I.4](./contracts/SPEC.md). Helpers: [`verification-fee.ts`](../lib/verifier/verification-fee.ts) (`formatVerificationFee`, `verificationFeeInUsdc`).
+KarProStaking `verificationFee` is informational on-chain — Kargain does not escrow or enforce payment. Contract reference: [SPEC §I.4](./contracts/SPEC.md). Helpers: [`verification-fee.ts`](../lib/verifier/verification-fee.ts) (`formatVerificationFee`, `verificationFeeInUsdc`, `verificationFeeInSats`).
 
 #### Display (owners and visitors)
 
@@ -557,6 +558,17 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | Trust copy | Modal disclaimer: payment goes directly to verifier; Kargain does not hold funds; verification is separate on-chain step |
 | Success | Confirmation in modal; no navigation away |
 | Hidden | No pay button when fee is `0`, when viewer is the verifier, or on agent-picker card layout |
+
+#### Pay with Lightning (passport owners)
+
+| Rule | Value |
+|------|-------|
+| Visibility | Third segment **Pay with Lightning** only when verifier kind 0 has valid `lud16` ([`parseLud16`](../lib/lightning/lud16.ts)); no fallback field elsewhere |
+| Rates | `useMarketRates({ enabled: open })`; sats from `verificationFeeInSats(feeWei, ethUsd, btcUsd)` — mono `tabular-nums`; ETH fee as secondary line |
+| Invoice | Server proxy [`/api/lightning/lnurl-pay`](../app/api/lightning/lnurl-pay/route.ts); comment `kargain:verify:{tokenId}` when provider allows |
+| QR | [`QrCode`](../components/ui/qr-code.tsx) on `bg-white` plate (scannability exception on dark theme); copy invoice + `lightning:` deeplink (`ctaLink`) |
+| Verify | Poll [`/api/lightning/lnurl-verify`](../app/api/lightning/lnurl-verify/route.ts) every 3s when provider returns LUD-21 `verify` URL; else neutral copy that Kargain cannot confirm Lightning payment |
+| Trust | Same modal disclaimer as ETH/USDC; comment delivery provider-dependent |
 
 ---
 
@@ -1192,4 +1204,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.4 (July 2026 — commerce rail at header height; VIN frame `w-fit`). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.5 (July 2026 — Lightning C1 verification fee pay segment; profile `lud16`; QR white-plate exception). Update when tokens, app shell, or component contracts change.*

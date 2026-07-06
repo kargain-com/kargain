@@ -4,6 +4,7 @@ import { type Address, hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
 import { getOrCreateNostrKey, loadDecryptedKey } from "@/lib/nostr/key-manager";
+import { fetchLatestKind0Raw, mergeKind0Content } from "@/lib/nostr/merge-kind0-content";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import {
@@ -91,10 +92,12 @@ export async function publishNostrProfileWithPrivateKey(
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
+    const existing = await fetchLatestKind0Raw(walletAddress);
+    const content = mergeKind0Content(existing, data);
     const unsigned = {
       kind: 0,
       created_at: Math.floor(Date.now() / 1000),
-      content: JSON.stringify(data),
+      content: JSON.stringify(content),
       tags: [["i", `ethereum:${address.toLowerCase()}`]] as string[][],
     };
     const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKeyHex));

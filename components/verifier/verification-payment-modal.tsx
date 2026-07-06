@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, stringToHex } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
@@ -25,11 +25,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QrCode } from "@/components/ui/qr-code";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { ctaLink } from "@/lib/design/instrument-classes";
+import { parseLud16 } from "@/lib/lightning/lud16";
+import {
+  fetchLnurlPayInvoice,
+  fetchLnurlVerifySettled,
+  lnurlPayErrorMessage,
+} from "@/lib/lightning/lnurl-pay-client";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import {
   formatVerificationFee,
+  verificationFeeInSats,
   verificationFeeInUsdc,
 } from "@/lib/verifier/verification-fee";
 import { usdcAddress } from "@/lib/web3/deployment-addresses";
@@ -56,7 +66,10 @@ const ERC20_ABI = [
   },
 ] as const;
 
-type PaymentMethod = "ETH" | "USDC";
+const LIGHTNING_VERIFY_POLL_MS = 3_000;
+const LIGHTNING_VERIFY_MAX_MS = 5 * 60 * 1000;
+
+type PaymentMethod = "ETH" | "USDC" | "LIGHTNING";
 
 type PassportRow = {
   id?: unknown;
@@ -86,13 +99,25 @@ function passportLabel(row: PassportRow): string {
   return vehicle ? `${title} — ${vehicle}` : title;
 }
 
-function TrustDisclaimer() {
+function formatSatsLabel(sats: bigint): string {
+  return `${sats.toLocaleString("en-US")} sats`;
+}
+
+function TrustDisclaimer({ lightning }: { lightning?: boolean }) {
   return (
-    <p className="font-sans text-xs text-text-secondary">
-      This payment goes directly to the verifier. Kargain does not hold or verify funds.
-      Verification is confirmed on-chain separately after the verifier completes the
-      inspection.
-    </p>
+    <div className="space-y-2">
+      <p className="font-sans text-xs text-text-secondary">
+        This payment goes directly to the verifier. Kargain does not hold or verify funds.
+        Verification is confirmed on-chain separately after the verifier completes the
+        inspection.
+      </p>
+      {lightning && (
+        <p className="font-sans text-xs text-text-secondary">
+          Passport reference in the payment comment is provider-dependent and may not appear on
+          all invoices.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -111,19 +136,35 @@ export function VerificationPaymentModal({
   const { switchChainAsync } = useSwitchChain();
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useWriteContract();
-  const { ethUsd, isLoading: ratesLoading } = useMarketRates();
+  const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
+  const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
+    enabled: open,
+  });
 
   const usdc = usdcAddress(chainId);
   const wrongChain = walletChain !== chainId;
   const isPending = isEthPending || isWritePending;
 
   const [phase, setPhase] = useState<ModalPhase>("form");
+  const [successViaLightning, setSuccessViaLightning] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
   const [txError, setTxError] = useState<string | null>(null);
   const [passportsLoading, setPassportsLoading] = useState(false);
   const [unverifiedPassports, setUnverifiedPassports] = useState<PassportRow[]>([]);
   const [selectedTokenId, setSelectedTokenId] = useState("");
   const [manualTokenId, setManualTokenId] = useState("");
+  const [lightningInvoice, setLightningInvoice] = useState<string | null>(null);
+  const [lightningVerifyUrl, setLightningVerifyUrl] = useState<string | null>(null);
+  const [lightningLoading, setLightningLoading] = useState(false);
+  const [lightningError, setLightningError] = useState<string | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
+  const lightningFetchKeyRef = useRef("");
+
+  const verifierLud16 = useMemo(
+    () => parseLud16(verifierProfile?.lud16 ?? ""),
+    [verifierProfile?.lud16],
+  );
+  const lightningAvailable = verifierLud16 != null;
 
   const useDropdown = unverifiedPassports.length > 0;
   const tokenId = (useDropdown ? selectedTokenId : manualTokenId).trim();
@@ -133,6 +174,13 @@ export function VerificationPaymentModal({
     ethUsd != null && ethUsd > 0n ? verificationFeeInUsdc(feeWei, ethUsd) : 0n;
   const usdcOptionDisabled =
     !usdc || ratesLoading || ethUsd == null || ethUsd === 0n || usdcAmount === 0n;
+
+  const satsAmount =
+    ethUsd != null && btcUsd != null && ethUsd > 0n && btcUsd > 0n
+      ? verificationFeeInSats(feeWei, ethUsd, btcUsd)
+      : 0n;
+  const lightningRatesUnavailable =
+    ratesLoading || ethUsd == null || ethUsd === 0n || btcUsd == null || btcUsd === 0n;
 
   const { data: ethBalance } = useBalance({
     address,
@@ -160,14 +208,25 @@ export function VerificationPaymentModal({
     usdcAmount > 0n &&
     usdcBalance < usdcAmount;
 
+  const resetLightningState = useCallback(() => {
+    setLightningInvoice(null);
+    setLightningVerifyUrl(null);
+    setLightningLoading(false);
+    setLightningError(null);
+    setCopyDone(false);
+    lightningFetchKeyRef.current = "";
+  }, []);
+
   const resetForm = useCallback(() => {
     setPhase("form");
+    setSuccessViaLightning(false);
     setPaymentMethod("ETH");
     setTxError(null);
     setSelectedTokenId("");
     setManualTokenId("");
     setUnverifiedPassports([]);
-  }, []);
+    resetLightningState();
+  }, [resetLightningState]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -208,6 +267,89 @@ export function VerificationPaymentModal({
     return () => window.clearTimeout(timer);
   }, [phase, open, handleOpenChange]);
 
+  useEffect(() => {
+    if (!open || paymentMethod !== "LIGHTNING" || !lightningAvailable || !hasTokenId) {
+      return;
+    }
+    if (lightningRatesUnavailable || satsAmount === 0n || !verifierProfile?.lud16) {
+      return;
+    }
+
+    const fetchKey = `${verifierProfile.lud16}:${tokenId}:${satsAmount.toString()}`;
+    if (lightningFetchKeyRef.current === fetchKey) return;
+    lightningFetchKeyRef.current = fetchKey;
+
+    let cancelled = false;
+    setLightningLoading(true);
+    setLightningError(null);
+    setLightningInvoice(null);
+    setLightningVerifyUrl(null);
+
+    void (async () => {
+      const result = await fetchLnurlPayInvoice({
+        address: verifierProfile.lud16!,
+        amountMsat: satsAmount * 1000n,
+        comment: `kargain:verify:${tokenId}`,
+      });
+      if (cancelled) return;
+      setLightningLoading(false);
+      if (!result.ok) {
+        setLightningError(lnurlPayErrorMessage(result.error));
+        return;
+      }
+      setLightningInvoice(result.data.invoice);
+      setLightningVerifyUrl(result.data.verifyUrl ?? null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    paymentMethod,
+    lightningAvailable,
+    hasTokenId,
+    lightningRatesUnavailable,
+    satsAmount,
+    verifierProfile?.lud16,
+    tokenId,
+  ]);
+
+  useEffect(() => {
+    if (!open || !lightningVerifyUrl || phase === "success") return;
+
+    const startedAt = Date.now();
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() - startedAt > LIGHTNING_VERIFY_MAX_MS) return;
+
+      const settled = await fetchLnurlVerifySettled(lightningVerifyUrl);
+      if (cancelled) return;
+      if (settled) {
+        setSuccessViaLightning(true);
+        setPhase("success");
+      }
+    };
+
+    void poll();
+    const interval = window.setInterval(() => {
+      void poll();
+    }, LIGHTNING_VERIFY_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [open, lightningVerifyUrl, phase]);
+
+  useEffect(() => {
+    if (paymentMethod === "LIGHTNING" && !lightningAvailable) {
+      setPaymentMethod("ETH");
+    }
+  }, [paymentMethod, lightningAvailable]);
+
   const payEth = useCallback(async () => {
     if (!hasTokenId) return;
     setTxError(null);
@@ -220,6 +362,7 @@ export function VerificationPaymentModal({
         chainId: wc,
       });
       await waitForTransactionReceipt(config, { hash });
+      setSuccessViaLightning(false);
       setPhase("success");
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -249,6 +392,7 @@ export function VerificationPaymentModal({
         chainId: wc,
       });
       await waitForTransactionReceipt(config, { hash });
+      setSuccessViaLightning(false);
       setPhase("success");
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -270,12 +414,26 @@ export function VerificationPaymentModal({
     else void payUsdc();
   }, [paymentMethod, payEth, payUsdc]);
 
+  const handleCopyInvoice = useCallback(async () => {
+    if (!lightningInvoice) return;
+    try {
+      await navigator.clipboard.writeText(lightningInvoice);
+      setCopyDone(true);
+      window.setTimeout(() => setCopyDone(false), 2000);
+    } catch {
+      setLightningError("Could not copy invoice. Try again.");
+    }
+  }, [lightningInvoice]);
+
   const payDisabled = useMemo(() => {
     if (!hasTokenId || isPending || wrongChain) return true;
     if (paymentMethod === "ETH") {
       return insufficientEthBalance;
     }
-    return usdcOptionDisabled || insufficientUsdcBalance;
+    if (paymentMethod === "USDC") {
+      return usdcOptionDisabled || insufficientUsdcBalance;
+    }
+    return true;
   }, [
     hasTokenId,
     insufficientEthBalance,
@@ -290,6 +448,10 @@ export function VerificationPaymentModal({
     ? `Pay for inspection — ${verifierName.trim()}`
     : "Pay for inspection";
 
+  const successDescription = successViaLightning
+    ? "Payment confirmed by the verifier's Lightning provider."
+    : "Payment sent. The verifier will be notified via the blockchain.";
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showClose className="max-w-md">
@@ -297,9 +459,7 @@ export function VerificationPaymentModal({
           <>
             <DialogHeader>
               <DialogTitle>Payment sent</DialogTitle>
-              <DialogDescription>
-                Payment sent. The verifier will be notified via the blockchain.
-              </DialogDescription>
+              <DialogDescription>{successDescription}</DialogDescription>
             </DialogHeader>
             <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
               Done
@@ -324,7 +484,10 @@ export function VerificationPaymentModal({
                   <select
                     id="verification-passport-select"
                     value={selectedTokenId}
-                    onChange={(e) => setSelectedTokenId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedTokenId(e.target.value);
+                      resetLightningState();
+                    }}
                     disabled={isPending}
                     className="w-full min-h-11 rounded-sm border border-border-default bg-bg-card py-3 pl-4 pr-9 font-sans text-sm text-text-primary transition-colors duration-200 focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
                   >
@@ -343,7 +506,10 @@ export function VerificationPaymentModal({
                     type="text"
                     placeholder="Passport ID"
                     value={manualTokenId}
-                    onChange={(e) => setManualTokenId(e.target.value)}
+                    onChange={(e) => {
+                      setManualTokenId(e.target.value);
+                      resetLightningState();
+                    }}
                     disabled={isPending}
                     className="font-mono"
                   />
@@ -365,6 +531,7 @@ export function VerificationPaymentModal({
                       onClick={() => {
                         setTxError(null);
                         setPaymentMethod("ETH");
+                        resetLightningState();
                       }}
                       disabled={isPending}
                       className={cn(
@@ -382,6 +549,7 @@ export function VerificationPaymentModal({
                       onClick={() => {
                         setTxError(null);
                         setPaymentMethod("USDC");
+                        resetLightningState();
                       }}
                       className={cn(
                         "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
@@ -393,6 +561,25 @@ export function VerificationPaymentModal({
                     >
                       Pay with USDC
                     </button>
+                    {lightningAvailable && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => {
+                          setTxError(null);
+                          setPaymentMethod("LIGHTNING");
+                          resetLightningState();
+                        }}
+                        className={cn(
+                          "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
+                          paymentMethod === "LIGHTNING"
+                            ? "border-border-hover bg-bg-surface text-text-primary"
+                            : "border-transparent bg-transparent text-text-secondary",
+                        )}
+                      >
+                        Pay with Lightning
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-4">
@@ -413,7 +600,7 @@ export function VerificationPaymentModal({
                           </p>
                         )}
                       </>
-                    ) : (
+                    ) : paymentMethod === "USDC" ? (
                       <>
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
@@ -438,22 +625,100 @@ export function VerificationPaymentModal({
                           </p>
                         )}
                       </>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="font-sans text-xs text-text-tertiary">You pay</span>
+                          <span className="font-mono tabular-nums text-sm text-text-primary">
+                            {lightningRatesUnavailable || satsAmount === 0n
+                              ? "—"
+                              : formatSatsLabel(satsAmount)}
+                          </span>
+                        </div>
+                        <p className="font-mono text-xs text-text-secondary">
+                          {formatVerificationFee(feeWei)}
+                        </p>
+                        {hasTokenId && (
+                          <p className="font-sans text-xs text-text-secondary">
+                            Payment for passport #{tokenId}
+                          </p>
+                        )}
+                        {lightningRatesUnavailable && (
+                          <p className="font-sans text-xs text-text-secondary">
+                            Rates unavailable
+                          </p>
+                        )}
+                        {lightningLoading && (
+                          <p className="font-sans text-xs text-text-secondary">
+                            Loading Lightning invoice…
+                          </p>
+                        )}
+                        {lightningError && (
+                          <p className="font-sans text-sm text-status-error" role="alert">
+                            {lightningError}
+                          </p>
+                        )}
+                        {lightningInvoice && (
+                          <div className="space-y-3 pt-2">
+                            <QrCode
+                              value={lightningInvoice}
+                              ariaLabel="Lightning invoice QR code"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => void handleCopyInvoice()}
+                              >
+                                {copyDone ? "Copied" : "Copy invoice"}
+                              </Button>
+                              <a
+                                href={`lightning:${lightningInvoice}`}
+                                className={cn(
+                                  ctaLink,
+                                  "inline-flex min-h-11 items-center px-4 py-2 font-sans text-sm",
+                                )}
+                              >
+                                Open in wallet
+                              </a>
+                            </div>
+                            {!lightningVerifyUrl && (
+                              <p className="font-sans text-xs text-text-secondary">
+                                Payment completes in your Lightning wallet. Kargain cannot confirm
+                                Lightning payments.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
-                  <TrustDisclaimer />
+                  <TrustDisclaimer lightning={paymentMethod === "LIGHTNING"} />
 
-                  <Button
-                    type="button"
-                    variant="primary"
-                    className="w-full"
-                    disabled={payDisabled}
-                    onClick={handlePay}
-                  >
-                    {isPending ? "Sending…" : "Send payment"}
-                  </Button>
+                  {paymentMethod === "LIGHTNING" ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => handleOpenChange(false)}
+                    >
+                      Done
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      className="w-full"
+                      disabled={payDisabled}
+                      onClick={handlePay}
+                    >
+                      {isPending ? "Sending…" : "Send payment"}
+                    </Button>
+                  )}
 
-                  {txError && (
+                  {txError && paymentMethod !== "LIGHTNING" && (
                     <p className="font-sans text-sm text-status-error" role="alert">
                       {txError}
                     </p>

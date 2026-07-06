@@ -22,6 +22,18 @@ describe("parseProfileContent messagesEnabled", () => {
     assert.equal(profile?.messagesEnabled, true);
     assert.equal(peerAcceptsMessages(profile), true);
   });
+
+  it("parses lud16 when present", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({ lud16: "  pay@example.com  " }),
+    );
+    assert.equal(profile?.lud16, "pay@example.com");
+  });
+
+  it("omits empty lud16", () => {
+    const profile = parseProfileContent(JSON.stringify({ lud16: "   " }));
+    assert.equal(profile?.lud16, undefined);
+  });
 });
 
 describe("peerReachabilityMessage", () => {
