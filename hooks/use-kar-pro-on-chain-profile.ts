@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getAddress } from "viem";
 import { useReadContracts } from "wagmi";
 
 import type { KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
@@ -10,6 +9,7 @@ import {
   resolveKarProJoinedAt,
   resolveKarProSlugFromMetadataUri,
 } from "@/lib/kar-pro/kar-pro-verifier-profile";
+import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { KarProPassAbi, KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   karProPassAddress,
@@ -27,7 +27,7 @@ export function useKarProOnChainProfile(
   const staking = karProStakingAddress(chainId);
   const readsEnabled = Boolean(enabled && address && proPass && staking);
 
-  const passTokenId = address ? BigInt(getAddress(address)) : 0n;
+  const passTokenId = address ? proPassTokenIdFromAddress(address) : 0n;
 
   const { data: reads, isPending: readsPending } = useReadContracts({
     contracts: readsEnabled

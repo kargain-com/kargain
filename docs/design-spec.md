@@ -327,6 +327,8 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Passport token ID display:** v2 on-chain IDs encode `chainId << 128 | localSequence` ([SPEC](./contracts/SPEC.md)). UI shows human labels via [`passport-token-id.ts`](../lib/passport/passport-token-id.ts) + [`passport-id-label.tsx`](../components/passport/passport-id-label.tsx) — e.g. `Passport #0 · Base Sepolia`. Full decimal ID stays in URLs, APIs, and `title` tooltip on hover.
 
+**ProPass token ID display:** KarProPass token IDs encode `uint256(uint160(holderAddress))` ([SPEC §I.3](./contracts/SPEC.md)). UI shows human labels via [`pro-pass-token-id.ts`](../lib/kar-pro/pro-pass-token-id.ts) + [`pro-pass-id-label.tsx`](../components/kar-pro/pro-pass-id-label.tsx) — e.g. `Pass #0xcf1E·0b77 · Base Sepolia` on credential card subtitle; full decimal ID in `title` tooltip on hover. Chain suffix optional (`showChain: false` on `/kar-pro` subtitle).
+
 ---
 
 ### 4.11 Profile
@@ -668,7 +670,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 
 | Field type | Examples | Canonical classes |
 |------------|----------|-------------------|
-| Token / chain identifiers | Passport token ID, chain suffix | Serial: `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` (see §10.2) |
+| Token / chain identifiers | Passport token ID, ProPass token ID, chain suffix | Serial: `font-mono text-xs font-medium tracking-[0.18em] uppercase text-text-tertiary` (see §10.2) |
 | Transaction / block data | Tx hash, block number | `font-mono text-fluid-sm font-normal tabular-nums text-text-primary` (§3 Mono numeric) or `font-mono text-xs` in dense rows |
 | Wallet addresses | ENS name sub-line, `shortAddress`, `navShortAddress` | `font-mono text-xs text-text-secondary` or `font-mono text-sm text-text-secondary` |
 | Timestamps | Record dates, notification times, message times | `font-mono tabular-nums` + `text-text-tertiary` or `text-text-secondary` (see §10.4) |
@@ -679,6 +681,8 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 **Cross-reference:** §3 **Mono numeric** and **Code inline** rows remain the base scale for non-status factual text.
 
 **Passport token ID serial:** [`passport-id-label.tsx`](../components/passport/passport-id-label.tsx) `variant="eyebrow"` is documented here as **serial** styling (tertiary mono, never accent). The component prop name is unchanged.
+
+**ProPass token ID serial:** [`pro-pass-id-label.tsx`](../components/kar-pro/pro-pass-id-label.tsx) — short holder address via `shortAddress`; same tooltip rule as passport (full decimal on hover).
 
 **Narrative eyebrows vs serials:** §3 **Caption / eyebrow** (`text-accent-warm`, global `.eyebrow`) applies to **narrative page and section labels** only (§4.6 page intros, form section headers) — not to on-chain serial numbers or factual metadata.
 

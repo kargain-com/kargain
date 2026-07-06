@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { formatEther, getAddress, parseEther } from "viem";
+import { formatEther, parseEther } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -17,6 +17,7 @@ import {
   KarProProfileFields,
   type KarProProfileFieldValues,
 } from "@/components/kar-pro/kar-pro-profile-fields";
+import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,7 @@ import {
   parseKarProMetadataJson,
   uploadKarProMetadata,
 } from "@/lib/kar-pro/kar-pro-metadata";
+import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import {
@@ -138,7 +140,7 @@ export function KarProCredentialCard({
   const wc = wagmiChainId(chainId);
   const wrongChain = walletChain !== chainId;
 
-  const resolvedPassId = passId ?? BigInt(getAddress(address));
+  const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
 
   const { data: isActiveVerifier } = useReadContract({
     address: staking,
@@ -312,7 +314,16 @@ export function KarProCredentialCard({
       </h2>
 
       <p className="mt-2 font-mono text-fluid-sm text-text-secondary">
-        Pass #{resolvedPassId.toString()} · Joined {formatJoinedDate(joinedAt)}
+        Pass{" "}
+        <ProPassIdLabel
+          tokenId={resolvedPassId}
+          chainId={chainId}
+          prefix="none"
+          showChain={false}
+          variant="mono"
+          className="text-fluid-sm"
+        />{" "}
+        · Joined {formatJoinedDate(joinedAt)}
       </p>
 
       <p className="mt-1 font-sans text-fluid-sm text-text-secondary">
@@ -407,7 +418,8 @@ export function KarProCredentialCard({
         {leaveConfirm ? (
           <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
             <p className="font-sans text-sm text-text-primary">
-              This will burn your KarProPass #{resolvedPassId.toString()}. Continue?
+              This will burn your{" "}
+              {formatKarProPassTitle(resolvedPassId, chainId, { showChain: false })}. Continue?
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
