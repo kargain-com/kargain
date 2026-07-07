@@ -157,6 +157,8 @@ export function VerificationPaymentModal({
   });
 
   const effectiveFeeWei = chainFeeWei ?? feeWei;
+  const chainFeeResolved = chainFeeWei !== undefined;
+  const zeroFee = chainFeeResolved && effectiveFeeWei === 0n;
 
   const [phase, setPhase] = useState<ModalPhase>("form");
   const [successViaLightning, setSuccessViaLightning] = useState(false);
@@ -299,6 +301,7 @@ export function VerificationPaymentModal({
   }, [phase, open, handleOpenChange]);
 
   useEffect(() => {
+    if (zeroFee) return;
     if (!open || paymentMethod !== "LIGHTNING" || !lightningSegmentVisible || !hasTokenId) {
       return;
     }
@@ -337,6 +340,7 @@ export function VerificationPaymentModal({
     };
   }, [
     open,
+    zeroFee,
     paymentMethod,
     lightningSegmentVisible,
     hasTokenId,
@@ -569,6 +573,10 @@ export function VerificationPaymentModal({
                     Switch network
                   </Button>
                 </div>
+              ) : zeroFee ? (
+                <p className="font-sans text-sm text-text-secondary">
+                  This verifier has not set a fee. Contact them for a quote.
+                </p>
               ) : noOnlineMethods ? (
                 <p className="font-sans text-sm text-text-secondary">
                   This verifier has not enabled online payment methods. Contact them to arrange
