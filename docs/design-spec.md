@@ -467,7 +467,7 @@ Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 |------|-------|
 | Asking price | List denomination in ISO fiat (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
 | Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
-| Direct payment | Optional seller `settlementNotes` (bank, BTC, etc.); buy panel **Direct payment** card when note set — *Not verified by Kargain* |
+| Direct payment | Optional seller `settlementNotes` (bank, BTC, Lightning, etc.); buy panel **Direct payment** card when note set — detected identifiers render as QR + copy blocks; raw note unchanged below; *Not verified by Kargain* |
 | Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; ETH / USDC toggle |
 | Disclosure | Bordered panel: seller receives (asking fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithToken(tokenId, usdc)`; disabled when USDC not configured on chain |
@@ -485,6 +485,22 @@ When the seller has set `settlementNotes`, buyers can register interest off-chai
 | Seller offers panel | [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) — visible to listing seller **or** consignment agent when direct payment note set; lists relay offers with profile links; **Confirm payment** → inline *Confirm received payment from {address}?* → `confirmExternalPayment(tokenId, buyer)`; trust copy: *Confirming transfers the NFT immediately. Only confirm after you have received payment.* |
 | Post-confirm | Delisted listing shows `commerceConfirmedPanel` + `commerceConfirmedLabel` (*Payment confirmed*) with mono timestamp when indexed; offers panel row uses same label after `confirmExternalPayment`; Ponder field `externalPaymentConfirmedAt` on listing detail |
 | Offer gating | Hidden for seller and agent viewers; buyer offer button only when `hasDirectPayment` |
+
+#### Direct payment identifier blocks (buyer card)
+
+When [`direct-payment-note.tsx`](../components/marketplace/direct-payment-note.tsx) detects recognized payment identifiers in the settlement note, each renders as its own Level B panel above the unchanged raw note.
+
+| Rule | Value |
+|------|-------|
+| Detection | [`payment-identifiers.ts`](../lib/lightning/payment-identifiers.ts) — `detectPaymentIdentifiers` scans first 4_000 chars; max 6 identifiers; structural match only (BOLT12 `lno1…`, BOLT11 `lnbc…` + decode, LUD-16 via `parseLud16`, mainnet BTC `1`/`3`/`bc1q`/`bc1p`; rejects testnet) |
+| Labels | Sentence case: Lightning offer / Lightning invoice / Lightning address / Bitcoin address |
+| Value | Mono `text-xs break-all text-text-primary` — raw identifier string |
+| QR payload | `paymentIdentifierUri` — `lightning:{value}` for Lightning kinds; `bitcoin:{value}` for on-chain BTC |
+| Copy | Copies **raw value** (not URI); secondary button |
+| BOLT11 advisory | Per block: *Lightning invoices expire. Ask the seller for a fresh invoice before paying.* |
+| Large-amount advisory | Once per card when any Lightning identifier and listing USD 1e8 &gt; `LIGHTNING_ADVISORY_USD_1E8` ($1,000); rates via `listingToUsd1e8` + `useMarketRatesRequest` only when Lightning detected; omitted when rates unavailable |
+| Fallback | No identifiers detected → card pixel-identical to pre-C2 (title + raw note + trust line only) |
+| Out of scope | Seller/agent settlement panels; offers flow; checksum validation beyond BOLT11 decode |
 
 #### Agent consignment — buyers
 
@@ -1214,4 +1230,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.7 (July 2026 — C1.2 public fee surfaces: shared display, nav-currency secondary, Lightning chip, pro hero chain-read). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.8 (July 2026 — Lightning C2 direct payment identifier detection + QR blocks on buy panel). Update when tokens, app shell, or component contracts change.*

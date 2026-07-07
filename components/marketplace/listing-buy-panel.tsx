@@ -17,6 +17,7 @@ import {
 } from "wagmi";
 
 import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
+import { DirectPaymentNote } from "@/components/marketplace/direct-payment-note";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -477,15 +478,11 @@ export function ListingBuyPanel({
 
   const directPaymentBlock =
     directPaymentNote.length > 0 ? (
-      <div className="space-y-2 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="font-sans text-sm font-medium text-text-primary">Direct payment</p>
-        <p className="font-sans text-xs text-text-secondary whitespace-pre-wrap">
-          {directPaymentNote}
-        </p>
-        <p className="font-sans text-xs text-text-tertiary">
-          Arrange payment with the seller. Not verified by Kargain.
-        </p>
-      </div>
+      <DirectPaymentNote
+        note={directPaymentNote}
+        fiatPrice1e8={listing.fiatPrice1e8}
+        fiatCurrency={listing.fiatCurrency}
+      />
     ) : null;
 
   if (!isConnected) {
