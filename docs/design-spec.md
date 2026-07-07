@@ -598,7 +598,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | NWC success | Sets modal success when not already success; copy *Payment sent from your connected wallet.* (LUD-21 poll may win first) |
 | NWC storage | Encrypted URI in IndexedDB `kargain_nostr` / store `secure` record `kargain_nwc_connection_v1:{address}`; presence flag only in `localStorage` `kargain_nwc_present_v1:{address}`; unlock via sign `kargain-nwc-v1:{address}` |
 | Trust | Same modal disclaimer as ETH/USDC; comment delivery provider-dependent |
-| LNURL proxy security | Server-only proxy ([`guarded-fetch.ts`](../lib/lightning/guarded-fetch.ts), [`ip-guard.ts`](../lib/lightning/ip-guard.ts), [`lnurl.ts`](../lib/lightning/lnurl.ts)): https-only callbacks, port 443, no redirects, 5s timeout, 64KB body cap, strict JSON parse + invoice-amount check; DNS-rebinding closed via connection-time IP validation (pinned lookup rejects private/reserved ranges at socket connect) |
+| LNURL proxy security | Server-only proxy ([`guarded-fetch.ts`](../lib/lightning/guarded-fetch.ts), [`ip-guard.ts`](../lib/lightning/ip-guard.ts), [`lnurl.ts`](../lib/lightning/lnurl.ts)): https-only callbacks, port 443, no redirects, 5s timeout, 64KB body cap, strict JSON parse + invoice-amount check; DNS-rebinding closed via connection-time IP validation — pinned undici lookup always resolves with `all: true`, validates every resolved address with its real family (4 or 6), rejects private/reserved ranges and unrecognized families at socket connect |
 
 ---
 
@@ -1236,4 +1236,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.9 (July 2026 — Lightning C3 NWC one-click pay in verification fee modal + profile Lightning wallet connect). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.10 (July 2026 — LNURL proxy DNS-rebinding hardening + pinned lookup family validation; NWC `unlock_declined` error path). Update when tokens, app shell, or component contracts change.*
