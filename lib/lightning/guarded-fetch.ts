@@ -1,3 +1,13 @@
+import dns, { type LookupAddress } from "node:dns";
+import type { LookupFunction } from "node:net";
+
+import { Agent, fetch } from "undici";
+
+import {
+  assertResolvedAddressesAllowed,
+  ForbiddenAddressError,
+} from "@/lib/lightning/ip-guard";
+
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_BYTES = 65_536;
 
@@ -6,8 +16,53 @@ export type GuardedFetchOptions = {
   maxBytes?: number;
 };
 
+type DnsLookupFn = typeof dns.lookup;
+
+export function createPinnedLookup(lookupFn: DnsLookupFn = dns.lookup): LookupFunction {
+  return (hostname, options, callback) => {
+    const wantsAll =
+      typeof options === "object" && options != null && options.all === true;
+
+    lookupFn(
+      hostname,
+      { ...(typeof options === "object" && options != null ? options : {}), all: true },
+      (err: NodeJS.ErrnoException | null, result: string | LookupAddress[], family?: number) => {
+        if (err) {
+          callback(err, "", 4);
+          return;
+        }
+
+        const resolved = Array.isArray(result)
+          ? result
+          : [{ address: result, family: family ?? -1 }];
+
+        try {
+          assertResolvedAddressesAllowed(resolved);
+        } catch (error) {
+          callback(error instanceof Error ? error : new ForbiddenAddressError(), "", 4);
+          return;
+        }
+
+        if (wantsAll) {
+          callback(null, resolved);
+          return;
+        }
+
+        const first = resolved[0]!;
+        callback(null, first.address, first.family);
+      },
+    );
+  };
+}
+
+const pinnedAgent = new Agent({
+  connect: {
+    lookup: createPinnedLookup(),
+  },
+});
+
 async function readBodyWithCap(
-  response: Response,
+  response: Awaited<ReturnType<typeof fetch>>,
   maxBytes: number,
 ): Promise<string | null> {
   const lengthHeader = response.headers.get("content-length");
@@ -57,9 +112,10 @@ export async function guardedJsonFetch(
 
   try {
     const response = await fetch(url, {
+      dispatcher: pinnedAgent,
       signal: controller.signal,
       redirect: "error",
-      headers: { Accept: "application/json" },
+      headers: { accept: "application/json" },
     });
 
     if (!response.ok) return null;
@@ -78,3 +134,8 @@ export async function guardedJsonFetch(
     clearTimeout(timer);
   }
 }
+
+export const __testing = {
+  createPinnedLookup,
+  ForbiddenAddressError,
+};

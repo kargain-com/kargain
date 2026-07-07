@@ -24,6 +24,7 @@ export type NwcErrorCode =
   | "unsupported"
   | "timeout"
   | "relay_unreachable"
+  | "unlock_declined"
   | "rejected"
   | "insufficient_balance"
   | "invalid_response";

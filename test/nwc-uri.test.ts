@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseNwcUri, redactNwcUri } from "@/lib/nostr/nwc/nwc-uri";
+import { parseNwcUri } from "@/lib/nostr/nwc/nwc-uri";
 
 const PUBKEY = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const SECRET = "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321";
@@ -62,14 +62,5 @@ describe("parseNwcUri", () => {
     const parsed = parseNwcUri(buildUri({ relay: "wss://relay.example.com:8080" }));
     assert.ok(parsed);
     assert.equal(parsed.relayUrl, "wss://relay.example.com:8080/");
-  });
-});
-
-describe("redactNwcUri", () => {
-  it("redacts secret query param", () => {
-    const uri = buildUri({ slashes: true });
-    const redacted = redactNwcUri(uri);
-    assert.match(redacted, /secret=%E2%80%A6|secret=…/);
-    assert.doesNotMatch(redacted, new RegExp(SECRET));
   });
 });

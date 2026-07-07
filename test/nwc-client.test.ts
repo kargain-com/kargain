@@ -4,6 +4,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import * as nip04 from "nostr-tools/nip04";
 import type { Event } from "nostr-tools";
 
+import { nwcPayErrorMessage } from "@/hooks/use-nwc-wallet";
 import {
   __testing,
   fetchWalletInfo,
@@ -184,6 +185,19 @@ describe("mapNwcErrorCode unit", () => {
   it("maps known codes", () => {
     assert.equal(mapNwcErrorCode("INSUFFICIENT_BALANCE"), "insufficient_balance");
     assert.equal(mapNwcErrorCode("NOT_AUTHORIZED"), "rejected");
+  });
+});
+
+describe("nwcPayErrorMessage", () => {
+  it("maps unlock_declined to signature approval copy", () => {
+    assert.equal(
+      nwcPayErrorMessage("unlock_declined"),
+      "Approve the signature request to pay from your connected wallet.",
+    );
+  });
+
+  it("maps relay_unreachable to wallet reachability copy", () => {
+    assert.equal(nwcPayErrorMessage("relay_unreachable"), "Could not reach your Lightning wallet.");
   });
 });
 

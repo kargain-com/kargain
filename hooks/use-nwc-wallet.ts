@@ -80,6 +80,8 @@ export function nwcPayErrorMessage(code: NwcErrorCode): string {
       return "Insufficient wallet balance.";
     case "timeout":
       return "No response from your wallet. Check the wallet app.";
+    case "unlock_declined":
+      return "Approve the signature request to pay from your connected wallet.";
     case "relay_unreachable":
     case "invalid_response":
     case "unsupported":
@@ -192,7 +194,7 @@ export function useNwcWallet() {
     async (invoice: string): Promise<NwcPayResult> => {
       const cached = await unlockCached();
       if (!cached) {
-        return { ok: false, code: "relay_unreachable" };
+        return { ok: false, code: "unlock_declined" };
       }
 
       return nwcPayInvoice(cached.conn, invoice, { encryption: cached.encryption });

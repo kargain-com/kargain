@@ -69,22 +69,3 @@ export function parseNwcUri(value: string): ParsedNwcConnection | null {
     return null;
   }
 }
-
-export function redactNwcUri(value: string): string {
-  try {
-    const rest = stripScheme(value);
-    if (!rest) return value;
-
-    const qIdx = rest.indexOf("?");
-    if (qIdx < 0) return value;
-
-    const prefix = value.slice(0, value.length - (rest.length - qIdx));
-    const params = new URLSearchParams(rest.slice(qIdx + 1));
-    if (params.has("secret")) {
-      params.set("secret", "…");
-    }
-    return `${prefix}?${params.toString()}`;
-  } catch {
-    return value.replace(/secret=[^&]+/i, "secret=…");
-  }
-}

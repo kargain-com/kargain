@@ -594,10 +594,11 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | Verify | Poll [`/api/lightning/lnurl-verify`](../app/api/lightning/lnurl-verify/route.ts) every 3s when provider returns LUD-21 `verify` URL; else neutral copy that Kargain cannot confirm Lightning payment |
 | NWC one-click | When buyer has connected NWC ([`use-nwc-wallet.ts`](../hooks/use-nwc-wallet.ts)): primary **Pay from connected wallet** above QR; pending *Waiting for your wallet…*; inline errors per mapping below; QR/copy/deeplink remain fully usable |
 | NWC connect (modal) | When not connected: muted link *Connect a Lightning wallet for one-click payments* → inline [`NwcConnectField`](../components/profile/nwc-connect-field.tsx) paste + connect |
-| NWC errors | `rejected` → *Your wallet declined the payment.* · `insufficient_balance` → *Insufficient wallet balance.* · `timeout` → *No response from your wallet. Check the wallet app.* · `relay_unreachable` / `invalid_response` / `unsupported` → *Could not reach your Lightning wallet.* |
+| NWC errors | `rejected` → *Your wallet declined the payment.* · `insufficient_balance` → *Insufficient wallet balance.* · `timeout` → *No response from your wallet. Check the wallet app.* · `unlock_declined` → *Approve the signature request to pay from your connected wallet.* · `relay_unreachable` / `invalid_response` / `unsupported` → *Could not reach your Lightning wallet.* |
 | NWC success | Sets modal success when not already success; copy *Payment sent from your connected wallet.* (LUD-21 poll may win first) |
 | NWC storage | Encrypted URI in IndexedDB `kargain_nostr` / store `secure` record `kargain_nwc_connection_v1:{address}`; presence flag only in `localStorage` `kargain_nwc_present_v1:{address}`; unlock via sign `kargain-nwc-v1:{address}` |
 | Trust | Same modal disclaimer as ETH/USDC; comment delivery provider-dependent |
+| LNURL proxy security | Server-only proxy ([`guarded-fetch.ts`](../lib/lightning/guarded-fetch.ts), [`ip-guard.ts`](../lib/lightning/ip-guard.ts), [`lnurl.ts`](../lib/lightning/lnurl.ts)): https-only callbacks, port 443, no redirects, 5s timeout, 64KB body cap, strict JSON parse + invoice-amount check; DNS-rebinding closed via connection-time IP validation (pinned lookup rejects private/reserved ranges at socket connect) |
 
 ---
 
