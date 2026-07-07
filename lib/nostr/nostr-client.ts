@@ -48,20 +48,3 @@ export async function resolveNostrPubkeyForEthereumAddress(
     return null;
   }
 }
-
-/**
- * Publish kind:0 identity tag via publishNostrProfileWithPrivateKey.
- * Internal-only — no direct external callers; identity publishing moves to /profile/edit (iteration 3).
- * Called only by publishNostrProfile via delegation.
- */
-export async function publishEthereumIdentityLink(
-  privateKeyHex: string,
-  address: `0x${string}`,
-): Promise<void> {
-  try {
-    const { publishNostrProfileWithPrivateKey } = await import("@/lib/nostr/profile");
-    await publishNostrProfileWithPrivateKey({}, address, privateKeyHex);
-  } catch (err) {
-    console.error("publishEthereumIdentityLink failed", err);
-  }
-}

@@ -3,6 +3,7 @@ import { bytesToHex, hexToBytes, keccak256, toHex } from "viem";
 export const NOSTR_SALT = "kargain-nostr-v1-salt";
 export const AES_V1_SALT = "kargain-nostr-aes-v1-salt";
 export const AES_V2_SALT = "kargain-nostr-aes-v2-blob-salt";
+export const NWC_AES_V2_SALT = "kargain-nwc-v1-salt";
 
 export type StoredEncryptedV1 = {
   address: `0x${string}`;
@@ -31,6 +32,10 @@ function requireSubtleCrypto(): SubtleCrypto {
 
 export function nostrLinkMessage(address: `0x${string}`): string {
   return `kargain-nostr-v1:${address.toLowerCase()}`;
+}
+
+export function nwcLinkMessage(address: `0x${string}`): string {
+  return `kargain-nwc-v1:${address.toLowerCase()}`;
 }
 
 function aesLinkMessageV1(address: `0x${string}`): string {
@@ -73,9 +78,16 @@ async function deriveAesKeyV1(address: `0x${string}`): Promise<CryptoKey> {
   return importAesKey(new Uint8Array(hexToBytes(seed)));
 }
 
-async function deriveAesKeyV2(signature: `0x${string}`): Promise<CryptoKey> {
-  const seed = keccak256(toHex(`${signature}${AES_V2_SALT}`));
+async function deriveAesKeyFromSignature(
+  signature: `0x${string}`,
+  salt: string,
+): Promise<CryptoKey> {
+  const seed = keccak256(toHex(`${signature}${salt}`));
   return importAesKey(new Uint8Array(hexToBytes(seed)));
+}
+
+async function deriveAesKeyV2(signature: `0x${string}`): Promise<CryptoKey> {
+  return deriveAesKeyFromSignature(signature, AES_V2_SALT);
 }
 
 export async function encryptPrivateKeyV1(
@@ -166,4 +178,38 @@ export async function decryptAppPayloadV1(
     new Uint8Array(hexToBytes(cipherHex as `0x${string}`)),
   );
   return new TextDecoder().decode(plain);
+}
+
+/** UTF-8 payload encryption with signature-derived AES (separate salt from identity key). */
+export async function encryptSecretPayloadV2(
+  signature: `0x${string}`,
+  address: `0x${string}`,
+  plaintextUtf8: string,
+  salt: string = NWC_AES_V2_SALT,
+): Promise<StoredEncryptedV2> {
+  const key = await deriveAesKeyFromSignature(signature, salt);
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(plaintextUtf8);
+  const cipher = await requireSubtleCrypto().encrypt({ name: "AES-GCM", iv }, key, plain);
+  return {
+    version: 2,
+    address,
+    ivHex: bytesToHex(iv),
+    cipherHex: bytesToHex(new Uint8Array(cipher)),
+    createdAt: Date.now(),
+  };
+}
+
+export async function decryptSecretPayloadV2(
+  signature: `0x${string}`,
+  blob: StoredEncryptedV2,
+  salt: string = NWC_AES_V2_SALT,
+): Promise<string> {
+  const key = await deriveAesKeyFromSignature(signature, salt);
+  const plain = await requireSubtleCrypto().decrypt(
+    { name: "AES-GCM", iv: new Uint8Array(hexToBytes(blob.ivHex as `0x${string}`)) },
+    key,
+    new Uint8Array(hexToBytes(blob.cipherHex as `0x${string}`)),
+  );
+  return new TextDecoder().decode(new Uint8Array(plain));
 }

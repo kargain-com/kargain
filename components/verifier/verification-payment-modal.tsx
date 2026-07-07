@@ -26,7 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QrCode } from "@/components/ui/qr-code";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { NwcConnectField } from "@/components/profile/nwc-connect-field";
+import { useNwcWallet, nwcPayErrorMessage } from "@/hooks/use-nwc-wallet";
 import { ctaLink } from "@/lib/design/instrument-classes";
 import { parseLud16 } from "@/lib/lightning/lud16";
 import {
@@ -44,6 +45,7 @@ import {
   verificationFeeInUsdc,
 } from "@/lib/verifier/verification-fee";
 import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -162,6 +164,7 @@ export function VerificationPaymentModal({
 
   const [phase, setPhase] = useState<ModalPhase>("form");
   const [successViaLightning, setSuccessViaLightning] = useState(false);
+  const [successViaNwc, setSuccessViaNwc] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
   const [txError, setTxError] = useState<string | null>(null);
   const [passportsLoading, setPassportsLoading] = useState(false);
@@ -173,7 +176,11 @@ export function VerificationPaymentModal({
   const [lightningLoading, setLightningLoading] = useState(false);
   const [lightningError, setLightningError] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [nwcPending, setNwcPending] = useState(false);
+  const [nwcError, setNwcError] = useState<string | null>(null);
+  const [showNwcConnect, setShowNwcConnect] = useState(false);
   const lightningFetchKeyRef = useRef("");
+  const { present: nwcPresent, connect: nwcConnect, payInvoice: nwcPayInvoice } = useNwcWallet();
 
   const verifierLud16 = useMemo(
     () => parseLud16(verifierProfile?.lud16 ?? ""),
@@ -247,12 +254,16 @@ export function VerificationPaymentModal({
     setLightningLoading(false);
     setLightningError(null);
     setCopyDone(false);
+    setNwcPending(false);
+    setNwcError(null);
+    setShowNwcConnect(false);
     lightningFetchKeyRef.current = "";
   }, []);
 
   const resetForm = useCallback(() => {
     setPhase("form");
     setSuccessViaLightning(false);
+    setSuccessViaNwc(false);
     setPaymentMethod("ETH");
     setTxError(null);
     setSelectedTokenId("");
@@ -498,9 +509,30 @@ export function VerificationPaymentModal({
     ? `Pay for inspection — ${verifierName.trim()}`
     : "Pay for inspection";
 
-  const successDescription = successViaLightning
-    ? "Payment confirmed by the verifier's Lightning provider."
-    : "Payment sent. The verifier will be notified via the blockchain.";
+  const successDescription = successViaNwc
+    ? "Payment sent from your connected wallet."
+    : successViaLightning
+      ? "Payment confirmed by the verifier's Lightning provider."
+      : "Payment sent. The verifier will be notified via the blockchain.";
+
+  const handleNwcPay = useCallback(async () => {
+    if (!lightningInvoice || nwcPending) return;
+    setNwcError(null);
+    setNwcPending(true);
+    const result = await nwcPayInvoice(lightningInvoice);
+    setNwcPending(false);
+    if (result.ok) {
+      let markNwc = false;
+      setPhase((current) => {
+        if (current === "success") return current;
+        markNwc = true;
+        return "success";
+      });
+      if (markNwc) setSuccessViaNwc(true);
+      return;
+    }
+    setNwcError(nwcPayErrorMessage(result.code));
+  }, [lightningInvoice, nwcPayInvoice, nwcPending]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -723,6 +755,45 @@ export function VerificationPaymentModal({
                         )}
                         {lightningInvoice && (
                           <div className="space-y-3 pt-2">
+                            {nwcPresent ? (
+                              <div className="space-y-2">
+                                <Button
+                                  type="button"
+                                  variant="primary"
+                                  size="sm"
+                                  className="w-full"
+                                  disabled={nwcPending}
+                                  onClick={() => void handleNwcPay()}
+                                >
+                                  Pay from connected wallet
+                                </Button>
+                                {nwcPending && (
+                                  <p className="font-sans text-sm text-text-secondary">
+                                    Waiting for your wallet…
+                                  </p>
+                                )}
+                                {nwcError && (
+                                  <p className="font-sans text-sm text-status-error" role="alert">
+                                    {nwcError}
+                                  </p>
+                                )}
+                              </div>
+                            ) : showNwcConnect ? (
+                              <NwcConnectField
+                                idPrefix="modal-nwc"
+                                onConnect={nwcConnect}
+                                disabled={nwcPending}
+                                onConnected={() => setShowNwcConnect(false)}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className="font-sans text-xs text-text-secondary underline-offset-2 hover:text-text-primary hover:underline"
+                                onClick={() => setShowNwcConnect(true)}
+                              >
+                                Connect a Lightning wallet for one-click payments
+                              </button>
+                            )}
                             <QrCode
                               value={lightningInvoice}
                               ariaLabel="Lightning invoice QR code"

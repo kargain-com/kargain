@@ -12,88 +12,29 @@ import {
   type StoredEncryptedV1,
   type StoredEncryptedV2,
 } from "@/lib/nostr/key-manager-crypto";
+import { getBlob, setBlob } from "@/lib/nostr/secure-blob-store";
 
-const DB_NAME = "kargain_nostr";
-const STORE_NAME = "secure";
 const BLOB_KEY = "kargain_nostr_key_encrypted";
 const LS_FALLBACK_KEY = "kargain_nostr_key_encrypted_fallback";
+
+const identityBlobOptions = { legacyLocalStorageKey: LS_FALLBACK_KEY };
 
 type WalletSigner = {
   address: `0x${string}`;
   signMessage: (message: string) => Promise<`0x${string}`>;
 };
 
-type StorageBackend = {
-  get: () => Promise<StoredEncrypted | null>;
-  set: (blob: StoredEncrypted) => Promise<void>;
-  name: "indexeddb" | "localstorage";
-};
+async function storageGet(): Promise<StoredEncrypted | null> {
+  return getBlob<StoredEncrypted>(BLOB_KEY, identityBlobOptions);
+}
+
+async function storageSet(blob: StoredEncrypted): Promise<void> {
+  await setBlob(BLOB_KEY, blob, identityBlobOptions);
+}
 
 function requireBrowser() {
-  if (typeof window === "undefined" || !window.indexedDB || !window.crypto?.subtle) {
-    throw new Error("Nostr key manager requires browser Web Crypto + IndexedDB.");
-  }
-}
-
-function openDb(): Promise<IDBDatabase> {
-  requireBrowser();
-  return new Promise((resolve, reject) => {
-    const req = window.indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed."));
-  });
-}
-
-async function idbGet(): Promise<StoredEncrypted | null> {
-  const db = await openDb();
-  return await new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const req = tx.objectStore(STORE_NAME).get(BLOB_KEY);
-    req.onsuccess = () => resolve((req.result as StoredEncrypted | undefined) ?? null);
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB read failed."));
-  });
-}
-
-async function idbSet(blob: StoredEncrypted): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const req = tx.objectStore(STORE_NAME).put(blob, BLOB_KEY);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB write failed."));
-  });
-}
-
-function localStorageGet(): StoredEncrypted | null {
-  requireBrowser();
-  const raw = window.localStorage.getItem(LS_FALLBACK_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredEncrypted;
-  } catch {
-    return null;
-  }
-}
-
-function localStorageSet(blob: StoredEncrypted): void {
-  requireBrowser();
-  window.localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(blob));
-}
-
-async function getStorageBackend(): Promise<StorageBackend> {
-  try {
-    await openDb();
-    return { get: idbGet, set: idbSet, name: "indexeddb" };
-  } catch {
-    return {
-      get: async () => localStorageGet(),
-      set: async (blob) => localStorageSet(blob),
-      name: "localstorage",
-    };
+  if (typeof window === "undefined" || !window.crypto?.subtle) {
+    throw new Error("Nostr key manager requires browser Web Crypto.");
   }
 }
 
@@ -106,9 +47,8 @@ async function persistV2Blob(
   signature: `0x${string}`,
   privateKeyHex: `0x${string}`,
 ): Promise<void> {
-  const storage = await getStorageBackend();
   const encrypted = await encryptPrivateKeyV2(signature, wallet.address, privateKeyHex);
-  await storage.set(encrypted);
+  await storageSet(encrypted);
 }
 
 async function restoreFromV2Blob(
@@ -150,8 +90,7 @@ let pendingKeyPromise: Promise<`0x${string}`> | null = null;
 let pendingWalletAddress: string | null = null;
 
 async function createOrRestoreNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
-  const storage = await getStorageBackend();
-  const existing = await storage.get();
+  const existing = await storageGet();
 
   if (existing && existing.address.toLowerCase() === wallet.address.toLowerCase()) {
     if (isV2Blob(existing)) {
@@ -188,8 +127,7 @@ export async function getOrCreateNostrKey(wallet: WalletSigner): Promise<`0x${st
 
 export async function loadDecryptedKey(wallet: WalletSigner): Promise<`0x${string}` | null> {
   requireBrowser();
-  const storage = await getStorageBackend();
-  const existing = await storage.get();
+  const existing = await storageGet();
   if (!existing) return null;
   if (existing.address.toLowerCase() !== wallet.address.toLowerCase()) return null;
   if (isV2Blob(existing)) return null;

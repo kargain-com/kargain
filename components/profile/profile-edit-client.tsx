@@ -7,6 +7,7 @@ import { useAccount, useReadContract, useWalletClient } from "wagmi";
 
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { MessagingSettingsSection } from "@/components/profile/messaging-settings-section";
+import { LightningWalletSection } from "@/components/profile/lightning-wallet-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -278,6 +279,8 @@ export function ProfileEditClient() {
         </section>
 
         <MessagingSettingsSection />
+
+        <LightningWalletSection />
 
         {/* Section 2 — Professional profile or Become KarPro */}
         {isActiveVerifier === true ? (
