@@ -1,8 +1,9 @@
 "use client";
 
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
-import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
+
+import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 
 type ProfileVerifierStatsBandProps = {
   wallet: `0x${string}`;
@@ -58,8 +59,11 @@ export function ProfileVerifierStatsBand({
       )}
       <StatsSeparator />
       <span className="font-mono text-sm text-text-secondary">
-        <span>Verification fee </span>
-        <span>{formatVerificationFee(verificationFee)}</span>
+        <VerificationFeeDisplay
+          feeWei={verificationFee}
+          prefix="Verification fee "
+          primaryClassName="font-mono text-sm text-text-secondary tabular-nums"
+        />
       </span>
       {isOwner && isActiveVerifier && (
         <>

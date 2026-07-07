@@ -1,5 +1,6 @@
 import type { PaymentMethodId } from "@/lib/nostr/payment-method-id";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { parseLud16 } from "@/lib/lightning/lud16";
 
 const ALL_PAYMENT_METHODS: PaymentMethodId[] = ["eth", "usdc", "lightning"];
 
@@ -16,4 +17,11 @@ export function acceptedPaymentMethods(
 
 export function paymentMethodIdsToArray(set: Set<PaymentMethodId>): PaymentMethodId[] {
   return ALL_PAYMENT_METHODS.filter((id) => set.has(id));
+}
+
+export function showLightningChip(profile: NostrProfileData | null): boolean {
+  return (
+    acceptedPaymentMethods(profile).has("lightning") &&
+    parseLud16(profile?.lud16 ?? "") != null
+  );
 }

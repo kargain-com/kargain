@@ -9,14 +9,13 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
-import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
+import { ProShowroomVerificationFee } from "@/components/verifier/pro-showroom-verification-fee";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
-import { formatVerificationFee } from "@/lib/verifier/verification-fee";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -270,23 +269,16 @@ export default async function ProShowroomPage({
                 </p>
               </div>
             </div>
-            <p className="mt-4 font-mono text-sm text-text-secondary">
-              <span>Verification fee </span>
-              <span>{formatVerificationFee(data.verificationFee)}</span>
-            </p>
           </div>
+
+          <ProShowroomVerificationFee
+            address={address}
+            verifierName={name}
+            ponderFeeWei={data.verificationFee}
+          />
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <SellerContactButton peerAddress={address} label="Contact verifier" />
-            {data.verificationFee > 0n && (
-              <VerificationPayButton
-                verifierAddress={address}
-                verifierName={name}
-                feeWei={data.verificationFee}
-                variant="secondary"
-                size="sm"
-              />
-            )}
             <Link
               href={`/profile/${address}`}
               className="font-sans text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary"

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   acceptedPaymentMethods,
   paymentMethodIdsToArray,
+  showLightningChip,
 } from "../lib/verifier/payment-methods.ts";
 
 describe("acceptedPaymentMethods", () => {
@@ -31,5 +32,34 @@ describe("paymentMethodIdsToArray", () => {
   it("returns stable order eth usdc lightning", () => {
     const arr = paymentMethodIdsToArray(new Set(["lightning", "eth"]));
     assert.deepEqual(arr, ["eth", "lightning"]);
+  });
+});
+
+describe("showLightningChip", () => {
+  it("shows when methods absent and lud16 valid", () => {
+    assert.equal(showLightningChip({ lud16: "pay@example.com" }), true);
+  });
+
+  it("shows when lightning explicit and lud16 valid", () => {
+    assert.equal(
+      showLightningChip({ verifierPaymentMethods: ["lightning"], lud16: "pay@example.com" }),
+      true,
+    );
+  });
+
+  it("hides when lightning not in accepted methods", () => {
+    assert.equal(
+      showLightningChip({ verifierPaymentMethods: ["eth"], lud16: "pay@example.com" }),
+      false,
+    );
+  });
+
+  it("hides when lud16 missing or invalid", () => {
+    assert.equal(showLightningChip({ verifierPaymentMethods: ["lightning"] }), false);
+    assert.equal(
+      showLightningChip({ verifierPaymentMethods: ["lightning"], lud16: "not-valid" }),
+      false,
+    );
+    assert.equal(showLightningChip(null), false);
   });
 });

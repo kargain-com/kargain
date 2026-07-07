@@ -14,12 +14,17 @@ import {
   KAR_PRO_CATEGORY_OPTIONS,
 } from "@/lib/kar-pro/kar-pro-metadata";
 import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
-import { formatVerificationFee } from "@/lib/verifier/verification-fee";
+import { showLightningChip } from "@/lib/verifier/payment-methods";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
 
 import { VerificationRequestButton } from "./verification-request-button";
 import { VerificationPayButton } from "./verification-payment-modal";
+import {
+  VerificationFeeDisplay,
+  VerificationLightningChip,
+} from "./verification-fee-display";
 
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
 const CATEGORY_CHIPS = ["All", ...CATEGORY_LABELS] as const;
@@ -73,6 +78,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
     ? `/pro/${showroomSlug}`
     : `/profile/${verifier.address}`;
   const feeWei = parseReturnRequestedAt(verifier.verificationFee);
+  const { profile } = useNostrProfile(verifier.address);
 
   return (
     <article className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover">
@@ -98,9 +104,13 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
             Member since {new Date(verifier.joinedAt * 1000).getFullYear()}
           </p>
         )}
-        <p className="font-mono text-xs text-text-secondary">
-          {formatVerificationFee(feeWei)}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <VerificationFeeDisplay
+            feeWei={feeWei}
+            primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
+          />
+          {showLightningChip(profile) && <VerificationLightningChip />}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

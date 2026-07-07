@@ -313,7 +313,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **Homepage stats (`/`):** [`MarketplaceStatsLine`](../components/marketplace/marketplace-stats-line.tsx) in [`app/page.tsx`](../app/page.tsx) inside `Suspense` (sibling to [`market-browse.tsx`](../components/marketplace/market-browse.tsx)). Stats fetch does not block filter bar or listing grid shell. Compact ambient line above [`market-filter-bar.tsx`](../components/marketplace/market-filter-bar.tsx): `font-mono text-xs text-text-tertiary tabular-nums` (e.g. `42 listings · 12 verified · 5 active verifiers`). Hidden when all stats are 0.
 
-**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback. Each card shows verification count, member since, **verification fee** (`formatVerificationFee` — `0` → *Contact for quote*), **View showroom →**, **Request verification**, and **Pay for inspection** when fee &gt; 0 (see §4.17).
+**Verifiers page (`/verifiers`):** No intro band. [`VerifiersIntentBanner`](../components/verifier/verifiers-intent-banner.tsx) in top container (renders immediately). [`VerifierDirectory`](../components/verifier/verifier-directory.tsx) in `#verifier-grid` inside `Suspense` with skeleton grid fallback. Each card shows verification count, member since, **verification fee** via [`VerificationFeeDisplay`](../components/verifier/verification-fee-display.tsx) (ETH primary + optional nav-currency secondary; `0` → *Contact for quote*), optional **Lightning** chip when accepted + valid `lud16`, **View showroom →**, **Request verification**, and **Pay for inspection** when Ponder fee &gt; 0 (see §4.17).
 
 > **Price display:** canonical classes in [§10.2](./design-spec.md#102-accent-as-status-not-decoration) — `font-mono text-lg font-medium tabular-nums text-text-primary` for asking/browse amounts; fee lines mono `text-text-secondary` (`text-xs` compact, `text-sm` showroom/profile stats). No `text-accent-warm` on amounts or card price hover.
 
@@ -357,7 +357,7 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Disputes panel | `serialLabel` eyebrow *Open disputes*; Level A `DisputeCard` grid — operational queue |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
-**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). **Verification fee** line below the stats grid. Hero CTAs: contact verifier, **Pay for inspection** when fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
+**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below the stats grid — chain-read fee with Ponder fallback, optional Lightning chip, **Pay for inspection** when effective fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
 Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
 
@@ -529,16 +529,20 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 
 ### 4.17 Verification fee
 
-KarProStaking `verificationFee` is informational on-chain — Kargain does not escrow or enforce payment. Contract reference: [SPEC §I.4](./contracts/SPEC.md). Helpers: [`verification-fee.ts`](../lib/verifier/verification-fee.ts) (`formatVerificationFee`, `verificationFeeInUsdc`, `verificationFeeInSats`).
+KarProStaking `verificationFee` is informational on-chain — Kargain does not escrow or enforce payment. Contract reference: [SPEC §I.4](./contracts/SPEC.md). Helpers: [`verification-fee.ts`](../lib/verifier/verification-fee.ts) (`formatVerificationFee`, `verificationFeeToUsd1e8`, `verificationFeeInUsdc`, `verificationFeeInSats`).
 
 #### Display (owners and visitors)
 
 | Surface | Rule |
 |---------|------|
-| Verifier directory card | Mono `text-xs text-text-secondary` fee line under count / member since; always shown (`0` → *Contact for quote*) |
-| Request verification | [`verification-request-button.tsx`](../components/verifier/verification-request-button.tsx) — muted fee under button when fee &gt; 0 only |
+| Shared display | [`verification-fee-display.tsx`](../components/verifier/verification-fee-display.tsx) — primary always ETH via `formatVerificationFee`; secondary `≈ {nav currency}` only when fee &gt; 0, nav ≠ ETH, and live rates available (no placeholder dash) |
+| Lightning chip | Directory cards + pro hero when [`showLightningChip`](../lib/verifier/payment-methods.ts) — neutral mono chip; progressive (no loading skeleton) |
+| Verifier directory card | [`VerificationFeeDisplay`](../components/verifier/verification-fee-display.tsx) + optional chip in meta row under count / member since; always shown (`0` → *Contact for quote*) |
+| Request verification | [`verification-request-button.tsx`](../components/verifier/verification-request-button.tsx) — shared display under button when fee &gt; 0 only |
 | Profile stats band | [`profile-verifier-stats-band.tsx`](../components/profile/profile-verifier-stats-band.tsx) — **Verification fee** segment for all visitors |
-| Pro showroom hero | Fee line below stats grid; [`VerificationPayButton`](../components/verifier/verification-payment-modal.tsx) when fee &gt; 0 |
+| Pro showroom hero | [`pro-showroom-verification-fee.tsx`](../components/verifier/pro-showroom-verification-fee.tsx) — chain-read `verificationFee` with Ponder fallback; pay button when effective fee &gt; 0 |
+| List visibility | Directory cards + list contexts: **Ponder** `feeWei` for pay button visibility (eventual consistency) |
+| Single-entity visibility | Pro hero: **chain-read** fee for display and pay button once resolved |
 
 #### Verifier management (`/kar-pro`)
 
@@ -552,7 +556,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 | Rule | Value |
 |------|-------|
-| Entry points | **Pay for inspection** on `/verifiers` cards and `/pro/[slug]` hero when `verificationFee &gt; 0` (prop from Ponder; modal re-reads chain on open) |
+| Entry points | **Pay for inspection** on `/verifiers` cards (Ponder fee) and `/pro/[slug]` hero (chain-read effective fee); modal re-reads chain on open |
 | Modal | [`verification-payment-modal.tsx`](../components/verifier/verification-payment-modal.tsx) — [`Dialog`](../components/ui/dialog.tsx) shell; `useReadContract` → `verificationFee` when open (`effectiveFeeWei`) |
 | Method gating | Segments filtered by Nostr `verifierPaymentMethods` ∩ technical checks (USDC config/rates, valid `lud16` for Lightning); absent field = all three; empty intersection → neutral *Contact them to arrange payment* copy |
 | Passport step | UNVERIFIED passports from `getProfileData` → dropdown (`formatPassportTitle` + make/model); else manual passport ID input |
@@ -1210,4 +1214,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.6 (July 2026 — C1.1 KarPro fee composer + payment methods; pay modal chain-read + gating). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.7 (July 2026 — C1.2 public fee surfaces: shared display, nav-currency secondary, Lightning chip, pro hero chain-read). Update when tokens, app shell, or component contracts change.*

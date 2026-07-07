@@ -11,7 +11,7 @@ import { useMessagingStatus } from "@/hooks/use-messaging-status";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
-import { formatVerificationFee } from "@/lib/verifier/verification-fee";
+import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 
 type Props = {
@@ -190,9 +190,10 @@ export function VerificationRequestButton({
         Request verification
       </button>
       {verificationFee != null && verificationFee > 0n && (
-        <p className="font-mono text-xs text-text-secondary">
-          {formatVerificationFee(verificationFee)}
-        </p>
+        <VerificationFeeDisplay
+          feeWei={verificationFee}
+          primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
+        />
       )}
       {actionError && (
         <p className="text-sm text-status-error" role="alert">

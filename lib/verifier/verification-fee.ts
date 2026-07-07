@@ -9,6 +9,12 @@ export function formatVerificationFee(fee: bigint): string {
   return `${formatEther(fee)} ETH`;
 }
 
+/** Display-only: wei fee → USD at 1e8 scale (round down). */
+export function verificationFeeToUsd1e8(feeWei: bigint, ethUsd1e8: bigint): bigint {
+  if (feeWei <= 0n || ethUsd1e8 <= 0n) return 0n;
+  return (feeWei * ethUsd1e8) / ETH_SCALE;
+}
+
 export function verificationFeeInUsdc(
   feeWei: bigint,
   ethUsd1e8: bigint,
