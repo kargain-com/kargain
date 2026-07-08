@@ -2,7 +2,10 @@ import type { Address } from "viem";
 import type { WalletClient } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
-import { publishNostrProfile } from "@/lib/nostr/profile";
+import {
+  publishNostrProfile,
+  type PublishNostrProfileOpts,
+} from "@/lib/nostr/profile";
 import { verifyMessagingActivation } from "@/lib/xmtp/verify-messaging-activation";
 
 export type EnableMessagingFullStep = "xmtp" | "nostr" | "verify";
@@ -15,15 +18,25 @@ export type EnableMessagingFullResult = {
   verifyDetail?: EnableMessagingFullVerifyDetail;
 };
 
+export type PublishProfileFn = (
+  data: NostrProfileData,
+  address: Address,
+  signer: { signMessage: (msg: string) => Promise<string> },
+  opts?: PublishNostrProfileOpts,
+) => Promise<boolean>;
+
 export type EnableMessagingFullInput = {
   enableMessages: () => Promise<boolean>;
   address: Address;
   walletClient: WalletClient;
+  /** Attested profile read result — drives expectExisting on Nostr publish only. */
   profile: NostrProfileData | null | undefined;
   /** When true, skip XMTP init and only publish Nostr preference (split-state recovery). */
   xmtpAlreadyActive?: boolean;
   /** When true, skip post-enable network/relay verification (tests only). */
   skipVerify?: boolean;
+  /** Tests only — override publishNostrProfile to capture patch shape. */
+  publishProfile?: PublishProfileFn;
 };
 
 /** Enable XMTP messaging, publish Nostr messagesEnabled: true, and verify network + relay. */
@@ -37,19 +50,15 @@ export async function enableMessagingFull(
     }
   }
 
-  const nostrOk = await publishNostrProfile(
-    {
-      name: input.profile?.name,
-      about: input.profile?.about,
-      picture: input.profile?.picture,
-      website: input.profile?.website,
-      messagesEnabled: true,
-    },
+  const publish = input.publishProfile ?? publishNostrProfile;
+  const nostrOk = await publish(
+    { messagesEnabled: true },
     input.address,
     {
       signMessage: (msg) =>
         input.walletClient.signMessage({ account: input.address, message: msg }),
     },
+    { expectExisting: input.profile != null },
   );
 
   if (!nostrOk) {

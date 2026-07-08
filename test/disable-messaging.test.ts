@@ -27,16 +27,21 @@ describe("disableMessagingFull", () => {
 
   it("disables XMTP only after successful Nostr publish", async () => {
     let disabled = false;
+    let capturedPreference: boolean | undefined;
     const result = await disableMessagingFull({
       address: ADDRESS,
       walletClient: {} as never,
       profile: { name: "Test" },
-      publishPreference: async () => true,
+      publishPreference: async (messagesEnabled) => {
+        capturedPreference = messagesEnabled;
+        return true;
+      },
       disableMessages: () => {
         disabled = true;
       },
     });
     assert.equal(result.ok, true);
+    assert.equal(capturedPreference, false);
     assert.equal(disabled, true);
   });
 });

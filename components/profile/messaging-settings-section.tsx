@@ -64,20 +64,15 @@ export function MessagingSettingsSection() {
     async (messagesEnabled: boolean) => {
       if (!walletClient || !address) return false;
       return publishNostrProfile(
-        {
-          name: profile?.name,
-          about: profile?.about,
-          picture: profile?.picture,
-          website: profile?.website,
-          messagesEnabled,
-        },
+        { messagesEnabled },
         address,
         {
           signMessage: (msg) => walletClient.signMessage({ account: address, message: msg }),
         },
+        { expectExisting: profile != null },
       );
     },
-    [address, profile?.about, profile?.name, profile?.picture, profile?.website, walletClient],
+    [address, profile, walletClient],
   );
 
   const onEnable = async () => {

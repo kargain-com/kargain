@@ -53,6 +53,14 @@ export async function fetchLatestKind0RawByAuthor(
   }
 }
 
+/** True when caller expects an existing relay profile but the merge base fetch returned nothing. */
+export function isMergeBaseUnavailable(
+  existing: Record<string, unknown>,
+  expectExisting: boolean,
+): boolean {
+  return expectExisting && Object.keys(existing).length === 0;
+}
+
 /** Merge relay content with a partial Kargain-managed patch (preserves unknown fields). */
 export function mergeKind0Content(
   existing: Record<string, unknown>,

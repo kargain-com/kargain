@@ -6,6 +6,7 @@ import { finalizeEvent } from "nostr-tools";
 import { getOrCreateNostrKey } from "@/lib/nostr/key-manager";
 import {
   fetchLatestKind0RawByAuthor,
+  isMergeBaseUnavailable,
   mergeKind0Content,
 } from "@/lib/nostr/merge-kind0-content";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
@@ -23,6 +24,8 @@ import {
 import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
 
 export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
+
+export type PublishNostrProfileOpts = { expectExisting?: boolean };
 
 function toWalletAddress(address: Address): `0x${string}` {
   return address as `0x${string}`;
@@ -61,11 +64,15 @@ export async function publishNostrProfileWithPrivateKey(
   walletAddress: Address,
   privateKeyHex: string,
   attestation?: ProfileAttestationV1,
+  opts?: PublishNostrProfileOpts,
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
     const pubkey = nostrPubkeyFromPrivateKey(privateKeyHex);
     const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
+    if (isMergeBaseUnavailable(existing, opts?.expectExisting === true)) {
+      return false;
+    }
     const content = mergeKind0Content(existing, data);
     if (attestation) {
       content.attestation = attestation;
@@ -90,6 +97,7 @@ export async function publishNostrProfile(
   data: NostrProfileData,
   walletAddress: Address,
   signer: { signMessage: (msg: string) => Promise<string> },
+  opts?: PublishNostrProfileOpts,
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
@@ -102,13 +110,16 @@ export async function publishNostrProfile(
     });
     const pubkey = nostrPubkeyFromPrivateKey(privateKey);
     const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
+    if (isMergeBaseUnavailable(existing, opts?.expectExisting === true)) {
+      return false;
+    }
     const hasValidAttestation = await verifyProfileAttestationCore(
       { id: `write:${pubkey}`, pubkey, content: JSON.stringify(existing) },
       address,
     );
 
     if (hasValidAttestation) {
-      return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey);
+      return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey, undefined, opts);
     }
 
     const attestationSig = (await signer.signMessage(
@@ -124,6 +135,7 @@ export async function publishNostrProfile(
       walletAddress,
       privateKey,
       attestation,
+      opts,
     );
   } catch {
     return false;

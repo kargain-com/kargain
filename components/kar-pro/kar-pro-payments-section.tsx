@@ -111,7 +111,7 @@ export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
     try {
       const ok = await publishNostrProfile(patch, address, {
         signMessage: (msg) => walletClient.signMessage({ message: msg }),
-      });
+      }, { expectExisting: ownProfile != null });
       if (!ok) {
         setMethodsError("Could not publish profile. Try again.");
         return;

@@ -3,10 +3,25 @@ import { describe, it } from "node:test";
 
 import {
   fetchLatestKind0RawByAuthor,
+  isMergeBaseUnavailable,
   mergeKind0Content,
 } from "../lib/nostr/merge-kind0-content.ts";
 import type { AttestedProfileQueryPool } from "../lib/nostr/resolve-attested-profile.ts";
 import type { NostrProfileData } from "../lib/nostr/parse-profile-content.ts";
+
+describe("isMergeBaseUnavailable", () => {
+  it("returns true when empty and caller expects existing profile", () => {
+    assert.equal(isMergeBaseUnavailable({}, true), true);
+  });
+
+  it("returns false when empty and caller does not expect existing profile", () => {
+    assert.equal(isMergeBaseUnavailable({}, false), false);
+  });
+
+  it("returns false when merge base has keys", () => {
+    assert.equal(isMergeBaseUnavailable({ name: "Ada" }, true), false);
+  });
+});
 
 describe("mergeKind0Content attestation", () => {
   it("preserves attestation when omitted from patch", () => {

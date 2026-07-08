@@ -127,6 +127,7 @@ export function ProfileEditClient() {
         {
           signMessage: (msg) => walletClient.signMessage({ message: msg }),
         },
+        { expectExisting: profile != null },
       );
       if (ok) {
         setSaveStatus("success");

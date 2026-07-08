@@ -373,6 +373,8 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Wri
 | Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address are implicit from event `pubkey` and NIP-39 `i` tag |
 | Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge source fetched by `{ kinds: [0], authors: [derivedPubkey] }` only (never by `#i`); if existing author content has valid attestation, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `fetchLatestKind0RawByAuthor`; `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
+| Publish guard | `publishNostrProfile` / `publishNostrProfileWithPrivateKey` — when caller passes `expectExisting: true` and merge base fetch returns `{}`, abort (`false`) before attestation signature; default `expectExisting: false` preserves first-ever save |
+| Messaging patch | Enable/disable messaging publishes `{ messagesEnabled }` only — no personal fields re-sent ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx), [`enable-messaging-full.ts`](../lib/xmtp/enable-messaging-full.ts)) |
 | Read resolver | `resolveAttestedProfile` / `resolveAttestedProfiles` / `attestedPubkeyForAddress` — query `#i`, sort `created_at` desc, return **newest event that passes verify** (older attested beats newer spoofed); `null` when none verify |
 | Batch (KP-5) | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — subscription events verified before accumulator; unverified never enter map |
 | Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by `event.id` + normalized address |
@@ -1264,4 +1266,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.22 (July 2026 — NS-4.2 dirty-only kind 0 saves + Lightning address integrity on KarPro Payments). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.23 (July 2026 — NS-4.3 fail-closed publish guard + single-key messaging patches). Update when tokens, app shell, or component contracts change.*
