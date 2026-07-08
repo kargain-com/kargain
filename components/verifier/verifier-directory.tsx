@@ -2,7 +2,7 @@
 
 import { ChevronDown, Search, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
@@ -13,6 +13,11 @@ import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
 } from "@/lib/kar-pro/kar-pro-metadata";
+import {
+  filterVerifiers,
+  formatVerifierDirectoryResultCount,
+  type VerifierDirectorySortKey,
+} from "@/lib/verifier/filter-verifiers";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -157,35 +162,27 @@ export function VerifierDirectory({
 }: Props) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
-  const [sortKey, setSortKey] = useState<"verifications" | "newest">("verifications");
+  const [sortKey, setSortKey] = useState<VerifierDirectorySortKey>("verifications");
 
   const isPicker = layout === "picker";
+  const deferredQuery = useDeferredValue(search.trim());
+  const activeOnly = Boolean(onSelectAgent);
 
-  const filteredVerifiers = useMemo(() => {
-    let result = [...verifiers];
-    if (onSelectAgent) {
-      result = result.filter((v) => v.active);
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      result = result.filter(
-        (v) => v.name.toLowerCase().includes(q) || v.slug.toLowerCase().includes(q),
-      );
-    }
-    if (categoryFilter !== null) {
-      result = result.filter((v) => v.category === categoryFilter);
-    }
-    result.sort((a, b) => {
-      if (sortKey === "verifications") {
-        return b.verificationCount - a.verificationCount;
-      }
-      if (a.joinedAt === 0 && b.joinedAt === 0) return 0;
-      if (a.joinedAt === 0) return 1;
-      if (b.joinedAt === 0) return -1;
-      return b.joinedAt - a.joinedAt;
-    });
-    return result;
-  }, [verifiers, search, categoryFilter, sortKey, onSelectAgent]);
+  const totalPoolCount = useMemo(
+    () => (activeOnly ? verifiers.filter((v) => v.active) : verifiers).length,
+    [verifiers, activeOnly],
+  );
+
+  const filteredVerifiers = useMemo(
+    () =>
+      filterVerifiers(verifiers, {
+        query: deferredQuery,
+        categoryIndex: categoryFilter,
+        sortKey,
+        activeOnly,
+      }),
+    [verifiers, deferredQuery, categoryFilter, sortKey, activeOnly],
+  );
 
   const hasActiveFilters = search.trim() !== "" || categoryFilter !== null;
 
@@ -212,7 +209,7 @@ export function VerifierDirectory({
           />
           <input
             type="search"
-            placeholder="Search by name..."
+            placeholder="Search by name, address, or category…"
             aria-label="Search verifiers"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -223,11 +220,12 @@ export function VerifierDirectory({
           <select
             aria-label="Sort verifiers"
             value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+            onChange={(e) => setSortKey(e.target.value as VerifierDirectorySortKey)}
             className="min-h-11 w-full appearance-none rounded-sm border border-border-default bg-bg-card py-3 pl-4 pr-9 font-sans text-sm text-text-primary transition-colors duration-200 focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
           >
             <option value="verifications">Most verified</option>
             <option value="newest">Newest member</option>
+            <option value="lowestFee">Lowest fee</option>
           </select>
           <ChevronDown
             size={16}
@@ -310,9 +308,20 @@ export function VerifierDirectory({
     </div>
   );
 
+  const resultsCounter = !isPicker ? (
+    <p className="mb-6 font-mono text-xs text-text-secondary tabular-nums">
+      {formatVerifierDirectoryResultCount(
+        totalPoolCount,
+        filteredVerifiers.length,
+        hasActiveFilters,
+      )}
+    </p>
+  ) : null;
+
   return (
     <>
       {filterToolbar}
+      {resultsCounter}
       {filteredVerifiers.length === 0 ? emptyFilters : cardList}
     </>
   );
