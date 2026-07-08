@@ -421,12 +421,10 @@ export function ProfilePage({
     tabFromSearchParams(searchParams, tabs),
   );
 
-  useEffect(() => {
-    const ids = new Set(tabs.map((t) => t.id));
-    if (!ids.has(activeTab)) {
-      setActiveTab("passports");
-    }
-  }, [tabs, activeTab]);
+  const tabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
+  if (!tabIds.has(activeTab) && activeTab !== "passports") {
+    setActiveTab("passports");
+  }
 
   useEffect(() => {
     const onPopState = () => {

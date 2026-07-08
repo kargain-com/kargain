@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
 import {
   useAccount,
@@ -55,6 +55,19 @@ function isWalletRejection(err: unknown): boolean {
   if (err instanceof UserRejectedRequestError) return true;
   return err instanceof Error && err.message.includes("User rejected");
 }
+
+type MintReceiptOutcome =
+  | { status: "pending" }
+  | { status: "receipt_error" }
+  | {
+      status: "parse_error";
+      message: string;
+    }
+  | { status: "success"; tokenId: string; txHash: string };
+
+const MINT_PARSE_ERROR_MESSAGE =
+  "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
+const MINT_RECEIPT_ERROR_MESSAGE = "Transaction failed on-chain. Please try again.";
 
 export function CreatePassportWizard() {
   const router = useRouter();
@@ -165,8 +178,9 @@ export function CreatePassportWizard() {
     [address, walletChain, writeContractAsync, resetWrite],
   );
 
-  useEffect(() => {
-    if (!mintReceipt) return;
+  const mintReceiptOutcome = useMemo((): MintReceiptOutcome => {
+    if (mintReceiptError) return { status: "receipt_error" };
+    if (!mintReceipt) return { status: "pending" };
 
     const events = parseEventLogs({
       abi: KarPassportAbi,
@@ -175,24 +189,36 @@ export function CreatePassportWizard() {
     });
     const minted = events[0];
     if (!minted || minted.eventName !== "PassportMinted") {
-      setFormError(
-        "Mint succeeded but token ID could not be read. Check your wallet for the NFT.",
-      );
-      setPhase("error");
-      return;
+      return { status: "parse_error", message: MINT_PARSE_ERROR_MESSAGE };
     }
 
-    setPhase("success");
-    router.push(
-      `/marketplace/${minted.args.tokenId.toString()}/created?chain=${walletChain}&tx=${mintReceipt.transactionHash}`,
-    );
-  }, [mintReceipt, router, walletChain]);
+    return {
+      status: "success",
+      tokenId: minted.args.tokenId.toString(),
+      txHash: mintReceipt.transactionHash,
+    };
+  }, [mintReceipt, mintReceiptError]);
+
+  const effectivePhase: Phase =
+    mintReceiptOutcome.status === "receipt_error" || mintReceiptOutcome.status === "parse_error"
+      ? "error"
+      : mintReceiptOutcome.status === "success"
+        ? "success"
+        : phase;
+
+  const effectiveFormError =
+    mintReceiptOutcome.status === "receipt_error"
+      ? MINT_RECEIPT_ERROR_MESSAGE
+      : mintReceiptOutcome.status === "parse_error"
+        ? mintReceiptOutcome.message
+        : formError;
 
   useEffect(() => {
-    if (!mintReceiptError) return;
-    setFormError("Transaction failed on-chain. Please try again.");
-    setPhase("error");
-  }, [mintReceiptError]);
+    if (mintReceiptOutcome.status !== "success") return;
+    router.push(
+      `/marketplace/${mintReceiptOutcome.tokenId}/created?chain=${walletChain}&tx=${mintReceiptOutcome.txHash}`,
+    );
+  }, [mintReceiptOutcome, router, walletChain]);
 
   const onCreatePassport = async () => {
     setFormError(null);
@@ -261,10 +287,10 @@ export function CreatePassportWizard() {
   };
 
   const isBusy =
-    phase === "uploading" ||
-    phase === "minting" ||
+    effectivePhase === "uploading" ||
+    effectivePhase === "minting" ||
     isWritePending ||
-    isConfirming;
+    (isConfirming && mintReceiptOutcome.status === "pending");
 
   if (!isConnected) {
     return (
@@ -305,9 +331,9 @@ export function CreatePassportWizard() {
         </p>
       )}
 
-      {(formError) && (
+      {(effectiveFormError) && (
         <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
-          {formError}
+          {effectiveFormError}
         </p>
       )}
 
@@ -347,14 +373,14 @@ export function CreatePassportWizard() {
             disabled={isBusy}
           />
 
-          {phase === "uploading" &&
+          {effectivePhase === "uploading" &&
             (uploadProgress ? (
               <PassportUploadProgressPanel uploadProgress={uploadProgress} context="create" />
             ) : (
               <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
             ))}
 
-          {phase === "minting" && (
+          {effectivePhase === "minting" && (
             <div className="space-y-1">
               <p className="font-sans text-sm text-text-secondary">
                 Creating passport on-chain…
@@ -390,9 +416,9 @@ export function CreatePassportWizard() {
               disabled={isBusy || photos.length < 1}
               onClick={() => void onCreatePassport()}
             >
-              {phase === "uploading"
+              {effectivePhase === "uploading"
                 ? "Uploading…"
-                : phase === "minting"
+                : effectivePhase === "minting"
                   ? "Creating passport…"
                   : "Create passport"}
             </Button>

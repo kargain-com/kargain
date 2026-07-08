@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 
+import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { closeXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import {
   deriveMessagingStatus,
@@ -20,7 +21,6 @@ import {
 import {
   canInitializeMessaging,
   messagingWalletError,
-  readAccountKindFromProvider,
   type WalletAccountKind,
 } from "@/lib/web3/wallet-account";
 
@@ -37,29 +37,14 @@ export function useMessagingStatus(): {
 } {
   const { address, isConnected, connector } = useAccount();
   const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
-  const [walletKind, setWalletKind] = useState<WalletAccountKind | null>(null);
+  const { kind: walletKind } = useWalletAccountKind(
+    isConnected ? address : undefined,
+    connector,
+  );
 
   const walletKey = address?.toLowerCase() ?? null;
   const optedIn = walletKey ? hasOptedIn(walletKey) : false;
   const disabledLocally = walletKey ? isMessagingDisabledLocally(walletKey) : false;
-
-  useEffect(() => {
-    if (!isConnected || !address) {
-      setWalletKind(null);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      const provider = await connector?.getProvider?.();
-      const kind = await readAccountKindFromProvider(provider, address);
-      if (!cancelled) setWalletKind(kind);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [address, connector, isConnected]);
 
   const status = useMemo(
     () =>

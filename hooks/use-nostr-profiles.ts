@@ -42,8 +42,17 @@ export function useNostrProfiles(
     return deduped.join(",");
   }, [addresses]);
 
+  const subscriptionKey = enabled && addressKey.length > 0 ? addressKey : "";
+
   const [profiles, setProfiles] = useState<Map<string, NostrProfileData | null>>(emptyProfileMap);
-  const [loading, setLoading] = useState(enabled && addressKey.length > 0);
+  const [loading, setLoading] = useState(Boolean(subscriptionKey));
+
+  const [prevSubscriptionKey, setPrevSubscriptionKey] = useState(subscriptionKey);
+  if (subscriptionKey !== prevSubscriptionKey) {
+    setPrevSubscriptionKey(subscriptionKey);
+    setProfiles(emptyProfileMap());
+    setLoading(Boolean(subscriptionKey));
+  }
 
   const mountedRef = useRef(true);
 
@@ -55,15 +64,9 @@ export function useNostrProfiles(
   }, []);
 
   useEffect(() => {
-    if (!enabled || addressKey.length === 0) {
-      setProfiles(emptyProfileMap());
-      setLoading(false);
-      return;
-    }
+    if (!subscriptionKey) return;
 
-    const parsedAddresses = addressKey.split(",") as Address[];
-    setLoading(true);
-    setProfiles(emptyProfileMap());
+    const parsedAddresses = subscriptionKey.split(",") as Address[];
 
     const pool = getNostrPool();
     const filter = attestedProfileFilterForAddresses(parsedAddresses);
@@ -129,7 +132,7 @@ export function useNostrProfiles(
         // ignore
       }
     };
-  }, [addressKey, enabled]);
+  }, [subscriptionKey]);
 
   return { profiles, loading };
 }

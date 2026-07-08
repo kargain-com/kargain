@@ -58,6 +58,16 @@ export function PassportDetailTabs({
   );
   const [visitedRecords, setVisitedRecords] = useState(() => tab === "records");
   const [visitedActions, setVisitedActions] = useState(() => tab === "actions");
+  const [legacyPanelMigrated, setLegacyPanelMigrated] = useState(false);
+
+  const panel = searchParams.get("panel");
+  if ((panel === "records" || panel === "actions") && !legacyPanelMigrated) {
+    setLegacyPanelMigrated(true);
+    replacePassportTabUrl(pathname, window.location.search, panel);
+    setTab(panel);
+    if (panel === "records") setVisitedRecords(true);
+    if (panel === "actions") setVisitedActions(true);
+  }
 
   const syncTabFromLocation = useCallback(() => {
     const next = readPassportTabFromLocation();
@@ -74,16 +84,6 @@ export function PassportDetailTabs({
       window.removeEventListener("popstate", syncTabFromLocation);
     };
   }, [syncTabFromLocation]);
-
-  // Legacy ?panel=records|actions → tab (once)
-  useEffect(() => {
-    const panel = searchParams.get("panel");
-    if (panel !== "records" && panel !== "actions") return;
-    replacePassportTabUrl(pathname, window.location.search, panel);
-    setTab(panel);
-    if (panel === "records") setVisitedRecords(true);
-    if (panel === "actions") setVisitedActions(true);
-  }, [pathname, searchParams]);
 
   const selectTab = useCallback(
     (nextTab: PassportTab) => {

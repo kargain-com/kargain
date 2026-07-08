@@ -64,25 +64,29 @@ export function useListingComments(
   options?: { enabled?: boolean },
 ): UseListingCommentsResult {
   const enabled = options?.enabled ?? true;
+  const subscriptionKey = enabled && tokenId ? tokenId : "";
+
   const [feed, setFeed] = useState<ListingCommentFeedState>(createEmptyListingCommentFeed);
   const [feedError, setFeedError] = useState<string | null>(null);
-  const [feedLoading, setFeedLoading] = useState(enabled);
+  const [feedLoading, setFeedLoading] = useState(Boolean(subscriptionKey));
+
+  const [prevSubscriptionKey, setPrevSubscriptionKey] = useState(subscriptionKey);
+  if (subscriptionKey !== prevSubscriptionKey) {
+    setPrevSubscriptionKey(subscriptionKey);
+    setFeed(createEmptyListingCommentFeed());
+    setFeedError(null);
+    setFeedLoading(Boolean(subscriptionKey));
+  }
 
   const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (!enabled || !tokenId) {
-      setFeedLoading(false);
-      return;
-    }
+    if (!subscriptionKey) return;
 
     mountedRef.current = true;
-    setFeedLoading(true);
-    setFeedError(null);
-    setFeed(createEmptyListingCommentFeed());
 
     const pool = getNostrPool();
-    const listingTag = `listing:${tokenId}`;
+    const listingTag = `listing:${subscriptionKey}`;
     const since = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
     const filter: Filter = {
       kinds: [1, 7],
@@ -94,11 +98,6 @@ export function useListingComments(
     let initialDone = false;
     let initialBuffer = createEmptyListingCommentFeed();
     let progressiveTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const publishInitialBuffer = () => {
-      if (!mountedRef.current || initialDone) return;
-      setFeed(initialBuffer);
-    };
 
     const scheduleProgressiveFlush = () => {
       if (initialDone || progressiveTimer != null) return;
@@ -161,7 +160,7 @@ export function useListingComments(
         // ignore
       }
     };
-  }, [tokenId, enabled]);
+  }, [subscriptionKey]);
 
   const { events, likesByTarget } = feed;
 

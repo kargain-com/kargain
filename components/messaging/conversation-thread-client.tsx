@@ -33,7 +33,7 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
   }
 }
 
-export function ConversationThreadClient({ conversationId }: Props) {
+function ConversationThreadBody({ conversationId }: Props) {
   const { isConnected } = useAccount();
   const { client } = useXmtpClient();
   const { isReady, needsSetup } = useMessagingStatus();
@@ -48,17 +48,12 @@ export function ConversationThreadClient({ conversationId }: Props) {
     [conversations, conversationId],
   );
   const listPeerAddress = parsePeerAddress(peerAddressRaw);
-  const [resolvedPeerAddress, setResolvedPeerAddress] = useState<`0x${string}` | undefined>();
-  const peerAddress = listPeerAddress ?? resolvedPeerAddress;
+  const [fallbackPeerAddress, setFallbackPeerAddress] = useState<`0x${string}` | undefined>();
+  const peerAddress = listPeerAddress ?? fallbackPeerAddress;
   const { displayName, isKarPro, profileHref } = usePeerIdentity(peerAddress);
 
   useEffect(() => {
-    if (listPeerAddress) {
-      setResolvedPeerAddress(listPeerAddress);
-      return;
-    }
-
-    if (!client || !conversationId) return;
+    if (listPeerAddress || !client || !conversationId) return;
 
     let cancelled = false;
 
@@ -71,7 +66,7 @@ export function ConversationThreadClient({ conversationId }: Props) {
         const states = await client.preferences.getInboxStates([peerInboxId]);
         const resolved = ethereumAddressFromInboxState(states[0]);
         if (!cancelled && resolved) {
-          setResolvedPeerAddress(resolved);
+          setFallbackPeerAddress(resolved);
         }
       } catch {
         // Peer lookup failed — header falls back to unknown peer.
@@ -215,4 +210,8 @@ export function ConversationThreadClient({ conversationId }: Props) {
       </div>
     </div>
   );
+}
+
+export function ConversationThreadClient({ conversationId }: Props) {
+  return <ConversationThreadBody key={conversationId} conversationId={conversationId} />;
 }

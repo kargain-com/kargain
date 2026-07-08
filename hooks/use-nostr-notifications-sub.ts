@@ -36,17 +36,21 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   const pubkey = nostrPubkey;
   const ready = isConnected && Boolean(pubkey);
   const ownedTokenIdsKey = ownedTokenIds.join("\0");
+  const subscriptionKey = ready && pubkey
+    ? `${pubkey}\0${ownedTokenIdsKey}\0${state.lastSeenAt.nostr}`
+    : "";
+
+  const [prevSubscriptionKey, setPrevSubscriptionKey] = useState(subscriptionKey);
+  if (subscriptionKey !== prevSubscriptionKey) {
+    setPrevSubscriptionKey(subscriptionKey);
+    setEvents([]);
+    setIsLoading(Boolean(subscriptionKey));
+  }
 
   useEffect(() => {
-    if (!ready || !pubkey) {
-      setEvents((prev) => (prev.length === 0 ? prev : []));
-      setIsLoading(false);
-      return;
-    }
+    if (!subscriptionKey || !pubkey) return;
 
     mountedRef.current = true;
-    setIsLoading(true);
-    setEvents([]);
 
     const pool = getNostrPool();
     const sinceLive = state.lastSeenAt.nostr;
@@ -95,7 +99,7 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
         }
       }
     };
-  }, [ready, pubkey, state.lastSeenAt.nostr, ownedTokenIdsKey]);
+  }, [subscriptionKey, pubkey, ownedTokenIds, state.lastSeenAt.nostr]);
 
   const items = useMemo(() => {
     if (!pubkey) return [];
