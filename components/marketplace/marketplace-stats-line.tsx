@@ -1,6 +1,8 @@
 import { fetchActiveVerifierCount } from "@/app/actions/verifier-directory";
 import { fetchMarketplaceStats } from "@/app/actions/marketplace-listings";
+import { MARKETPLACE_SHELL_CONTAINER } from "@/lib/marketplace/listing-card-grid";
 import type { MarketplaceStatsResponse } from "@/lib/types/ponder";
+import { cn } from "@/lib/utils";
 
 export async function MarketplaceStatsLine() {
   let activeListings = 0;
@@ -25,7 +27,7 @@ export async function MarketplaceStatsLine() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8 pt-4 pb-0">
+    <div className={cn(MARKETPLACE_SHELL_CONTAINER, "pt-4 pb-0")}>
       <p className="font-mono text-xs text-text-tertiary tabular-nums">
         {activeListings > 0 ? `${activeListings} listings` : null}
         {activeListings > 0 && verifiedCount > 0 ? " · " : null}

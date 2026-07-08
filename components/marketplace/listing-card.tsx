@@ -14,6 +14,11 @@ import {
   elevatedAdvisoryText,
 } from "@/lib/design/instrument-classes";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
+import {
+  LISTING_CARD_IMAGE,
+  LISTING_CARD_IMAGE_FRAME,
+  LISTING_CARD_IMAGE_PLACEHOLDER,
+} from "@/lib/marketplace/listing-card-media";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
@@ -41,19 +46,17 @@ export function ListingCard({ row }: Props) {
             : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
         )}
       >
-        <div className="aspect-[16/10] w-full bg-bg-surface">
+        <div className={LISTING_CARD_IMAGE_FRAME}>
           {row.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={row.imageUrl}
               alt={row.title}
-              className="h-full w-full object-cover"
+              className={LISTING_CARD_IMAGE}
               loading="lazy"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-xs text-text-secondary">
-              No image
-            </div>
+            <div className={LISTING_CARD_IMAGE_PLACEHOLDER}>No image</div>
           )}
         </div>
         <CardContent className="flex flex-1 flex-col gap-2.5 p-6">
