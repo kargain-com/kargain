@@ -126,11 +126,18 @@ describe("verifyProfileAttestation", () => {
     assert.equal(await verifyProfileAttestation(event, ADDRESS), false);
   });
 
-  it("memoizes results by event id", async () => {
+  it("memoizes separately per expected address for one event id", async () => {
     clearProfileAttestationMemoForTests();
     const event = await signedEvent({ id: "memo-event" });
 
     assert.equal(await verifyProfileAttestation(event, ADDRESS), true);
+    assert.equal(
+      await verifyProfileAttestation(
+        event,
+        "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      ),
+      false,
+    );
 
     const tampered = { ...event, content: JSON.stringify({ name: "Tampered" }) };
     assert.equal(await verifyProfileAttestation(tampered, ADDRESS), true);

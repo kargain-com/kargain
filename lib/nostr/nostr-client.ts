@@ -24,27 +24,3 @@ function normalizePrivateKeyHex(privateKeyHex: string): `0x${string}` {
 export function nostrPubkeyFromPrivateKey(privateKeyHex: string): string {
   return getPublicKey(hexToBytes(normalizePrivateKeyHex(privateKeyHex)));
 }
-
-/**
- * Resolve a wallet address to its Nostr pubkey by querying kind:0 identity tags
- * published when the user first saves favorites (`["i", "ethereum:<address>"]`).
- */
-export async function resolveNostrPubkeyForEthereumAddress(
-  address: `0x${string}`,
-): Promise<string | null> {
-  try {
-    const pool = getNostrPool();
-    const tag = `ethereum:${address.toLowerCase()}`;
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], "#i": [tag], limit: 20 },
-      { maxWait: 4500 },
-    );
-    if (events.length === 0) return null;
-    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-    return latest?.pubkey ?? null;
-  } catch (err) {
-    console.error("resolveNostrPubkeyForEthereumAddress failed", err);
-    return null;
-  }
-}

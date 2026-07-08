@@ -3,15 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 
-import {
-  applyProfileEvent,
-  buildEthereumProfileFilter,
-  createEmptyProfileBatchState,
-  profileMapFromState,
-  type ProfileBatchState,
-} from "@/lib/nostr/batch-profiles";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import {
+  applyVerifiedProfileEntry,
+  attestedProfileFilterForAddresses,
+  attestedProfileMapFromState,
+  createEmptyAttestedProfileState,
+  type AttestedProfileBatchState,
+  verifyIncomingProfileEvent,
+} from "@/lib/nostr/resolve-attested-profile";
 
 const INITIAL_LOAD_TIMEOUT_MS = 3000;
 const PROGRESSIVE_FLUSH_MS = 120;
@@ -65,15 +66,15 @@ export function useNostrProfiles(
     setProfiles(emptyProfileMap());
 
     const pool = getNostrPool();
-    const filter = buildEthereumProfileFilter(parsedAddresses);
+    const filter = attestedProfileFilterForAddresses(parsedAddresses);
 
     let initialDone = false;
-    let batchState: ProfileBatchState = createEmptyProfileBatchState();
+    let batchState: AttestedProfileBatchState = createEmptyAttestedProfileState();
     let progressiveTimer: ReturnType<typeof setTimeout> | null = null;
 
     const publishBatchState = () => {
       if (!mountedRef.current) return;
-      setProfiles(profileMapFromState(batchState));
+      setProfiles(attestedProfileMapFromState(batchState));
     };
 
     const scheduleProgressiveFlush = () => {
@@ -99,13 +100,17 @@ export function useNostrProfiles(
 
     const sub = pool.subscribeMany([...NOSTR_RELAYS], filter, {
       onevent: (ev) => {
-        if (!mountedRef.current) return;
-        batchState = applyProfileEvent(batchState, ev);
-        if (!initialDone) {
-          scheduleProgressiveFlush();
-        } else {
-          publishBatchState();
-        }
+        void (async () => {
+          const verified = await verifyIncomingProfileEvent(ev);
+          if (!verified || !mountedRef.current) return;
+
+          batchState = applyVerifiedProfileEntry(batchState, verified);
+          if (!initialDone) {
+            scheduleProgressiveFlush();
+          } else {
+            publishBatchState();
+          }
+        })();
       },
       oneose: finishInitialLoad,
       onclose: () => {

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { mergeKind0Content } from "../lib/nostr/merge-kind0-content.ts";
+import {
+  fetchLatestKind0RawByAuthor,
+  mergeKind0Content,
+} from "../lib/nostr/merge-kind0-content.ts";
+import type { AttestedProfileQueryPool } from "../lib/nostr/resolve-attested-profile.ts";
 import type { NostrProfileData } from "../lib/nostr/parse-profile-content.ts";
-
-const STRING_KEYS = ["name", "about", "picture", "website", "lud16"] as const;
 
 describe("mergeKind0Content attestation", () => {
   it("preserves attestation when omitted from patch", () => {
@@ -18,6 +20,36 @@ describe("mergeKind0Content attestation", () => {
     );
     assert.deepEqual(merged.attestation, attestation);
     assert.equal(merged.name, "B");
+  });
+});
+
+const STRING_KEYS = ["name", "about", "picture", "website", "lud16"] as const;
+
+describe("fetchLatestKind0RawByAuthor", () => {
+  it("queries kind:0 by authors pubkey only", async () => {
+    const pubkey = "aa".repeat(32);
+    let capturedFilter: { authors?: string[] } | undefined;
+
+    const pool: AttestedProfileQueryPool = {
+      querySync: async (_relays, filter) => {
+        capturedFilter = filter as { authors?: string[] };
+        return [
+          {
+            id: "1",
+            pubkey,
+            content: JSON.stringify({ name: "Ada" }),
+            created_at: 100,
+            tags: [],
+            kind: 0,
+            sig: "sig",
+          },
+        ];
+      },
+    };
+
+    const raw = await fetchLatestKind0RawByAuthor(pubkey, { pool });
+    assert.deepEqual(capturedFilter?.authors, [pubkey]);
+    assert.equal(raw.name, "Ada");
   });
 });
 

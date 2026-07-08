@@ -25,7 +25,8 @@ import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
-import { resolveNostrPubkeyForEthereumAddress } from "@/lib/nostr/nostr-client";
+import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
+import { getNostrPool } from "@/lib/nostr/nostr-client";
 import {
   isOnChainNftOwner,
   isPassportHolder,
@@ -221,7 +222,7 @@ export function ListingDetailClientIsland({
       return;
     }
     let cancelled = false;
-    void resolveNostrPubkeyForEthereumAddress(listingSeller).then((pubkey) => {
+    void attestedPubkeyForAddress(listingSeller, { pool: getNostrPool() }).then((pubkey) => {
       if (!cancelled) setSellerNostrPubkey(pubkey);
     });
     return () => {

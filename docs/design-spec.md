@@ -363,19 +363,23 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Disputes panel | `serialLabel` eyebrow *Open disputes*; Level A `DisputeCard` grid — operational queue |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
-#### Profile attestation (NS-1)
+#### Profile attestation (NS-1 / NS-2)
 
-Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Module: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts). Write path only in NS-1 — read-path enforcement is NS-2/NS-3.
+Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Write: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts) + [`profile.ts`](../lib/nostr/profile.ts). Read: [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — **single choke point**; consumers cannot obtain unverified profile data by address.
 
 | Item | Value |
 |------|-------|
 | Message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` |
 | Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address are implicit from event `pubkey` and NIP-39 `i` tag |
-| Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — after nostr key derive, if existing relay content has a valid attestation for this pubkey+address, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
-| Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
-| Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by event `id` |
+| Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge source fetched by `{ kinds: [0], authors: [derivedPubkey] }` only (never by `#i`); if existing author content has valid attestation, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
+| Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `fetchLatestKind0RawByAuthor`; `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
+| Read resolver | `resolveAttestedProfile` / `resolveAttestedProfiles` / `attestedPubkeyForAddress` — query `#i`, sort `created_at` desc, return **newest event that passes verify** (older attested beats newer spoofed); `null` when none verify |
+| Batch (KP-5) | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — subscription events verified before accumulator; unverified never enter map |
+| Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by `event.id` + normalized address |
+| Lint guard | ESLint `no-restricted-syntax` on `"#i"` filter property — allowed only in resolver (+ listing-offers passport tag, tests) |
 | Key material | **The nostr key-derivation signature (`kargain-nostr-v1:…`) is private key material and must never appear in event content, tags, logs, or errors.** Attestation uses a separate `signMessage` with the binding message above. |
-| External clients | Third-party kind 0 publishers must adopt the same v1 binding message (or a future version bump) to pass read-path checks in NS-2/NS-3 |
+| External clients | Third-party kind 0 publishers must adopt the same v1 binding message (or a future version bump) to pass read-path checks |
+| NS-3 (next) | Owner nudge banner when profile lacks attestation |
 
 **Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below the stats grid — chain-read fee with Ponder fallback, payment method chips (§4.17), **Pay for inspection** when effective fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
@@ -575,7 +579,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | Payment method chips | [`VerificationPaymentChips`](../components/verifier/verification-fee-display.tsx) — neutral mono text chips (`ETH`, `USDC`, `Lightning`); **public chips mirror pay-modal segment visibility exactly** ([`paymentMethodChipIds`](../lib/verifier/payment-methods.ts): ETH/USDC when in `acceptedPaymentMethods`; Lightning only when [`showLightningChip`](../lib/verifier/payment-methods.ts)); progressive (no loading skeleton) |
 | Verifier directory card | [`VerificationFeeDisplay`](../components/verifier/verification-fee-display.tsx) + [`VerificationPaymentChips`](../components/verifier/verification-fee-display.tsx) in meta row under count / member since; always shown (`0` → *Contact for quote*) |
 | Directory sort **Lowest fee** | [`filter-verifiers.ts`](../lib/verifier/filter-verifiers.ts) — ascending `verificationFee`; fee `0` (*Contact for quote*) sorts after all priced entries |
-| Directory filter **Accepts Lightning** | Grid layout only — toggle chip; keeps entries where [`showLightningChip`](../lib/verifier/payment-methods.ts) is true on loaded Nostr profile; unloaded profiles excluded while batch fetch is in progress; counter and **Clear filters** include this filter; profiles from [`useNostrProfiles`](../hooks/use-nostr-profiles.ts) (single batched `#i` subscription) |
+| Directory filter **Accepts Lightning** | Grid layout only — toggle chip; keeps entries where [`showLightningChip`](../lib/verifier/payment-methods.ts) is true on loaded Nostr profile; unloaded profiles excluded while batch fetch is in progress; counter and **Clear filters** include this filter; profiles from [`useNostrProfiles`](../hooks/use-nostr-profiles.ts) (single batched attested subscription via [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts)) |
 | Request verification | [`verification-request-button.tsx`](../components/verifier/verification-request-button.tsx) — shared display under button when fee &gt; 0 only |
 | Profile stats band | [`profile-verifier-stats-band.tsx`](../components/profile/profile-verifier-stats-band.tsx) — **Verification fee** segment for all visitors; chips when page already has Nostr profile (no extra relay subscription) |
 | Pro showroom hero | [`pro-showroom-verification-fee.tsx`](../components/verifier/pro-showroom-verification-fee.tsx) — chain-read `verificationFee` with Ponder fallback; pay button when effective fee &gt; 0 |
@@ -1259,4 +1263,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.18 (July 2026 — NS-1 kind 0 profile attestation write path + verification helper). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.19 (July 2026 — NS-2 attested profile resolver + read-path enforcement). Update when tokens, app shell, or component contracts change.*

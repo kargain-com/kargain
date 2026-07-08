@@ -92,24 +92,29 @@ export async function verifyProfileAttestationCore(
   }
 }
 
-function memoSet(eventId: string, value: boolean): void {
+function memoKey(eventId: string, expectedAddress: Address | `0x${string}`): string {
+  return `${eventId}:${normalizeWalletAddress(expectedAddress).toLowerCase()}`;
+}
+
+function memoSet(key: string, value: boolean): void {
   if (verificationMemo.size >= MEMO_MAX) {
     const oldest = verificationMemo.keys().next().value;
     if (oldest != null) verificationMemo.delete(oldest);
   }
-  verificationMemo.set(eventId, value);
+  verificationMemo.set(key, value);
 }
 
-/** Memoized by event id — use verifyProfileAttestationCore on write-path checks. */
+/** Memoized by event id + normalized address — use verifyProfileAttestationCore on write-path checks. */
 export async function verifyProfileAttestation(
   event: ProfileAttestationEvent,
   expectedAddress: Address | `0x${string}`,
 ): Promise<boolean> {
-  const cached = verificationMemo.get(event.id);
+  const key = memoKey(event.id, expectedAddress);
+  const cached = verificationMemo.get(key);
   if (cached != null) return cached;
 
   const result = await verifyProfileAttestationCore(event, expectedAddress);
-  memoSet(event.id, result);
+  memoSet(key, result);
   return result;
 }
 

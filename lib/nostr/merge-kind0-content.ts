@@ -1,16 +1,15 @@
 "use client";
 
-import { type Address } from "viem";
+import { finalizeEvent } from "nostr-tools";
 
-import { loadDecryptedKey } from "@/lib/nostr/key-manager";
 import {
   getNostrPool,
   NOSTR_RELAYS,
-  nostrPubkeyFromPrivateKey,
 } from "@/lib/nostr/nostr-client";
 import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import { normalizeVerifierPaymentMethods } from "@/lib/nostr/payment-method-id";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import type { AttestedProfileQueryPool } from "@/lib/nostr/resolve-attested-profile";
 
 export const KARGAIN_MANAGED_KIND0_KEYS = [
   "name",
@@ -23,10 +22,6 @@ export const KARGAIN_MANAGED_KIND0_KEYS = [
   // attestation is intentionally omitted — set only via publish param, preserved by spread
 ] as const;
 
-function toWalletAddress(address: Address): `0x${string}` {
-  return address as `0x${string}`;
-}
-
 function parseKind0RawObject(content: string): Record<string, unknown> {
   if (!content.trim()) return {};
   try {
@@ -38,54 +33,20 @@ function parseKind0RawObject(content: string): Record<string, unknown> {
   }
 }
 
-async function fetchLatestKind0ContentByTag(
-  address: `0x${string}`,
-  maxWait: number,
-): Promise<string | null> {
-  const pool = getNostrPool();
-  const tag = `ethereum:${address.toLowerCase()}`;
-  const events = await pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [0], "#i": [tag], limit: 20 },
-    { maxWait },
-  );
-  const latest = pickLatestKind0Event(events);
-  return latest?.content ?? null;
-}
-
-async function fetchLatestKind0ContentByAuthor(
+/** Fetch latest kind:0 JSON object by author pubkey for merge-before-publish. */
+export async function fetchLatestKind0RawByAuthor(
   pubkey: string,
-  maxWait: number,
-): Promise<string | null> {
-  const pool = getNostrPool();
-  const events = await pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [0], authors: [pubkey], limit: 20 },
-    { maxWait },
-  );
-  const latest = pickLatestKind0Event(events);
-  return latest?.content ?? null;
-}
-
-/** Fetch latest kind:0 JSON object for merge-before-publish. */
-export async function fetchLatestKind0Raw(
-  walletAddress: Address,
+  opts?: { pool?: AttestedProfileQueryPool; maxWait?: number },
 ): Promise<Record<string, unknown>> {
   try {
-    const address = toWalletAddress(walletAddress);
-    const byTag = await fetchLatestKind0ContentByTag(address, 3000);
-    if (byTag != null) return parseKind0RawObject(byTag);
-
-    const storedKey = await loadDecryptedKey({
-      address,
-      signMessage: async () => "" as `0x${string}`,
-    });
-    if (!storedKey) return {};
-
-    const pubkey = nostrPubkeyFromPrivateKey(storedKey);
-    const byAuthor = await fetchLatestKind0ContentByAuthor(pubkey, 2500);
-    if (byAuthor != null) return parseKind0RawObject(byAuthor);
-
+    const pool = opts?.pool ?? getNostrPool();
+    const events = await pool.querySync(
+      [...NOSTR_RELAYS],
+      { kinds: [0], authors: [pubkey], limit: 20 },
+      { maxWait: opts?.maxWait ?? 2500 },
+    );
+    const latest = pickLatestKind0Event(events);
+    if (latest?.content != null) return parseKind0RawObject(latest.content);
     return {};
   } catch {
     return {};

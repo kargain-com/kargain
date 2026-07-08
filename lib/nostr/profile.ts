@@ -3,8 +3,11 @@
 import { type Address, hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
-import { getOrCreateNostrKey, loadDecryptedKey } from "@/lib/nostr/key-manager";
-import { fetchLatestKind0Raw, mergeKind0Content } from "@/lib/nostr/merge-kind0-content";
+import { getOrCreateNostrKey } from "@/lib/nostr/key-manager";
+import {
+  fetchLatestKind0RawByAuthor,
+  mergeKind0Content,
+} from "@/lib/nostr/merge-kind0-content";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import {
   attestationMessage,
@@ -12,12 +15,12 @@ import {
   verifyProfileAttestationCore,
   type ProfileAttestationV1,
 } from "@/lib/nostr/profile-attestation";
-import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import {
   getNostrPool,
   NOSTR_RELAYS,
   nostrPubkeyFromPrivateKey,
 } from "@/lib/nostr/nostr-client";
+import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
 
 export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
 
@@ -30,42 +33,15 @@ function toPrivateKeyBytes(privateKey: string): Uint8Array {
   return hexToBytes(hex as `0x${string}`);
 }
 
-function parseProfileContentOrEmpty(content: string): NostrProfileData {
-  return parseProfileContent(content) ?? {};
-}
-
-async function fetchKind0ByAuthor(pubkey: string, maxWait: number): Promise<NostrProfileData | null> {
-  const pool = getNostrPool();
-  const events = await pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [0], authors: [pubkey], limit: 20 },
-    { maxWait },
-  );
-  const latest = pickLatestKind0Event(events);
-  if (!latest) return null;
-  return parseProfileContentOrEmpty(latest.content);
-}
-
-/** Canonical public profile read — same path viewers use (NIP-39 ethereum tag). */
+/** Canonical public profile read — attestation-verified via central resolver. */
 export async function fetchNostrProfileByEthereumTag(
   walletAddress: Address,
   maxWait = 3000,
 ): Promise<NostrProfileData | null> {
-  try {
-    const address = toWalletAddress(walletAddress);
-    const pool = getNostrPool();
-    const tag = `ethereum:${address.toLowerCase()}`;
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], "#i": [tag], limit: 20 },
-      { maxWait },
-    );
-    const latest = pickLatestKind0Event(events);
-    if (!latest) return null;
-    return parseProfileContentOrEmpty(latest.content);
-  } catch {
-    return null;
-  }
+  return resolveAttestedProfile(walletAddress, {
+    pool: getNostrPool(),
+    maxWait,
+  });
 }
 
 /** Fetch kind:0 profile for a wallet address from relays. Never throws. */
@@ -73,18 +49,7 @@ export async function fetchNostrProfile(
   walletAddress: Address,
 ): Promise<NostrProfileData | null> {
   try {
-    const address = toWalletAddress(walletAddress);
-    const byTag = await fetchNostrProfileByEthereumTag(address, 3000);
-    if (byTag) return byTag;
-
-    const storedKey = await loadDecryptedKey({
-      address,
-      signMessage: async () => "" as `0x${string}`,
-    });
-    if (!storedKey) return null;
-
-    const pubkey = nostrPubkeyFromPrivateKey(storedKey);
-    return fetchKind0ByAuthor(pubkey, 2500);
+    return await fetchNostrProfileByEthereumTag(walletAddress, 3000);
   } catch {
     return null;
   }
@@ -99,7 +64,8 @@ export async function publishNostrProfileWithPrivateKey(
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
-    const existing = await fetchLatestKind0Raw(walletAddress);
+    const pubkey = nostrPubkeyFromPrivateKey(privateKeyHex);
+    const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
     const content = mergeKind0Content(existing, data);
     if (attestation) {
       content.attestation = attestation;
@@ -135,7 +101,7 @@ export async function publishNostrProfile(
       },
     });
     const pubkey = nostrPubkeyFromPrivateKey(privateKey);
-    const existing = await fetchLatestKind0Raw(walletAddress);
+    const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
     const hasValidAttestation = await verifyProfileAttestationCore(
       { id: `write:${pubkey}`, pubkey, content: JSON.stringify(existing) },
       address,
