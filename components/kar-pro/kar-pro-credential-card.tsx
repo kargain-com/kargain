@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { formatEther } from "viem";
+import { formatStakeEth } from "@/lib/kar-pro/stake-format";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
@@ -56,13 +56,6 @@ function formatJoinedDate(timestamp: number): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function formatStakeEth(wei: bigint | undefined): string {
-  if (wei === undefined) return "0.05";
-  const formatted = formatEther(wei);
-  const num = Number.parseFloat(formatted);
-  return Number.isFinite(num) ? num.toFixed(2) : formatted;
 }
 
 async function fetchMetadataFields(

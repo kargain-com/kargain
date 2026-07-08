@@ -1,18 +1,11 @@
 "use client";
 
-import { formatEther } from "viem";
+import { formatStakeEth } from "@/lib/kar-pro/stake-format";
 import { useReadContract } from "wagmi";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-
-function formatStakeEth(wei: bigint | undefined): string {
-  if (wei === undefined) return "0.05";
-  const formatted = formatEther(wei);
-  const num = Number.parseFloat(formatted);
-  return Number.isFinite(num) ? num.toFixed(2) : formatted;
-}
 
 export function KarProHeroSubtitle() {
   const chainId = DEFAULT_CHAIN_ID;

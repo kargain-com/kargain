@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { formatEther, parseEther } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
   useConfig,
-  useReadContract,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -18,6 +16,7 @@ import {
   type SlugAvailabilityStatus,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   categoryIndexToLabel,
@@ -29,13 +28,6 @@ import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type LoadingPhase = "idle" | "uploading" | "confirming";
-
-function formatStakeEth(wei: bigint | undefined): string {
-  if (wei === undefined) return "0.05";
-  const formatted = formatEther(wei);
-  const num = Number.parseFloat(formatted);
-  return Number.isFinite(num) ? num.toFixed(2) : formatted;
-}
 
 export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const chainId = DEFAULT_CHAIN_ID;
@@ -61,15 +53,9 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const wc = wagmiChainId(chainId);
   const wrongChain = walletChain !== chainId;
 
-  const { data: minStake } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "minStakeNative",
-    query: { enabled: Boolean(staking) },
-  });
-
-  const stakeLabel = formatStakeEth(minStake);
+  const { minStake, stakeLabel } = useMinStakeNative();
   const isBusy = loadingPhase !== "idle";
+  const stakeReady = minStake !== undefined;
 
   const onContinue = () => {
     if (!fields.name.trim()) {
@@ -98,7 +84,7 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const onStake = async () => {
-    if (!staking || !fields.name.trim() || !fields.slug.trim()) return;
+    if (!staking || !fields.name.trim() || !fields.slug.trim() || minStake === undefined) return;
     setError(null);
 
     try {
@@ -123,7 +109,7 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         abi: KarProStakingAbi,
         functionName: "becomeVerifierNative",
         args: [fields.categoryIndex, fields.name.trim(), metadataUri],
-        value: minStake ?? parseEther("0.05"),
+        value: minStake,
       });
 
       await waitForTransactionReceipt(config, { hash });
@@ -189,7 +175,7 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
       <div className="flex flex-col gap-3">
         <Button
           type="button"
-          disabled={isBusy || !staking}
+          disabled={isBusy || !staking || !stakeReady}
           aria-busy={isBusy}
           onClick={() => void onStake()}
         >

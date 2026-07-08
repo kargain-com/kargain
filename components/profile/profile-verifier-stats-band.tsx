@@ -1,6 +1,7 @@
 "use client";
 
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
@@ -32,6 +33,7 @@ export function ProfileVerifierStatsBand({
     isActiveVerifier: isActiveVerifier || Boolean(initialProfile?.active),
     syncWhileMissing: isOwner,
   });
+  const { stakeLabel } = useMinStakeNative();
 
   const profile = liveProfile ?? initialProfile;
   const verificationCount = profile?.verificationCount ?? 0;
@@ -80,7 +82,7 @@ export function ProfileVerifierStatsBand({
         <>
           <StatsSeparator />
           <span className="font-mono text-sm">
-            <span className="font-medium text-text-primary">0.05 ETH</span>
+            <span className="font-medium text-text-primary">{stakeLabel} ETH</span>
             <span className="ml-1.5 text-text-secondary">staked</span>
           </span>
         </>

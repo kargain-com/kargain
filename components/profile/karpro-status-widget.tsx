@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 
 export type KarProStatusWidgetProps = {
@@ -15,6 +16,8 @@ export function KarProStatusWidget({
   isOwner,
   isActiveVerifier,
 }: KarProStatusWidgetProps) {
+  const { stakeLabel } = useMinStakeNative();
+
   if (!isOwner || !isActiveVerifier) {
     return null;
   }
@@ -26,7 +29,8 @@ export function KarProStatusWidget({
           KarPro status
         </span>
         <p className="mt-1 font-sans text-sm text-text-secondary">
-          0.05 ETH staked · Stake is fully refundable · No slash · No delay
+          <span className="font-mono tabular-nums text-text-primary">{stakeLabel} ETH</span>
+          {" staked · Stake is fully refundable · No slash · No delay"}
         </p>
       </div>
       <Link href="/kar-pro">

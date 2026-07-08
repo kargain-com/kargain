@@ -348,9 +348,9 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob v2 encrypts sk with signature-derived AES — see [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts) |
 | Profile edit | [`profile-edit-client.tsx`](../components/profile/profile-edit-client.tsx) — optional **Lightning address** (`lud16` on kind 0); merge-preserving publish via [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts); **Lightning wallet** subsection ([`lightning-wallet-section.tsx`](../components/profile/lightning-wallet-section.tsx)) for NWC connect/disconnect |
-| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · `0.05 ETH` staked (owner only). Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
+| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · chain-read **minStakeNative** staked (owner only, via [`use-min-stake-native.ts`](../hooks/use-min-stake-native.ts)). Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
-| KarPro widget | `KarProStatusWidget` — owner + active verifier only; link to `/kar-pro` |
+| KarPro widget | `KarProStatusWidget` — owner + active verifier only; chain-read stake amount in status copy; link to `/kar-pro` |
 | Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier or has verifier history in Ponder (visible to all visitors); **Disputes** owner + active verifier only |
 | Tab active state | `profileTabActive` / `profileTabInactive` from [`instrument-classes.ts`](../lib/design/instrument-classes.ts) — accent bottom border only, no active background fill |
 | Attestations panel | `serialLabel` eyebrow *Attestation feed*; Level C rows in `divide-y` list (`bg-bg-primary/80` shell) — feed pattern per §10.4 |
@@ -1236,4 +1236,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.11 (July 2026 — KP-2 public payment method chips on verification fee surfaces; chips mirror pay-modal segment visibility). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.12 (July 2026 — KP-1 chain-read KarPro stake via `useMinStakeNative` + shared `formatStakeEth`). Update when tokens, app shell, or component contracts change.*

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
@@ -72,6 +73,7 @@ export function ProfileEditClient() {
     isActiveVerifier: isActiveVerifier === true,
     syncWhileMissing: true,
   });
+  const { stakeLabel } = useMinStakeNative();
 
   useEffect(() => {
     if (!profile || userEditedRef.current) return;
@@ -308,7 +310,7 @@ export function ProfileEditClient() {
           <section className="flex flex-col gap-4">
             <SectionEyebrow>Become a KarPro verifier</SectionEyebrow>
             <p className="text-sm text-text-secondary">
-              Stake 0.05 ETH to become a verified professional on Kargain. Earn trust, verify
+              Stake {stakeLabel} ETH to become a verified professional on Kargain. Earn trust, verify
               passports, and get a professional showroom.
             </p>
             <Button variant="secondary" size="sm" className="w-fit" asChild>

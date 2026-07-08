@@ -54,8 +54,8 @@ export default function AboutPage() {
             The trust model
           </h2>
           <p className="font-sans text-base font-normal leading-[1.6] text-text-primary">
-            Trust on Kargain is earned, not assigned. KarPro verifiers stake 0.05 ETH as a
-            signal of accountability — no institution grants them authority, the community
+            Trust on Kargain is earned, not assigned. KarPro verifiers post a fully refundable ETH
+            stake as a signal of accountability — no institution grants them authority, the community
             does. Verification is an attestation, not a guarantee. Disputes are
             permissionless — anyone can open one. Resolution requires an active verifier.
             The full history of every passport is immutable and publicly auditable.

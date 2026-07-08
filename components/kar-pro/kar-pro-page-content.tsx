@@ -1,20 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
+import { formatStakeEth } from "@/lib/kar-pro/stake-format";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-
-function formatStakeEth(wei: bigint | undefined): string {
-  if (wei === undefined) return "0.05";
-  const formatted = formatEther(wei);
-  const num = Number.parseFloat(formatted);
-  return Number.isFinite(num) ? num.toFixed(2) : formatted;
-}
 
 const VALUE_PROPS = [
   { label: "Fully refundable stake", stakeStat: true as const },
