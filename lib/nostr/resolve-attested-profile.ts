@@ -8,6 +8,11 @@ import { NOSTR_RELAYS } from "@/lib/nostr/relays";
 
 const DEFAULT_MAX_WAIT_MS = 3000;
 const MAX_PROFILE_BATCH_LIMIT = 500;
+const KIND0_BY_TAG_LIMIT = 20;
+
+export const PROFILE_REATTESTATION_INVALIDATED = "kargain:profile-reattestation-invalidated";
+
+const reattestationDiagnosticMemo = new Map<string, boolean>();
 
 export type AttestedProfileQueryPool = Pick<SimplePool, "querySync">;
 
@@ -97,6 +102,67 @@ export function attestedProfileMapFromState(
   return result;
 }
 
+async function fetchKind0EventsByEthereumTag(
+  address: `0x${string}`,
+  pool: AttestedProfileQueryPool,
+  maxWait: number,
+): Promise<Event[]> {
+  const tag = `ethereum:${address.toLowerCase()}`;
+  return pool.querySync(
+    [...NOSTR_RELAYS],
+    { kinds: [0], "#i": [tag], limit: KIND0_BY_TAG_LIMIT },
+    { maxWait },
+  );
+}
+
+export function clearOwnProfileReattestationCache(address: Address | `0x${string}`): void {
+  reattestationDiagnosticMemo.delete(normalizeProfileAddress(address));
+}
+
+/** Test-only: clear re-attestation diagnostic memo between cases. */
+export function clearOwnProfileReattestationCacheForTests(): void {
+  reattestationDiagnosticMemo.clear();
+}
+
+export function notifyProfileReattestationInvalidated(address: Address | `0x${string}`): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(PROFILE_REATTESTATION_INVALIDATED, {
+      detail: { address: normalizeProfileAddress(address) },
+    }),
+  );
+}
+
+/** True when kind:0 exists for the address but none passes attestation (boolean only). */
+export async function ownProfileNeedsReattestation(
+  walletAddress: Address | `0x${string}`,
+  options?: ResolveAttestedProfileOptions,
+): Promise<boolean> {
+  try {
+    const address = normalizeProfileAddress(toWalletAddress(walletAddress));
+    const cached = reattestationDiagnosticMemo.get(address);
+    if (cached != null) return cached;
+
+    const pool = options?.pool ?? getServerPool();
+    const events = await fetchKind0EventsByEthereumTag(
+      toWalletAddress(walletAddress),
+      pool,
+      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
+    );
+    if (events.length === 0) {
+      reattestationDiagnosticMemo.set(address, false);
+      return false;
+    }
+
+    const picked = await pickNewestVerifiedProfile(events, address);
+    const needs = picked === null;
+    reattestationDiagnosticMemo.set(address, needs);
+    return needs;
+  } catch {
+    return false;
+  }
+}
+
 async function pickNewestVerifiedProfile(
   events: Event[],
   expectedAddress?: string,
@@ -153,11 +219,10 @@ export async function resolveAttestedProfile(
   try {
     const address = toWalletAddress(walletAddress);
     const pool = options?.pool ?? getServerPool();
-    const tag = `ethereum:${address.toLowerCase()}`;
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], "#i": [tag], limit: 20 },
-      { maxWait: options?.maxWait ?? DEFAULT_MAX_WAIT_MS },
+    const events = await fetchKind0EventsByEthereumTag(
+      address,
+      pool,
+      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
     );
     const picked = await pickNewestVerifiedProfile(events, normalizeProfileAddress(address));
     return picked?.profile ?? null;
@@ -221,24 +286,13 @@ export async function attestedPubkeyForAddress(
 ): Promise<string | null> {
   try {
     const pool = options?.pool ?? getServerPool();
-    const tag = `ethereum:${address.toLowerCase()}`;
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], "#i": [tag], limit: 20 },
-      { maxWait: options?.maxWait ?? DEFAULT_MAX_WAIT_MS },
+    const events = await fetchKind0EventsByEthereumTag(
+      address,
+      pool,
+      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
     );
-    const sorted = [...events].sort((a, b) => b.created_at - a.created_at);
-    for (const event of sorted) {
-      const eventAddress = ethereumAddressFromEvent(event);
-      if (!eventAddress) continue;
-
-      const verified = await verifyProfileAttestation(
-        { id: event.id, pubkey: event.pubkey, content: event.content },
-        eventAddress as `0x${string}`,
-      );
-      if (verified) return event.pubkey;
-    }
-    return null;
+    const picked = await pickNewestVerifiedProfile(events, normalizeProfileAddress(address));
+    return picked?.event.pubkey ?? null;
   } catch {
     return null;
   }

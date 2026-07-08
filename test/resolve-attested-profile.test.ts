@@ -8,7 +8,10 @@ import {
   attestedProfileFilterForAddresses,
   attestedPubkeyForAddress,
   attestedProfileMapFromState,
+  clearOwnProfileReattestationCache,
+  clearOwnProfileReattestationCacheForTests,
   createEmptyAttestedProfileState,
+  ownProfileNeedsReattestation,
   resolveAttestedProfile,
   resolveAttestedProfiles,
   verifyIncomingProfileEvent,
@@ -202,6 +205,75 @@ describe("verifyIncomingProfileEvent + batch accumulator", () => {
 
     const map = attestedProfileMapFromState(state);
     assert.equal(map.get(ADDRESS.toLowerCase())?.lud16, "new@example.com");
+  });
+});
+
+describe("ownProfileNeedsReattestation", () => {
+  it("returns false when only attested events exist", async () => {
+    clearProfileAttestationMemoForTests();
+    clearOwnProfileReattestationCacheForTests();
+    const attested = await attestedKind0Event({ id: "attested", created_at: 100 });
+
+    const needs = await ownProfileNeedsReattestation(ADDRESS, {
+      pool: fakePool([attested]),
+    });
+
+    assert.equal(needs, false);
+  });
+
+  it("returns true when only unattested events exist", async () => {
+    clearProfileAttestationMemoForTests();
+    clearOwnProfileReattestationCacheForTests();
+    const spoof = spoofKind0Event({ id: "spoof", created_at: 200 });
+
+    const needs = await ownProfileNeedsReattestation(ADDRESS, {
+      pool: fakePool([spoof]),
+    });
+
+    assert.equal(needs, true);
+  });
+
+  it("returns false when both spoofed and attested events exist", async () => {
+    clearProfileAttestationMemoForTests();
+    clearOwnProfileReattestationCacheForTests();
+    const spoof = spoofKind0Event({ id: "spoof", created_at: 200 });
+    const attested = await attestedKind0Event({ id: "attested", created_at: 100 });
+
+    const needs = await ownProfileNeedsReattestation(ADDRESS, {
+      pool: fakePool([spoof, attested]),
+    });
+
+    assert.equal(needs, false);
+  });
+
+  it("returns false when no events exist", async () => {
+    clearOwnProfileReattestationCacheForTests();
+
+    const needs = await ownProfileNeedsReattestation(ADDRESS, {
+      pool: fakePool([]),
+    });
+
+    assert.equal(needs, false);
+  });
+
+  it("memoizes per address until cache is cleared", async () => {
+    clearProfileAttestationMemoForTests();
+    clearOwnProfileReattestationCacheForTests();
+    let queryCount = 0;
+    const pool: AttestedProfileQueryPool = {
+      querySync: async () => {
+        queryCount += 1;
+        return [spoofKind0Event({ id: "spoof", created_at: 100 })];
+      },
+    };
+
+    assert.equal(await ownProfileNeedsReattestation(ADDRESS, { pool }), true);
+    assert.equal(await ownProfileNeedsReattestation(ADDRESS, { pool }), true);
+    assert.equal(queryCount, 1);
+
+    clearOwnProfileReattestationCache(ADDRESS);
+    assert.equal(await ownProfileNeedsReattestation(ADDRESS, { pool }), true);
+    assert.equal(queryCount, 2);
   });
 });
 

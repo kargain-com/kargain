@@ -8,6 +8,7 @@ import { useAccount, useReadContract, useWalletClient } from "wagmi";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { MessagingSettingsSection } from "@/components/profile/messaging-settings-section";
 import { LightningWalletSection } from "@/components/profile/lightning-wallet-section";
+import { ProfileReattestBanner } from "@/components/profile/profile-reattest-banner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -163,6 +164,8 @@ export function ProfileEditClient() {
         showEditButton={false}
       />
 
+      <ProfileReattestBanner />
+
       <div className="flex flex-col gap-8">
         {/* Section 1 — Personal profile */}
         <section className="flex flex-col gap-4">
@@ -268,6 +271,7 @@ export function ProfileEditClient() {
 
           <div className="flex flex-col gap-3">
             <Button
+              id="save-profile"
               type="button"
               variant="primary"
               size="md"

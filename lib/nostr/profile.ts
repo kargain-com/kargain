@@ -20,7 +20,11 @@ import {
   NOSTR_RELAYS,
   nostrPubkeyFromPrivateKey,
 } from "@/lib/nostr/nostr-client";
-import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
+import {
+  clearOwnProfileReattestationCache,
+  notifyProfileReattestationInvalidated,
+  resolveAttestedProfile,
+} from "@/lib/nostr/resolve-attested-profile";
 
 export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
 
@@ -79,6 +83,8 @@ export async function publishNostrProfileWithPrivateKey(
     const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKeyHex));
     const pool = getNostrPool();
     await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+    clearOwnProfileReattestationCache(address);
+    notifyProfileReattestationInvalidated(address);
     return true;
   } catch {
     return false;
