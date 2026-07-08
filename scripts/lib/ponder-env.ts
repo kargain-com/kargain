@@ -67,18 +67,54 @@ export function resolveContractStartBlock(
   return resolveSepoliaContractStartBlock(contract, chainStart);
 }
 
+type PonderDatabaseConfig =
+  | { kind: "pglite"; directory?: string }
+  | { kind: "postgres"; connectionString?: string };
+
+/**
+ * Local dev / E2E use embedded PGlite when no Postgres connection string is set,
+ * so Docker Postgres is not required. Production always provides DATABASE_URL
+ * (docker-compose) and stays on Postgres.
+ */
+function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
+  const connectionString =
+    process.env.DATABASE_URL ??
+    process.env.PONDER_DATABASE_URL ??
+    process.env.DATABASE_PRIVATE_URL;
+
+  if (connectionString) {
+    return { kind: "postgres", connectionString };
+  }
+
+  if (enableLocal) {
+    return {
+      kind: "pglite",
+      directory: process.env.PONDER_PGLITE_DIR ?? ".ponder/pglite",
+    };
+  }
+
+  // Non-local without a connection string: keep postgres (Ponder resolves
+  // DATABASE_PRIVATE_URL/DATABASE_URL at runtime) — production path unchanged.
+  return { kind: "postgres", connectionString };
+}
+
 export function buildPonderRuntime() {
   const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
+  // Local-dev-only: index just the Hardhat chain (skip Base Sepolia backfill).
+  // Used by the E2E harness so `/ready` does not wait on a public RPC.
+  const localOnly = enableLocal && process.env.PONDER_LOCAL_ONLY === "1";
   const sepoliaAddresses = ponderSepoliaAddresses();
   const localAddresses = enableLocal ? ponderLocalAddresses() : null;
 
-  const chains: Record<string, { id: number; rpc: string; maxRequestsPerSecond?: number }> = {
-    baseSepolia: {
+  const chains: Record<string, { id: number; rpc: string; maxRequestsPerSecond?: number }> = {};
+
+  if (!localOnly) {
+    chains.baseSepolia = {
       id: SEPOLIA_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_84532 ?? "https://sepolia.base.org",
       maxRequestsPerSecond: 10,
-    },
-  };
+    };
+  }
 
   if (enableLocal && localAddresses) {
     chains.localhost = {
@@ -94,6 +130,13 @@ export function buildPonderRuntime() {
     localAddress?: `0x${string}`,
   ) {
     const sepoliaStart = resolveContractStartBlock(SEPOLIA_CHAIN_ID, contract);
+    if (localOnly && localAddress) {
+      return {
+        chain: "localhost" as const,
+        address: localAddress,
+        startBlock: resolveContractStartBlock(LOCAL_CHAIN_ID, contract),
+      };
+    }
     if (enableLocal && localAddress) {
       return {
         chain: {
@@ -117,12 +160,6 @@ export function buildPonderRuntime() {
     addresses: sepoliaAddresses,
     localAddresses,
     contractEntry,
-    database: {
-      kind: "postgres" as const,
-      connectionString:
-        process.env.DATABASE_URL ??
-        process.env.PONDER_DATABASE_URL ??
-        process.env.DATABASE_PRIVATE_URL,
-    },
+    database: resolvePonderDatabase(enableLocal),
   };
 }

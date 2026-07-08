@@ -5,26 +5,49 @@ import { getAddress } from "viem";
 
 import {
   Category,
+  CURRENCY_USD,
+  DISPUTE_DEPOSIT,
   joinVerifier,
   receiptLogs,
 } from "../scripts/lib/local-stack.js";
 import { requireLocalDeployment } from "../scripts/lib/load-deployment.js";
 
-const TOKEN_ID = 0n;
 const URI_MINT = "ar://e2e-mint";
 const URI_EDIT_1 = "ar://e2e-edit-1";
 const URI_POST_DISPUTE = "ar://e2e-post-dispute";
 const PONDER_URL = process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 const PONDER_POLL_MS = 1500;
 const PONDER_TIMEOUT_MS = 60_000;
+const E2E_STRICT = process.env.KARGAIN_E2E_STRICT === "1";
+const E2E_CHAIN_ONLY = process.env.KARGAIN_E2E_CHAIN_ONLY === "1";
 
 type NetworkConnection = Awaited<ReturnType<typeof hardhat.network.connect>>;
 
+async function isPonderApiReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${PONDER_URL}/ready`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function skipPonderChecks(reason: string): void {
+  console.warn("\n[e2e] ═══ WARNING: Ponder indexer assertions SKIPPED ═══");
+  console.warn(`[e2e] ${reason}`);
+  console.warn("[e2e] Summary: chain lifecycle PASS · Ponder indexer assertions SKIPPED\n");
+}
+
+function failPonderChecks(reason: string): never {
+  assert.fail(`[e2e] Ponder indexer assertions failed (strict): ${reason}`);
+}
+
 async function assertChainStatus(
   passport: { read: { getPassportStatus: (args: [bigint]) => Promise<[number, string, bigint]> } },
+  tokenId: bigint,
   expected: number,
 ) {
-  const [status] = await passport.read.getPassportStatus([TOKEN_ID]);
+  const [status] = await passport.read.getPassportStatus([tokenId]);
   assert.equal(status, expected, `expected passport status ${expected}, got ${status}`);
 }
 
@@ -48,24 +71,30 @@ async function pollPonderPassport(
   return null;
 }
 
-async function optionalPonderChecks(ownerAddress: string) {
-  let ponderAvailable = false;
-  try {
-    const res = await fetch(`${PONDER_URL}/passports/${TOKEN_ID}`);
-    ponderAvailable = res.status !== 404 || res.ok;
-  } catch {
-    console.log("[e2e] Ponder API unreachable — skipping indexer assertions");
+async function optionalPonderChecks(ownerAddress: string, tokenId: bigint) {
+  if (E2E_CHAIN_ONLY) {
+    console.warn("\n[e2e] ═══ INDEXER ASSERTIONS SKIPPED (chain-only mode) ═══");
+    console.warn("[e2e] KARGAIN_E2E_CHAIN_ONLY=1 — Ponder not started; chain lifecycle only");
+    console.warn(
+      "[e2e] Summary: chain lifecycle PASS · INDEXER ASSERTIONS SKIPPED (chain-only mode)\n",
+    );
     return;
   }
 
-  if (!ponderAvailable) {
-    console.log("[e2e] Ponder API unavailable — skipping indexer assertions");
+  const tokenIdParam = String(tokenId);
+
+  if (!(await isPonderApiReachable())) {
+    const reason = `Ponder API unreachable at ${PONDER_URL}/ready`;
+    if (E2E_STRICT) failPonderChecks(reason);
+    skipPonderChecks(reason);
     return;
   }
 
-  const row = await pollPonderPassport(String(TOKEN_ID), (body) => body.status === "VERIFIED");
+  const row = await pollPonderPassport(tokenIdParam, (body) => body.status === "VERIFIED");
   if (!row) {
-    console.log("[e2e] Ponder did not reach VERIFIED in time — skipping detailed checks");
+    const reason = `Ponder did not index passport ${tokenIdParam} to VERIFIED within ${PONDER_TIMEOUT_MS}ms`;
+    if (E2E_STRICT) failPonderChecks(reason);
+    skipPonderChecks(reason);
     return;
   }
 
@@ -81,6 +110,7 @@ async function optionalPonderChecks(ownerAddress: string) {
   }
 
   console.log("[e2e] Ponder assertions passed");
+  console.log("[e2e] Summary: chain lifecycle PASS · Ponder indexer assertions PASS");
 }
 
 const RUN_E2E = process.env.KARGAIN_E2E_LOCAL === "1";
@@ -99,6 +129,13 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       const deployment = requireLocalDeployment();
 
       const passport = await viem.getContractAt("KarPassport", deployment.karPassport);
+      const chainId = await publicClient.getChainId();
+      const firstTokenId = BigInt(chainId) << 128n;
+      assert.equal(
+        await passport.read.tokenIdOffset(),
+        firstTokenId,
+        "tokenIdOffset must equal chainId << 128",
+      );
       const staking = await viem.getContractAt("KarProStaking", deployment.karProStaking);
       const marketplace = await viem.getContractAt("MarketplaceEscrow", deployment.marketplace);
 
@@ -119,76 +156,77 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       await passport.write.mintPassport([owner.account.address, URI_MINT], {
         account: owner.account,
       });
-      assert.equal(await passport.read.nextTokenId(), 1n);
-      await assertChainStatus(passport, 0);
+      assert.equal(await passport.read.nextTokenId(), firstTokenId + 1n);
+      await assertChainStatus(passport, firstTokenId, 0);
 
       // 3 — verifyPassport
-      await passport.write.verifyPassport([TOKEN_ID], { account: verifier.account });
-      await assertChainStatus(passport, 1);
+      await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
+      await assertChainStatus(passport, firstTokenId, 1);
 
       // 4 — setPassportURI → VerificationReset
-      const resetHash = await passport.write.setPassportURI([TOKEN_ID, URI_EDIT_1], {
+      const resetHash = await passport.write.setPassportURI([firstTokenId, URI_EDIT_1], {
         account: owner.account,
       });
       const resetLogs = await receiptLogs(publicClient, resetHash, passport.abi);
       assert.ok(resetLogs.some((l) => l.eventName === "VerificationReset"));
-      await assertChainStatus(passport, 0);
-      assert.equal(await passport.read.tokenURI([TOKEN_ID]), URI_EDIT_1);
+      await assertChainStatus(passport, firstTokenId, 0);
+      assert.equal(await passport.read.tokenURI([firstTokenId]), URI_EDIT_1);
 
       // 5 — verify again
-      await passport.write.verifyPassport([TOKEN_ID], { account: verifier.account });
-      await assertChainStatus(passport, 1);
+      await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
+      await assertChainStatus(passport, firstTokenId, 1);
 
       // 6 — disputePassport
-      await passport.write.disputePassport([TOKEN_ID, "e2e dispute"], {
+      await passport.write.disputePassport([firstTokenId, "e2e dispute"], {
         account: owner.account,
+        value: DISPUTE_DEPOSIT,
       });
-      await assertChainStatus(passport, 2);
+      await assertChainStatus(passport, firstTokenId, 2);
 
       // 7 — resolveDispute(false)
-      await passport.write.resolveDispute([TOKEN_ID, false], { account: verifier.account });
-      await assertChainStatus(passport, 0);
+      await passport.write.resolveDispute([firstTokenId, false], { account: verifier.account });
+      await assertChainStatus(passport, firstTokenId, 0);
 
       // 8 — setPassportURI after resolve (T9)
-      await passport.write.setPassportURI([TOKEN_ID, URI_POST_DISPUTE], {
+      await passport.write.setPassportURI([firstTokenId, URI_POST_DISPUTE], {
         account: owner.account,
       });
-      assert.equal(await passport.read.tokenURI([TOKEN_ID]), URI_POST_DISPUTE);
+      assert.equal(await passport.read.tokenURI([firstTokenId]), URI_POST_DISPUTE);
 
       // Re-verify before marketplace + appendRecord (T10 requires VERIFIED)
-      await passport.write.verifyPassport([TOKEN_ID], { account: verifier.account });
-      await assertChainStatus(passport, 1);
+      await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
+      await assertChainStatus(passport, firstTokenId, 1);
 
       // 9 — list + buyWithNative
       await passport.write.setApprovalForAll([marketplace.address, true], {
         account: owner.account,
       });
       const usd1e8 = 500n * 10n ** 8n;
-      await marketplace.write.list([TOKEN_ID, usd1e8, 0], { account: owner.account });
-      let listing = await marketplace.read.listings([TOKEN_ID]);
-      assert.equal(listing[3], true);
+      await marketplace.write.list([firstTokenId, usd1e8, CURRENCY_USD], { account: owner.account });
+      let listing = await marketplace.read.listings([firstTokenId]);
+      assert.equal(listing[2], true);
 
-      const gross = await marketplace.read.quoteNativeWei([TOKEN_ID]);
-      await marketplace.write.buyWithNative([TOKEN_ID], {
+      const gross = await marketplace.read.quoteBuyWithNative([firstTokenId]);
+      await marketplace.write.buyWithNative([firstTokenId], {
         account: buyer.account,
         value: gross,
       });
-      listing = await marketplace.read.listings([TOKEN_ID]);
-      assert.equal(listing[3], false);
+      listing = await marketplace.read.listings([firstTokenId]);
+      assert.equal(listing[2], false);
       assert.equal(
-        getAddress(await passport.read.ownerOf([TOKEN_ID])),
+        getAddress(await passport.read.ownerOf([firstTokenId])),
         getAddress(buyer.account.address),
       );
 
       // 10 — appendRecord on VERIFIED (T10 — status unchanged)
       await passport.write.appendRecord(
-        [TOKEN_ID, "service", "E2E oil change", "ar://e2e-record"],
+        [firstTokenId, "service", "E2E oil change", "ar://e2e-record"],
         { account: buyer.account },
       );
-      await assertChainStatus(passport, 1);
-      assert.equal(await passport.read.recordCount([TOKEN_ID]), 2n);
+      await assertChainStatus(passport, firstTokenId, 1);
+      assert.equal(await passport.read.recordCount([firstTokenId]), 2n);
 
-      await optionalPonderChecks(owner.account.address);
+      await optionalPonderChecks(owner.account.address, firstTokenId);
     } finally {
       await connection?.close();
     }
