@@ -12,12 +12,21 @@ type QrCodeProps = {
   className?: string;
 };
 
-export function QrCode({ value, size = 200, ariaLabel, className }: QrCodeProps) {
+function QrCodeImage({
+  value,
+  size,
+  ariaLabel,
+  className,
+}: {
+  value: string;
+  size: number;
+  ariaLabel: string;
+  className?: string;
+}) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setDataUrl(null);
 
     void QRCode.toDataURL(value, {
       width: size,
@@ -51,5 +60,17 @@ export function QrCode({ value, size = 200, ariaLabel, className }: QrCodeProps)
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={dataUrl} width={size} height={size} alt={ariaLabel} />
     </div>
+  );
+}
+
+export function QrCode({ value, size = 200, ariaLabel, className }: QrCodeProps) {
+  return (
+    <QrCodeImage
+      key={`${value}:${size}`}
+      value={value}
+      size={size}
+      ariaLabel={ariaLabel}
+      className={className}
+    />
   );
 }

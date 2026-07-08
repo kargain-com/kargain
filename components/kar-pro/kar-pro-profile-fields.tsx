@@ -51,42 +51,49 @@ export function KarProProfileFields({
   const descriptionId = `${idPrefix}-description`;
   const websiteId = `${idPrefix}-website`;
 
-  const [slugStatus, setSlugStatus] = useState<SlugAvailabilityStatus>("idle");
+  const [asyncResult, setAsyncResult] = useState<{
+    slug: string;
+    status: "available" | "taken" | "idle" | "invalid_format";
+  } | null>(null);
   const lastAutoSuggestion = useRef("");
   const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateSlugStatus = (status: SlugAvailabilityStatus) => {
-    setSlugStatus(status);
-    onSlugAvailabilityChange?.(status);
-  };
+  const trimmedSlug = values.slug.trim();
+  const syncSlugStatus: SlugAvailabilityStatus = !trimmedSlug
+    ? "idle"
+    : !SLUG_PATTERN.test(trimmedSlug)
+      ? "invalid_format"
+      : "checking";
+
+  const slugStatus: SlugAvailabilityStatus =
+    syncSlugStatus !== "checking"
+      ? syncSlugStatus
+      : asyncResult?.slug === trimmedSlug
+        ? asyncResult.status
+        : "checking";
 
   useEffect(() => {
+    onSlugAvailabilityChange?.(slugStatus);
+  }, [slugStatus, onSlugAvailabilityChange]);
+
+  useEffect(() => {
+    if (syncSlugStatus !== "checking") return;
+
     if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
 
-    const slug = values.slug.trim();
-    if (!slug) {
-      updateSlugStatus("idle");
-      return;
-    }
-
-    if (!SLUG_PATTERN.test(slug)) {
-      updateSlugStatus("invalid_format");
-      return;
-    }
-
-    updateSlugStatus("checking");
+    const slug = trimmedSlug;
     slugDebounceRef.current = setTimeout(() => {
       void checkSlugAvailability(slug, ownerAddress).then((result) => {
         if (!result.available) {
           if (result.reason === "invalid_format" || result.reason === "invalid_length") {
-            updateSlugStatus("invalid_format");
+            setAsyncResult({ slug, status: "invalid_format" });
           } else if (result.reason === "error") {
-            updateSlugStatus("idle");
+            setAsyncResult({ slug, status: "idle" });
           } else {
-            updateSlugStatus("taken");
+            setAsyncResult({ slug, status: "taken" });
           }
         } else {
-          updateSlugStatus("available");
+          setAsyncResult({ slug, status: "available" });
         }
       });
     }, 500);
@@ -94,7 +101,7 @@ export function KarProProfileFields({
     return () => {
       if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
     };
-  }, [values.slug, ownerAddress, onSlugAvailabilityChange]);
+  }, [trimmedSlug, ownerAddress, syncSlugStatus]);
 
   const handleNameChange = (name: string) => {
     const prevSuggestion = lastAutoSuggestion.current;

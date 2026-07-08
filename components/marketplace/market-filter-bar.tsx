@@ -117,6 +117,32 @@ export function MarketFilterBar() {
     priceMax: filters.priceMax,
   });
 
+  const [prevFilterSearch, setPrevFilterSearch] = useState(filters.search);
+  if (filters.search !== prevFilterSearch) {
+    setPrevFilterSearch(filters.search);
+    setSearchInput(filters.search);
+  }
+
+  const [prevPriceMin, setPrevPriceMin] = useState(filters.priceMin);
+  const [prevPriceMax, setPrevPriceMax] = useState(filters.priceMax);
+  if (
+    priceOpen &&
+    (filters.priceMin !== prevPriceMin || filters.priceMax !== prevPriceMax)
+  ) {
+    setPrevPriceMin(filters.priceMin);
+    setPrevPriceMax(filters.priceMax);
+    setPriceDraft({ priceMin: filters.priceMin, priceMax: filters.priceMax });
+  }
+
+  const handlePriceOpenChange = (open: boolean) => {
+    if (open) {
+      setPriceDraft({ priceMin: filters.priceMin, priceMax: filters.priceMax });
+      setPrevPriceMin(filters.priceMin);
+      setPrevPriceMax(filters.priceMax);
+    }
+    setPriceOpen(open);
+  };
+
   const facetsEnabled = shouldFetchListingFacets({
     priceOpen,
     makeOpen,
@@ -130,23 +156,10 @@ export function MarketFilterBar() {
   const debouncedSearch = useDebouncedValue(searchInput, 300);
 
   useEffect(() => {
-    setSearchInput(filters.search);
-  }, [filters.search]);
-
-  useEffect(() => {
     if (debouncedSearch !== filters.search) {
       patchFilters({ search: debouncedSearch, page: 1 });
     }
   }, [debouncedSearch, filters.search, patchFilters]);
-
-  useEffect(() => {
-    if (priceOpen) {
-      setPriceDraft({
-        priceMin: filters.priceMin,
-        priceMax: filters.priceMax,
-      });
-    }
-  }, [priceOpen, filters.priceMin, filters.priceMax]);
 
   const activeCount = countActiveFilters(filters);
   const drawerCount = countDrawerActiveFilters(filters);
@@ -286,7 +299,7 @@ export function MarketFilterBar() {
               </SelectContent>
             </Select>
 
-            <Popover open={priceOpen} onOpenChange={setPriceOpen}>
+            <Popover open={priceOpen} onOpenChange={handlePriceOpenChange}>
               <PopoverTrigger asChild>
                 <FilterTrigger active={priceActive} className="shrink-0">
                   {priceLabel}

@@ -3,6 +3,7 @@
 import { ChevronDown, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
@@ -12,23 +13,12 @@ import { cn } from "@/lib/utils";
 
 type PassportWithStatus = { status?: string };
 
-export function VerifiersIntentBanner() {
-  const { address, isConnected } = useAccount();
-  const showBecomeKarPro = useShowBecomeKarPro();
-  const isKarPro = isConnected && !showBecomeKarPro;
-
+function UnverifiedPassportsBanner({ address }: { address: Address }) {
   const [passports, setPassports] = useState<PassportWithStatus[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isConnected || !address || isKarPro) {
-      setPassports(null);
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
-    setLoading(true);
 
     void getProfileData(address).then((result) => {
       if (cancelled) return;
@@ -42,28 +32,7 @@ export function VerifiersIntentBanner() {
     return () => {
       cancelled = true;
     };
-  }, [isConnected, address, isKarPro]);
-
-  if (!isConnected) {
-    return null;
-  }
-
-  if (isKarPro && address) {
-    return (
-      <div
-        role="status"
-        className="flex items-center gap-3 rounded-md border border-border-default bg-bg-card p-4"
-      >
-        <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-warm" />
-        <p className="font-sans text-sm text-text-primary">
-          You are an active verifier.{" "}
-          <Link href={`/profile/${address}`} className={sansLinkUnderline}>
-            View your profile →
-          </Link>
-        </p>
-      </div>
-    );
-  }
+  }, [address]);
 
   if (loading && passports === null) {
     return (
@@ -107,4 +76,37 @@ export function VerifiersIntentBanner() {
       </a>
     </div>
   );
+}
+
+export function VerifiersIntentBanner() {
+  const { address, isConnected } = useAccount();
+  const showBecomeKarPro = useShowBecomeKarPro();
+  const isKarPro = isConnected && !showBecomeKarPro;
+
+  if (!isConnected) {
+    return null;
+  }
+
+  if (isKarPro && address) {
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-3 rounded-md border border-border-default bg-bg-card p-4"
+      >
+        <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-warm" />
+        <p className="font-sans text-sm text-text-primary">
+          You are an active verifier.{" "}
+          <Link href={`/profile/${address}`} className={sansLinkUnderline}>
+            View your profile →
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  if (!address) {
+    return null;
+  }
+
+  return <UnverifiedPassportsBanner key={address} address={address} />;
 }

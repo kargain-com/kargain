@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Address } from "viem";
 
 import { EnsAvatar } from "@/components/ui/ens-avatar";
@@ -20,15 +20,24 @@ function sizeStyle(fill: boolean | undefined, size: number): { width: number; he
   return fill ? undefined : { width: size, height: size };
 }
 
-/** Avatar priority: Nostr kind 0 picture → ENS avatar → address identicon fill. */
-export function IdentityAvatar({ address, size = 40, className, fill, alt = "" }: Props) {
-  const { profile, loading: nostrLoading } = useNostrProfile(address);
-  const nostrPicture = profile?.picture?.trim() || null;
+function IdentityAvatarContent({
+  address,
+  nostrPicture,
+  nostrLoading,
+  size,
+  className,
+  fill,
+  alt,
+}: {
+  address: Address | undefined;
+  nostrPicture: string | null;
+  nostrLoading: boolean;
+  size: number;
+  className?: string;
+  fill?: boolean;
+  alt: string;
+}) {
   const [nostrFailed, setNostrFailed] = useState(false);
-
-  useEffect(() => {
-    setNostrFailed(false);
-  }, [nostrPicture]);
 
   const dimensions = sizeStyle(fill, size);
   const layout = cn(
@@ -63,4 +72,23 @@ export function IdentityAvatar({ address, size = 40, className, fill, alt = "" }
   }
 
   return <EnsAvatar address={address} size={size} fill={fill} className={className} />;
+}
+
+/** Avatar priority: Nostr kind 0 picture → ENS avatar → address identicon fill. */
+export function IdentityAvatar({ address, size = 40, className, fill, alt = "" }: Props) {
+  const { profile, loading: nostrLoading } = useNostrProfile(address);
+  const nostrPicture = profile?.picture?.trim() || null;
+
+  return (
+    <IdentityAvatarContent
+      key={nostrPicture ?? "no-picture"}
+      address={address}
+      nostrPicture={nostrPicture}
+      nostrLoading={nostrLoading}
+      size={size}
+      className={className}
+      fill={fill}
+      alt={alt}
+    />
+  );
 }

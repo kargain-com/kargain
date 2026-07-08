@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
@@ -19,7 +19,7 @@ export function KarProPageContent() {
   const chainId = DEFAULT_CHAIN_ID;
   const { address, isConnected } = useAccount();
   const staking = karProStakingAddress(chainId);
-  const [isActiveVerifier, setIsActiveVerifier] = useState(false);
+  const [postTxActive, setPostTxActive] = useState<boolean | null>(null);
 
   const { data: onChainActive } = useReadContract({
     address: staking,
@@ -38,21 +38,19 @@ export function KarProPageContent() {
 
   const stakeLabel = formatStakeEth(minStake);
 
-  useEffect(() => {
-    if (!isConnected) {
-      setIsActiveVerifier(false);
-      return;
-    }
-    if (onChainActive !== undefined) {
-      setIsActiveVerifier(onChainActive);
-    }
-  }, [isConnected, onChainActive]);
+  const [prevIdentity, setPrevIdentity] = useState(`${address}:${isConnected}`);
+  const identity = `${address}:${isConnected}`;
+  if (identity !== prevIdentity) {
+    setPrevIdentity(identity);
+    if (postTxActive !== null) setPostTxActive(null);
+  }
 
+  const isActiveVerifier = !isConnected ? false : (postTxActive ?? onChainActive === true);
   const showValueProps = !isActiveVerifier;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-8 xl:max-w-[80rem]">
-      <KarProClient onVerifierStatusChange={setIsActiveVerifier} />
+      <KarProClient onVerifierStatusChange={setPostTxActive} />
       {showValueProps && (
         <div className="mx-auto mt-16 max-w-3xl grid grid-cols-1 sm:grid-cols-3 gap-px bg-border-default">
           {VALUE_PROPS.map((prop) => (

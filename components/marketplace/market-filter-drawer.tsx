@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { FilterCombobox } from "@/components/marketplace/filter-combobox";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
@@ -102,9 +102,20 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
   const { displayCurrency, isRatesLoading } = fxContext;
   const [draft, setDraft] = useState<MarketFilterState>(filters);
 
-  useEffect(() => {
-    if (open) setDraft(filters);
-  }, [open, filters]);
+  const filtersKey = JSON.stringify(filters);
+  const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+  if (open && filtersKey !== prevFiltersKey) {
+    setPrevFiltersKey(filtersKey);
+    setDraft(filters);
+  }
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      setDraft(filters);
+      setPrevFiltersKey(JSON.stringify(filters));
+    }
+    onOpenChange(next);
+  };
 
   const makeOptions = facets?.makes ?? [];
   const modelOptions = draft.make ? (facets?.models[draft.make] ?? []) : [];
@@ -158,7 +169,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
   useMarketRatesRequest(showResultsNeedsRates && open);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="flex w-full max-w-sm flex-col p-0 sm:max-w-sm">
         <SheetHeader className="px-4 pt-4">
           <SheetTitle className="font-sans text-base font-medium">Filters</SheetTitle>

@@ -15,6 +15,8 @@ import {
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import type { PonderUriHistoryEntry } from "@/lib/types/ponder";
 
+type UriPair = NonNullable<ReturnType<typeof pickMetadataDiffUris>>;
+
 type Props = {
   chainId: number;
   uriHistory: PonderUriHistoryEntry[];
@@ -24,36 +26,20 @@ type Props = {
   lastVerificationResetAt: string;
 };
 
-export function MetadataDiffPanel({
+function MetadataDiffComparison({
+  uriPair,
   chainId,
-  uriHistory,
-  currentTokenUri,
   currentMetadata,
-  verificationResetCount,
-  lastVerificationResetAt,
-}: Props) {
-  const uriPair = useMemo(
-    () => pickMetadataDiffUris(uriHistory, currentTokenUri),
-    [uriHistory, currentTokenUri],
-  );
-  const showReInspect = recommendsReInspection({
-    verificationResetCount,
-    lastVerificationResetAt,
-    uriHistory,
-  });
-
+}: {
+  uriPair: UriPair;
+  chainId: number;
+  currentMetadata: PassportMetadata | null;
+}) {
   const [beforeMetadata, setBeforeMetadata] = useState<PassportMetadata | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    if (!uriPair) {
-      setBeforeMetadata(null);
-      setLoadError(false);
-      return;
-    }
-
     let cancelled = false;
-    setLoadError(false);
 
     void fetchArweaveMetadata(uriPair.beforeUri, chainId).then((result) => {
       if (cancelled) return;
@@ -68,7 +54,7 @@ export function MetadataDiffPanel({
     return () => {
       cancelled = true;
     };
-  }, [uriPair, chainId]);
+  }, [uriPair.beforeUri, chainId]);
 
   const display = useMemo(() => {
     if (!beforeMetadata || !currentMetadata) return null;
@@ -83,25 +69,9 @@ export function MetadataDiffPanel({
     });
   }, [beforeMetadata, currentMetadata, chainId]);
 
-  if (!uriPair && !showReInspect) return null;
-
   return (
-    <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-4">
-      {showReInspect && (
-        <p className="text-sm font-medium text-text-primary">
-          Re-inspection recommended — verification was reset after a prior anchor change or dispute.
-        </p>
-      )}
-
-      {!uriPair && (
-        <EmptyState
-          variant="content"
-          level="B"
-          title="No metadata revision to compare yet."
-        />
-      )}
-
-      {uriPair && !currentMetadata && (
+    <>
+      {!currentMetadata && (
         <EmptyState
           variant="infrastructure"
           level="B"
@@ -110,7 +80,7 @@ export function MetadataDiffPanel({
         />
       )}
 
-      {uriPair && loadError && (
+      {loadError && (
         <EmptyState
           variant="infrastructure"
           level="B"
@@ -139,6 +109,54 @@ export function MetadataDiffPanel({
             title="No field differences detected vs previous URI."
           />
         )}
+    </>
+  );
+}
+
+export function MetadataDiffPanel({
+  chainId,
+  uriHistory,
+  currentTokenUri,
+  currentMetadata,
+  verificationResetCount,
+  lastVerificationResetAt,
+}: Props) {
+  const uriPair = useMemo(
+    () => pickMetadataDiffUris(uriHistory, currentTokenUri),
+    [uriHistory, currentTokenUri],
+  );
+  const showReInspect = recommendsReInspection({
+    verificationResetCount,
+    lastVerificationResetAt,
+    uriHistory,
+  });
+
+  if (!uriPair && !showReInspect) return null;
+
+  return (
+    <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-4">
+      {showReInspect && (
+        <p className="text-sm font-medium text-text-primary">
+          Re-inspection recommended — verification was reset after a prior anchor change or dispute.
+        </p>
+      )}
+
+      {!uriPair && (
+        <EmptyState
+          variant="content"
+          level="B"
+          title="No metadata revision to compare yet."
+        />
+      )}
+
+      {uriPair && (
+        <MetadataDiffComparison
+          key={`${uriPair.beforeUri}:${chainId}`}
+          uriPair={uriPair}
+          chainId={chainId}
+          currentMetadata={currentMetadata}
+        />
+      )}
     </div>
   );
 }
