@@ -6,6 +6,12 @@ import { finalizeEvent } from "nostr-tools";
 import { getOrCreateNostrKey, loadDecryptedKey } from "@/lib/nostr/key-manager";
 import { fetchLatestKind0Raw, mergeKind0Content } from "@/lib/nostr/merge-kind0-content";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import {
+  attestationMessage,
+  buildProfileAttestation,
+  verifyProfileAttestationCore,
+  type ProfileAttestationV1,
+} from "@/lib/nostr/profile-attestation";
 import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import {
   getNostrPool,
@@ -13,7 +19,7 @@ import {
   nostrPubkeyFromPrivateKey,
 } from "@/lib/nostr/nostr-client";
 
-export type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
 
 function toWalletAddress(address: Address): `0x${string}` {
   return address as `0x${string}`;
@@ -89,11 +95,15 @@ export async function publishNostrProfileWithPrivateKey(
   data: NostrProfileData,
   walletAddress: Address,
   privateKeyHex: string,
+  attestation?: ProfileAttestationV1,
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
     const existing = await fetchLatestKind0Raw(walletAddress);
     const content = mergeKind0Content(existing, data);
+    if (attestation) {
+      content.attestation = attestation;
+    }
     const unsigned = {
       kind: 0,
       created_at: Math.floor(Date.now() / 1000),
@@ -124,7 +134,31 @@ export async function publishNostrProfile(
         return sig as `0x${string}`;
       },
     });
-    return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey);
+    const pubkey = nostrPubkeyFromPrivateKey(privateKey);
+    const existing = await fetchLatestKind0Raw(walletAddress);
+    const hasValidAttestation = await verifyProfileAttestationCore(
+      { id: `write:${pubkey}`, pubkey, content: JSON.stringify(existing) },
+      address,
+    );
+
+    if (hasValidAttestation) {
+      return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey);
+    }
+
+    const attestationSig = (await signer.signMessage(
+      attestationMessage(pubkey, address),
+    )) as `0x${string}`;
+    const attestation = buildProfileAttestation({
+      pubkey,
+      address,
+      signature: attestationSig,
+    });
+    return publishNostrProfileWithPrivateKey(
+      data,
+      walletAddress,
+      privateKey,
+      attestation,
+    );
   } catch {
     return false;
   }

@@ -2,8 +2,13 @@ import {
   normalizeVerifierPaymentMethods,
   type PaymentMethodId,
 } from "@/lib/nostr/payment-method-id";
+import {
+  parseProfileAttestationField,
+  type ProfileAttestationV1,
+} from "@/lib/nostr/profile-attestation";
 
 export type { PaymentMethodId };
+export type { ProfileAttestationV1 };
 
 export type NostrProfileData = {
   name?: string;
@@ -16,6 +21,8 @@ export type NostrProfileData = {
   messagesEnabled?: boolean;
   /** Accepted off-chain payment methods for verification fees. Absent = all accepted. */
   verifierPaymentMethods?: PaymentMethodId[];
+  /** Wallet-signed binding of nostr pubkey to ethereum address (NS-1). */
+  attestation?: ProfileAttestationV1;
 };
 
 export function parseProfileContent(content: string): NostrProfileData | null {
@@ -38,6 +45,9 @@ export function parseProfileContent(content: string): NostrProfileData | null {
 
     const methods = normalizeVerifierPaymentMethods(obj.verifierPaymentMethods);
     if (methods) result.verifierPaymentMethods = methods;
+
+    const attestation = parseProfileAttestationField(obj.attestation);
+    if (attestation) result.attestation = attestation;
 
     return result;
   } catch {

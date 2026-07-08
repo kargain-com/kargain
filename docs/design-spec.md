@@ -363,6 +363,20 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Disputes panel | `serialLabel` eyebrow *Open disputes*; Level A `DisputeCard` grid — operational queue |
 | Dispute cards | Vehicle make/model/year, reason, relative time, disputer, Resolve link to marketplace detail |
 
+#### Profile attestation (NS-1)
+
+Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Module: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts). Write path only in NS-1 — read-path enforcement is NS-2/NS-3.
+
+| Item | Value |
+|------|-------|
+| Message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` |
+| Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address are implicit from event `pubkey` and NIP-39 `i` tag |
+| Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — after nostr key derive, if existing relay content has a valid attestation for this pubkey+address, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
+| Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
+| Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by event `id` |
+| Key material | **The nostr key-derivation signature (`kargain-nostr-v1:…`) is private key material and must never appear in event content, tags, logs, or errors.** Attestation uses a separate `signMessage` with the binding message above. |
+| External clients | Third-party kind 0 publishers must adopt the same v1 binding message (or a future version bump) to pass read-path checks in NS-2/NS-3 |
+
 **Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below the stats grid — chain-read fee with Ponder fallback, payment method chips (§4.17), **Pay for inspection** when effective fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
 Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
@@ -1245,4 +1259,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.17 (July 2026 — KP-5 batched Nostr profiles for verifier directory + Accepts Lightning filter). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.18 (July 2026 — NS-1 kind 0 profile attestation write path + verification helper). Update when tokens, app shell, or component contracts change.*

@@ -6,6 +6,21 @@ import type { NostrProfileData } from "../lib/nostr/parse-profile-content.ts";
 
 const STRING_KEYS = ["name", "about", "picture", "website", "lud16"] as const;
 
+describe("mergeKind0Content attestation", () => {
+  it("preserves attestation when omitted from patch", () => {
+    const attestation = {
+      v: 1 as const,
+      sig: "0x1234" as `0x${string}`,
+    };
+    const merged = mergeKind0Content(
+      { attestation, name: "A" },
+      { name: "B" },
+    );
+    assert.deepEqual(merged.attestation, attestation);
+    assert.equal(merged.name, "B");
+  });
+});
+
 describe("mergeKind0Content unknown fields", () => {
   it("preserves unknown fields like nip05", () => {
     const merged = mergeKind0Content(

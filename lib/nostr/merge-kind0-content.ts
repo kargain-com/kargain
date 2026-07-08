@@ -20,6 +20,7 @@ export const KARGAIN_MANAGED_KIND0_KEYS = [
   "messagesEnabled",
   "lud16",
   "verifierPaymentMethods",
+  // attestation is intentionally omitted — set only via publish param, preserved by spread
 ] as const;
 
 function toWalletAddress(address: Address): `0x${string}` {

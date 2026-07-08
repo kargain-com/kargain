@@ -34,6 +34,24 @@ describe("parseProfileContent messagesEnabled", () => {
     const profile = parseProfileContent(JSON.stringify({ lud16: "   " }));
     assert.equal(profile?.lud16, undefined);
   });
+
+  it("parses valid attestation", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({
+        attestation: { v: 1, sig: "0xabcdef" },
+      }),
+    );
+    assert.deepEqual(profile?.attestation, { v: 1, sig: "0xabcdef" });
+  });
+
+  it("omits invalid attestation", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({
+        attestation: { v: 2, sig: "0xabcdef" },
+      }),
+    );
+    assert.equal(profile?.attestation, undefined);
+  });
 });
 
 describe("parseProfileContent verifierPaymentMethods", () => {
