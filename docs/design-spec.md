@@ -374,15 +374,13 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Wri
 | Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge source fetched by `{ kinds: [0], authors: [derivedPubkey] }` only (never by `#i`); if existing author content has valid attestation, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `fetchLatestKind0RawByAuthor`; `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
 | Read resolver | `resolveAttestedProfile` / `resolveAttestedProfiles` / `attestedPubkeyForAddress` — query `#i`, sort `created_at` desc, return **newest event that passes verify** (older attested beats newer spoofed); `null` when none verify |
-| Owner diagnostic | `ownProfileNeedsReattestation` — boolean only inside resolver; `true` when kind 0 exists for address but none attested; session memo per address |
-| Re-attestation nudge | [`ProfileReattestBanner`](../components/profile/profile-reattest-banner.tsx) — owner-only informational panel (§10.3); full on `/profile/edit`, compact on KarPro Overview; dismisses after successful `publishNostrProfile` (cache + event invalidation) |
 | Batch (KP-5) | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — subscription events verified before accumulator; unverified never enter map |
 | Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by `event.id` + normalized address |
 | Lint guard | ESLint `no-restricted-syntax` on `"#i"` filter property — allowed only in resolver (+ listing-offers passport tag, tests) |
 | Key material | **The nostr key-derivation signature (`kargain-nostr-v1:…`) is private key material and must never appear in event content, tags, logs, or errors.** Attestation uses a separate `signMessage` with the binding message above. |
 | External clients | Third-party kind 0 publishers must adopt the same v1 binding message (or a future version bump) to pass read-path checks |
 
-**NS initiative (NS-1–NS-3) complete:** write path attestation, read-path resolver enforcement, owner re-attestation nudge.
+**NS initiative (NS-1–NS-2) complete:** write-path attestation and read-path resolver enforcement. NS-3 migration nudge removed in NS-4.1.
 
 **Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below the stats grid — chain-read fee with Ponder fallback, payment method chips (§4.17), **Pay for inspection** when effective fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
 
@@ -777,7 +775,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
 | Caution / advisory (display-only) | `border-status-warning` (or `border-status-warning/40` where a softer panel is needed) | `text-status-warning` (icon); body may use `text-text-primary` / `text-text-secondary` | Non-gating caution — see sub-table below |
 | Purchase / external payment confirmed | `border-status-success/40` (`commerceConfirmedPanel`) | `text-status-success` (`commerceConfirmedLabel`) | Post-confirmation commerce only — §12.7 |
-| Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute resolved, indexer sync pending, dispute withdrawn signal, KarPro open disputes banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up, **profile re-attestation nudge** on `/profile/edit` and KarPro Overview) — `border-border-default` / `text-text-secondary` — Not accent. These are neutral operational or historical context, not caution signals — do not upgrade to `status-warning` without a product decision changing their meaning. |
+| Informational (prior dispute resolved, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute resolved, indexer sync pending, dispute withdrawn signal, KarPro open disputes banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up) — `border-border-default` / `text-text-secondary` — Not accent. These are neutral operational or historical context, not caution signals — do not upgrade to `status-warning` without a product decision changing their meaning. |
 
 #### Gated acknowledgments (`status-error`)
 
@@ -1266,4 +1264,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.20 (July 2026 — NS-3 profile re-attestation nudge banner; NS initiative complete). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.21 (July 2026 — NS-4.1 remove profile re-attestation nudge; NS-1/NS-2 attestation unchanged). Update when tokens, app shell, or component contracts change.*

@@ -10,10 +10,6 @@ const DEFAULT_MAX_WAIT_MS = 3000;
 const MAX_PROFILE_BATCH_LIMIT = 500;
 const KIND0_BY_TAG_LIMIT = 20;
 
-export const PROFILE_REATTESTATION_INVALIDATED = "kargain:profile-reattestation-invalidated";
-
-const reattestationDiagnosticMemo = new Map<string, boolean>();
-
 export type AttestedProfileQueryPool = Pick<SimplePool, "querySync">;
 
 export type ResolveAttestedProfileOptions = {
@@ -113,54 +109,6 @@ async function fetchKind0EventsByEthereumTag(
     { kinds: [0], "#i": [tag], limit: KIND0_BY_TAG_LIMIT },
     { maxWait },
   );
-}
-
-export function clearOwnProfileReattestationCache(address: Address | `0x${string}`): void {
-  reattestationDiagnosticMemo.delete(normalizeProfileAddress(address));
-}
-
-/** Test-only: clear re-attestation diagnostic memo between cases. */
-export function clearOwnProfileReattestationCacheForTests(): void {
-  reattestationDiagnosticMemo.clear();
-}
-
-export function notifyProfileReattestationInvalidated(address: Address | `0x${string}`): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent(PROFILE_REATTESTATION_INVALIDATED, {
-      detail: { address: normalizeProfileAddress(address) },
-    }),
-  );
-}
-
-/** True when kind:0 exists for the address but none passes attestation (boolean only). */
-export async function ownProfileNeedsReattestation(
-  walletAddress: Address | `0x${string}`,
-  options?: ResolveAttestedProfileOptions,
-): Promise<boolean> {
-  try {
-    const address = normalizeProfileAddress(toWalletAddress(walletAddress));
-    const cached = reattestationDiagnosticMemo.get(address);
-    if (cached != null) return cached;
-
-    const pool = options?.pool ?? getServerPool();
-    const events = await fetchKind0EventsByEthereumTag(
-      toWalletAddress(walletAddress),
-      pool,
-      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
-    );
-    if (events.length === 0) {
-      reattestationDiagnosticMemo.set(address, false);
-      return false;
-    }
-
-    const picked = await pickNewestVerifiedProfile(events, address);
-    const needs = picked === null;
-    reattestationDiagnosticMemo.set(address, needs);
-    return needs;
-  } catch {
-    return false;
-  }
 }
 
 async function pickNewestVerifiedProfile(

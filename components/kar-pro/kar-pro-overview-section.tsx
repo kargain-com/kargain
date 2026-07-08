@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { useReadContract } from "wagmi";
 
 import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
-import { ProfileReattestBanner } from "@/components/profile/profile-reattest-banner";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -59,8 +58,6 @@ export function KarProOverviewSection({
 
   return (
     <section className={`${instrumentReadoutPanel} space-y-4`}>
-      <ProfileReattestBanner variant="compact" />
-
       <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-accent-warm">
         ✓ Active KarPro
       </p>
