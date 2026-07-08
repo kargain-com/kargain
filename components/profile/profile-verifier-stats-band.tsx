@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { monoLinkSm } from "@/lib/design/instrument-classes";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
@@ -85,6 +88,10 @@ export function ProfileVerifierStatsBand({
             <span className="font-medium text-text-primary">{stakeLabel} ETH</span>
             <span className="ml-1.5 text-text-secondary">staked</span>
           </span>
+          <StatsSeparator />
+          <Link href="/kar-pro?section=fee" className={monoLinkSm}>
+            Edit fee →
+          </Link>
         </>
       )}
     </div>

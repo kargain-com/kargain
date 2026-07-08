@@ -333,7 +333,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 ### 4.11 Profile
 
-Implementation: [`components/identity/identity-header.tsx`](../components/identity/identity-header.tsx), [`components/identity/identity-avatar.tsx`](../components/identity/identity-avatar.tsx), [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx), [`components/profile/profile-action-banner.tsx`](../components/profile/profile-action-banner.tsx), [`components/profile/karpro-status-widget.tsx`](../components/profile/karpro-status-widget.tsx).
+Implementation: [`components/identity/identity-header.tsx`](../components/identity/identity-header.tsx), [`components/identity/identity-avatar.tsx`](../components/identity/identity-avatar.tsx), [`components/profile/profile-page.tsx`](../components/profile/profile-page.tsx), [`components/profile/profile-action-banner.tsx`](../components/profile/profile-action-banner.tsx), [`components/profile/karpro-status-widget.tsx`](../components/profile/karpro-status-widget.tsx), [`components/kar-pro/kar-pro-client.tsx`](../components/kar-pro/kar-pro-client.tsx), [`components/kar-pro/kar-pro-section-nav.tsx`](../components/kar-pro/kar-pro-section-nav.tsx).
 
 | Rule | Value |
 |------|-------|
@@ -347,10 +347,16 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
 | Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob v2 encrypts sk with signature-derived AES — see [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts) |
-| Profile edit | [`profile-edit-client.tsx`](../components/profile/profile-edit-client.tsx) — optional **Lightning address** (`lud16` on kind 0); merge-preserving publish via [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts); **Lightning wallet** subsection ([`lightning-wallet-section.tsx`](../components/profile/lightning-wallet-section.tsx)) for NWC connect/disconnect |
-| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · chain-read **minStakeNative** staked (owner only, via [`use-min-stake-native.ts`](../hooks/use-min-stake-native.ts)). Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
+| Profile edit | [`profile-edit-client.tsx`](../components/profile/profile-edit-client.tsx) — optional **Lightning address** (`lud16` on kind 0) for **non-verifiers**; active verifiers see read-only lud16 + *Managed in KarPro settings* link → `/kar-pro?section=payments`; merge-preserving publish via [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts); **Lightning wallet** subsection ([`lightning-wallet-section.tsx`](../components/profile/lightning-wallet-section.tsx)) for NWC connect/disconnect |
+| KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · chain-read **minStakeNative** staked (owner only, via [`use-min-stake-native.ts`](../hooks/use-min-stake-native.ts)) · owner **Edit fee →** → `/kar-pro?section=fee`. Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
 | Action banner | `ProfileActionBanner` — five contextual cases (visitor+KarPro send request, owner become KarPro, owner open disputes, etc.) |
-| KarPro widget | `KarProStatusWidget` — owner + active verifier only; chain-read stake amount in status copy; link to `/kar-pro` |
+| KarPro widget | `KarProStatusWidget` — owner + active verifier only; chain-read stake amount in status copy; **Manage** → `/kar-pro` (overview); **Edit fee →** → `/kar-pro?section=fee` |
+| KarPro hub (`/kar-pro`) | Active verifier only — [`KarProIdentityStrip`](../components/kar-pro/kar-pro-identity-strip.tsx) (name, category chip, Pass ID) always above sticky [`KarProSectionNav`](../components/kar-pro/kar-pro-section-nav.tsx); sections **Overview · Profile · Fee · Payments · Account** via `?section=` (`overview` default; invalid → overview; `history.replaceState`, no scroll jump) |
+| KarPro Overview | [`kar-pro-overview-section.tsx`](../components/kar-pro/kar-pro-overview-section.tsx) — Level B `instrumentReadoutPanel`: `✓ Active KarPro` (accent-warm), Pass ID, chain-read stake (`useMinStakeNative`), advisory *Fully refundable · No slash · Leave anytime*, verification count + joined date, staking contract explorer link (`monoLinkSm`), read-only `VerificationFeeDisplay` + *Edit fee →* to Fee section |
+| KarPro Profile | [`kar-pro-profile-section.tsx`](../components/kar-pro/kar-pro-profile-section.tsx) — `KarProProfileFields` edit flow + View showroom link |
+| KarPro Fee | [`kar-pro-fee-section.tsx`](../components/kar-pro/kar-pro-fee-section.tsx) — display-currency margin + gas estimate → `setVerificationFee`; guardrail copy unchanged |
+| KarPro Payments | [`kar-pro-payments-section.tsx`](../components/kar-pro/kar-pro-payments-section.tsx) — Nostr `verifierPaymentMethods` toggles + `lud16` (canonical edit for verifiers); scope caption under lud16: verification fee vs per-listing car sale; separate save action |
+| KarPro Account | [`kar-pro-account-section.tsx`](../components/kar-pro/kar-pro-account-section.tsx) — Leave KarPro confirm flow; destructive actions `status-error` |
 | Tabs | Counts in tab labels; **Verified** and **Attestations** when subject is active verifier or has verifier history in Ponder (visible to all visitors); **Disputes** owner + active verifier only |
 | Tab active state | `profileTabActive` / `profileTabInactive` from [`instrument-classes.ts`](../lib/design/instrument-classes.ts) — accent bottom border only, no active background fill |
 | Attestations panel | `serialLabel` eyebrow *Attestation feed*; Level C rows in `divide-y` list (`bg-bg-primary/80` shell) — feed pattern per §10.4 |
@@ -564,9 +570,10 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 | Rule | Value |
 |------|-------|
-| Fee composer | [`kar-pro-fee-panel.tsx`](../components/kar-pro/kar-pro-fee-panel.tsx) mounted from [`kar-pro-credential-card.tsx`](../components/kar-pro/kar-pro-credential-card.tsx) — service margin in nav display currency + live `verifyPassport` gas estimate → single wei via `setVerificationFee`; empty / zero margin → *Contact for quote*; gas captured at save only |
-| Payment methods | Same panel — Nostr kind 0 `verifierPaymentMethods` (`eth` \| `usdc` \| `lightning`); field absent = all three; ≥1 must stay enabled; Lightning requires `lud16` ([`LightningAddressField`](../components/profile/lightning-address-field.tsx)); separate **Save fee** (chain) and **Save payment methods** (Nostr) actions |
-| Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only link to `/kar-pro` — writes live on fee panel |
+| Hub layout | Identity strip + sticky section nav — see §4.11 KarPro hub rows; join flow (`KarProJoinForm`) unchanged for non-verifiers |
+| Fee composer | [`kar-pro-fee-section.tsx`](../components/kar-pro/kar-pro-fee-section.tsx) — service margin in nav display currency + live `verifyPassport` gas estimate → single wei via `setVerificationFee`; empty / zero margin → *Contact for quote*; gas captured at save only |
+| Payment methods | [`kar-pro-payments-section.tsx`](../components/kar-pro/kar-pro-payments-section.tsx) — Nostr kind 0 `verifierPaymentMethods` (`eth` \| `usdc` \| `lightning`); field absent = all three; ≥1 must stay enabled; Lightning requires `lud16` ([`LightningAddressField`](../components/profile/lightning-address-field.tsx)); separate **Save fee** (chain) and **Save payment methods** (Nostr) actions |
+| Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only link to `/kar-pro` — writes live in Fee / Payments sections |
 
 #### Pay for inspection (passport owners)
 
@@ -1028,7 +1035,7 @@ rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' 
 | Nav / filter / tab **active** slot | `border-accent-warm` + optional `text-accent-warm` on **current route or selected value** only |
 | `EnsWalletLink` / `InstrumentLink` / `monoLink` / `sansLink` | Rest `text-text-secondary`; accent hover/focus only |
 | Trust badges / VERIFIED cards | `listing-card`, `passport-status-badge`, `kar-pro-badge`, log verified border |
-| KarPro membership stamp | `kar-pro-credential-card` ✓ KarPro line |
+| KarPro membership stamp | `kar-pro-identity-strip` ✓ KarPro line; Overview `✓ Active KarPro` readout |
 | Unread feed | `notification-row` left border when unread |
 | Gallery thumb selection | `passport-photo-gallery`, `listing-detail-gallery` |
 | Switch on | `switch.tsx` |
@@ -1236,4 +1243,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.12 (July 2026 — KP-1 chain-read KarPro stake via `useMinStakeNative` + shared `formatStakeEth`). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.14 (July 2026 — KP-3b canonical lud16 in KarPro Payments, profile edit read-only for verifiers, section deep links). Update when tokens, app shell, or component contracts change.*

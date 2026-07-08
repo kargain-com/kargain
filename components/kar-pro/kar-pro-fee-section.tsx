@@ -1,22 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useChainId,
   useConfig,
   useReadContract,
   useSwitchChain,
-  useWalletClient,
   useWriteContract,
 } from "wagmi";
 
-import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { useVerifyGasEstimate } from "@/hooks/use-verify-gas-estimate";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { categoryLabel } from "@/lib/design/instrument-classes";
@@ -26,8 +22,6 @@ import { fiatCurrencyOptionLabel } from "@/lib/marketplace/fiat-format";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import type { PaymentMethodId } from "@/lib/nostr/payment-method-id";
-import { publishNostrProfile } from "@/lib/nostr/profile";
 import {
   canComposeFeeInDisplayCurrency,
   composeTotalFeeWei,
@@ -36,22 +30,11 @@ import {
   formatFeeWeiEth,
   formatFeeWeiInDisplayCurrency,
 } from "@/lib/verifier/fee-composer-math";
-import {
-  acceptedPaymentMethods,
-  paymentMethodIdsToArray,
-} from "@/lib/verifier/payment-methods";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 
-type KarProFeePanelProps = {
+type KarProFeeSectionProps = {
   address: `0x${string}`;
   staking: `0x${string}` | undefined;
-  disabled?: boolean;
-};
-
-const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
-  eth: "ETH",
-  usdc: "USDC",
-  lightning: "Lightning",
 };
 
 function displayCurrencyLabel(currency: string): string {
@@ -59,14 +42,13 @@ function displayCurrencyLabel(currency: string): string {
   return fiatCurrencyOptionLabel(currency as Parameters<typeof fiatCurrencyOptionLabel>[0]);
 }
 
-export function KarProFeePanel({ address, staking, disabled = false }: KarProFeePanelProps) {
+export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
   const chainId = DEFAULT_CHAIN_ID;
   const config = useConfig();
   const wc = wagmiChainId(chainId);
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
-  const { data: walletClient } = useWalletClient({ chainId: wc });
 
   const { displayCurrency, isRatesLoading, ...rateFields } = useDisplayCurrency();
   const rates = useMemo(() => pickPartialFxRates(rateFields), [rateFields]);
@@ -74,7 +56,6 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
   useMarketRatesRequest(true);
   useMarketRates({ enabled: true });
   const { costWei: gasCostWei, isLoading: gasLoading } = useVerifyGasEstimate({ enabled: true });
-  const { profile: ownProfile, refetch: refetchProfile } = useNostrProfile(address);
 
   const { data: onChainFee, refetch: refetchFee } = useReadContract({
     address: staking,
@@ -93,20 +74,6 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
   const [feeSaved, setFeeSaved] = useState(false);
   const [feeError, setFeeError] = useState<string | null>(null);
 
-  const resolvedMethods = useMemo(
-    () => acceptedPaymentMethods(ownProfile),
-    [ownProfile],
-  );
-
-  const [methodsDraft, setMethodsDraft] = useState<Set<PaymentMethodId>>(new Set(["eth", "usdc", "lightning"]));
-  const [methodsInitialized, setMethodsInitialized] = useState(false);
-  const [lud16Draft, setLud16Draft] = useState("");
-  const [lud16Touched, setLud16Touched] = useState(false);
-  const [lud16Editing, setLud16Editing] = useState(false);
-  const [methodsSaving, setMethodsSaving] = useState(false);
-  const [methodsSaved, setMethodsSaved] = useState(false);
-  const [methodsError, setMethodsError] = useState<string | null>(null);
-
   useEffect(() => {
     if (marginInitialized || onChainFee === undefined) return;
 
@@ -115,13 +82,6 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
     setMarginInput(formatted ?? (onChainFee > 0n ? formatFeeWeiEth(onChainFee).replace(/ ETH$/, "") : ""));
     setMarginInitialized(true);
   }, [marginInitialized, onChainFee, gasCostWei, displayCurrency, rates]);
-
-  useEffect(() => {
-    if (methodsInitialized) return;
-    setMethodsDraft(new Set(resolvedMethods));
-    setLud16Draft(ownProfile?.lud16 ?? "");
-    setMethodsInitialized(true);
-  }, [methodsInitialized, resolvedMethods, ownProfile?.lud16]);
 
   const marginWei = useMemo(
     () => displayAmountToFeeWei(marginInput, displayCurrency, rates),
@@ -145,34 +105,6 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
     totalWei != null
       ? formatFeeWeiInDisplayCurrency(totalWei, displayCurrency, rates)
       : null;
-
-  const methodsDirty = useMemo(() => {
-    if (!methodsInitialized) return false;
-    const current = paymentMethodIdsToArray(resolvedMethods).join(",");
-    const draft = paymentMethodIdsToArray(methodsDraft).join(",");
-    const lud16Changed = (lud16Draft.trim() || "") !== (ownProfile?.lud16 ?? "");
-    return current !== draft || lud16Changed;
-  }, [methodsInitialized, resolvedMethods, methodsDraft, lud16Draft, ownProfile?.lud16]);
-
-  const lightningEnabled = methodsDraft.has("lightning");
-  const lud16Invalid = lightningEnabled && isLightningAddressInvalid(lud16Draft);
-  const onlyOneMethod = methodsDraft.size === 1;
-
-  const toggleMethod = useCallback(
-    (id: PaymentMethodId, checked: boolean) => {
-      setMethodsDraft((prev) => {
-        const next = new Set(prev);
-        if (checked) {
-          next.add(id);
-        } else if (next.size > 1) {
-          next.delete(id);
-        }
-        return next;
-      });
-      setMethodsSaved(false);
-    },
-    [],
-  );
 
   const onSaveFee = async () => {
     if (!staking) return;
@@ -209,55 +141,11 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
     }
   };
 
-  const onSaveMethods = async () => {
-    if (!walletClient) {
-      setMethodsError("Connect your wallet to save payment methods.");
-      return;
-    }
-    if (lud16Invalid) {
-      setLud16Touched(true);
-      return;
-    }
-
-    setMethodsError(null);
-    setMethodsSaved(false);
-    setMethodsSaving(true);
-
-    const methodsArray = paymentMethodIdsToArray(methodsDraft);
-    const lud16Trimmed = lud16Draft.trim();
-    const patch: {
-      verifierPaymentMethods: PaymentMethodId[];
-      lud16?: string;
-    } = { verifierPaymentMethods: methodsArray };
-
-    if (lightningEnabled) {
-      patch.lud16 = lud16Trimmed;
-    }
-
-    try {
-      const ok = await publishNostrProfile(patch, address, {
-        signMessage: (msg) => walletClient.signMessage({ message: msg }),
-      });
-      if (!ok) {
-        setMethodsError("Could not publish profile. Try again.");
-        return;
-      }
-      refetchProfile();
-      setMethodsSaved(true);
-      setLud16Editing(false);
-    } catch (err) {
-      setMethodsError(err instanceof Error ? err.message : "Save failed. Try again.");
-    } finally {
-      setMethodsSaving(false);
-    }
-  };
-
   const currencyLabel = displayCurrencyLabel(displayCurrency);
-  const feeSaveDisabled =
-    disabled || feeSaving || !ratesReady || isRatesLoading || marginWei == null;
+  const feeSaveDisabled = feeSaving || !ratesReady || isRatesLoading || marginWei == null;
 
   return (
-    <div className="space-y-8">
+    <div className="rounded-md border border-border-default bg-bg-card p-6 md:p-8">
       <div className="space-y-4">
         <div>
           <p className={categoryLabel}>Verification fee</p>
@@ -280,7 +168,7 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
               setMarginInput(e.target.value);
               setFeeSaved(false);
             }}
-            disabled={feeSaving || disabled || !ratesReady}
+            disabled={feeSaving || !ratesReady}
             className="font-mono tabular-nums"
           />
           {!ratesReady && (
@@ -293,7 +181,7 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
         <div className="space-y-1 rounded-md border border-border-default bg-bg-surface p-4">
           <div className="flex items-baseline justify-between gap-3">
             <span className="font-sans text-xs text-text-tertiary">Verify transaction cost (estimate)</span>
-            <span className="font-mono tabular-nums text-xs text-text-secondary">
+            <span className="font-mono text-xs tabular-nums text-text-secondary">
               {gasLoading ? "…" : gasDisplay ?? "—"}
               {gasCostWei != null && (
                 <span className="ml-2 text-text-tertiary">{formatFeeWeiEth(gasCostWei)}</span>
@@ -307,9 +195,9 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
             </p>
           )}
 
-          <div className="flex items-baseline justify-between gap-3 pt-2 border-t border-border-default">
+          <div className="flex items-baseline justify-between gap-3 border-t border-border-default pt-2">
             <span className="font-sans text-xs text-text-tertiary">Total on-chain fee</span>
-            <span className="font-mono tabular-nums text-sm text-text-primary">
+            <span className="font-mono text-sm tabular-nums text-text-primary">
               {totalDisplay ?? "—"}
               {totalWei != null && totalWei > 0n && (
                 <span className="ml-2 text-xs text-text-secondary">{formatFeeWeiEth(totalWei)}</span>
@@ -342,94 +230,6 @@ export function KarProFeePanel({ address, staking, disabled = false }: KarProFee
         {feeError && (
           <p role="alert" className="font-sans text-sm text-status-error">
             {feeError}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <p className={categoryLabel}>Accepted payment methods</p>
-          <p className="mt-1 font-sans text-xs text-text-secondary">
-            Owners see only the methods you enable when paying your verification fee.
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          {(["eth", "usdc", "lightning"] as const).map((id) => (
-            <div key={id} className="flex items-center justify-between gap-4">
-              <Label htmlFor={`payment-method-${id}`} className="font-sans text-sm text-text-primary">
-                {PAYMENT_METHOD_LABELS[id]}
-              </Label>
-              <Switch
-                id={`payment-method-${id}`}
-                checked={methodsDraft.has(id)}
-                disabled={disabled || methodsSaving || (methodsDraft.has(id) && onlyOneMethod)}
-                onCheckedChange={(checked) => toggleMethod(id, checked)}
-              />
-            </div>
-          ))}
-        </div>
-
-        {onlyOneMethod && (
-          <p className="font-sans text-xs text-text-secondary">
-            At least one payment method must stay enabled.
-          </p>
-        )}
-
-        {lightningEnabled && (
-          <div className="space-y-3">
-            {ownProfile?.lud16 && !lud16Editing ? (
-              <div className="space-y-2">
-                <p className="font-sans text-xs text-text-tertiary">Lightning address</p>
-                <p className="font-mono text-sm text-text-primary">{ownProfile.lud16}</p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={methodsSaving || disabled}
-                  onClick={() => {
-                    setLud16Draft(ownProfile.lud16 ?? "");
-                    setLud16Editing(true);
-                  }}
-                >
-                  Edit address
-                </Button>
-              </div>
-            ) : (
-              <LightningAddressField
-                id="kar-pro-lightning-address"
-                value={lud16Draft}
-                touched={lud16Touched}
-                disabled={methodsSaving || disabled}
-                onChange={(value) => {
-                  setLud16Draft(value);
-                  setMethodsSaved(false);
-                }}
-                onBlur={() => setLud16Touched(true)}
-              />
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={disabled || methodsSaving || !methodsDirty || lud16Invalid}
-            onClick={() => void onSaveMethods()}
-          >
-            {methodsSaving ? "Saving…" : "Save payment methods"}
-          </Button>
-          {methodsSaved && (
-            <p className="font-sans text-sm text-text-secondary" role="status">
-              Payment methods saved
-            </p>
-          )}
-        </div>
-
-        {methodsError && (
-          <p role="alert" className="font-sans text-sm text-status-error">
-            {methodsError}
           </p>
         )}
       </div>

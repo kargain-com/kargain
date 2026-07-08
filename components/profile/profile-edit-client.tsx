@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck, ChevronRight } from "lucide-react";
+import { CheckCheck } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useWalletClient } from "wagmi";
@@ -16,7 +16,7 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { categoryLabel } from "@/lib/design/instrument-classes";
+import { categoryLabel, sansLink } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { publishNostrProfile } from "@/lib/nostr/profile";
@@ -95,7 +95,8 @@ export function ProfileEditClient() {
     userEditedRef.current = true;
   }, []);
 
-  const lud16Invalid = isLightningAddressInvalid(lud16);
+  const verifierActive = isActiveVerifier === true;
+  const lud16Invalid = !verifierActive && isLightningAddressInvalid(lud16);
 
   const onSave = useCallback(async () => {
     if (!walletClient || !address || saving) return;
@@ -106,14 +107,15 @@ export function ProfileEditClient() {
     setSaving(true);
     setSaveStatus("idle");
     try {
+      const patch = {
+        name: name.trim() || undefined,
+        about: about.trim() || undefined,
+        picture: picture.trim() || undefined,
+        website: website.trim() || undefined,
+        ...(verifierActive ? {} : { lud16: lud16.trim() || undefined }),
+      };
       const ok = await publishNostrProfile(
-        {
-          name: name.trim() || undefined,
-          about: about.trim() || undefined,
-          picture: picture.trim() || undefined,
-          website: website.trim() || undefined,
-          lud16: lud16.trim() || undefined,
-        },
+        patch,
         address,
         {
           signMessage: (msg) => walletClient.signMessage({ message: msg }),
@@ -128,7 +130,7 @@ export function ProfileEditClient() {
     } finally {
       setSaving(false);
     }
-  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, refetch]);
+  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierActive, refetch]);
 
   if (!isConnected) {
     return (
@@ -233,19 +235,33 @@ export function ProfileEditClient() {
             />
           </div>
 
-          <LightningAddressField
-            id="lightning-address"
-            value={lud16}
-            touched={lud16Touched}
-            disabled={saving}
-            helperText="Optional. Lets others pay you over Lightning, e.g. your verification fee. Format: name@domain."
-            onChange={(value) => {
-              markEdited();
-              setLud16Touched(true);
-              setLud16(value);
-            }}
-            onBlur={() => setLud16Touched(true)}
-          />
+          {verifierActive ? (
+            <div className="flex flex-col gap-1.5">
+              <Label>Lightning address</Label>
+              <p className="font-mono text-sm text-text-secondary">
+                {profile?.lud16?.trim() || "—"}
+              </p>
+              <p className="font-sans text-sm text-text-secondary">
+                <Link href="/kar-pro?section=payments" className={sansLink}>
+                  Managed in KarPro settings
+                </Link>
+              </p>
+            </div>
+          ) : (
+            <LightningAddressField
+              id="lightning-address"
+              value={lud16}
+              touched={lud16Touched}
+              disabled={saving}
+              helperText="Optional. Lets others pay you over Lightning, e.g. your verification fee. Format: name@domain."
+              onChange={(value) => {
+                markEdited();
+                setLud16Touched(true);
+                setLud16(value);
+              }}
+              onBlur={() => setLud16Touched(true)}
+            />
+          )}
 
           <div className="flex flex-col gap-3">
             <Button
@@ -301,8 +317,7 @@ export function ProfileEditClient() {
             </dl>
             <Button variant="secondary" size="sm" className="w-fit" asChild>
               <Link href="/kar-pro">
-                Edit professional profile
-                <ChevronRight size={12} strokeWidth={1.5} aria-hidden />
+                Manage on KarPro →
               </Link>
             </Button>
           </section>

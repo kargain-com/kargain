@@ -3,8 +3,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useReadContracts } from "wagmi";
 
-import { KarProCredentialCard } from "@/components/kar-pro/kar-pro-credential-card";
+import { KarProAccountSection } from "@/components/kar-pro/kar-pro-account-section";
+import { KarProFeeSection } from "@/components/kar-pro/kar-pro-fee-section";
+import { KarProIdentityStrip } from "@/components/kar-pro/kar-pro-identity-strip";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
+import { KarProOverviewSection } from "@/components/kar-pro/kar-pro-overview-section";
+import { KarProPaymentsSection } from "@/components/kar-pro/kar-pro-payments-section";
+import { KarProProfileSection } from "@/components/kar-pro/kar-pro-profile-section";
+import { KarProSectionNav } from "@/components/kar-pro/kar-pro-section-nav";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -126,7 +132,7 @@ export function KarProClient({
   if (!verifierProfile) {
     return (
       <div className={containerClass}>
-        <div className="rounded-md border border-border-default bg-bg-card p-6 space-y-4">
+        <div className="space-y-4 rounded-md border border-border-default bg-bg-card p-6">
           <p className="font-sans text-fluid-sm text-text-secondary">
             Profile sync is taking longer than expected.
           </p>
@@ -141,16 +147,37 @@ export function KarProClient({
   return (
     <div className={containerClass}>
       {needsSetup && <MessagingSetupCard context="karpro" variant="full" />}
-      <KarProCredentialCard
+      <KarProIdentityStrip
         category={verifierProfile.category}
         name={verifierProfile.name}
-        slug={verifierProfile.slug}
-        joinedAt={verifierProfile.joinedAt}
-        verificationCount={verifierProfile.verificationCount}
-        metadataURI={verifierProfile.metadataURI}
         address={address!}
-        onUpdated={() => void refetchProfile()}
-        onLeft={handleLeave}
+      />
+      <KarProSectionNav
+        overview={
+          <KarProOverviewSection
+            joinedAt={verifierProfile.joinedAt}
+            verificationCount={verifierProfile.verificationCount}
+            address={address!}
+          />
+        }
+        profile={
+          <KarProProfileSection
+            category={verifierProfile.category}
+            name={verifierProfile.name}
+            slug={verifierProfile.slug}
+            metadataURI={verifierProfile.metadataURI}
+            address={address!}
+            onUpdated={() => void refetchProfile()}
+          />
+        }
+        fee={<KarProFeeSection address={address!} staking={staking} />}
+        payments={<KarProPaymentsSection address={address!} />}
+        account={
+          <KarProAccountSection
+            address={address!}
+            onLeft={handleLeave}
+          />
+        }
       />
       {isSyncing && (
         <p className="font-sans text-fluid-sm text-text-secondary">

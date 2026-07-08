@@ -1,0 +1,119 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import { useReadContract } from "wagmi";
+
+import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
+import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
+import { replaceKarProSectionUrl } from "@/lib/kar-pro/kar-pro-section-url";
+import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+
+type KarProOverviewSectionProps = {
+  passId?: bigint;
+  joinedAt: number;
+  verificationCount: number;
+  address: `0x${string}`;
+};
+
+function formatJoinedDate(timestamp: number): string {
+  if (!timestamp) return "Unknown";
+  return new Date(timestamp * 1000).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function KarProOverviewSection({
+  passId,
+  joinedAt,
+  verificationCount,
+  address,
+}: KarProOverviewSectionProps) {
+  const pathname = usePathname();
+  const chainId = DEFAULT_CHAIN_ID;
+  const staking = karProStakingAddress(chainId);
+  const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
+  const { stakeLabel } = useMinStakeNative();
+
+  const { data: onChainFee } = useReadContract({
+    address: staking,
+    abi: KarProStakingAbi,
+    functionName: "verificationFee",
+    args: [address],
+    query: { enabled: Boolean(staking && address) },
+  });
+
+  const feeWei = onChainFee ?? 0n;
+
+  const goToFee = () => {
+    replaceKarProSectionUrl(pathname, window.location.search, "fee");
+  };
+
+  return (
+    <section className={`${instrumentReadoutPanel} space-y-4`}>
+      <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-accent-warm">
+        ✓ Active KarPro
+      </p>
+
+      <div className="space-y-1">
+        <p className="font-mono text-fluid-sm text-text-secondary">
+          Pass{" "}
+          <ProPassIdLabel
+            tokenId={resolvedPassId}
+            chainId={chainId}
+            prefix="none"
+            showChain={false}
+            variant="mono"
+            className="text-fluid-sm"
+          />
+        </p>
+        <p className="font-mono text-fluid-sm tabular-nums text-text-primary">
+          {stakeLabel} ETH staked
+        </p>
+      </div>
+
+      <p className="font-sans text-fluid-sm text-text-secondary">
+        Fully refundable · No slash · Leave anytime
+      </p>
+
+      <p className="font-sans text-fluid-sm text-text-secondary">
+        {verificationCount} verification{verificationCount === 1 ? "" : "s"} · Joined{" "}
+        {formatJoinedDate(joinedAt)}
+      </p>
+
+      {staking && (
+        <p className="font-sans text-fluid-sm text-text-secondary">
+          <a
+            href={explorerAddressUrl(chainId, staking)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={monoLinkSm}
+          >
+            View staking contract
+          </a>
+        </p>
+      )}
+
+      <div className="space-y-1 border-t border-border-default pt-4">
+        <p className="font-sans text-xs text-text-tertiary">Verification fee</p>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <VerificationFeeDisplay feeWei={feeWei} />
+          <button
+            type="button"
+            onClick={goToFee}
+            className={monoLinkSm}
+          >
+            Edit fee →
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}

@@ -33,11 +33,18 @@ export function KarProStatusWidget({
           {" staked · Stake is fully refundable · No slash · No delay"}
         </p>
       </div>
-      <Link href="/kar-pro">
-        <Button variant="ghost" size="sm">
-          Manage
-        </Button>
-      </Link>
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        <Link href="/kar-pro?section=fee">
+          <Button variant="ghost" size="sm">
+            Edit fee →
+          </Button>
+        </Link>
+        <Link href="/kar-pro">
+          <Button variant="ghost" size="sm">
+            Manage
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }
