@@ -60,13 +60,14 @@ export function ProfileEditClient() {
   const { profile, refetch } = useNostrProfile(address);
 
   const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
+  const verifierStatusEnabled = Boolean(staking && address);
 
-  const { data: isActiveVerifier } = useReadContract({
+  const { data: isActiveVerifier, isPending: verifierReadPending } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
-    query: { enabled: Boolean(staking && address) },
+    query: { enabled: verifierStatusEnabled },
   });
 
   const { profile: verifierProfile } = useKarProVerifierProfile(address, {
@@ -95,8 +96,10 @@ export function ProfileEditClient() {
     userEditedRef.current = true;
   }, []);
 
+  const verifierStatusPending = verifierStatusEnabled && verifierReadPending;
   const verifierActive = isActiveVerifier === true;
-  const lud16Invalid = !verifierActive && isLightningAddressInvalid(lud16);
+  const verifierResolvedNonVerifier = !verifierStatusPending && !verifierActive;
+  const lud16Invalid = verifierResolvedNonVerifier && isLightningAddressInvalid(lud16);
 
   const onSave = useCallback(async () => {
     if (!walletClient || !address || saving) return;
@@ -112,7 +115,7 @@ export function ProfileEditClient() {
         about: about.trim() || undefined,
         picture: picture.trim() || undefined,
         website: website.trim() || undefined,
-        ...(verifierActive ? {} : { lud16: lud16.trim() || undefined }),
+        ...(verifierResolvedNonVerifier ? { lud16: lud16.trim() || undefined } : {}),
       };
       const ok = await publishNostrProfile(
         patch,
@@ -130,7 +133,7 @@ export function ProfileEditClient() {
     } finally {
       setSaving(false);
     }
-  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierActive, refetch]);
+  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierResolvedNonVerifier, refetch]);
 
   if (!isConnected) {
     return (
@@ -252,7 +255,7 @@ export function ProfileEditClient() {
               id="lightning-address"
               value={lud16}
               touched={lud16Touched}
-              disabled={saving}
+              disabled={saving || verifierStatusPending}
               helperText="Optional. Lets others pay you over Lightning, e.g. your verification fee. Format: name@domain."
               onChange={(value) => {
                 markEdited();
