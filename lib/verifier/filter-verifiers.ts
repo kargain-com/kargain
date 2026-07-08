@@ -1,5 +1,7 @@
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { showLightningChip } from "@/lib/verifier/payment-methods";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 
 export type VerifierDirectorySortKey = "verifications" | "newest" | "lowestFee";
@@ -9,6 +11,8 @@ export type FilterVerifiersOptions = {
   categoryIndex: number | null;
   sortKey: VerifierDirectorySortKey;
   activeOnly: boolean;
+  lightningOnly?: boolean;
+  profiles?: Map<string, NostrProfileData | null>;
 };
 
 function normalizeHex(value: string): string {
@@ -93,6 +97,13 @@ export function filterVerifiers(
 
   if (options.categoryIndex !== null) {
     result = result.filter((entry) => entry.category === options.categoryIndex);
+  }
+
+  if (options.lightningOnly) {
+    result = result.filter((entry) => {
+      const profile = options.profiles?.get(entry.address.toLowerCase()) ?? null;
+      return showLightningChip(profile);
+    });
   }
 
   return sortVerifiers(result, options.sortKey);

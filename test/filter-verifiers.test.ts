@@ -177,6 +177,82 @@ describe("filterVerifiers", () => {
     assert.equal(result[0]?.verificationFee, "1000000000000000000");
     assert.equal(result[1]?.verificationFee, "2000000000000000000");
   });
+
+  it("filters lightning-only when profile has valid lud16 and accepts lightning", () => {
+    const lightning = entry({
+      address: "0x1111111111111111111111111111111111111111",
+    });
+    const noLightning = entry({
+      address: "0x2222222222222222222222222222222222222222",
+    });
+    const profiles = new Map([
+      [
+        "0x1111111111111111111111111111111111111111",
+        { lud16: "pay@example.com", verifierPaymentMethods: ["eth", "lightning"] as const },
+      ],
+      [
+        "0x2222222222222222222222222222222222222222",
+        { lud16: "bad", verifierPaymentMethods: ["eth", "lightning"] as const },
+      ],
+    ]);
+
+    const result = filterVerifiers([lightning, noLightning], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      lightningOnly: true,
+      profiles,
+    });
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.address, "0x1111111111111111111111111111111111111111");
+  });
+
+  it("excludes entries with unloaded profiles when lightningOnly is true", () => {
+    const loaded = entry({
+      address: "0x1111111111111111111111111111111111111111",
+    });
+    const unloaded = entry({
+      address: "0x2222222222222222222222222222222222222222",
+    });
+    const profiles = new Map([
+      [
+        "0x1111111111111111111111111111111111111111",
+        { lud16: "pay@example.com" },
+      ],
+    ]);
+
+    const result = filterVerifiers([loaded, unloaded], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      lightningOnly: true,
+      profiles,
+    });
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.address, "0x1111111111111111111111111111111111111111");
+  });
+
+  it("does not filter by lightning when lightningOnly is false", () => {
+    const entries = [
+      entry({ address: "0x1111111111111111111111111111111111111111" }),
+      entry({ address: "0x2222222222222222222222222222222222222222" }),
+    ];
+
+    const result = filterVerifiers(entries, {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      lightningOnly: false,
+      profiles: new Map(),
+    });
+
+    assert.equal(result.length, 2);
+  });
 });
 
 describe("formatVerifierDirectoryResultCount", () => {

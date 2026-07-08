@@ -21,7 +21,8 @@ import {
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { useNostrProfiles } from "@/hooks/use-nostr-profiles";
 
 import { VerificationRequestButton } from "./verification-request-button";
 import { VerificationPayButton } from "./verification-payment-modal";
@@ -46,12 +47,12 @@ function displayName(name: string, address: `0x${string}`): string {
 
 type VerifierCardProps = {
   verifier: VerifierDirectoryEntry;
+  profile: NostrProfileData | null;
   onSelectAgent?: (entry: VerifierDirectoryEntry) => void;
   layout?: "grid" | "picker";
 };
 
-function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCardProps) {
-  const { profile } = useNostrProfile(verifier.address);
+function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: VerifierCardProps) {
   const name = displayName(verifier.name, verifier.address);
   const isPicker = layout === "picker" && onSelectAgent;
 
@@ -163,10 +164,16 @@ export function VerifierDirectory({
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<VerifierDirectorySortKey>("verifications");
+  const [lightningOnly, setLightningOnly] = useState(false);
 
   const isPicker = layout === "picker";
   const deferredQuery = useDeferredValue(search.trim());
   const activeOnly = Boolean(onSelectAgent);
+
+  const { profiles } = useNostrProfiles(
+    isPicker ? [] : verifiers.map((v) => v.address),
+    { enabled: !isPicker },
+  );
 
   const totalPoolCount = useMemo(
     () => (activeOnly ? verifiers.filter((v) => v.active) : verifiers).length,
@@ -180,11 +187,14 @@ export function VerifierDirectory({
         categoryIndex: categoryFilter,
         sortKey,
         activeOnly,
+        lightningOnly,
+        profiles,
       }),
-    [verifiers, deferredQuery, categoryFilter, sortKey, activeOnly],
+    [verifiers, deferredQuery, categoryFilter, sortKey, activeOnly, lightningOnly, profiles],
   );
 
-  const hasActiveFilters = search.trim() !== "" || categoryFilter !== null;
+  const hasActiveFilters =
+    search.trim() !== "" || categoryFilter !== null || lightningOnly;
 
   if (verifiers.length === 0) {
     return (
@@ -261,6 +271,23 @@ export function VerifierDirectory({
         })}
       </div>
 
+      {!isPicker && (
+        <div role="group" aria-label="Payment method filters" className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-pressed={lightningOnly}
+            onClick={() => setLightningOnly((prev) => !prev)}
+            className={`inline-flex items-center rounded-sm border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] ${
+              lightningOnly
+                ? "border-border-hover bg-bg-surface text-text-primary"
+                : "border-border-default bg-transparent text-text-secondary hover:border-border-hover hover:text-text-primary"
+            }`}
+          >
+            Accepts Lightning
+          </button>
+        </div>
+      )}
+
       {hasActiveFilters && (
         <div className="flex justify-end">
           <button
@@ -268,6 +295,7 @@ export function VerifierDirectory({
             onClick={() => {
               setSearch("");
               setCategoryFilter(null);
+              setLightningOnly(false);
             }}
             className="inline-flex items-center gap-1.5 font-sans text-xs text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
           >
@@ -290,6 +318,7 @@ export function VerifierDirectory({
         onClick: () => {
           setSearch("");
           setCategoryFilter(null);
+          setLightningOnly(false);
         },
       }}
     />
@@ -301,6 +330,7 @@ export function VerifierDirectory({
         <VerifierCard
           key={verifier.address}
           verifier={verifier}
+          profile={profiles.get(verifier.address.toLowerCase()) ?? null}
           onSelectAgent={onSelectAgent}
           layout={layout}
         />
