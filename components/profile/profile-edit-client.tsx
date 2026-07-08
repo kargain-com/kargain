@@ -19,6 +19,10 @@ import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryLabel, sansLink } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import {
+  buildProfileEditPatch,
+  type ProfileEditFieldKey,
+} from "@/lib/nostr/build-profile-edit-patch";
 import { publishNostrProfile } from "@/lib/nostr/profile";
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
@@ -46,7 +50,8 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 export function ProfileEditClient() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const userEditedRef = useRef(false);
+  const touchedRef = useRef<Set<ProfileEditFieldKey>>(new Set());
+  const [dirty, setDirty] = useState(false);
 
   const [picture, setPicture] = useState("");
   const [name, setName] = useState("");
@@ -57,7 +62,7 @@ export function ProfileEditClient() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
-  const { profile, refetch } = useNostrProfile(address);
+  const { profile, loading, refetch } = useNostrProfile(address);
 
   const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
   const verifierStatusEnabled = Boolean(staking && address);
@@ -77,12 +82,12 @@ export function ProfileEditClient() {
   const { stakeLabel } = useMinStakeNative();
 
   useEffect(() => {
-    if (!profile || userEditedRef.current) return;
-    setPicture(profile.picture ?? "");
-    setName(profile.name ?? "");
-    setAbout(profile.about ?? "");
-    setWebsite(profile.website ?? "");
-    setLud16(profile.lud16 ?? "");
+    if (!profile) return;
+    if (!touchedRef.current.has("picture")) setPicture(profile.picture ?? "");
+    if (!touchedRef.current.has("name")) setName(profile.name ?? "");
+    if (!touchedRef.current.has("about")) setAbout(profile.about ?? "");
+    if (!touchedRef.current.has("website")) setWebsite(profile.website ?? "");
+    if (!touchedRef.current.has("lud16")) setLud16(profile.lud16 ?? "");
   }, [profile]);
 
   useEffect(() => {
@@ -92,8 +97,9 @@ export function ProfileEditClient() {
     return () => window.clearTimeout(timer);
   }, [saveStatus]);
 
-  const markEdited = useCallback(() => {
-    userEditedRef.current = true;
+  const markTouched = useCallback((key: ProfileEditFieldKey) => {
+    touchedRef.current.add(key);
+    setDirty(true);
   }, []);
 
   const verifierStatusPending = verifierStatusEnabled && verifierReadPending;
@@ -110,13 +116,11 @@ export function ProfileEditClient() {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      const patch = {
-        name: name.trim() || undefined,
-        about: about.trim() || undefined,
-        picture: picture.trim() || undefined,
-        website: website.trim() || undefined,
-        ...(verifierResolvedNonVerifier ? { lud16: lud16.trim() || undefined } : {}),
-      };
+      const patch = buildProfileEditPatch(
+        touchedRef.current,
+        { name, about, picture, website, lud16 },
+        verifierResolvedNonVerifier,
+      );
       const ok = await publishNostrProfile(
         patch,
         address,
@@ -177,7 +181,7 @@ export function ProfileEditClient() {
               placeholder="https:// or ar:// image URL"
               className="text-sm"
               onChange={(e) => {
-                markEdited();
+                markTouched("picture");
                 setPicture(e.target.value);
               }}
             />
@@ -196,7 +200,7 @@ export function ProfileEditClient() {
               placeholder="Your name"
               className="text-sm"
               onChange={(e) => {
-                markEdited();
+                markTouched("name");
                 setName(e.target.value);
               }}
             />
@@ -213,7 +217,7 @@ export function ProfileEditClient() {
               placeholder="A short bio"
               className="min-h-[7.5rem] text-sm"
               onChange={(e) => {
-                markEdited();
+                markTouched("about");
                 setAbout(e.target.value);
               }}
             />
@@ -232,7 +236,7 @@ export function ProfileEditClient() {
               placeholder="https://"
               className="text-sm"
               onChange={(e) => {
-                markEdited();
+                markTouched("website");
                 setWebsite(e.target.value);
               }}
             />
@@ -258,7 +262,7 @@ export function ProfileEditClient() {
               disabled={saving || verifierStatusPending}
               helperText="Optional. Lets others pay you over Lightning, e.g. your verification fee. Format: name@domain."
               onChange={(value) => {
-                markEdited();
+                markTouched("lud16");
                 setLud16Touched(true);
                 setLud16(value);
               }}
@@ -268,12 +272,11 @@ export function ProfileEditClient() {
 
           <div className="flex flex-col gap-3">
             <Button
-              id="save-profile"
               type="button"
               variant="primary"
               size="md"
               className="w-full md:w-auto"
-              disabled={saving || lud16Invalid}
+              disabled={saving || lud16Invalid || loading || verifierStatusPending || !dirty}
               aria-busy={saving}
               onClick={() => void onSave()}
             >

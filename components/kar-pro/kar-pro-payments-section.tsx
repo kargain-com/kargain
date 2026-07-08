@@ -31,7 +31,7 @@ export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
   const wc = wagmiChainId(DEFAULT_CHAIN_ID);
   const { data: walletClient } = useWalletClient({ chainId: wc });
 
-  const { profile: ownProfile, refetch: refetchProfile } = useNostrProfile(address);
+  const { profile: ownProfile, loading: ownProfileLoading, refetch: refetchProfile } = useNostrProfile(address);
 
   const resolvedMethods = useMemo(
     () => acceptedPaymentMethods(ownProfile),
@@ -63,7 +63,8 @@ export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
   }, [methodsInitialized, resolvedMethods, methodsDraft, lud16Draft, ownProfile?.lud16]);
 
   const lightningEnabled = methodsDraft.has("lightning");
-  const lud16Invalid = lightningEnabled && isLightningAddressInvalid(lud16Draft);
+  const lud16Invalid =
+    lightningEnabled && (lud16Draft.trim() === "" || isLightningAddressInvalid(lud16Draft));
   const onlyOneMethod = methodsDraft.size === 1;
 
   const toggleMethod = useCallback(
@@ -189,6 +190,11 @@ export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
                 onBlur={() => setLud16Touched(true)}
               />
             )}
+            {lightningEnabled && lud16Draft.trim() === "" && lud16Touched && (
+              <p role="alert" className="font-sans text-sm text-status-error">
+                Add a Lightning address to accept Lightning payments.
+              </p>
+            )}
             <p className="font-sans text-xs text-text-secondary">
               Used for verification fee payments. Car sale payment details are set per listing.
             </p>
@@ -199,7 +205,7 @@ export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
           <Button
             type="button"
             variant="secondary"
-            disabled={methodsSaving || !methodsDirty || lud16Invalid}
+            disabled={methodsSaving || !methodsDirty || lud16Invalid || ownProfileLoading}
             onClick={() => void onSaveMethods()}
           >
             {methodsSaving ? "Saving…" : "Save payment methods"}
