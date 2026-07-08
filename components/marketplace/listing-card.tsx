@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
@@ -25,6 +25,40 @@ import { shortAddress } from "@/lib/web3/wallet-display";
 type Props = {
   row: MarketplaceListingRow;
 };
+
+const ATTRIBUTION_LINK_BASE =
+  "transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]";
+
+/** Shared card attribution row: icon + label + link to a profile. */
+function AttributionRow({
+  icon: Icon,
+  iconClassName,
+  label,
+  address,
+  linkClassName,
+}: {
+  icon: LucideIcon;
+  iconClassName: string;
+  label: string;
+  address: string;
+  linkClassName: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <Icon size={12} strokeWidth={1.5} className={cn("shrink-0", iconClassName)} aria-hidden />
+      <p className="font-sans text-xs text-text-secondary truncate">
+        {label}{" "}
+        <Link
+          href={`/profile/${address}`}
+          className={cn(ATTRIBUTION_LINK_BASE, linkClassName)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {shortAddress(address)}
+        </Link>
+      </p>
+    </div>
+  );
+}
 
 function titleIncludesYear(title: string, year: number | null): boolean {
   return year != null && title.startsWith(`${year} `);
@@ -89,58 +123,37 @@ export function ListingCard({ row }: Props) {
             {row.mileageKm != null && <span>{row.mileageKm.toLocaleString()} km</span>}
           </div>
           {row.passportStatus === "VERIFIED" && row.verifier.trim() !== "" && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <ShieldCheck size={12} strokeWidth={1.5} className="text-accent-warm shrink-0" aria-hidden />
-              <p className="font-sans text-xs text-text-secondary truncate">
-                Verified by{" "}
-                <Link
-                  href={`/profile/${row.verifier}`}
-                  className="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm transition-colors duration-200
-                             focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {shortAddress(row.verifier)}
-                </Link>
-              </p>
-            </div>
+            <AttributionRow
+              icon={ShieldCheck}
+              iconClassName="text-accent-warm"
+              label="Verified by"
+              address={row.verifier}
+              linkClassName="font-mono text-xs text-text-secondary hover:text-accent-warm focus-visible:text-accent-warm"
+            />
           )}
-          {row.passportStatus === "DISPUTED" && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <AlertTriangle size={12} strokeWidth={1.5} className="text-status-error shrink-0" aria-hidden />
-              <p className="font-sans text-xs text-text-secondary truncate">
-                {disputer ? (
-                  <>
-                    Disputed by{" "}
-                    <Link
-                      href={`/profile/${disputer}`}
-                      className="font-mono text-xs text-text-secondary hover:text-status-error focus-visible:text-status-error transition-colors duration-200
-                                 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {shortAddress(disputer)}
-                    </Link>
-                  </>
-                ) : (
-                  <span className="text-status-error">Disputed</span>
-                )}
-              </p>
-            </div>
-          )}
+          {row.passportStatus === "DISPUTED" &&
+            (disputer ? (
+              <AttributionRow
+                icon={AlertTriangle}
+                iconClassName="text-status-error"
+                label="Disputed by"
+                address={disputer}
+                linkClassName="font-mono text-xs text-text-secondary hover:text-status-error focus-visible:text-status-error"
+              />
+            ) : (
+              <div className="flex items-center gap-1.5 mt-1">
+                <AlertTriangle size={12} strokeWidth={1.5} className="text-status-error shrink-0" aria-hidden />
+                <p className="font-sans text-xs text-status-error truncate">Disputed</p>
+              </div>
+            ))}
           {hasListingAgent(row.agent) && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <UserRound size={12} strokeWidth={1.5} className="text-accent-warm shrink-0" aria-hidden />
-              <p className="font-sans text-xs text-text-secondary truncate">
-                Sold by{" "}
-                <Link
-                  href={`/profile/${row.agent}`}
-                  className="text-text-primary hover:text-accent-warm transition-colors duration-200
-                             focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {shortAddress(row.agent!)}
-                </Link>
-              </p>
-            </div>
+            <AttributionRow
+              icon={UserRound}
+              iconClassName="text-accent-warm"
+              label="Sold by"
+              address={row.agent!}
+              linkClassName="text-text-primary hover:text-accent-warm"
+            />
           )}
 
           <div className="mt-auto flex flex-col gap-2.5 pt-1.5">
