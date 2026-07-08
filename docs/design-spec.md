@@ -317,7 +317,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 > **Price display:** canonical classes in [§10.2](./design-spec.md#102-accent-as-status-not-decoration) — `font-mono text-lg font-medium tabular-nums text-text-primary` for asking/browse amounts; fee lines mono `text-text-secondary` (`text-xs` compact, `text-sm` showroom/profile stats). No `text-accent-warm` on amounts or card price hover.
 
-**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). (Price display: §10.2.) Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). Indexer duplicate VIN: `elevatedAdvisoryChip` (§10.3) as first row in `CardContent` — not on the image. VERIFIED + non-empty `row.verifier` shows ShieldCheck attribution linking to `/profile/{address}`. Placeholder: centered "No image" when `imageUrl` is null.
+**Listing card:** [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — price via shared [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()` (display currency from nav). (Price display: §10.2.) Cover from Ponder `coverPhotoUri` (first metadata `photos[]` entry, indexed at replay). Fixed `aspect-[16/10]` image plate + `object-cover`; all listing-card grids use shared [`listing-card-grid.ts`](../lib/marketplace/listing-card-grid.ts) with `auto-rows-fr` for equal card heights. **No** opaque overlay on the image area. VERIFIED listings use permanent `border-accent-warm` on the card (not hover-only). UNVERIFIED / DISPUTED use `border-border-default`; hover → `border-border-hover` (never accent on hover). Indexer duplicate VIN: `elevatedAdvisoryChip` (§10.3) as first row in `CardContent` — not on the image. VERIFIED + non-empty `row.verifier` shows ShieldCheck **Verified by** attribution linking to `/profile/{address}`. DISPUTED shows `AlertTriangle` + **Disputed by** `{shortAddress(lastDisputer)}` (`status-error` chroma; plain *Disputed* when `lastDisputer` empty). Placeholder: centered "No image" when `imageUrl` is null.
 
 **Photo upload (mint + edit):** [`photo-upload-zone.tsx`](../components/passport/photo-upload-zone.tsx) (create) and [`edit-passport-wizard.tsx`](../components/passport/edit-passport-wizard.tsx) (new photos only). Incoming images (including HEIC via `heic2any`) are always re-encoded to **WebP ≤ 100 KB** in the browser via [`compress-passport-image.ts`](../lib/passport/compress-passport-image.ts) and [`passport-image-encode-plan.ts`](../lib/passport/passport-image-encode-plan.ts) — quality and max-edge ladder until the byte budget is met; no skip path and no fallback to the original file. Failures surface as [`PassportImageOptimizeError`](../lib/passport/passport-image-optimize-error.ts) with user-facing copy from [`passport-flow-messages.ts`](../lib/passport/passport-flow-messages.ts). [`passport-upload-preflight-banner.tsx`](../components/passport/passport-upload-preflight-banner.tsx) warns smart contract wallets when multiple photos may fail the Irys storage deposit.
 
@@ -807,7 +807,7 @@ Chip: `border-status-error/40`, `bg-status-error/10`, `text-status-error`. Panel
 | Signal | Trigger |
 |--------|---------|
 | Metadata updated after verification (reset count) | Indexer `verificationResetCount` — already shipped on `status-warning` in [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) |
-| On-chain vs indexer status drift (detail + browse card) | Client `compareListingStatus` / chain RPC vs Ponder |
+| On-chain vs indexer status drift (passport detail only) | Client `compareListingStatus` / chain RPC vs Ponder — [`passport-chain-status-banner.tsx`](../components/passport/passport-chain-status-banner.tsx) |
 | Verifier inactive | On-chain `isActiveVerifier` false |
 | Re-inspection recommended | Client `recommendsReInspection` — **spec target**: currently neutral `border-border-default`; moves to `status-warning` in a follow-up code pass |
 | Smart-wallet upload preflight | Client: contract account kind — **spec target**: currently `status-error` border; downgrades to `status-warning` in a follow-up code pass (not gated, was over-colored) |
@@ -912,7 +912,7 @@ Skeleton shape must match the §10.6 level of the content it replaces. If a skel
 
 | Content type | Canonical skeleton | Reference loaded component |
 |---|---|---|
-| Listing card grid | [`ListingCardSkeleton`](../components/marketplace/listing-card-skeleton.tsx) | [`ListingCard`](../components/marketplace/listing-card.tsx) (Level A) |
+| Listing card grid | [`ListingCardSkeleton`](../components/marketplace/listing-card-skeleton.tsx) | [`ListingCard`](../components/marketplace/listing-card.tsx) (Level A); grid classes from [`listing-card-grid.ts`](../lib/marketplace/listing-card-grid.ts) (`auto-rows-fr`) |
 | Consignment authorization row | `AwaitingCardSkeleton` | `AuthorizedAwaitingCard` (Level C) |
 | Notification feed | `NotificationRowSkeletonList` | Notification list (Level A shell + Level C rows) |
 | Verifier directory grid | Level A `bg-bg-card` card with internal bars matching `VerifierCard` | [`VerifierCard`](../components/verifier/verifier-directory.tsx) grid layout |
@@ -1266,4 +1266,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.23 (July 2026 — NS-4.3 fail-closed publish guard + single-key messaging patches). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.24 (July 2026 — listing card disputed attribution + uniform grid; browse on-chain drift badge removed). Update when tokens, app shell, or component contracts change.*

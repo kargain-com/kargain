@@ -84,6 +84,7 @@ type PonderListing = {
   duplicateVin?: boolean;
   verifier?: string;
   agent?: string;
+  lastDisputer?: string;
 };
 
 type PonderListingsResponse = {

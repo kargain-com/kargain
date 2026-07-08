@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { sansLinkUnderline } from "@/lib/design/instrument-classes";
+import { LISTING_CARD_GRID_NARROW } from "@/lib/marketplace/listing-card-grid";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   mapAgentListingToRow,
@@ -598,7 +599,7 @@ function ListingsSection({
       {ponderError && <PonderErrorBanner message="Indexer unavailable" />}
 
       {isPending && !ponderError && (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className={LISTING_CARD_GRID_NARROW}>
           {Array.from({ length: 2 }).map((_, i) => (
             <li key={i}>
               <ListingCardSkeleton />
@@ -624,7 +625,7 @@ function ListingsSection({
 
       {!ponderError && listingPairs.length > 0 && (
         <>
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className={LISTING_CARD_GRID_NARROW}>
             {listingPairs.map(({ listing, row }) => (
               <li key={row.tokenId}>
                 {active ? (

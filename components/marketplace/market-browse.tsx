@@ -16,19 +16,17 @@ import { MarketFilterBar } from "@/components/marketplace/market-filter-bar";
 import { MarketFilterChips } from "@/components/marketplace/market-filter-chips";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FadeUp } from "@/components/ui/fade-up";
-import { useDeferListingChainStatusConfirm } from "@/hooks/use-defer-listing-chain-status-confirm";
-import { useListingChainStatusConfirm } from "@/hooks/use-listing-chain-status-confirm";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
+import { LISTING_CARD_GRID_WIDE } from "@/lib/marketplace/listing-card-grid";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import {
   marketplaceListingsNeedClientRates,
   marketplaceListingsRatesReady,
 } from "@/lib/marketplace/listings-prefetch";
-import { shouldEnableListingChainStatusConfirm } from "@/lib/marketplace/listing-chain-status-confirm-fetch";
-import { listingStatusKey } from "@/lib/passport/confirm-listing-status";
+import { cn } from "@/lib/utils";
 
 type MarketBrowseProps = {
   initialListingsPage?: MarketplaceListingsResult;
@@ -80,13 +78,6 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
     [data],
   );
 
-  const deferReady = useDeferListingChainStatusConfirm();
-  const chainConfirmEnabled = shouldEnableListingChainStatusConfirm({
-    deferReady,
-    hasRows: rows.length > 0,
-  });
-  const { drifts } = useListingChainStatusConfirm(rows, { enabled: chainConfirmEnabled });
-
   const total = data?.pages[0]?.total ?? 0;
   const ponderError = data?.pages[0]?.ponderError;
 
@@ -131,7 +122,7 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
         )}
         {isPending && (!needsRates || ratesReady) && (
           <ul
-            className="mb-4 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
+            className={cn("mb-4", LISTING_CARD_GRID_WIDE)}
             role="status"
             aria-live="polite"
           >
@@ -161,13 +152,10 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
         )}
 
         <FadeUp>
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className={LISTING_CARD_GRID_WIDE}>
             {rows.map((row) => (
               <li key={`${row.chainId}-${row.tokenId}`}>
-                <ListingCard
-                  row={row}
-                  chainStatusDrift={drifts.get(listingStatusKey(row.chainId, row.tokenId))}
-                />
+                <ListingCard row={row} />
               </li>
             ))}
           </ul>

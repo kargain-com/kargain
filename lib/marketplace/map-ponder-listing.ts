@@ -27,6 +27,7 @@ export type PonderListingInput = {
   duplicateVin?: boolean;
   verifier?: string;
   agent?: string;
+  lastDisputer?: string;
   returnRequestedAt?: string | number;
   externalPaymentConfirmedAt?: string | number;
 };
@@ -53,6 +54,7 @@ export type MarketplaceListingRow = {
   lng: number | null;
   duplicateVin: boolean;
   verifier: string;
+  lastDisputer: string;
   karPro: boolean;
   featured: boolean;
   agent: string | null;
@@ -99,6 +101,7 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     lng: null,
     duplicateVin: listing.duplicateVin === true,
     verifier: listing.verifier ?? "",
+    lastDisputer: listing.lastDisputer ?? "",
     karPro: false,
     featured: status === "VERIFIED",
     agent: listing.agent?.trim() ? listing.agent : null,
@@ -139,6 +142,7 @@ export function mapAgentListingToRow(
     duplicateVin: listing.duplicateVin,
     verifier: listing.verifier,
     agent: listing.agent,
+    lastDisputer: listing.lastDisputer,
     returnRequestedAt: listing.returnRequestedAt,
     externalPaymentConfirmedAt: listing.externalPaymentConfirmedAt,
   });

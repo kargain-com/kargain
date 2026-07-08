@@ -14,22 +14,19 @@ import {
   elevatedAdvisoryText,
 } from "@/lib/design/instrument-classes";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
-import type { ListingChainStatusDrift } from "@/lib/passport/confirm-listing-status";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
   row: MarketplaceListingRow;
-  chainStatusDrift?: ListingChainStatusDrift;
 };
 
 function titleIncludesYear(title: string, year: number | null): boolean {
   return year != null && title.startsWith(`${year} `);
 }
 
-export function ListingCard({ row, chainStatusDrift }: Props) {
-  const statusStale = Boolean(chainStatusDrift);
-  const displayStatus = chainStatusDrift?.chainStatus ?? row.passportStatus;
+export function ListingCard({ row }: Props) {
+  const disputer = row.lastDisputer.trim();
 
   return (
     <Link
@@ -39,7 +36,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
       <Card
         className={cn(
           "flex h-full w-full flex-col overflow-hidden bg-bg-card p-0 transition-colors duration-300",
-          displayStatus === "VERIFIED"
+          row.passportStatus === "VERIFIED"
             ? "border-accent-warm group-focus-visible:border-accent-warm"
             : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
         )}
@@ -77,16 +74,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-text-primary">
               {row.title}
             </h3>
-            {statusStale && (
-              <span
-                className="inline-flex items-center gap-1 rounded border border-status-error/40 bg-bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-status-error"
-                title={`Indexer out of sync — on-chain status: ${chainStatusDrift!.chainStatus}`}
-              >
-                <AlertTriangle size={10} strokeWidth={1.5} aria-hidden />
-                On-chain
-              </span>
-            )}
-            {displayStatus === "VERIFIED" && row.verifier && (
+            {row.passportStatus === "VERIFIED" && row.verifier && (
               <VerifierInactiveBadge chainId={row.chainId} verifier={row.verifier} />
             )}
             {row.karPro && <KarProBadge className="shrink-0" />}
@@ -97,7 +85,7 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
             {row.year != null && !titleIncludesYear(row.title, row.year) && <span>{row.year}</span>}
             {row.mileageKm != null && <span>{row.mileageKm.toLocaleString()} km</span>}
           </div>
-          {displayStatus === "VERIFIED" && row.verifier.trim() !== "" && (
+          {row.passportStatus === "VERIFIED" && row.verifier.trim() !== "" && (
             <div className="flex items-center gap-1.5 mt-1">
               <ShieldCheck size={12} strokeWidth={1.5} className="text-accent-warm shrink-0" aria-hidden />
               <p className="font-sans text-xs text-text-secondary truncate">
@@ -110,6 +98,28 @@ export function ListingCard({ row, chainStatusDrift }: Props) {
                 >
                   {shortAddress(row.verifier)}
                 </Link>
+              </p>
+            </div>
+          )}
+          {row.passportStatus === "DISPUTED" && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <AlertTriangle size={12} strokeWidth={1.5} className="text-status-error shrink-0" aria-hidden />
+              <p className="font-sans text-xs text-text-secondary truncate">
+                {disputer ? (
+                  <>
+                    Disputed by{" "}
+                    <Link
+                      href={`/profile/${disputer}`}
+                      className="font-mono text-xs text-text-secondary hover:text-status-error focus-visible:text-status-error transition-colors duration-200
+                                 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {shortAddress(disputer)}
+                    </Link>
+                  </>
+                ) : (
+                  <span className="text-status-error">Disputed</span>
+                )}
               </p>
             </div>
           )}

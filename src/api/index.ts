@@ -103,6 +103,7 @@ type PassportDenorm = {
   tokenUri: string;
   coverPhotoUri: string;
   duplicateVin: boolean;
+  lastDisputer: string;
 };
 
 async function loadPassportMap(
@@ -137,6 +138,7 @@ async function loadPassportMap(
         tokenUri: row.tokenUri,
         coverPhotoUri: row.coverPhotoUri,
         duplicateVin: row.duplicateVin,
+        lastDisputer: row.lastDisputer,
       });
     }
   }
@@ -231,6 +233,7 @@ function enrichListing(
     tokenUri: p?.tokenUri ?? "",
     coverPhotoUri: p?.coverPhotoUri ?? "",
     duplicateVin: p?.duplicateVin ?? false,
+    lastDisputer: p?.lastDisputer ?? "",
   };
 }
 
@@ -285,6 +288,7 @@ async function loadDefaultBrowsePage(
         tokenUri: passport.tokenUri,
         coverPhotoUri: passport.coverPhotoUri,
         duplicateVin: passport.duplicateVin,
+        lastDisputer: passport.lastDisputer,
       })
       .from(marketplaceListing)
       .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
@@ -330,6 +334,7 @@ async function loadDefaultBrowsePage(
     tokenUri: row.tokenUri ?? "",
     coverPhotoUri: row.coverPhotoUri ?? "",
     duplicateVin: row.duplicateVin ?? false,
+    lastDisputer: row.lastDisputer ?? "",
   }));
 
   return { listings, total: Number(totalRow[0]?.total ?? 0) };

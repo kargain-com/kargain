@@ -275,6 +275,7 @@ export type PonderAgentListingRaw = {
   duplicateVin?: boolean;
   verifier?: string;
   agent?: string;
+  lastDisputer?: string;
   agentFeeBps?: number;
   ownerMinPrice1e8?: string;
   returnRequestedAt?: string;

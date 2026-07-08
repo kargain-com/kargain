@@ -10,10 +10,14 @@ import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skele
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useWatchlist } from "@/hooks/use-watchlist";
+import {
+  LISTING_CARD_GRID_NARROW,
+  LISTING_CARD_GRID_WIDE,
+} from "@/lib/marketplace/listing-card-grid";
 
 const GRID_CLASS = {
-  wide: "grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3",
-  narrow: "grid grid-cols-1 gap-3 sm:grid-cols-2",
+  wide: LISTING_CARD_GRID_WIDE,
+  narrow: LISTING_CARD_GRID_NARROW,
 } as const;
 
 type WatchlistLayout = keyof typeof GRID_CLASS;

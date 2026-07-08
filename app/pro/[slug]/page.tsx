@@ -18,6 +18,7 @@ import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -360,7 +361,7 @@ export default async function ProShowroomPage({
           {data.activeListings.length === 0 ? (
             <EmptyState variant="content" level="B" title="No active listings." />
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={LISTING_CARD_GRID_PRO}>
               {data.activeListings.map((listing) => (
                 <ListingCard key={listing.tokenId} row={listing} />
               ))}
@@ -378,7 +379,7 @@ export default async function ProShowroomPage({
             <EmptyState variant="content" level="B" title="No active consignments." />
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className={LISTING_CARD_GRID_PRO}>
                 {data.activeConsignments.map((listing) => (
                   <ListingCard key={`consign-${listing.tokenId}`} row={listing} />
                 ))}
