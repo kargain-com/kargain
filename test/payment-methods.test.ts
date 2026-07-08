@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   acceptedPaymentMethods,
+  paymentMethodChipIds,
   paymentMethodIdsToArray,
   showLightningChip,
 } from "../lib/verifier/payment-methods.ts";
@@ -61,5 +62,45 @@ describe("showLightningChip", () => {
       false,
     );
     assert.equal(showLightningChip(null), false);
+  });
+});
+
+describe("paymentMethodChipIds", () => {
+  it("returns eth and usdc when field absent and no lud16", () => {
+    assert.deepEqual(paymentMethodChipIds(null), ["eth", "usdc"]);
+    assert.deepEqual(paymentMethodChipIds({ name: "Ada" }), ["eth", "usdc"]);
+  });
+
+  it("includes lightning when field absent and lud16 valid", () => {
+    assert.deepEqual(paymentMethodChipIds({ lud16: "pay@example.com" }), [
+      "eth",
+      "usdc",
+      "lightning",
+    ]);
+  });
+
+  it("returns explicit subset only", () => {
+    assert.deepEqual(paymentMethodChipIds({ verifierPaymentMethods: ["eth"] }), ["eth"]);
+    assert.deepEqual(
+      paymentMethodChipIds({
+        verifierPaymentMethods: ["lightning"],
+        lud16: "pay@example.com",
+      }),
+      ["lightning"],
+    );
+  });
+
+  it("omits lightning when accepted but lud16 invalid or missing", () => {
+    assert.deepEqual(
+      paymentMethodChipIds({ verifierPaymentMethods: ["eth", "lightning"] }),
+      ["eth"],
+    );
+    assert.deepEqual(
+      paymentMethodChipIds({
+        verifierPaymentMethods: ["eth", "lightning"],
+        lud16: "not-valid",
+      }),
+      ["eth"],
+    );
   });
 });

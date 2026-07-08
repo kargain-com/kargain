@@ -13,8 +13,7 @@ import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
 } from "@/lib/kar-pro/kar-pro-metadata";
-import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
-import { showLightningChip } from "@/lib/verifier/payment-methods";
+import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
@@ -23,7 +22,7 @@ import { VerificationRequestButton } from "./verification-request-button";
 import { VerificationPayButton } from "./verification-payment-modal";
 import {
   VerificationFeeDisplay,
-  VerificationLightningChip,
+  VerificationPaymentChips,
 } from "./verification-fee-display";
 
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
@@ -47,6 +46,7 @@ type VerifierCardProps = {
 };
 
 function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCardProps) {
+  const { profile } = useNostrProfile(verifier.address);
   const name = displayName(verifier.name, verifier.address);
   const isPicker = layout === "picker" && onSelectAgent;
 
@@ -77,8 +77,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
   const showroomHref = showroomSlug
     ? `/pro/${showroomSlug}`
     : `/profile/${verifier.address}`;
-  const feeWei = parseReturnRequestedAt(verifier.verificationFee);
-  const { profile } = useNostrProfile(verifier.address);
+  const feeWei = parseWeiString(verifier.verificationFee);
 
   return (
     <article className="flex flex-col gap-4 rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover">
@@ -109,7 +108,7 @@ function VerifierCard({ verifier, onSelectAgent, layout = "grid" }: VerifierCard
             feeWei={feeWei}
             primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
           />
-          {showLightningChip(profile) && <VerificationLightningChip />}
+          <VerificationPaymentChips profile={profile} />
         </div>
       </div>
 

@@ -2,14 +2,19 @@
 
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
+import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
-import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
+import {
+  VerificationFeeDisplay,
+  VerificationPaymentChips,
+} from "@/components/verifier/verification-fee-display";
 
 type ProfileVerifierStatsBandProps = {
   wallet: `0x${string}`;
   isActiveVerifier: boolean;
   initialProfile: KarProVerifierProfile | null;
   isOwner: boolean;
+  nostrProfile?: NostrProfileData | null;
 };
 
 function StatsSeparator() {
@@ -21,6 +26,7 @@ export function ProfileVerifierStatsBand({
   isActiveVerifier,
   initialProfile,
   isOwner,
+  nostrProfile = null,
 }: ProfileVerifierStatsBandProps) {
   const { profile: liveProfile } = useKarProVerifierProfile(wallet, {
     isActiveVerifier: isActiveVerifier || Boolean(initialProfile?.active),
@@ -64,6 +70,11 @@ export function ProfileVerifierStatsBand({
           prefix="Verification fee "
           primaryClassName="font-mono text-sm text-text-secondary tabular-nums"
         />
+        {nostrProfile != null && (
+          <span className="ml-2 inline-flex align-middle">
+            <VerificationPaymentChips profile={nostrProfile} />
+          </span>
+        )}
       </span>
       {isOwner && isActiveVerifier && (
         <>

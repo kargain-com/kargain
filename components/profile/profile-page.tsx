@@ -471,6 +471,7 @@ export function ProfilePage({
           isActiveVerifier={isActiveVerifier}
           initialProfile={verifierProfile}
           isOwner={isOwner}
+          nostrProfile={profile}
         />
 
         <KarProStatusWidget

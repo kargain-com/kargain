@@ -2,7 +2,7 @@ import type {
   DisputedPassportRow,
   KarProVerifierProfile,
 } from "@/lib/verifier/verifier-profile-types";
-import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
+import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import type { PassportStatus } from "@/lib/types/ponder";
 
 export function mapVerifierDetailToProfile(
@@ -39,7 +39,7 @@ export function mapVerifierDetailToProfile(
     active: stake?.active === true,
     joinedAt: Number(detail.joinedAt ?? 0),
     verificationCount: Number(detail.verificationCount ?? 0),
-    verificationFee: parseReturnRequestedAt(
+    verificationFee: parseWeiString(
       detail.verificationFee as string | number | bigint | undefined | null,
     ),
     disputedPassports: disputedRaw.map((p) => {

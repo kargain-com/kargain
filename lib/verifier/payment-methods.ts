@@ -25,3 +25,16 @@ export function showLightningChip(profile: NostrProfileData | null): boolean {
     parseLud16(profile?.lud16 ?? "") != null
   );
 }
+
+const CHIP_ORDER: PaymentMethodId[] = ["eth", "usdc", "lightning"];
+
+/** Public chip IDs in stable display order; mirrors pay-modal segment visibility. */
+export function paymentMethodChipIds(
+  profile: NostrProfileData | null,
+): PaymentMethodId[] {
+  const accepted = acceptedPaymentMethods(profile);
+  return CHIP_ORDER.filter((id) => {
+    if (id === "lightning") return showLightningChip(profile);
+    return accepted.has(id);
+  });
+}

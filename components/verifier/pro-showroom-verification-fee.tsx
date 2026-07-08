@@ -4,12 +4,11 @@ import { useReadContract } from "wagmi";
 
 import {
   VerificationFeeDisplay,
-  VerificationLightningChip,
+  VerificationPaymentChips,
 } from "@/components/verifier/verification-fee-display";
 import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import { showLightningChip } from "@/lib/verifier/payment-methods";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -46,7 +45,7 @@ export function ProShowroomVerificationFee({
           prefix="Verification fee "
           primaryClassName="font-mono text-sm text-text-secondary tabular-nums"
         />
-        {showLightningChip(profile) && <VerificationLightningChip />}
+        <VerificationPaymentChips profile={profile} />
       </span>
 
       {effectiveFeeWei > 0n && (
