@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/components/ui/icons";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -26,7 +26,7 @@ export type EmptyStateAction = {
 
 export type EmptyStateProps = {
   variant: EmptyStateVariant;
-  icon?: LucideIcon;
+  icon?: IconComponent;
   title: string;
   description?: string;
   action?: EmptyStateAction;
@@ -65,7 +65,7 @@ function EmptyStateActionControl({ action }: { action: EmptyStateAction }) {
 }
 
 type InfrastructureBodyProps = {
-  icon?: LucideIcon;
+  icon?: IconComponent;
   title: string;
   description?: string;
   action?: EmptyStateAction;
@@ -76,7 +76,7 @@ function InfrastructureBody({ icon: Icon, title, description, action, children }
   return (
     <>
       {Icon ? (
-        <Icon size={32} strokeWidth={1.5} className="text-text-tertiary" aria-hidden />
+        <Icon size={32} className="text-text-tertiary" aria-hidden />
       ) : null}
       <p className="font-sans text-sm text-text-secondary">{title}</p>
       {description ? (
@@ -150,7 +150,6 @@ export function EmptyState({
       {Icon ? (
         <Icon
           size={iconSize}
-          strokeWidth={1.5}
           className={cn("mx-auto text-text-tertiary", level === "B" && "mb-3")}
           aria-hidden
         />

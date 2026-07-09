@@ -15,6 +15,18 @@ const eslintConfig = [
   },
   {
     rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "lucide-react",
+              message:
+                "Use @/components/ui/icons (Mono Icons standard, design-spec §7)",
+            },
+          ],
+        },
+      ],
       // NS-2: kind:0 NIP-39 ethereum identity tag queries must use the attested
       // profile resolver only — unverified #i reads allow profile spoofing.
       "no-restricted-syntax": [
@@ -41,9 +53,10 @@ const eslintConfig = [
     },
   },
   {
-    files: ["test/**"],
+    files: ["test/**", "scripts/**"],
     rules: {
       "no-restricted-syntax": "off",
+      "no-restricted-imports": "off",
     },
   },
 ];

@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Inbox, PlusCircle, ShieldCheck } from "lucide-react";
+import {
+  CircleAddIcon,
+  InboxIcon,
+  NotificationIcon,
+  ShieldCheckIcon,
+} from "@/components/ui/icons";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 
@@ -57,8 +62,8 @@ export function AppTopNav() {
                   ),
             )}
           >
-            <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 md:hidden" aria-hidden />
-            <ShieldCheck size={16} strokeWidth={1.5} className="hidden shrink-0 md:block" aria-hidden />
+            <ShieldCheckIcon size={20} className="shrink-0 md:hidden" aria-hidden />
+            <ShieldCheckIcon size={16} className="hidden shrink-0 md:block" aria-hidden />
             <span className="hidden md:inline">Verifiers</span>
           </Link>
           {isConnected && (
@@ -67,7 +72,7 @@ export function AppTopNav() {
               aria-label="Alerts"
               className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
-              <Bell size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
+              <NotificationIcon size={20} className="transition-colors duration-200" aria-hidden />
               <NotificationsUnreadBadge className="top-1.5 right-1.5" />
             </Link>
           )}
@@ -77,7 +82,7 @@ export function AppTopNav() {
               aria-label="Messages"
               className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
-              <Inbox size={20} strokeWidth={1.5} className="transition-colors duration-200" aria-hidden />
+              <InboxIcon size={20} className="transition-colors duration-200" aria-hidden />
               <MessagingNavStatus className="top-1.5 right-1.5" />
             </Link>
           )}
@@ -98,7 +103,7 @@ export function AppTopNav() {
                 shellControlHover,
               )}
             >
-              <PlusCircle size={16} strokeWidth={1.5} aria-hidden />
+              <CircleAddIcon size={16} aria-hidden />
               Create passport
             </Link>
           )}

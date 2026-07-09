@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MessageCircle } from "lucide-react";
+import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
@@ -151,7 +151,7 @@ export function MessagingSetupCard({
       )}
     >
       <div className="flex items-start gap-3">
-        <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-text-secondary" aria-hidden />
+        <CommentIcon size={20} className="mt-0.5 h-5 w-5 shrink-0 text-text-secondary" aria-hidden />
         <div className="space-y-1">
           <p className="text-sm font-medium text-text-primary">{copy.title}</p>
           <p className="text-sm text-text-secondary">{copy.body}</p>
@@ -160,7 +160,7 @@ export function MessagingSetupCard({
 
       {status === "initializing" || busy ? (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+          <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
           Confirm in your wallet…
         </p>
       ) : (

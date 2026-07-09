@@ -1,8 +1,8 @@
 "use client";
 
-import { Globe } from "lucide-react";
 import { useState } from "react";
 
+import { GlobeIcon } from "@/components/ui/icons";
 import { chainIconUrl } from "@/lib/web3/chain-icon-url";
 import { cn } from "@/lib/utils";
 
@@ -19,13 +19,11 @@ export function ChainIcon({
   const src = chainIconUrl(chainId);
   const [failed, setFailed] = useState(false);
 
-  const dim = { width: size, height: size };
-
   if (!src || failed) {
     return (
-      <Globe
+      <GlobeIcon
+        size={size}
         className={cn("shrink-0 text-text-secondary", className)}
-        style={dim}
         aria-hidden
       />
     );

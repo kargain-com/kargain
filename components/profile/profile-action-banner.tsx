@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { UserCheckIcon, WarningIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import type { Address } from "viem";
 
@@ -33,7 +33,7 @@ export function ProfileActionBanner({
   if (!isOwner && isConnected && subjectIsKarPro) {
     return (
       <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
+        <UserCheckIcon size={20} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Ask {subjectName} to verify your passport
         </p>
@@ -57,7 +57,7 @@ export function ProfileActionBanner({
   if (!subjectIsKarPro) {
     return (
       <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
+        <UserCheckIcon size={20} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Join the trust network as a verified professional
         </p>
@@ -72,7 +72,7 @@ export function ProfileActionBanner({
     const passportLabel = openDisputeCount === 1 ? "passport" : "passports";
     return (
       <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <AlertTriangle size={20} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
+        <WarningIcon size={20} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           {openDisputeCount} {passportLabel} awaiting your resolution
         </p>

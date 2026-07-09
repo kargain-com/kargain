@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, BookmarkCheck, Loader2 } from "lucide-react";
+import { BookmarkCheckIcon, BookmarkIcon, SpinnerIcon } from "@/components/ui/icons";
 import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,11 @@ export function WatchlistButton({ tokenId }: Props) {
       onClick={() => void toggle()}
     >
       {isToggling ? (
-        <Loader2 size={16} strokeWidth={1.5} className="animate-spin opacity-60" aria-hidden />
+        <SpinnerIcon size={16} className="animate-spin opacity-60" aria-hidden />
       ) : watching ? (
-        <BookmarkCheck size={16} strokeWidth={1.5} className="text-accent-warm" aria-hidden />
+        <BookmarkCheckIcon size={16} className="text-accent-warm" aria-hidden />
       ) : (
-        <Bookmark size={16} strokeWidth={1.5} aria-hidden />
+        <BookmarkIcon size={16} aria-hidden />
       )}
       {label}
     </Button>

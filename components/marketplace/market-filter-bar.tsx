@@ -1,6 +1,11 @@
 "use client";
 
-import { ChevronDown, Filter, Search, SlidersHorizontal } from "lucide-react";
+import {
+  ChevronDownIcon,
+  FilterAltIcon,
+  FilterIcon,
+  SearchIcon,
+} from "@/components/ui/icons";
 import { useEffect, useState } from "react";
 
 import { FilterCombobox } from "@/components/marketplace/filter-combobox";
@@ -83,10 +88,9 @@ function FilterSearchInput({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Search
+      <SearchIcon
         className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-text-tertiary"
         size={16}
-        strokeWidth={1.5}
         aria-hidden
       />
       <input
@@ -243,7 +247,7 @@ export function MarketFilterBar() {
               aria-label="Filters"
             >
               {activeCount === 0 && (
-                <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden />
+                <FilterAltIcon size={16} aria-hidden />
               )}
               {activeCount > 0 ? (
                 <span>
@@ -303,7 +307,7 @@ export function MarketFilterBar() {
               <PopoverTrigger asChild>
                 <FilterTrigger active={priceActive} className="shrink-0">
                   {priceLabel}
-                  <ChevronDown size={16} strokeWidth={1.5} aria-hidden />
+                  <ChevronDownIcon size={16} aria-hidden />
                 </FilterTrigger>
               </PopoverTrigger>
               <PopoverContent className="w-64 space-y-3">
@@ -368,7 +372,7 @@ export function MarketFilterBar() {
               <PopoverTrigger asChild>
                 <FilterTrigger active={makeActive} className="shrink-0">
                   {filters.make || "Make"}
-                  <ChevronDown size={16} strokeWidth={1.5} aria-hidden />
+                  <ChevronDownIcon size={16} aria-hidden />
                 </FilterTrigger>
               </PopoverTrigger>
               <PopoverContent className="w-64">
@@ -389,7 +393,7 @@ export function MarketFilterBar() {
               <PopoverTrigger asChild>
                 <FilterTrigger active={fuelActive} className="shrink-0">
                   {fuelLabel}
-                  <ChevronDown size={16} strokeWidth={1.5} aria-hidden />
+                  <ChevronDownIcon size={16} aria-hidden />
                 </FilterTrigger>
               </PopoverTrigger>
               <PopoverContent className="max-h-64 w-56 space-y-2 overflow-y-auto">
@@ -412,7 +416,7 @@ export function MarketFilterBar() {
               aria-label="More filters"
               className="shrink-0"
             >
-              <Filter size={16} strokeWidth={1.5} aria-hidden />
+              <FilterIcon size={16} aria-hidden />
               {drawerCount > 0 ? (
                 <span>
                   Filters ·{" "}

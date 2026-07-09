@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useState } from "react";
 
 import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import { useKarProOnChainProfile } from "@/hooks/use-kar-pro-on-chain-profile";
@@ -21,28 +21,27 @@ export function useKarProVerifierProfile(
 ) {
   const { isActiveVerifier, syncWhileMissing = false } = options;
   const enabled = Boolean(address && isActiveVerifier);
-  const nullFetchCountRef = useRef(0);
-
-  useEffect(() => {
-    nullFetchCountRef.current = 0;
-  }, [address]);
+  const pollKey = address ?? "";
+  const [nullFetchCount, setNullFetchCount] = useState(0);
+  const [trackedPollKey, setTrackedPollKey] = useState(pollKey);
+  if (pollKey !== trackedPollKey) {
+    setTrackedPollKey(pollKey);
+    setNullFetchCount(0);
+  }
+  const failureCount = pollKey === trackedPollKey ? nullFetchCount : 0;
 
   const ponderQuery = useQuery({
     queryKey: ["kar-pro-verifier", address],
     queryFn: async () => {
       const profile = await fetchKarProVerifierProfile(address!, { fresh: true });
-      if (!profile) {
-        nullFetchCountRef.current += 1;
-      } else {
-        nullFetchCountRef.current = 0;
-      }
+      setNullFetchCount((prev) => (profile ? 0 : prev + 1));
       return profile;
     },
     enabled,
     refetchInterval: (query) =>
       shouldPollKarProVerifierProfile(
         query.state.data,
-        nullFetchCountRef.current,
+        failureCount,
         syncWhileMissing,
       ),
     refetchIntervalInBackground: false,
@@ -58,7 +57,7 @@ export function useKarProVerifierProfile(
     syncWhileMissing &&
     enabled &&
     !ponderProfile &&
-    nullFetchCountRef.current >= KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS;
+    failureCount >= KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS;
 
   const isLoading =
     enabled &&

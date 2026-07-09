@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { CloseIcon } from "@/components/ui/icons";
 
 import { useXmtpConversationsContext } from "@/components/providers/xmtp-conversations-provider";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
@@ -38,7 +38,7 @@ export function MessagingCatchUpBanner({ className }: Props) {
         onClick={dismissCatchUp}
         aria-label="Dismiss"
       >
-        <X className="size-4" strokeWidth={1.5} aria-hidden />
+        <CloseIcon size={16} className="size-4" aria-hidden />
       </button>
     </div>
   );

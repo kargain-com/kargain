@@ -1,6 +1,11 @@
 "use client";
 
-import { CheckCircle, ChevronDown, Loader2, XCircle } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CircleCheckIcon,
+  CircleErrorIcon,
+  SpinnerIcon,
+} from "@/components/ui/icons";
 import { useEffect, useRef, useState } from "react";
 
 import { checkSlugAvailability } from "@/app/actions/kar-pro-slug";
@@ -123,7 +128,7 @@ export function KarProProfileFields({
     if (slugStatus === "checking") {
       return (
         <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-secondary">
-          <Loader2 size={14} strokeWidth={1.5} className="animate-spin" aria-hidden />
+          <SpinnerIcon size={14} className="animate-spin" aria-hidden />
           Checking…
         </span>
       );
@@ -131,7 +136,7 @@ export function KarProProfileFields({
     if (slugStatus === "available") {
       return (
         <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-secondary">
-          <CheckCircle size={14} strokeWidth={1.5} aria-hidden />
+          <CircleCheckIcon size={14} aria-hidden />
           Available
         </span>
       );
@@ -139,7 +144,7 @@ export function KarProProfileFields({
     if (slugStatus === "taken") {
       return (
         <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
-          <XCircle size={14} strokeWidth={1.5} aria-hidden />
+          <CircleErrorIcon size={14} aria-hidden />
           Already taken
         </span>
       );
@@ -147,7 +152,7 @@ export function KarProProfileFields({
     if (slugStatus === "invalid_format") {
       return (
         <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
-          <XCircle size={14} strokeWidth={1.5} aria-hidden />
+          <CircleErrorIcon size={14} aria-hidden />
           Letters, numbers, hyphens only
         </span>
       );
@@ -178,9 +183,8 @@ export function KarProProfileFields({
               </option>
             ))}
           </select>
-          <ChevronDown
+          <ChevronDownIcon
             size={20}
-            strokeWidth={1.5}
             className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary"
             aria-hidden
           />

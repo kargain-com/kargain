@@ -44,6 +44,7 @@ const GLYPHS = [
   "search",
   "send",
   "user",
+  "user-check",
   "warning",
 ];
 

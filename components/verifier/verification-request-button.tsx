@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare } from "lucide-react";
+import { MessageIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAccount } from "wagmi";
@@ -186,7 +186,7 @@ export function VerificationRequestButton({
         className={GHOST_BUTTON_CLASS}
         aria-label={`Request verification from ${verifierName}`}
       >
-        <MessageSquare size={16} strokeWidth={1.5} aria-hidden />
+        <MessageIcon size={16} aria-hidden />
         Request verification
       </button>
       {verificationFee != null && verificationFee > 0n && (

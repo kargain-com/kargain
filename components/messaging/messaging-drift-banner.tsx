@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { SpinnerIcon } from "@/components/ui/icons";
 import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 
@@ -72,7 +72,7 @@ export function MessagingDriftBanner({ className }: Props) {
       <Button type="button" size="sm" className="shrink-0" disabled={busy} onClick={() => void onRepair()}>
         {busy ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+            <SpinnerIcon className="mr-2 h-4 w-4 animate-spin" aria-hidden />
             Restoring…
           </>
         ) : (

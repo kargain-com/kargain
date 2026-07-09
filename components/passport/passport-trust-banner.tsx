@@ -1,4 +1,4 @@
-import { AlertTriangle, Info } from "lucide-react";
+import { CircleInformationIcon, WarningIcon } from "@/components/ui/icons";
 
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export function PassportTrustBanner({
         role="status"
       >
         <div className="shrink-0 text-status-warning mt-0.5">
-          <AlertTriangle size={20} strokeWidth={1.5} aria-hidden />
+          <WarningIcon size={20} aria-hidden />
         </div>
         <div className="flex flex-col gap-1">
           <p className="font-sans text-sm font-medium text-text-primary">
@@ -56,7 +56,7 @@ export function PassportTrustBanner({
         role="status"
       >
         <div className="shrink-0 text-text-secondary mt-0.5">
-          <Info size={20} strokeWidth={1.5} aria-hidden />
+          <CircleInformationIcon size={20} aria-hidden />
         </div>
         <div className="flex flex-col gap-1">
           <p className="font-sans text-sm font-medium text-text-primary">Previously disputed</p>

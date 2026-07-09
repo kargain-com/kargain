@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { CloseIcon } from "@/components/ui/icons";
 
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
 import {
@@ -35,7 +35,7 @@ export function MarketFilterChips() {
             className="text-text-secondary transition-colors hover:text-text-primary"
             aria-label={`Remove ${chip.label} filter`}
           >
-            <X size={12} strokeWidth={2} aria-hidden />
+            <CloseIcon size={12} aria-hidden />
           </button>
           {chip.label}
         </span>

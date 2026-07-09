@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
+import { CommentIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAccount } from "wagmi";
@@ -116,7 +116,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
         onClick={() => void handleClick()}
         aria-label={label}
       >
-        <MessageCircle className="h-4 w-4" aria-hidden />
+        <CommentIcon size={16} className="h-4 w-4" aria-hidden />
         {busy || isInitializing ? "Opening…" : label}
       </Button>
       {displayError && (

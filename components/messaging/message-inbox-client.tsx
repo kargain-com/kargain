@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingCatchUpBanner } from "@/components/messaging/messaging-catch-up-banner";
 import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
@@ -256,14 +256,14 @@ export function MessageInboxClient() {
 
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+          <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
           Opening conversation…
         </p>
       )}
 
       {status === "initializing" && !needsSetup && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+          <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
           Confirm in your wallet…
         </p>
       )}

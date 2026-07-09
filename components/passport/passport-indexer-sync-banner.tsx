@@ -1,6 +1,6 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { CircleInformationIcon } from "@/components/ui/icons";
 
 import { usePassportIndexerSync } from "@/hooks/use-passport-indexer-sync";
 import {
@@ -30,7 +30,7 @@ export function PassportIndexerSyncBanner({
       className="flex gap-3 rounded-md border border-border-default bg-bg-surface p-4"
       role="status"
     >
-      <Info size={18} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
+      <CircleInformationIcon size={18} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
       <p className="font-sans text-sm text-text-secondary">
         {variant === "edit" ? EDIT_INDEXER_SYNC_HINT : INDEXER_SYNC_DETAIL_HINT}
       </p>

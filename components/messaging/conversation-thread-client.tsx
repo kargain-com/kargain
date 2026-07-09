@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Loader2, Send } from "lucide-react";
 import type { Dm } from "@xmtp/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { ArrowLeftIcon, SendIcon, SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -95,7 +95,7 @@ function ConversationThreadBody({ conversationId }: Props) {
       <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col justify-center gap-4 px-4 py-8 text-text-primary">
         <Button type="button" variant="ghost" size="sm" className="w-fit gap-2" asChild>
           <Link href="/messages">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
+            <ArrowLeftIcon size={16} className="h-4 w-4" aria-hidden />
             Back
           </Link>
         </Button>
@@ -126,7 +126,7 @@ function ConversationThreadBody({ conversationId }: Props) {
       <header className="flex shrink-0 items-center gap-3 border-b border-border-default pb-3">
         <Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0" asChild>
           <Link href="/messages" aria-label="Back to inbox">
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeftIcon size={16} className="h-4 w-4" />
           </Link>
         </Button>
         <div className="flex min-w-0 items-center gap-2">
@@ -151,7 +151,7 @@ function ConversationThreadBody({ conversationId }: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto py-4">
         {isLoading && (
           <p className="flex items-center gap-2 text-sm text-text-secondary">
-            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+            <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
             Loading messages…
           </p>
         )}
@@ -204,7 +204,7 @@ function ConversationThreadBody({ conversationId }: Props) {
             }}
           />
           <Button type="button" size="sm" disabled={isSending || !draft.trim()} onClick={() => void onSend()}>
-            <Send className="h-4 w-4" aria-hidden />
+            <SendIcon size={16} className="h-4 w-4" aria-hidden />
           </Button>
         </div>
       </div>

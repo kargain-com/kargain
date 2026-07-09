@@ -1,4 +1,4 @@
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { ShieldCheckIcon, WarningIcon } from "@/components/ui/icons";
 
 import {
   trustStampBase,
@@ -35,9 +35,9 @@ export function PassportStatusBadge({
 
   const icon =
     status === "VERIFIED" ? (
-      <ShieldCheck size={sublabel ? 17 : 12} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+      <ShieldCheckIcon size={sublabel ? 17 : 12} aria-hidden="true" className="shrink-0" />
     ) : status === "DISPUTED" ? (
-      <AlertTriangle size={sublabel ? 17 : 12} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+      <WarningIcon size={sublabel ? 17 : 12} aria-hidden="true" className="shrink-0" />
     ) : null;
 
   if (sublabel) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, AlertTriangle } from "lucide-react";
+import { CircleInformationIcon, WarningIcon } from "@/components/ui/icons";
 
 import { formatUploadSize, sumFileBytes } from "@/lib/storage/irys-upload-estimate";
 import type { PassportFlowContext } from "@/lib/passport/passport-flow-messages";
@@ -38,7 +38,7 @@ export function PassportUploadPreflightBanner({
   if (!hint) return null;
 
   const isWarning = accountKind === "contract";
-  const Icon = isWarning ? AlertTriangle : Info;
+  const Icon = isWarning ? WarningIcon : CircleInformationIcon;
 
   return (
     <div
@@ -51,7 +51,6 @@ export function PassportUploadPreflightBanner({
     >
       <Icon
         size={18}
-        strokeWidth={1.5}
         className="mt-0.5 shrink-0 text-text-secondary"
         aria-hidden
       />

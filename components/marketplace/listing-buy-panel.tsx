@@ -1,6 +1,6 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { CircleInformationIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { waitForTransactionReceipt } from "wagmi/actions";
@@ -597,7 +597,7 @@ export function ListingBuyPanel({
               />
               {isEurListing && (
                 <div className="flex gap-2 rounded-sm bg-bg-surface p-2">
-                  <Info size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
+                  <CircleInformationIcon size={14} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
                   <p className="font-sans text-xs text-text-secondary">
                     Price is set in EUR. ETH amount is calculated at current EUR/USD/ETH rates and
                     locked at transaction time.
@@ -625,7 +625,7 @@ export function ListingBuyPanel({
               />
               {isEurListing && (
                 <div className="flex gap-2 rounded-sm bg-bg-surface p-2">
-                  <Info size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
+                  <CircleInformationIcon size={14} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
                   <p className="font-sans text-xs text-text-secondary">
                     Price is set in EUR. USDC amount is calculated at current EUR/USD rate and locked
                     at transaction time.

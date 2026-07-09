@@ -1,6 +1,11 @@
 "use client";
 
-import { CheckCheck, ChevronRight, Copy, MessageSquare } from "lucide-react";
+import {
+  CheckDoubleIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  MessageIcon,
+} from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useState, type ReactNode } from "react";
 import { type Address } from "viem";
@@ -39,7 +44,7 @@ function CrossLink({
       className="inline-flex items-center gap-1 text-sm text-text-secondary transition-colors duration-150 hover:text-text-primary"
     >
       {children}
-      <ChevronRight size={12} strokeWidth={1.5} aria-hidden />
+      <ChevronRightIcon size={12} aria-hidden />
     </Link>
   );
 }
@@ -110,7 +115,7 @@ export function IdentityHeader({
               {!isOwner && isConnected && reachable && (
                 <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
                   <Link href={`/messages?to=${wallet}`}>
-                    <MessageSquare size={14} strokeWidth={1.5} aria-hidden />
+                    <MessageIcon size={14} aria-hidden />
                     Message
                   </Link>
                 </Button>
@@ -139,9 +144,9 @@ export function IdentityHeader({
               aria-label={copied ? "Copied" : "Copy address"}
             >
               {copied ? (
-                <CheckCheck size={14} strokeWidth={1.5} />
+                <CheckDoubleIcon size={14} />
               ) : (
-                <Copy size={14} strokeWidth={1.5} />
+                <CopyIcon size={14} />
               )}
             </button>
           </span>

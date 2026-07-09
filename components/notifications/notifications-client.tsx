@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { NotificationIcon } from "@/components/ui/icons";
 import { useMemo } from "react";
 import { useAccount } from "wagmi";
 
@@ -75,7 +75,7 @@ export function NotificationsClient() {
         <EmptyState
           variant="content"
           level="A"
-          icon={Bell}
+          icon={NotificationIcon}
           title="No alerts yet"
           description="Activity from your passports and watchlist will appear here."
         />

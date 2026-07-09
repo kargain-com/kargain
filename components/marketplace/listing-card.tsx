@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
+import {
+  ShieldCheckIcon,
+  ShieldWarningIcon,
+  UserIcon,
+  WarningIcon,
+  type IconComponent,
+} from "@/components/ui/icons";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
@@ -37,7 +43,7 @@ function AttributionRow({
   address,
   linkClassName,
 }: {
-  icon: LucideIcon;
+  icon: IconComponent;
   iconClassName: string;
   label: string;
   address: string;
@@ -45,7 +51,7 @@ function AttributionRow({
 }) {
   return (
     <div className="flex items-center gap-1.5 mt-1">
-      <Icon size={12} strokeWidth={1.5} className={cn("shrink-0", iconClassName)} aria-hidden />
+      <Icon size={12} className={cn("shrink-0", iconClassName)} aria-hidden />
       <p className="font-sans text-xs text-text-secondary truncate">
         {label}{" "}
         <Link
@@ -96,9 +102,8 @@ export function ListingCard({ row }: Props) {
         <CardContent className="flex flex-1 flex-col gap-2.5 p-6">
           {row.duplicateVin && (
             <div className={elevatedAdvisoryChip}>
-              <AlertTriangle
+              <WarningIcon
                 size={12}
-                strokeWidth={1.5}
                 className={cn("shrink-0", elevatedAdvisoryText)}
                 aria-hidden
               />
@@ -124,7 +129,7 @@ export function ListingCard({ row }: Props) {
           </div>
           {row.passportStatus === "VERIFIED" && row.verifier.trim() !== "" && (
             <AttributionRow
-              icon={ShieldCheck}
+              icon={ShieldCheckIcon}
               iconClassName="text-accent-warm"
               label="Verified by"
               address={row.verifier}
@@ -134,7 +139,7 @@ export function ListingCard({ row }: Props) {
           {row.passportStatus === "DISPUTED" &&
             (disputer ? (
               <AttributionRow
-                icon={AlertTriangle}
+                icon={ShieldWarningIcon}
                 iconClassName="text-status-error"
                 label="Disputed by"
                 address={disputer}
@@ -142,13 +147,13 @@ export function ListingCard({ row }: Props) {
               />
             ) : (
               <div className="flex items-center gap-1.5 mt-1">
-                <AlertTriangle size={12} strokeWidth={1.5} className="text-status-error shrink-0" aria-hidden />
+                <ShieldWarningIcon size={12} className="text-status-error shrink-0" aria-hidden />
                 <p className="font-sans text-xs text-status-error truncate">Disputed</p>
               </div>
             ))}
           {hasListingAgent(row.agent) && (
             <AttributionRow
-              icon={UserRound}
+              icon={UserIcon}
               iconClassName="text-accent-warm"
               label="Sold by"
               address={row.agent!}

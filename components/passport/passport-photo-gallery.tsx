@@ -1,6 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+} from "@/components/ui/icons";
 import {
   useCallback,
   useEffect,
@@ -70,7 +74,7 @@ type GalleryNavButtonProps = {
 };
 
 function GalleryNavButton({ direction, onClick, className }: GalleryNavButtonProps) {
-  const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
+  const Icon = direction === "prev" ? ChevronLeftIcon : ChevronRightIcon;
   const label = direction === "prev" ? "Previous image" : "Next image";
 
   return (
@@ -83,7 +87,7 @@ function GalleryNavButton({ direction, onClick, className }: GalleryNavButtonPro
       )}
       aria-label={label}
     >
-      <Icon size={20} strokeWidth={1.5} aria-hidden />
+      <Icon size={20} aria-hidden />
     </button>
   );
 }
@@ -291,7 +295,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
               className="flex h-10 w-10 items-center justify-center rounded-full border border-border-default text-text-primary transition-colors hover:bg-bg-primary/10 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
               aria-label="Close full screen photo"
             >
-              <X size={20} strokeWidth={1.5} aria-hidden />
+              <CloseIcon size={20} aria-hidden />
             </button>
           </div>
 

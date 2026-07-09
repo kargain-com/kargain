@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { SearchIcon } from "@/components/ui/icons";
 import { useMemo, useState } from "react";
 
 import {
@@ -109,9 +109,9 @@ function CurrencySearchField({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Search
+      <SearchIcon
+        size={14}
         className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary"
-        strokeWidth={1.5}
         aria-hidden
       />
       <Input

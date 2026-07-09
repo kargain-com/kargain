@@ -1,6 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+} from "@/components/ui/icons";
 
 import { cn } from "@/lib/utils";
 
@@ -55,7 +59,7 @@ export function PhotoThumbGrid({
                 onClick={() => onRemove(index)}
                 aria-label="Remove photo"
               >
-                <X size={14} strokeWidth={2} aria-hidden />
+                <CloseIcon size={14} aria-hidden />
               </button>
 
               <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-gradient-to-t from-bg-primary/90 to-transparent p-1.5 pt-4">
@@ -66,7 +70,7 @@ export function PhotoThumbGrid({
                   onClick={() => onReorder(index, index - 1)}
                   aria-label="Move photo earlier"
                 >
-                  <ChevronLeft size={14} strokeWidth={2} aria-hidden />
+                  <ChevronLeftIcon size={14} aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -75,7 +79,7 @@ export function PhotoThumbGrid({
                   onClick={() => onReorder(index, index + 1)}
                   aria-label="Move photo later"
                 >
-                  <ChevronRight size={14} strokeWidth={2} aria-hidden />
+                  <ChevronRightIcon size={14} aria-hidden />
                 </button>
               </div>
             </>

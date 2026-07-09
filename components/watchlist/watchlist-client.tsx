@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bookmark } from "lucide-react";
+import { BookmarkIcon } from "@/components/ui/icons";
 import { useAccount } from "wagmi";
 
 import { loadFavoriteListingCards } from "@/app/actions/favorite-listings";
@@ -68,7 +68,7 @@ export function WatchlistClient({ layout = "wide" }: Props) {
         <EmptyState
           variant="content"
           level="A"
-          icon={Bookmark}
+          icon={BookmarkIcon}
           title="Your watchlist is empty"
           description="Save vehicles from any listing to track them here."
         />

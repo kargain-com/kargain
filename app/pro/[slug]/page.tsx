@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { Clock } from "lucide-react";
+import { ClockIcon } from "@/components/ui/icons";
 
 import { getProShowroomData } from "@/app/actions/pro-showroom";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
@@ -181,9 +181,8 @@ export default async function ProShowroomPage({
         </section>
 
         <div className="py-24 text-center">
-          <Clock
+          <ClockIcon
             size={48}
-            strokeWidth={1}
             className="mx-auto text-text-tertiary"
             aria-hidden
           />

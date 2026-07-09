@@ -1,4 +1,4 @@
-import { BadgeCheck } from "lucide-react";
+import { UserCheckIcon } from "@/components/ui/icons";
 
 import { trustStampBase, trustStampKarPro } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ export function KarProBadge({ name, className }: { name?: string; className?: st
 
   return (
     <span className={cn(trustStampBase, trustStampKarPro, className)}>
-      <BadgeCheck size={12} strokeWidth={1.5} aria-hidden="true" />
+      <UserCheckIcon size={12} aria-hidden="true" />
       {label}
     </span>
   );

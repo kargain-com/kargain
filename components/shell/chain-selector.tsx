@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDownIcon } from "@/components/ui/icons";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
@@ -92,7 +92,7 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     <>
       <ChainStatusDot wrong={wrong} />
       <span className="max-w-[9rem] truncate">{chainName}</span>
-      <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
+      <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
     </>
   );
 

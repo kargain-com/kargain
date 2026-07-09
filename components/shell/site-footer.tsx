@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLinkIcon } from "@/components/ui/icons";
 import Link from "next/link";
 
 const linkClassName =
@@ -38,7 +38,7 @@ export function SiteFooter() {
               className={linkClassName}
             >
               GitHub
-              <ExternalLink size={12} strokeWidth={1.5} className="ml-1 inline" aria-hidden />
+              <ExternalLinkIcon size={12} className="ml-1 inline" aria-hidden />
             </a>
           </nav>
         </div>

@@ -15,8 +15,8 @@ import {
   MessageAltIcon,
   NotificationIcon,
   UserIcon,
-  type NavIconComponent,
-} from "@/components/shell/nav-icons";
+  type IconComponent,
+} from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 function NavTab({
@@ -29,7 +29,7 @@ function NavTab({
   href: string;
   label: string;
   active: boolean;
-  icon: NavIconComponent;
+  icon: IconComponent;
   badge?: ReactNode;
 }) {
   return (

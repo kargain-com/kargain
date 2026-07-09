@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInView } from "framer-motion";
-import { AlertTriangle } from "lucide-react";
+import { WarningIcon } from "@/components/ui/icons";
 import { useEffect, useMemo, useRef } from "react";
 
 import {
@@ -104,7 +104,7 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
             variant="infrastructure"
             level="B"
             role="alert"
-            icon={AlertTriangle}
+            icon={WarningIcon}
             title="Marketplace unavailable"
             description="Start the indexer to browse listings."
             className="mx-auto mb-4 max-w-sm"

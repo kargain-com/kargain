@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { CircleWarningIcon } from "@/components/ui/icons";
 
 import { usePassportChainStatus } from "@/hooks/use-passport-chain-status";
 import { compareListingStatus } from "@/lib/passport/confirm-listing-status";
@@ -50,7 +50,7 @@ export function PassportChainStatusBanner({
       role="status"
     >
       <div className="shrink-0 text-status-error mt-0.5">
-        <AlertCircle size={20} strokeWidth={1.5} aria-hidden />
+        <CircleWarningIcon size={20} aria-hidden />
       </div>
       <div className="flex flex-col gap-1">
         <p className="font-sans text-sm font-medium text-text-primary">

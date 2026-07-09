@@ -1,6 +1,11 @@
 "use client";
 
-import { ChevronDown, Heart, Loader2, MessageCircle } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CommentIcon,
+  HeartIcon,
+  SpinnerIcon,
+} from "@/components/ui/icons";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -310,7 +315,7 @@ function NostrCommentsSection({
                 className={cn("mb-2 inline-flex min-h-11 items-center gap-1", sansLink)}
                 onClick={() => setShowAllRoots(true)}
               >
-                <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                <ChevronDownIcon size={14} className="h-3.5 w-3.5" aria-hidden />
                 Show earlier ({hiddenRootCount})
               </button>
             )}
@@ -355,7 +360,7 @@ function NostrCommentsSection({
                           setComposerFocused(true);
                         }}
                       >
-                        <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.5} /> Reply
+                        <CommentIcon size={14} className="h-3.5 w-3.5" /> Reply
                       </button>
                       <button
                         type="button"
@@ -363,7 +368,7 @@ function NostrCommentsSection({
                         disabled={!isConnected}
                         onClick={() => void like(root.event.id)}
                       >
-                        <Heart className="h-3.5 w-3.5" strokeWidth={1.5} />{" "}
+                        <HeartIcon size={14} className="h-3.5 w-3.5" />{" "}
                         {likesByTarget[root.event.id]?.size ?? 0}
                       </button>
                       {replies.length > 0 && (
@@ -377,12 +382,12 @@ function NostrCommentsSection({
                             }))
                           }
                         >
-                          <ChevronDown
+                          <ChevronDownIcon
+                            size={14}
                             className={cn(
                               "h-3.5 w-3.5 transition-transform",
                               repliesOpen && "rotate-180",
                             )}
-                            strokeWidth={1.5}
                             aria-hidden
                           />
                           {replies.length} {replies.length === 1 ? "reply" : "replies"}
@@ -412,7 +417,7 @@ function NostrCommentsSection({
                                 disabled={!isConnected}
                                 onClick={() => void like(child.event.id)}
                               >
-                                <Heart className="h-3 w-3" strokeWidth={1.5} />{" "}
+                                <HeartIcon size={12} className="h-3 w-3" />{" "}
                                 {likesByTarget[child.event.id]?.size ?? 0}
                               </button>
                             </li>
@@ -465,7 +470,7 @@ function NostrCommentsSection({
             >
               {posting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden />
+                  <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
                   Posting...
                 </>
               ) : (

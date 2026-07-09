@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Check } from "lucide-react";
 
+import { CheckIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import {
   EDIT_SUCCESS_TITLE,
@@ -27,9 +27,8 @@ export function PassportEditSuccessBanner({
       className="flex gap-3 rounded-md border border-border-default bg-bg-surface p-4"
       role="status"
     >
-      <Check
+      <CheckIcon
         size={18}
-        strokeWidth={1.5}
         className="mt-0.5 shrink-0 text-text-secondary"
         aria-hidden
       />

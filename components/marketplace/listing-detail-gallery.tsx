@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@/components/ui/icons";
 import { useCallback, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function ListingDetailGallery({ urls, prevLabel, nextLabel, altBase }: Pr
               onClick={() => go(-1)}
               aria-label={prevLabel}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeftIcon size={16} className="h-4 w-4" />
             </Button>
             <Button
               type="button"
@@ -64,7 +64,7 @@ export function ListingDetailGallery({ urls, prevLabel, nextLabel, altBase }: Pr
               onClick={() => go(1)}
               aria-label={nextLabel}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRightIcon size={16} className="h-4 w-4" />
             </Button>
           </>
         )}

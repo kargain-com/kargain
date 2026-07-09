@@ -1,40 +1,40 @@
 "use client";
 
-import {
-  AlertTriangle,
-  BadgeCheck,
-  Banknote,
-  Bookmark,
-  CornerDownRight,
-  FileText,
-  Heart,
-  MessageSquare,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  type LucideIcon,
-} from "lucide-react";
 import Link from "next/link";
 
+import {
+  BookmarkIcon,
+  CircleCheckIcon,
+  CreditCardIcon,
+  DocumentIcon,
+  EnterIcon,
+  HeartIcon,
+  MessageIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  ShieldWarningIcon,
+  WarningIcon,
+  type IconComponent,
+} from "@/components/ui/icons";
 import { formatRelativeTime } from "@/lib/xmtp/helpers";
 import type { NotificationItem, NotificationType } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils";
 
-const ICON_BY_TYPE: Record<NotificationType, LucideIcon> = {
-  "passport.verified": ShieldCheck,
-  "passport.dispute_opened": ShieldAlert,
-  "passport.dispute_resolved": Shield,
-  "passport.record_appended": FileText,
-  "passport.attestation_received": BadgeCheck,
-  "listing.sold": Banknote,
-  "verifier.dispute_on_verified": AlertTriangle,
-  "watchlist.status_changed": Bookmark,
-  "watchlist.listing_deactivated": Bookmark,
-  "watchlist.price_changed": Bookmark,
-  "watchlist.dispute_opened": Bookmark,
-  "nostr.comment_on_passport": MessageSquare,
-  "nostr.reply_to_comment": CornerDownRight,
-  "nostr.like_on_comment": Heart,
+const ICON_BY_TYPE: Record<NotificationType, IconComponent> = {
+  "passport.verified": ShieldCheckIcon,
+  "passport.dispute_opened": ShieldWarningIcon,
+  "passport.dispute_resolved": ShieldIcon,
+  "passport.record_appended": DocumentIcon,
+  "passport.attestation_received": CircleCheckIcon,
+  "listing.sold": CreditCardIcon,
+  "verifier.dispute_on_verified": WarningIcon,
+  "watchlist.status_changed": BookmarkIcon,
+  "watchlist.listing_deactivated": BookmarkIcon,
+  "watchlist.price_changed": BookmarkIcon,
+  "watchlist.dispute_opened": BookmarkIcon,
+  "nostr.comment_on_passport": MessageIcon,
+  "nostr.reply_to_comment": EnterIcon,
+  "nostr.like_on_comment": HeartIcon,
 };
 
 type NotificationRowProps = {
@@ -57,7 +57,7 @@ export function NotificationRow({ item, isLast = false, onRead }: NotificationRo
           !item.read && "border-l-2 border-accent-warm",
         )}
       >
-        <Icon size={18} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
+        <Icon size={18} className="mt-0.5 shrink-0 text-text-secondary" aria-hidden />
         <div className="min-w-0 flex-1">
           <p
             className={cn(

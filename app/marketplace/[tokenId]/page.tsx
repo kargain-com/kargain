@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { WarningIcon } from "@/components/ui/icons";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
@@ -92,7 +92,7 @@ async function MarketplaceListingInner({
           role="alert"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-border-default text-text-secondary">
-            <AlertTriangle size={20} strokeWidth={1.5} aria-hidden />
+            <WarningIcon size={20} aria-hidden />
           </div>
           <div className="space-y-1">
             <p className="font-sans text-sm font-medium text-text-primary">

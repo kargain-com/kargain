@@ -1,6 +1,14 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, ExternalLink, LogOut, User, Wallet } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  ExternalLinkIcon,
+  LogOutIcon,
+  UserIcon,
+  WalletIcon,
+} from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { getAddress } from "viem";
@@ -116,7 +124,7 @@ export function WalletLoginButton() {
           >
             <WalletIdenticon address={normalized} className="size-5" />
             <span className="truncate">{navShortAddress(normalized)}</span>
-            <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-text-secondary" aria-hidden />
+            <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[220px] max-w-[calc(100vw-2rem)] p-1">
@@ -141,14 +149,14 @@ export function WalletLoginButton() {
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild className="hidden font-sans text-sm text-text-secondary md:flex">
             <Link href={`/profile/${normalized}`}>
-              <User size={16} strokeWidth={1.5} aria-hidden />
+              <UserIcon size={16} aria-hidden />
               My profile
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator className="hidden md:block" />
           <DropdownMenuItem asChild className="font-sans text-sm text-text-secondary">
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink size={14} strokeWidth={1.5} aria-hidden />
+              <ExternalLinkIcon size={14} aria-hidden />
               View on Basescan
             </a>
           </DropdownMenuItem>
@@ -156,7 +164,7 @@ export function WalletLoginButton() {
             className="font-sans text-sm text-text-secondary"
             onSelect={() => void onCopyAddress(normalized)}
           >
-            <Copy size={14} strokeWidth={1.5} aria-hidden />
+            <CopyIcon size={14} aria-hidden />
             {copied ? "Copied!" : "Copy address"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -164,7 +172,7 @@ export function WalletLoginButton() {
             className="font-sans text-sm text-red-400 focus:bg-red-400/10 focus:text-red-400"
             onSelect={() => void endWalletSession(disconnect)}
           >
-            <LogOut size={14} strokeWidth={1.5} aria-hidden />
+            <LogOutIcon size={14} aria-hidden />
             Disconnect
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -182,7 +190,7 @@ export function WalletLoginButton() {
           shellControlHover,
         )}
       >
-        <Wallet size={16} strokeWidth={1.5} aria-hidden />
+        <WalletIcon size={16} aria-hidden />
         Connect wallet
       </button>
 
@@ -234,9 +242,8 @@ export function WalletLoginButton() {
                       }}
                       className="flex w-full items-center gap-3 rounded-sm border border-border-default bg-bg-surface px-4 py-3 text-left transition-colors duration-200 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50"
                     >
-                      <Wallet
+                      <WalletIcon
                         size={32}
-                        strokeWidth={1.5}
                         className="size-8 shrink-0 text-text-secondary"
                         aria-hidden
                       />
@@ -245,9 +252,8 @@ export function WalletLoginButton() {
                           ? `Connecting ${label}…`
                           : label}
                       </span>
-                      <ChevronRight
+                      <ChevronRightIcon
                         size={16}
-                        strokeWidth={1.5}
                         className="shrink-0 text-text-secondary"
                         aria-hidden
                       />

@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, CheckCircle, Globe, ShieldCheck } from "lucide-react";
+import {
+  ArrowRightIcon,
+  CircleCheckIcon,
+  GlobeIcon,
+  ShieldCheckIcon,
+  ShieldWarningIcon,
+} from "@/components/ui/icons";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -184,7 +190,7 @@ function ProfileBio({ about, website }: { about: string; website: string }) {
           rel="noopener noreferrer"
           className={cn("inline-flex w-fit items-center gap-1.5", ctaLink)}
         >
-          <Globe size={14} strokeWidth={1.5} aria-hidden />
+          <GlobeIcon size={14} aria-hidden />
           {label}
         </a>
       )}
@@ -316,9 +322,8 @@ function DisputeCard({
     <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <AlertTriangle
+          <ShieldWarningIcon
             size={16}
-            strokeWidth={1.5}
             className="shrink-0 text-status-error"
             aria-hidden
           />
@@ -362,7 +367,7 @@ function DisputeCard({
           className="ml-auto inline-flex items-center gap-1 font-sans text-sm text-text-secondary transition-colors hover:text-text-primary"
         >
           Resolve
-          <ArrowRight size={14} strokeWidth={1.5} aria-hidden />
+          <ArrowRightIcon size={14} aria-hidden />
         </Link>
       </div>
     </div>
@@ -612,7 +617,7 @@ export function ProfilePage({
                   <EmptyState
                     variant="content"
                     level="B"
-                    icon={ShieldCheck}
+                    icon={ShieldCheckIcon}
                     title="No verified passports yet"
                   />
                 </div>
@@ -646,7 +651,7 @@ export function ProfilePage({
                 <EmptyState
                   variant="content"
                   level="B"
-                  icon={CheckCircle}
+                  icon={CircleCheckIcon}
                   title="No open disputes"
                   className="py-8"
                 />

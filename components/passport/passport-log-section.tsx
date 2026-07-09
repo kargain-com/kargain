@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDownIcon } from "@/components/ui/icons";
 import { useState, type ReactNode } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -97,9 +97,8 @@ export function PassportLogSection<T>({
             {title}
             {headerMeta}
           </span>
-          <ChevronDown
+          <ChevronDownIcon
             size={16}
-            strokeWidth={1.5}
             aria-hidden
             className={cn(
               "text-text-secondary transition-transform duration-200",

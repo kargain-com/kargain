@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { ExportIcon } from "@/components/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
@@ -133,9 +133,8 @@ export function PhotoUploadZone({
               zoneDisabled && "cursor-not-allowed opacity-50",
             )}
           >
-            <Upload
+            <ExportIcon
               size={32}
-              strokeWidth={1.5}
               className="mx-auto mb-3 text-text-tertiary"
               aria-hidden
             />

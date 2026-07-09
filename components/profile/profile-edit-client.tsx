@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck } from "lucide-react";
+import { CheckDoubleIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useWalletClient } from "wagmi";
@@ -294,7 +294,7 @@ export function ProfileEditClient() {
               >
                 {saveStatus === "success" && (
                   <>
-                    <CheckCheck size={16} strokeWidth={1.5} aria-hidden />
+                    <CheckDoubleIcon size={16} aria-hidden />
                     Profile saved
                   </>
                 )}

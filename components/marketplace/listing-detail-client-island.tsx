@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, MessageCircle } from "lucide-react";
+import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -288,7 +288,7 @@ export function ListingDetailClientIsland({
         <div className={commerceConfirmedPanel} role="status">
           <div className="flex gap-3">
             <div className="shrink-0 text-status-success mt-0.5">
-              <CheckCircle size={20} strokeWidth={1.5} aria-hidden />
+              <CircleCheckIcon size={20} aria-hidden />
             </div>
             <div className="flex flex-col gap-1">
               <p className={commerceConfirmedLabel}>Payment confirmed</p>
@@ -396,7 +396,7 @@ export function ListingDetailClientIsland({
               aria-label="Message seller"
               className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-sm border border-border-default bg-transparent px-7 py-3.5 font-sans text-sm font-medium text-text-secondary opacity-50 disabled:pointer-events-none"
             >
-              <MessageCircle size={16} strokeWidth={1.5} aria-hidden />
+              <CommentIcon size={16} aria-hidden />
               Message seller
             </button>
           )}

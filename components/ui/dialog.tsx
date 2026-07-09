@@ -1,8 +1,9 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 import * as React from "react";
+
+import { CloseIcon } from "@/components/ui/icons";
 
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,7 @@ const DialogContent = React.forwardRef<
           className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:pointer-events-none"
           aria-label="Close"
         >
-          <X className="h-4 w-4" />
+          <CloseIcon size={16} className="h-4 w-4" />
         </DialogPrimitive.Close>
       )}
     </DialogPrimitive.Content>

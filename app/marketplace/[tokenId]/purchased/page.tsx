@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { CheckCircle } from "lucide-react";
-
+import { CircleCheckIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import {
   commerceConfirmedLabel,
@@ -60,7 +59,7 @@ async function MarketplacePurchasedInner({
         <div className={`${commerceConfirmedPanel} text-left`} role="status">
           <div className="flex gap-3">
             <div className="shrink-0 text-status-success mt-0.5">
-              <CheckCircle size={20} strokeWidth={1.5} aria-hidden />
+              <CircleCheckIcon size={20} aria-hidden />
             </div>
             <div className="flex flex-col gap-1">
               <p className={commerceConfirmedLabel}>Purchase complete</p>

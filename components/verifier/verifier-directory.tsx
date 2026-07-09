@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDownIcon, CloseIcon, SearchIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
@@ -211,9 +211,8 @@ export function VerifierDirectory({
     <div className={`flex flex-col gap-4 ${isPicker ? "mb-4" : "mb-8"}`}>
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <Search
+          <SearchIcon
             size={16}
-            strokeWidth={1.5}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
             aria-hidden
           />
@@ -237,9 +236,8 @@ export function VerifierDirectory({
             <option value="newest">Newest member</option>
             <option value="lowestFee">Lowest fee</option>
           </select>
-          <ChevronDown
+          <ChevronDownIcon
             size={16}
-            strokeWidth={1.5}
             className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary"
             aria-hidden
           />
@@ -299,7 +297,7 @@ export function VerifierDirectory({
             }}
             className="inline-flex items-center gap-1.5 font-sans text-xs text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
           >
-            <X size={14} strokeWidth={1.5} aria-hidden />
+            <CloseIcon size={14} aria-hidden />
             Clear filters
           </button>
         </div>

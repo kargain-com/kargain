@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ShieldCheck } from "lucide-react";
+import { ChevronDownIcon, UserCheckIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
@@ -72,7 +72,7 @@ function UnverifiedPassportsBanner({ address }: { address: Address }) {
         )}
       >
         Browse verifiers
-        <ChevronDown size={16} strokeWidth={1.5} aria-hidden />
+        <ChevronDownIcon size={16} aria-hidden />
       </a>
     </div>
   );
@@ -93,7 +93,7 @@ export function VerifiersIntentBanner() {
         role="status"
         className="flex items-center gap-3 rounded-md border border-border-default bg-bg-card p-4"
       >
-        <ShieldCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-warm" />
+        <UserCheckIcon size={20} className="shrink-0 text-accent-warm" />
         <p className="font-sans text-sm text-text-primary">
           You are an active verifier.{" "}
           <Link href={`/profile/${address}`} className={sansLinkUnderline}>
