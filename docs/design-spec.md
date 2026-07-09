@@ -246,13 +246,26 @@ Implementation: [`components/shell/mobile-bottom-nav.tsx`](../components/shell/m
 
 | Slot | Icon | Target | Notes |
 |------|------|--------|-------|
-| Marketplace | `Compass` | `/` | Not Home icon; navigation motif per §10.5 |
-| Messages | `Inbox` | `/messages` | Always visible; dot badge when wallet connected and unread |
-| FAB (center) | `Plus` | `/passport/new` | `h-12 w-12 rounded-full bg-bg-card border border-border-hover`, accent plus, `ring-2 ring-bg-primary`, `-mt-3`; icon-only |
-| Alerts | `Bell` | `/notifications` | Unread dot via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx); default tab = Alerts inbox |
-| Profile | avatar or `User` | `/profile/{address}` or `/profile/edit` | [`IdentityAvatar`](../components/identity/identity-avatar.tsx) when connected (Nostr → ENS → identicon); "Connect" when disconnected |
+| Marketplace | `grid` (Mono Icons) | `/` | Vendored [`GridIcon`](../components/shell/nav-icons.tsx); compass motif elsewhere per §10.5 |
+| Messages | `message-alt` (Mono Icons) | `/messages` | Always visible; dot badge when wallet connected and unread |
+| FAB (center) | `add` (Mono Icons) | `/passport/new` | `h-12 w-12 rounded-full bg-accent-warm text-bg-primary`, `AddIcon` size 22, `-top-3`; icon-only; no border or ring |
+| Alerts | `notification` (Mono Icons) | `/notifications` | Unread dot via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx); default tab = Alerts inbox |
+| Profile | avatar or `user` (Mono Icons) | `/profile/{address}` or `/profile/edit` | [`IdentityAvatar`](../components/identity/identity-avatar.tsx) when connected (Nostr → ENS → identicon); "Connect" when disconnected |
 
-Bar: `fixed bottom-0`, `border-t border-border-default`, `h-16`, safe-area inset padding, `grid-cols-5`.
+**Icons:** Mobile bottom nav only — vendored Mono Icons (MIT) in [`nav-icons.tsx`](../components/shell/nav-icons.tsx). All other surfaces remain `lucide-react` per §7.
+
+**Frost zone:** `fixed inset-x-0 bottom-0 z-50 h-28` (~112px), `pointer-events-none` on the shell. Content scrolls underneath a progressive frost stack (utilities in [`globals.css`](../app/globals.css)):
+
+| Layer | Treatment |
+|-------|-----------|
+| `.frost-blur-1` | `blur(2px)`; mask ramp transparent 0% → black 40% |
+| `.frost-blur-2` | `blur(6px)`; mask ramp transparent 30% → black 65% |
+| `.frost-blur-3` | `blur(12px)`; mask ramp transparent 55% → black 100% |
+| `.frost-scrim` | Gradient `transparent` 0% → `color-mix(bg-primary 55%)` 35% → `color-mix(bg-primary 90%)` 60% → `bg-primary` 80% |
+
+Blur layers: `pointer-events-none`, `aria-hidden`. **Fallback:** when `backdrop-filter` is unsupported or `prefers-reduced-transparency: reduce`, blur layers hidden; scrim strengthened to a near-solid gradient (`color-mix(bg-primary 95%)` → `bg-primary` 70%).
+
+**Nav row:** `pointer-events-auto` wrapper anchored to the bottom of the frost zone; `grid-cols-5 h-16`, safe-area inset padding. Active tab: icon + label `text-accent-warm` (no top-border indicator). Inactive: `text-text-secondary`.
 
 **Become KarPro:** visible in the top nav when the wallet is connected and not an active verifier (`KarPro` label on mobile, `Become KarPro` on desktop).
 
@@ -675,6 +688,8 @@ Mobile-first: base styles target small screens; add breakpoint prefixes to enhan
 
 **Library:** `lucide-react` (declared in `package.json`).
 
+**Exception — mobile bottom nav:** Vendored Mono Icons (MIT, [icons.mono.company](https://icons.mono.company)) in [`nav-icons.tsx`](../components/shell/nav-icons.tsx) — filled SVG glyphs, `fill="currentColor"`, default size 20. Do not add the `mono-icons` npm package. All other surfaces use lucide with `strokeWidth={1.5}`.
+
 | Context     | Size | strokeWidth |
 |-------------|------|-------------|
 | Inline text | 16   | 1.5         |
@@ -847,10 +862,10 @@ No literal vehicle iconography (car, wheel, road silhouettes) in **system chrome
 
 | Item | Status |
 |------|--------|
-| Mobile bottom nav Marketplace tab | **`Compass`** — shipped in [`mobile-bottom-nav.tsx`](../components/shell/mobile-bottom-nav.tsx) |
-| §4.8 Marketplace icon | Updated to `Compass` |
+| Mobile bottom nav Marketplace tab | **`grid`** (Mono Icons `GridIcon`) — shipped in [`mobile-bottom-nav.tsx`](../components/shell/mobile-bottom-nav.tsx) |
+| §4.8 Marketplace icon | `grid` glyph on bottom nav only; **`Compass`** lucide motif unchanged elsewhere (e.g. browse discovery row §11.2) |
 
-Icon size and `strokeWidth` rules: §7 Iconography (unchanged).
+Icon size and `strokeWidth` rules: §7 Iconography (lucide surfaces); bottom nav uses filled Mono Icons per §7 exception.
 
 ---
 
@@ -1027,12 +1042,12 @@ rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' 
 | Pattern | Examples |
 |---------|----------|
 | Trust status | `PassportStatusBadge` VERIFIED, VERIFIED listing card border, log item `verified` border |
-| Nav / filter **active** state | Mobile bottom nav `border-t-2 border-accent-warm`, market filter chip selected, currency row selected |
+| Nav / filter **active** state | Mobile bottom nav icon + label `text-accent-warm`, market filter chip selected, currency row selected |
 | Focus rings | `focus:border-accent-warm`, `--focus-ring` |
 | Unread affordance | `notification-row` `border-l-2 border-accent-warm` when unread |
 | Gallery selection | Active photo thumb border (selection state, not price) |
 | Switch on | `border-accent-warm bg-accent-warm` |
-| FAB center icon | Mobile create passport `Plus` icon color (primary nav affordance) |
+| FAB center disc | Mobile create passport solid `bg-accent-warm` disc with `text-bg-primary` `AddIcon` (primary nav affordance; §12.3.1 exception) |
 
 #### Fixed in IL-1 (was accent at rest or hover border on non-status controls)
 
@@ -1062,7 +1077,7 @@ rg -n 'text-accent-warm|hover:border-accent-warm' components app --glob '*.tsx' 
 | Unread feed | `notification-row` left border when unread |
 | Gallery thumb selection | `passport-photo-gallery`, `listing-detail-gallery` |
 | Switch on | `switch.tsx` |
-| FAB Plus icon | `mobile-bottom-nav` center create affordance |
+| FAB solid accent disc | `mobile-bottom-nav` center create affordance — `bg-accent-warm text-bg-primary`, no border or ring |
 | Watchlist active | `watchlist-button` selected state |
 | KarPro active verifier icon | `verifiers-intent-banner` `ShieldCheck` |
 | Narrative eyebrows | Static pages (`about`, `terms`, `privacy`, `kar-pro`), global `.eyebrow`, `sheet` title |
@@ -1266,4 +1281,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.25 (July 2026 — listing card uniform image frame + marketplace shell container). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.27 (July 2026 — mobile bottom nav Mono Icons + strengthened frost scrim + solid accent FAB). Update when tokens, app shell, or component contracts change.*

@@ -1,6 +1,5 @@
 "use client";
 
-import { Bell, Compass, Inbox, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -10,6 +9,14 @@ import { useAccount } from "wagmi";
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
+import {
+  AddIcon,
+  GridIcon,
+  MessageAltIcon,
+  NotificationIcon,
+  UserIcon,
+  type NavIconComponent,
+} from "@/components/shell/nav-icons";
 import { cn } from "@/lib/utils";
 
 function NavTab({
@@ -22,20 +29,20 @@ function NavTab({
   href: string;
   label: string;
   active: boolean;
-  icon: typeof Compass;
+  icon: NavIconComponent;
   badge?: ReactNode;
 }) {
   return (
     <Link
       href={href}
       className={cn(
-        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 px-0.5 pb-2 pt-1",
         "font-sans text-[10px] leading-tight transition-colors duration-200",
-        active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+        active ? "text-accent-warm" : "text-text-secondary",
       )}
     >
       <span className="relative flex size-6 shrink-0 items-center justify-center">
-        <Icon size={20} strokeWidth={1.5} aria-hidden />
+        <Icon size={20} />
         {badge}
       </span>
       <span className="max-w-full truncate">{label}</span>
@@ -57,9 +64,9 @@ function ProfileNavTab({
       <Link
         href={`/profile/${encodeURIComponent(address)}`}
         className={cn(
-          "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+          "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 px-0.5 pb-2 pt-1",
           "font-sans text-[10px] leading-tight transition-colors duration-200",
-          active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+          active ? "text-accent-warm" : "text-text-secondary",
         )}
       >
         <span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full">
@@ -74,13 +81,13 @@ function ProfileNavTab({
     <Link
       href="/profile/edit"
       className={cn(
-        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 border-t-2 px-0.5 pb-2 pt-1",
+        "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 px-0.5 pb-2 pt-1",
         "font-sans text-[10px] leading-tight transition-colors duration-200",
-        active ? "border-accent-warm text-text-primary" : "border-transparent text-text-secondary",
+        active ? "text-accent-warm" : "text-text-secondary",
       )}
     >
       <span className="flex size-6 shrink-0 items-center justify-center">
-        <User size={20} strokeWidth={1.5} aria-hidden />
+        <UserIcon size={20} />
       </span>
       <span className="max-w-full truncate">Connect</span>
     </Link>
@@ -93,55 +100,63 @@ export function MobileBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-default bg-bg-primary pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 h-28 md:hidden"
       aria-label="Mobile primary"
     >
-      <div className="relative mx-auto grid h-16 max-w-lg grid-cols-5 items-end px-1">
-        <NavTab
-          href="/"
-          label="Marketplace"
-          icon={Compass}
-          active={path === "/"}
-        />
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="frost-blur-1 absolute inset-0" />
+        <div className="frost-blur-2 absolute inset-0" />
+        <div className="frost-blur-3 absolute inset-0" />
+        <div className="frost-scrim absolute inset-0" />
+      </div>
 
-        <NavTab
-          href="/messages"
-          label="Messages"
-          icon={Inbox}
-          active={path.startsWith("/messages")}
-          badge={isConnected ? <MessagingNavStatus className="-top-0.5 -right-0.5" /> : undefined}
-        />
+      <div className="pointer-events-auto absolute inset-x-0 bottom-0 pb-[env(safe-area-inset-bottom)]">
+        <div className="relative mx-auto grid h-16 max-w-lg grid-cols-5 items-end px-1">
+          <NavTab
+            href="/"
+            label="Marketplace"
+            icon={GridIcon}
+            active={path === "/"}
+          />
 
-        <div className="flex items-end justify-center">
-          <Link
-            href="/passport/new"
-            aria-label="Create passport"
-            className={cn(
-              "relative z-10 -top-3 mb-1 flex h-12 w-12 shrink-0 items-center justify-center",
-              "rounded-full border border-border-hover bg-bg-card text-accent-warm ring-2 ring-bg-primary",
-              "transition-[border-color,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
-              "hover:border-border-hover",
-              "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-              "active:scale-95",
-            )}
-          >
-            <Plus size={20} strokeWidth={1.5} aria-hidden />
-          </Link>
+          <NavTab
+            href="/messages"
+            label="Messages"
+            icon={MessageAltIcon}
+            active={path.startsWith("/messages")}
+            badge={isConnected ? <MessagingNavStatus className="-top-0.5 -right-0.5" /> : undefined}
+          />
+
+          <div className="flex items-end justify-center">
+            <Link
+              href="/passport/new"
+              aria-label="Create passport"
+              className={cn(
+                "relative z-10 -top-3 mb-1 flex h-12 w-12 shrink-0 items-center justify-center",
+                "rounded-full bg-accent-warm text-bg-primary",
+                "transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
+                "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+                "active:scale-95",
+              )}
+            >
+              <AddIcon size={22} />
+            </Link>
+          </div>
+
+          <NavTab
+            href="/notifications"
+            label="Alerts"
+            icon={NotificationIcon}
+            active={path.startsWith("/notifications")}
+            badge={isConnected ? <NotificationsUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
+          />
+
+          <ProfileNavTab
+            active={path.startsWith("/profile")}
+            isConnected={isConnected}
+            address={address}
+          />
         </div>
-
-        <NavTab
-          href="/notifications"
-          label="Alerts"
-          icon={Bell}
-          active={path.startsWith("/notifications")}
-          badge={isConnected ? <NotificationsUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
-        />
-
-        <ProfileNavTab
-          active={path.startsWith("/profile")}
-          isConnected={isConnected}
-          address={address}
-        />
       </div>
     </nav>
   );

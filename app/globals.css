@@ -143,3 +143,67 @@ h3 {
 .transition-smooth {
   transition-timing-function: var(--ease-out-smooth);
 }
+
+/* Mobile bottom nav progressive frost (§4.8) */
+.frost-blur-1 {
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
+}
+
+.frost-blur-2 {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 30%, black 65%);
+  mask-image: linear-gradient(to bottom, transparent 30%, black 65%);
+}
+
+.frost-blur-3 {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 55%, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 55%, black 100%);
+}
+
+.frost-scrim {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--color-bg-primary) 55%, transparent) 35%,
+    color-mix(in srgb, var(--color-bg-primary) 90%, transparent) 60%,
+    var(--color-bg-primary) 80%
+  );
+}
+
+@supports not ((backdrop-filter: blur(1px))) {
+  .frost-blur-1,
+  .frost-blur-2,
+  .frost-blur-3 {
+    display: none;
+  }
+
+  .frost-scrim {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-bg-primary) 95%, transparent),
+      var(--color-bg-primary) 70%
+    );
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .frost-blur-1,
+  .frost-blur-2,
+  .frost-blur-3 {
+    display: none;
+  }
+
+  .frost-scrim {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-bg-primary) 95%, transparent),
+      var(--color-bg-primary) 70%
+    );
+  }
+}
