@@ -52,6 +52,7 @@ const LUCIDE_BRIDGE = [
   { file: "bookmark-check", exportName: "BookmarkCheckIcon" },
   { file: "check-check", exportName: "CheckDoubleIcon" },
   { file: "globe", exportName: "GlobeIcon" },
+  { file: "reply", exportName: "ReplyIcon" },
   { file: "shield", exportName: "ShieldIcon" },
   { file: "shield-alert", exportName: "ShieldWarningIcon" },
   { file: "shield-check", exportName: "ShieldCheckIcon" },

@@ -2,8 +2,8 @@
 
 import {
   ChevronDownIcon,
-  CommentIcon,
   HeartIcon,
+  ReplyIcon,
   SpinnerIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
@@ -360,7 +360,7 @@ function NostrCommentsSection({
                           setComposerFocused(true);
                         }}
                       >
-                        <CommentIcon size={14} className="h-3.5 w-3.5" /> Reply
+                        <ReplyIcon size={14} className="h-3.5 w-3.5" /> Reply
                       </button>
                       <button
                         type="button"

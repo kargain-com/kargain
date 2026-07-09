@@ -7,9 +7,9 @@ import {
   CircleCheckIcon,
   CreditCardIcon,
   DocumentIcon,
-  EnterIcon,
   HeartIcon,
   MessageIcon,
+  ReplyIcon,
   ShieldCheckIcon,
   ShieldIcon,
   ShieldWarningIcon,
@@ -33,7 +33,7 @@ const ICON_BY_TYPE: Record<NotificationType, IconComponent> = {
   "watchlist.price_changed": BookmarkIcon,
   "watchlist.dispute_opened": BookmarkIcon,
   "nostr.comment_on_passport": MessageIcon,
-  "nostr.reply_to_comment": EnterIcon,
+  "nostr.reply_to_comment": ReplyIcon,
   "nostr.like_on_comment": HeartIcon,
 };
 
