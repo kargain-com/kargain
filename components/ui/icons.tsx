@@ -1,4 +1,5 @@
-// Mono Icons (icons.mono.company), MIT — regenerate via pnpm generate:icons
+// Mono Icons (icons.mono.company), MIT
+// Lucide bridge glyphs (lucide-static, ISC) — regenerate via pnpm generate:icons
 
 import type { ComponentType } from "react";
 
@@ -8,80 +9,6 @@ export type IconProps = {
 };
 
 export type IconComponent = ComponentType<IconProps>;
-
-const MONO_CHECK_PATH =
-  "M20.664 5.253a1 1 0 0 1 .083 1.411l-10.666 12a1 1 0 0 1-1.495 0l-5.333-6a1 1 0 0 1 1.494-1.328l4.586 5.159 9.92-11.16a1 1 0 0 1 1.411-.082z";
-
-const SHIELD_OUTER_INNER_PATH =
-  "M12 2C7.5 2 4.5 4.2 4.5 4.8V11C4.5 15.2 7.8 19.2 12 21.5C16.2 19.2 19.5 15.2 19.5 11V4.8C19.5 4.2 16.5 2 12 2ZM12 4C8.8 4 6.5 5.8 6.5 6.5V11C6.5 14.2 9.2 17.2 12 19C14.8 17.2 17.5 14.2 17.5 11V6.5C17.5 5.8 15.2 4 12 4Z";
-
-// Kargain extension glyphs in Mono Icons style (not in upstream set).
-
-export function CheckDoubleIcon({ size = 20, className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="currentColor"
-      aria-hidden
-      className={className}
-    >
-      <path d={MONO_CHECK_PATH} />
-      <path d={MONO_CHECK_PATH} transform="translate(5 0)" />
-    </svg>
-  );
-}
-
-export function ShieldIcon({ size = 20, className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="currentColor"
-      aria-hidden
-      className={className}
-    >
-      <path fillRule="evenodd" d={SHIELD_OUTER_INNER_PATH} />
-    </svg>
-  );
-}
-
-export function ShieldCheckIcon({ size = 20, className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="currentColor"
-      aria-hidden
-      className={className}
-    >
-      <path fillRule="evenodd" d={SHIELD_OUTER_INNER_PATH} />
-      <path
-        d={MONO_CHECK_PATH}
-        transform="translate(12 11.5) scale(0.5) translate(-12 -12)"
-      />
-    </svg>
-  );
-}
-
-export function ShieldWarningIcon({ size = 20, className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="currentColor"
-      aria-hidden
-      className={className}
-    >
-      <path fillRule="evenodd" d={SHIELD_OUTER_INNER_PATH} />
-      <path d="M11 11h2v2.5H11V11zm1 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" />
-    </svg>
-  );
-}
 
 // GENERATED START
 
@@ -642,6 +569,149 @@ export function WarningIcon({ size = 20, className }: IconProps) {
     >
       <path d="M12 14a1 1 0 0 1-1-1v-3a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1zm-1.5 2.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z" />
       <path d="M10.23 3.216c.75-1.425 2.79-1.425 3.54 0l8.343 15.852C22.814 20.4 21.85 22 20.343 22H3.657c-1.505 0-2.47-1.6-1.77-2.931L10.23 3.216zM20.344 20L12 4.147 3.656 20h16.688z" />
+    </svg>
+  );
+}
+
+// Lucide bridge (lucide-static, ISC) — stroke mode
+
+export function BookmarkCheckIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" />
+      <path d="m9 10 2 2 4-4" />
+    </svg>
+  );
+}
+
+export function CheckDoubleIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M18 6 7 17l-5-5" />
+      <path d="m22 10-7.5 7.5L13 16" />
+    </svg>
+  );
+}
+
+export function GlobeIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
+    </svg>
+  );
+}
+
+export function ShieldIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+    </svg>
+  );
+}
+
+export function ShieldWarningIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </svg>
+  );
+}
+
+export function ShieldCheckIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+export function WalletIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
+      <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
     </svg>
   );
 }

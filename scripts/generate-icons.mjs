@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const svgDir = path.join(root, "node_modules/mono-icons/svg");
+const monoSvgDir = path.join(root, "node_modules/mono-icons/svg");
+const lucideSvgDir = path.join(root, "node_modules/lucide-static/icons");
 const outPath = path.join(root, "components/ui/icons.tsx");
 
 const GLYPHS = [
@@ -46,8 +47,28 @@ const GLYPHS = [
   "warning",
 ];
 
+const LUCIDE_BRIDGE = [
+  { file: "bookmark-check", exportName: "BookmarkCheckIcon" },
+  { file: "check-check", exportName: "CheckDoubleIcon" },
+  { file: "globe", exportName: "GlobeIcon" },
+  { file: "shield", exportName: "ShieldIcon" },
+  { file: "shield-alert", exportName: "ShieldWarningIcon" },
+  { file: "shield-check", exportName: "ShieldCheckIcon" },
+  { file: "wallet", exportName: "WalletIcon" },
+];
+
 const GENERATED_START = "// GENERATED START";
 const GENERATED_END = "// GENERATED END";
+
+const LUCIDE_DROP_ATTRS = new Set([
+  "stroke",
+  "fill",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "class",
+  "xmlns",
+]);
 
 function toComponentName(glyph) {
   return (
@@ -56,6 +77,10 @@ function toComponentName(glyph) {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join("") + "Icon"
   );
+}
+
+function kebabToCamel(name) {
+  return name.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
 }
 
 function parsePathAttributes(attrString) {
@@ -95,7 +120,49 @@ function extractPaths(svgContent) {
   return paths;
 }
 
-function renderComponent(componentName, pathAttrs) {
+function parseLucideAttributes(attrString) {
+  const attrs = [];
+  const attrRegex = /([\w-:]+)="([^"]*)"/g;
+  let match = attrRegex.exec(attrString);
+
+  while (match !== null) {
+    const name = match[1].toLowerCase();
+    if (!LUCIDE_DROP_ATTRS.has(name)) {
+      attrs.push(`${kebabToCamel(name)}="${match[2]}"`);
+    }
+    match = attrRegex.exec(attrString);
+  }
+
+  return attrs.join(" ");
+}
+
+function extractLucideInnerElements(svgContent) {
+  const withoutComments = svgContent.replace(/<!--[\s\S]*?-->/g, "");
+  const innerMatch = withoutComments.match(/<svg\b[^>]*>([\s\S]*)<\/svg>/i);
+  if (!innerMatch) {
+    throw new Error("No <svg> wrapper found in lucide-static SVG");
+  }
+
+  const elements = [];
+  const elementRegex =
+    /<(path|circle|line|polyline|polygon|rect)\b([^>]*)\/?>/gi;
+  let match = elementRegex.exec(innerMatch[1]);
+
+  while (match !== null) {
+    const tag = match[1];
+    const attrs = parseLucideAttributes(match[2]);
+    elements.push(attrs ? `<${tag} ${attrs} />` : `<${tag} />`);
+    match = elementRegex.exec(innerMatch[1]);
+  }
+
+  if (elements.length === 0) {
+    throw new Error("No inner lucide elements found in SVG");
+  }
+
+  return elements;
+}
+
+function renderMonoComponent(componentName, pathAttrs) {
   const pathLines = pathAttrs
     .map((attrs) => `      <path ${attrs} />`)
     .join("\n");
@@ -117,18 +184,57 @@ ${pathLines}
 `;
 }
 
+function renderLucideComponent(exportName, innerElements) {
+  const innerLines = innerElements
+    .map((element) => `      ${element}`)
+    .join("\n");
+
+  return `export function ${exportName}({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+${innerLines}
+    </svg>
+  );
+}
+`;
+}
+
 function buildGeneratedBlock() {
   const lines = [GENERATED_START, ""];
 
   for (const glyph of GLYPHS) {
-    const svgPath = path.join(svgDir, `${glyph}.svg`);
+    const svgPath = path.join(monoSvgDir, `${glyph}.svg`);
     if (!fs.existsSync(svgPath)) {
       throw new Error(`Missing mono-icons glyph: ${glyph} (${svgPath})`);
     }
 
     const svgContent = fs.readFileSync(svgPath, "utf8");
     const pathAttrs = extractPaths(svgContent);
-    lines.push(renderComponent(toComponentName(glyph), pathAttrs));
+    lines.push(renderMonoComponent(toComponentName(glyph), pathAttrs));
+  }
+
+  lines.push("// Lucide bridge (lucide-static, ISC) — stroke mode", "");
+
+  for (const { file, exportName } of LUCIDE_BRIDGE) {
+    const svgPath = path.join(lucideSvgDir, `${file}.svg`);
+    if (!fs.existsSync(svgPath)) {
+      throw new Error(`Missing lucide-static glyph: ${file} (${svgPath})`);
+    }
+
+    const svgContent = fs.readFileSync(svgPath, "utf8");
+    const innerElements = extractLucideInnerElements(svgContent);
+    lines.push(renderLucideComponent(exportName, innerElements));
   }
 
   lines.push("export { RefreshIcon as SpinnerIcon };", "", GENERATED_END);
