@@ -1,0 +1,164 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const svgDir = path.join(root, "node_modules/mono-icons/svg");
+const outPath = path.join(root, "components/ui/icons.tsx");
+
+const GLYPHS = [
+  "add",
+  "arrow-left",
+  "arrow-right",
+  "bookmark",
+  "check",
+  "chevron-down",
+  "chevron-left",
+  "chevron-right",
+  "circle-add",
+  "circle-check",
+  "circle-error",
+  "circle-information",
+  "circle-warning",
+  "clock",
+  "close",
+  "comment",
+  "copy",
+  "credit-card",
+  "document",
+  "enter",
+  "export",
+  "external-link",
+  "filter",
+  "filter-alt",
+  "grid",
+  "heart",
+  "inbox",
+  "link",
+  "log-out",
+  "message",
+  "message-alt",
+  "notification",
+  "refresh",
+  "search",
+  "send",
+  "user",
+  "warning",
+];
+
+const GENERATED_START = "// GENERATED START";
+const GENERATED_END = "// GENERATED END";
+
+function toComponentName(glyph) {
+  return (
+    glyph
+      .split("-")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("") + "Icon"
+  );
+}
+
+function parsePathAttributes(attrString) {
+  const d = attrString.match(/\bd="([^"]+)"/)?.[1];
+  if (!d) {
+    throw new Error(`Path missing d attribute: ${attrString}`);
+  }
+
+  const fillRule = attrString.match(/\bfill-rule="([^"]+)"/i)?.[1];
+  const clipRule = attrString.match(/\bclip-rule="([^"]+)"/i)?.[1];
+
+  const jsxAttrs = [`d="${d}"`];
+  if (fillRule) {
+    jsxAttrs.push(`fillRule="${fillRule}"`);
+  }
+  if (clipRule) {
+    jsxAttrs.push(`clipRule="${clipRule}"`);
+  }
+
+  return jsxAttrs.join(" ");
+}
+
+function extractPaths(svgContent) {
+  const paths = [];
+  const pathRegex = /<path\b([^>]*)\/?>/gi;
+  let match = pathRegex.exec(svgContent);
+
+  while (match !== null) {
+    paths.push(parsePathAttributes(match[1]));
+    match = pathRegex.exec(svgContent);
+  }
+
+  if (paths.length === 0) {
+    throw new Error("No <path> elements found in SVG");
+  }
+
+  return paths;
+}
+
+function renderComponent(componentName, pathAttrs) {
+  const pathLines = pathAttrs
+    .map((attrs) => `      <path ${attrs} />`)
+    .join("\n");
+
+  return `export function ${componentName}({ size = 20, className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="currentColor"
+      aria-hidden
+      className={className}
+    >
+${pathLines}
+    </svg>
+  );
+}
+`;
+}
+
+function buildGeneratedBlock() {
+  const lines = [GENERATED_START, ""];
+
+  for (const glyph of GLYPHS) {
+    const svgPath = path.join(svgDir, `${glyph}.svg`);
+    if (!fs.existsSync(svgPath)) {
+      throw new Error(`Missing mono-icons glyph: ${glyph} (${svgPath})`);
+    }
+
+    const svgContent = fs.readFileSync(svgPath, "utf8");
+    const pathAttrs = extractPaths(svgContent);
+    lines.push(renderComponent(toComponentName(glyph), pathAttrs));
+  }
+
+  lines.push("export { RefreshIcon as SpinnerIcon };", "", GENERATED_END);
+  return lines.join("\n");
+}
+
+function replaceGeneratedRegion(content, generatedBlock) {
+  const startIndex = content.indexOf(GENERATED_START);
+  const endIndex = content.indexOf(GENERATED_END);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+    throw new Error(
+      `Missing ${GENERATED_START} / ${GENERATED_END} markers in ${outPath}`,
+    );
+  }
+
+  const before = content.slice(0, startIndex);
+  const after = content.slice(endIndex + GENERATED_END.length);
+  return `${before}${generatedBlock}${after}`;
+}
+
+if (!fs.existsSync(outPath)) {
+  throw new Error(
+    `Missing ${outPath}. Create the manual block with GENERATED markers first.`,
+  );
+}
+
+const existing = fs.readFileSync(outPath, "utf8");
+const generatedBlock = buildGeneratedBlock();
+const next = replaceGeneratedRegion(existing, generatedBlock);
+
+fs.writeFileSync(outPath, next.endsWith("\n") ? next : `${next}\n`, "utf8");
+console.log(`Wrote ${outPath}`);
