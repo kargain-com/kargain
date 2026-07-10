@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { shouldRestartNetworkCheck } from "../lib/xmtp/should-restart-network-check.ts";
+import { shouldAttemptPassiveSilentRestore } from "../hooks/use-xmtp-client.ts";
 
 const KEY = "0xabc";
 
@@ -54,5 +55,14 @@ describe("shouldRestartNetworkCheck", () => {
       ),
       true,
     );
+  });
+});
+
+describe("shouldAttemptPassiveSilentRestore", () => {
+  it("returns false only when neither opt-in nor network cache is present", () => {
+    assert.equal(shouldAttemptPassiveSilentRestore(false, false), false);
+    assert.equal(shouldAttemptPassiveSilentRestore(true, false), true);
+    assert.equal(shouldAttemptPassiveSilentRestore(false, true), true);
+    assert.equal(shouldAttemptPassiveSilentRestore(true, true), true);
   });
 });

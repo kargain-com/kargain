@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { useMessagingStatus } from "@/hooks/use-messaging-status";
 
 export function AccountSetupBanner() {
-  const { needsSetup } = useMessagingStatus();
+  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
+  const needsMessagingCard = needsSetup || needsDeviceRestore;
 
-  if (!needsSetup) return null;
+  if (!needsMessagingCard) return null;
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border-default bg-bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">

@@ -10,6 +10,9 @@ import {
 import type { WalletClient } from "viem";
 import { getAddress, hexToBytes } from "viem";
 
+import { isOpfsLockError } from "@/lib/xmtp/opfs-lock-error";
+import type { XmtpClient } from "@/lib/xmtp/helpers";
+
 export function getXmtpEnv(): XmtpEnv {
   const raw = process.env.NEXT_PUBLIC_XMTP_ENV?.trim();
   if (
@@ -54,10 +57,27 @@ function buildEoaSigner(walletClient: WalletClient, address: `0x${string}`): Sig
 export async function createXmtpClient(
   walletClient: WalletClient,
   address: `0x${string}`,
-): Promise<Awaited<ReturnType<typeof Client.create>>> {
+): Promise<XmtpClient> {
   const signer = buildEoaSigner(walletClient, address);
   const options = { env: getXmtpEnv() } as ClientOptions;
-  const client = await Client.create(signer, options);
-  await client.conversations.sync();
-  return client;
+  return Client.create(signer, options);
+}
+
+/**
+ * Restore an existing local XMTP installation without a signer (no wallet signature).
+ */
+export async function buildXmtpClient(address: `0x${string}`): Promise<XmtpClient | null> {
+  try {
+    const options = { env: getXmtpEnv() } as ClientOptions;
+    const client = await Client.build(ethereumIdentifier(address), options);
+    const registered = await client.isRegistered();
+    if (!registered) {
+      client.close();
+      return null;
+    }
+    return client;
+  } catch (error) {
+    if (isOpfsLockError(error)) throw error;
+    return null;
+  }
 }

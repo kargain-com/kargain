@@ -9,6 +9,7 @@ import { closeXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import {
   deriveMessagingStatus,
   messagingStatusIsReady,
+  messagingStatusNeedsDeviceRestore,
   messagingStatusNeedsSetup,
   type MessagingStatus,
 } from "@/lib/xmtp/messaging-status";
@@ -31,13 +32,14 @@ export function useMessagingStatus(): {
   error: string | null;
   isReady: boolean;
   needsSetup: boolean;
+  needsDeviceRestore: boolean;
   isInitializing: boolean;
   walletKind: WalletAccountKind | null;
   enableMessages: () => Promise<boolean>;
   disableMessages: () => void;
 } {
   const { address, isConnected, connector } = useAccount();
-  const { client, isInitializing, error, ensureInitialized } = useXmtpClient();
+  const { client, isInitializing, error, deviceRestoreFailed, ensureInitialized } = useXmtpClient();
   const { kind: walletKind } = useWalletAccountKind(
     isConnected ? address : undefined,
     connector,
@@ -60,9 +62,11 @@ export function useMessagingStatus(): {
         disabledLocally,
         networkRegistered,
         networkCheckPending: networkChecking,
+        deviceRestoreFailed,
       }),
     [
       client,
+      deviceRestoreFailed,
       disabledLocally,
       error,
       isConnected,
@@ -94,6 +98,7 @@ export function useMessagingStatus(): {
     error,
     isReady: messagingStatusIsReady(status),
     needsSetup: messagingStatusNeedsSetup(status),
+    needsDeviceRestore: messagingStatusNeedsDeviceRestore(status),
     isInitializing,
     walletKind,
     enableMessages,

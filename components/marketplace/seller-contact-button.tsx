@@ -29,7 +29,9 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
   const { address, isConnected, connector } = useAccount();
   const router = useRouter();
   const { client, ensureInitialized } = useXmtpClient();
-  const { isInitializing, error, needsSetup, enableMessages } = useMessagingStatus();
+  const { isInitializing, error, needsSetup, needsDeviceRestore, enableMessages } =
+    useMessagingStatus();
+  const needsMessagingSetup = needsSetup || needsDeviceRestore;
   const { profile: peerProfile } = useNostrProfile(peerAddress);
   const { reachable, message, isLoading } = usePeerMessagingReachability(peerAddress);
   const [busy, setBusy] = useState(false);
@@ -67,7 +69,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
     setActionError(null);
     setBusy(true);
     try {
-      if (needsSetup) {
+      if (needsMessagingSetup) {
         const enabled = await enableMessages();
         if (!enabled) return;
       }

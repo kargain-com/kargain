@@ -11,11 +11,12 @@ type Props = {
 
 /** Nav indicator: setup-needed (amber) or unread messages (warm). */
 export function MessagingNavStatus({ className }: Props) {
-  const { needsSetup } = useMessagingStatus();
+  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
+  const needsMessagingCard = needsSetup || needsDeviceRestore;
   const { client } = useXmtpClient();
   const unreadTotal = useXmtpUnreadTotal();
 
-  if (needsSetup) {
+  if (needsMessagingCard) {
     return (
       <span
         className={cn("absolute size-1.5 rounded-full bg-status-warning", className)}

@@ -110,7 +110,8 @@ export function MessageInboxClient() {
   const searchParams = useSearchParams();
   const { address, isConnected, connector } = useAccount();
   const { client, ensureInitialized } = useXmtpClient();
-  const { isReady, needsSetup, status } = useMessagingStatus();
+  const { isReady, needsSetup, needsDeviceRestore, status } = useMessagingStatus();
+  const needsMessagingCard = needsSetup || needsDeviceRestore;
   const { conversations, isLoading } = useXmtpConversations();
   const myAddress = client ? getClientEthereumAddress(client) : address;
 
@@ -168,7 +169,7 @@ export function MessageInboxClient() {
     }
 
     if (!isReady || !client) {
-      if (needsSetup && isConnected && initialToRef.current) {
+      if ((needsSetup || needsDeviceRestore) && isConnected && initialToRef.current) {
         setToError("Enable private messages to open this conversation.");
       }
       return;
@@ -219,6 +220,7 @@ export function MessageInboxClient() {
     isLoading,
     isReady,
     needsSetup,
+    needsDeviceRestore,
     peerProfile,
     router,
   ]);
@@ -248,11 +250,13 @@ export function MessageInboxClient() {
         )}
       </div>
 
-      {needsSetup && !openingPeer && <MessagingSetupCard variant="full" context="account" />}
+      {needsMessagingCard && !openingPeer && (
+        <MessagingSetupCard variant="full" context="account" />
+      )}
 
-      {!needsSetup && <MessagingDriftBanner />}
+      {!needsMessagingCard && <MessagingDriftBanner />}
 
-      {!needsSetup && <MessagingCatchUpBanner />}
+      {!needsMessagingCard && <MessagingCatchUpBanner />}
 
       {openingPeer && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
@@ -261,10 +265,10 @@ export function MessageInboxClient() {
         </p>
       )}
 
-      {status === "initializing" && !needsSetup && (
+      {status === "initializing" && !needsMessagingCard && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
           <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
-          Confirm in your wallet…
+          Restoring messages…
         </p>
       )}
 

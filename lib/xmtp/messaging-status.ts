@@ -10,7 +10,8 @@ export type MessagingStatus =
   | "inactive"
   | "initializing"
   | "active"
-  | "error";
+  | "error"
+  | "restore_required";
 
 export type DeriveMessagingStatusInput = {
   isConnected: boolean;
@@ -22,6 +23,7 @@ export type DeriveMessagingStatusInput = {
   disabledLocally: boolean;
   networkRegistered: boolean;
   networkCheckPending?: boolean;
+  deviceRestoreFailed: boolean;
 };
 
 export function deriveMessagingStatus(input: DeriveMessagingStatusInput): MessagingStatus {
@@ -35,6 +37,7 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
     disabledLocally,
     networkRegistered,
     networkCheckPending = false,
+    deviceRestoreFailed,
   } = input;
 
   if (!isConnected) return "disconnected";
@@ -51,6 +54,10 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
 
   if (error) return "error";
 
+  if (!client && deviceRestoreFailed && (optedIn || networkRegistered)) {
+    return "restore_required";
+  }
+
   if (!optedIn) {
     if (networkRegistered || networkCheckPending) return "initializing";
     return "inactive";
@@ -62,6 +69,10 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
 
 export function messagingStatusNeedsSetup(status: MessagingStatus): boolean {
   return status === "inactive" || status === "error";
+}
+
+export function messagingStatusNeedsDeviceRestore(status: MessagingStatus): boolean {
+  return status === "restore_required";
 }
 
 export function messagingStatusIsReady(status: MessagingStatus): boolean {

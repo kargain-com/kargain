@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { checkXmtpReachable } from "@/lib/xmtp/can-message-peer";
+import { requestSilentRestore } from "@/hooks/use-xmtp-client";
 import {
   getCachedNetworkRegistered,
   isMessagingDisabledLocally,
@@ -70,6 +71,7 @@ async function runNetworkCheck(address: `0x${string}`): Promise<void> {
       if (!isMessagingDisabledLocally(address)) {
         setOptedIn(address);
       }
+      void requestSilentRestore(address);
     }
   } catch {
     if (generation !== checkGeneration) return;

@@ -36,7 +36,8 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 function ConversationThreadBody({ conversationId }: Props) {
   const { isConnected } = useAccount();
   const { client } = useXmtpClient();
-  const { isReady, needsSetup } = useMessagingStatus();
+  const { isReady, needsSetup, needsDeviceRestore } = useMessagingStatus();
+  const needsMessagingCard = needsSetup || needsDeviceRestore;
   const { conversations } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
@@ -99,7 +100,7 @@ function ConversationThreadBody({ conversationId }: Props) {
             Back
           </Link>
         </Button>
-        {needsSetup ? (
+        {needsMessagingCard ? (
           <MessagingSetupCard variant="full" context="account" />
         ) : (
           <p className="text-sm text-text-secondary" role="status">

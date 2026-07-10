@@ -72,7 +72,8 @@ export function VerificationRequestButton({
 }: Props) {
   const { address: userAddress, isConnected, connector } = useAccount();
   const { client, ensureInitialized } = useXmtpClient();
-  const { isInitializing, needsSetup, enableMessages } = useMessagingStatus();
+  const { isInitializing, needsSetup, needsDeviceRestore, enableMessages } = useMessagingStatus();
+  const needsMessagingSetup = needsSetup || needsDeviceRestore;
   const { profile: verifierProfile } = useNostrProfile(verifierAddress);
   const { reachable, message, isLoading: reachabilityLoading } =
     usePeerMessagingReachability(verifierAddress);
@@ -100,7 +101,7 @@ export function VerificationRequestButton({
       );
       const messageText = buildVerificationMessage(unverified);
 
-      if (needsSetup) {
+      if (needsMessagingSetup) {
         const enabled = await enableMessages();
         if (!enabled) {
           setActionError("Enable messages in your profile to send a request.");

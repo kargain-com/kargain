@@ -53,7 +53,8 @@ export function KarProClient({
   });
 
   const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
-  const { needsSetup } = useMessagingStatus();
+  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
+  const needsMessagingCard = needsSetup || needsDeviceRestore;
 
   const {
     profile: verifierProfile,
@@ -146,7 +147,7 @@ export function KarProClient({
 
   return (
     <div className={containerClass}>
-      {needsSetup && <MessagingSetupCard context="karpro" variant="full" />}
+      {needsMessagingCard && <MessagingSetupCard context="karpro" variant="full" />}
       <KarProIdentityStrip
         category={verifierProfile.category}
         name={verifierProfile.name}
@@ -160,7 +161,7 @@ export function KarProClient({
             address={address!}
             name={verifierProfile.name}
             slug={verifierProfile.slug}
-            messagingReady={!needsSetup}
+            messagingReady={!needsMessagingCard}
           />
         }
         profile={

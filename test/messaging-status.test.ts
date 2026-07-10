@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   deriveMessagingStatus,
   messagingStatusIsReady,
+  messagingStatusNeedsDeviceRestore,
   messagingStatusNeedsSetup,
 } from "../lib/xmtp/messaging-status.ts";
 
@@ -17,6 +18,7 @@ const base = {
   disabledLocally: false,
   networkRegistered: false,
   networkCheckPending: false,
+  deviceRestoreFailed: false,
 };
 
 describe("deriveMessagingStatus", () => {
@@ -98,6 +100,44 @@ describe("deriveMessagingStatus", () => {
   it("returns initializing when opted in but client not restored", () => {
     assert.equal(deriveMessagingStatus({ ...base, optedIn: true }), "initializing");
   });
+
+  it("returns restore_required when local build failed but account is registered", () => {
+    assert.equal(
+      deriveMessagingStatus({
+        ...base,
+        optedIn: true,
+        deviceRestoreFailed: true,
+      }),
+      "restore_required",
+    );
+    assert.equal(
+      deriveMessagingStatus({
+        ...base,
+        networkRegistered: true,
+        deviceRestoreFailed: true,
+      }),
+      "restore_required",
+    );
+  });
+
+  it("does not return restore_required without opted in or network registration", () => {
+    assert.equal(
+      deriveMessagingStatus({ ...base, deviceRestoreFailed: true }),
+      "inactive",
+    );
+  });
+
+  it("returns error before restore_required when init failed", () => {
+    assert.equal(
+      deriveMessagingStatus({
+        ...base,
+        optedIn: true,
+        deviceRestoreFailed: true,
+        error: "Messages are already open in another Kargain tab. Close it and retry.",
+      }),
+      "error",
+    );
+  });
 });
 
 describe("messaging status helpers", () => {
@@ -111,5 +151,11 @@ describe("messaging status helpers", () => {
   it("flags ready state", () => {
     assert.equal(messagingStatusIsReady("active"), true);
     assert.equal(messagingStatusIsReady("inactive"), false);
+  });
+
+  it("flags device-restore state", () => {
+    assert.equal(messagingStatusNeedsDeviceRestore("restore_required"), true);
+    assert.equal(messagingStatusNeedsDeviceRestore("inactive"), false);
+    assert.equal(messagingStatusNeedsSetup("restore_required"), false);
   });
 });

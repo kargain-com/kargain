@@ -153,14 +153,19 @@ export function MessagingSettingsSection() {
   }
 
   const switchBusy =
-    saving || isInitializing || status === "initializing" || activation.networkChecking;
+    saving ||
+    (status !== "restore_required" &&
+      (isInitializing || status === "initializing" || activation.networkChecking));
   const showSpinner = switchBusy;
 
-  const helperCopy = activation.switchOn
-    ? "Encrypted messages are active for your account."
-    : activation.explicitlyOptedOut
-      ? "You turned off private messages."
-      : "Finish setup to activate private messages.";
+  const helperCopy =
+    status === "restore_required"
+      ? "Confirm one signature to activate messages on this device."
+      : activation.switchOn
+        ? "Encrypted messages are active for your account."
+        : activation.explicitlyOptedOut
+          ? "You turned off private messages."
+          : "Finish setup to activate private messages.";
 
   return (
     <section id="messages" className={cn("flex flex-col gap-4", sectionScrollAnchor)}>

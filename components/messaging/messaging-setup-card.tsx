@@ -170,6 +170,33 @@ export function MessagingSetupCard({
     );
   }
 
+  if (status === "restore_required") {
+    return (
+      <div
+        className={cn(
+          "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">Activate messages on this device</p>
+          <p className="text-sm text-text-secondary">
+            Your account already has messages enabled. One wallet signature activates them in this
+            browser.
+          </p>
+        </div>
+        <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
+          {busy ? "Activating…" : "Activate"}
+        </Button>
+        {actionError && (
+          <p className="text-sm text-status-error" role="alert">
+            {actionError}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const isCompact = variant === "compact";
 
   return (
