@@ -2,9 +2,10 @@
 
 import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 
+import { MessagingSetupError } from "@/components/messaging/messaging-setup-error";
 import { Button } from "@/components/ui/button";
 import { useMessagingActivation } from "@/hooks/use-messaging-activation";
 import {
@@ -12,11 +13,17 @@ import {
   messagingUnsupportedCopy,
   useMessagingStatus,
 } from "@/hooks/use-messaging-status";
+import { closeXmtpClient } from "@/hooks/use-xmtp-client";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { buildXmtpEoaSigner } from "@/lib/xmtp/client";
 import {
   enableMessagingFull,
   enableMessagingFullError,
 } from "@/lib/xmtp/enable-messaging-full";
+import {
+  resetLocalXmtpDatabase,
+  revokeAllInstallations,
+} from "@/lib/xmtp/reset-messaging-identity";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -57,7 +64,8 @@ export function MessagingSetupCard({
   const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
   const { data: walletClient } = useWalletClient({ chainId });
   const { profile, refetch } = useNostrProfile(address);
-  const { status, error, enableMessages, isReady, walletKind } = useMessagingStatus();
+  const { status, error, createErrorKind, enableMessages, isReady, walletKind } =
+    useMessagingStatus();
   const activation = useMessagingActivation();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -65,6 +73,35 @@ export function MessagingSetupCard({
   const unsupported = messagingUnsupportedCopy(walletKind);
   const canEnable = canWalletEnableMessaging(walletKind);
   const copy = contextCopy(context);
+
+  const runEnable = useCallback(async () => {
+    if (!address || !walletClient) {
+      setActionError("Wallet not ready. Try again.");
+      return;
+    }
+
+    const result = await enableMessagingFull({
+      enableMessages,
+      address,
+      walletClient,
+      profile,
+      xmtpAlreadyActive: isReady,
+    });
+    if (!result.ok) {
+      setActionError(enableMessagingFullError(result.step, result.verifyDetail));
+      return;
+    }
+    void refetch();
+    activation.refetchNetwork();
+  }, [
+    activation,
+    address,
+    enableMessages,
+    isReady,
+    profile,
+    refetch,
+    walletClient,
+  ]);
 
   const onEnable = async () => {
     if (!address || !walletClient) {
@@ -75,25 +112,64 @@ export function MessagingSetupCard({
     setActionError(null);
     setBusy(true);
     try {
-      const result = await enableMessagingFull({
-        enableMessages,
-        address,
-        walletClient,
-        profile,
-        xmtpAlreadyActive: isReady,
-      });
-      if (!result.ok) {
-        setActionError(enableMessagingFullError(result.step, result.verifyDetail));
-        return;
-      }
-      void refetch();
-      activation.refetchNetwork();
+      await runEnable();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not enable messages.");
     } finally {
       setBusy(false);
     }
   };
+
+  const onResetIdentity = async () => {
+    if (!address || busy) return;
+
+    setActionError(null);
+    setBusy(true);
+    try {
+      closeXmtpClient();
+      await resetLocalXmtpDatabase(address);
+      await runEnable();
+    } catch (e) {
+      setActionError(
+        e instanceof Error ? e.message : "Could not reset messaging identity.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRevokeAndRetry = async () => {
+    if (!address || !walletClient || busy) return;
+
+    setActionError(null);
+    setBusy(true);
+    try {
+      const signer = buildXmtpEoaSigner(walletClient, address);
+      await revokeAllInstallations(signer, address);
+      closeXmtpClient();
+      await resetLocalXmtpDatabase(address);
+      await runEnable();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Could not free device slots.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const errorPanel = (
+    <MessagingSetupError
+      actionError={actionError}
+      storeError={error}
+      createErrorKind={createErrorKind}
+      showResetIdentity={status === "error" && createErrorKind !== "installation_limit"}
+      busy={busy}
+      onResetIdentity={() => void onResetIdentity()}
+      onRevokeAndRetry={() => void onRevokeAndRetry()}
+    />
+  );
+
+  const showErrorPanel =
+    createErrorKind === "installation_limit" || Boolean(actionError || error);
 
   if (status === "disconnected") {
     return null;
@@ -132,11 +208,7 @@ export function MessagingSetupCard({
         <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
           {busy ? "Enabling…" : "Turn on messages"}
         </Button>
-        {(actionError || error) && (
-          <p className="text-sm text-status-error" role="alert">
-            {actionError ?? error}
-          </p>
-        )}
+        {showErrorPanel && errorPanel}
       </div>
     );
   }
@@ -161,11 +233,7 @@ export function MessagingSetupCard({
         <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
           {busy ? "Retrying…" : "Retry"}
         </Button>
-        {(actionError || error) && (
-          <p className="text-sm text-status-error" role="alert">
-            {actionError ?? error}
-          </p>
-        )}
+        {showErrorPanel && errorPanel}
       </div>
     );
   }
@@ -232,11 +300,7 @@ export function MessagingSetupCard({
         </div>
       )}
 
-      {(actionError || error) && (
-        <p className="text-sm text-status-error" role="alert">
-          {actionError ?? error}
-        </p>
-      )}
+      {showErrorPanel && errorPanel}
     </div>
   );
 }

@@ -23,7 +23,7 @@ export function MessagingDriftBanner({ className }: Props) {
   const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
   const { data: walletClient } = useWalletClient({ chainId });
   const { profile, refetch } = useNostrProfile(address);
-  const { enableMessages, isReady } = useMessagingStatus();
+  const { enableMessages, isReady, error: storeError } = useMessagingStatus();
   const activation = useMessagingActivation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +80,12 @@ export function MessagingDriftBanner({ className }: Props) {
         )}
       </Button>
       {error && (
-        <p className="text-sm text-status-error sm:basis-full" role="alert">
-          {error}
-        </p>
+        <div className="space-y-1 sm:basis-full" role="alert">
+          <p className="text-sm text-status-error">{error}</p>
+          {storeError && storeError !== error && (
+            <p className="text-text-tertiary font-mono text-xs">{storeError}</p>
+          )}
+        </div>
       )}
     </div>
   );

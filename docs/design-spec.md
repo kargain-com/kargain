@@ -406,7 +406,7 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 ### 4.12 Messages
 
-Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-network-registration.ts`](../hooks/use-xmtp-network-registration.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx).
+Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-network-registration.ts`](../hooks/use-xmtp-network-registration.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`reset-messaging-identity.ts`](../lib/xmtp/reset-messaging-identity.ts).
 
 **Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical activation truth:** XMTP network registration (`Client.canMessage` for own address) plus Nostr kind 0 opt-out — not localStorage alone. `xmtp:opted-in` and `xmtp:network-registered` (24h TTL) are self-healing fast-path caches; a positive network check revalidates cache and restores local opt-in. **Local client lifecycle:** passive connect runs `Client.build` only (no wallet signature); explicit user gestures run `Client.create`. `needsSetup` (`inactive` only) surfaces first-time onboarding; `restore_required` surfaces device activation (*Activate messages on this device*); `error` shows recovery/retry copy (OPFS multi-tab or init failure). `initializing` covers silent restore or network-check pending.
 
@@ -424,6 +424,10 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
 | XMTP init | Passive connect: `Client.build` silent restore only (no wallet signature); explicit **Enable messages** / **Activate** / profile switch ON → `Client.create` (may sign once per device); `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) after client set; disable publishes opt-out first then tears down XMTP; own-address network check on connect |
 | Setup card states | `inactive` → first-time onboarding · `restore_required` → device activation card (*Activate messages on this device*) · `error` → recovery/retry (includes OPFS multi-tab: *Messages are already open in another Kargain tab. Close it and retry.*) |
+| Setup card errors | Primary user copy `text-status-error`; when generic `enableMessagingFull` copy masks the SDK message, raw `store.error` as secondary `text-text-tertiary font-mono text-xs` |
+| Installation limit recovery | `createErrorKind === installation_limit` → *Message device limit reached.* + **Free device slots and retry** (`revokeAllInstallations` then scoped OPFS reset + re-enable); advisory *Messages on your other devices will need one-time reactivation.* |
+| OPFS identity reset | `error` status (non-limit) → text action **Reset messaging identity** (`resetLocalXmtpDatabase` scoped to `xmtp-{env}-{inboxId}.db3` via `Opfs.listFiles` + `deleteFile`, never `clearAll`) then re-enable; advisory *Message history on this device will be re-downloaded from the network.* |
+| Drift banner errors | Same secondary mono diagnostic when local generic copy differs from `store.error`; no new recovery actions |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot; unread from shared [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (syncs on focus / visibility) |
 | Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; Messages nav dot updates on any page; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect (not in Bell `/notifications`) |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
@@ -1292,4 +1296,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.32 (July 2026 — KP-6.4 stake surfaces link to Membership section). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.35 (July 2026 — XMTP messaging recovery: installation-limit revoke + scoped OPFS reset). Update when tokens, app shell, or component contracts change.*

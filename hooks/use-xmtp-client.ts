@@ -7,6 +7,10 @@ import { useAccount, useWalletClient } from "wagmi";
 import { buildXmtpClient, createXmtpClient } from "@/lib/xmtp/client";
 import type { XmtpClient } from "@/lib/xmtp/helpers";
 import {
+  classifyXmtpCreateError,
+  type XmtpCreateErrorKind,
+} from "@/lib/xmtp/reset-messaging-identity";
+import {
   clearOptedIn,
   getCachedNetworkRegistered,
   hasOptedIn,
@@ -26,6 +30,7 @@ type XmtpClientStore = {
   client: XmtpClient | null;
   isInitializing: boolean;
   error: string | null;
+  createErrorKind: XmtpCreateErrorKind | null;
   walletKey: string | null;
   deviceRestoreFailed: boolean;
 };
@@ -34,6 +39,7 @@ let store: XmtpClientStore = {
   client: null,
   isInitializing: false,
   error: null,
+  createErrorKind: null,
   walletKey: null,
   deviceRestoreFailed: false,
 };
@@ -70,6 +76,7 @@ export function closeXmtpClient(): void {
     client: null,
     isInitializing: false,
     error: null,
+    createErrorKind: null,
     walletKey: null,
     deviceRestoreFailed: false,
   });
@@ -102,7 +109,7 @@ async function runSilentRestore(address: `0x${string}`): Promise<void> {
     return;
   }
 
-  setStore({ isInitializing: true, error: null, walletKey: key, deviceRestoreFailed: false });
+  setStore({ isInitializing: true, error: null, createErrorKind: null, walletKey: key, deviceRestoreFailed: false });
 
   try {
     if (store.client && store.walletKey !== key) {
@@ -116,6 +123,7 @@ async function runSilentRestore(address: `0x${string}`): Promise<void> {
         client: built,
         isInitializing: false,
         error: null,
+        createErrorKind: null,
         walletKey: key,
         deviceRestoreFailed: false,
       });
@@ -135,6 +143,7 @@ async function runSilentRestore(address: `0x${string}`): Promise<void> {
         client: null,
         isInitializing: false,
         error: OPFS_LOCK_ERROR_MESSAGE,
+        createErrorKind: null,
         walletKey: null,
         deviceRestoreFailed: false,
       });
@@ -179,7 +188,7 @@ async function runInitialize(
     return;
   }
 
-  setStore({ isInitializing: true, error: null, walletKey: key, deviceRestoreFailed: false });
+  setStore({ isInitializing: true, error: null, createErrorKind: null, walletKey: key, deviceRestoreFailed: false });
 
   try {
     if (store.client && store.walletKey !== key) {
@@ -192,6 +201,7 @@ async function runInitialize(
       client: created,
       isInitializing: false,
       error: null,
+      createErrorKind: null,
       walletKey: key,
       deviceRestoreFailed: false,
     });
@@ -200,6 +210,7 @@ async function runInitialize(
       client: null,
       isInitializing: false,
       error: e instanceof Error ? e.message : "Failed to initialize XMTP.",
+      createErrorKind: classifyXmtpCreateError(e),
       walletKey: null,
       deviceRestoreFailed: false,
     });
@@ -210,6 +221,7 @@ export function useXmtpClient(): {
   client: XmtpClient | null;
   isInitializing: boolean;
   error: string | null;
+  createErrorKind: XmtpCreateErrorKind | null;
   deviceRestoreFailed: boolean;
   initialize: () => Promise<void>;
   ensureInitialized: () => Promise<XmtpClient | null>;
@@ -226,6 +238,7 @@ export function useXmtpClient(): {
     isConnected && walletKey && snapshot.walletKey === walletKey ? snapshot.client : null;
   const isInitializing = snapshot.isInitializing;
   const error = snapshot.error;
+  const createErrorKind = snapshot.createErrorKind;
   const deviceRestoreFailed =
     isConnected && walletKey === snapshot.walletKey ? snapshot.deviceRestoreFailed : false;
 
@@ -244,6 +257,7 @@ export function useXmtpClient(): {
         client: null,
         isInitializing: false,
         error: null,
+        createErrorKind: null,
         walletKey: null,
         deviceRestoreFailed: false,
       });
@@ -351,7 +365,15 @@ export function useXmtpClient(): {
     })();
   }, [address, connector, isConnected]);
 
-  return { client, isInitializing, error, deviceRestoreFailed, initialize, ensureInitialized };
+  return {
+    client,
+    isInitializing,
+    error,
+    createErrorKind,
+    deviceRestoreFailed,
+    initialize,
+    ensureInitialized,
+  };
 }
 
 export function resetXmtpClientOnDisconnect(isConnected: boolean) {

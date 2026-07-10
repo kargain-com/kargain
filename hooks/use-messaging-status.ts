@@ -13,6 +13,7 @@ import {
   messagingStatusNeedsSetup,
   type MessagingStatus,
 } from "@/lib/xmtp/messaging-status";
+import type { XmtpCreateErrorKind } from "@/lib/xmtp/reset-messaging-identity";
 import {
   clearMessagingDisabledLocally,
   clearOptedIn,
@@ -30,6 +31,7 @@ export function useMessagingStatus(): {
   status: MessagingStatus;
   client: ReturnType<typeof useXmtpClient>["client"];
   error: string | null;
+  createErrorKind: XmtpCreateErrorKind | null;
   isReady: boolean;
   needsSetup: boolean;
   needsDeviceRestore: boolean;
@@ -39,7 +41,8 @@ export function useMessagingStatus(): {
   disableMessages: () => void;
 } {
   const { address, isConnected, connector } = useAccount();
-  const { client, isInitializing, error, deviceRestoreFailed, ensureInitialized } = useXmtpClient();
+  const { client, isInitializing, error, createErrorKind, deviceRestoreFailed, ensureInitialized } =
+    useXmtpClient();
   const { kind: walletKind } = useWalletAccountKind(
     isConnected ? address : undefined,
     connector,
@@ -96,6 +99,7 @@ export function useMessagingStatus(): {
     status,
     client,
     error,
+    createErrorKind,
     isReady: messagingStatusIsReady(status),
     needsSetup: messagingStatusNeedsSetup(status),
     needsDeviceRestore: messagingStatusNeedsDeviceRestore(status),

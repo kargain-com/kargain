@@ -37,7 +37,10 @@ export function ethereumIdentifier(address: `0x${string}`) {
   };
 }
 
-function buildEoaSigner(walletClient: WalletClient, address: `0x${string}`): Signer {
+export function buildXmtpEoaSigner(
+  walletClient: WalletClient,
+  address: `0x${string}`,
+): Signer {
   return {
     type: "EOA",
     getIdentifier: () => ethereumIdentifier(address),
@@ -58,7 +61,7 @@ export async function createXmtpClient(
   walletClient: WalletClient,
   address: `0x${string}`,
 ): Promise<XmtpClient> {
-  const signer = buildEoaSigner(walletClient, address);
+  const signer = buildXmtpEoaSigner(walletClient, address);
   const options = { env: getXmtpEnv() } as ClientOptions;
   return Client.create(signer, options);
 }
