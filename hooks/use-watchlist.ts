@@ -31,8 +31,7 @@ export function useWatchlist(tokenId?: string) {
       try {
         const ids = await loadFavorites(pubkey);
         if (!cancelled) setWatchedIds(ids);
-      } catch (err) {
-        console.error("useWatchlist load failed", err);
+      } catch {
         if (!cancelled) setWatchedIds([]);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -60,13 +59,15 @@ export function useWatchlist(tokenId?: string) {
     }
 
     try {
-      if (wasWatched) {
-        await removeFavorite(tokenId, key);
-      } else {
-        await addFavorite(tokenId, key);
+      const ok = wasWatched
+        ? await removeFavorite(tokenId, key)
+        : await addFavorite(tokenId, key);
+      if (!ok) {
+        setWatchedIds((prev) =>
+          wasWatched ? [...prev, tokenId] : prev.filter((id) => id !== tokenId),
+        );
       }
-    } catch (err) {
-      console.error("useWatchlist toggle failed", err);
+    } catch {
       setWatchedIds((prev) =>
         wasWatched ? [...prev, tokenId] : prev.filter((id) => id !== tokenId),
       );
