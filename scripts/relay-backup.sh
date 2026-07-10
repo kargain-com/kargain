@@ -16,7 +16,7 @@ BACKUP_DIR="${KARGAIN_RELAY_BACKUP_DIR:-./backups/relay}"
 RETAIN_COUNT=8
 
 strfry_exec() {
-  docker compose exec -T strfry --config /app/strfry.conf "$@"
+  docker compose exec -T strfry /app/strfry --config /app/strfry.conf "$@"
 }
 
 mkdir -p "$BACKUP_DIR"

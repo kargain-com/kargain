@@ -18,7 +18,7 @@ REMOTE_RELAYS=(
 AUTHOR_CHUNK_SIZE=100
 
 strfry_exec() {
-  docker compose exec -T strfry --config /app/strfry.conf "$@"
+  docker compose exec -T strfry /app/strfry --config /app/strfry.conf "$@"
 }
 
 build_authors_filter() {
@@ -40,7 +40,7 @@ build_authors_filter() {
 echo "==> Scanning kind 0 events on own relay for author pubkeys…"
 
 mapfile -t AUTHORS < <(
-  docker compose exec -T --entrypoint sh strfry -c \
+  docker compose exec -T strfry sh -c \
     '/app/strfry --config /app/strfry.conf scan "{\"kinds\":[0]}" | python3 -c "
 import sys, json
 seen = set()
@@ -85,7 +85,7 @@ for remote in "${REMOTE_RELAYS[@]}"; do
     sync_output="$(strfry_exec sync "$remote" --dir down --filter "$filter" 2>&1)" || sync_status=$?
 
     while IFS= read -r line; do
-      if [[ "$line" == added:* ]]; then
+      if [[ "$line" == *"added:"* ]]; then
         echo "    ${line}"
       fi
     done <<< "$sync_output"

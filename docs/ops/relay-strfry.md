@@ -4,7 +4,7 @@ Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on t
 
 **Pinned release:** strfry **1.1.0** (`Dockerfile.strfry`).
 
-**CLI note:** The container `ENTRYPOINT` is `/app/strfry` (binary at `/app/strfry`, config at `/app/strfry.conf`). Ops subcommands are **not** on `$PATH` — always pass `--config /app/strfry.conf` as the first args to `docker compose exec` (see examples below). Do **not** run `strfry strfry …` (that becomes `/app/strfry strfry …` and fails).
+**CLI note:** `docker compose exec` **ignores** the image `ENTRYPOINT`. The binary is at `/app/strfry` (config at `/app/strfry.conf`) and is **not** on `$PATH`. Always name the binary explicitly: `docker compose exec -T strfry /app/strfry --config /app/strfry.conf <subcommand> …`. Pipelines use `sh -c` inside the container (`exec -T strfry sh -c '…'`). Do **not** use `compose exec --entrypoint` (that flag exists on `compose run` only).
 
 ---
 
@@ -122,7 +122,7 @@ Identities that published **before** strfry went live may not appear in the loca
 4. Run a one-time manual sync per pubkey (or small author batch):
 
 ```bash
-docker compose exec -T strfry --config /app/strfry.conf sync wss://relay.damus.io \
+docker compose exec -T strfry /app/strfry --config /app/strfry.conf sync wss://relay.damus.io \
   --dir down --filter '{"authors":["<hex-pubkey>"]}'
 ```
 
@@ -131,7 +131,7 @@ Repeat for each pre-relay identity, then rely on `./scripts/relay-sync.sh` going
 ### Manual author-based sync (single remote)
 
 ```bash
-docker compose exec -T strfry --config /app/strfry.conf sync wss://relay.damus.io \
+docker compose exec -T strfry /app/strfry --config /app/strfry.conf sync wss://relay.damus.io \
   --dir down --filter '{"authors":["<hex-pubkey-1>","<hex-pubkey-2>"]}'
 ```
 
@@ -142,7 +142,7 @@ Sync can be memory- and bandwidth-heavy; run one remote at a time when manual. M
 For relays without negentropy support, pipe download into import (author filter, not kinds-only):
 
 ```bash
-docker compose exec -T --entrypoint sh strfry -c \
+docker compose exec -T strfry sh -c \
   '/app/strfry --config /app/strfry.conf download wss://nos.lol \
     --filter "{\"authors\":[\"<hex-pubkey>\"]}" \
   | /app/strfry --config /app/strfry.conf import'
@@ -151,7 +151,7 @@ docker compose exec -T --entrypoint sh strfry -c \
 ### Scan (inspect local DB)
 
 ```bash
-docker compose exec -T strfry --config /app/strfry.conf scan '{"kinds":[0]}' | head
+docker compose exec -T strfry /app/strfry --config /app/strfry.conf scan '{"kinds":[0]}' | head
 ```
 
 ---
@@ -188,7 +188,7 @@ Or directly:
 
 ```bash
 mkdir -p ./backups/relay
-docker compose exec -T strfry --config /app/strfry.conf export \
+docker compose exec -T strfry /app/strfry --config /app/strfry.conf export \
   | gzip > "./backups/relay/relay-$(date +%Y%m%d).jsonl.gz"
 ```
 
@@ -203,12 +203,12 @@ Retain backups off-box. For DB version upgrades, use fried export/import per [st
 3. If the binary reports an incompatible DB version, only `export` works until migration:
 
 ```bash
-docker compose exec -T strfry --config /app/strfry.conf export --fried \
+docker compose exec -T strfry /app/strfry --config /app/strfry.conf export --fried \
   > /var/backups/strfry-pre-upgrade.jsonl
 docker compose stop strfry
 # replace volume or move aside data.mdb per upstream docs
 docker compose up -d strfry
-docker compose exec -T --entrypoint sh strfry -c \
+docker compose exec -T strfry sh -c \
   '/app/strfry --config /app/strfry.conf import --fried < /var/backups/strfry-pre-upgrade.jsonl'
 ```
 
