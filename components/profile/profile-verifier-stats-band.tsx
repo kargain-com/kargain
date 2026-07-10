@@ -89,6 +89,10 @@ export function ProfileVerifierStatsBand({
             <span className="ml-1.5 text-text-secondary">staked</span>
           </span>
           <StatsSeparator />
+          <Link href="/kar-pro?section=membership" className={monoLinkSm}>
+            Manage →
+          </Link>
+          <StatsSeparator />
           <Link href="/kar-pro?section=fee" className={monoLinkSm}>
             Edit fee →
           </Link>

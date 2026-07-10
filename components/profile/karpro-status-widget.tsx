@@ -39,9 +39,9 @@ export function KarProStatusWidget({
             Edit fee →
           </Button>
         </Link>
-        <Link href="/kar-pro">
+        <Link href="/kar-pro?section=membership">
           <Button variant="ghost" size="sm">
-            Manage
+            Membership →
           </Button>
         </Link>
       </div>
