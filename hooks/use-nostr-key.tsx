@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,11 +16,12 @@ import {
   loadDecryptedKey,
   type WalletSigner,
 } from "@/lib/nostr/key-manager";
-import { nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
+import { getNostrPool, nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 import {
   loadCachedPubkey,
   saveCachedPubkey,
 } from "@/lib/nostr/nostr-pubkey-cache";
+import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 
 type UseNostrKeyState = {
   nostrPrivateKey: `0x${string}` | null;
@@ -57,7 +59,11 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
   const [nostrPrivateKey, setNostrPrivateKey] = useState<`0x${string}` | null>(null);
   const [cachedPubkey, setCachedPubkey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [passiveResolveLoading, setPassiveResolveLoading] = useState(false);
   const [status, setStatus] = useState<UseNostrKeyState["status"]>("idle");
+  const attemptedPassiveRef = useRef(new Set<string>());
+  const nostrPrivateKeyRef = useRef(nostrPrivateKey);
+  nostrPrivateKeyRef.current = nostrPrivateKey;
 
   const signer = useMemo<WalletSigner | null>(() => {
     const addr = walletClient?.account?.address;
@@ -76,8 +82,43 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
       setCachedPubkey(null);
       return;
     }
-    setCachedPubkey(loadCachedPubkey(address));
-  }, [isConnected, address]);
+
+    const cached = loadCachedPubkey(address);
+    if (cached) {
+      setCachedPubkey(cached);
+      return;
+    }
+
+    setCachedPubkey(null);
+
+    const addressKey = address.toLowerCase();
+    if (nostrPrivateKey || attemptedPassiveRef.current.has(addressKey)) {
+      return;
+    }
+
+    attemptedPassiveRef.current.add(addressKey);
+    let cancelled = false;
+    setPassiveResolveLoading(true);
+
+    void (async () => {
+      try {
+        const pubkey = await attestedPubkeyForAddress(address, { pool: getNostrPool() });
+        if (cancelled) return;
+        if (nostrPrivateKeyRef.current) return;
+        if (loadCachedPubkey(address)) return;
+        if (!pubkey) return;
+
+        saveCachedPubkey(address, pubkey);
+        setCachedPubkey(pubkey);
+      } finally {
+        setPassiveResolveLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, address, nostrPrivateKey]);
 
   const nostrPubkey = useMemo(() => {
     if (nostrPrivateKey) return nostrPubkeyFromPrivateKey(nostrPrivateKey);
@@ -138,12 +179,12 @@ export function NostrKeyProvider({ children }: { children: ReactNode }) {
     () => ({
       nostrPrivateKey,
       nostrPubkey,
-      loading,
+      loading: loading || passiveResolveLoading,
       status,
       ensureNostrKey,
       refresh,
     }),
-    [nostrPrivateKey, nostrPubkey, loading, status, ensureNostrKey, refresh],
+    [nostrPrivateKey, nostrPubkey, loading, passiveResolveLoading, status, ensureNostrKey, refresh],
   );
 
   return <NostrKeyContext.Provider value={value}>{children}</NostrKeyContext.Provider>;
