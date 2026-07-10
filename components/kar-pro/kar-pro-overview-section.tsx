@@ -3,12 +3,15 @@
 import { usePathname } from "next/navigation";
 import { useReadContract } from "wagmi";
 
+import { KarProSetupChecklist } from "@/components/kar-pro/kar-pro-setup-checklist";
 import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
 import { replaceKarProSectionUrl } from "@/lib/kar-pro/kar-pro-section-url";
+import { deriveSetupChecklist } from "@/lib/kar-pro/setup-checklist";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -19,6 +22,9 @@ type KarProOverviewSectionProps = {
   joinedAt: number;
   verificationCount: number;
   address: `0x${string}`;
+  name: string;
+  slug: string;
+  messagingReady: boolean;
 };
 
 function formatJoinedDate(timestamp: number): string {
@@ -35,12 +41,16 @@ export function KarProOverviewSection({
   joinedAt,
   verificationCount,
   address,
+  name,
+  slug,
+  messagingReady,
 }: KarProOverviewSectionProps) {
   const pathname = usePathname();
   const chainId = DEFAULT_CHAIN_ID;
   const staking = karProStakingAddress(chainId);
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
   const { stakeLabel } = useMinStakeNative();
+  const { profile: nostrProfile } = useNostrProfile(address);
 
   const { data: onChainFee } = useReadContract({
     address: staking,
@@ -52,12 +62,22 @@ export function KarProOverviewSection({
 
   const feeWei = onChainFee ?? 0n;
 
+  const checklist = deriveSetupChecklist({
+    name,
+    slug,
+    feeWei,
+    hasExplicitPaymentMethods: nostrProfile?.verifierPaymentMethods !== undefined,
+    messagingReady,
+  });
+
   const goToFee = () => {
     replaceKarProSectionUrl(pathname, window.location.search, "fee");
   };
 
   return (
-    <section className={`${instrumentReadoutPanel} space-y-4`}>
+    <div className="space-y-6">
+      {!checklist.allRequiredComplete && <KarProSetupChecklist checklist={checklist} />}
+      <section className={`${instrumentReadoutPanel} space-y-4`}>
       <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-accent-warm">
         ✓ Active KarPro
       </p>
@@ -115,5 +135,6 @@ export function KarProOverviewSection({
         </div>
       </div>
     </section>
+    </div>
   );
 }

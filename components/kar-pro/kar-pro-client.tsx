@@ -158,6 +158,9 @@ export function KarProClient({
             joinedAt={verifierProfile.joinedAt}
             verificationCount={verifierProfile.verificationCount}
             address={address!}
+            name={verifierProfile.name}
+            slug={verifierProfile.slug}
+            messagingReady={!needsSetup}
           />
         }
         profile={
