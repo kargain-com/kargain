@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
+import { useXmtpNetworkRegistration } from "@/hooks/use-xmtp-network-registration";
 import { closeXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import {
   deriveMessagingStatus,
@@ -41,6 +42,7 @@ export function useMessagingStatus(): {
     isConnected ? address : undefined,
     connector,
   );
+  const { networkRegistered, networkChecking } = useXmtpNetworkRegistration(address);
 
   const walletKey = address?.toLowerCase() ?? null;
   const optedIn = walletKey ? hasOptedIn(walletKey) : false;
@@ -56,8 +58,20 @@ export function useMessagingStatus(): {
         error,
         optedIn,
         disabledLocally,
+        networkRegistered,
+        networkCheckPending: networkChecking,
       }),
-    [client, disabledLocally, error, isConnected, isInitializing, optedIn, walletKind],
+    [
+      client,
+      disabledLocally,
+      error,
+      isConnected,
+      isInitializing,
+      networkChecking,
+      networkRegistered,
+      optedIn,
+      walletKind,
+    ],
   );
 
   const enableMessages = useCallback(async (): Promise<boolean> => {

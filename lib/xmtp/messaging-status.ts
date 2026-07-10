@@ -20,6 +20,8 @@ export type DeriveMessagingStatusInput = {
   error: string | null;
   optedIn: boolean;
   disabledLocally: boolean;
+  networkRegistered: boolean;
+  networkCheckPending?: boolean;
 };
 
 export function deriveMessagingStatus(input: DeriveMessagingStatusInput): MessagingStatus {
@@ -31,6 +33,8 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
     error,
     optedIn,
     disabledLocally,
+    networkRegistered,
+    networkCheckPending = false,
   } = input;
 
   if (!isConnected) return "disconnected";
@@ -47,7 +51,10 @@ export function deriveMessagingStatus(input: DeriveMessagingStatusInput): Messag
 
   if (error) return "error";
 
-  if (!optedIn) return "inactive";
+  if (!optedIn) {
+    if (networkRegistered || networkCheckPending) return "initializing";
+    return "inactive";
+  }
 
   // Opted in locally but client not restored yet (reconnect / auto-init pending).
   return "initializing";

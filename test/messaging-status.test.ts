@@ -15,6 +15,8 @@ const base = {
   error: null,
   optedIn: false,
   disabledLocally: false,
+  networkRegistered: false,
+  networkCheckPending: false,
 };
 
 describe("deriveMessagingStatus", () => {
@@ -57,8 +59,40 @@ describe("deriveMessagingStatus", () => {
     );
   });
 
-  it("returns inactive before first opt-in", () => {
+  it("returns inactive before first opt-in when network is not registered", () => {
     assert.equal(deriveMessagingStatus(base), "inactive");
+  });
+
+  it("returns initializing when network registered but local opt-in missing", () => {
+    assert.equal(
+      deriveMessagingStatus({ ...base, networkRegistered: true }),
+      "initializing",
+    );
+  });
+
+  it("returns inactive when both local opt-in and network registration are absent", () => {
+    assert.equal(
+      deriveMessagingStatus({ ...base, optedIn: false, networkRegistered: false }),
+      "inactive",
+    );
+  });
+
+  it("returns disabled when locally opted out even if network registered", () => {
+    assert.equal(
+      deriveMessagingStatus({
+        ...base,
+        disabledLocally: true,
+        networkRegistered: true,
+      }),
+      "disabled",
+    );
+  });
+
+  it("returns initializing while network check is pending without cache", () => {
+    assert.equal(
+      deriveMessagingStatus({ ...base, networkCheckPending: true }),
+      "initializing",
+    );
   });
 
   it("returns initializing when opted in but client not restored", () => {

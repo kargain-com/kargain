@@ -141,6 +141,35 @@ export function MessagingSetupCard({
     );
   }
 
+  if (status === "error") {
+    return (
+      <div
+        className={cn(
+          "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">
+            Could not restore your messages on this device.
+          </p>
+          <p className="text-sm text-text-secondary">
+            Your account is still registered for messages. Retry to restore local access on this
+            browser.
+          </p>
+        </div>
+        <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
+          {busy ? "Retrying…" : "Retry"}
+        </Button>
+        {(actionError || error) && (
+          <p className="text-sm text-status-error" role="alert">
+            {actionError ?? error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const isCompact = variant === "compact";
 
   return (
@@ -176,7 +205,7 @@ export function MessagingSetupCard({
         </div>
       )}
 
-      {(actionError || (status === "error" && error)) && (
+      {(actionError || error) && (
         <p className="text-sm text-status-error" role="alert">
           {actionError ?? error}
         </p>

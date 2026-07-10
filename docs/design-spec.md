@@ -406,9 +406,9 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 ### 4.12 Messages
 
-Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx).
+Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-network-registration.ts`](../hooks/use-xmtp-network-registration.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx).
 
-**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered and DMs available. Until enabled, `needsSetup` surfaces show [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) instead of empty inbox or SDK errors.
+**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical activation truth:** XMTP network registration (`Client.canMessage` for own address) plus Nostr kind 0 opt-out — not localStorage alone. `xmtp:opted-in` and `xmtp:network-registered` (24h TTL) are self-healing fast-path caches; a positive network check revalidates cache and restores local opt-in. `needsSetup` (`inactive` only) surfaces first-time [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) onboarding; `error` shows device-restore retry copy (not onboarding). `initializing` covers network-registered local restore pending.
 
 | Element | Rule |
 |---------|------|
@@ -422,7 +422,8 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends *Hi, I'm interested in your listing for {formatPassportTitle}.* before navigating to `/messages/{id}`; existing threads unchanged |
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else specific copy from [`peerReachabilityMessage`](../lib/xmtp/can-message-peer.ts) |
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
-| XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; default accepting when Nostr field absent; enable verifies network + relay after publish; disable publishes opt-out first then tears down XMTP; opted-in auto-reconnect |
+| XMTP init | Explicit **Enable messages** only — no surprise sign on bare connect; default accepting when Nostr field absent; enable verifies network + relay after publish; disable publishes opt-out first then tears down XMTP; opted-in auto-reconnect; own-address network check runs on connect (not gated on local client ready) |
+| Setup card error | `error` status → recovery card (*Could not restore your messages on this device.* + **Retry**); `inactive` → first-time onboarding copy |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot; unread from shared [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (syncs on focus / visibility) |
 | Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; Messages nav dot updates on any page; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect (not in Bell `/notifications`) |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |

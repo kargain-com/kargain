@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   clearMessagingDisabledLocally,
+  clearNetworkRegisteredCache,
   clearOptedIn,
+  getCachedNetworkRegistered,
   hasOptedIn,
   isMessagingDisabledLocally,
+  NETWORK_REGISTERED_CACHE_TTL_MS,
   setMessagingDisabledLocally,
+  setNetworkRegisteredCache,
   setOptedIn,
 } from "../lib/xmtp/messaging-preferences.ts";
 
@@ -58,5 +62,33 @@ describe("messaging-preferences", () => {
     assert.equal(isMessagingDisabledLocally(ADDRESS), true);
     clearMessagingDisabledLocally(ADDRESS);
     assert.equal(isMessagingDisabledLocally(ADDRESS), false);
+  });
+
+  it("caches network registration within TTL", () => {
+    const now = 1_700_000_000_000;
+    assert.equal(getCachedNetworkRegistered(ADDRESS, now), false);
+    setNetworkRegisteredCache(ADDRESS, now);
+    assert.equal(getCachedNetworkRegistered(ADDRESS, now), true);
+    assert.equal(
+      getCachedNetworkRegistered(ADDRESS, now + NETWORK_REGISTERED_CACHE_TTL_MS - 1),
+      true,
+    );
+    clearNetworkRegisteredCache(ADDRESS);
+    assert.equal(getCachedNetworkRegistered(ADDRESS, now), false);
+  });
+
+  it("expires network registration cache after TTL", () => {
+    const now = 1_700_000_000_000;
+    setNetworkRegisteredCache(ADDRESS, now);
+    assert.equal(
+      getCachedNetworkRegistered(ADDRESS, now + NETWORK_REGISTERED_CACHE_TTL_MS),
+      false,
+    );
+  });
+
+  it("normalizes address casing for network registration cache", () => {
+    const now = 1_700_000_000_000;
+    setNetworkRegisteredCache(ADDRESS.toLowerCase(), now);
+    assert.equal(getCachedNetworkRegistered(ADDRESS.toUpperCase(), now), true);
   });
 });
