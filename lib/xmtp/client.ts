@@ -26,7 +26,7 @@ export function getXmtpEnv(): XmtpEnv {
   ) {
     return raw;
   }
-  return "dev";
+  return "production";
 }
 
 export function ethereumIdentifier(address: `0x${string}`) {
