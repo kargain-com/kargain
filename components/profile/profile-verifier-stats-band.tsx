@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
+import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
@@ -89,11 +90,11 @@ export function ProfileVerifierStatsBand({
             <span className="ml-1.5 text-text-secondary">staked</span>
           </span>
           <StatsSeparator />
-          <Link href="/kar-pro?section=membership" className={monoLinkSm}>
+          <Link href={karProSectionHref("membership")} className={monoLinkSm}>
             Manage →
           </Link>
           <StatsSeparator />
-          <Link href="/kar-pro?section=fee" className={monoLinkSm}>
+          <Link href={karProSectionHref("fee")} className={monoLinkSm}>
             Edit fee →
           </Link>
         </>

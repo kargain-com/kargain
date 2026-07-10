@@ -22,6 +22,7 @@ import {
 } from "@/components/verifier/verification-fee-display";
 import { categoryLabel, monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 import { paymentMethodChipIds } from "@/lib/verifier/payment-methods";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -158,7 +159,7 @@ export function ProfileEditClient() {
     } finally {
       setSaving(false);
     }
-  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierResolvedNonVerifier, refetch]);
+  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierResolvedNonVerifier, refetch, profile]);
 
   if (!isConnected) {
     return (
@@ -270,7 +271,7 @@ export function ProfileEditClient() {
                 {profile?.lud16?.trim() || "—"}
               </p>
               <p className="font-sans text-sm text-text-secondary">
-                <Link href="/kar-pro?section=payments" className={sansLink}>
+                <Link href={karProSectionHref("payments")} className={sansLink}>
                   Managed in KarPro settings
                 </Link>
               </p>
@@ -335,7 +336,7 @@ export function ProfileEditClient() {
             <div className="divide-y divide-border-default">
               <KarProReadoutRow
                 label="Business profile"
-                href="/kar-pro?section=profile"
+                href={karProSectionHref("profile")}
                 linkText="Edit →"
               >
                 <p className="font-sans text-sm text-text-primary">
@@ -348,7 +349,7 @@ export function ProfileEditClient() {
               </KarProReadoutRow>
               <KarProReadoutRow
                 label="Verification fee"
-                href="/kar-pro?section=fee"
+                href={karProSectionHref("fee")}
                 linkText="Edit →"
               >
                 <VerificationFeeDisplay
@@ -358,7 +359,7 @@ export function ProfileEditClient() {
               </KarProReadoutRow>
               <KarProReadoutRow
                 label="Payments"
-                href="/kar-pro?section=payments"
+                href={karProSectionHref("payments")}
                 linkText="Edit →"
               >
                 {loading || paymentMethodChipIds(profile).length === 0 ? (
@@ -369,7 +370,7 @@ export function ProfileEditClient() {
               </KarProReadoutRow>
               <KarProReadoutRow
                 label="Membership"
-                href="/kar-pro?section=membership"
+                href={karProSectionHref("membership")}
                 linkText="Manage →"
               >
                 <p className="font-mono text-sm tabular-nums text-text-primary">

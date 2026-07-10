@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildKarProSectionQuery,
+  karProSectionHref,
   karProSectionQueryString,
   parseKarProSection,
 } from "../lib/kar-pro/kar-pro-section-url.ts";
@@ -36,5 +37,10 @@ describe("kar-pro-section-url", () => {
     assert.equal(karProSectionQueryString("overview"), "");
     assert.equal(karProSectionQueryString("payments"), "section=payments");
     assert.equal(karProSectionQueryString("membership"), "section=membership");
+  });
+
+  it("karProSectionHref builds path", () => {
+    assert.equal(karProSectionHref("overview"), "/kar-pro");
+    assert.equal(karProSectionHref("membership"), "/kar-pro?section=membership");
   });
 });

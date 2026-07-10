@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { categoryLabel } from "@/lib/design/instrument-classes";
+import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 
 export type KarProStatusWidgetProps = {
   isOwner: boolean;
@@ -34,12 +35,12 @@ export function KarProStatusWidget({
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1">
-        <Link href="/kar-pro?section=fee">
+        <Link href={karProSectionHref("fee")}>
           <Button variant="ghost" size="sm">
             Edit fee →
           </Button>
         </Link>
-        <Link href="/kar-pro?section=membership">
+        <Link href={karProSectionHref("membership")}>
           <Button variant="ghost" size="sm">
             Membership →
           </Button>

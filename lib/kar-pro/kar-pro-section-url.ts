@@ -36,6 +36,13 @@ export function karProSectionQueryString(section: KarProSection): string {
   return `section=${encodeURIComponent(section)}`;
 }
 
+const KAR_PRO_PATH = "/kar-pro";
+
+export function karProSectionHref(section: KarProSection): string {
+  if (section === "overview") return KAR_PRO_PATH;
+  return `${KAR_PRO_PATH}?${karProSectionQueryString(section)}`;
+}
+
 /** Instant URL update without Next.js soft navigation (avoids section-switch jank). */
 export function replaceKarProSectionUrl(
   pathname: string,
