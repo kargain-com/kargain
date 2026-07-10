@@ -1,0 +1,59 @@
+# strfry Nostr relay — pinned to release 1.1.0 (https://github.com/hoytech/strfry)
+FROM alpine:3.18.3@sha256:7144f7bab3d4c2648d7e59409f15ec52a18006a128c733fcff20d3a4a54ba44a AS build
+
+ARG STRFRY_VERSION=1.1.0
+
+WORKDIR /build
+
+RUN apk --no-cache add \
+    linux-headers \
+    git \
+    g++ \
+    make \
+    perl \
+    pkgconfig \
+    libtool \
+    ca-certificates \
+    libressl-dev \
+    zlib-dev \
+    lmdb-dev \
+    flatbuffers-dev \
+    libsecp256k1-dev \
+    zstd-dev \
+    && rm -rf /var/cache/apk/*
+
+RUN git clone --depth 1 --branch "${STRFRY_VERSION}" https://github.com/hoytech/strfry.git . \
+    && git submodule update --init \
+    && make setup-golpe \
+    && make clean \
+    && make -j"$(nproc)"
+
+FROM alpine:3.18.3@sha256:7144f7bab3d4c2648d7e59409f15ec52a18006a128c733fcff20d3a4a54ba44a
+
+WORKDIR /app
+
+RUN apk --no-cache add \
+    lmdb \
+    flatbuffers \
+    libsecp256k1 \
+    libb2 \
+    zstd \
+    libressl \
+    python3 \
+    && rm -rf /var/cache/apk/* \
+    && adduser -D -u 10001 -h /app -s /sbin/nologin strfry
+
+COPY --from=build /build/strfry /app/strfry
+COPY strfry/strfry.conf /app/strfry.conf
+COPY strfry/kargain-policy.py /app/kargain-policy.py
+
+RUN chmod +x /app/kargain-policy.py \
+    && mkdir -p /data \
+    && chown strfry:strfry /data
+
+USER strfry
+
+EXPOSE 7777
+
+ENTRYPOINT ["/app/strfry"]
+CMD ["--config", "/app/strfry.conf", "relay"]

@@ -48,8 +48,19 @@ services:
     networks:
       - kargain
 
+  strfry:
+    build:
+      context: .
+      dockerfile: Dockerfile.strfry
+    restart: always
+    volumes:
+      - strfry_data:/data
+    networks:
+      - kargain
+
 volumes:
   postgres_data:
+  strfry_data:
 
 networks:
   kargain:
