@@ -11,22 +11,24 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { monoLinkSm } from "@/lib/design/instrument-classes";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
-type KarProAccountSectionProps = {
+type KarProMembershipSectionProps = {
   passId?: bigint;
   address: `0x${string}`;
   onLeft?: () => void;
 };
 
-export function KarProAccountSection({
+export function KarProMembershipSection({
   passId,
   address,
   onLeft,
-}: KarProAccountSectionProps) {
+}: KarProMembershipSectionProps) {
   const chainId = DEFAULT_CHAIN_ID;
   const config = useConfig();
   const walletChain = useChainId();
@@ -74,6 +76,30 @@ export function KarProAccountSection({
   return (
     <div className="rounded-md border border-border-default bg-bg-card p-6 md:p-8">
       <div className="space-y-3">
+        <p className="font-mono text-fluid-sm tabular-nums text-text-primary">
+          {stakeLabel} ETH staked
+        </p>
+        <p className="font-mono text-fluid-sm text-text-secondary">
+          {formatKarProPassTitle(resolvedPassId, chainId, { showChain: false })}
+        </p>
+        <p className="font-sans text-fluid-sm text-text-secondary">
+          Fully refundable · No slash · Leave anytime
+        </p>
+        {staking && (
+          <p className="font-sans text-fluid-sm text-text-secondary">
+            <a
+              href={explorerAddressUrl(chainId, staking)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={monoLinkSm}
+            >
+              View staking contract
+            </a>
+          </p>
+        )}
+      </div>
+
+      <div className="mt-6 space-y-3 border-t border-border-default pt-6">
         <p className="font-sans text-fluid-sm text-text-secondary">
           Leave KarPro — your stake ({stakeLabel} ETH) will be returned. Your verification history
           remains on-chain permanently.

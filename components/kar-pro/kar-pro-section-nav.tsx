@@ -17,7 +17,7 @@ type Props = {
   profile: ReactNode;
   fee: ReactNode;
   payments: ReactNode;
-  account: ReactNode;
+  membership: ReactNode;
 };
 
 const SECTIONS: { id: KarProSection; label: string }[] = [
@@ -25,7 +25,7 @@ const SECTIONS: { id: KarProSection; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "fee", label: "Fee" },
   { id: "payments", label: "Payments" },
-  { id: "account", label: "Account" },
+  { id: "membership", label: "Membership" },
 ];
 
 export function KarProSectionNav({
@@ -33,7 +33,7 @@ export function KarProSectionNav({
   profile,
   fee,
   payments,
-  account,
+  membership,
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -44,7 +44,7 @@ export function KarProSectionNav({
   const [visitedProfile, setVisitedProfile] = useState(() => section === "profile");
   const [visitedFee, setVisitedFee] = useState(() => section === "fee");
   const [visitedPayments, setVisitedPayments] = useState(() => section === "payments");
-  const [visitedAccount, setVisitedAccount] = useState(() => section === "account");
+  const [visitedMembership, setVisitedMembership] = useState(() => section === "membership");
 
   const syncSectionFromLocation = useCallback(() => {
     const next = readKarProSectionFromLocation();
@@ -52,7 +52,7 @@ export function KarProSectionNav({
     if (next === "profile") setVisitedProfile(true);
     if (next === "fee") setVisitedFee(true);
     if (next === "payments") setVisitedPayments(true);
-    if (next === "account") setVisitedAccount(true);
+    if (next === "membership") setVisitedMembership(true);
   }, []);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function KarProSectionNav({
       if (nextSection === "profile") setVisitedProfile(true);
       if (nextSection === "fee") setVisitedFee(true);
       if (nextSection === "payments") setVisitedPayments(true);
-      if (nextSection === "account") setVisitedAccount(true);
+      if (nextSection === "membership") setVisitedMembership(true);
       setSection(nextSection);
       replaceKarProSectionUrl(pathname, window.location.search, nextSection);
     },
@@ -81,7 +81,7 @@ export function KarProSectionNav({
     profile,
     fee,
     payments,
-    account,
+    membership,
   };
 
   const visited: Record<KarProSection, boolean> = {
@@ -89,7 +89,7 @@ export function KarProSectionNav({
     profile: visitedProfile,
     fee: visitedFee,
     payments: visitedPayments,
-    account: visitedAccount,
+    membership: visitedMembership,
   };
 
   return (

@@ -14,7 +14,8 @@ describe("kar-pro-section-url", () => {
     assert.equal(parseKarProSection("profile"), "profile");
     assert.equal(parseKarProSection("fee"), "fee");
     assert.equal(parseKarProSection("payments"), "payments");
-    assert.equal(parseKarProSection("account"), "account");
+    assert.equal(parseKarProSection("membership"), "membership");
+    assert.equal(parseKarProSection("account"), "membership");
     assert.equal(parseKarProSection("unknown"), "overview");
   });
 
@@ -34,5 +35,6 @@ describe("kar-pro-section-url", () => {
   it("karProSectionQueryString encodes section", () => {
     assert.equal(karProSectionQueryString("overview"), "");
     assert.equal(karProSectionQueryString("payments"), "section=payments");
+    assert.equal(karProSectionQueryString("membership"), "section=membership");
   });
 });

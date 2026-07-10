@@ -1,11 +1,11 @@
-export type KarProSection = "overview" | "profile" | "fee" | "payments" | "account";
+export type KarProSection = "overview" | "profile" | "fee" | "payments" | "membership";
 
 const SECTION_VALUES: readonly KarProSection[] = [
   "overview",
   "profile",
   "fee",
   "payments",
-  "account",
+  "membership",
 ];
 
 /** Dispatched after `history.replaceState` so section UI can sync without App Router navigation. */
@@ -13,6 +13,7 @@ export const KAR_PRO_SECTION_CHANGE_EVENT = "kar-pro-section-change";
 
 export function parseKarProSection(param: string | null): KarProSection {
   if (!param) return "overview";
+  if (param === "account") return "membership";
   return SECTION_VALUES.includes(param as KarProSection) ? (param as KarProSection) : "overview";
 }
 

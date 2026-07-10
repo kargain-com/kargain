@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useReadContracts } from "wagmi";
 
-import { KarProAccountSection } from "@/components/kar-pro/kar-pro-account-section";
+import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership-section";
 import { KarProFeeSection } from "@/components/kar-pro/kar-pro-fee-section";
 import { KarProIdentityStrip } from "@/components/kar-pro/kar-pro-identity-strip";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
@@ -172,8 +172,8 @@ export function KarProClient({
         }
         fee={<KarProFeeSection address={address!} staking={staking} />}
         payments={<KarProPaymentsSection address={address!} />}
-        account={
-          <KarProAccountSection
+        membership={
+          <KarProMembershipSection
             address={address!}
             onLeft={handleLeave}
           />
