@@ -1,8 +1,10 @@
 # strfry Nostr relay operations (VPS)
 
-Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra; **NS-5.3b** adds `wss://relay.kargain.com` first in client `NOSTR_RELAYS` via `publishSignedEvent`.
+Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra; **NS-5.3b** adds `wss://relay.kargain.com` first in client `NOSTR_RELAYS` via `publishSignedEvent`; **NS-5.3c** adds cron-safe sync/backup scripts.
 
 **Pinned release:** strfry **1.1.0** (`Dockerfile.strfry`).
+
+**CLI note:** The container `ENTRYPOINT` is `/app/strfry` (binary at `/app/strfry`, config at `/app/strfry.conf`). Ops subcommands are **not** on `$PATH` — always pass `--config /app/strfry.conf` as the first args to `docker compose exec` (see examples below). Do **not** run `strfry strfry …` (that becomes `/app/strfry strfry …` and fails).
 
 ---
 
@@ -84,40 +86,110 @@ docker compose exec strfry wget -qO- http://127.0.0.1:7777/ | head -5
 
 ## Backfill from public relays
 
-After deploy, import historical Kargain events from the public relays the app currently uses (`lib/nostr/relays.ts`). Filter to policy kinds only:
+### Why not kinds-only sync?
+
+A filter like `{"kinds":[0,1,7,30000,30078,30405]}` matches the **entire Nostr network**. Public relays reject negentropy sync with:
+
+`NEG-ERR "blocked: too many query results"`
+
+Sync must filter by **`authors`**.
+
+### Author set (self-maintaining)
+
+Every Kargain identity has a kind **0** profile on our own relay — client publishes hit `wss://relay.kargain.com` first since NS-5.3b. The daily sync script discovers authors by scanning kind 0 on the local DB.
+
+### Day-to-day sync (automated)
+
+From repo root on the VPS:
 
 ```bash
-KINDS_FILTER='{"kinds":[0,1,7,30000,30078,30405]}'
+./scripts/relay-sync.sh
 ```
 
-**Preferred — negentropy sync** (when remote relay supports it):
+The script:
+
+1. Scans `{"kinds":[0]}` on the local relay and collects unique `pubkey` values (python3 inside the container).
+2. Chunks authors (100 per sync call) and runs `sync --dir down` against each configured remote with `{"authors":[...]}`.
+3. Logs `added:` summary lines; a failing remote logs a warning and does not abort the script.
+
+### Pre-relay identities (one-time manual backfill)
+
+Identities that published **before** strfry went live may not appear in the local kind 0 scan. Discover their pubkeys via browser devtools on any Nostr web client:
+
+1. Open a client connected to a public relay (e.g. damus.io).
+2. Send a `REQ` with filter: `{"kinds":[0],"#i":["ethereum:0x<lowercase-wallet-address>"]}`.
+3. Collect the `pubkey` hex from matching kind 0 events.
+4. Run a one-time manual sync per pubkey (or small author batch):
 
 ```bash
-docker compose exec strfry strfry sync wss://relay.damus.io --filter "$KINDS_FILTER"
-docker compose exec strfry strfry sync wss://relay.nostr.band --filter "$KINDS_FILTER"
-docker compose exec strfry strfry sync wss://nos.lol --filter "$KINDS_FILTER"
-docker compose exec strfry strfry sync wss://relay.snort.social --filter "$KINDS_FILTER"
-docker compose exec strfry strfry sync wss://relay.primal.net --filter "$KINDS_FILTER"
+docker compose exec -T strfry --config /app/strfry.conf sync wss://relay.damus.io \
+  --dir down --filter '{"authors":["<hex-pubkey>"]}'
 ```
 
-**Fallback — REQ download + import** for relays without negentropy:
+Repeat for each pre-relay identity, then rely on `./scripts/relay-sync.sh` going forward.
+
+### Manual author-based sync (single remote)
 
 ```bash
-docker compose exec strfry sh -c \
-  'strfry download wss://nos.lol --filter "{\"kinds\":[0,1,7,30000,30078,30405]}" | strfry import'
+docker compose exec -T strfry --config /app/strfry.conf sync wss://relay.damus.io \
+  --dir down --filter '{"authors":["<hex-pubkey-1>","<hex-pubkey-2>"]}'
 ```
 
-Sync can be memory- and bandwidth-heavy on an empty DB; run one relay at a time and monitor `docker compose logs strfry`.
+Sync can be memory- and bandwidth-heavy; run one remote at a time when manual. Monitor `docker compose logs strfry`.
+
+### Fallback — REQ download + import
+
+For relays without negentropy support, pipe download into import (author filter, not kinds-only):
+
+```bash
+docker compose exec -T --entrypoint sh strfry -c \
+  '/app/strfry --config /app/strfry.conf download wss://nos.lol \
+    --filter "{\"authors\":[\"<hex-pubkey>\"]}" \
+  | /app/strfry --config /app/strfry.conf import'
+```
+
+### Scan (inspect local DB)
+
+```bash
+docker compose exec -T strfry --config /app/strfry.conf scan '{"kinds":[0]}' | head
+```
 
 ---
 
-## Weekly backup
+## Automation
 
-Export LMDB contents to JSONL (cron-friendly):
+Cron-safe scripts (no TTY; idempotent):
+
+| Script | Purpose |
+|--------|---------|
+| [`scripts/relay-sync.sh`](../scripts/relay-sync.sh) | Author-filtered negentropy sync from public relays |
+| [`scripts/relay-backup.sh`](../scripts/relay-backup.sh) | `export` → gzip; retain newest 8 backups |
+
+**Install crontab** on the VPS (manual step after deploy; adjust user/home as needed):
+
+```cron
+15 4 * * * cd /opt/kargain && ./scripts/relay-sync.sh >> $HOME/relay-sync.log 2>&1
+30 4 * * 0 cd /opt/kargain && ./scripts/relay-backup.sh >> $HOME/relay-backup.log 2>&1
+```
+
+Backup directory defaults to `./backups/relay` under repo root; override with `KARGAIN_RELAY_BACKUP_DIR`.
+
+---
+
+## Weekly backup (manual)
+
+Same as the backup script:
 
 ```bash
-docker compose exec -T strfry strfry export \
-  > /var/backups/kargain-strfry-$(date +%Y%m%d).jsonl
+./scripts/relay-backup.sh
+```
+
+Or directly:
+
+```bash
+mkdir -p ./backups/relay
+docker compose exec -T strfry --config /app/strfry.conf export \
+  | gzip > "./backups/relay/relay-$(date +%Y%m%d).jsonl.gz"
 ```
 
 Retain backups off-box. For DB version upgrades, use fried export/import per [strfry README](https://github.com/hoytech/strfry/blob/1.1.0/README.md#db-upgrade).
@@ -128,14 +200,16 @@ Retain backups off-box. For DB version upgrades, use fried export/import per [st
 
 1. Bump `STRFRY_VERSION` / tag comment in `Dockerfile.strfry`.
 2. `git pull && docker compose build strfry && docker compose up -d strfry`
-3. If the binary reports an incompatible DB version, only `strfry export` works until migration:
+3. If the binary reports an incompatible DB version, only `export` works until migration:
 
 ```bash
-docker compose exec -T strfry strfry export --fried > /var/backups/strfry-pre-upgrade.jsonl
+docker compose exec -T strfry --config /app/strfry.conf export --fried \
+  > /var/backups/strfry-pre-upgrade.jsonl
 docker compose stop strfry
 # replace volume or move aside data.mdb per upstream docs
 docker compose up -d strfry
-docker compose exec -T strfry sh -c 'strfry import --fried < /path/to/strfry-pre-upgrade.jsonl'
+docker compose exec -T --entrypoint sh strfry -c \
+  '/app/strfry --config /app/strfry.conf import --fried < /var/backups/strfry-pre-upgrade.jsonl'
 ```
 
 ---
