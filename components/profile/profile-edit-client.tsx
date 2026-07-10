@@ -2,7 +2,7 @@
 
 import { CheckDoubleIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useReadContract, useWalletClient } from "wagmi";
 
 import { IdentityHeader } from "@/components/identity/identity-header";
@@ -16,8 +16,13 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { categoryLabel, sansLink } from "@/lib/design/instrument-classes";
+import {
+  VerificationFeeDisplay,
+  VerificationPaymentChips,
+} from "@/components/verifier/verification-fee-display";
+import { categoryLabel, monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { paymentMethodChipIds } from "@/lib/verifier/payment-methods";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   buildProfileEditPatch,
@@ -38,11 +43,26 @@ function SectionEyebrow({ children }: { children: string }) {
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function KarProReadoutRow({
+  label,
+  children,
+  href,
+  linkText,
+}: {
+  label: string;
+  children: ReactNode;
+  href: string;
+  linkText: string;
+}) {
   return (
-    <div>
-      <dt className="text-sm text-text-secondary">{label}</dt>
-      <dd className="text-sm text-text-primary">{value}</dd>
+    <div className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="font-sans text-sm text-text-primary">{label}</p>
+        {children}
+      </div>
+      <Link href={href} className={`${monoLinkSm} shrink-0 pt-0.5`}>
+        {linkText}
+      </Link>
     </div>
   );
 }
@@ -312,22 +332,51 @@ export function ProfileEditClient() {
         {isActiveVerifier === true ? (
           <section className="flex flex-col gap-4">
             <SectionEyebrow>Professional profile</SectionEyebrow>
-            <dl className="flex flex-col gap-3">
-              <ReadOnlyField label="Name" value={verifierProfile?.name?.trim() || "—"} />
-              <ReadOnlyField
-                label="Category"
-                value={categoryIndexToLabel(verifierProfile?.category ?? 5)}
-              />
-              <ReadOnlyField
-                label="Slug"
-                value={verifierProfile?.slug?.trim() || "Not set"}
-              />
-            </dl>
-            <Button variant="secondary" size="sm" className="w-fit" asChild>
-              <Link href="/kar-pro">
-                Manage on KarPro →
-              </Link>
-            </Button>
+            <div className="divide-y divide-border-default">
+              <KarProReadoutRow
+                label="Business profile"
+                href="/kar-pro?section=profile"
+                linkText="Edit →"
+              >
+                <p className="font-sans text-sm text-text-primary">
+                  {verifierProfile?.name?.trim() || "—"} ·{" "}
+                  {categoryIndexToLabel(verifierProfile?.category ?? 5)}
+                </p>
+                <p className="font-mono text-sm text-text-secondary">
+                  {verifierProfile?.slug?.trim() || "Not set"}
+                </p>
+              </KarProReadoutRow>
+              <KarProReadoutRow
+                label="Verification fee"
+                href="/kar-pro?section=fee"
+                linkText="Edit →"
+              >
+                <VerificationFeeDisplay
+                  feeWei={verifierProfile?.verificationFee ?? 0n}
+                  primaryClassName="font-mono text-sm text-text-primary tabular-nums"
+                />
+              </KarProReadoutRow>
+              <KarProReadoutRow
+                label="Payments"
+                href="/kar-pro?section=payments"
+                linkText="Edit →"
+              >
+                {loading || paymentMethodChipIds(profile).length === 0 ? (
+                  <p className="text-sm text-text-secondary">—</p>
+                ) : (
+                  <VerificationPaymentChips profile={profile} />
+                )}
+              </KarProReadoutRow>
+              <KarProReadoutRow
+                label="Membership"
+                href="/kar-pro?section=membership"
+                linkText="Manage →"
+              >
+                <p className="font-mono text-sm tabular-nums text-text-primary">
+                  {stakeLabel} ETH staked
+                </p>
+              </KarProReadoutRow>
+            </div>
           </section>
         ) : (
           <section className="flex flex-col gap-4">
