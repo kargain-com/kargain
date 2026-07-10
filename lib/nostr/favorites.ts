@@ -4,6 +4,7 @@ import { hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
 import { getNostrPool, NOSTR_RELAYS, nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
+import { publishSignedEvent } from "@/lib/nostr/publish-event";
 
 const FAVORITES_LIST_ID = "kargain-favorites";
 const PASSPORT_TAG_PREFIX = "kargain:passport:";
@@ -59,7 +60,7 @@ export async function saveFavorites(tokenIds: string[], privateKey: string): Pro
     };
     const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
     const pool = getNostrPool();
-    await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+    await publishSignedEvent(pool, signed);
   } catch (err) {
     console.error("saveFavorites failed", err);
   }

@@ -5,6 +5,7 @@ import { finalizeEvent } from "nostr-tools";
 
 import { decryptAppPayloadV1, encryptAppPayloadV1 } from "@/lib/nostr/key-manager-crypto";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { publishSignedEvent } from "@/lib/nostr/publish-event";
 
 export type NotificationLastSeenAt = {
   ponder: number;
@@ -137,7 +138,7 @@ export async function saveNotificationState(
     };
     const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
     const pool = getNostrPool();
-    await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+    await publishSignedEvent(pool, signed);
   } catch (err) {
     console.error("saveNotificationState failed", err);
   }

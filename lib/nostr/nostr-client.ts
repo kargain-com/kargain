@@ -4,9 +4,9 @@ import { hexToBytes } from "viem";
 import { getPublicKey } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 
-import { NOSTR_RELAYS } from "@/lib/nostr/relays";
+import { KARGAIN_RELAY, NOSTR_RELAYS } from "@/lib/nostr/relays";
 
-export { NOSTR_RELAYS };
+export { KARGAIN_RELAY, NOSTR_RELAYS };
 
 let poolInstance: SimplePool | null = null;
 

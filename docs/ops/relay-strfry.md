@@ -1,6 +1,6 @@
 # strfry Nostr relay operations (VPS)
 
-Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra only; client relay list cutover is **NS-5.3b** (`lib/nostr/relays.ts` unchanged until then).
+Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra; **NS-5.3b** adds `wss://relay.kargain.com` first in client `NOSTR_RELAYS` via `publishSignedEvent`.
 
 **Pinned release:** strfry **1.1.0** (`Dockerfile.strfry`).
 
@@ -54,13 +54,17 @@ No change to the `cloudflared` service definition in compose — routing is conf
 
 ## Smoke checks
 
-**HTTP / NIP-11 landing:**
+**HTTP / NIP-11:**
 
 ```bash
+# Liveness only (HTML landing page)
 curl -si https://relay.kargain.com/ | head -20
+
+# NIP-11 relay metadata
+curl -si -H "Accept: application/nostr+json" https://relay.kargain.com/ | head -20
 ```
 
-Expect HTTP 200 and relay metadata mentioning **Kargain relay**.
+Expect HTTP 200; NIP-11 response mentions **Kargain relay**.
 
 **WebSocket REQ** (requires [nak](https://github.com/fiatjaf/nak) or similar on the VPS):
 

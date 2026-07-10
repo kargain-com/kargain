@@ -4,6 +4,7 @@ import { getAddress, hexToBytes } from "viem";
 import { finalizeEvent, type Event } from "nostr-tools";
 
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { publishSignedEvent } from "@/lib/nostr/publish-event";
 
 export const LISTING_OFFER_KIND = 30405;
 
@@ -106,7 +107,8 @@ export async function publishListingOffer(
   };
   const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
   const pool = getNostrPool();
-  await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+  const { ok } = await publishSignedEvent(pool, signed);
+  if (!ok) throw new Error("relay publish failed");
 }
 
 /** Withdraw an offer by re-publishing with content "withdrawn". Throws on relay failure. */
@@ -125,7 +127,8 @@ export async function withdrawListingOffer(
   };
   const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
   const pool = getNostrPool();
-  await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+  const { ok } = await publishSignedEvent(pool, signed);
+  if (!ok) throw new Error("relay publish failed");
 }
 
 /** Query all active offers for a listing. Never throws. */

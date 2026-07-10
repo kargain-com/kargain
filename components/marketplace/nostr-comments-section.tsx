@@ -25,6 +25,7 @@ import {
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { sansLink } from "@/lib/design/instrument-classes";
 import { NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { publishSignedEvent } from "@/lib/nostr/publish-event";
 import { cn } from "@/lib/utils";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
@@ -166,7 +167,8 @@ function NostrCommentsSection({
       tags,
     };
     const signed = finalizeEvent(unsigned, hexToBytes(privateKey));
-    await Promise.any(pool.publish([...NOSTR_RELAYS], signed));
+    const { ok } = await publishSignedEvent(pool, signed);
+    if (!ok) throw new Error("relay publish failed");
     return signed as unknown as ListingCommentEvent;
   };
 
