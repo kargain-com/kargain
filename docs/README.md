@@ -33,12 +33,6 @@ Start here. Each area has **one canonical document**; other files link in — th
 |----------|---------|
 | [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify + **completed** VPS cutover |
 
-## Ops (VPS)
-
-| Document | Purpose |
-|----------|---------|
-| [ops/relay-strfry.md](./ops/relay-strfry.md) | strfry relay deploy, author backfill, sync/backup cron scripts, logrotate verify |
-
 ## Product onboarding
 
 [README.md](../README.md) — setup, architecture, routes (links here for depth).

@@ -62,4 +62,5 @@ test-results
 !/docs/indexer/**
 !/docs/ops/
 !/docs/ops/**
+/docs/ops/relay-strfry.md
 !/docs/design-spec.md
