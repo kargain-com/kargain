@@ -1,6 +1,6 @@
 # strfry Nostr relay operations (VPS)
 
-Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra; **NS-5.3b** adds `wss://relay.kargain.com` first in client `NOSTR_RELAYS` via `publishSignedEvent`; **NS-5.3c** adds cron-safe sync/backup scripts.
+Self-hosted [strfry](https://github.com/hoytech/strfry) relay beside Ponder on the production VPS. **NS-5.3a** ships in-repo infra; **NS-5.3b** adds `wss://relay.kargain.com` first in client `NOSTR_RELAYS` via `publishSignedEvent`; **NS-5.3c** adds cron-safe sync/backup scripts (**NS-5.3c.1** fixes `compose exec` binary paths and sync log matching).
 
 **Pinned release:** strfry **1.1.0** (`Dockerfile.strfry`).
 
@@ -173,6 +173,14 @@ Cron-safe scripts (no TTY; idempotent):
 ```
 
 Backup directory defaults to `./backups/relay` under repo root; override with `KARGAIN_RELAY_BACKUP_DIR`.
+
+**Verify log rotation** (without waiting for the monthly schedule; requires `/etc/logrotate.d/kargain-relay` on the VPS):
+
+```bash
+sudo logrotate -d /etc/logrotate.d/kargain-relay   # dry-run — shows the plan, no changes
+sudo logrotate -f /etc/logrotate.d/kargain-relay   # force a rotation now (smoke test)
+ls -la ~/relay-*.log*
+```
 
 ---
 
