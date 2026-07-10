@@ -4,6 +4,7 @@ import { type Address, hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
 import { getOrCreateNostrKey } from "@/lib/nostr/key-manager";
+import { isProfilePublishBlockedByRotation } from "@/lib/nostr/identity-rotation";
 import {
   fetchLatestKind0RawByAuthor,
   isMergeBaseUnavailable,
@@ -109,6 +110,9 @@ export async function publishNostrProfile(
       },
     });
     const pubkey = nostrPubkeyFromPrivateKey(privateKey);
+    if (await isProfilePublishBlockedByRotation(address, pubkey)) {
+      return false;
+    }
     const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
     if (isMergeBaseUnavailable(existing, opts?.expectExisting === true)) {
       return false;
