@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,6 +25,12 @@ import type {
   PassportCreateFormInput,
   PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
+import type { VinInsight } from "@/lib/passport/vin-insight";
+
+type BuildVinInsight = (
+  rawVin: string,
+  currentYearField: string,
+) => VinInsight;
 
 type Props = {
   form: PassportCreateFormInput;
@@ -32,6 +40,16 @@ type Props = {
   showCore?: boolean;
   showOptional?: boolean;
 };
+
+function formatOriginCountry(country: string): string {
+  if (!country) return "";
+  const primary = country.split("(")[0]?.trim() ?? country;
+  return primary
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 function OptionalSelect({
   id,
@@ -81,6 +99,72 @@ export function PassportMetadataFields({
   showOptional = true,
 }: Props) {
   const maxYear = new Date().getFullYear() + 1;
+  const buildVinInsightRef = useRef<BuildVinInsight | null>(null);
+  const loadStartedRef = useRef(false);
+  const yearManuallyEditedRef = useRef(false);
+  const [insightReady, setInsightReady] = useState(false);
+  const [vinInsight, setVinInsight] = useState<VinInsight | null>(null);
+  const [yearFromVin, setYearFromVin] = useState(false);
+
+  const ensureBuildVinInsight = useCallback(() => {
+    if (loadStartedRef.current) return;
+    loadStartedRef.current = true;
+    void import("@/lib/passport/vin-insight").then((module) => {
+      buildVinInsightRef.current = module.buildVinInsight;
+      setInsightReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (form.vin.trim()) {
+      ensureBuildVinInsight();
+    }
+  }, [form.vin, ensureBuildVinInsight]);
+
+  useEffect(() => {
+    const buildVinInsight = buildVinInsightRef.current;
+    if (!buildVinInsight || !form.vin.trim()) {
+      setVinInsight(null);
+      return;
+    }
+    setVinInsight(buildVinInsight(form.vin, form.year));
+  }, [form.vin, form.year, insightReady]);
+
+  useEffect(() => {
+    if (!vinInsight || yearManuallyEditedRef.current) return;
+
+    const { yearSuggestion, yearConflict } = vinInsight;
+    if (yearSuggestion == null || yearConflict) return;
+
+    const suggested = String(yearSuggestion);
+    if (!form.year.trim()) {
+      onFieldChange("year", suggested);
+      setYearFromVin(true);
+      return;
+    }
+
+    if (yearFromVin && form.year !== suggested) {
+      onFieldChange("year", suggested);
+    }
+  }, [vinInsight, form.year, yearFromVin, onFieldChange]);
+
+  const handleVinChange = (value: string) => {
+    ensureBuildVinInsight();
+    onFieldChange("vin", value);
+  };
+
+  const handleYearChange = (value: string) => {
+    yearManuallyEditedRef.current = true;
+    setYearFromVin(false);
+    onFieldChange("year", value);
+  };
+
+  const insightHardErrors =
+    vinInsight?.status === "error" ? vinInsight.messages : [];
+  const insightAdvisories =
+    vinInsight?.status === "warning" || vinInsight?.status === "incomplete"
+      ? vinInsight.messages
+      : [];
 
   return (
     <div className="space-y-6">
@@ -92,13 +176,30 @@ export function PassportMetadataFields({
               id="vin"
               name="vin"
               value={form.vin}
-              onChange={(e) => onFieldChange("vin", e.target.value)}
+              onChange={(e) => handleVinChange(e.target.value)}
               placeholder="17-character VIN"
               maxLength={17}
               autoComplete="off"
               disabled={disabled}
             />
             {errors.vin && <p className="text-xs text-status-error">{errors.vin}</p>}
+            {insightHardErrors.map((message) => (
+              <p key={message} className="text-xs text-status-error">
+                {message}
+              </p>
+            ))}
+            {insightAdvisories.map((message) => (
+              <p key={message} className="text-xs text-status-warning">
+                {message}
+              </p>
+            ))}
+            {vinInsight?.origin && (
+              <p className="font-mono text-xs tabular-nums text-text-tertiary">
+                <span className="font-sans text-text-secondary">From VIN · </span>
+                {vinInsight.origin.wmi} · {vinInsight.origin.manufacturer} ·{" "}
+                {formatOriginCountry(vinInsight.origin.country)}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -128,20 +229,30 @@ export function PassportMetadataFields({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="year">Year</Label>
+            <div className="flex items-baseline gap-2">
+              <Label htmlFor="year">Year</Label>
+              {yearFromVin && (
+                <span className="font-mono text-xs text-text-tertiary">From VIN</span>
+              )}
+            </div>
             <Input
               id="year"
               name="year"
               type="number"
               inputMode="numeric"
               value={form.year}
-              onChange={(e) => onFieldChange("year", e.target.value)}
+              onChange={(e) => handleYearChange(e.target.value)}
               placeholder="2020"
               min={MIN_YEAR}
               max={maxYear}
               disabled={disabled}
             />
             {errors.year && <p className="text-xs text-status-error">{errors.year}</p>}
+            {vinInsight?.yearConflict && vinInsight.yearSuggestion != null && (
+              <p className="text-xs text-status-warning">
+                VIN suggests {vinInsight.yearSuggestion}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
