@@ -26,8 +26,8 @@ importers:
         specifier: ^0.0.16
         version: 0.0.16(arweave@1.15.7)(bufferutil@4.1.0)(encoding@0.1.13)(utf-8-validate@6.0.6)
       '@kargain/vincent':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.2.0
+        version: 0.2.0
       '@radix-ui/react-checkbox':
         specifier: ^1.3.3
         version: 1.3.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1207,8 +1207,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kargain/vincent@0.1.0':
-    resolution: {integrity: sha512-grmVOFYHhFI3vfYHX1vpDfel5cHbZzaw2iYoCyj8Xk5FQFs45bmQfaLsI4mbdR+5SXMGsCJPxPoU2TnDyl5gvw==}
+  '@kargain/vincent@0.2.0':
+    resolution: {integrity: sha512-EJ09RZlwtgixsGrs2Iz5zvjV2w0uJ/mM3W4V4MJssKOQmjnpTrBnLCsxfey+xdDzS33ZMF2y26cTRefSuS/AxA==}
     engines: {node: '>=24'}
 
   '@layerzerolabs/lz-evm-messagelib-v2@3.0.168':
@@ -8558,7 +8558,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@kargain/vincent@0.1.0': {}
+  '@kargain/vincent@0.2.0': {}
 
   '@layerzerolabs/lz-evm-messagelib-v2@3.0.168(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(utf-8-validate@6.0.6))(@eth-optimism/contracts@0.6.0(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(utf-8-validate@6.0.6))(@layerzerolabs/lz-evm-protocol-v2@3.0.148(@openzeppelin/contracts-upgradeable@5.6.1(@openzeppelin/contracts@5.6.1))(@openzeppelin/contracts@5.6.1)(hardhat-deploy@0.12.4(bufferutil@4.1.0)(utf-8-validate@6.0.6))(solidity-bytes-utils@0.8.4))(@layerzerolabs/lz-evm-v1-0.7@3.0.168(@openzeppelin/contracts-upgradeable@5.6.1(@openzeppelin/contracts@5.6.1))(@openzeppelin/contracts@5.6.1)(hardhat-deploy@0.12.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)))(@openzeppelin/contracts-upgradeable@5.6.1(@openzeppelin/contracts@5.6.1))(@openzeppelin/contracts@5.6.1)(hardhat-deploy@0.12.4(bufferutil@4.1.0)(utf-8-validate@6.0.6))(solidity-bytes-utils@0.8.4)':
     dependencies:

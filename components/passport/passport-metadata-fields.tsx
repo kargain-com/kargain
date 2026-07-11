@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { MAX_DESCRIPTION, MIN_YEAR } from "@/lib/passport/metadata-constants";
+import { MAX_DESCRIPTION, MIN_VIN_LENGTH, MIN_YEAR } from "@/lib/passport/metadata-constants";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
@@ -25,12 +25,14 @@ import type {
   PassportCreateFormInput,
   PassportFormFieldKey,
 } from "@/lib/passport/metadata-schema";
-import type { VinInsight } from "@/lib/passport/vin-insight";
+import { normalizeVin } from "@/lib/passport/metadata-schema";
+import {
+  buildVinInsight,
+  resolveVinOrigin,
+  type VinInsightOrigin,
+} from "@/lib/passport/vin-insight";
 
-type BuildVinInsight = (
-  rawVin: string,
-  currentYearField: string,
-) => VinInsight;
+const ORIGIN_RESOLVE_DEBOUNCE_MS = 300;
 
 type Props = {
   form: PassportCreateFormInput;
@@ -99,36 +101,37 @@ export function PassportMetadataFields({
   showOptional = true,
 }: Props) {
   const maxYear = new Date().getFullYear() + 1;
-  const buildVinInsightRef = useRef<BuildVinInsight | null>(null);
-  const loadStartedRef = useRef(false);
   const yearManuallyEditedRef = useRef(false);
-  const [insightReady, setInsightReady] = useState(false);
-  const [vinInsight, setVinInsight] = useState<VinInsight | null>(null);
+  const [vinOrigin, setVinOrigin] = useState<VinInsightOrigin | null>(null);
   const [yearFromVin, setYearFromVin] = useState(false);
 
-  const ensureBuildVinInsight = useCallback(() => {
-    if (loadStartedRef.current) return;
-    loadStartedRef.current = true;
-    void import("@/lib/passport/vin-insight").then((module) => {
-      buildVinInsightRef.current = module.buildVinInsight;
-      setInsightReady(true);
-    });
-  }, []);
+  const vinInsight = useMemo(() => {
+    if (!form.vin.trim()) return null;
+    return buildVinInsight(form.vin, form.year);
+  }, [form.vin, form.year]);
+
+  const normalizedVin = useMemo(() => normalizeVin(form.vin), [form.vin]);
 
   useEffect(() => {
-    if (form.vin.trim()) {
-      ensureBuildVinInsight();
-    }
-  }, [form.vin, ensureBuildVinInsight]);
-
-  useEffect(() => {
-    const buildVinInsight = buildVinInsightRef.current;
-    if (!buildVinInsight || !form.vin.trim()) {
-      setVinInsight(null);
+    if (normalizedVin.length < MIN_VIN_LENGTH) {
+      setVinOrigin(null);
       return;
     }
-    setVinInsight(buildVinInsight(form.vin, form.year));
-  }, [form.vin, form.year, insightReady]);
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const vinAtResolve = normalizedVin;
+      void resolveVinOrigin(vinAtResolve).then((origin) => {
+        if (cancelled || normalizeVin(form.vin) !== vinAtResolve) return;
+        setVinOrigin(origin);
+      });
+    }, ORIGIN_RESOLVE_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [normalizedVin, form.vin]);
 
   useEffect(() => {
     if (!vinInsight || yearManuallyEditedRef.current) return;
@@ -149,7 +152,6 @@ export function PassportMetadataFields({
   }, [vinInsight, form.year, yearFromVin, onFieldChange]);
 
   const handleVinChange = (value: string) => {
-    ensureBuildVinInsight();
     onFieldChange("vin", value);
   };
 
@@ -193,11 +195,11 @@ export function PassportMetadataFields({
                 {message}
               </p>
             ))}
-            {vinInsight?.origin && (
+            {vinOrigin && (
               <p className="font-mono text-xs tabular-nums text-text-tertiary">
                 <span className="font-sans text-text-secondary">From VIN · </span>
-                {vinInsight.origin.wmi} · {vinInsight.origin.manufacturer} ·{" "}
-                {formatOriginCountry(vinInsight.origin.country)}
+                {vinOrigin.wmi} · {vinOrigin.manufacturer} ·{" "}
+                {formatOriginCountry(vinOrigin.country)}
               </p>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { lookupWmi, validateVin, type ModelYearResult, type VinValidation } from "@kargain/vincent";
+import { validateVin, type ModelYearResult, type VinValidation } from "@kargain/vincent";
 
 import { MAX_VIN_LENGTH, MIN_VIN_LENGTH } from "@/lib/passport/metadata-constants";
 import { normalizeVin } from "@/lib/passport/metadata-schema";
@@ -16,7 +16,6 @@ export type VinInsight = {
   messages: string[];
   yearSuggestion: number | null;
   yearConflict: boolean;
-  origin: VinInsightOrigin | null;
 };
 
 const EU_CHECK_DIGIT_ADVISORY =
@@ -35,17 +34,6 @@ function resolveYearSuggestion(modelYear: ModelYearResult): number | null {
   if (modelYear.best != null) return modelYear.best;
   if (modelYear.candidates.length === 1) return modelYear.candidates[0] ?? null;
   return null;
-}
-
-function resolveOrigin(normalized: string): VinInsightOrigin | null {
-  if (normalized.length < 3) return null;
-  const wmi = lookupWmi(normalized);
-  if (!wmi) return null;
-  return {
-    wmi: wmi.wmi,
-    manufacturer: wmi.manufacturer,
-    country: wmi.country ?? "",
-  };
 }
 
 function buildMessages(validation: VinValidation): string[] {
@@ -91,12 +79,11 @@ function emptyInsight(): VinInsight {
     messages: [],
     yearSuggestion: null,
     yearConflict: false,
-    origin: null,
   };
 }
 
 function withYearConflict(
-  insight: Omit<VinInsight, "yearConflict">,
+  insight: VinInsight,
   currentYearField: string,
 ): VinInsight {
   const currentYear = parseYearField(currentYearField);
@@ -114,8 +101,6 @@ export function buildVinInsight(rawVin: string, currentYearField: string): VinIn
     return emptyInsight();
   }
 
-  const origin = resolveOrigin(normalized);
-
   if (normalized.length < MAX_VIN_LENGTH) {
     const validation = validateVin(normalized);
     const messages =
@@ -127,7 +112,7 @@ export function buildVinInsight(rawVin: string, currentYearField: string): VinIn
         status: "incomplete",
         messages,
         yearSuggestion,
-        origin,
+        yearConflict: false,
       },
       currentYearField,
     );
@@ -142,8 +127,24 @@ export function buildVinInsight(rawVin: string, currentYearField: string): VinIn
       status: deriveStatus(validation),
       messages,
       yearSuggestion,
-      origin,
+      yearConflict: false,
     },
     currentYearField,
   );
+}
+
+export async function resolveVinOrigin(
+  normalizedVin: string,
+): Promise<VinInsightOrigin | null> {
+  if (normalizedVin.length < 3) return null;
+
+  const { lookupWmi } = await import("@kargain/vincent/wmi");
+  const wmi = await lookupWmi(normalizedVin);
+  if (!wmi) return null;
+
+  return {
+    wmi: wmi.wmi,
+    manufacturer: wmi.manufacturer,
+    country: wmi.country ?? "",
+  };
 }
