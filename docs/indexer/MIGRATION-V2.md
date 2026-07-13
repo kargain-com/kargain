@@ -8,7 +8,7 @@
 | v1 ghost index data | ✅ Cleared after production reindex |
 | Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
 
-Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). This document remains as reference for the v2 mapping and FX display work (§6).
+Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **AuctionEscrow** indexing is documented in [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md). This document remains as reference for the v2 mapping and FX display work (§6).
 
 **Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook)
 

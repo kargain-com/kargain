@@ -27,6 +27,7 @@ export type ResolvedSepoliaStack = {
   nativeFeed: `0x${string}`;
   timelock?: `0x${string}`;
   proxyOnftAdapter?: `0x${string}`;
+  auctionEscrow?: `0x${string}`;
   indexFromBlock: number;
   blocks: DeploymentBlocks;
 };
@@ -62,6 +63,7 @@ function stackFromManifest(manifest: DeploymentManifest, source: SepoliaStackSou
     nativeFeed: manifest.nativeFeed ?? SEPOLIA_ACTIVE.nativeFeed,
     ...(manifest.timelock ? { timelock: manifest.timelock } : {}),
     ...(manifest.proxyOnftAdapter ? { proxyOnftAdapter: manifest.proxyOnftAdapter } : {}),
+    ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
     indexFromBlock: manifest.indexFromBlock,
     blocks: manifest.blocks,
   };
@@ -81,6 +83,7 @@ function stackFromCommitted(): ResolvedSepoliaStack {
     nativeFeed: SEPOLIA_ACTIVE.nativeFeed,
     timelock: SEPOLIA_ACTIVE.timelock,
     proxyOnftAdapter: SEPOLIA_ACTIVE.proxyOnftAdapter,
+    auctionEscrow: SEPOLIA_ACTIVE.auctionEscrow,
     indexFromBlock: SEPOLIA_ACTIVE.indexFromBlock,
     blocks: { ...SEPOLIA_ACTIVE.blocks },
   };
@@ -114,6 +117,9 @@ function stackFromEnv(): ResolvedSepoliaStack | null {
     nativeFeed: process.env.PONDER_NATIVE_FEED_ADDRESS
       ? getAddress(process.env.PONDER_NATIVE_FEED_ADDRESS as `0x${string}`)
       : base.nativeFeed,
+    auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS
+      ? getAddress(process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}`)
+      : base.auctionEscrow,
     indexFromBlock,
   };
 }
@@ -126,6 +132,7 @@ export function ponderSepoliaAddresses(): PonderAddressBundle {
     karProStaking: stack.karProStaking,
     marketplace: stack.marketplace,
     marketplaceImpl: stack.marketplaceImpl,
+    ...(stack.auctionEscrow ? { auctionEscrow: stack.auctionEscrow } : {}),
   };
 }
 
@@ -212,6 +219,10 @@ export function formatSepoliaStackReport(stack: ResolvedSepoliaStack): string {
     `  marketplaceImpl:  ${stack.marketplaceImpl}`,
     ...(stack.timelock ? [`  timelock:           ${stack.timelock}`] : []),
     ...(stack.proxyOnftAdapter ? [`  proxyOnftAdapter:   ${stack.proxyOnftAdapter}`] : []),
+    ...(stack.auctionEscrow ? [`  auctionEscrow:      ${stack.auctionEscrow}`] : []),
+    ...(stack.blocks.auctionEscrow !== undefined
+      ? [`  blocks.auctionEscrow: ${stack.blocks.auctionEscrow}`]
+      : []),
     "",
     "Network (set once on VPS / Vercel — see .env.example):",
     `  NEXT_PUBLIC_CHAIN_ID=84532`,

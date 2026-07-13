@@ -1,6 +1,9 @@
 import { db } from "ponder:api";
 import {
   agentAuthorization,
+  auction,
+  auctionBid,
+  auctionSettlement,
   marketplaceListing,
   passport,
   passportRecord,
@@ -9,6 +12,7 @@ import {
 } from "ponder:schema";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -237,6 +241,29 @@ function enrichListing(
   };
 }
 
+function enrichAuction(
+  row: typeof auction.$inferSelect,
+  passportMap: Map<string, PassportDenorm>,
+) {
+  const p = passportMap.get(row.tokenId);
+  return {
+    ...row,
+    passportStatus: p?.status ?? "UNVERIFIED",
+    verifier: p?.verifier ?? "",
+    vin: p?.vin ?? "",
+    make: p?.make ?? "",
+    model: p?.model ?? "",
+    year: p?.year ?? 0,
+    mileageKm: p?.mileageKm ?? 0,
+    fuelType: p?.fuelType ?? "",
+    bodyType: p?.bodyType ?? "",
+    transmission: p?.transmission ?? "",
+    tokenUri: p?.tokenUri ?? "",
+    coverPhotoUri: p?.coverPhotoUri ?? "",
+    duplicateVin: p?.duplicateVin ?? false,
+  };
+}
+
 function filterAndSortListings(
   listings: Array<EnrichedListingForFilter & Record<string, unknown>>,
   filters: ListingFilterQuery,
@@ -420,6 +447,105 @@ app.get("/listings", async (c) => {
       limit,
     }),
   );
+});
+
+app.get("/auctions", async (c) => {
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const activeFilter = parseOptionalBoolean(c.req.query("active"));
+  const sellerParam = c.req.query("seller");
+  const agentParam = c.req.query("agent");
+
+  const conditions = [];
+  if (activeFilter !== undefined) {
+    conditions.push(eq(auction.active, activeFilter));
+  }
+  if (sellerParam) {
+    const seller = parseAddressParam(sellerParam);
+    if (!seller) return c.json({ error: "Invalid seller address" }, 400);
+    conditions.push(eq(auction.seller, seller));
+  }
+  if (agentParam) {
+    const agent = parseAddressParam(agentParam);
+    if (!agent) return c.json({ error: "Invalid agent address" }, 400);
+    conditions.push(eq(auction.agent, agent));
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const orderBy =
+    activeFilter === true
+      ? [asc(auction.endsAt), desc(auction.createdAt)]
+      : [desc(auction.updatedAt)];
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(auction)
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(auction).where(where),
+  ]);
+
+  const tokenIds = [...new Set(rows.map((row) => row.tokenId))];
+  const passportMap = await loadPassportMap(tokenIds);
+  const auctions = rows.map((row) => enrichAuction(row, passportMap));
+  const total = totalRow[0]?.total ?? 0;
+
+  return c.json(jsonBody({ auctions, total, page, limit }));
+});
+
+app.get("/auctions/:tokenId", async (c) => {
+  const tokenId = c.req.param("tokenId");
+  const rows = await db
+    .select()
+    .from(auction)
+    .where(eq(auction.id, tokenId))
+    .limit(1);
+
+  if (!rows[0]) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const row = rows[0];
+  const passportMap = await loadPassportMap([tokenId]);
+
+  const settlementRows = await db
+    .select()
+    .from(auctionSettlement)
+    .where(eq(auctionSettlement.id, tokenId))
+    .limit(1);
+
+  return c.json(
+    jsonBody({
+      ...enrichAuction(row, passportMap),
+      settlement: settlementRows[0] ?? null,
+    }),
+  );
+});
+
+app.get("/auctions/:tokenId/bids", async (c) => {
+  const tokenId = c.req.param("tokenId");
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const where = eq(auctionBid.tokenId, tokenId);
+
+  const [bids, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(auctionBid)
+      .where(where)
+      .orderBy(desc(auctionBid.timestamp))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(auctionBid).where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+  return c.json(jsonBody({ bids, total, page, limit }));
 });
 
 app.get("/listings/stats", async (c) => {
@@ -676,6 +802,25 @@ app.get("/profile/:address/listings", async (c) => {
   const enriched = listings.map((listing) => enrichListing(listing, passportMap));
 
   return c.json(jsonBody({ listings: enriched }));
+});
+
+app.get("/profile/:address/auctions", async (c) => {
+  const address = parseAddressParam(c.req.param("address"));
+  if (!address) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const auctionsRows = await db
+    .select()
+    .from(auction)
+    .where(eq(auction.seller, address))
+    .orderBy(desc(auction.createdAt));
+
+  const tokenIds = [...new Set(auctionsRows.map((row) => row.tokenId))];
+  const passportMap = await loadPassportMap(tokenIds);
+  const enriched = auctionsRows.map((row) => enrichAuction(row, passportMap));
+
+  return c.json(jsonBody({ auctions: enriched }));
 });
 
 app.get("/agents/:address/authorizations", async (c) => {

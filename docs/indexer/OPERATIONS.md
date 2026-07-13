@@ -80,6 +80,7 @@ After backfill reaches chain head, **leave the same numeric start block**. Ponde
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
+| AuctionEscrow indexer (July 2026) | New `auction` / `auction_bid` / `auction_settlement` tables + `AuctionEscrow` in `ponder.config.ts` — **reindex required**; keep `PONDER_START_BLOCK_84532=43399242`; auction contract backfills from **44080895** only ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
@@ -161,7 +162,9 @@ PONDER_START_BLOCK_84532=43399242   # SEPOLIA_ACTIVE.indexFromBlock — or a che
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
-Optional advanced overrides: `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, … only when debugging or pre-PR deploy smoke on a machine with a fresh manifest.
+Optional advanced overrides: `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, `PONDER_AUCTION_ESCROW_ADDRESS`, … only when debugging or pre-PR deploy smoke on a machine with a fresh manifest.
+
+**AuctionEscrow start block:** resolved per-contract from `SEPOLIA_ACTIVE.blocks.auctionEscrow` (**44080895**) — not from `PONDER_START_BLOCK_84532`. Confirm with `pnpm ponder:config` after pull.
 
 For G1 schema-only updates (same contract addresses), keep existing infra env; still set start block to `indexFromBlock` for a full replay unless you intentionally use a higher checkpoint.
 
@@ -188,6 +191,7 @@ Wait until logs show:
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
 curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/listings | jq '.total'
+curl -s https://ponder.kargain.com/auctions | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.statusCounts'
 curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
 curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/authorizations?hasActiveListing=false' | jq '.total, .page, .limit'

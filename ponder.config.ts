@@ -1,5 +1,6 @@
 import { createConfig } from "ponder";
 import {
+  AuctionEscrowAbi,
   KarPassportAbi,
   KarProPassAbi,
   KarProStakingAbi,
@@ -41,5 +42,13 @@ export default createConfig({
       abi: MarketplaceEscrowAbi,
       ...contractEntry(addresses.marketplace, "marketplace", localAddresses?.marketplace),
     },
+    ...(addresses.auctionEscrow
+      ? {
+          AuctionEscrow: {
+            abi: AuctionEscrowAbi,
+            ...contractEntry(addresses.auctionEscrow, "auctionEscrow"),
+          },
+        }
+      : {}),
   },
 });

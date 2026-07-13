@@ -137,3 +137,71 @@ export const verifier = onchainTable("verifier", (t) => ({
   joinedAt: t.bigint().notNull().default(0n),
   leftAt: t.bigint().notNull().default(0n),
 }));
+
+export const auction = onchainTable(
+  "auction",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    seller: t.text().notNull(),
+    agent: t.text().notNull().default(""),
+    asset: t.text().notNull().default(""),
+    reserve: t.bigint().notNull(),
+    duration: t.bigint().notNull(),
+    agentFeeBps: t.integer().notNull().default(0),
+    ownerMinAsset: t.bigint().notNull().default(0n),
+    startedAt: t.bigint().notNull().default(0n),
+    endsAt: t.bigint().notNull().default(0n),
+    highestBidder: t.text().notNull().default(""),
+    highestBid: t.bigint().notNull().default(0n),
+    active: t.boolean().notNull().default(true),
+    phase: t.text().notNull().default("CREATED"),
+    returnRequestedAt: t.bigint(),
+    voidReason: t.text().notNull().default(""),
+    createdAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    sellerIdx: index().on(table.seller),
+    agentIdx: index().on(table.agent),
+    activeIdx: index().on(table.active),
+  }),
+);
+
+export const auctionBid = onchainTable(
+  "auction_bid",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    bidder: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    endsAt: t.bigint().notNull(),
+    refunded: t.boolean().notNull().default(false),
+    wrappedFallback: t.boolean().notNull().default(false),
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    tokenIdIdx: index().on(table.tokenId),
+  }),
+);
+
+export const auctionSettlement = onchainTable("auction_settlement", (t) => ({
+  id: t.text().primaryKey(),
+  tokenId: t.text().notNull(),
+  buyer: t.text().notNull(),
+  gross: t.bigint().notNull(),
+  releaseAt: t.bigint().notNull(),
+  disputedAt: t.bigint().notNull().default(0n),
+  bond: t.bigint(),
+  disputeOutcome: t.text().notNull().default(""),
+  receiptConfirmedAt: t.bigint(),
+  platformFee: t.bigint(),
+  agentFee: t.bigint(),
+  net: t.bigint(),
+  autoRelease: t.boolean(),
+  releasedAt: t.bigint(),
+  refundPendingAt: t.bigint(),
+  clearedAt: t.bigint(),
+  createdAt: t.bigint().notNull(),
+  updatedAt: t.bigint().notNull(),
+}));

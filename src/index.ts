@@ -1,6 +1,10 @@
 import { ponder } from "ponder:registry";
+import { and, eq } from "ponder";
 import {
   agentAuthorization,
+  auction,
+  auctionBid,
+  auctionSettlement,
   currencyFeed,
   marketplaceListing,
   marketplaceSale,
@@ -13,6 +17,13 @@ import { getAddress } from "viem";
 
 import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
+import {
+  AUCTION_PHASE,
+  auctionCreatedRow,
+  bidRowId,
+  settlementDisputeOutcomeLabel,
+  voidReasonLabel,
+} from "./lib/ponder-auction";
 import {
   disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
@@ -503,3 +514,291 @@ ponder.on("KarPassport:DisputeDepositPaid", async ({ event, context }) => {
 });
 
 ponder.on("KarPassport:DisputeDepositUpdated", async () => {});
+
+ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const values = auctionCreatedRow({
+    tokenId,
+    seller: event.args.seller,
+    agent: event.args.agent,
+    asset: event.args.asset,
+    reserve: event.args.reserve,
+    duration: BigInt(event.args.duration),
+    agentFeeBps: Number(event.args.agentFeeBps),
+    ownerMinAsset: 0n,
+    timestamp: event.block.timestamp,
+  });
+
+  await context.db
+    .insert(auction)
+    .values(values)
+    .onConflictDoUpdate({
+      seller: values.seller,
+      agent: values.agent,
+      asset: values.asset,
+      reserve: values.reserve,
+      duration: values.duration,
+      agentFeeBps: values.agentFeeBps,
+      ownerMinAsset: values.ownerMinAsset,
+      startedAt: 0n,
+      endsAt: 0n,
+      highestBidder: "",
+      highestBid: 0n,
+      active: true,
+      phase: AUCTION_PHASE.CREATED,
+      returnRequestedAt: null,
+      voidReason: "",
+      createdAt: event.block.timestamp,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:AuctionStarted", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      startedAt: event.block.timestamp,
+      endsAt: BigInt(event.args.endsAt),
+      highestBidder: event.args.firstBidder,
+      highestBid: event.args.amount,
+      phase: AUCTION_PHASE.BIDDING,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:BidPlaced", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const bidId = bidRowId(event.transaction.hash, event.log.logIndex);
+
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      highestBidder: event.args.bidder,
+      highestBid: event.args.amount,
+      endsAt: BigInt(event.args.endsAt),
+      phase: AUCTION_PHASE.BIDDING,
+      updatedAt: event.block.timestamp,
+    });
+
+  await context.db.insert(auctionBid).values({
+    id: bidId,
+    tokenId,
+    bidder: event.args.bidder,
+    amount: event.args.amount,
+    endsAt: BigInt(event.args.endsAt),
+    refunded: false,
+    wrappedFallback: false,
+    timestamp: event.block.timestamp,
+  });
+});
+
+ponder.on("AuctionEscrow:BidRefunded", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const bidder = event.args.bidder;
+  const amount = event.args.amount;
+
+  const bids = await context.db.sql
+    .select()
+    .from(auctionBid)
+    .where(
+      and(
+        eq(auctionBid.tokenId, tokenId),
+        eq(auctionBid.bidder, bidder),
+        eq(auctionBid.amount, amount),
+        eq(auctionBid.refunded, false),
+      ),
+    );
+
+  for (const row of bids) {
+    await context.db
+      .update(auctionBid, { id: row.id })
+      .set({
+        refunded: true,
+        wrappedFallback: event.args.wrappedFallback,
+      });
+  }
+});
+
+ponder.on("AuctionEscrow:AuctionCancelled", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      active: false,
+      phase: AUCTION_PHASE.CANCELLED,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:ReturnRequested", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      returnRequestedAt: event.block.timestamp,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:ForceReturn", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      active: false,
+      phase: AUCTION_PHASE.RETURNED,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:AuctionSettled", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
+
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      active: false,
+      phase: AUCTION_PHASE.SETTLED,
+      updatedAt: ts,
+    });
+
+  const settlementValues = {
+    id: tokenId,
+    tokenId,
+    buyer: event.args.buyer,
+    gross: event.args.gross,
+    releaseAt: BigInt(event.args.releaseAt),
+    disputedAt: 0n,
+    bond: null,
+    disputeOutcome: "",
+    receiptConfirmedAt: null,
+    platformFee: null,
+    agentFee: null,
+    net: null,
+    autoRelease: null,
+    releasedAt: null,
+    refundPendingAt: null,
+    clearedAt: null,
+    createdAt: ts,
+    updatedAt: ts,
+  };
+
+  await context.db
+    .insert(auctionSettlement)
+    .values(settlementValues)
+    .onConflictDoUpdate({
+      buyer: settlementValues.buyer,
+      gross: settlementValues.gross,
+      releaseAt: settlementValues.releaseAt,
+      disputedAt: 0n,
+      bond: null,
+      disputeOutcome: "",
+      receiptConfirmedAt: null,
+      platformFee: null,
+      agentFee: null,
+      net: null,
+      autoRelease: null,
+      releasedAt: null,
+      refundPendingAt: null,
+      clearedAt: null,
+      updatedAt: ts,
+    });
+});
+
+ponder.on("AuctionEscrow:AuctionVoided", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      active: false,
+      phase: AUCTION_PHASE.VOIDED,
+      voidReason: voidReasonLabel(Number(event.args.reason)),
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:ReceiptConfirmed", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auctionSettlement, { id: tokenId })
+    .set({
+      receiptConfirmedAt: event.block.timestamp,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:FundsReleased", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
+
+  await context.db
+    .update(auction, { id: tokenId })
+    .set({
+      phase: AUCTION_PHASE.RELEASED,
+      updatedAt: ts,
+    });
+
+  await context.db
+    .update(auctionSettlement, { id: tokenId })
+    .set({
+      platformFee: event.args.platformFee,
+      agentFee: event.args.agentFee,
+      net: event.args.net,
+      autoRelease: event.args.autoRelease,
+      releasedAt: ts,
+      clearedAt: ts,
+      updatedAt: ts,
+    });
+});
+
+ponder.on("AuctionEscrow:SettlementDisputeOpened", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  await context.db
+    .update(auctionSettlement, { id: tokenId })
+    .set({
+      disputedAt: event.block.timestamp,
+      bond: event.args.bond,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("AuctionEscrow:SettlementDisputeResolved", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const outcome = settlementDisputeOutcomeLabel(Number(event.args.outcome));
+  const patch: {
+    disputeOutcome: string;
+    updatedAt: bigint;
+    refundPendingAt?: bigint;
+  } = {
+    disputeOutcome: outcome,
+    updatedAt: event.block.timestamp,
+  };
+  if (outcome === "ConfirmFailure") {
+    patch.refundPendingAt = event.block.timestamp;
+  }
+  await context.db.update(auctionSettlement, { id: tokenId }).set(patch);
+});
+
+ponder.on("AuctionEscrow:PassportReturnedAndRefunded", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
+  await context.db
+    .update(auctionSettlement, { id: tokenId })
+    .set({
+      clearedAt: ts,
+      updatedAt: ts,
+    });
+});
+
+ponder.on("AuctionEscrow:AbandonedRefundClaimed", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
+  await context.db
+    .update(auctionSettlement, { id: tokenId })
+    .set({
+      clearedAt: ts,
+      updatedAt: ts,
+    });
+});

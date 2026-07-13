@@ -4,6 +4,7 @@
 |----------|-----------|-------------------|
 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
+| [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md) | **Reference** | AuctionEscrow events, per-contract start block **44080895**, auction tables |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
 **Production (June 2026):** [ponder.kargain.com](https://ponder.kargain.com) indexes generation v2 contracts from block **43399242** with v2 event handlers (including return flow and dispute deposit). **Reindex required** after deploying handler/schema changes.
@@ -17,7 +18,20 @@ Do **not** copy address tables here. Resolution order:
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)
 
-**Start block:** `PONDER_START_BLOCK_84532=43399242` (`SEPOLIA_ACTIVE.indexFromBlock`).
+**Start block:** `PONDER_START_BLOCK_84532=43399242` (`SEPOLIA_ACTIVE.indexFromBlock`). **AuctionEscrow** indexes from **`blocks.auctionEscrow` = 44080895** (proxy deploy) — see [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md).
+
+## Auction API (July 2026)
+
+AuctionEscrow proxy: `SEPOLIA_ACTIVE.auctionEscrow` after `git pull`. Per-contract start block **44080895** — do not change global `PONDER_START_BLOCK_84532`.
+
+| Route | Purpose |
+|-------|---------|
+| `GET /auctions` | Browse auctions (`page`, `limit`; optional `?active=true\|false`, `?seller=`, `?agent=`) |
+| `GET /auctions/:tokenId` | Auction detail + passport enrichment + `settlement` when present |
+| `GET /auctions/:tokenId/bids` | Bid history (`page`, `limit`; newest first) |
+| `GET /profile/:address/auctions` | Auctions where `seller` matches address |
+
+**VPS:** schema + new contract in `ponder.config.ts` → full reindex ([OPERATIONS.md](./OPERATIONS.md)); global start block unchanged.
 
 ## Verifier lifecycle (bounded indexing)
 
@@ -63,6 +77,9 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /listings` | Browse and filter (optional FX query params for cross-currency filter/sort) |
+| `GET /auctions` | Browse auctions (optional `active`, `seller`, `agent` filters) |
+| `GET /auctions/:tokenId` | Auction detail + settlement |
+| `GET /auctions/:tokenId/bids` | Bid history |
 | `GET /listings/stats` | Aggregate listing stats |
 | `GET /listings/facets` | Filter facets (make, status, condition, …) |
 | `GET /listings/:tokenId` | Listing detail |
@@ -71,6 +88,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /passports/batch` | Batch passport lookup |
 | `GET /profile/:address/passports` | Passports owned by address |
 | `GET /profile/:address/listings` | Listings by seller |
+| `GET /profile/:address/auctions` | Auctions by seller |
 | `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
 | `GET /notifications/:address` | Notification feed |

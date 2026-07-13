@@ -64,6 +64,7 @@ export type PonderAddressBundle = {
   karProStaking: `0x${string}`;
   marketplace: `0x${string}`;
   marketplaceImpl?: `0x${string}`;
+  auctionEscrow?: `0x${string}`;
 };
 
 function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
@@ -97,6 +98,8 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.eurFeed ? { eurFeed: getAddress(raw.eurFeed) } : {}),
     ...(raw.deployer ? { deployer: getAddress(raw.deployer) } : {}),
     ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
+    ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
+    ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
   };
 }
 

@@ -18,7 +18,7 @@ Point-in-time deploy log for the **additive** AuctionEscrow cutover. Does **not*
 | AuctionEscrow proxy | [`0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce`](https://sepolia.basescan.org/address/0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce) | 44080895 | `0x0bb29db41de3a4f750b8719e8cd98802bbc9588a2bfd8ba51f888d114c4e5368` |
 | AuctionEscrow impl | [`0x8e87749CE61569ACFc60058fFAc2122A97466c5A`](https://sepolia.basescan.org/address/0x8e87749CE61569ACFc60058fFAc2122A97466c5A) | 44080893 | `0xd4ed6c9cbd86589c12bc7f3dcc20f7aa99968ac3cfafdd675f637fdc62b72fd3` |
 
-**Ponder auction start block (iteration b):** **44080893** (impl deploy block; buffer TBD in Ponder work). Do **not** change global `PONDER_START_BLOCK_84532` (43399242).
+**Ponder auction start block (iteration b):** **44080895** (proxy deploy block). Do **not** change global `PONDER_START_BLOCK_84532` (43399242). See [indexer/MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md).
 
 ---
 
@@ -81,12 +81,12 @@ pnpm smoke:sepolia
 
 | Iteration | Work |
 |-----------|------|
-| b | Ponder schema + handlers + start block |
+| b | Ponder schema + handlers + start block — **shipped July 2026** ([MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md)); VPS: `ponder-reindex.sh` + rebuild ponder |
 | c | e2e |
 | d | UI route |
 | — | SPEC Part I.9.1 migration |
 
-**Ponder:** Do **not** change `PONDER_START_BLOCK_84532` or reindex for this deploy alone. Auction indexing uses a separate start block in iteration b.
+**Ponder:** Do **not** change `PONDER_START_BLOCK_84532` when deploying auction indexer. Auction indexing uses `blocks.auctionEscrow` (**44080895**) per contract in `ponder.config.ts`.
 
 ---
 
