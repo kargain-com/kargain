@@ -17,6 +17,7 @@ export const SEPOLIA_ACTIVE = {
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
   timelock: "0x9319e223ff31c954A940b14F04025B56A53ED384",
   proxyOnftAdapter: "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
+  auctionEscrow: "0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
@@ -29,6 +30,7 @@ export const SEPOLIA_ACTIVE = {
     marketplaceImpl: 43_399_261,
     marketplace: 43_399_264,
     proxyOnftAdapter: 43_399_505,
+    auctionEscrow: 44_080_895,
   },
 } as const satisfies Record<string, `0x${string}` | number | Record<string, number>>;
 

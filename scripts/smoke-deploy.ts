@@ -52,6 +52,9 @@ async function main() {
     const marketplace = await viem.getContractAt("MarketplaceEscrow", manifest.marketplace);
     const timelockContract = await viem.getContractAt("Timelock48h", timelock);
     const onftAdapter = await viem.getContractAt("ProxyONFT721Adapter", adapter);
+    const auctionEscrow = manifest.auctionEscrow
+      ? await viem.getContractAt("AuctionEscrow", manifest.auctionEscrow)
+      : null;
 
     const results: CheckResult[] = [];
 
@@ -77,6 +80,15 @@ async function main() {
         { id: "d", name: "MarketplaceEscrow", read: () => marketplace.read.VERSION([]) as Promise<string> },
         { id: "e", name: "Timelock48h", read: () => timelockContract.read.VERSION([]) as Promise<string> },
         { id: "f", name: "ProxyONFT721Adapter", read: () => onftAdapter.read.VERSION([]) as Promise<string> },
+        ...(auctionEscrow
+          ? [
+              {
+                id: "g",
+                name: "AuctionEscrow" as const,
+                read: () => auctionEscrow.read.VERSION([]) as Promise<string>,
+              },
+            ]
+          : []),
       ];
 
     for (const { id, name, read } of versionChecks) {
@@ -99,9 +111,10 @@ async function main() {
       await check(`${id}. VERSION ${name}`, actual === expected, expected, actual);
     }
 
+    const marketplaceUpgradeId = auctionEscrow ? "h" : "g";
     const upgradeAuthority = getAddress((await marketplace.read.upgradeAuthority([])) as `0x${string}`);
     await check(
-      "g. upgradeAuthority == timelock",
+      `${marketplaceUpgradeId}. upgradeAuthority == timelock`,
       upgradeAuthority === getAddress(timelock),
       getAddress(timelock),
       upgradeAuthority,
@@ -109,7 +122,7 @@ async function main() {
 
     const proPassStaking = getAddress((await proPass.read.staking([])) as `0x${string}`);
     await check(
-      "h. KarProPass.staking",
+      `${auctionEscrow ? "i" : "h"}. KarProPass.staking`,
       proPassStaking === getAddress(manifest.karProStaking),
       getAddress(manifest.karProStaking),
       proPassStaking,
@@ -119,7 +132,7 @@ async function main() {
       (await passport.read.karProStakingAddress([])) as `0x${string}`,
     );
     await check(
-      "i. KarPassport.karProStakingAddress",
+      `${auctionEscrow ? "j" : "i"}. KarPassport.karProStakingAddress`,
       passportStaking === getAddress(manifest.karProStaking),
       getAddress(manifest.karProStaking),
       passportStaking,
@@ -127,7 +140,7 @@ async function main() {
 
     const tokenIdOffset = (await passport.read.tokenIdOffset([])) as bigint;
     await check(
-      "j. KarPassport.tokenIdOffset",
+      `${auctionEscrow ? "k" : "j"}. KarPassport.tokenIdOffset`,
       tokenIdOffset === EXPECTED_TOKEN_ID_OFFSET,
       EXPECTED_TOKEN_ID_OFFSET.toString(),
       tokenIdOffset.toString(),
@@ -136,21 +149,26 @@ async function main() {
 
     const marketplacePassport = getAddress((await marketplace.read.karPassport([])) as `0x${string}`);
     await check(
-      "k. MarketplaceEscrow.karPassport",
+      `${auctionEscrow ? "l" : "k"}. MarketplaceEscrow.karPassport`,
       marketplacePassport === getAddress(manifest.karPassport),
       getAddress(manifest.karPassport),
       marketplacePassport,
     );
 
     const platformFeeBps = (await marketplace.read.platformFeeBps([])) as number;
-    await check("l. platformFeeBps", platformFeeBps === 10, "10", String(platformFeeBps));
+    await check(
+      `${auctionEscrow ? "m" : "l"}. platformFeeBps`,
+      platformFeeBps === 10,
+      "10",
+      String(platformFeeBps),
+    );
 
     const paused = (await marketplace.read.paused([])) as boolean;
-    await check("m. paused", paused === false, "false", String(paused));
+    await check(`${auctionEscrow ? "n" : "m"}. paused`, paused === false, "false", String(paused));
 
     const usdFeed = (await marketplace.read.currencyFeeds([currencyCodeBytes32("USD")])) as `0x${string}`;
     await check(
-      "n. currencyFeeds(USD)",
+      `${auctionEscrow ? "o" : "n"}. currencyFeeds(USD)`,
       usdFeed === zeroAddress,
       zeroAddress,
       usdFeed,
@@ -161,11 +179,26 @@ async function main() {
       boolean,
     ];
     await check(
-      "o. paymentTokens(USDC).enabled",
+      `${auctionEscrow ? "p" : "o"}. paymentTokens(USDC).enabled`,
       paymentCfg[1] === true,
       "true",
       String(paymentCfg[1]),
     );
+
+    if (auctionEscrow) {
+      const auctionUpgradeAuthority = getAddress(
+        (await auctionEscrow.read.upgradeAuthority([])) as `0x${string}`,
+      );
+      await check(
+        "q. AuctionEscrow.upgradeAuthority == timelock",
+        auctionUpgradeAuthority === getAddress(timelock),
+        getAddress(timelock),
+        auctionUpgradeAuthority,
+      );
+
+      const auctionActive = (await auctionEscrow.read.isAuctionActive([0n])) as boolean;
+      await check("r. AuctionEscrow.isAuctionActive(0)", auctionActive === false, "false", String(auctionActive));
+    }
 
     const passed = results.filter((r) => r.pass).length;
     const total = results.length;

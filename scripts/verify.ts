@@ -7,7 +7,7 @@ import {
   SEPOLIA_DEPLOYMENT_PATH,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
-import { runHardhatVerify } from "./lib/run-hardhat-verify.js";
+import { runHardhatVerify, type VerifyRunResult } from "./lib/run-hardhat-verify.js";
 import {
   VERIFY_TARGETS,
   type VerifyTargetKey,
@@ -18,18 +18,33 @@ loadEnv();
 
 const BASESCAN = "https://sepolia.basescan.org";
 
+const FULL_VERIFY_ORDER: VerifyTargetKey[] = [
+  "timelock",
+  "karProStaking",
+  "karPassport",
+  "marketplaceImpl",
+  "marketplaceProxy",
+  "proxyOnftAdapter",
+  "auctionEscrowImpl",
+  "auctionEscrowProxy",
+];
+
+const AUCTION_VERIFY_ORDER: VerifyTargetKey[] = ["auctionEscrowImpl", "auctionEscrowProxy"];
+
+type VerifyStatus = VerifyRunResult | "missing" | "failed";
+
 async function verifyTarget(
   key: VerifyTargetKey,
   manifest: DeploymentManifest,
   apiKey: string,
   force: boolean,
-) {
+): Promise<VerifyStatus> {
   const target = VERIFY_TARGETS[key];
   const rawAddress = manifest[target.addressKey];
   if (!rawAddress) {
     console.log(`\n${target.label}`);
     console.log("  Skipping — address not in manifest.");
-    return "skipped" as const;
+    return "missing";
   }
 
   const address = getAddress(rawAddress);
@@ -43,7 +58,7 @@ async function verifyTarget(
     const alreadyVerified = await isContractVerifiedOnEtherscan(address, apiKey);
     if (alreadyVerified === true) {
       console.log("  Skipping — source already verified on Basescan.");
-      return "skipped" as const;
+      return "skipped";
     }
   }
 
@@ -54,13 +69,25 @@ async function verifyTarget(
       contract: target.contract,
       constructorArgs,
     });
+    if (result === "bytecode_mismatch") {
+      console.log("  Confirm behavior with: pnpm smoke:sepolia");
+      return "bytecode_mismatch";
+    }
     console.log(`  Done (${result}).`);
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.log(`  Failed — ${message.split("\n")[0]}`);
-    return "failed" as const;
+    console.log(`  Failed — ${message}`);
+    return "failed";
   }
+}
+
+function parseVerifyArgv(argv: string[]) {
+  return {
+    force: argv.includes("--force"),
+    strict: argv.includes("--strict"),
+    auctionOnly: argv.includes("--auction-only"),
+  };
 }
 
 async function main() {
@@ -74,7 +101,7 @@ async function main() {
     process.exit(1);
   }
 
-  const force = process.argv.includes("--force");
+  const { force, strict, auctionOnly } = parseVerifyArgv(process.argv.slice(2));
   let manifest: DeploymentManifest;
   try {
     manifest = requireSepoliaDeployment();
@@ -83,24 +110,24 @@ async function main() {
     process.exit(1);
   }
 
+  const order = auctionOnly ? AUCTION_VERIFY_ORDER : FULL_VERIFY_ORDER;
+
   console.log("Basescan verification for Kargain (Base Sepolia)");
   console.log(`Generation: ${manifest.generation}`);
   console.log(`Chain: ${manifest.chainId}`);
+  if (auctionOnly) {
+    console.log("Scope:    auction targets only (--auction-only)");
+  }
   console.log(`KarPassport:         ${manifest.karPassport}`);
   console.log(`Marketplace proxy:   ${manifest.marketplace}`);
   console.log(`Timelock:            ${manifest.timelock ?? "(missing)"}`);
+  if (manifest.auctionEscrow) {
+    console.log(`AuctionEscrow proxy: ${manifest.auctionEscrow}`);
+  }
   if (force) console.log("Force mode: re-submitting even if explorer shows verified source.");
+  if (strict) console.log("Strict mode: exit 1 on bytecode mismatch or unexpected failure.");
 
-  const order: VerifyTargetKey[] = [
-    "timelock",
-    "karProStaking",
-    "karPassport",
-    "marketplaceImpl",
-    "marketplaceProxy",
-    "proxyOnftAdapter",
-  ];
-
-  const summary: Record<string, string> = {};
+  const summary: Record<string, VerifyStatus> = {};
   for (const key of order) {
     summary[key] = await verifyTarget(key, manifest, apiKey, force);
   }
@@ -112,8 +139,29 @@ async function main() {
   console.log("\nOpen proxy on Basescan to confirm implementation link after impl + proxy verify.");
 
   const failed = order.filter((key) => summary[key] === "failed");
+  const mismatches = order.filter((key) => summary[key] === "bytecode_mismatch");
+  const verified = order.filter((key) => summary[key] === "verified");
+
+  if (mismatches.length > 0) {
+    console.log(
+      `\n${mismatches.length} bytecode mismatch(es) — explorer verify skipped; on-chain deploy is still valid.`,
+    );
+    console.log("  Gate: pnpm smoke:sepolia");
+    if (!strict) {
+      console.log("  (Use --strict to fail this run when mismatches occur.)");
+    }
+  }
+
+  if (verified.length > 0) {
+    console.log(`\n${verified.length} contract(s) newly verified on Basescan.`);
+  }
+
   if (failed.length > 0) {
-    console.error(`\n${failed.length} verification(s) failed — deploy is still valid; retry individually with --force.`);
+    console.error(`\n${failed.length} verification(s) failed unexpectedly — retry with --force.`);
+    process.exit(1);
+  }
+
+  if (strict && mismatches.length > 0) {
     process.exit(1);
   }
 }

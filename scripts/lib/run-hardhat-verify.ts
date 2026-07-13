@@ -2,7 +2,13 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export type VerifyRunResult = "verified" | "skipped";
+import {
+  hardhatErrorCode,
+  isBytecodeMismatchVerifyError,
+  summarizeVerifyError,
+} from "./verify-failure-class.js";
+
+export type VerifyRunResult = "verified" | "skipped" | "bytecode_mismatch";
 
 function formatExecError(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
@@ -74,6 +80,13 @@ export function runHardhatVerify(params: {
       console.log(`  Verification in progress on explorer (${params.address}) — retry later if needed.`);
       return "skipped";
     }
-    throw new Error(output);
+    if (isBytecodeMismatchVerifyError(output)) {
+      const code = hardhatErrorCode(output);
+      console.log(
+        `  Bytecode mismatch${code ? ` (${code})` : ""} — local compile differs from on-chain.`,
+      );
+      return "bytecode_mismatch";
+    }
+    throw new Error(summarizeVerifyError(output));
   }
 }

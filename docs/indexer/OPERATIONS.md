@@ -93,7 +93,7 @@ Examples that **do not** require reindex:
 
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
-- Basescan verify (`pnpm verify:sepolia`) — ops-only, no indexer impact
+- Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
 

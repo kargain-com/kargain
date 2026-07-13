@@ -24,6 +24,11 @@ const contracts = [
     artifactPath:
       "artifacts/contracts/MarketplaceEscrow.sol/MarketplaceEscrow.json",
   },
+  {
+    exportName: "AuctionEscrow",
+    artifactPath:
+      "artifacts/contracts/AuctionEscrow.sol/AuctionEscrow.json",
+  },
 ];
 
 const lines = [

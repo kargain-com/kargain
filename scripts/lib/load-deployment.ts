@@ -23,6 +23,8 @@ export type DeploymentBlocks = {
   marketplace?: number;
   timelock?: number;
   proxyOnftAdapter?: number;
+  auctionEscrow?: number;
+  auctionEscrowImpl?: number;
 };
 
 export type DeploymentManifest = {
@@ -43,6 +45,9 @@ export type DeploymentManifest = {
   upgradeAuthority?: `0x${string}`;
   /** v2: LayerZero hub adapter */
   proxyOnftAdapter?: `0x${string}`;
+  /** English reserve auction escrow (additive deploy) */
+  auctionEscrow?: `0x${string}`;
+  auctionEscrowImpl?: `0x${string}`;
   layerZeroEndpoint?: `0x${string}`;
   tokenIdOffset?: string;
   deployedAt: string;

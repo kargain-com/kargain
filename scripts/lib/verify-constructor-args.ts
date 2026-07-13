@@ -1,10 +1,17 @@
 import { encodeFunctionData } from "viem";
 
-import { MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
+import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
 import {
   SEPOLIA_FALLBACK,
   type DeploymentManifest,
 } from "./load-deployment.js";
+
+/** Canonical Base Sepolia WETH — AuctionEscrow wrappedNative immutable. */
+export const BASE_SEPOLIA_WETH =
+  "0x4200000000000000000000000000000000000006" as const;
+
+/** Platform fee — 0.1% (10 bps). Matches marketplace deploy + auction-design §9. */
+export const AUCTION_PLATFORM_FEE_BPS = 10n;
 
 /** Must match `scripts/deploy.ts`. */
 export const MARKETPLACE_FEE_BPS = 10n;
@@ -69,6 +76,35 @@ export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
   ] as const;
 }
 
+export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
+  const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
+  const platformRecipient =
+    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
+
+  return [
+    manifest.karPassport,
+    usdc,
+    BASE_SEPOLIA_WETH,
+    manifest.karProStaking,
+    platformRecipient,
+    AUCTION_PLATFORM_FEE_BPS,
+  ] as const;
+}
+
+export function auctionEscrowProxyConstructorArgs(manifest: DeploymentManifest) {
+  const timelock = manifest.timelock ?? SEPOLIA_FALLBACK.timelock;
+  if (!manifest.auctionEscrowImpl) {
+    throw new Error("Manifest missing auctionEscrowImpl for proxy verify args");
+  }
+  const initData = encodeFunctionData({
+    abi: AuctionEscrowAbi,
+    functionName: "initialize",
+    args: [timelock],
+  });
+
+  return [manifest.auctionEscrowImpl, initData] as const;
+}
+
 export const VERIFY_TARGETS = {
   timelock: {
     label: "Timelock48h (1.0.0-rc.1)",
@@ -106,6 +142,19 @@ export const VERIFY_TARGETS = {
     contract: "contracts/ProxyONFT721Adapter.sol:ProxyONFT721Adapter",
     addressKey: "proxyOnftAdapter" as const,
     buildArgs: proxyOnftAdapterConstructorArgs,
+  },
+  auctionEscrowImpl: {
+    label: "AuctionEscrow impl (1.0.0-draft)",
+    contract: "contracts/AuctionEscrow.sol:AuctionEscrow",
+    addressKey: "auctionEscrowImpl" as const,
+    buildArgs: auctionEscrowImplConstructorArgs,
+  },
+  auctionEscrowProxy: {
+    label: "AuctionEscrow proxy (1.0.0-draft)",
+    contract:
+      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
+    addressKey: "auctionEscrow" as const,
+    buildArgs: auctionEscrowProxyConstructorArgs,
   },
 } as const;
 

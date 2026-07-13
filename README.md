@@ -108,7 +108,9 @@ pnpm hardhat test
 pnpm test:e2e
 node --import tsx --test test/*.test.ts
 pnpm deploy:sepolia          # generation v2 on Base Sepolia
+pnpm deploy:auction          # additive AuctionEscrow (after v2 manifest exists)
 pnpm smoke:sepolia
+pnpm verify:sepolia          # Basescan best-effort; use --auction-only after auction deploy
 ```
 
 After compile: `node scripts/export-abis.mjs`

@@ -18,7 +18,7 @@ type AddressKey =
   | "nativeFeed"
   | "eurFeed";
 
-type OptionalV2Key = "timelock" | "proxyOnftAdapter";
+type OptionalV2Key = "timelock" | "proxyOnftAdapter" | "auctionEscrow";
 
 const ENV_SINGLE: Record<AddressKey | OptionalV2Key, string> = {
   karPassport: "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
@@ -28,6 +28,7 @@ const ENV_SINGLE: Record<AddressKey | OptionalV2Key, string> = {
   usdc: "NEXT_PUBLIC_USDC_ADDRESS",
   timelock: "NEXT_PUBLIC_TIMELOCK_ADDRESS",
   proxyOnftAdapter: "NEXT_PUBLIC_PROXY_ONFT_ADAPTER_ADDRESS",
+  auctionEscrow: "NEXT_PUBLIC_AUCTION_ESCROW_ADDRESS",
   nativeFeed: "NEXT_PUBLIC_NATIVE_FEED_ADDRESS",
   eurFeed: "NEXT_PUBLIC_EUR_FEED_ADDRESS",
 };
@@ -40,6 +41,7 @@ const ENV_BY_CHAIN: Record<AddressKey | OptionalV2Key, string> = {
   usdc: "NEXT_PUBLIC_USDC_BY_CHAIN",
   timelock: "NEXT_PUBLIC_TIMELOCK_BY_CHAIN",
   proxyOnftAdapter: "NEXT_PUBLIC_PROXY_ONFT_ADAPTER_BY_CHAIN",
+  auctionEscrow: "NEXT_PUBLIC_AUCTION_ESCROW_BY_CHAIN",
   nativeFeed: "NEXT_PUBLIC_NATIVE_FEED_BY_CHAIN",
   eurFeed: "NEXT_PUBLIC_EUR_FEED_BY_CHAIN",
 };
@@ -97,6 +99,10 @@ export function kargainTimelockAddress(chainId?: number): `0x${string}` | undefi
 
 export function proxyOnftAdapterAddress(chainId?: number): `0x${string}` | undefined {
   return resolveOptionalAddress("proxyOnftAdapter", chainId);
+}
+
+export function auctionEscrowAddress(chainId?: number): `0x${string}` | undefined {
+  return resolveOptionalAddress("auctionEscrow", chainId);
 }
 
 function resolveOptionalAddress(key: OptionalV2Key, chainId?: number): `0x${string}` | undefined {
