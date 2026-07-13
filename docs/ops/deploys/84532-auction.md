@@ -5,7 +5,7 @@ Point-in-time deploy log for the **additive** AuctionEscrow cutover. Does **not*
 | | |
 |--|--|
 | Date | July 13, 2026 |
-| Git commit | `dfa5411` — AuctionEscrow Sepolia deploy + verify UX |
+| Git commit | `4e8b1ba` — AuctionEscrow Sepolia deploy + verify UX |
 | Deployer (public) | `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` |
 | Manifest | `deployments/84532.json` — merges `auctionEscrow`, `auctionEscrowImpl`; **`indexFromBlock` unchanged** (43399242) |
 
