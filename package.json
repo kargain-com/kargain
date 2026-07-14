@@ -18,6 +18,8 @@
     "test": "hardhat test",
     "test:metadata": "node --import tsx --test test/passport-metadata.test.ts",
     "test:vin-insight": "node --import tsx --test test/vin-insight.test.ts",
+    "test:vincent": "node --import tsx --test test/vincent-integration.test.ts",
+    "test:vincent:live": "VINCENT_LIVE=1 node --import tsx --test test/vincent-integration.test.ts",
     "test:listing": "node --import tsx --test test/listing-query.test.ts",
     "test:ponder": "node --import tsx --test test/ponder-indexer.test.ts test/ponder-auction.test.ts",
     "test:trust": "node --import tsx --test test/trust-signals.test.ts",
