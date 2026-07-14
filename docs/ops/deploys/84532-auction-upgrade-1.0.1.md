@@ -8,7 +8,7 @@ Maintainer rehearsal: first `Timelock48h`-gated UUPS upgrade of AuctionEscrow. *
 | Proxy (unchanged) | [`0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce`](https://sepolia.basescan.org/address/0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce) |
 | Live impl before upgrade | [`0x8e87749CE61569ACFc60058fFAc2122A97466c5A`](https://sepolia.basescan.org/address/0x8e87749CE61569ACFc60058fFAc2122A97466c5A) (`1.0.0-draft`) |
 | Timelock (`upgradeAuthority`) | [`0x9319e223ff31c954A940b14F04025B56A53ED384`](https://sepolia.basescan.org/address/0x9319e223ff31c954A940b14F04025B56A53ED384) — deployer is sole proposer + executor; **48h** min delay |
-| Script | `pnpm upgrade:auction` → [`scripts/upgrade-auction.ts`](../../../scripts/upgrade-auction.ts) |
+| Script | `pnpm upgrade:auction` → [`scripts/upgrade-auction.ts`](../../../scripts/upgrade-auction.ts) (`HARDHAT_NETWORK=baseSepolia node --import tsx`; pass `-- --deploy-impl` etc.) |
 | Pending file (local, gitignored) | `deployments/84532.pending-auction-impl.json` |
 
 **Unchanged after upgrade:** proxy address, app/`SEPOLIA_ACTIVE` proxy row, Ponder addresses, indexer start block. **No reindex** (events unchanged). Only the implementation behind the proxy and the manifest `auctionEscrowImpl` / `contractVersions.AuctionEscrow` change.
@@ -101,12 +101,13 @@ Expect AuctionEscrow VERSION check (`g`) → `1.0.1-draft`; authority / `isAucti
 
 | | |
 |--|--|
-| Date | |
-| Git commit (wiring) | |
-| New impl | |
-| Impl block / tx | |
-| Timelock operation id | |
-| Schedule tx | |
+| Date | July 14, 2026 (impl + schedule); execute pending ETA |
+| Git commit (wiring) | `f1e7896` (+ Hardhat-3 argv fix for `upgrade:auction`) |
+| New impl | [`0x7aCED69A61d77C208140107E2b46d3D7d7266a66`](https://sepolia.basescan.org/address/0x7aCED69A61d77C208140107E2b46d3D7d7266a66) |
+| Impl block / tx | **44127565** / `0x9736d227de595e13534af13dc8c258c35714c6b4d1bd7e1fa5442e4540a1086a` |
+| Timelock operation id | `0x9ec869f9e3ef0b5e7c266e93501b5bc9c9ce5f3549b65acc53e62c1d3f37dd81` |
+| Schedule tx | `0x907e68ee166972cbb18e71842d6f293a8b3244cd5d5beb8d526041a012cf20be` (block 44127590) |
+| ETA | **1784196268** → `2026-07-16T10:04:28.000Z` (48h) |
 | Execute tx | |
 | `pnpm smoke:sepolia` | |
 

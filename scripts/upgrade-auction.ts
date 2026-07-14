@@ -6,6 +6,8 @@
  *   pnpm upgrade:auction -- --schedule
  *   pnpm upgrade:auction -- --execute
  *
+ * Invoked via `HARDHAT_NETWORK=baseSepolia node --import tsx` (Hardhat 3 `run`
+ * does not forward `--` script flags — HHE506).
  * Salt (deterministic):
  *   keccak256(toBytes(
  *     `kargain:84532:AuctionEscrow:upgradeToAndCall:${proxyLower}:${implLower}:${version}`
@@ -385,7 +387,18 @@ async function cmdSchedule(viem: ViemSuite, manifest: DeploymentManifest) {
   const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
   console.log(`schedule tx: ${hash} (block ${receipt.blockNumber})`);
 
-  const eta = Number((await timelock.read.getTimestamp([operationId])) as bigint);
+  // RPC can briefly return getTimestamp=0 after schedule; retry then fall back to block+delay.
+  let eta = 0;
+  for (let attempt = 0; attempt < 8 && eta === 0; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+    eta = Number((await timelock.read.getTimestamp([operationId])) as bigint);
+  }
+  if (eta === 0) {
+    const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
+    eta = Number(block.timestamp + delay);
+    console.warn(`getTimestamp still 0 after retries — using schedule block + delay → ${eta}`);
+  }
+
   writePendingAuctionImpl({
     ...pending,
     salt,

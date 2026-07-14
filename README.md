@@ -110,7 +110,7 @@ pnpm test:e2e
 node --import tsx --test test/*.test.ts
 pnpm deploy:sepolia          # generation v2 on Base Sepolia
 pnpm deploy:auction          # additive AuctionEscrow (after v2 manifest exists)
-pnpm upgrade:auction         # Timelock UUPS upgrade (-- --deploy-impl | --schedule | --execute)
+pnpm upgrade:auction         # Timelock UUPS upgrade (pass -- --deploy-impl | --schedule | --execute)
 pnpm smoke:sepolia
 pnpm verify:sepolia          # Basescan best-effort; use --auction-only after auction deploy / upgrade impl
 ```
