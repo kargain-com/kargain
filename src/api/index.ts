@@ -2,6 +2,7 @@ import { db } from "ponder:api";
 import {
   agentAuthorization,
   auction,
+  auctionAgentAuthorization,
   auctionBid,
   auctionSettlement,
   marketplaceListing,
@@ -261,6 +262,46 @@ function enrichAuction(
     tokenUri: p?.tokenUri ?? "",
     coverPhotoUri: p?.coverPhotoUri ?? "",
     duplicateVin: p?.duplicateVin ?? false,
+  };
+}
+
+function enrichAuctionAuthorization(
+  row: {
+    tokenId: string;
+    owner: string;
+    agent: string;
+    expiry: bigint;
+    asset: string;
+    ownerMinAsset: bigint;
+    active: boolean;
+    createdAt: bigint;
+    updatedAt: bigint;
+  },
+  passportMap: Map<string, PassportDenorm>,
+  hasActiveAuction: boolean,
+) {
+  const p = passportMap.get(row.tokenId);
+  return {
+    ...row,
+    hasActiveAuction,
+    passportStatus: p?.status ?? "UNVERIFIED",
+    verifier: p?.verifier ?? "",
+    vin: p?.vin ?? "",
+    make: p?.make ?? "",
+    model: p?.model ?? "",
+    year: p?.year ?? 0,
+    mileageKm: p?.mileageKm ?? 0,
+    fuelType: p?.fuelType ?? "",
+    bodyType: p?.bodyType ?? "",
+    transmission: p?.transmission ?? "",
+    condition: p?.condition ?? "",
+    vehicleType: p?.vehicleType ?? "",
+    colour: p?.colour ?? "",
+    locationLabel: p?.locationLabel ?? "",
+    tokenUri: p?.tokenUri ?? "",
+    coverPhotoUri: p?.coverPhotoUri ?? "",
+    duplicateVin: p?.duplicateVin ?? false,
+    lastDisputer: p?.lastDisputer ?? "",
   };
 }
 
@@ -918,6 +959,122 @@ app.get("/agents/:address/authorizations", async (c) => {
       ...row,
       hasActiveListing: listedTokenIds.has(row.tokenId),
     }));
+  }
+
+  return c.json(
+    jsonBody({
+      authorizations,
+      total,
+      page,
+      limit,
+    }),
+  );
+});
+
+app.get("/agents/:address/auction-authorizations", async (c) => {
+  const agent = parseAddressParam(c.req.param("address"));
+  if (!agent) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const awaitingFilter = parseOptionalBoolean(c.req.query("awaiting"));
+
+  const conditions = [
+    eq(auctionAgentAuthorization.agent, agent),
+    eq(auctionAgentAuthorization.active, true),
+  ];
+
+  if (awaitingFilter !== undefined) {
+    const activeAuctionRows = await db
+      .select({ tokenId: auction.tokenId })
+      .from(auction)
+      .where(eq(auction.active, true));
+    const activeAuctionTokenIds = [
+      ...new Set(activeAuctionRows.map((row) => row.tokenId)),
+    ];
+
+    if (awaitingFilter === true) {
+      if (activeAuctionTokenIds.length > 0) {
+        conditions.push(
+          notInArray(auctionAgentAuthorization.tokenId, activeAuctionTokenIds),
+        );
+      }
+    } else if (activeAuctionTokenIds.length === 0) {
+      return c.json(
+        jsonBody({
+          authorizations: [],
+          total: 0,
+          page,
+          limit,
+        }),
+      );
+    } else {
+      conditions.push(
+        inArray(auctionAgentAuthorization.tokenId, activeAuctionTokenIds),
+      );
+    }
+  }
+
+  const where = and(...conditions);
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        tokenId: auctionAgentAuthorization.tokenId,
+        owner: auctionAgentAuthorization.owner,
+        agent: auctionAgentAuthorization.agent,
+        expiry: auctionAgentAuthorization.expiry,
+        asset: auctionAgentAuthorization.asset,
+        ownerMinAsset: auctionAgentAuthorization.ownerMinAsset,
+        active: auctionAgentAuthorization.active,
+        createdAt: auctionAgentAuthorization.createdAt,
+        updatedAt: auctionAgentAuthorization.updatedAt,
+      })
+      .from(auctionAgentAuthorization)
+      .where(where)
+      .orderBy(desc(auctionAgentAuthorization.tokenId))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(auctionAgentAuthorization)
+      .where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+  const tokenIds = rows.map((row) => row.tokenId);
+  const passportMap = await loadPassportMap(tokenIds);
+
+  let authorizations;
+  if (awaitingFilter !== undefined) {
+    const hasActiveAuction = awaitingFilter === false;
+    authorizations = rows.map((row) =>
+      enrichAuctionAuthorization(row, passportMap, hasActiveAuction),
+    );
+  } else {
+    let activeAuctionTokenIds = new Set<string>();
+    if (tokenIds.length > 0) {
+      const activeAuctions = await db
+        .select({ tokenId: auction.tokenId })
+        .from(auction)
+        .where(
+          and(inArray(auction.tokenId, tokenIds), eq(auction.active, true)),
+        );
+      activeAuctionTokenIds = new Set(
+        activeAuctions.map((row) => row.tokenId),
+      );
+    }
+
+    authorizations = rows.map((row) =>
+      enrichAuctionAuthorization(
+        row,
+        passportMap,
+        activeAuctionTokenIds.has(row.tokenId),
+      ),
+    );
   }
 
   return c.json(

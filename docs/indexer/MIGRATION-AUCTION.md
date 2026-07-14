@@ -1,6 +1,8 @@
 # Ponder AuctionEscrow indexing guide
 
-**Status (July 2026):** handlers + schema + HTTP API **shipped** in iteration (b). Contract deployed on Base Sepolia — see [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+**Status (July 2026):** handlers + schema + HTTP API **shipped** in iterations (b) and **(b2)** (agent authorizations). Contract deployed on Base Sepolia — see [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+
+**Production VPS (July 14, 2026):** iteration (b) reindex **done**. Iteration **(b2)** adds `auction_agent_authorization` — **full VPS reindex required** after deploy (see [OPERATIONS.md](./OPERATIONS.md)). Live smoke on [ponder.kargain.com](https://ponder.kargain.com): `/ready` 200, `/status` synced on 84532; `GET /auctions` → `total: 0` until first `AuctionCreated`.
 
 **Related:** [indexer/README.md](./README.md) (HTTP API table) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook) · [contracts/interfaces/IAuctionEscrow.sol](../../contracts/interfaces/IAuctionEscrow.sol)
 
@@ -28,6 +30,7 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `auction` | `tokenId` | Current auction state per passport (one on-chain slot) |
 | `auction_bid` | `{txHash}-{logIndex}` | Append-only bid log (`AuctionStarted` updates auction only; bids inserted on `BidPlaced`) |
 | `auction_settlement` | `tokenId` | Post-`AuctionSettled` hold, dispute, and release |
+| `auction_agent_authorization` | `tokenId` | One agent authorization per passport (`authorizeAuctionAgent`); `active` mirrors on-chain mapping |
 
 ### `auction.phase` values
 
@@ -41,7 +44,7 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `CANCELLED` | `AuctionCancelled` |
 | `RETURNED` | `ForceReturn` (overrides cancel on owner force-return) |
 
-`ownerMinAsset` is not emitted on `AuctionCreated` — indexed as `0` until agent-authorization indexing is added (out of scope for b).
+`auction.ownerMinAsset` is not emitted on `AuctionCreated` — stays `0` on create. Authorization terms (`ownerMinAsset`, `asset`, `expiry`) are read from **`auction_agent_authorization`** (iteration b2). Do not backfill `auction.ownerMinAsset` from the auth table.
 
 ---
 
@@ -53,23 +56,32 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `AuctionStarted` | `auction` (phase, high bid, ends) |
 | `BidPlaced` | `auction` + `auction_bid` insert |
 | `BidRefunded` | `auction_bid.refunded` |
-| `AuctionCancelled` | `auction` |
+| `AuctionCancelled` | `auction` + deactivate `auction_agent_authorization` |
 | `ReturnRequested` | `auction.returnRequestedAt` |
-| `ForceReturn` | `auction` |
-| `AuctionSettled` | `auction` + `auction_settlement` |
-| `AuctionVoided` | `auction` |
+| `ForceReturn` | `auction` + deactivate `auction_agent_authorization` |
+| `AuctionSettled` | `auction` + `auction_settlement` (auth **stays** active until payout/return) |
+| `AuctionVoided` | `auction` + deactivate `auction_agent_authorization` |
 | `ReceiptConfirmed` | `auction_settlement` |
-| `FundsReleased` | `auction` + `auction_settlement` |
+| `FundsReleased` | `auction` + `auction_settlement` + deactivate `auction_agent_authorization` |
 | `SettlementDisputeOpened` / `Resolved` | `auction_settlement` |
-| `PassportReturnedAndRefunded` / `AbandonedRefundClaimed` | `auction_settlement.clearedAt` |
+| `PassportReturnedAndRefunded` | `auction_settlement.clearedAt` + deactivate `auction_agent_authorization` |
+| `AbandonedRefundClaimed` | `auction_settlement.clearedAt` |
+| `AuctionAgentAuthorized` | `auction_agent_authorization` upsert (`active=true`) |
+| `AuctionAgentRevoked` | `auction_agent_authorization.active=false` |
 
-**Not indexed (b):** `AuctionAgentAuthorized`, `AuctionAgentRevoked`, admin config events (`MinDurationSet`, `Paused`, …).
+### Silent auth clear (`_clearAuctionStorage`)
+
+On-chain `_clearAuctionStorage` deletes `auctionAgentAuthorizations[tokenId]` **without** emitting `AuctionAgentRevoked`. The indexer mirrors that by setting `auction_agent_authorization.active = false` on terminal events that call it: `AuctionCancelled`, `ForceReturn`, `AuctionVoided`, `FundsReleased`, `PassportReturnedAndRefunded`. Updates are no-ops when no auth row exists. `AuctionSettled` does **not** clear storage — auth remains until `_payout` / `returnPassportAndRefund`.
+
+**Not indexed:** admin config events (`MinDurationSet`, `Paused`, …).
 
 ---
 
 ## HTTP API
 
 See [indexer/README.md](./README.md#http-api) for route list. Bigints serialize as strings in JSON.
+
+Agent awaiting list: `GET /agents/:address/auction-authorizations` (optional `?awaiting=true` excludes tokenIds with an active auction).
 
 ---
 
@@ -84,3 +96,19 @@ Schema or handler changes require full reindex per [OPERATIONS.md](./OPERATIONS.
 5. Keep `PONDER_START_BLOCK_84532=43399242`
 
 Auction backfill replays from block **44080895** only; v2 contracts replay from **43399242**.
+
+**Iteration (b) VPS cutover:** completed July 14, 2026 (empty `/auctions` is healthy — no lots created yet).
+
+**Iteration (b2):** new `auction_agent_authorization` table — **full VPS reindex required** after pull + rebuild (maintainer runbook).
+
+---
+
+## Local E2E (shipped — iteration в)
+
+Hardhat `31337` + PGlite Ponder indexes the **local** `auctionEscrow` proxy via:
+
+- `pnpm deploy:local` writes `auctionEscrow` + `auctionEscrowImpl` into `deployments/31337.json`
+- `ponder.config.ts` passes `localAddresses?.auctionEscrow` to `contractEntry` (same pattern as Marketplace)
+- `./scripts/e2e-local.sh` with `KARGAIN_E2E_STRICT=1` runs the agent auction lifecycle and polls `GET /auctions/:tokenId` + `/bids` through phases `BIDDING` → `SETTLED` → `RELEASED`
+
+Maintainer plan (historical): `docs/ops/plans/auction-e2e-local.md`.

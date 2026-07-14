@@ -78,3 +78,27 @@ export function auctionCreatedRow(params: {
     updatedAt: params.timestamp,
   };
 }
+
+export function auctionAgentAuthorizedRow(params: {
+  tokenId: string;
+  owner: string;
+  agent: string;
+  expiry: bigint;
+  asset: string;
+  ownerMinAsset: bigint;
+  createdAt: bigint;
+  updatedAt: bigint;
+}) {
+  return {
+    id: params.tokenId,
+    tokenId: params.tokenId,
+    owner: params.owner,
+    agent: params.agent,
+    expiry: params.expiry,
+    asset: normalizeAuctionAsset(params.asset),
+    ownerMinAsset: params.ownerMinAsset,
+    active: true,
+    createdAt: params.createdAt,
+    updatedAt: params.updatedAt,
+  };
+}

@@ -4,7 +4,7 @@
 |----------|-----------|-------------------|
 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
-| [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md) | **Reference** | AuctionEscrow events, per-contract start block **44080895**, auction tables |
+| [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md) | **Reference** | AuctionEscrow events, per-contract start block **44080895**, auction + agent-auth tables |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
 **Production (June 2026):** [ponder.kargain.com](https://ponder.kargain.com) indexes generation v2 contracts from block **43399242** with v2 event handlers (including return flow and dispute deposit). **Reindex required** after deploying handler/schema changes.
@@ -30,8 +30,9 @@ AuctionEscrow proxy: `SEPOLIA_ACTIVE.auctionEscrow` after `git pull`. Per-contra
 | `GET /auctions/:tokenId` | Auction detail + passport enrichment + `settlement` when present |
 | `GET /auctions/:tokenId/bids` | Bid history (`page`, `limit`; newest first) |
 | `GET /profile/:address/auctions` | Auctions where `seller` matches address |
+| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires active auction) |
 
-**VPS:** schema + new contract in `ponder.config.ts` → full reindex ([OPERATIONS.md](./OPERATIONS.md)); global start block unchanged.
+**VPS (July 14, 2026):** full reindex after auction schema (b) **completed**. Iteration **(b2)** `auction_agent_authorization` needs another **full reindex** after deploy. `GET /auctions` returns `total: 0` until the first `AuctionCreated`; listings/verifiers remain populated. Global start block unchanged.
 
 ## Verifier lifecycle (bounded indexing)
 
@@ -62,6 +63,7 @@ Read-only agent-scoped queries in [`src/api/index.ts`](../../src/api/index.ts). 
 | Route | Purpose |
 |-------|---------|
 | `GET /agents/:address/authorizations` | Active authorizations for agent; `{ authorizations, total, page, limit }`; each row includes `hasActiveListing`; optional `?hasActiveListing=true\|false` filters before pagination (`total` reflects filter) |
+| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires `auction.active`); pagination same envelope |
 | `GET /agents/:address/listings` | Listings where `agent` matches; same pagination envelope; optional `?active=true\|false`; enrichment matches `GET /profile/:address/listings` |
 
 `:address` validated with `isAddress`; queries use checksum `getAddress()` to match chain-indexed rows.
@@ -90,6 +92,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /profile/:address/listings` | Listings by seller |
 | `GET /profile/:address/auctions` | Auctions by seller |
 | `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
+| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations (`page`, `limit`; passport enrichment; `hasActiveAuction`; optional `?awaiting=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
 | `GET /notifications/:address` | Notification feed |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string on each row) |

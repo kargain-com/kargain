@@ -114,6 +114,25 @@ export const agentAuthorization = onchainTable(
   }),
 );
 
+export const auctionAgentAuthorization = onchainTable(
+  "auction_agent_authorization",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    owner: t.text().notNull(),
+    agent: t.text().notNull(),
+    expiry: t.bigint().notNull().default(0n),
+    asset: t.text().notNull().default(""),
+    ownerMinAsset: t.bigint().notNull().default(0n),
+    active: t.boolean().notNull().default(true),
+    createdAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    agentIdx: index().on(table.agent),
+  }),
+);
+
 export const currencyFeed = onchainTable("currency_feed", (t) => ({
   id: t.text().primaryKey(),
   chainId: t.integer().notNull(),

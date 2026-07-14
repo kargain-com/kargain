@@ -81,6 +81,7 @@ After backfill reaches chain head, **leave the same numeric start block**. Ponde
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
 | AuctionEscrow indexer (July 2026) | New `auction` / `auction_bid` / `auction_settlement` tables + `AuctionEscrow` in `ponder.config.ts` — **reindex required**; keep `PONDER_START_BLOCK_84532=43399242`; auction contract backfills from **44080895** only ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
+| Auction agent authorizations (b2, July 2026) | New `auction_agent_authorization` table + terminal-event deactivate handlers + `GET /agents/:address/auction-authorizations` — **full reindex required**; same start-block rules as AuctionEscrow ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
@@ -191,7 +192,9 @@ Wait until logs show:
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
 curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/listings | jq '.total'
-curl -s https://ponder.kargain.com/auctions | jq '.total'
+curl -s https://ponder.kargain.com/auctions | jq '.total'   # 0 until first AuctionCreated — OK after auction reindex
+# after b2 reindex (empty until first AuctionAgentAuthorized):
+# curl -s "https://ponder.kargain.com/agents/0x…/auction-authorizations" | jq '.total'
 curl -s https://ponder.kargain.com/listings/facets | jq '.statusCounts'
 curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
 curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/authorizations?hasActiveListing=false' | jq '.total, .page, .limit'
@@ -208,6 +211,8 @@ PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK_31337=0 pnpm ponder:dev
 ```
 
 After schema change, drop local DB or run `ponder-reindex.sql` against your local Postgres, then restart from block `0`.
+
+Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scripts/e2e-local.sh`.
 
 ---
 

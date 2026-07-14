@@ -3,6 +3,7 @@ import { and, eq } from "ponder";
 import {
   agentAuthorization,
   auction,
+  auctionAgentAuthorization,
   auctionBid,
   auctionSettlement,
   currencyFeed,
@@ -19,6 +20,7 @@ import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
 import {
   AUCTION_PHASE,
+  auctionAgentAuthorizedRow,
   auctionCreatedRow,
   bidRowId,
   settlementDisputeOutcomeLabel,
@@ -57,6 +59,20 @@ function agentAuthId(tokenId: string, agent: string): string {
 
 function currencyFeedId(chainId: number, currencyCode: string): string {
   return `${chainId}-${currencyCode}`;
+}
+
+/** Mirror `_clearAuctionStorage` silent auth delete — no-op when no row. */
+async function deactivateAuctionAgentAuth(
+  context: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"],
+  tokenId: string,
+  updatedAt: bigint,
+) {
+  const row = await context.db.find(auctionAgentAuthorization, { id: tokenId });
+  if (!row) return;
+  await context.db.update(auctionAgentAuthorization, { id: tokenId }).set({
+    active: false,
+    updatedAt,
+  });
 }
 
 async function appendUriHistory(
@@ -515,6 +531,43 @@ ponder.on("KarPassport:DisputeDepositPaid", async ({ event, context }) => {
 
 ponder.on("KarPassport:DisputeDepositUpdated", async () => {});
 
+ponder.on("AuctionEscrow:AuctionAgentAuthorized", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
+  const values = auctionAgentAuthorizedRow({
+    tokenId,
+    owner: event.args.owner,
+    agent: event.args.agent,
+    expiry: BigInt(event.args.expiry),
+    asset: event.args.asset,
+    ownerMinAsset: BigInt(event.args.ownerMinAsset),
+    createdAt: ts,
+    updatedAt: ts,
+  });
+
+  await context.db
+    .insert(auctionAgentAuthorization)
+    .values(values)
+    .onConflictDoUpdate({
+      tokenId: values.tokenId,
+      owner: values.owner,
+      agent: values.agent,
+      expiry: values.expiry,
+      asset: values.asset,
+      ownerMinAsset: values.ownerMinAsset,
+      active: true,
+      updatedAt: ts,
+    });
+});
+
+ponder.on("AuctionEscrow:AuctionAgentRevoked", async ({ event, context }) => {
+  await deactivateAuctionAgentAuth(
+    context,
+    event.args.tokenId.toString(),
+    event.block.timestamp,
+  );
+});
+
 ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const values = auctionCreatedRow({
@@ -622,13 +675,15 @@ ponder.on("AuctionEscrow:BidRefunded", async ({ event, context }) => {
 
 ponder.on("AuctionEscrow:AuctionCancelled", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
     .update(auction, { id: tokenId })
     .set({
       active: false,
       phase: AUCTION_PHASE.CANCELLED,
-      updatedAt: event.block.timestamp,
+      updatedAt: ts,
     });
+  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:ReturnRequested", async ({ event, context }) => {
@@ -643,13 +698,15 @@ ponder.on("AuctionEscrow:ReturnRequested", async ({ event, context }) => {
 
 ponder.on("AuctionEscrow:ForceReturn", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
     .update(auction, { id: tokenId })
     .set({
       active: false,
       phase: AUCTION_PHASE.RETURNED,
-      updatedAt: event.block.timestamp,
+      updatedAt: ts,
     });
+  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:AuctionSettled", async ({ event, context }) => {
@@ -709,14 +766,16 @@ ponder.on("AuctionEscrow:AuctionSettled", async ({ event, context }) => {
 
 ponder.on("AuctionEscrow:AuctionVoided", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
     .update(auction, { id: tokenId })
     .set({
       active: false,
       phase: AUCTION_PHASE.VOIDED,
       voidReason: voidReasonLabel(Number(event.args.reason)),
-      updatedAt: event.block.timestamp,
+      updatedAt: ts,
     });
+  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:ReceiptConfirmed", async ({ event, context }) => {
@@ -751,6 +810,8 @@ ponder.on("AuctionEscrow:FundsReleased", async ({ event, context }) => {
       clearedAt: ts,
       updatedAt: ts,
     });
+
+  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:SettlementDisputeOpened", async ({ event, context }) => {
@@ -790,6 +851,7 @@ ponder.on("AuctionEscrow:PassportReturnedAndRefunded", async ({ event, context }
       clearedAt: ts,
       updatedAt: ts,
     });
+  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:AbandonedRefundClaimed", async ({ event, context }) => {

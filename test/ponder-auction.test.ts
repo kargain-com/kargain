@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   AUCTION_PHASE,
+  auctionAgentAuthorizedRow,
   auctionCreatedRow,
   bidRowId,
   normalizeAuctionAgent,
@@ -77,5 +78,50 @@ describe("auctionCreatedRow", () => {
     assert.equal(row.highestBid, 0n);
     assert.equal(row.active, true);
     assert.equal(row.startedAt, 0n);
+  });
+});
+
+describe("auctionAgentAuthorizedRow", () => {
+  const tokenId =
+    "8453200000000000000000000000000000000000000000000000000000000002";
+
+  it("normalizes zero asset and sets active", () => {
+    const row = auctionAgentAuthorizedRow({
+      tokenId,
+      owner: "0xOwner",
+      agent: "0xAgent",
+      expiry: 0n,
+      asset: "0x0000000000000000000000000000000000000000",
+      ownerMinAsset: 1_000_000_000_000_000_000n,
+      createdAt: 50n,
+      updatedAt: 50n,
+    });
+
+    assert.equal(row.id, tokenId);
+    assert.equal(row.tokenId, tokenId);
+    assert.equal(row.asset, "");
+    assert.equal(row.active, true);
+    assert.equal(row.expiry, 0n);
+    assert.equal(row.ownerMinAsset, 1_000_000_000_000_000_000n);
+  });
+
+  it("preserves token asset and expiry", () => {
+    const usdc = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+    const row = auctionAgentAuthorizedRow({
+      tokenId,
+      owner: "0xOwner",
+      agent: "0xAgent",
+      expiry: 1_700_000_000n,
+      asset: usdc,
+      ownerMinAsset: 500n,
+      createdAt: 10n,
+      updatedAt: 20n,
+    });
+
+    assert.equal(row.asset, usdc);
+    assert.equal(row.expiry, 1_700_000_000n);
+    assert.equal(row.ownerMinAsset, 500n);
+    assert.equal(row.active, true);
+    assert.equal(row.updatedAt, 20n);
   });
 });
