@@ -36,9 +36,9 @@ interface IWETH {
 /// @title AuctionEscrow
 /// @notice English reserve auction escrow with settlement hold and dispute resolution.
 /// @dev UUPS upgradeable; timelock is upgrade authority. Separate from MarketplaceEscrow.
-/// @custom:version 1.0.0-draft
+/// @custom:version 1.0.1-draft
 contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "1.0.0-draft";
+    string public constant VERSION = "1.0.1-draft";
 
     using SafeERC20 for IERC20;
 
@@ -342,7 +342,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         } else if (status == _STATUS_DISPUTED) {
             revert PassportDisputed();
         } else {
-            revert AuctionNotEnded();
+            revert AuctionSettleable();
         }
 
         address bidder = a.highestBidder;
@@ -367,7 +367,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
         if (h.refundPendingAt > 0) revert RefundNotPending();
-        if (msg.sender != h.buyer) revert NotSeller();
+        if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
         if (block.timestamp >= h.releaseAt) revert HoldActive();
 
@@ -398,7 +398,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     function openSettlementDispute(uint256 tokenId) external payable nonReentrant {
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
-        if (msg.sender != h.buyer) revert NotSeller();
+        if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
         if (h.refundPendingAt > 0) revert RefundNotPending();
         if (block.timestamp >= h.releaseAt) revert HoldActive();
@@ -439,7 +439,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
         if (h.refundPendingAt == 0) revert RefundNotPending();
-        if (msg.sender != h.buyer) revert NotSeller();
+        if (msg.sender != h.buyer) revert NotBuyer();
 
         Auction storage a = auctions[tokenId];
         address seller = a.seller;

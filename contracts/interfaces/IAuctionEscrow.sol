@@ -109,6 +109,7 @@ interface IAuctionEscrow {
     error NotSeller();
     error NotAgent();
     error NotOwner();
+    error NotBuyer();
     error NotActiveVerifier();
     error PassportNotVerified();
     error PassportDisputed();
@@ -118,6 +119,7 @@ interface IAuctionEscrow {
     error AuctionNotStarted();
     error AuctionNotEnded();
     error AuctionEnded();
+    error AuctionSettleable();
     error BidTooLow();
     error BidFromSeller();
     error BidFromAgent();

@@ -894,6 +894,89 @@ describe("AuctionEscrow v1 — settlement dispute", () => {
   });
 });
 
+describe("AuctionEscrow v1 — 1.0.1-draft error names", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  async function settleToHold(stack: AuctionStack) {
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await stack.auction.write.settle([tokenId]);
+    return { tokenId, reserve, buyer: stack.stranger };
+  }
+
+  it("VERSION is 1.0.1-draft", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    assert.equal(await stack.auction.read.VERSION(), "1.0.1-draft");
+  });
+
+  it("non-buyer confirmReceipt reverts NotBuyer", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await settleToHold(stack);
+    await assert.rejects(
+      stack.auction.write.confirmReceipt([tokenId], { account: stack.seller.account }),
+      revertsWith("NotBuyer"),
+    );
+  });
+
+  it("non-buyer openSettlementDispute reverts NotBuyer", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await settleToHold(stack);
+    await assert.rejects(
+      stack.auction.write.openSettlementDispute([tokenId], {
+        account: stack.seller.account,
+        value: DISPUTE_DEPOSIT,
+      }),
+      revertsWith("NotBuyer"),
+    );
+  });
+
+  it("non-buyer returnPassportAndRefund reverts NotBuyer", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    const { auction, passport, verifier } = stack;
+
+    await auction.write.openSettlementDispute([tokenId], {
+      account: buyer.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await auction.write.resolveSettlementDispute([tokenId, 1], { account: verifier.account });
+    await passport.write.setApprovalForAll([auction.address, true], { account: buyer.account });
+
+    await assert.rejects(
+      auction.write.returnPassportAndRefund([tokenId], { account: stack.seller.account }),
+      revertsWith("NotBuyer"),
+    );
+  });
+
+  it("voidAuction on ended VERIFIED auction reverts AuctionSettleable", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await assert.rejects(stack.auction.write.voidAuction([tokenId]), revertsWith("AuctionSettleable"));
+  });
+});
+
 describe("AuctionEscrow v1 — releaseFunds auto", () => {
   let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
 

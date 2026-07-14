@@ -4408,6 +4408,11 @@ export const AuctionEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "AuctionSettleable",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "BadConfig",
     "type": "error"
   },
@@ -4535,6 +4540,11 @@ export const AuctionEscrowAbi = [
   {
     "inputs": [],
     "name": "NotAgent",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotBuyer",
     "type": "error"
   },
   {

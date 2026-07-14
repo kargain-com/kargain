@@ -7,7 +7,7 @@ export const CONTRACT_VERSIONS = {
   Timelock48h: "1.0.0-rc.1",
   KarPassportONFT721: "1.0.0-rc.1",
   ProxyONFT721Adapter: "1.0.0-rc.1",
-  AuctionEscrow: "1.0.0-draft",
+  AuctionEscrow: "1.0.1-draft",
 } as const;
 
 export type ContractVersionName = keyof typeof CONTRACT_VERSIONS;

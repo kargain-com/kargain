@@ -47,7 +47,7 @@
 | KarProPass | `1.0.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `1.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` |
 | MarketplaceEscrow | `2.0.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
-| AuctionEscrow | `1.0.0-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
+| AuctionEscrow | `1.0.1-draft` | UUPS proxy | English reserve auction escrow, settlement hold (84532 live impl/proxy still `1.0.0-draft` until Timelock UUPS upgrade) |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow |
 | ProxyONFT721Adapter | `1.0.0-rc.1` | Immutable | Hub-chain lock-and-bridge adapter |
 | KarPassportONFT721 | `1.0.0-rc.1` | Immutable | Spoke-chain mint/burn ONFT |
@@ -558,7 +558,7 @@ Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **4
 
 **Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) · AuctionEscrow additive: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md)
 
-**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-100-draft). Additive deploy record: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-101-draft). Additive deploy record: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
 
 ---
 
@@ -581,11 +581,11 @@ Per new chain (matches `scripts/deploy.ts`; Base Sepolia reuses existing **KarPr
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset`, `contractVersions`, `indexFromBlock`.
 
-**AuctionEscrow** is additive (`pnpm deploy:auction`) — not part of this sequence. Addresses: [I.9.1](#i91-active-deployment-base-sepolia-84532). Behavior: [I.11](#i11-auctionescrow-100-draft).
+**AuctionEscrow** is additive (`pnpm deploy:auction`) — not part of this sequence. Addresses: [I.9.1](#i91-active-deployment-base-sepolia-84532). Behavior: [I.11](#i11-auctionescrow-101-draft).
 
 ---
 
-### I.11. AuctionEscrow (`1.0.0-draft`)
+### I.11. AuctionEscrow (`1.0.1-draft`)
 
 UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgradeAuthority`** = Timelock48h (same v2 handoff convention as MarketplaceEscrow). One auction per `tokenId` (`auctions[tokenId]`). **Addresses:** [I.9.1](#i91-active-deployment-base-sepolia-84532). **UI:** [design-spec.md](../design-spec.md) §4.18. **Indexer:** [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md). Design rationale: [auction-design.md](../research/auction-design.md) §1–§10.
 
@@ -739,12 +739,13 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 | Error | When |
 |-------|------|
-| `NotSeller` / `NotAgent` / `NotOwner` | Role guards (buyer-only paths currently reuse `NotSeller` for diagnostics — behavior correct) |
+| `NotSeller` / `NotAgent` / `NotOwner` / `NotBuyer` | Role guards |
 | `NotActiveVerifier` | Seller/agent/resolver admission |
 | `PassportNotVerified` / `PassportDisputed` | Status gates |
 | `AuctionExists` / `NoAuction` | Mapping occupancy |
 | `AuctionAlreadyStarted` | Cancel/return after first bid (Solidity: cannot share name with `event AuctionStarted`) |
 | `AuctionNotStarted` / `AuctionNotEnded` / `AuctionEnded` | Lifecycle timing |
+| `AuctionSettleable` | `voidAuction` when auction has ended and passport is VERIFIED — call `settle` instead |
 | `SettlementPending` | Create/authorize while hold unresolved (H-1) |
 | `BidTooLow` / `BidFromSeller` / `BidFromAgent` | Bid rules |
 | `WrongAsset` / `WrongValue` / `UnsupportedAsset` | Asset/payment mismatch |
