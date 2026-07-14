@@ -85,13 +85,31 @@ export function useAuctionChainReads({
             args: [tokenIdBig] as const,
             chainId: wc,
           },
+          {
+            address: escrow!,
+            abi: AuctionEscrowAbi,
+            functionName: "settlementDisputeBond" as const,
+            chainId: wc,
+          },
+          {
+            address: escrow!,
+            abi: AuctionEscrowAbi,
+            functionName: "settlementHold" as const,
+            chainId: wc,
+          },
+          {
+            address: escrow!,
+            abi: AuctionEscrowAbi,
+            functionName: "disputeResolutionTimeout" as const,
+            chainId: wc,
+          },
         ]
       : [],
     query: {
       enabled: readsEnabled,
       staleTime: STALE_MS,
-      // Config values (minIncrementBps, extensionWindow) are effectively immutable;
-      // overall batch still shares staleTime ≥ 30s per budget.
+      // Config values (minIncrementBps, extensionWindow, settlement*) are
+      // effectively immutable; overall batch still shares staleTime ≥ 30s.
       gcTime: CONFIG_STALE_MS,
     },
   });
@@ -120,6 +138,21 @@ export function useAuctionChainReads({
       ? BigInt(data[5].result as number | bigint)
       : undefined;
 
+  const settlementDisputeBond =
+    data?.[6]?.status === "success"
+      ? BigInt(data[6].result as number | bigint)
+      : undefined;
+
+  const settlementHold =
+    data?.[7]?.status === "success"
+      ? BigInt(data[7].result as number | bigint)
+      : undefined;
+
+  const disputeResolutionTimeout =
+    data?.[8]?.status === "success"
+      ? BigInt(data[8].result as number | bigint)
+      : undefined;
+
   const queryClient = useQueryClient();
 
   const invalidateAfterTx = () => {
@@ -137,6 +170,9 @@ export function useAuctionChainReads({
     extensionWindow,
     paused,
     returnRequestedAt,
+    settlementDisputeBond,
+    settlementHold,
+    disputeResolutionTimeout,
     isPending: readsEnabled && isPending,
     isFetching,
     refetch,

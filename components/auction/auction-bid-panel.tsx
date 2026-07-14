@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { parseEther } from "viem";
 import {
   useAccount,
   useBalance,
   useChainId,
+  useReadContract,
   useSwitchChain,
   useWriteContract,
   useConfig,
@@ -19,15 +19,49 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { minNextBid } from "@/lib/auction/auction-bid-math";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auction";
+import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   formatBidTooLowMessage,
   formatPassportBidBlockedMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
-import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
+import {
+  auctionEscrowAddress,
+  usdcAddress,
+} from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+
+const ERC20_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
 
 type Props = {
   chainId: number;
@@ -60,11 +94,40 @@ export function AuctionBidPanel({
   const [busy, setBusy] = useState(false);
 
   const escrow = auctionEscrowAddress(chainId);
-  const { data: balance } = useBalance({
+  const usdc = usdcAddress(chainId);
+  const isUsdcAuction = auction.assetLabel === "USDC";
+  const assetLabel = auction.assetLabel;
+
+  const { data: ethBalance } = useBalance({
     address,
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(address && escrow) },
+    query: { enabled: Boolean(address && escrow && !isUsdcAuction) },
   });
+
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
+    address: usdc,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(address && usdc && isUsdcAuction) },
+  });
+
+  const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
+    address: usdc,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: address && escrow ? [address, escrow] : undefined,
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(address && usdc && escrow && isUsdcAuction) },
+  });
+
+  const parsedAmount = parseOwnerMinAsset(amountStr, assetLabel);
+  const needsUsdcApproval =
+    isUsdcAuction &&
+    parsedAmount != null &&
+    parsedAmount > 0n &&
+    (usdcAllowance == null || usdcAllowance < parsedAmount);
 
   const isSeller =
     Boolean(address) &&
@@ -77,10 +140,10 @@ export function AuctionBidPanel({
     address!.toLowerCase() === auction.highestBidder!.toLowerCase();
 
   const wrongChain = walletChainId !== wagmiChainId(chainId);
-  const isUsdcAuction = auction.assetLabel !== "ETH";
 
   const minNext = minNextBid(auction.highestBid, minIncrementBps, auction.reserve);
-  const minLabel = formatAuctionAmount(minNext, "ETH");
+  const minLabel = formatAuctionAmount(minNext, assetLabel);
+  const placeholderSuffix = assetLabel === "USDC" ? " USDC" : " ETH";
 
   const disputed = uiState === "S4";
   const ended = uiState === "S5";
@@ -89,7 +152,7 @@ export function AuctionBidPanel({
 
   const disabledReason = (() => {
     if (!escrow) return "Auctions are not available on this chain.";
-    if (isUsdcAuction) return "USDC bidding is not available yet. Native ETH auctions only.";
+    if (isUsdcAuction && !usdc) return "USDC is not configured on this chain.";
     if (paused) return "Auctions are temporarily paused. Existing refunds and payouts are unaffected.";
     if (ended) return "This auction has ended. The page will update shortly.";
     if (disputed) return null; // S4 panel shown separately
@@ -99,23 +162,30 @@ export function AuctionBidPanel({
     return null;
   })();
 
+  const insufficientBalance =
+    parsedAmount != null &&
+    parsedAmount > 0n &&
+    (isUsdcAuction
+      ? usdcBalance != null && usdcBalance < parsedAmount
+      : ethBalance != null && ethBalance.value < parsedAmount);
+
   const bidDisabled =
     !isConnected ||
     Boolean(disabledReason) ||
     disputed ||
     busy ||
     isWriting ||
-    isUsdcAuction;
+    insufficientBalance;
 
   async function onBid() {
     setTxError(null);
     if (!escrow || !address) return;
 
-    let amount: bigint;
-    try {
-      amount = parseEther(amountStr.trim());
-    } catch {
-      setTxError(`Bid at least ${minLabel} — enter a valid ETH amount.`);
+    const amount = parseOwnerMinAsset(amountStr, assetLabel);
+    if (amount == null) {
+      setTxError(
+        `Bid at least ${minLabel} — enter a valid ${assetLabel} amount.`,
+      );
       return;
     }
 
@@ -124,7 +194,16 @@ export function AuctionBidPanel({
       return;
     }
 
-    if (balance && balance.value < amount) {
+    if (isUsdcAuction) {
+      if (!usdc) {
+        setTxError("USDC is not configured on this chain.");
+        return;
+      }
+      if (usdcBalance != null && usdcBalance < amount) {
+        setTxError("Insufficient USDC balance for this bid.");
+        return;
+      }
+    } else if (ethBalance && ethBalance.value < amount) {
       setTxError("Insufficient ETH balance for this bid.");
       return;
     }
@@ -134,15 +213,44 @@ export function AuctionBidPanel({
       if (wrongChain) {
         await switchChainAsync({ chainId: wagmiChainId(chainId) });
       }
-      const hash = await writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "bid",
-        args: [BigInt(tokenId), amount],
-        value: amount,
-        chainId: wagmiChainId(chainId),
-      });
-      await waitForTransactionReceipt(config, { hash });
+
+      if (isUsdcAuction && usdc) {
+        const allowance = usdcAllowance ?? 0n;
+        if (allowance < amount) {
+          const approveHash = await writeContractAsync({
+            address: usdc,
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [escrow, amount],
+            chainId: wagmiChainId(chainId),
+          });
+          await waitForTransactionReceipt(config, { hash: approveHash });
+          await refetchUsdcAllowance();
+          await refetchUsdcBalance();
+          return;
+        }
+
+        const hash = await writeContractAsync({
+          address: escrow,
+          abi: AuctionEscrowAbi,
+          functionName: "bid",
+          args: [BigInt(tokenId), amount],
+          value: 0n,
+          chainId: wagmiChainId(chainId),
+        });
+        await waitForTransactionReceipt(config, { hash });
+      } else {
+        const hash = await writeContractAsync({
+          address: escrow,
+          abi: AuctionEscrowAbi,
+          functionName: "bid",
+          args: [BigInt(tokenId), amount],
+          value: amount,
+          chainId: wagmiChainId(chainId),
+        });
+        await waitForTransactionReceipt(config, { hash });
+      }
+
       setAmountStr("");
       onSuccess?.();
       router.refresh();
@@ -204,14 +312,14 @@ export function AuctionBidPanel({
           htmlFor="auction-bid-amount"
           className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary"
         >
-          Bid amount (ETH)
+          Bid amount ({assetLabel})
         </label>
         <input
           id="auction-bid-amount"
           type="text"
           inputMode="decimal"
           autoComplete="off"
-          placeholder={minLabel.replace(" ETH", "")}
+          placeholder={minLabel.replace(placeholderSuffix, "")}
           value={amountStr}
           onChange={(e) => setAmountStr(e.target.value)}
           disabled={bidDisabled}
@@ -228,6 +336,11 @@ export function AuctionBidPanel({
             {minLabel}
           </span>
         </p>
+        {insufficientBalance && (
+          <p className="font-sans text-sm text-status-error" role="alert">
+            Insufficient {assetLabel} balance for this bid.
+          </p>
+        )}
       </div>
 
       {disabledReason && (
@@ -246,7 +359,11 @@ export function AuctionBidPanel({
         disabled={bidDisabled || !amountStr.trim()}
         onClick={() => void onBid()}
       >
-        {busy || isWriting ? "Confirming…" : "Place bid"}
+        {busy || isWriting
+          ? "Confirming…"
+          : needsUsdcApproval
+            ? "Approve USDC"
+            : "Place bid"}
       </Button>
 
       <div className="space-y-2 border-t border-border-default pt-3">

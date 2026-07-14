@@ -10,6 +10,7 @@ import { AuctionCancelPanel } from "@/components/auction/auction-cancel-panel";
 import { AuctionFinalizePanel } from "@/components/auction/auction-finalize-panel";
 import { AuctionReadoutPanel } from "@/components/auction/auction-readout-panel";
 import { AuctionReturnAdvisory } from "@/components/auction/auction-return-advisory";
+import { AuctionSettlementPanel } from "@/components/auction/auction-settlement-panel";
 import { AuthorizeAuctionAgentDialog } from "@/components/auction/authorize-auction-agent-dialog";
 import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
 import { OwnerAuctionReturnPanel } from "@/components/auction/owner-auction-return-panel";
@@ -240,24 +241,22 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {uiState === "SETTLED" && (
-            <div
-              className="rounded-md border border-border-default bg-bg-surface p-4"
-              role="status"
-            >
-              <p className="font-sans text-sm text-text-secondary">
-                Settlement hold in progress. Confirm receipt and dispute actions
-                ship in a later update.
-              </p>
-            </div>
+          {(uiState === "SETTLED" ||
+            uiState === "S8" ||
+            uiState === "S9") && (
+            <AuctionSettlementPanel
+              chainId={chainId}
+              tokenId={tokenId}
+              auction={auction}
+              hold={detail.hold}
+              now={detail.now}
+              settlementDisputeBond={detail.settlementDisputeBond}
+              settlementHold={detail.settlementHold}
+              disputeResolutionTimeout={detail.disputeResolutionTimeout}
+              auctionUiState={uiState as "SETTLED" | "S8" | "S9"}
+              onSuccess={() => detail.invalidateAfterTx()}
+            />
           )}
-
-          {(uiState === "S8" || uiState === "S9") && auction.voidReason ? (
-            <p className="font-sans text-sm text-text-secondary">
-              Auction voided — {auction.voidReason}. All bids were refunded
-              automatically.
-            </p>
-          ) : null}
 
           <AuctionBidHistory
             bids={bids.bids}

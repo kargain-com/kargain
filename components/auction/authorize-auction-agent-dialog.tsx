@@ -34,14 +34,23 @@ import {
   isAuctionAuthExpired,
   parseAuctionAgentAuthorization,
 } from "@/lib/auction/auction-agent";
-import { formatAuctionAmount } from "@/lib/auction/format-auction";
+import {
+  endsAtDateTimeAttr,
+  formatAuctionAmount,
+} from "@/lib/auction/format-auction";
+import { parseOnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import {
   isValidOwnerMinAsset,
   parseOwnerMinAsset,
   type AuctionAssetLabel,
 } from "@/lib/auction/owner-min-asset";
 import { AuctionEscrowAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
-import { sansLink } from "@/lib/design/instrument-classes";
+import {
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
+  monoTimestamp,
+  sansLink,
+} from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   auctionEscrowAddress,
@@ -149,6 +158,28 @@ export function AuthorizeAuctionAgentDialog({
     chainId: wc,
     query: { enabled: Boolean(open && escrow) },
   });
+
+  const { data: holdRaw } = useReadContract({
+    address: escrow,
+    abi: AuctionEscrowAbi,
+    functionName: "holds",
+    args: [tid],
+    chainId: wc,
+    query: { enabled: Boolean(open && escrow) },
+  });
+
+  const hold = parseOnChainHold(holdRaw);
+  const settlementPending = Boolean(hold?.open && hold.releaseAt !== 0n);
+  const settlementDateLabel =
+    settlementPending && hold
+      ? new Date(Number(hold.releaseAt) * 1000).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : null;
+  const settlementDateTime =
+    settlementPending && hold ? endsAtDateTimeAttr(hold.releaseAt) : undefined;
 
   const chainAuth = useMemo(
     () => parseAuctionAgentAuthorization(authRaw),
@@ -311,12 +342,14 @@ export function AuthorizeAuctionAgentDialog({
   }, []);
 
   const canSubmitTerms = useMemo(() => {
+    if (settlementPending) return false;
     if (!selectedAgent || !escrow) return false;
     if (assetKind === "USDC" && !usdc) return false;
     if (!isValidOwnerMinAsset(minAssetInput, assetKind)) return false;
     if (noExpiration) return true;
     return expiryDate !== "" && isFutureDate(expiryDate);
   }, [
+    settlementPending,
     selectedAgent,
     escrow,
     assetKind,
@@ -328,6 +361,12 @@ export function AuthorizeAuctionAgentDialog({
 
   const runAuthorize = useCallback(async () => {
     if (!escrow || !selectedAgent || !canSubmitTerms) return;
+    if (settlementPending) {
+      setTxError(
+        "The previous sale of this vehicle is still settling. Try again after the hold ends.",
+      );
+      return;
+    }
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
@@ -351,6 +390,7 @@ export function AuthorizeAuctionAgentDialog({
     escrow,
     selectedAgent,
     canSubmitTerms,
+    settlementPending,
     wrongChain,
     switchChainAsync,
     wc,
@@ -389,6 +429,22 @@ export function AuthorizeAuctionAgentDialog({
               : "Authorize a KarPro to create a reserve auction on your behalf. Your minimum is locked in the auction currency."}
           </DialogDescription>
         </DialogHeader>
+
+        {settlementPending && settlementDateLabel && (
+          <div className={elevatedAdvisoryPanel} role="status">
+            <p className={cn("font-sans", elevatedAdvisoryText)}>
+              This vehicle’s previous sale is still in its settlement window. You
+              can start a new auction after{" "}
+              <time
+                dateTime={settlementDateTime}
+                className={cn(monoTimestamp, elevatedAdvisoryText)}
+              >
+                {settlementDateLabel}
+              </time>
+              .
+            </p>
+          </div>
+        )}
 
         {showRevoke && chainAuth && (
           <div className="space-y-4">

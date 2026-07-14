@@ -14,7 +14,14 @@ import {
 import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { Button } from "@/components/ui/button";
+import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
+import { parseOnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import { AuctionEscrowAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
+import {
+  elevatedAdvisoryPanel,
+  elevatedAdvisoryText,
+  monoTimestamp,
+} from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
@@ -74,6 +81,32 @@ export function CreateAuctionPanel({
     query: { enabled: Boolean(address && passport && escrow) },
   });
 
+  const { data: holdRaw } = useReadContract({
+    address: escrow,
+    abi: AuctionEscrowAbi,
+    functionName: "holds",
+    args: [BigInt(tokenId)],
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(escrow && tokenId) },
+  });
+
+  const hold = parseOnChainHold(holdRaw);
+  const settlementPending = Boolean(hold?.open && hold.releaseAt !== 0n);
+  const settlementDate =
+    settlementPending && hold
+      ? (() => {
+          const date = new Date(Number(hold.releaseAt) * 1000);
+          return {
+            label: date.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            }),
+            dateTime: endsAtDateTimeAttr(hold.releaseAt),
+          };
+        })()
+      : null;
+
   const canShow =
     isConnected &&
     isOwner &&
@@ -100,6 +133,12 @@ export function CreateAuctionPanel({
   async function onCreate() {
     setTxError(null);
     if (!escrow) return;
+    if (settlementPending) {
+      setTxError(
+        "The previous sale of this vehicle is still settling. Try again after the hold ends.",
+      );
+      return;
+    }
 
     const durationSec = durationDays * 24 * 60 * 60;
     if (durationSec < THREE_DAYS || durationSec > SEVEN_DAYS) {
@@ -153,6 +192,22 @@ export function CreateAuctionPanel({
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+      {settlementPending && settlementDate && (
+        <div className={elevatedAdvisoryPanel} role="status">
+          <p className={cn("font-sans", elevatedAdvisoryText)}>
+            This vehicle’s previous sale is still in its settlement window. You
+            can start a new auction after{" "}
+            <time
+              dateTime={settlementDate.dateTime}
+              className={cn(monoTimestamp, elevatedAdvisoryText)}
+            >
+              {settlementDate.label}
+            </time>
+            .
+          </p>
+        </div>
+      )}
+
       <p className="font-sans text-sm text-text-secondary">
         Auctions are open to professional sellers with verified vehicles. The
         reserve is public and bidding starts at or above it.
@@ -253,7 +308,9 @@ export function CreateAuctionPanel({
       <Button
         type="button"
         className="w-full"
-        disabled={busy || isWriting || !reserveStr.trim()}
+        disabled={
+          busy || isWriting || !reserveStr.trim() || settlementPending
+        }
         onClick={() => void onCreate()}
       >
         {busy || isWriting

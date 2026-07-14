@@ -660,21 +660,23 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` (top nav only).
 
-**г-1 + г-2 shipped:** browse, native ETH bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7 advisory, consigned-tab auction sections. Deferred: USDC bid + settlement panels (г-3), extension flash / timeline polish (г-4).
+**г-1 + г-2 + г-3 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections. Deferred: extension flash / timeline polish (г-4).
 
 #### Role matrix
 
 | Role | Sees | Can do |
 |------|------|--------|
-| Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2) | Bid (native); Finalize when ended |
+| Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2); hold readout | Bid (ETH or USDC); Finalize when ended; permissionless `releaseFunds` when hold/dispute timed out |
 | Leading bidder | Same + *You are the highest bidder* (neutral, not accent) | Wait / bid again if outbid |
-| KarPro direct seller | Own-lot create panel | `createAuction` when VERIFIED, not listed, active verifier; Cancel before first bid; cannot bid |
-| Private owner (agent path) | Authorization entry; return timer on agent auction | Authorize auction agent · Revoke (no active auction) · Request / force return (pre-start) |
+| Winning buyer (hold) | Hold amount · release countdown | Confirm receipt · Open dispute (native bond, U8) · after ConfirmFailure: return passport for refund |
+| KarPro direct seller | Own-lot create panel; settlement informational | `createAuction` when VERIFIED, not listed, active verifier, no open hold (U9); Cancel before first bid; cannot bid; abandoned-refund claim |
+| Private owner (agent path) | Authorization entry; return timer on agent auction | Authorize auction agent · Revoke (no active auction) · Request / force return (pre-start); U9 blocks authorize during hold |
 | KarPro agent | Consigned **Awaiting auction** / **Active auctions**; lot create panel when authorized | `createAuctionOnBehalf` · Cancel before first bid |
+| Active verifier (not party) | Dispute frozen readout | Minimal resolve: ReleaseToSeller / ConfirmFailure (full resolver post-MVP) |
 
 #### Derived states (blueprint S#)
 
-Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Chain `returnRequestedAt` merges over Ponder for S2.
+Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Chain `returnRequestedAt` merges over Ponder for S2. Settlement sub-states from [`settlement-state.ts`](../lib/auction/settlement-state.ts) (Ponder settlement ∪ chain `holds` ∪ timeouts).
 
 | State | Condition | Commerce |
 |-------|-----------|----------|
@@ -683,10 +685,27 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S3** | Live bidding | Bid panel; no cancel |
 | **S4** | Live + passport `DISPUTED` | Bid **disabled**; `status-error` copy |
 | **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle`; if passport `UNVERIFIED` → `voidAuction` |
-| **SETTLED** | Hold | Informational stub (г-3 panels) |
-| **S8 / S9** | `RELEASED` / `VOIDED`\|`CANCELLED`\|`RETURNED` | Terminal readout |
+| **S6 / HOLD** | `SETTLED`, before `releaseAt`, no dispute | Buyer: Confirm receipt · Open dispute; others: informational payout date |
+| **HOLD_RELEASABLE** | `now ≥ releaseAt`, no dispute | Permissionless **Release payment** → `releaseFunds` |
+| **S7 / DISPUTED** | Settlement dispute open | *Payout frozen*; auto-release date; minimal verifier resolve |
+| **DISPUTE_TIMED_OUT** | `now ≥ disputedAt + disputeResolutionTimeout` | Permissionless **Release payment** (auto-ReleaseToSeller path) |
+| **REFUND_PENDING** | ConfirmFailure | Buyer: approve passport → `returnPassportAndRefund`; seller: `claimAbandonedRefund` after `settlementHold` |
+| **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
+| **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Terminal voided/reason line |
 
-**Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed.
+**Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed or while `holds.releaseAt ≠ 0` (U9).
+
+#### Settlement (г-3)
+
+| Surface | Behavior |
+|---------|----------|
+| USDC bid | [`auction-bid-panel.tsx`](../components/auction/auction-bid-panel.tsx) — allowance → `approve(escrow, amount)` → `bid` with `value: 0`; balance preflight; amount in 6-decimal units |
+| Settlement panel | [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx) — role-gated S6–S9 / refund / minimal resolver |
+| State derive | [`settlement-state.ts`](../lib/auction/settlement-state.ts) — pure `HOLD`…`CLEARED` from settlement + `holds` + timeouts |
+| U8 | Dispute bond always **native ETH** from chain `settlementDisputeBond`, even on USDC lots — labeled in Open dispute CTA |
+| U9 | Create + authorize disable when `holds(tokenId).releaseAt ≠ 0` + settlement-window advisory |
+| Resolver (minimal) | Visible only when connected wallet is active KarPro **and** not buyer/seller/agent |
+| Poll | Detail 15s while settlement `HOLD` / `DISPUTED` / `REFUND_PENDING` and tab visible; never after `RELEASED` / `CLEARED` |
 
 #### Agent consignment (г-2)
 
@@ -713,6 +732,13 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Agent net preview | At reserve [X]: you receive [fee], owner receives [net]. Your commission is fixed for the whole auction. |
 | S4 | Bidding is paused while this passport is disputed. If the dispute is rejected the auction resumes; if confirmed, the auction is voided and every bid is refunded. |
 | S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a 7-day protection hold. |
+| Hold — buyer | [2.40 ETH] is held for your protection until [date]. Confirm receipt to release payment early, or open a dispute if the vehicle was not delivered as sold. |
+| Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
+| Dispute bond (U8) | Opening a dispute locks a [0.01 ETH] bond, even for USDC auctions. You get it back if the dispute is confirmed. |
+| Released (S8) | Sale complete. [gross] split: seller [net] · agent [fee] · platform [fee]. |
+| Voided (S9) | Auction voided — [reason]. All bids were refunded automatically. |
+| Post-sale checklist | Vehicle re-registration happens off-chain. Keep the passport records updated after handover. |
+| Settlement window (U9) | This vehicle’s previous sale is still in its settlement window. You can start a new auction after [date]. |
 | Create intro | Auctions are open to professional sellers with verified vehicles. The reserve is public and bidding starts at or above it. |
 | Reserve help | Lowest price you will accept. Shown to everyone. |
 | Asset help | Bids and payout are in one currency for the whole auction. USDC is recommended for expensive vehicles. |
@@ -722,9 +748,11 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 - Bids, reserves, prices, leading strip, mins/nets/fees: `font-mono tabular-nums` + `text-text-primary` — **never** accent-warm.
 - Accent-warm only trust seals (`PassportStatusBadge` VERIFIED).
-- DISPUTED mid-auction: `text-status-error` panel.
-- S2 return advisory: elevated advisory pattern (not `status-error` unless DISPUTED).
+- DISPUTED mid-auction / settlement *Payout frozen*: `text-status-error` panel.
+- S2 return advisory / U9 settlement window: elevated advisory pattern (not `status-error` unless DISPUTED).
+- S8 released split: `commerceConfirmedPanel` / neutral mono (IL-5).
 - Countdown in `<time dateTime>`; bid/tx errors `role="alert"`.
+- Money CTAs show exact asset + amount in mono; dispute bond always labeled as native ETH (U8).
 
 #### Indexer notes
 
@@ -733,6 +761,8 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **U4** | Auction `ownerMinAsset` is asset units (wei / USDC 6) — [`owner-min-asset.ts`](../lib/auction/owner-min-asset.ts); never fiat 1e8 helpers |
 | **U2** | Agent create / authorize revoke: chain-read `auctionAgentAuthorizations` on panel/dialog mount only |
 | **U7** | Return timer visible to all viewers when `returnRequestedAt` set |
+| **U8** | Settlement dispute bond is always native ETH — label even on USDC auctions |
+| **U9** | `holds(tokenId).releaseAt ≠ 0` gates create + authorize with settlement-window copy |
 | **U11** | Bid history filters `bid.timestamp ≥ auction.createdAt` (re-auction append-only bids) |
 | **U13** | Browse partitions live (`endsAt` asc) then awaiting-first-bid (`createdAt` desc) — API `asc(endsAt)` alone is wrong for `endsAt=0` |
 | **U15** | Derive ENDED client-side; Finalize CTA in г-1 |
@@ -742,11 +772,11 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Surface | Budget |
 |---------|--------|
 | `/auctions` cards | 0 chain reads, 0 subscriptions; one shared minute ticker |
-| Lot island | One batched `useReadContracts` (incl. `returnRequestedAt`); auth read on demand only; detail poll 15s / bids 7s only when S1–S4 **and** tab visible |
+| Lot island | One batched `useReadContracts` (incl. return + settlement config); auth read on demand only; detail poll 15s / bids 7s when S1–S4 **or** settlement poll-active **and** tab visible |
 | Consigned auction lists | Ponder only — 0 per-row chain reads |
 | No websockets | — |
 
-Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts).
+Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts) · [`settlement-state.ts`](../lib/auction/settlement-state.ts).
 
 ---
 
@@ -1395,4 +1425,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.43 (July 2026 — auction commerce г-2: agent authorize / create-on-behalf / cancel / return / U7 advisory). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.44 (July 2026 — auction commerce г-3: USDC bid + settlement S6–S9 / U8/U9). Update when tokens, app shell, or component contracts change.*

@@ -10,11 +10,18 @@ import {
   type AuctionRow,
   type AuctionUiState,
 } from "@/lib/auction/map-ponder-auction";
+import {
+  deriveSettlementUiState,
+  isSettlementPollActive,
+} from "@/lib/auction/settlement-state";
 import { effectiveReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import { useAuctionChainReads } from "@/hooks/use-auction-chain-reads";
 import { useDocumentVisible } from "@/hooks/use-document-visible";
 import { useNow } from "@/hooks/use-now";
 import type { PassportStatus } from "@/lib/types/ponder";
+
+/** Default settlement dispute resolution timeout (30 days) when chain unread. */
+const DEFAULT_DISPUTE_RESOLUTION_TIMEOUT = 30n * 24n * 60n * 60n;
 
 type Args = {
   chainId: number;
@@ -55,7 +62,7 @@ export function useAuctionDetail({
     staleTime: 15_000,
     refetchInterval: (q) => {
       const row = q.state.data ?? initialAuction;
-      if (!row) return false;
+      if (!row || !visible) return false;
       const endsAt =
         chain.auction?.endsAt ?? row.endsAt;
       const startedAt =
@@ -71,8 +78,20 @@ export function useAuctionDetail({
           (chain.auction ? passportStatus : row.passportStatus) || passportStatus,
         now,
       });
-      if (!isLiveAuctionUiState(state) || !visible) return false;
-      return 15_000;
+      if (isLiveAuctionUiState(state)) return 15_000;
+
+      // Settlement hold / dispute / refund — poll while non-terminal only.
+      if (state === "SETTLED") {
+        const settlementState = deriveSettlementUiState({
+          settlement: row.settlement,
+          hold: chain.hold,
+          nowSec: now,
+          disputeResolutionTimeoutSec:
+            chain.disputeResolutionTimeout ?? DEFAULT_DISPUTE_RESOLUTION_TIMEOUT,
+        });
+        if (isSettlementPollActive(settlementState)) return 15_000;
+      }
+      return false;
     },
     refetchIntervalInBackground: false,
   });
@@ -211,6 +230,10 @@ export function useAuctionDetail({
     minIncrementBps: chain.minIncrementBps ?? 300,
     extensionWindow: chain.extensionWindow ?? 300n,
     paused: chain.paused ?? false,
+    settlementDisputeBond: chain.settlementDisputeBond,
+    settlementHold: chain.settlementHold,
+    disputeResolutionTimeout:
+      chain.disputeResolutionTimeout ?? DEFAULT_DISPUTE_RESOLUTION_TIMEOUT,
     escrow: chain.escrow,
     chainPending: chain.isPending,
     ponderPending: ponderQuery.isPending,

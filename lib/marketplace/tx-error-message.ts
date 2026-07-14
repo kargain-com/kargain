@@ -83,6 +83,19 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
     "ContractPaused",
     "Auctions are temporarily paused. Existing refunds and payouts are unaffected.",
   ],
+  ["NoHold", "There is no open settlement hold for this vehicle."],
+  [
+    "DisputeActive",
+    "A settlement dispute is still open. Wait for resolution or the auto-release timeout.",
+  ],
+  [
+    "HoldActive",
+    "The settlement or abandoned-refund window has not finished yet.",
+  ],
+  [
+    "RefundNotPending",
+    "No failed-sale refund is pending for this vehicle.",
+  ],
 ];
 
 /** Format BidTooLow with mono min-bid + increment % (blueprint §4.3). */
