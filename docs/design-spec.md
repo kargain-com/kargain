@@ -660,7 +660,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` (top nav only).
 
-**г-1 + г-2 + г-3 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections. Deferred: extension flash / timeline polish (г-4).
+**г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.**
 
 #### Role matrix
 
@@ -691,7 +691,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **DISPUTE_TIMED_OUT** | `now ≥ disputedAt + disputeResolutionTimeout` | Permissionless **Release payment** (auto-ReleaseToSeller path) |
 | **REFUND_PENDING** | ConfirmFailure | Buyer: approve passport → `returnPassportAndRefund`; seller: `claimAbandonedRefund` after `settlementHold` |
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
-| **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Terminal voided/reason line |
+| **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
 **Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed or while `holds.releaseAt ≠ 0` (U9).
 
@@ -706,6 +706,16 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | U9 | Create + authorize disable when `holds(tokenId).releaseAt ≠ 0` + settlement-window advisory |
 | Resolver (minimal) | Visible only when connected wallet is active KarPro **and** not buyer/seller/agent |
 | Poll | Detail 15s while settlement `HOLD` / `DISPUTED` / `REFUND_PENDING` and tab visible; never after `RELEASED` / `CLEARED` |
+
+#### Live polish (г-4)
+
+| Surface | Behavior |
+|---------|----------|
+| Countdown | Chain `endsAt` via detail merge; single `useNow(1s)` on lot; absolute remaining (no drift between refetches) |
+| Extension flash | On detail refetch when `endsAt` increases while S3/S4: *Extended by [N] minutes* (`N` from chain `extensionWindow`); reserved slot on readout + bid help; `aria-live="polite"`; auto-clears; **no extra polling** |
+| Outbid toast | When connected wallet lost `highestBidder` across refetch: StatusToast *You were outbid. Your [amount] was returned…*; once per lead (`sessionStorage`); `role="status"`; neutral tokens |
+| Bid history | [`auction-bid-history.tsx`](../components/auction/auction-bid-history.tsx) — `InstrumentTimeline` ticks; neutral borders (no success-green) |
+| Mobile order | Passport detail: commerce `order-1` / `md:hidden` before gallery on `< md` (§12.5); desktop sticky aside unchanged |
 
 #### Agent consignment (г-2)
 
@@ -723,7 +733,9 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Surface | String |
 |---------|--------|
 | Bid footer | Your full bid is held by the auction contract until you are outbid or you win. Outbid funds return automatically. |
-| Live help | Bids in the last 5 minutes extend the auction by 5 minutes. |
+| Live help | Bids in the last [N] minutes extend the auction by [N] minutes. (`N` from `extensionWindow`) |
+| Extension flash | Extended by [N] minutes |
+| Outbid toast | You were outbid. Your [amount] was returned to your wallet automatically. |
 | Leading | You are the highest bidder. |
 | S1 help | The auction starts when someone bids at least the reserve. Until then the seller can cancel. |
 | S2 advisory | The owner has asked for this vehicle back. If no one bids before [date], the auction can be cancelled. A qualifying bid before then completes the sale. |
@@ -736,6 +748,8 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
 | Dispute bond (U8) | Opening a dispute locks a [0.01 ETH] bond, even for USDC auctions. You get it back if the dispute is confirmed. |
 | Released (S8) | Sale complete. [gross] split: seller [net] · agent [fee] · platform [fee]. |
+| Cancelled (S9) | The auction was cancelled before any qualifying bid. The vehicle returned to the owner. |
+| Returned (S9) | The owner recalled this vehicle before any qualifying bid. |
 | Voided (S9) | Auction voided — [reason]. All bids were refunded automatically. |
 | Post-sale checklist | Vehicle re-registration happens off-chain. Keep the passport records updated after handover. |
 | Settlement window (U9) | This vehicle’s previous sale is still in its settlement window. You can start a new auction after [date]. |
@@ -751,7 +765,8 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 - DISPUTED mid-auction / settlement *Payout frozen*: `text-status-error` panel.
 - S2 return advisory / U9 settlement window: elevated advisory pattern (not `status-error` unless DISPUTED).
 - S8 released split: `commerceConfirmedPanel` / neutral mono (IL-5).
-- Countdown in `<time dateTime>`; bid/tx errors `role="alert"`.
+- Extension flash / outbid toast: neutral `text-text-secondary` + `border-border-default` — **not** accent-warm (not trust states).
+- Countdown in `<time dateTime>`; bid/tx errors `role="alert"`; extension flash / outbid `aria-live="polite"` / `role="status"`.
 - Money CTAs show exact asset + amount in mono; dispute bond always labeled as native ETH (U8).
 
 #### Indexer notes
@@ -1425,4 +1440,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.44 (July 2026 — auction commerce г-3: USDC bid + settlement S6–S9 / U8/U9). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.45 (July 2026 — auction commerce г-4: extension flash, outbid toast, timeline, mobile order; initiative complete). Update when tokens, app shell, or component contracts change.*

@@ -15,9 +15,10 @@ import { AuthorizeAuctionAgentDialog } from "@/components/auction/authorize-auct
 import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
 import { OwnerAuctionReturnPanel } from "@/components/auction/owner-auction-return-panel";
 import { Button } from "@/components/ui/button";
+import { StatusToast } from "@/components/ui/status-toast";
 import { useAuctionBids } from "@/hooks/use-auction-bids";
 import { useAuctionDetail } from "@/hooks/use-auction-detail";
-import { useNow } from "@/hooks/use-now";
+import { useAuctionLiveSignals } from "@/hooks/use-auction-live-signals";
 import {
   hasAuctionAgent,
   isAuctionAuthUsableForCreate,
@@ -62,7 +63,6 @@ export function AuctionDetailClientIsland({
   const escrow = auctionEscrowAddress(chainId);
   const staking = karProStakingAddress(chainId);
   const [authorizeOpen, setAuthorizeOpen] = useState(false);
-  const now = useNow(30_000);
 
   const detail = useAuctionDetail({
     chainId,
@@ -74,6 +74,23 @@ export function AuctionDetailClientIsland({
 
   const auction = detail.auction;
   const uiState = detail.uiState;
+
+  const liveSignals = useAuctionLiveSignals({
+    chainId,
+    tokenId,
+    endsAt: auction?.endsAt ?? 0n,
+    startedAt: auction?.startedAt ?? 0n,
+    highestBidder: auction?.highestBidder ?? null,
+    highestBid: auction?.highestBid ?? 0n,
+    assetLabel: auction?.assetLabel ?? "ETH",
+    uiState,
+    wallet: address,
+    extensionWindow: detail.extensionWindow,
+    enabled: Boolean(
+      auction &&
+        (uiState === "S1" || uiState === "S3" || uiState === "S4"),
+    ),
+  });
 
   const { data: isActiveVerifier } = useReadContract({
     address: staking,
@@ -131,7 +148,7 @@ export function AuctionDetailClientIsland({
   const showAgentCreate =
     isConnected &&
     Boolean(address) &&
-    isAuctionAuthUsableForCreate(chainAuth, now) &&
+    isAuctionAuthUsableForCreate(chainAuth, detail.now) &&
     chainAuth != null &&
     address!.toLowerCase() === chainAuth.agent.toLowerCase() &&
     noBlockingAuction &&
@@ -193,11 +210,17 @@ export function AuctionDetailClientIsland({
             <AuctionReturnAdvisory returnRequestedAt={returnAt} />
           )}
 
+          <StatusToast
+            message={liveSignals.outbidToast}
+            onClear={liveSignals.clearOutbidToast}
+          />
+
           <AuctionReadoutPanel
             auction={auction}
             uiState={uiState}
             now={detail.now}
             minIncrementBps={detail.minIncrementBps}
+            extensionFlash={liveSignals.extensionFlash}
           />
 
           {(uiState === "S1" || uiState === "S3" || uiState === "S4") && (
@@ -208,6 +231,8 @@ export function AuctionDetailClientIsland({
               uiState={uiState}
               minIncrementBps={detail.minIncrementBps}
               paused={detail.paused}
+              extensionWindow={detail.extensionWindow}
+              extensionFlash={liveSignals.extensionFlash}
               onSuccess={() => detail.invalidateAfterTx()}
             />
           )}

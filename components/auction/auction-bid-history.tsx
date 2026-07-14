@@ -1,6 +1,7 @@
 "use client";
 
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
+import { InstrumentTimeline } from "@/components/ui/instrument-timeline";
 import {
   formatAuctionAmount,
 } from "@/lib/auction/format-auction";
@@ -43,28 +44,30 @@ export function AuctionBidHistory({ bids, assetLabel, className }: Props) {
       <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
         Bid history
       </p>
-      <ul className="divide-y divide-border-default rounded-md border border-border-default">
+      <InstrumentTimeline>
         {sorted.map((bid) => (
-          <li
+          <InstrumentTimeline.Item
             key={bid.id}
-            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2.5"
+            tickLabel={
+              <time
+                dateTime={new Date(Number(bid.timestamp) * 1000).toISOString()}
+              >
+                {formatBidTime(bid.timestamp)}
+              </time>
+            }
           >
-            <EnsWalletLink
-              address={bid.bidder}
-              className="font-mono text-xs text-text-secondary"
-            />
-            <span className="font-mono text-sm tabular-nums text-text-primary">
-              {formatAuctionAmount(bid.amount, assetLabel)}
-            </span>
-            <time
-              dateTime={new Date(Number(bid.timestamp) * 1000).toISOString()}
-              className="w-full font-mono text-[11px] tabular-nums text-text-tertiary sm:w-auto"
-            >
-              {formatBidTime(bid.timestamp)}
-            </time>
-          </li>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-md border border-border-default bg-bg-primary/80 px-3 py-2.5">
+              <EnsWalletLink
+                address={bid.bidder}
+                className="font-mono text-xs text-text-secondary"
+              />
+              <span className="font-mono text-sm tabular-nums text-text-primary">
+                {formatAuctionAmount(bid.amount, assetLabel)}
+              </span>
+            </div>
+          </InstrumentTimeline.Item>
         ))}
-      </ul>
+      </InstrumentTimeline>
     </div>
   );
 }

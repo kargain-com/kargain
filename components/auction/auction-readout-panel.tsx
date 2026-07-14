@@ -21,6 +21,8 @@ type Props = {
   uiState: AuctionUiState;
   now: number;
   minIncrementBps: number;
+  /** Transient extension notice; reserved slot avoids layout shift. */
+  extensionFlash?: string | null;
   className?: string;
 };
 
@@ -48,6 +50,7 @@ export function AuctionReadoutPanel({
   uiState,
   now,
   minIncrementBps,
+  extensionFlash = null,
   className,
 }: Props) {
   const minNext = minNextBid(auction.highestBid, minIncrementBps, auction.reserve);
@@ -60,6 +63,15 @@ export function AuctionReadoutPanel({
 
   return (
     <div className={cn(instrumentReadoutPanel, className)}>
+      <div
+        className="min-h-[1.25rem]"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {extensionFlash ? (
+          <p className="font-sans text-xs text-text-secondary">{extensionFlash}</p>
+        ) : null}
+      </div>
       <dl className="divide-y divide-border-default">
         <ReadoutRow label="Phase">{auctionPhaseLabel(uiState)}</ReadoutRow>
         <ReadoutRow label="Reserve">

@@ -19,6 +19,7 @@ import {
   formatAuctionAmount,
   formatAuctionCountdownSeconds,
 } from "@/lib/auction/format-auction";
+import { auctionTerminalMessage } from "@/lib/auction/auction-terminal-copy";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import type { OnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import {
@@ -308,20 +309,13 @@ export function AuctionSettlementPanel({
 
   // —— S9 voided / cancelled / returned ——
   if (auctionUiState === "S9") {
-    const reason =
-      auction.voidReason ||
-      (auction.phase === "CANCELLED"
-        ? "cancelled"
-        : auction.phase === "RETURNED"
-          ? "returned"
-          : "ended");
     return (
       <div
         className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4"
         role="status"
       >
         <p className="font-sans text-sm text-text-secondary">
-          Auction voided — {reason}. All bids were refunded automatically.
+          {auctionTerminalMessage(auction.phase, auction.voidReason)}
         </p>
       </div>
     );

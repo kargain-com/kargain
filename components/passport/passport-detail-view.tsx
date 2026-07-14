@@ -176,8 +176,6 @@ export function PassportDetailView({
         <PassportSpecGrid metadata={metadata} metadataError={metadataError} />
       </section>
 
-      <div className="mt-8 md:hidden">{commerce}</div>
-
       <PassportMobileDiscussion tokenId={tokenId} />
     </>
   );
@@ -285,6 +283,8 @@ export function PassportDetailView({
                 </p>
               )}
             </div>
+
+            <div className="order-1 mt-6 md:hidden">{commerce}</div>
 
             <div className="mt-6">
               <PassportPhotoGallery

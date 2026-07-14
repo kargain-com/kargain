@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { minNextBid } from "@/lib/auction/auction-bid-math";
+import { formatExtensionHelp } from "@/lib/auction/auction-live-signals";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auction";
 import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
@@ -70,6 +71,10 @@ type Props = {
   uiState: AuctionUiState;
   minIncrementBps: number;
   paused: boolean;
+  /** Chain extensionWindow seconds — drives live help copy. */
+  extensionWindow?: bigint;
+  /** Transient extension line (synced with readout flash). */
+  extensionFlash?: string | null;
   onSuccess?: () => void;
 };
 
@@ -80,6 +85,8 @@ export function AuctionBidPanel({
   uiState,
   minIncrementBps,
   paused,
+  extensionWindow = 300n,
+  extensionFlash = null,
   onSuccess,
 }: Props) {
   const router = useRouter();
@@ -371,9 +378,15 @@ export function AuctionBidPanel({
           Your full bid is held by the auction contract until you are outbid or
           you win. Outbid funds return automatically.
         </p>
-        <p className="font-sans text-xs text-text-secondary">
-          Bids in the last 5 minutes extend the auction by 5 minutes.
-        </p>
+        <div className="min-h-[2.5rem]" aria-live="polite" aria-atomic="true">
+          {extensionFlash ? (
+            <p className="font-sans text-xs text-text-secondary">{extensionFlash}</p>
+          ) : (
+            <p className="font-sans text-xs text-text-secondary">
+              {formatExtensionHelp(extensionWindow)}
+            </p>
+          )}
+        </div>
         {escrow && (
           <p className="font-sans text-xs text-text-secondary">
             Escrow contract{" "}
