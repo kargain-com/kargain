@@ -44,7 +44,7 @@
     "@irys/web-upload": "^0.0.15",
     "@irys/web-upload-ethereum": "^0.0.16",
     "@irys/web-upload-ethereum-ethers-v6": "^0.0.16",
-    "@kargain/vincent": "0.2.0",
+    "@kargain/vincent": "0.8.0",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-collapsible": "^1.1.13",
     "@radix-ui/react-dialog": "^1.1.15",

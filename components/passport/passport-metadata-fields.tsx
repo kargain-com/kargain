@@ -12,7 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { MAX_DESCRIPTION, MIN_VIN_LENGTH, MIN_YEAR } from "@/lib/passport/metadata-constants";
+import {
+  MAX_DESCRIPTION,
+  MAX_VIN_LENGTH,
+  MIN_VIN_LENGTH,
+  MIN_YEAR,
+} from "@/lib/passport/metadata-constants";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
@@ -27,12 +32,26 @@ import type {
 } from "@/lib/passport/metadata-schema";
 import { normalizeVin } from "@/lib/passport/metadata-schema";
 import {
+  decodeVinFields,
+  type VinDecodedFieldKey,
+} from "@/lib/passport/vin-decode";
+import {
   buildVinInsight,
   resolveVinOrigin,
   type VinInsightOrigin,
 } from "@/lib/passport/vin-insight";
 
 const ORIGIN_RESOLVE_DEBOUNCE_MS = 300;
+const DECODE_RESOLVE_DEBOUNCE_MS = 500;
+
+const DECODE_FIELD_KEYS: readonly VinDecodedFieldKey[] = [
+  "model",
+  "modelVariant",
+  "bodyType",
+  "fuelType",
+  "transmission",
+  "engine",
+] as const;
 
 type Props = {
   form: PassportCreateFormInput;
@@ -53,12 +72,20 @@ function formatOriginCountry(country: string): string {
     .join(" ");
 }
 
+function parseYearField(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function OptionalSelect({
   id,
   label,
   value,
   options,
   disabled,
+  decoded,
   onChange,
 }: {
   id: string;
@@ -66,11 +93,17 @@ function OptionalSelect({
   value: string;
   options: readonly string[];
   disabled?: boolean;
+  decoded?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-baseline gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        {decoded && (
+          <span className="font-mono text-xs text-text-tertiary">Decoded</span>
+        )}
+      </div>
       <Select
         value={value || "__none__"}
         onValueChange={(next) => onChange(next === "__none__" ? "" : next)}
@@ -102,8 +135,15 @@ export function PassportMetadataFields({
 }: Props) {
   const maxYear = new Date().getFullYear() + 1;
   const yearManuallyEditedRef = useRef(false);
+  const decodeManuallyEditedRef = useRef(new Set<VinDecodedFieldKey>());
+  const decodedMarkersRef = useRef(new Set<VinDecodedFieldKey>());
+  const formRef = useRef(form);
+  formRef.current = form;
   const [vinOrigin, setVinOrigin] = useState<VinInsightOrigin | null>(null);
   const [yearFromVin, setYearFromVin] = useState(false);
+  const [decodedMarkers, setDecodedMarkers] = useState(
+    () => new Set<VinDecodedFieldKey>(),
+  );
 
   const vinInsight = useMemo(() => {
     if (!form.vin.trim()) return null;
@@ -151,6 +191,74 @@ export function PassportMetadataFields({
     }
   }, [vinInsight, form.year, yearFromVin, onFieldChange]);
 
+  useEffect(() => {
+    const status = vinInsight?.status;
+    const canDecode =
+      normalizedVin.length === MAX_VIN_LENGTH &&
+      (status === "ok" || status === "warning");
+
+    if (!canDecode) {
+      if (decodedMarkersRef.current.size > 0) {
+        decodedMarkersRef.current = new Set();
+        setDecodedMarkers(new Set());
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const vinAtResolve = normalizedVin;
+    const yearHint =
+      parseYearField(form.year) ?? vinInsight?.yearSuggestion ?? null;
+
+    const timer = window.setTimeout(() => {
+      void decodeVinFields(vinAtResolve, yearHint).then((fields) => {
+        if (cancelled || normalizeVin(formRef.current.vin) !== vinAtResolve) {
+          return;
+        }
+        if (!fields) return;
+
+        const nextMarkers = new Set<VinDecodedFieldKey>();
+        const current = formRef.current;
+        const wasDecoded = decodedMarkersRef.current;
+
+        for (const key of DECODE_FIELD_KEYS) {
+          const decodedValue = fields[key];
+          if (decodedValue == null) continue;
+          if (decodeManuallyEditedRef.current.has(key)) continue;
+
+          const currentValue = current[key].trim();
+
+          if (!currentValue) {
+            onFieldChange(key, decodedValue);
+            nextMarkers.add(key);
+            continue;
+          }
+
+          if (wasDecoded.has(key)) {
+            if (currentValue !== decodedValue) {
+              onFieldChange(key, decodedValue);
+            }
+            nextMarkers.add(key);
+          }
+        }
+
+        decodedMarkersRef.current = nextMarkers;
+        setDecodedMarkers(nextMarkers);
+      });
+    }, DECODE_RESOLVE_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    normalizedVin,
+    vinInsight?.status,
+    vinInsight?.yearSuggestion,
+    form.year,
+    onFieldChange,
+  ]);
+
   const handleVinChange = (value: string) => {
     onFieldChange("vin", value);
   };
@@ -160,6 +268,27 @@ export function PassportMetadataFields({
     setYearFromVin(false);
     onFieldChange("year", value);
   };
+
+  const markDecodedFieldEdited = (key: VinDecodedFieldKey) => {
+    decodeManuallyEditedRef.current.add(key);
+    if (!decodedMarkersRef.current.has(key)) return;
+    const next = new Set(decodedMarkersRef.current);
+    next.delete(key);
+    decodedMarkersRef.current = next;
+    setDecodedMarkers(next);
+  };
+
+  const handleDecodedTextChange = (key: VinDecodedFieldKey, value: string) => {
+    markDecodedFieldEdited(key);
+    onFieldChange(key, value);
+  };
+
+  const handleDecodedSelectChange = (key: VinDecodedFieldKey, value: string) => {
+    markDecodedFieldEdited(key);
+    onFieldChange(key, value);
+  };
+
+  const isDecoded = (key: VinDecodedFieldKey) => decodedMarkers.has(key);
 
   const insightHardErrors =
     vinInsight?.status === "error" ? vinInsight.messages : [];
@@ -218,12 +347,17 @@ export function PassportMetadataFields({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
+            <div className="flex items-baseline gap-2">
+              <Label htmlFor="model">Model</Label>
+              {isDecoded("model") && (
+                <span className="font-mono text-xs text-text-tertiary">Decoded</span>
+              )}
+            </div>
             <Input
               id="model"
               name="model"
               value={form.model}
-              onChange={(e) => onFieldChange("model", e.target.value)}
+              onChange={(e) => handleDecodedTextChange("model", e.target.value)}
               placeholder="e.g. Corolla"
               disabled={disabled}
             />
@@ -308,11 +442,18 @@ export function PassportMetadataFields({
             />
 
             <div className="space-y-2">
-              <Label htmlFor="modelVariant">Variant</Label>
+              <div className="flex items-baseline gap-2">
+                <Label htmlFor="modelVariant">Variant</Label>
+                {isDecoded("modelVariant") && (
+                  <span className="font-mono text-xs text-text-tertiary">Decoded</span>
+                )}
+              </div>
               <Input
                 id="modelVariant"
                 value={form.modelVariant}
-                onChange={(e) => onFieldChange("modelVariant", e.target.value)}
+                onChange={(e) =>
+                  handleDecodedTextChange("modelVariant", e.target.value)
+                }
                 placeholder="e.g. Long Range"
                 disabled={disabled}
               />
@@ -335,7 +476,8 @@ export function PassportMetadataFields({
               value={form.fuelType}
               options={FUEL_TYPE_OPTIONS}
               disabled={disabled}
-              onChange={(value) => onFieldChange("fuelType", value)}
+              decoded={isDecoded("fuelType")}
+              onChange={(value) => handleDecodedSelectChange("fuelType", value)}
             />
 
             <OptionalSelect
@@ -344,7 +486,8 @@ export function PassportMetadataFields({
               value={form.bodyType}
               options={BODY_TYPE_OPTIONS}
               disabled={disabled}
-              onChange={(value) => onFieldChange("bodyType", value)}
+              decoded={isDecoded("bodyType")}
+              onChange={(value) => handleDecodedSelectChange("bodyType", value)}
             />
 
             <OptionalSelect
@@ -353,7 +496,10 @@ export function PassportMetadataFields({
               value={form.transmission}
               options={TRANSMISSION_OPTIONS}
               disabled={disabled}
-              onChange={(value) => onFieldChange("transmission", value)}
+              decoded={isDecoded("transmission")}
+              onChange={(value) =>
+                handleDecodedSelectChange("transmission", value)
+              }
             />
 
             <div className="space-y-2">
@@ -386,11 +532,16 @@ export function PassportMetadataFields({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="engine">Engine</Label>
+              <div className="flex items-baseline gap-2">
+                <Label htmlFor="engine">Engine</Label>
+                {isDecoded("engine") && (
+                  <span className="font-mono text-xs text-text-tertiary">Decoded</span>
+                )}
+              </div>
               <Input
                 id="engine"
                 value={form.engine}
-                onChange={(e) => onFieldChange("engine", e.target.value)}
+                onChange={(e) => handleDecodedTextChange("engine", e.target.value)}
                 placeholder="e.g. 2.0 TDI"
                 disabled={disabled}
               />
