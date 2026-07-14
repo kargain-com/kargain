@@ -1,6 +1,7 @@
 import { encodeFunctionData } from "viem";
 
 import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
+import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
   type DeploymentManifest,
@@ -144,13 +145,13 @@ export const VERIFY_TARGETS = {
     buildArgs: proxyOnftAdapterConstructorArgs,
   },
   auctionEscrowImpl: {
-    label: "AuctionEscrow impl (1.0.0-draft)",
+    label: `AuctionEscrow impl (${CONTRACT_VERSIONS.AuctionEscrow})`,
     contract: "contracts/AuctionEscrow.sol:AuctionEscrow",
     addressKey: "auctionEscrowImpl" as const,
     buildArgs: auctionEscrowImplConstructorArgs,
   },
   auctionEscrowProxy: {
-    label: "AuctionEscrow proxy (1.0.0-draft)",
+    label: `AuctionEscrow proxy (${CONTRACT_VERSIONS.AuctionEscrow})`,
     contract:
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
     addressKey: "auctionEscrow" as const,

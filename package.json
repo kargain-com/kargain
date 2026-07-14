@@ -30,6 +30,7 @@
     "deploy:local": "hardhat run scripts/deploy-local.ts --network localhost",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
     "deploy:auction": "hardhat run scripts/deploy-auction.ts --network baseSepolia",
+    "upgrade:auction": "hardhat run scripts/upgrade-auction.ts --network baseSepolia",
     "verify:sepolia": "node --import tsx scripts/verify.ts",
     "smoke:sepolia": "hardhat run scripts/smoke-deploy.ts --network baseSepolia",
     "abis:export": "node scripts/export-abis.mjs",

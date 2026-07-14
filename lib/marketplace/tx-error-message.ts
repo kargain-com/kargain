@@ -96,6 +96,11 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
     "RefundNotPending",
     "No failed-sale refund is pending for this vehicle.",
   ],
+  ["NotBuyer", "Only the winning buyer can do this."],
+  [
+    "AuctionSettleable",
+    "This auction ended normally — finalize it instead of voiding.",
+  ],
 ];
 
 /** Format BidTooLow with mono min-bid + increment % (blueprint §4.3). */

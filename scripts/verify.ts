@@ -1,4 +1,6 @@
 import { config as loadEnv } from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getAddress } from "viem";
 
 import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
@@ -17,6 +19,10 @@ loadEnv({ path: ".env.local" });
 loadEnv();
 
 const BASESCAN = "https://sepolia.basescan.org";
+const PENDING_AUCTION_IMPL_PATH = join(
+  process.cwd(),
+  "deployments/84532.pending-auction-impl.json",
+);
 
 const FULL_VERIFY_ORDER: VerifyTargetKey[] = [
   "timelock",
@@ -33,6 +39,19 @@ const AUCTION_VERIFY_ORDER: VerifyTargetKey[] = ["auctionEscrowImpl", "auctionEs
 
 type VerifyStatus = VerifyRunResult | "missing" | "failed";
 
+function pendingAuctionImplAddress(): `0x${string}` | null {
+  if (!existsSync(PENDING_AUCTION_IMPL_PATH)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(PENDING_AUCTION_IMPL_PATH, "utf8")) as {
+      auctionEscrowImpl?: string;
+    };
+    if (!raw.auctionEscrowImpl) return null;
+    return getAddress(raw.auctionEscrowImpl);
+  } catch {
+    return null;
+  }
+}
+
 async function verifyTarget(
   key: VerifyTargetKey,
   manifest: DeploymentManifest,
@@ -40,7 +59,17 @@ async function verifyTarget(
   force: boolean,
 ): Promise<VerifyStatus> {
   const target = VERIFY_TARGETS[key];
-  const rawAddress = manifest[target.addressKey];
+  let addressSource = "manifest";
+  let rawAddress = manifest[target.addressKey];
+
+  if (key === "auctionEscrowImpl") {
+    const pendingAddr = pendingAuctionImplAddress();
+    if (pendingAddr) {
+      rawAddress = pendingAddr;
+      addressSource = "pending";
+    }
+  }
+
   if (!rawAddress) {
     console.log(`\n${target.label}`);
     console.log("  Skipping — address not in manifest.");
@@ -52,6 +81,9 @@ async function verifyTarget(
 
   console.log(`\n${target.label}`);
   console.log(`  Address: ${address}`);
+  if (addressSource === "pending") {
+    console.log(`  Source:  pending file (${PENDING_AUCTION_IMPL_PATH})`);
+  }
   console.log(`  Basescan: ${BASESCAN}/address/${address}`);
 
   if (!force) {
