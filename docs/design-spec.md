@@ -660,24 +660,26 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` (top nav only).
 
-**г-1 shipped:** browse, native ETH bid, direct KarPro create, permissionless Finalize / void. Deferred: agent authorize/create-on-behalf/return (г-2), USDC bid + settlement panels (г-3), extension flash / timeline polish (г-4).
+**г-1 + г-2 shipped:** browse, native ETH bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7 advisory, consigned-tab auction sections. Deferred: USDC bid + settlement panels (г-3), extension flash / timeline polish (г-4).
 
-#### Role matrix (seed)
+#### Role matrix
 
-| Role | Sees | Can do (г-1) |
-|------|------|----------------|
-| Viewer / bidder | Reserve, current bid, min next, countdown, bid history | Bid (native); Finalize when ended |
+| Role | Sees | Can do |
+|------|------|--------|
+| Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2) | Bid (native); Finalize when ended |
 | Leading bidder | Same + *You are the highest bidder* (neutral, not accent) | Wait / bid again if outbid |
-| KarPro direct seller | Own-lot create panel | `createAuction` when VERIFIED, not listed, active verifier; cannot bid |
-| Private owner / agent | — | г-2 |
+| KarPro direct seller | Own-lot create panel | `createAuction` when VERIFIED, not listed, active verifier; Cancel before first bid; cannot bid |
+| Private owner (agent path) | Authorization entry; return timer on agent auction | Authorize auction agent · Revoke (no active auction) · Request / force return (pre-start) |
+| KarPro agent | Consigned **Awaiting auction** / **Active auctions**; lot create panel when authorized | `createAuctionOnBehalf` · Cancel before first bid |
 
 #### Derived states (blueprint S#)
 
-Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
+Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Chain `returnRequestedAt` merges over Ponder for S2.
 
 | State | Condition | Commerce |
 |-------|-----------|----------|
-| **S1** | Awaiting first bid (`startedAt=0`) | Bid (min = reserve); create N/A |
+| **S1** | Awaiting first bid (`startedAt=0`) | Bid (min = reserve); seller/agent: Cancel |
+| **S2** | S1 + `returnRequestedAt` set | Same — bidding stays open; elevated advisory to **all** viewers |
 | **S3** | Live bidding | Bid panel; no cancel |
 | **S4** | Live + passport `DISPUTED` | Bid **disabled**; `status-error` copy |
 | **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle`; if passport `UNVERIFIED` → `voidAuction` |
@@ -685,6 +687,17 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
 | **S8 / S9** | `RELEASED` / `VOIDED`\|`CANCELLED`\|`RETURNED` | Terminal readout |
 
 **Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed.
+
+#### Agent consignment (г-2)
+
+| Surface | Behavior |
+|---------|----------|
+| Authorize | [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — approve auction escrow → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; inline **Revoke** when authorized and no active auction |
+| Create on behalf | [`agent-create-auction-panel.tsx`](../components/auction/agent-create-auction-panel.tsx) — chain-read auth (U2); asset locked; reserve / 3–7 d / commission ≤ 30%; net preview at reserve; blocked when `BelowOwnerMinAsset` |
+| Cancel (S1) | [`auction-cancel-panel.tsx`](../components/auction/auction-cancel-panel.tsx) — seller `cancelAuction` / agent `agentCancelAuction` while `startedAt == 0` |
+| Owner return | [`owner-auction-return-panel.tsx`](../components/auction/owner-auction-return-panel.tsx) — `requestReturn` → 7-day cooldown → `forceReturn` (pre-start only) |
+| Return advisory (U7) | [`auction-return-advisory.tsx`](../components/auction/auction-return-advisory.tsx) — elevated advisory to all when `returnRequestedAt` set and pre-start |
+| Consigned tab | Awaiting: `GET /agents/:address/auction-authorizations?awaiting=true` (expired badge client-side); Active: `GET /auctions?agent=&active=true`; **no per-row chain reads** |
 
 #### Copy (verbatim catalog subset)
 
@@ -694,6 +707,10 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
 | Live help | Bids in the last 5 minutes extend the auction by 5 minutes. |
 | Leading | You are the highest bidder. |
 | S1 help | The auction starts when someone bids at least the reserve. Until then the seller can cancel. |
+| S2 advisory | The owner has asked for this vehicle back. If no one bids before [date], the auction can be cancelled. A qualifying bid before then completes the sale. |
+| Cancel guard | You can cancel only before the first qualifying bid. |
+| Authorize min help | Your minimum is in the auction currency ([ETH]/[USDC]), not a display price. You receive at least this amount after all fees. |
+| Agent net preview | At reserve [X]: you receive [fee], owner receives [net]. Your commission is fixed for the whole auction. |
 | S4 | Bidding is paused while this passport is disputed. If the dispute is rejected the auction resumes; if confirmed, the auction is voided and every bid is refunded. |
 | S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a 7-day protection hold. |
 | Create intro | Auctions are open to professional sellers with verified vehicles. The reserve is public and bidding starts at or above it. |
@@ -703,15 +720,19 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
 
 #### Accent and Instrument Layer
 
-- Bids, reserves, prices, leading strip: `font-mono tabular-nums` + `text-text-primary` — **never** accent-warm.
+- Bids, reserves, prices, leading strip, mins/nets/fees: `font-mono tabular-nums` + `text-text-primary` — **never** accent-warm.
 - Accent-warm only trust seals (`PassportStatusBadge` VERIFIED).
 - DISPUTED mid-auction: `text-status-error` panel.
-- Countdown in `<time dateTime>`; bid errors `role="alert"`.
+- S2 return advisory: elevated advisory pattern (not `status-error` unless DISPUTED).
+- Countdown in `<time dateTime>`; bid/tx errors `role="alert"`.
 
 #### Indexer notes
 
 | Id | Rule |
 |----|------|
+| **U4** | Auction `ownerMinAsset` is asset units (wei / USDC 6) — [`owner-min-asset.ts`](../lib/auction/owner-min-asset.ts); never fiat 1e8 helpers |
+| **U2** | Agent create / authorize revoke: chain-read `auctionAgentAuthorizations` on panel/dialog mount only |
+| **U7** | Return timer visible to all viewers when `returnRequestedAt` set |
 | **U11** | Bid history filters `bid.timestamp ≥ auction.createdAt` (re-auction append-only bids) |
 | **U13** | Browse partitions live (`endsAt` asc) then awaiting-first-bid (`createdAt` desc) — API `asc(endsAt)` alone is wrong for `endsAt=0` |
 | **U15** | Derive ENDED client-side; Finalize CTA in г-1 |
@@ -721,10 +742,11 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
 | Surface | Budget |
 |---------|--------|
 | `/auctions` cards | 0 chain reads, 0 subscriptions; one shared minute ticker |
-| Lot island | One batched `useReadContracts`; detail poll 15s / bids 7s only when S1–S4 **and** tab visible |
+| Lot island | One batched `useReadContracts` (incl. `returnRequestedAt`); auth read on demand only; detail poll 15s / bids 7s only when S1–S4 **and** tab visible |
+| Consigned auction lists | Ponder only — 0 per-row chain reads |
 | No websockets | — |
 
-Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts).
+Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts).
 
 ---
 
@@ -1373,4 +1395,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.42 (July 2026 — auction commerce г-1: browse, native bid, create, Finalize). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.43 (July 2026 — auction commerce г-2: agent authorize / create-on-behalf / cancel / return / U7 advisory). Update when tokens, app shell, or component contracts change.*

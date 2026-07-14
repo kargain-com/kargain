@@ -10,6 +10,7 @@ import {
   type AuctionRow,
   type AuctionUiState,
 } from "@/lib/auction/map-ponder-auction";
+import { effectiveReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import { useAuctionChainReads } from "@/hooks/use-auction-chain-reads";
 import { useDocumentVisible } from "@/hooks/use-document-visible";
 import { useNow } from "@/hooks/use-now";
@@ -107,6 +108,13 @@ export function useAuctionDetail({
       now,
     });
 
+    const mergedReturnAt = (() => {
+      const ponderAt = base?.returnRequestedAt ?? 0n;
+      const chainAt = chain.returnRequestedAt;
+      const effective = effectiveReturnRequestedAt(ponderAt, chainAt);
+      return effective > 0n ? effective : null;
+    })();
+
     if (!base && onChain) {
       // Chain-only fallback (indexer lag) — minimal row for commerce mutex
       const synthetic: AuctionRow = {
@@ -132,7 +140,7 @@ export function useAuctionDetail({
         highestBid: onChain.highestBid,
         active: onChain.active,
         phase: onChain.startedAt === 0n ? "CREATED" : "BIDDING",
-        returnRequestedAt: null,
+        returnRequestedAt: mergedReturnAt,
         voidReason: "",
         createdAt: 0n,
         updatedAt: 0n,
@@ -181,10 +189,19 @@ export function useAuctionDetail({
       highestBid: onChain?.highestBid ?? base.highestBid,
       active,
       passportStatus: status,
+      returnRequestedAt: mergedReturnAt,
     };
 
     return { auction: mergedRow, uiState };
-  }, [ponderAuction, chain.auction, chainId, tokenId, passportStatus, now]);
+  }, [
+    ponderAuction,
+    chain.auction,
+    chain.returnRequestedAt,
+    chainId,
+    tokenId,
+    passportStatus,
+    now,
+  ]);
 
   return {
     auction: merged.auction,

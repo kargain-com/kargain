@@ -78,6 +78,13 @@ export function useAuctionChainReads({
             functionName: "paused" as const,
             chainId: wc,
           },
+          {
+            address: escrow!,
+            abi: AuctionEscrowAbi,
+            functionName: "returnRequestedAt" as const,
+            args: [tokenIdBig] as const,
+            chainId: wc,
+          },
         ]
       : [],
     query: {
@@ -108,6 +115,11 @@ export function useAuctionChainReads({
   const paused =
     data?.[4]?.status === "success" ? Boolean(data[4].result) : undefined;
 
+  const returnRequestedAt =
+    data?.[5]?.status === "success"
+      ? BigInt(data[5].result as number | bigint)
+      : undefined;
+
   const queryClient = useQueryClient();
 
   const invalidateAfterTx = () => {
@@ -124,6 +136,7 @@ export function useAuctionChainReads({
     minIncrementBps,
     extensionWindow,
     paused,
+    returnRequestedAt,
     isPending: readsEnabled && isPending,
     isFetching,
     refetch,

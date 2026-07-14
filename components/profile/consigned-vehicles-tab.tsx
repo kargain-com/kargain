@@ -12,7 +12,14 @@ import {
   getAgentAuthorizations,
   getAgentListings,
 } from "@/app/actions/agent-consignment";
+import {
+  getAgentActiveAuctions,
+  getAgentAuctionAuthorizations,
+  type PonderAuctionAuthorizationRaw,
+} from "@/app/actions/auction-agent";
 import { fetchPassportBatch } from "@/app/actions/notifications";
+import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
+import { AuctionCancelPanel } from "@/components/auction/auction-cancel-panel";
 import { AgentDelistButton } from "@/components/marketplace/agent-delist-button";
 import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
 import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-listing-panel";
@@ -24,6 +31,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { isAuctionAuthExpired } from "@/lib/auction/auction-agent";
+import { formatAuctionAmount } from "@/lib/auction/format-auction";
+import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
+import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
 import { sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { LISTING_CARD_GRID_NARROW } from "@/lib/marketplace/listing-card-grid";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
@@ -39,6 +50,7 @@ import type {
 } from "@/lib/types/ponder";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useNow } from "@/hooks/use-now";
 
 type PassportEnrichment = {
   owner: string;
@@ -65,6 +77,12 @@ async function invalidateAgentConsignmentQueries(
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["agent-awaiting", wallet] }),
     queryClient.invalidateQueries({ queryKey: ["agent-listings", wallet] }),
+    queryClient.invalidateQueries({
+      queryKey: ["agent-auction-awaiting", wallet],
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["agent-auction-active", wallet],
+    }),
   ]);
   router.refresh();
 }
@@ -657,6 +675,415 @@ function ListingsSection({
   );
 }
 
+function useAgentAuctionAuthorizationsInfinite(wallet: Address) {
+  return useInfiniteQuery({
+    queryKey: ["agent-auction-awaiting", wallet],
+    queryFn: async ({ pageParam }) => {
+      return getAgentAuctionAuthorizations(
+        wallet,
+        pageParam as number,
+        LISTINGS_PAGE_SIZE,
+        true,
+      );
+    },
+    initialPageParam: 1,
+    getNextPageParam: (last) => {
+      if (last.ponderError) return undefined;
+      const totalPages = Math.ceil(last.total / last.limit);
+      if (last.page < totalPages) return last.page + 1;
+      return undefined;
+    },
+  });
+}
+
+function useAgentActiveAuctionsInfinite(wallet: Address, chainId: number) {
+  return useInfiniteQuery({
+    queryKey: ["agent-auction-active", wallet, chainId],
+    queryFn: async ({ pageParam }) => {
+      return getAgentActiveAuctions(
+        wallet,
+        pageParam as number,
+        LISTINGS_PAGE_SIZE,
+        chainId,
+      );
+    },
+    initialPageParam: 1,
+    getNextPageParam: (last) => {
+      if (last.ponderError) return undefined;
+      const totalPages = Math.ceil(last.total / last.limit);
+      if (last.page < totalPages) return last.page + 1;
+      return undefined;
+    },
+  });
+}
+
+function AwaitingAuctionCard({
+  auth,
+  chainId,
+  nowSec,
+  onConsignmentChanged,
+}: {
+  auth: PonderAuctionAuthorizationRaw;
+  chainId: number;
+  nowSec: number;
+  onConsignmentChanged: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const expiry =
+    auth.expiry != null && auth.expiry !== ""
+      ? BigInt(auth.expiry)
+      : 0n;
+  const expired = isAuctionAuthExpired(expiry, nowSec);
+  const assetLabel = auctionAssetLabelFromAddress(auth.asset);
+  const ownerMin =
+    auth.ownerMinAsset != null ? BigInt(auth.ownerMinAsset) : 0n;
+  const status = (auth.passportStatus as PassportStatus) || "UNVERIFIED";
+  const make = auth.make || undefined;
+  const model = auth.model || undefined;
+  const year = auth.year ?? undefined;
+
+  return (
+    <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href={`/marketplace/${auth.tokenId}?chain=${chainId}`}
+          className="text-text-primary underline-offset-2 hover:text-accent-warm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          <PassportIdLabel
+            tokenId={auth.tokenId}
+            chainId={chainId}
+            prefix="none"
+            variant="mono"
+            className="text-inherit"
+          />
+        </Link>
+        <PassportStatusBadge status={status} />
+        {expired && (
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-text-tertiary">
+            Expired
+          </span>
+        )}
+      </div>
+      {make && model && (
+        <p className="mt-1 font-sans text-sm text-text-primary">
+          {year != null && year > 0 ? `${year} ` : ""}
+          {make} {model}
+        </p>
+      )}
+      <p className="mt-2 font-mono text-xs tabular-nums text-text-secondary">
+        Min {formatAuctionAmount(ownerMin, assetLabel)} · {assetLabel}
+      </p>
+      <p className="mt-1 font-sans text-xs text-text-secondary">
+        Owner{" "}
+        <EnsWalletLink
+          address={auth.owner}
+          href={`/profile/${auth.owner}`}
+          className="hover:underline"
+        />
+      </p>
+
+      {!expired &&
+        (!expanded ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-3 w-full"
+            onClick={() => setExpanded(true)}
+          >
+            Start auction
+          </Button>
+        ) : (
+          <>
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="font-sans text-xs text-text-secondary underline-offset-2 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              >
+                Collapse
+              </button>
+            </div>
+            <div className="mt-3">
+              <AgentCreateAuctionPanel
+                chainId={chainId}
+                tokenId={auth.tokenId}
+                onSuccess={() => {
+                  setExpanded(false);
+                  onConsignmentChanged();
+                }}
+              />
+            </div>
+          </>
+        ))}
+    </div>
+  );
+}
+
+function AwaitingAuctionAuthorizationsSection({
+  wallet,
+  chainId,
+  onConsignmentChanged,
+}: {
+  wallet: Address;
+  chainId: number;
+  onConsignmentChanged: () => void;
+}) {
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(loadMoreRef, { margin: "200px" });
+  const nowSec = useNow(60_000);
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isPending,
+    isError,
+  } = useAgentAuctionAuthorizationsInfinite(wallet);
+
+  const authorizations = useMemo(
+    () => data?.pages.flatMap((page) => page.authorizations) ?? [],
+    [data],
+  );
+  const ponderError = data?.pages[0]?.ponderError;
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  return (
+    <section className="mt-10">
+      <SectionHeading>Awaiting auction</SectionHeading>
+
+      {ponderError && <PonderErrorBanner message="Indexer unavailable" />}
+
+      {isPending && !ponderError && (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <li key={i}>
+              <AwaitingCardSkeleton />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {isError && !ponderError && (
+        <div
+          className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary"
+          role="alert"
+        >
+          <p className="font-medium text-text-primary">
+            Could not load auction authorizations right now.
+          </p>
+        </div>
+      )}
+
+      {!isPending && !ponderError && authorizations.length === 0 && (
+        <EmptyState
+          variant="content"
+          level="B"
+          className="py-8"
+          title="No vehicles awaiting auction"
+        />
+      )}
+
+      {!ponderError && authorizations.length > 0 && (
+        <>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {authorizations.map((auth) => (
+              <li key={auth.tokenId}>
+                <AwaitingAuctionCard
+                  auth={auth}
+                  chainId={chainId}
+                  nowSec={nowSec}
+                  onConsignmentChanged={onConsignmentChanged}
+                />
+              </li>
+            ))}
+          </ul>
+          <div ref={loadMoreRef} className="flex justify-center py-6">
+            {isFetchingNextPage && (
+              <span className="text-sm text-text-secondary">Loading more…</span>
+            )}
+            {!hasNextPage && (
+              <span className="text-xs text-text-tertiary">End of results</span>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ActiveAuctionCard({
+  auction,
+  onConsignmentChanged,
+}: {
+  auction: AuctionRow;
+  onConsignmentChanged: () => void;
+}) {
+  const preStart = auction.startedAt === 0n;
+
+  return (
+    <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href={`/marketplace/${auction.tokenId}?chain=${auction.chainId}`}
+          className={sansLinkUnderline}
+        >
+          <PassportIdLabel
+            tokenId={auction.tokenId}
+            chainId={auction.chainId}
+            prefix="none"
+            variant="mono"
+            className="text-inherit"
+          />
+        </Link>
+        {auction.passportStatus && (
+          <PassportStatusBadge status={auction.passportStatus} />
+        )}
+      </div>
+      {auction.make && auction.model && (
+        <p className="mt-1 font-sans text-sm text-text-primary">
+          {auction.year != null && auction.year > 0 ? `${auction.year} ` : ""}
+          {auction.make} {auction.model}
+        </p>
+      )}
+      <dl className="mt-3 space-y-1 font-mono text-xs tabular-nums text-text-secondary">
+        <div className="flex justify-between gap-2">
+          <dt>Reserve</dt>
+          <dd className="text-text-primary">
+            {formatAuctionAmount(auction.reserve, auction.assetLabel)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt>Commission</dt>
+          <dd className="text-text-primary">
+            {(auction.agentFeeBps / 100).toFixed(2)}%
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt>Status</dt>
+          <dd className="text-text-primary">
+            {preStart ? "Awaiting first bid" : "Bidding"}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-3">
+        <Link
+          href={`/marketplace/${auction.tokenId}?chain=${auction.chainId}`}
+          className={sansLinkUnderline}
+        >
+          View lot →
+        </Link>
+      </p>
+      {preStart && (
+        <div className="mt-3">
+          <AuctionCancelPanel
+            chainId={auction.chainId}
+            tokenId={auction.tokenId}
+            auction={auction}
+            onSuccess={onConsignmentChanged}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActiveAuctionsSection({
+  wallet,
+  chainId,
+  onConsignmentChanged,
+}: {
+  wallet: Address;
+  chainId: number;
+  onConsignmentChanged: () => void;
+}) {
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(loadMoreRef, { margin: "200px" });
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isPending,
+    isError,
+  } = useAgentActiveAuctionsInfinite(wallet, chainId);
+
+  const rows = useMemo(
+    () => data?.pages.flatMap((page) => page.rows) ?? [],
+    [data],
+  );
+  const ponderError = data?.pages[0]?.ponderError;
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  return (
+    <section className="mt-10">
+      <SectionHeading>Active auctions</SectionHeading>
+
+      {ponderError && <PonderErrorBanner message="Indexer unavailable" />}
+
+      {isPending && !ponderError && (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <li key={i}>
+              <AwaitingCardSkeleton />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {isError && !ponderError && (
+        <div
+          className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary"
+          role="alert"
+        >
+          <p className="font-medium text-text-primary">
+            Could not load active auctions right now.
+          </p>
+        </div>
+      )}
+
+      {!isPending && !ponderError && rows.length === 0 && (
+        <EmptyState
+          variant="content"
+          level="B"
+          className="py-8"
+          title="No active auctions"
+        />
+      )}
+
+      {!ponderError && rows.length > 0 && (
+        <>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {rows.map((auction) => (
+              <li key={auction.tokenId}>
+                <ActiveAuctionCard
+                  auction={auction}
+                  onConsignmentChanged={onConsignmentChanged}
+                />
+              </li>
+            ))}
+          </ul>
+          <div ref={loadMoreRef} className="flex justify-center py-6">
+            {isFetchingNextPage && (
+              <span className="text-sm text-text-secondary">Loading more…</span>
+            )}
+            {!hasNextPage && (
+              <span className="text-xs text-text-tertiary">End of results</span>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const { chainId: connectedChainId } = useAccount();
   const queryClient = useQueryClient();
@@ -713,6 +1140,18 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         emptyMessage="No past consignments"
         omitWhenEmpty
         platformFeeBps={platformFeeBps}
+        onConsignmentChanged={onConsignmentChanged}
+      />
+
+      <AwaitingAuctionAuthorizationsSection
+        wallet={wallet}
+        chainId={chainId}
+        onConsignmentChanged={onConsignmentChanged}
+      />
+
+      <ActiveAuctionsSection
+        wallet={wallet}
+        chainId={chainId}
         onConsignmentChanged={onConsignmentChanged}
       />
     </div>
