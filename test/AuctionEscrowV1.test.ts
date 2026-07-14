@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import hardhat from "hardhat";
-import { encodeFunctionData, getAddress, type PublicClient } from "viem";
+import { getAddress, type PublicClient } from "viem";
 
 import {
+  deployAuctionEscrow,
   deployPassportStack,
   deployTimelock,
   DISPUTE_DEPOSIT,
+  increaseTime,
   joinVerifier,
   mintPassport,
+  THREE_DAYS,
   type DeployedContract,
   type ViemSuite,
   ZERO,
 } from "../scripts/lib/local-stack.js";
 
 const NATIVE = ZERO;
-const THREE_DAYS = 3n * 24n * 60n * 60n;
 const SEVEN_DAYS = 7n * 24n * 60n * 60n;
 const RETURN_COOLDOWN = 7n * 24n * 60n * 60n;
 const THIRTY_DAYS = 30n * 24n * 60n * 60n;
@@ -28,17 +30,6 @@ function revertsWith(errorName: string) {
   };
 }
 
-async function increaseTime(publicClient: PublicClient, seconds: bigint) {
-  await publicClient.request({
-    method: "evm_increaseTime",
-    params: [Number(seconds)],
-  });
-  await publicClient.request({
-    method: "evm_mine",
-    params: [],
-  });
-}
-
 type AuctionStack = Awaited<ReturnType<typeof deployAuctionStack>> & { publicClient?: PublicClient };
 
 async function joinVerifierIfNeeded(staking: DeployedContract, account: AuctionStack["seller"]) {
@@ -48,27 +39,22 @@ async function joinVerifierIfNeeded(staking: DeployedContract, account: AuctionS
   }
 }
 
+/** Thin wrapper: full passport stack + shared `deployAuctionEscrow` (feeBps 250, initialize admin). */
 async function deployAuctionStack(viem: ViemSuite) {
   const base = await deployPassportStack(viem);
   const usdc = await viem.deployContract("MockUSDC", []);
-  const weth = await viem.deployContract("MockWETH", []);
   const timelock = await deployTimelock(viem, base.admin.account.address);
-  const feeBps = 250n;
-  const impl = await viem.deployContract("AuctionEscrow", [
-    base.passport.address,
-    usdc.address,
-    weth.address,
-    base.staking.address,
-    base.admin.account.address,
-    feeBps,
-  ]);
-  const initData = encodeFunctionData({
-    abi: impl.abi,
-    functionName: "initialize",
-    args: [base.admin.account.address],
-  });
-  const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
-  const auction = await viem.getContractAt("AuctionEscrow", proxy.address);
+  const { weth, impl, proxy, auction, feeBps } = await deployAuctionEscrow(
+    viem,
+    {
+      passport: base.passport,
+      staking: base.staking,
+      usdc,
+      timelock,
+      admin: base.admin,
+    },
+    { feeBps: 250n, upgradeAuthority: base.admin.account.address },
+  );
   const publicClient = await viem.getPublicClient();
   return {
     ...base,

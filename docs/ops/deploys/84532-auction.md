@@ -81,7 +81,7 @@ pnpm smoke:sepolia
 
 | Iteration | Work |
 |-----------|------|
-| b | Ponder schema + handlers + start block — **shipped July 2026** ([MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md)); VPS: `ponder-reindex.sh` + rebuild ponder |
+| b | Ponder schema + handlers + start block — **shipped July 2026**; **VPS reindex completed July 14, 2026** ([MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md)) — live `/auctions` → `total: 0` (no lots yet) |
 | c | e2e |
 | d | UI route |
 | — | SPEC Part I.9.1 migration |

@@ -7,6 +7,9 @@
 #
 # Ponder runs on embedded PGlite in dev — Docker is NOT required. Sets
 # KARGAIN_E2E_STRICT=1 so an unreachable indexer fails the suite (not a silent skip).
+#
+# Requires deployments/31337.json to include auctionEscrow + auctionEscrowImpl
+# (written by `pnpm deploy:local`).
 
 set -euo pipefail
 

@@ -46,7 +46,11 @@ export default createConfig({
       ? {
           AuctionEscrow: {
             abi: AuctionEscrowAbi,
-            ...contractEntry(addresses.auctionEscrow, "auctionEscrow"),
+            ...contractEntry(
+              addresses.auctionEscrow,
+              "auctionEscrow",
+              localAddresses?.auctionEscrow,
+            ),
           },
         }
       : {}),

@@ -3,6 +3,10 @@ import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicC
 export const ZERO = "0x0000000000000000000000000000000000000000" as const;
 export const MIN_STAKE = 50_000_000_000_000_000n; // 0.05 ether
 export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n; // 0.01 ether
+/** AuctionEscrow minimum duration (matches contract minDuration). */
+export const THREE_DAYS = 3n * 24n * 60n * 60n;
+/** Local auction platform fee (Sepolia AUCTION_PLATFORM_FEE_BPS). Hardhat suite overrides to 250. */
+export const AUCTION_LOCAL_FEE_BPS = 10n;
 
 /** ISO 4217 USD as bytes32 (right-padded ASCII). */
 export const CURRENCY_USD = "0x5553440000000000000000000000000000000000000000000000000000000000" as const;
@@ -61,7 +65,19 @@ export type LocalStackAddresses = {
   timelock: `0x${string}`;
   genesisAuthority: `0x${string}`;
   platformRecipient: `0x${string}`;
+  /** Present after `pnpm deploy:local` with auction deploy (iteration в). */
+  auctionEscrow?: `0x${string}`;
+  auctionEscrowImpl?: `0x${string}`;
   deployedAt: string;
+};
+
+/** Base contracts required to deploy AuctionEscrow on an existing local stack. */
+export type AuctionEscrowBase = {
+  passport: DeployedContract;
+  staking: DeployedContract;
+  usdc: DeployedContract;
+  timelock: DeployedContract;
+  admin: WalletClient;
 };
 
 export async function deployTimelock(viem: ViemSuite, admin: `0x${string}`) {
@@ -168,6 +184,49 @@ export async function deployEscrowStack(viem: ViemSuite) {
   };
 }
 
+/**
+ * Additive AuctionEscrow deploy on an existing passport/usdc/staking/timelock stack.
+ * Defaults match Sepolia (`feeBps=10`, `initialize(timelock)`). Hardhat unit tests pass
+ * `{ feeBps: 250n, upgradeAuthority: admin }` to preserve suite semantics.
+ */
+export async function deployAuctionEscrow(
+  viem: ViemSuite,
+  base: AuctionEscrowBase,
+  opts: { feeBps?: bigint; upgradeAuthority?: `0x${string}` } = {},
+) {
+  const feeBps = opts.feeBps ?? AUCTION_LOCAL_FEE_BPS;
+  const upgradeAuthority = opts.upgradeAuthority ?? getAddress(base.timelock.address);
+  const weth = await viem.deployContract("MockWETH", []);
+  const impl = await viem.deployContract("AuctionEscrow", [
+    base.passport.address,
+    base.usdc.address,
+    weth.address,
+    base.staking.address,
+    base.admin.account.address,
+    feeBps,
+  ]);
+  const initData = encodeFunctionData({
+    abi: impl.abi,
+    functionName: "initialize",
+    args: [upgradeAuthority],
+  });
+  const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
+  const auction = await viem.getContractAt("AuctionEscrow", proxy.address);
+  return { weth, impl, proxy, auction, feeBps };
+}
+
+/** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */
+export async function increaseTime(publicClient: PublicClient, seconds: bigint) {
+  await publicClient.request({
+    method: "evm_increaseTime",
+    params: [Number(seconds)],
+  });
+  await publicClient.request({
+    method: "evm_mine",
+    params: [],
+  });
+}
+
 export async function mintPassport(
   passport: DeployedContract,
   account: WalletClient,
@@ -209,7 +268,10 @@ export async function receiptLogs(
 }
 
 export function stackToDeploymentAddresses(
-  stack: Awaited<ReturnType<typeof deployEscrowStack>>,
+  stack: Awaited<ReturnType<typeof deployEscrowStack>> & {
+    auctionEscrow?: `0x${string}`;
+    auctionEscrowImpl?: `0x${string}`;
+  },
   chainId: number,
 ): LocalStackAddresses {
   return {
@@ -224,6 +286,10 @@ export function stackToDeploymentAddresses(
     timelock: getAddress(stack.timelock.address),
     genesisAuthority: getAddress(stack.admin.account.address),
     platformRecipient: getAddress(stack.admin.account.address),
+    ...(stack.auctionEscrow ? { auctionEscrow: getAddress(stack.auctionEscrow) } : {}),
+    ...(stack.auctionEscrowImpl
+      ? { auctionEscrowImpl: getAddress(stack.auctionEscrowImpl) }
+      : {}),
     deployedAt: new Date().toISOString(),
   };
 }

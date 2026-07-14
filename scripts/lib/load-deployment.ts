@@ -81,6 +81,10 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     timelock: getAddress(raw.timelock),
     genesisAuthority: getAddress(raw.genesisAuthority),
     platformRecipient: getAddress(raw.platformRecipient),
+    ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
+    ...(raw.auctionEscrowImpl
+      ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) }
+      : {}),
   };
 }
 
@@ -155,6 +159,9 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     timelock: process.env.PONDER_TIMELOCK_ADDRESS,
     genesisAuthority: process.env.PONDER_GENESIS_AUTHORITY_ADDRESS ?? process.env.PONDER_TIMELOCK_ADDRESS,
     platformRecipient: process.env.PONDER_PLATFORM_RECIPIENT_ADDRESS,
+    ...(process.env.PONDER_AUCTION_ESCROW_ADDRESS
+      ? { auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}` }
+      : {}),
     deployedAt: "",
   };
 
