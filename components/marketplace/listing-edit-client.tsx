@@ -27,11 +27,13 @@ import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format"
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import {
   KarPassportAbi,
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
 import {
+  auctionEscrowAddress,
   karPassportAddress,
   marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -366,6 +368,11 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
       {active && isSeller && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Delist</h2>
+          {auctionEscrowAddress(chainId) ? (
+            <p className="font-sans text-sm text-text-secondary" role="status">
+              {DELIST_BEFORE_AUCTION_HINT}
+            </p>
+          ) : null}
           <Button
             type="button"
             variant="outline"

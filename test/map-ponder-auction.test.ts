@@ -6,6 +6,7 @@ import {
   filterBidsForAuction,
   mapPonderAuctionBid,
   mapPonderAuctionRow,
+  marketplaceListingBlocksAuction,
   partitionActiveAuctions,
   type AuctionBid,
   type AuctionRow,
@@ -172,6 +173,52 @@ describe("deriveAuctionUiState (U15)", () => {
         now: 9,
       }),
       "S9",
+    );
+  });
+});
+
+describe("marketplaceListingBlocksAuction", () => {
+  it("blocks when Ponder listing is active", () => {
+    assert.equal(
+      marketplaceListingBlocksAuction({
+        ponderActive: true,
+        chainIsListed: false,
+        chainListedPending: false,
+      }),
+      true,
+    );
+  });
+
+  it("blocks when chain isListed is true", () => {
+    assert.equal(
+      marketplaceListingBlocksAuction({
+        ponderActive: false,
+        chainIsListed: true,
+        chainListedPending: false,
+      }),
+      true,
+    );
+  });
+
+  it("fail-closed while chain isListed is pending", () => {
+    assert.equal(
+      marketplaceListingBlocksAuction({
+        ponderActive: false,
+        chainIsListed: undefined,
+        chainListedPending: true,
+      }),
+      true,
+    );
+  });
+
+  it("allows auction create when not listed and chain resolved", () => {
+    assert.equal(
+      marketplaceListingBlocksAuction({
+        ponderActive: false,
+        chainIsListed: false,
+        chainListedPending: false,
+      }),
+      false,
     );
   });
 });

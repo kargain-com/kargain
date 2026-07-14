@@ -17,17 +17,14 @@ import { OwnerAuctionReturnPanel } from "@/components/auction/owner-auction-retu
 import { Button } from "@/components/ui/button";
 import { StatusToast } from "@/components/ui/status-toast";
 import { useAuctionBids } from "@/hooks/use-auction-bids";
-import { useAuctionDetail } from "@/hooks/use-auction-detail";
+import type { useAuctionDetail } from "@/hooks/use-auction-detail";
 import { useAuctionLiveSignals } from "@/hooks/use-auction-live-signals";
 import {
   hasAuctionAgent,
   isAuctionAuthUsableForCreate,
   parseAuctionAgentAuthorization,
 } from "@/lib/auction/auction-agent";
-import {
-  auctionBlocksListingCommerce,
-  type AuctionRow,
-} from "@/lib/auction/map-ponder-auction";
+import { auctionBlocksListingCommerce } from "@/lib/auction/map-ponder-auction";
 import { AuctionEscrowAbi, KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
@@ -36,15 +33,20 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
+type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
+
 type Props = {
   chainId: number;
   tokenId: string;
-  /** Server-prefetched Ponder auction (may be null). */
-  initialAuction: AuctionRow | null;
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
-  /** Marketplace fixed-price listing currently active. */
-  listingActive: boolean;
+  /**
+   * Marketplace fixed-price listing active (or unread — fail-closed).
+   * Blocks create/authorize; suppresses “Checking auction…” flash.
+   */
+  listingBlocksAuction: boolean;
+  /** Shared detail from PassportCommerce (single fetch). */
+  detail: AuctionDetailController;
 };
 
 /**
@@ -54,23 +56,15 @@ type Props = {
 export function AuctionDetailClientIsland({
   chainId,
   tokenId,
-  initialAuction,
   passportOwner,
   passportStatus,
-  listingActive,
+  listingBlocksAuction,
+  detail,
 }: Props) {
   const { address, isConnected } = useAccount();
   const escrow = auctionEscrowAddress(chainId);
   const staking = karProStakingAddress(chainId);
   const [authorizeOpen, setAuthorizeOpen] = useState(false);
-
-  const detail = useAuctionDetail({
-    chainId,
-    tokenId,
-    initialAuction,
-    passportStatus,
-    enabled: Boolean(escrow),
-  });
 
   const auction = detail.auction;
   const uiState = detail.uiState;
@@ -114,7 +108,7 @@ export function AuctionDetailClientIsland({
     isOwner &&
     isActiveVerifier === true &&
     passportStatus === "VERIFIED" &&
-    !listingActive &&
+    !listingBlocksAuction &&
     noBlockingAuction &&
     (uiState === "NONE" || uiState === "S8" || uiState === "S9");
 
@@ -122,7 +116,7 @@ export function AuctionDetailClientIsland({
     isConnected &&
     isOwner &&
     passportStatus === "VERIFIED" &&
-    !listingActive &&
+    !listingBlocksAuction &&
     noBlockingAuction;
 
   /** Single on-demand auth read for agent CTA (not always-on batch). */
@@ -138,7 +132,7 @@ export function AuctionDetailClientIsland({
           address &&
           !showCreate &&
           noBlockingAuction &&
-          !listingActive &&
+          !listingBlocksAuction &&
           passportStatus === "VERIFIED",
       ),
     },
@@ -152,7 +146,7 @@ export function AuctionDetailClientIsland({
     chainAuth != null &&
     address!.toLowerCase() === chainAuth.agent.toLowerCase() &&
     noBlockingAuction &&
-    !listingActive &&
+    !listingBlocksAuction &&
     passportStatus === "VERIFIED";
 
   const showLiveCommerce =
@@ -192,6 +186,8 @@ export function AuctionDetailClientIsland({
     !showAuthorize &&
     !showAgentCreate
   ) {
+    // Listed (or isListed unread): create impossible — do not flash checking UI over Manage listing.
+    if (listingBlocksAuction) return null;
     if (detail.chainPending || detail.ponderPending) {
       return (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
@@ -330,7 +326,7 @@ export function AuctionDetailClientIsland({
           chainId={chainId}
           tokenId={tokenId}
           passportStatus={passportStatus}
-          listingActive={listingActive}
+          listingActive={listingBlocksAuction}
           isOwner={isOwner}
           isActiveVerifier={isActiveVerifier === true}
           onSuccess={() => detail.invalidateAfterTx()}

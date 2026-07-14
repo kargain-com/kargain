@@ -1,8 +1,7 @@
 import Link from "next/link";
 
-import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
-import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { ListingCommentsProvider } from "@/components/passport/listing-comments-provider";
+import { PassportCommerce } from "@/components/passport/passport-commerce";
 import { PassportDataStrip } from "@/components/passport/passport-data-strip";
 import { PassportDetailTabs } from "@/components/passport/passport-detail-tabs";
 import { PassportDiscussionRail } from "@/components/passport/passport-discussion-rail";
@@ -17,16 +16,10 @@ import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
-import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
-import {
-  auctionBlocksListingCommerce,
-  deriveAuctionUiState,
-} from "@/lib/auction/map-ponder-auction";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
-  sectionScrollAnchor,
 } from "@/lib/design/instrument-classes";
 import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
@@ -107,56 +100,17 @@ export function PassportDetailView({
   });
   const statusSublabel = sealSublabel(passport.status, passport.verifier);
 
-  const auctionUiState = auction
-    ? deriveAuctionUiState({
-        phase: auction.phase,
-        active: auction.active,
-        endsAtChain: auction.endsAt,
-        startedAt: auction.startedAt,
-        passportStatus: passport.status,
-        now: Math.floor(Date.now() / 1000),
-      })
-    : "NONE";
-  const auctionOwnsCommerce = auctionBlocksListingCommerce(
-    auctionUiState,
-    auction?.active ?? false,
-  );
-
   const commerce = (
-    <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
-      <WatchlistButton tokenId={tokenId} />
-      {auctionOwnsCommerce ? (
-        <AuctionDetailClientIsland
-          chainId={chainId}
-          tokenId={tokenId}
-          initialAuction={auction}
-          passportOwner={passport.owner as `0x${string}`}
-          passportStatus={passport.status}
-          listingActive={Boolean(listing?.active)}
-        />
-      ) : (
-        <>
-          <AuctionDetailClientIsland
-            chainId={chainId}
-            tokenId={tokenId}
-            initialAuction={auction}
-            passportOwner={passport.owner as `0x${string}`}
-            passportStatus={passport.status}
-            listingActive={Boolean(listing?.active)}
-          />
-          <ListingDetailClientIsland
-            chainId={chainId}
-            tokenId={tokenId}
-            listing={listing}
-            passportOwner={passport.owner as `0x${string}`}
-            passportStatus={passport.status}
-            duplicateVin={passport.duplicateVin}
-            hadDispute={passport.hadDispute}
-            auctionBlocksCommerce={false}
-          />
-        </>
-      )}
-    </div>
+    <PassportCommerce
+      chainId={chainId}
+      tokenId={tokenId}
+      listing={listing}
+      initialAuction={auction}
+      passportOwner={passport.owner as `0x${string}`}
+      passportStatus={passport.status}
+      duplicateVin={passport.duplicateVin}
+      hadDispute={passport.hadDispute}
+    />
   );
 
   const overview = (

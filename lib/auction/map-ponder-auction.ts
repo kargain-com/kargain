@@ -412,3 +412,17 @@ export function auctionBlocksListingCommerce(
   if (active && state !== "NONE" && state !== "S8" && state !== "S9") return true;
   return false;
 }
+
+/**
+ * Fixed-price listing blocks auction create/authorize (custody: NFT in MarketplaceEscrow).
+ * Fail-closed while chain `isListed` is unread so listed lots never flash Start auction.
+ */
+export function marketplaceListingBlocksAuction(input: {
+  ponderActive: boolean;
+  chainIsListed: boolean | undefined;
+  chainListedPending: boolean;
+}): boolean {
+  if (input.ponderActive || input.chainIsListed === true) return true;
+  if (input.chainListedPending) return true;
+  return false;
+}

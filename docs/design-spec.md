@@ -695,7 +695,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
 | **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
-**Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed or while `holds.releaseAt ≠ 0` (U9).
+**Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides listing CTAs; chain `isListed` (fail-closed while unread) + Ponder `listing.active` hide **Start auction** / authorize while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). **Start auction** also hidden while `holds.releaseAt ≠ 0` (U9). Unlisted KarPro may see **List for sale** and **Start auction** side by side (sale-form choice). Seller (listed) sees neutral hint *To start a reserve auction, delist this fixed-price listing first.* above **Manage listing** and under Delist on the edit page (`DELIST_BEFORE_AUCTION_HINT`) when auction escrow is deployed.
 
 #### Settlement (г-3)
 
@@ -1444,4 +1444,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.49 (July 2026 — VIN insight EU/unknown-WMI honesty). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.51 (July 2026 — delist-before-auction seller hint). Update when tokens, app shell, or component contracts change.*

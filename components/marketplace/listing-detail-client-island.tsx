@@ -33,9 +33,11 @@ import {
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
+import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import {
   karPassportAddress,
   marketplaceAddress,
+  auctionEscrowAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -263,6 +265,12 @@ export function ListingDetailClientIsland({
 
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const manageLabel = listingActive ? "Manage listing" : "List for sale";
+  const showDelistBeforeAuctionHint = Boolean(
+    !auctionBlocksCommerce &&
+      listingActive &&
+      isSeller &&
+      auctionEscrowAddress(chainId),
+  );
 
   const externalPaymentDate = formatChainTimestamp(listing?.externalPaymentConfirmedAt);
 
@@ -366,9 +374,16 @@ export function ListingDetailClientIsland({
       )}
 
       {canManageListing && (
-        <Button asChild variant="secondary" className="w-full">
-          <Link href={editHref}>{manageLabel}</Link>
-        </Button>
+        <div className="space-y-2">
+          {showDelistBeforeAuctionHint && (
+            <p className="font-sans text-sm text-text-secondary" role="status">
+              {DELIST_BEFORE_AUCTION_HINT}
+            </p>
+          )}
+          <Button asChild variant="secondary" className="w-full">
+            <Link href={editHref}>{manageLabel}</Link>
+          </Button>
+        </div>
       )}
 
       {showDelegateEntry && (
