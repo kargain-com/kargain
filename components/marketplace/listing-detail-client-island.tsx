@@ -72,6 +72,8 @@ type Props = {
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
+  /** When true, hide buy/list CTAs (auction island owns commerce). */
+  auctionBlocksCommerce?: boolean;
 };
 
 function formatChainTimestamp(value: string | number | undefined): string {
@@ -91,6 +93,7 @@ export function ListingDetailClientIsland({
   passportStatus,
   duplicateVin,
   hadDispute,
+  auctionBlocksCommerce = false,
 }: Props) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -239,13 +242,19 @@ export function ListingDetailClientIsland({
   });
 
   const canManageListing = Boolean(
+    !auctionBlocksCommerce &&
     market &&
     address &&
     (isSeller || (!listingActive && isOwner)),
   );
 
   const showDelegateEntry = Boolean(
-    isOwner && !listingActive && !agentAuthActive && market && address,
+    !auctionBlocksCommerce &&
+    isOwner &&
+    !listingActive &&
+    !agentAuthActive &&
+    market &&
+    address,
   );
 
   const showReturnFlow = Boolean(
@@ -264,7 +273,7 @@ export function ListingDetailClientIsland({
 
   return (
     <div className="space-y-6">
-      {listingActive && effectiveListing ? (
+      {!auctionBlocksCommerce && listingActive && effectiveListing ? (
         <ListingBuyPanel
           chainId={chainId}
           tokenId={tokenId}
@@ -274,15 +283,15 @@ export function ListingDetailClientIsland({
           hadDispute={hadDispute}
           directPaymentNote={directPaymentNote}
         />
-      ) : isChainReadsLoading && market ? (
+      ) : !auctionBlocksCommerce && isChainReadsLoading && market ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Checking listing…
         </p>
-      ) : (
+      ) : !auctionBlocksCommerce ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Not currently listed
         </p>
-      )}
+      ) : null}
 
       {!listingActive && externalPaymentConfirmed && (
         <div className={commerceConfirmedPanel} role="status">

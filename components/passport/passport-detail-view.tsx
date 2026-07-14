@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { ListingCommentsProvider } from "@/components/passport/listing-comments-provider";
 import { PassportDataStrip } from "@/components/passport/passport-data-strip";
@@ -17,6 +18,11 @@ import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
+import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
+import {
+  auctionBlocksListingCommerce,
+  deriveAuctionUiState,
+} from "@/lib/auction/map-ponder-auction";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
@@ -47,6 +53,7 @@ type Props = {
     returnRequestedAt?: string | number;
     externalPaymentConfirmedAt?: string | number;
   } | null;
+  auction?: AuctionRow | null;
 };
 
 function buildTitle(metadata: PassportMetadata | null, tokenId: string, chainId: number): string {
@@ -83,6 +90,7 @@ export function PassportDetailView({
   metadataError,
   indexerPending = false,
   listing = null,
+  auction = null,
 }: Props) {
   const title = buildTitle(metadata, tokenId, chainId);
   const isDisputed = passport.status === "DISPUTED";
@@ -99,18 +107,55 @@ export function PassportDetailView({
   });
   const statusSublabel = sealSublabel(passport.status, passport.verifier);
 
+  const auctionUiState = auction
+    ? deriveAuctionUiState({
+        phase: auction.phase,
+        active: auction.active,
+        endsAtChain: auction.endsAt,
+        startedAt: auction.startedAt,
+        passportStatus: passport.status,
+        now: Math.floor(Date.now() / 1000),
+      })
+    : "NONE";
+  const auctionOwnsCommerce = auctionBlocksListingCommerce(
+    auctionUiState,
+    auction?.active ?? false,
+  );
+
   const commerce = (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
       <WatchlistButton tokenId={tokenId} />
-      <ListingDetailClientIsland
-        chainId={chainId}
-        tokenId={tokenId}
-        listing={listing}
-        passportOwner={passport.owner as `0x${string}`}
-        passportStatus={passport.status}
-        duplicateVin={passport.duplicateVin}
-        hadDispute={passport.hadDispute}
-      />
+      {auctionOwnsCommerce ? (
+        <AuctionDetailClientIsland
+          chainId={chainId}
+          tokenId={tokenId}
+          initialAuction={auction}
+          passportOwner={passport.owner as `0x${string}`}
+          passportStatus={passport.status}
+          listingActive={Boolean(listing?.active)}
+        />
+      ) : (
+        <>
+          <AuctionDetailClientIsland
+            chainId={chainId}
+            tokenId={tokenId}
+            initialAuction={auction}
+            passportOwner={passport.owner as `0x${string}`}
+            passportStatus={passport.status}
+            listingActive={Boolean(listing?.active)}
+          />
+          <ListingDetailClientIsland
+            chainId={chainId}
+            tokenId={tokenId}
+            listing={listing}
+            passportOwner={passport.owner as `0x${string}`}
+            passportStatus={passport.status}
+            duplicateVin={passport.duplicateVin}
+            hadDispute={passport.hadDispute}
+            auctionBlocksCommerce={false}
+          />
+        </>
+      )}
     </div>
   );
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { getAuctionDetail } from "@/app/actions/auction-detail";
 import { WarningIcon } from "@/components/ui/icons";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
@@ -79,9 +80,10 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const [result, listingRaw] = await Promise.all([
+  const [result, listingRaw, auctionResult] = await Promise.all([
     fetchPassportDetailCached(raw, chainId),
     fetchListingDetail(raw),
+    getAuctionDetail(raw, chainId),
   ]);
 
   if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
@@ -166,6 +168,7 @@ async function MarketplaceListingInner({
         metadataError={result.metadataError}
         indexerPending={result.indexerPending}
         listing={listing}
+        auction={auctionResult.ok ? auctionResult.auction : null}
       />
     </div>
   );

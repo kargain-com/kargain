@@ -60,6 +60,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | `/` | Marketplace browse |
 | `/passport/new` | Mint KarPassport |
 | `/passport/[tokenId]/edit` | Edit passport metadata |
+| `/auctions` | Active auction browse |
 | `/marketplace/[tokenId]` | Listing / passport detail |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
 | `/kar-pro` | KarPro onboarding |

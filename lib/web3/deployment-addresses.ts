@@ -139,6 +139,7 @@ const SEPOLIA_KARGAIN_CONTRACTS: `0x${string}`[] = [
   SEPOLIA_ACTIVE.karProPass,
   SEPOLIA_ACTIVE.karProStaking,
   SEPOLIA_ACTIVE.proxyOnftAdapter,
+  SEPOLIA_ACTIVE.auctionEscrow,
   ...SEPOLIA_HISTORICAL_DENYLIST,
 ];
 

@@ -8,7 +8,7 @@ import {
   ShieldCheckIcon,
 } from "@/components/ui/icons";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 
 import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
 import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
@@ -19,18 +19,23 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
 import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
+import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function AppTopNav() {
   const path = usePathname();
   const sp = useSearchParams();
   const { isConnected } = useAccount();
+  const walletChainId = useChainId();
   const showBecomeKarPro = useShowBecomeKarPro();
   const isMarketplaceBrowse = path === "/";
 
   const urlChain = sp.get("chain");
   const parsed = urlChain ? Number.parseInt(urlChain, 10) : NaN;
   const expectedChainId = Number.isFinite(parsed) ? parsed : DEFAULT_CHAIN_ID;
+  const auctionsEnabled = Boolean(
+    auctionEscrowAddress(walletChainId || expectedChainId),
+  );
 
   return (
     <header className="sticky top-0 z-50 border-b border-border-default bg-bg-primary">
@@ -46,6 +51,26 @@ export function AppTopNav() {
 
         <div className="flex shrink-0 items-center gap-2">
           <CurrencySelector />
+          {auctionsEnabled && (
+            <Link
+              href={`/auctions?chain=${expectedChainId}`}
+              aria-label="Auctions"
+              className={cn(
+                "inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border min-h-9",
+                "font-sans text-sm font-medium transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
+                "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+                "hidden h-9 px-4 md:inline-flex",
+                path === "/auctions"
+                  ? "border-accent-warm bg-bg-surface text-accent-warm"
+                  : cn(
+                      "border-border-hover bg-transparent text-text-primary",
+                      shellControlHover,
+                    ),
+              )}
+            >
+              Auctions
+            </Link>
+          )}
           <Link
             href="/verifiers"
             aria-label="Verifiers"

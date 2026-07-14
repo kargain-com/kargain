@@ -1,6 +1,7 @@
 import { getAddress } from "viem";
 
 import {
+  auctionEscrowAddress,
   BASE_SEPOLIA_CHAIN_ID,
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
@@ -51,6 +52,7 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
     chainlinkNativeUsdFeed(cid),
     chainlinkEurUsdFeed(cid),
     proxyOnftAdapterAddress(cid),
+    auctionEscrowAddress(cid),
   ];
 
   if (cid === BASE_SEPOLIA_CHAIN_ID) {

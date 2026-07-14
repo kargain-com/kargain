@@ -656,6 +656,76 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | Trust | Same modal disclaimer as ETH/USDC; comment delivery provider-dependent |
 | LNURL proxy security | Server-only proxy ([`guarded-fetch.ts`](../lib/lightning/guarded-fetch.ts), [`ip-guard.ts`](../lib/lightning/ip-guard.ts), [`lnurl.ts`](../lib/lightning/lnurl.ts)): https-only callbacks, port 443, no redirects, 5s timeout, 64KB body cap, strict JSON parse + invoice-amount check; DNS-rebinding closed via connection-time IP validation — pinned undici lookup always resolves with `all: true`, validates every resolved address with its real family (4 or 6), rejects private/reserved ranges and unrecognized families at socket connect |
 
+### 4.18 Auction commerce
+
+Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` (top nav only).
+
+**г-1 shipped:** browse, native ETH bid, direct KarPro create, permissionless Finalize / void. Deferred: agent authorize/create-on-behalf/return (г-2), USDC bid + settlement panels (г-3), extension flash / timeline polish (г-4).
+
+#### Role matrix (seed)
+
+| Role | Sees | Can do (г-1) |
+|------|------|----------------|
+| Viewer / bidder | Reserve, current bid, min next, countdown, bid history | Bid (native); Finalize when ended |
+| Leading bidder | Same + *You are the highest bidder* (neutral, not accent) | Wait / bid again if outbid |
+| KarPro direct seller | Own-lot create panel | `createAuction` when VERIFIED, not listed, active verifier; cannot bid |
+| Private owner / agent | — | г-2 |
+
+#### Derived states (blueprint S#)
+
+Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**.
+
+| State | Condition | Commerce |
+|-------|-----------|----------|
+| **S1** | Awaiting first bid (`startedAt=0`) | Bid (min = reserve); create N/A |
+| **S3** | Live bidding | Bid panel; no cancel |
+| **S4** | Live + passport `DISPUTED` | Bid **disabled**; `status-error` copy |
+| **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle`; if passport `UNVERIFIED` → `voidAuction` |
+| **SETTLED** | Hold | Informational stub (г-3 panels) |
+| **S8 / S9** | `RELEASED` / `VOIDED`\|`CANCELLED`\|`RETURNED` | Terminal readout |
+
+**Mutex:** auction island XOR listing buy panel. Owner **List for sale** hidden while auction active; **Start auction** hidden while listed.
+
+#### Copy (verbatim catalog subset)
+
+| Surface | String |
+|---------|--------|
+| Bid footer | Your full bid is held by the auction contract until you are outbid or you win. Outbid funds return automatically. |
+| Live help | Bids in the last 5 minutes extend the auction by 5 minutes. |
+| Leading | You are the highest bidder. |
+| S1 help | The auction starts when someone bids at least the reserve. Until then the seller can cancel. |
+| S4 | Bidding is paused while this passport is disputed. If the dispute is rejected the auction resumes; if confirmed, the auction is voided and every bid is refunded. |
+| S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a 7-day protection hold. |
+| Create intro | Auctions are open to professional sellers with verified vehicles. The reserve is public and bidding starts at or above it. |
+| Reserve help | Lowest price you will accept. Shown to everyone. |
+| Asset help | Bids and payout are in one currency for the whole auction. USDC is recommended for expensive vehicles. |
+| Card no bid | Reserve not met · Awaiting first bid |
+
+#### Accent and Instrument Layer
+
+- Bids, reserves, prices, leading strip: `font-mono tabular-nums` + `text-text-primary` — **never** accent-warm.
+- Accent-warm only trust seals (`PassportStatusBadge` VERIFIED).
+- DISPUTED mid-auction: `text-status-error` panel.
+- Countdown in `<time dateTime>`; bid errors `role="alert"`.
+
+#### Indexer notes
+
+| Id | Rule |
+|----|------|
+| **U11** | Bid history filters `bid.timestamp ≥ auction.createdAt` (re-auction append-only bids) |
+| **U13** | Browse partitions live (`endsAt` asc) then awaiting-first-bid (`createdAt` desc) — API `asc(endsAt)` alone is wrong for `endsAt=0` |
+| **U15** | Derive ENDED client-side; Finalize CTA in г-1 |
+
+#### Performance budget
+
+| Surface | Budget |
+|---------|--------|
+| `/auctions` cards | 0 chain reads, 0 subscriptions; one shared minute ticker |
+| Lot island | One batched `useReadContracts`; detail poll 15s / bids 7s only when S1–S4 **and** tab visible |
+| No websockets | — |
+
+Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts).
+
 ---
 
 ## 5. Motion
@@ -1303,4 +1373,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.41 (July 2026 — progressive VIN origin in passport wizards). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.42 (July 2026 — auction commerce г-1: browse, native bid, create, Finalize). Update when tokens, app shell, or component contracts change.*
