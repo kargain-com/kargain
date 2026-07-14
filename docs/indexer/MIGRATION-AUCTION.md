@@ -111,4 +111,4 @@ Hardhat `31337` + PGlite Ponder indexes the **local** `auctionEscrow` proxy via:
 - `ponder.config.ts` passes `localAddresses?.auctionEscrow` to `contractEntry` (same pattern as Marketplace)
 - `./scripts/e2e-local.sh` with `KARGAIN_E2E_STRICT=1` runs the agent auction lifecycle and polls `GET /auctions/:tokenId` + `/bids` through phases `BIDDING` → `SETTLED` → `RELEASED`
 
-Maintainer plan (historical): `docs/ops/plans/auction-e2e-local.md`.
+**Scenario:** owner `authorizeAuctionAgent` → agent `createAuctionOnBehalf` → bid ≥ reserve → time/`settle` → `confirmReceipt` (or auto-release) → Ponder phases `BIDDING` → `SETTLED` → `RELEASED`.

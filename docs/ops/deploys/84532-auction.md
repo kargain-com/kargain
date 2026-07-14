@@ -84,7 +84,7 @@ pnpm smoke:sepolia
 | b | Ponder schema + handlers + start block — **shipped July 2026**; **VPS reindex completed July 14, 2026** ([MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md)) — live `/auctions` → `total: 0` (no lots yet) |
 | c | e2e |
 | d | UI route |
-| — | SPEC Part I.9.1 migration |
+| — | SPEC Part I.9.1 address rows + Part I.11 behavior — **shipped July 14, 2026** |
 
 **Ponder:** Do **not** change `PONDER_START_BLOCK_84532` when deploying auction indexer. Auction indexing uses `blocks.auctionEscrow` (**44080895**) per contract in `ponder.config.ts`.
 

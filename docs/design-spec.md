@@ -787,8 +787,9 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Surface | Budget |
 |---------|--------|
 | `/auctions` cards | 0 chain reads, 0 subscriptions; one shared minute ticker |
-| Lot island | One batched `useReadContracts` (incl. return + settlement config); auth read on demand only; detail poll 15s / bids 7s when S1–S4 **or** settlement poll-active **and** tab visible |
+| Lot island | One batched `useReadContracts` (incl. return + settlement config); auth read on demand only; detail poll 15s / bids 7s when S1–S4 **or** settlement poll-active **and** tab visible; `staleTime ≥ 30s`; refetch on own tx receipt |
 | Consigned auction lists | Ponder only — 0 per-row chain reads |
+| FX / discussion / live signals | Reuse nav FX + existing discussion rail; **0** new oracle or Nostr/XMTP subscriptions; extension flash + outbid toast derive from existing detail refetch only |
 | No websockets | — |
 
 Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts) · [`settlement-state.ts`](../lib/auction/settlement-state.ts).
@@ -1440,4 +1441,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.45 (July 2026 — auction commerce г-4: extension flash, outbid toast, timeline, mobile order; initiative complete). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.46 (July 2026 — auction SPEC Part I.11 + §4.18 performance budget rows; initiative docs closed). Update when tokens, app shell, or component contracts change.*
