@@ -51,6 +51,7 @@ const GLYPHS = [
 const LUCIDE_BRIDGE = [
   { file: "bookmark-check", exportName: "BookmarkCheckIcon" },
   { file: "check-check", exportName: "CheckDoubleIcon" },
+  { file: "gavel", exportName: "GavelIcon" },
   { file: "globe", exportName: "GlobeIcon" },
   { file: "reply", exportName: "ReplyIcon" },
   { file: "shield", exportName: "ShieldIcon" },

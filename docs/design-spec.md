@@ -211,8 +211,8 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 | Breakpoint | Left | Center / spacer | Right |
 |------------|------|-----------------|-------|
-| Mobile (`< md`) | Logo | flex spacer | Verifiers (icon button) · KarPro link (when eligible) · Wallet |
-| Desktop (`md+`) | Logo | flex spacer | Display currency · Verifiers (secondary button) · Alerts · Messages · Become KarPro (when eligible) · Create passport · Chain selector · Wallet |
+| Mobile (`< md`) | Logo | flex spacer | Display currency · Auctions (icon, when enabled) · Verifiers (icon) · KarPro link (when eligible) · Wallet |
+| Desktop (`md+`) | Logo | flex spacer | Display currency · Auctions (when enabled) · Verifiers (secondary button) · Alerts · Messages · Become KarPro (when eligible) · Create passport · Chain selector · Wallet |
 
 **Marketplace search:** lives in the **filter bar** on `/` ([`market-filter-bar.tsx`](../components/marketplace/market-filter-bar.tsx)), not in the top navbar.
 
@@ -226,11 +226,13 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **"Create passport":** Secondary border style — `border border-border-hover bg-transparent`. Desktop only (`hidden md:inline-flex`); mobile uses bottom-nav center FAB.
 
-**Verifiers:** Link to `/verifiers`. Secondary bordered button in the **right action cluster** (first before Alerts): `ShieldCheckIcon` + **Verifiers** label on desktop (`md+`); compact bordered icon on mobile. Active on `/verifiers`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
+**Auctions:** Link to `/auctions` when `auctionEscrowAddress(chainId)` is set. Secondary bordered button before Verifiers: `GavelIcon` + **Auctions** label on desktop (`md+`); compact bordered icon on mobile. Active on `/auctions`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
+
+**Verifiers:** Link to `/verifiers`. Secondary bordered button in the **right action cluster** (before Alerts): `ShieldCheckIcon` + **Verifiers** label on desktop (`md+`); compact bordered icon on mobile. Active on `/verifiers`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
 
 **Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-chain: red status dot. Desktop only (`hidden md:flex`).
 
-**Display currency:** [`CurrencySelector`](../components/shell/currency-selector.tsx) — first control in the right cluster (before Verifiers). Desktop: Radix dropdown (`w-[308px]`, `p-3`); mobile: bottom sheet (`max-h-[90dvh]`) with fixed header + scrollable body. Both surfaces share client-side search filter (ISO code substring), **Fiat** / **Crypto** group eyebrows (`.eyebrow` / `narrativeEyebrow`), and a 2-column grid per group (`grid grid-cols-2 gap-0.5`); empty state when search matches nothing. Trigger shows active ISO code only (e.g. `USD`). Menu cells: fixed-width monospace symbol slot (`w-6`, `font-mono`, `text-right`, `text-text-secondary`) + ISO code (`gap-2`); selected row/cell → `text-accent-warm`. Mobile sheet cells use `min-h-11` touch rows in the same grid. AED uses an empty symbol slot (code shown once). ETH uses `Ξ` + `ETH`; BTC uses `₿` + `BTC`. KRW `₩`, RUB `₽`, JPY `¥` (CNY also `¥` — ISO code column disambiguates). Inline price displays ([`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx)) keep symbol+amount on one line — selector layout only.
+**Display currency:** [`CurrencySelector`](../components/shell/currency-selector.tsx) — first control in the right cluster (before Auctions / Verifiers). Desktop: Radix dropdown (`w-[308px]`, `p-3`); mobile: bottom sheet (`max-h-[90dvh]`) with fixed header + scrollable body. Both surfaces share client-side search filter (ISO code substring), **Fiat** / **Crypto** group eyebrows (`.eyebrow` / `narrativeEyebrow`), and a 2-column grid per group (`grid grid-cols-2 gap-0.5`); empty state when search matches nothing. Trigger shows active ISO code only (e.g. `USD`). Menu cells: fixed-width monospace symbol slot (`w-6`, `font-mono`, `text-right`, `text-text-secondary`) + ISO code (`gap-2`); selected row/cell → `text-accent-warm`. Mobile sheet cells use `min-h-11` touch rows in the same grid. AED uses an empty symbol slot (code shown once). ETH uses `Ξ` + `ETH`; BTC uses `₿` + `BTC`. KRW `₩`, RUB `₽`, JPY `¥` (CNY also `¥` — ISO code column disambiguates). Inline price displays ([`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx)) keep symbol+amount on one line — selector layout only.
 
 **Wallet:** [`WalletLoginButton`](../components/wallet-login-button.tsx) — identicon + ENS or short address + ChevronDown. Radix dropdown: View on Basescan, Copy address, Disconnect. Disconnected: opens connect dialog with **WalletConnect** (when `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set) and **Browser wallet** (injected extension or wallet in-app browser only). Mobile Safari/Chrome without an injected provider: hint to use WalletConnect or open the site in MetaMask/Coinbase Wallet; empty state when no connector is available. Dialog closes on successful connect only (`onSuccess`).
 
@@ -658,7 +660,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 ### 4.18 Auction commerce
 
-Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` (top nav only).
+Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` — top nav on all breakpoints (`GavelIcon` icon-only below `md`).
 
 **г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.**
 
@@ -839,7 +841,7 @@ Mobile-first: base styles target small screens; add breakpoint prefixes to enhan
 
 **Standard:** vendored Mono Icons via [`components/ui/icons.tsx`](../components/ui/icons.tsx), regenerated by [`pnpm generate:icons`](../package.json) ([`scripts/generate-icons.mjs`](../scripts/generate-icons.mjs) — mono glyph whitelist in `GLYPHS`, Lucide bridge list in `LUCIDE_BRIDGE`). **Attribution:** Mono Icons (MIT, [icons.mono.company](https://icons.mono.company)); Lucide bridge glyphs from `lucide-static` (ISC).
 
-**Sizing:** use the `size` prop — **16** (inline), **20** (buttons, nav), **24** (decorative). Color via `className` + `currentColor` (`text-text-secondary`, `text-accent-warm`, `text-status-error`, etc.). Do not pass `strokeWidth` — the mono set is filled; eight lucide-bridge components render stroke mode internally: `BookmarkCheckIcon`, `CheckDoubleIcon`, `GlobeIcon`, `ReplyIcon`, `ShieldIcon`, `ShieldWarningIcon`, `ShieldCheckIcon`, `WalletIcon`.
+**Sizing:** use the `size` prop — **16** (inline), **20** (buttons, nav), **24** (decorative). Color via `className` + `currentColor` (`text-text-secondary`, `text-accent-warm`, `text-status-error`, etc.). Do not pass `strokeWidth` — the mono set is filled; nine lucide-bridge components render stroke mode internally: `BookmarkCheckIcon`, `CheckDoubleIcon`, `GavelIcon`, `GlobeIcon`, `ReplyIcon`, `ShieldIcon`, `ShieldWarningIcon`, `ShieldCheckIcon`, `WalletIcon`.
 
 **Loading:** `SpinnerIcon` (alias of mono `spinner`); add `animate-spin` at the call site.
 
@@ -847,6 +849,7 @@ Mobile-first: base styles target small screens; add breakpoint prefixes to enhan
 
 | Export | Product meaning |
 |--------|-----------------|
+| `GavelIcon` | **Auctions** nav |
 | `ShieldCheckIcon` | Passport / listing **VERIFIED** |
 | `ShieldWarningIcon` | **DISPUTED** (`text-status-error`) |
 | `UserCheckIcon` | **KarPro** membership |
@@ -1396,7 +1399,7 @@ Mobile-specific rules supplement §4.7–4.8 and §6. Instrument Layer rules (§
 
 ### 13.2 Navigation duplication
 
-Below `md`, primary actions live in **bottom nav only** (Messages, Create FAB, Alerts, Profile). Top nav: logo, Verifiers, optional KarPro, wallet — per §4.7.
+Below `md`, primary actions live in **bottom nav only** (Messages, Create FAB, Alerts, Profile). Top nav: logo, currency, Auctions (when enabled), Verifiers, optional KarPro, wallet — per §4.7.
 
 ### 13.3 Commerce-first mobile detail
 
@@ -1441,4 +1444,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.46 (July 2026 — auction SPEC Part I.11 + §4.18 performance budget rows; initiative docs closed). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.47 (July 2026 — Auctions top-nav `GavelIcon` on mobile + desktop). Update when tokens, app shell, or component contracts change.*

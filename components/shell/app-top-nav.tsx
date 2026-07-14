@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   CircleAddIcon,
+  GavelIcon,
   InboxIcon,
   NotificationIcon,
   ShieldCheckIcon,
@@ -59,7 +60,7 @@ export function AppTopNav() {
                 "inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border min-h-9",
                 "font-sans text-sm font-medium transition-colors duration-200 ease-[cubic-bezier(0.33,1,0.68,1)]",
                 "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-                "hidden h-9 px-4 md:inline-flex",
+                "h-9 w-9 md:w-auto md:px-4",
                 path === "/auctions"
                   ? "border-accent-warm bg-bg-surface text-accent-warm"
                   : cn(
@@ -68,7 +69,9 @@ export function AppTopNav() {
                     ),
               )}
             >
-              Auctions
+              <GavelIcon size={20} className="shrink-0 md:hidden" aria-hidden />
+              <GavelIcon size={16} className="hidden shrink-0 md:block" aria-hidden />
+              <span className="hidden md:inline">Auctions</span>
             </Link>
           )}
           <Link
