@@ -4,7 +4,7 @@
 import json
 import sys
 
-ALLOWED_KINDS = frozenset({0, 1, 7, 30000, 30078, 30405})
+ALLOWED_KINDS = frozenset({0, 1, 7, 30000, 30078, 30405, 31860})  # Vincent Commons reviews (F-2)
 MAX_CONTENT_BYTES = 65536
 
 
