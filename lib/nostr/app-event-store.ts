@@ -44,6 +44,12 @@ export const COMMONS_REVIEWS_POLICY: LatestPerAuthorPerDPolicy = {
   strategy: "latest-per-author-per-d",
 };
 
+/** Kind 31861 Commons claim proposals (lib/nostr/commons-claims.ts) — d = claimHash. */
+export const COMMONS_CLAIM_PROPOSALS_POLICY: LatestPerAuthorPerDPolicy = {
+  kind: 31861,
+  strategy: "latest-per-author-per-d",
+};
+
 /**
  * LWW element-set content (kind 30000, d=`kargain-favorites`).
  *

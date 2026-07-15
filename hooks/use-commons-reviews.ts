@@ -28,6 +28,11 @@ const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
 export type CommonsReviewTally = {
   endorsers: string[];
   rejecters: string[];
+  /**
+   * Endorser address → Nostr event author pubkey (gate 1 already enforces
+   * the attested binding, so this is 1:1). F-2.1 proposer-endorse check.
+   */
+  endorserPubkeysByAddress: Record<string, string>;
 };
 
 type UseCommonsReviewsOptions = {
@@ -208,9 +213,14 @@ export function useCommonsReviews(
       if (!boundPubkey || boundPubkey !== entry.authorPubkey) continue;
       if (activeVerifierByAttester.get(attester) !== true) continue;
 
-      const tally = result.get(entry.review.claim) ?? { endorsers: [], rejecters: [] };
+      const tally = result.get(entry.review.claim) ?? {
+        endorsers: [],
+        rejecters: [],
+        endorserPubkeysByAddress: {},
+      };
       if (entry.review.kind === "endorse") {
         tally.endorsers.push(attester);
+        tally.endorserPubkeysByAddress[attester] = entry.authorPubkey;
       } else {
         tally.rejecters.push(attester);
       }
