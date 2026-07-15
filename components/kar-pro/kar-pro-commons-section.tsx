@@ -26,6 +26,23 @@ const KarProCommonsQueue = dynamic(
   },
 );
 
+/**
+ * Lazy chunk: F-2.2 governance readouts — registry chain reads
+ * (`@kargain/vincent/anchor`) stay out of the hub bundle.
+ */
+const KarProCommonsGovernance = dynamic(
+  () =>
+    import("@/components/kar-pro/kar-pro-commons-governance").then(
+      (mod) => mod.KarProCommonsGovernance,
+    ),
+  { ssr: false },
+);
+
 export function KarProCommonsSection({ address }: { address: `0x${string}` }) {
-  return <KarProCommonsQueue address={address} />;
+  return (
+    <div className="space-y-8">
+      <KarProCommonsQueue address={address} />
+      <KarProCommonsGovernance />
+    </div>
+  );
 }
