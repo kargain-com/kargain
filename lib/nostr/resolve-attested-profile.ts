@@ -227,6 +227,46 @@ export async function resolveAttestedProfileServer(
   return resolveAttestedProfile(address, options);
 }
 
+/** Batch variant of attestedPubkeyForAddress — one entry per requested address. */
+export async function attestedPubkeysForAddresses(
+  addresses: Address[],
+  options?: ResolveAttestedProfileOptions,
+): Promise<Map<string, string | null>> {
+  const normalized = [...new Set(addresses.map((a) => normalizeProfileAddress(a)))];
+  const result = new Map<string, string | null>();
+  if (normalized.length === 0) return result;
+
+  try {
+    const pool = options?.pool ?? getServerPool();
+    const events = await pool.querySync(
+      [...NOSTR_RELAYS],
+      buildAttestedProfileFilter(addresses),
+      { maxWait: options?.maxWait ?? DEFAULT_MAX_WAIT_MS },
+    );
+
+    const eventsByAddress = new Map<string, Event[]>();
+    for (const event of events) {
+      const addr = ethereumAddressFromEvent(event);
+      if (!addr) continue;
+      const list = eventsByAddress.get(addr) ?? [];
+      list.push(event);
+      eventsByAddress.set(addr, list);
+    }
+
+    for (const addr of normalized) {
+      const candidates = eventsByAddress.get(addr) ?? [];
+      const picked = await pickNewestVerifiedProfile(candidates, addr);
+      result.set(addr, picked?.event.pubkey ?? null);
+    }
+  } catch {
+    for (const addr of normalized) {
+      result.set(addr, null);
+    }
+  }
+
+  return result;
+}
+
 /** Nostr pubkey from the newest verified kind:0 event for an address. */
 export async function attestedPubkeyForAddress(
   address: `0x${string}`,

@@ -284,7 +284,7 @@ async function main(): Promise<void> {
     `  ${observations.length} observations (${metadataFailures.length} metadata failures)`,
   );
 
-  const { claims, report } = await deriveClaims(observations);
+  const { claims, report, sources } = await deriveClaims(observations);
 
   let outputClaims = claims;
   let baseline: { path: string; published: number; subtracted: number } | null =
@@ -323,7 +323,7 @@ async function main(): Promise<void> {
       verifiedPassports: rows.length,
       metadataFailures,
     },
-    derivation: report,
+    derivation: { ...report, sources },
     baseline,
     crossCheck: crossCheckResult,
     output: countByType(outputClaims),

@@ -1,10 +1,17 @@
-export type KarProSection = "overview" | "profile" | "fee" | "payments" | "membership";
+export type KarProSection =
+  | "overview"
+  | "profile"
+  | "fee"
+  | "payments"
+  | "commons"
+  | "membership";
 
 const SECTION_VALUES: readonly KarProSection[] = [
   "overview",
   "profile",
   "fee",
   "payments",
+  "commons",
   "membership",
 ];
 

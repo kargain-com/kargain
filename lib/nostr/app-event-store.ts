@@ -16,18 +16,32 @@ export const PASSPORT_TAG_PREFIX = "kargain:passport:";
 /** Tombstones older than this are pruned on read and before publish. */
 export const LWW_TOMBSTONE_PRUNE_SECONDS = 90 * 24 * 60 * 60;
 
-export type AppEventMergeStrategy = "lww-element-set";
+export type AppEventMergeStrategy = "lww-element-set" | "latest-per-author-per-d";
 
-export type AppEventPolicy = {
+export type LwwAppEventPolicy = {
   kind: number;
   dTag: string;
-  strategy: AppEventMergeStrategy;
+  strategy: "lww-element-set";
 };
 
-export const FAVORITES_POLICY: AppEventPolicy = {
+/** Per-document kinds: `d` varies per subject; merge keeps newest per (author, d). */
+export type LatestPerAuthorPerDPolicy = {
+  kind: number;
+  strategy: "latest-per-author-per-d";
+};
+
+export type AppEventPolicy = LwwAppEventPolicy | LatestPerAuthorPerDPolicy;
+
+export const FAVORITES_POLICY: LwwAppEventPolicy = {
   kind: 30000,
   dTag: FAVORITES_LIST_ID,
   strategy: "lww-element-set",
+};
+
+/** Kind 31860 Commons reviews (lib/vincent-commons/review.ts) — d = claimHash. */
+export const COMMONS_REVIEWS_POLICY: LatestPerAuthorPerDPolicy = {
+  kind: 31860,
+  strategy: "latest-per-author-per-d",
 };
 
 /**
@@ -157,6 +171,27 @@ function mergeMaxRemove(
   }
 }
 
+/**
+ * `latest-per-author-per-d` merge: newest event per (author, d) pair.
+ * NIP-01 replaceable tie-break — equal `created_at` keeps the lower id.
+ */
+export function mergeLatestPerAuthorPerD(events: Event[]): Event[] {
+  const byKey = new Map<string, Event>();
+  for (const event of events) {
+    const dTag = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+    const key = `${event.pubkey}\u0000${dTag}`;
+    const prev = byKey.get(key);
+    if (
+      !prev ||
+      event.created_at > prev.created_at ||
+      (event.created_at === prev.created_at && event.id < prev.id)
+    ) {
+      byKey.set(key, event);
+    }
+  }
+  return [...byKey.values()];
+}
+
 /** Merge all events; never pick-latest-only. */
 export function mergeLwwElementSetEvents(events: Event[]): LwwElementSetState {
   const merged = emptyLwwState();
@@ -249,7 +284,7 @@ export function buildLwwLegacyTags(tokenIds: string[], dTag: string): string[][]
 export async function fetchAppEvents(
   pool: AppEventQueryPool,
   pubkey: string,
-  policy: AppEventPolicy,
+  policy: LwwAppEventPolicy,
 ): Promise<Event[]> {
   if (!pubkey.trim()) return [];
   return pool.querySync(
@@ -262,7 +297,7 @@ export async function fetchAppEvents(
 export async function publishLwwElementSet(
   pool: NostrPublishPool,
   privateKey: string,
-  policy: AppEventPolicy,
+  policy: LwwAppEventPolicy,
   state: LwwElementSetState,
 ): Promise<boolean> {
   if (!privateKey.trim()) return false;
@@ -304,7 +339,7 @@ export function runSerializedPubkeyWrite<T>(
 export async function mergeReadLwwState(
   pool: AppEventQueryPool,
   pubkey: string,
-  policy: AppEventPolicy,
+  policy: LwwAppEventPolicy,
 ): Promise<LwwElementSetState> {
   const events = await fetchAppEvents(pool, pubkey, policy);
   const merged = mergeLwwElementSetEvents(events);

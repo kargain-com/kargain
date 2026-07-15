@@ -15,6 +15,7 @@ describe("kar-pro-section-url", () => {
     assert.equal(parseKarProSection("profile"), "profile");
     assert.equal(parseKarProSection("fee"), "fee");
     assert.equal(parseKarProSection("payments"), "payments");
+    assert.equal(parseKarProSection("commons"), "commons");
     assert.equal(parseKarProSection("membership"), "membership");
     assert.equal(parseKarProSection("account"), "membership");
     assert.equal(parseKarProSection("unknown"), "overview");

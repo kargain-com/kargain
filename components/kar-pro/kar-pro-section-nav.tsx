@@ -17,6 +17,7 @@ type Props = {
   profile: ReactNode;
   fee: ReactNode;
   payments: ReactNode;
+  commons: ReactNode;
   membership: ReactNode;
 };
 
@@ -25,6 +26,7 @@ const SECTIONS: { id: KarProSection; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "fee", label: "Fee" },
   { id: "payments", label: "Payments" },
+  { id: "commons", label: "Commons" },
   { id: "membership", label: "Membership" },
 ];
 
@@ -33,6 +35,7 @@ export function KarProSectionNav({
   profile,
   fee,
   payments,
+  commons,
   membership,
 }: Props) {
   const pathname = usePathname();
@@ -44,6 +47,7 @@ export function KarProSectionNav({
   const [visitedProfile, setVisitedProfile] = useState(() => section === "profile");
   const [visitedFee, setVisitedFee] = useState(() => section === "fee");
   const [visitedPayments, setVisitedPayments] = useState(() => section === "payments");
+  const [visitedCommons, setVisitedCommons] = useState(() => section === "commons");
   const [visitedMembership, setVisitedMembership] = useState(() => section === "membership");
 
   const syncSectionFromLocation = useCallback(() => {
@@ -52,6 +56,7 @@ export function KarProSectionNav({
     if (next === "profile") setVisitedProfile(true);
     if (next === "fee") setVisitedFee(true);
     if (next === "payments") setVisitedPayments(true);
+    if (next === "commons") setVisitedCommons(true);
     if (next === "membership") setVisitedMembership(true);
   }, []);
 
@@ -69,6 +74,7 @@ export function KarProSectionNav({
       if (nextSection === "profile") setVisitedProfile(true);
       if (nextSection === "fee") setVisitedFee(true);
       if (nextSection === "payments") setVisitedPayments(true);
+      if (nextSection === "commons") setVisitedCommons(true);
       if (nextSection === "membership") setVisitedMembership(true);
       setSection(nextSection);
       replaceKarProSectionUrl(pathname, window.location.search, nextSection);
@@ -81,6 +87,7 @@ export function KarProSectionNav({
     profile,
     fee,
     payments,
+    commons,
     membership,
   };
 
@@ -89,6 +96,7 @@ export function KarProSectionNav({
     profile: visitedProfile,
     fee: visitedFee,
     payments: visitedPayments,
+    commons: visitedCommons,
     membership: visitedMembership,
   };
 

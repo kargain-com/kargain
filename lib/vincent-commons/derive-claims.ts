@@ -88,7 +88,18 @@ export type DeriveReport = {
   };
 };
 
-export type DeriveResult = { claims: Claim[]; report: DeriveReport };
+/** claimHash → contributing VERIFIED-passport tokenIds (sorted, deduped). */
+export type DeriveSources = Record<string, { tokenIds: string[] }>;
+
+export type DeriveResult = {
+  claims: Claim[];
+  report: DeriveReport;
+  /**
+   * F-2 additive sources map for emitted claims only. Never embedded in the
+   * claim JSON — claimHash stays independent of which passports contributed.
+   */
+  sources: DeriveSources;
+};
 
 /**
  * Kargain form vocabulary → vPIC-canonical codes recognized by the
@@ -298,6 +309,14 @@ export async function deriveClaims(
   // exclude every side, record for the review layer.
   const conflicts: DeriveConflict[] = [];
   const claims: Claim[] = [];
+  /** claimHash → contributing tokenIds (merged across duplicate emissions). */
+  const sourceTokenIds = new Map<string, Set<string>>();
+
+  const recordSource = (hash: string, tokenIds: Iterable<string>): void => {
+    const set = sourceTokenIds.get(hash) ?? new Set<string>();
+    for (const tokenId of tokenIds) set.add(tokenId);
+    sourceTokenIds.set(hash, set);
+  };
 
   const sortedGroupKeys = [...groups.keys()].sort((a, b) => {
     const ma = groupMeta.get(a);
@@ -332,6 +351,13 @@ export async function deriveClaims(
     // A group whose patterns all conflicted emits no empty declarations.
     if (surviving.length === 0) continue;
 
+    const groupTokenIds = new Set<string>();
+    for (const acc of surviving) {
+      for (const ids of acc.codes.values()) {
+        for (const tokenId of ids) groupTokenIds.add(tokenId);
+      }
+    }
+
     const schemaClaim: VdsSchemaClaim = {
       ...baseClaimFields(),
       type: "vds-schema",
@@ -340,6 +366,7 @@ export async function deriveClaims(
     };
     const schemaRef = claimHash(validateClaimOrThrow(schemaClaim));
     claims.push(schemaClaim);
+    recordSource(schemaRef, groupTokenIds);
 
     const bindingClaim: VdsBindingClaim = {
       ...baseClaimFields(),
@@ -353,10 +380,12 @@ export async function deriveClaims(
       value: {},
     };
     claims.push(validateClaimOrThrow(bindingClaim));
+    recordSource(claimHash(bindingClaim), groupTokenIds);
 
     for (const acc of surviving) {
-      const [code] = acc.codes.keys();
-      if (code === undefined) continue;
+      const [entry] = acc.codes.entries();
+      if (entry === undefined) continue;
+      const [code, patternTokenIds] = entry;
       const patternClaim: VdsPatternClaim = {
         ...baseClaimFields(),
         type: "vds-pattern",
@@ -364,6 +393,7 @@ export async function deriveClaims(
         value: { attribute: acc.attribute, code },
       };
       claims.push(validateClaimOrThrow(patternClaim));
+      recordSource(claimHash(patternClaim), patternTokenIds);
     }
   }
 
@@ -394,6 +424,14 @@ export async function deriveClaims(
     else if (claim.type === "vds-pattern") dedupCounts.vdsPattern += 1;
   }
 
+  // Sources map keys follow the canonical §7.2 claim order; tokenIds sorted.
+  const sources: DeriveSources = {};
+  for (const claim of deduped) {
+    const hash = claimHash(claim);
+    const tokenIds = sourceTokenIds.get(hash);
+    sources[hash] = { tokenIds: tokenIds ? [...tokenIds].sort() : [] };
+  }
+
   conflicts.sort((a, b) =>
     compareTuples(
       [a.wmi, a.year, a.vds, a.attribute],
@@ -408,6 +446,7 @@ export async function deriveClaims(
 
   return {
     claims: deduped,
+    sources,
     report: {
       observations: observations.length,
       skipped,
