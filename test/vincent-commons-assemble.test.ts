@@ -1,9 +1,9 @@
 /**
  * F-3a batch assembler tests — threshold matrix (record-verifier ×1,
  * independent ×2, wmi proposer + 1 independent), standing-reject freeze,
- * window boundary at tMet ± 1s, gate 1 replay defeat, inactive-attester
- * exclusion, future-clamp, baseline subtraction, byte-identical reruns,
- * and attestation-archive completeness.
+ * window boundary at tMet ± 1s, gate 1 replay defeat, inactive-attester and
+ * unattested-attester exclusions, future-clamp, baseline subtraction,
+ * byte-identical reruns, and attestation-archive completeness.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -578,13 +578,58 @@ describe("assemble — optimistic window boundary", () => {
 });
 
 describe("assemble — gates", () => {
-  it("gate 1: a review republished under a foreign Nostr key is not counted", async () => {
+  it("gate 1: a review republished under a foreign Nostr key is not counted and reports unattested-attester", async () => {
     const { naFuelPatternHash } = await derivedFixture();
     const result = await runAssembly({
       events: [
         reviewEvent({
           claim: naFuelPatternHash,
           privateKey: KEY_A,
+          kind: "endorse",
+          createdAt: T0,
+          pubkey: "pubkey-mallory",
+        }),
+      ],
+      nowSeconds: T0 + WINDOW_SECONDS,
+    });
+
+    const excluded = exclusionFor(result, naFuelPatternHash);
+    assert.equal(excluded?.reason, "unattested-attester");
+    assert.deepEqual(excluded?.unattestedAttesters, [ADDR_A.toLowerCase()]);
+    assert.equal(result.acceptedClaims.length, 0, "diagnostic only — never counted");
+  });
+
+  it("gate 1: an attester with no attested binding at all reports unattested-attester", async () => {
+    const { naFuelPatternHash } = await derivedFixture();
+    const result = await runAssembly({
+      events: [
+        reviewEvent({
+          claim: naFuelPatternHash,
+          privateKey: KEY_A,
+          kind: "endorse",
+          createdAt: T0,
+          pubkey: PUBKEY_A,
+        }),
+      ],
+      // No attested kind 0 binding exists for anyone.
+      attested: new Map(),
+      nowSeconds: T0 + WINDOW_SECONDS,
+    });
+
+    const excluded = exclusionFor(result, naFuelPatternHash);
+    assert.equal(excluded?.reason, "unattested-attester");
+    assert.deepEqual(excluded?.unattestedAttesters, [ADDR_A.toLowerCase()]);
+  });
+
+  it("gate 1: below-threshold is kept when unattested accepts still would not meet the threshold", async () => {
+    const { naFuelPatternHash } = await derivedFixture();
+    const result = await runAssembly({
+      events: [
+        // One gate-1-failed independent endorse — even if counted, one
+        // independent accept does not meet the two-independent threshold.
+        reviewEvent({
+          claim: naFuelPatternHash,
+          privateKey: KEY_B,
           kind: "endorse",
           createdAt: T0,
           pubkey: "pubkey-mallory",

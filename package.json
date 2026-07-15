@@ -20,7 +20,7 @@
     "test:vin-insight": "node --import tsx --test test/vin-insight.test.ts",
     "test:vincent": "node --import tsx --test test/vincent-integration.test.ts",
     "test:vincent:live": "VINCENT_LIVE=1 node --import tsx --test test/vincent-integration.test.ts",
-    "test:vincent-commons": "node --import tsx --test test/vincent-commons.test.ts test/vincent-commons-review.test.ts test/vincent-commons-wmi.test.ts test/vincent-commons-registry.test.ts test/vincent-commons-assemble.test.ts",
+    "test:vincent-commons": "node --import tsx --test test/vincent-commons.test.ts test/vincent-commons-review.test.ts test/vincent-commons-wmi.test.ts test/vincent-commons-registry.test.ts test/vincent-commons-assemble.test.ts test/vincent-commons-confirmation.test.ts",
     "test:listing": "node --import tsx --test test/listing-query.test.ts",
     "test:ponder": "node --import tsx --test test/ponder-indexer.test.ts test/ponder-auction.test.ts",
     "test:trust": "node --import tsx --test test/trust-signals.test.ts",
@@ -42,6 +42,7 @@
     "ponder:config": "node --import tsx scripts/ponder-config.ts",
     "vincent:derive": "node --import tsx scripts/vincent-derive.ts",
     "vincent:assemble": "node --import tsx scripts/vincent-assemble.ts",
+    "vincent:confirm": "node --import tsx scripts/vincent-confirm.ts",
     "ponder:dev": "ponder dev",
     "ponder:start": "ponder start"
   },
@@ -86,6 +87,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@kargain/vincent-compiler": "0.1.0",
     "@layerzerolabs/lz-evm-protocol-v2": "3.0.148",
     "@layerzerolabs/oapp-evm": "0.4.1",
     "@layerzerolabs/onft-evm": "0.2.4",

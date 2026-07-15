@@ -131,6 +131,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@kargain/vincent-compiler':
+        specifier: 0.1.0
+        version: 0.1.0(viem@2.47.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))
       '@layerzerolabs/lz-evm-protocol-v2':
         specifier: 3.0.148
         version: 3.0.148(@openzeppelin/contracts-upgradeable@5.6.1(@openzeppelin/contracts@5.6.1))(@openzeppelin/contracts@5.6.1)(hardhat-deploy@0.12.4(bufferutil@4.1.0)(utf-8-validate@6.0.6))(solidity-bytes-utils@0.8.4)
@@ -1206,6 +1209,10 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@kargain/vincent-compiler@0.1.0':
+    resolution: {integrity: sha512-d4RbuDjn/h+Gnimvqg70tep7nRNp6hP199arhLjDoKWQMnrKsoBwCOYMB4rC97VcbPa4dQtpYyfmY7Ssl5eOIQ==}
+    engines: {node: '>=24'}
 
   '@kargain/vincent@0.8.0':
     resolution: {integrity: sha512-eVCknIJCNfL94uhS8jS+hrby9uL5ybOQuS7m/4d2z4BRQMbdHRs5C3LyZjovRRb3bYH2ldrtyGg2N9fGjaXYMw==}
@@ -8562,6 +8569,12 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@kargain/vincent-compiler@0.1.0(viem@2.47.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))':
+    dependencies:
+      '@kargain/vincent': 0.8.0(viem@2.47.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))
+    transitivePeerDependencies:
+      - viem
 
   '@kargain/vincent@0.8.0(viem@2.47.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))':
     dependencies:

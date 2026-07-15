@@ -5,7 +5,8 @@ import json
 import sys
 
 # 31860 = Vincent Commons reviews (F-2); 31861 = Vincent Commons claim proposals (F-2.1)
-ALLOWED_KINDS = frozenset({0, 1, 7, 30000, 30078, 30405, 31860, 31861})
+# 31862 = Vincent Commons epoch confirmations (F-3c)
+ALLOWED_KINDS = frozenset({0, 1, 7, 30000, 30078, 30405, 31860, 31861, 31862})
 MAX_CONTENT_BYTES = 65536
 
 

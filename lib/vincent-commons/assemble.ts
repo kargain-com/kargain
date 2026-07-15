@@ -15,8 +15,10 @@
  *   republished under a fresh Nostr key with a new created_at and override
  *   the attester's later reject) → gate 2 `isActiveVerifier` snapshot at
  *   assembly time. Fail-closed: an attester without an attested binding is
- *   not counted at all; NS-5.2 Nostr identity rotation invalidates that
- *   attester's standing verdicts until re-attestation (known consequence).
+ *   not counted at all — surfaced report-only as `unattested-attester` when
+ *   those accepts alone would have met the threshold (F-3c); NS-5.2 Nostr
+ *   identity rotation invalidates that attester's standing verdicts until
+ *   re-attestation (known consequence).
  *
  * - **tMet rule (deterministic reading of the §4.3 window):** tMet is the
  *   smallest `created_at` t such that the standing accepts (latest
@@ -102,6 +104,7 @@ export type AssemblyExclusionReason =
   | "rejected"
   | "in-window"
   | "inactive-attester"
+  | "unattested-attester"
   | "below-threshold";
 
 export type AssemblyExclusion = {
@@ -115,6 +118,12 @@ export type AssemblyExclusion = {
   remainingSeconds?: number;
   /** `inactive-attester` — accepts that failed only the isActiveVerifier gate. */
   inactiveAttesters?: string[];
+  /**
+   * `unattested-attester` — accepts that failed only gate 1 (attested
+   * wallet↔Nostr binding missing or mismatched). Report-only diagnostic so
+   * verifiers can see why their verdicts did not count.
+   */
+  unattestedAttesters?: string[];
   /** `below-threshold` — counted standing accepts. */
   acceptCount?: number;
 };
@@ -248,12 +257,21 @@ function decideClaim(options: {
   claimType: "vds-pattern" | "wmi";
   gated: Map<string, CommonsReviewEntry> | undefined;
   inactiveAccepts: GatedVerdict[];
+  unattestedAccepts: GatedVerdict[];
   thresholdMet: (accepts: readonly GatedVerdict[]) => boolean;
   nowSeconds: number;
   windowSeconds: number;
 }): ClaimDecision {
-  const { hash, claimType, gated, inactiveAccepts, thresholdMet, nowSeconds, windowSeconds } =
-    options;
+  const {
+    hash,
+    claimType,
+    gated,
+    inactiveAccepts,
+    unattestedAccepts,
+    thresholdMet,
+    nowSeconds,
+    windowSeconds,
+  } = options;
 
   const rejecters = standingRejecters(gated);
   if (rejecters.length > 0) {
@@ -275,9 +293,9 @@ function decideClaim(options: {
   if (tMet === null) {
     // Diagnostic tier: would the threshold be met if accepts that failed
     // only the isActiveVerifier gate were counted?
-    const wouldMeet =
+    const wouldMeetInactive =
       inactiveAccepts.length > 0 && thresholdMet([...accepts, ...inactiveAccepts]);
-    if (wouldMeet) {
+    if (wouldMeetInactive) {
       return {
         status: "excluded",
         exclusion: {
@@ -285,6 +303,26 @@ function decideClaim(options: {
           claimType,
           reason: "inactive-attester",
           inactiveAttesters: inactiveAccepts.map((a) => a.attester).sort(),
+        },
+      };
+    }
+    // Second diagnostic tier: would the threshold be met if accepts that
+    // failed only gate 1 (attested binding) were counted? Report-only —
+    // these accepts never count toward tMet, archive, or output.
+    const countedAttesters = new Set(accepts.map((a) => a.attester));
+    const unattestedOnly = unattestedAccepts.filter(
+      (a) => !countedAttesters.has(a.attester),
+    );
+    const wouldMeetUnattested =
+      unattestedOnly.length > 0 && thresholdMet([...accepts, ...unattestedOnly]);
+    if (wouldMeetUnattested) {
+      return {
+        status: "excluded",
+        exclusion: {
+          claimHash: hash,
+          claimType,
+          reason: "unattested-attester",
+          unattestedAttesters: unattestedOnly.map((a) => a.attester).sort(),
         },
       };
     }
@@ -399,10 +437,15 @@ export async function assembleCommunityBatch(
 
   const gate1Entries: CommonsReviewEntry[] = [];
   const inactiveEntries: CommonsReviewEntry[] = [];
+  const unattestedEntries: CommonsReviewEntry[] = [];
   for (const entry of reviewEntries) {
     const attester = entry.review.attester.toLowerCase();
     const boundPubkey = attestedByAddress.get(attester);
-    if (!boundPubkey || boundPubkey !== entry.authorPubkey) continue;
+    if (!boundPubkey || boundPubkey !== entry.authorPubkey) {
+      // Gate-1 failure — never counted; kept only for the report diagnostic.
+      unattestedEntries.push(entry);
+      continue;
+    }
     if (activeByAddress.get(attester) === true) {
       gate1Entries.push(entry);
     } else {
@@ -412,9 +455,12 @@ export async function assembleCommunityBatch(
 
   const gatedByClaim = standingVerdicts(gate1Entries);
   const inactiveByClaim = standingVerdicts(inactiveEntries);
+  const unattestedByClaim = standingVerdicts(unattestedEntries);
 
   const inactiveAcceptsFor = (hash: string): GatedVerdict[] =>
     sortedAccepts(inactiveByClaim.get(hash));
+  const unattestedAcceptsFor = (hash: string): GatedVerdict[] =>
+    sortedAccepts(unattestedByClaim.get(hash));
 
   // d. Threshold + window per claim.
   const acceptedEntries: AssemblyAcceptedEntry[] = [];
@@ -433,6 +479,7 @@ export async function assembleCommunityBatch(
       claimType: "vds-pattern",
       gated: gatedByClaim.get(hash),
       inactiveAccepts: inactiveAcceptsFor(hash),
+      unattestedAccepts: unattestedAcceptsFor(hash),
       thresholdMet: (accepts) =>
         candidateThreshold(
           candidate,
@@ -464,6 +511,7 @@ export async function assembleCommunityBatch(
       claimType: "wmi",
       gated: gatedByClaim.get(hash),
       inactiveAccepts: inactiveAcceptsFor(hash),
+      unattestedAccepts: unattestedAcceptsFor(hash),
       thresholdMet: (accepts) =>
         wmiProposalThreshold(proposal.authorPubkey, toEndorsers(accepts)).met,
       nowSeconds,

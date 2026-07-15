@@ -50,6 +50,12 @@ export const COMMONS_CLAIM_PROPOSALS_POLICY: LatestPerAuthorPerDPolicy = {
   strategy: "latest-per-author-per-d",
 };
 
+/** Kind 31862 Commons epoch confirmations (lib/vincent-commons/confirmation.ts) — d = manifestHash. */
+export const COMMONS_CONFIRMATIONS_POLICY: LatestPerAuthorPerDPolicy = {
+  kind: 31862,
+  strategy: "latest-per-author-per-d",
+};
+
 /**
  * LWW element-set content (kind 30000, d=`kargain-favorites`).
  *
