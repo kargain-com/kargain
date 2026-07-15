@@ -30,7 +30,14 @@ function epoch(
   merkleRoot: string,
   parentRoot: string | null,
 ): RegistryEpoch {
-  return { epoch: index, merkleRoot, parentRoot };
+  return {
+    epoch: index,
+    merkleRoot,
+    parentRoot,
+    // Panel-model tests never read these two F-4 fields.
+    manifestHash: merkleRoot,
+    timestamp: 1_700_000_000 + index,
+  };
 }
 
 describe("VINCENT_REGISTRY descriptor", () => {

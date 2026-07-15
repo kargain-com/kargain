@@ -1,17 +1,27 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getVerifierDirectory } from "@/app/actions/verifier-directory";
+import { useCommonsConfirmations } from "@/hooks/use-commons-confirmations";
 import {
   monoLinkSm,
   monoTimestampTertiary,
   serialLabel,
+  trustStampBase,
+  trustStampNeutral,
 } from "@/lib/design/instrument-classes";
 import { VINCENT_DATASET } from "@/lib/passport/vincent-dataset";
+import { getVerifierDirectory } from "@/app/actions/verifier-directory";
+import {
+  comparePinnedRoot,
+  evaluateAcceptance,
+  type EpochVerdict,
+} from "@/lib/vincent-commons/acceptance";
 import {
   buildRegistryPanelModel,
   truncateContentId,
+  type PublisherEpochsInput,
   type RegistryPanelModel,
 } from "@/lib/vincent-commons/registry-panel";
 import { VINCENT_REGISTRY } from "@/lib/vincent-commons/registry-config";
@@ -21,7 +31,14 @@ import { shortAddress } from "@/lib/web3/wallet-display";
 
 const FLYWHEEL_DOC_PATH = "docs/research/vincent-flywheel.md";
 
-async function loadRegistryPanel(): Promise<RegistryPanelModel> {
+const EMPTY_MANIFEST_HASHES: string[] = [];
+
+type RegistryPanelData = {
+  model: RegistryPanelModel;
+  inputs: PublisherEpochsInput[];
+};
+
+async function loadRegistryPanel(): Promise<RegistryPanelData> {
   const { verifiers } = await getVerifierDirectory();
   const active = verifiers.filter((verifier) => verifier.active);
   if (active.length === 0) {
@@ -32,7 +49,7 @@ async function loadRegistryPanel(): Promise<RegistryPanelModel> {
   const inputs = await fetchRegistryPublishers(
     active.map((verifier) => verifier.address),
   );
-  return buildRegistryPanelModel(inputs);
+  return { model: buildRegistryPanelModel(inputs), inputs };
 }
 
 function PanelShell({
@@ -52,8 +69,33 @@ function PanelShell({
   );
 }
 
+function EligibleRootReadout({ bestEligible }: { bestEligible: EpochVerdict }) {
+  const comparison = comparePinnedRoot(
+    bestEligible.merkleRoot,
+    VINCENT_DATASET.merkleRoot,
+  );
+  return (
+    <div className="space-y-2 border-t border-border-default pt-3">
+      <span
+        className={`${trustStampBase} ${trustStampNeutral}`}
+        title={bestEligible.merkleRoot}
+      >
+        Eligible root
+        <span className="tabular-nums normal-case tracking-normal">
+          {truncateContentId(bestEligible.merkleRoot)}
+        </span>
+      </span>
+      <p className={`${monoTimestampTertiary} text-xs`}>
+        {comparison === "matches-pinned"
+          ? "matches pinned dataset"
+          : "newer than pinned dataset — maintainer switch pending"}
+      </p>
+    </div>
+  );
+}
+
 function PublishersPanel() {
-  const { data, isPending, isError } = useQuery<RegistryPanelModel>({
+  const { data, isPending, isError } = useQuery<RegistryPanelData>({
     queryKey: ["vincent-registry-publishers"],
     queryFn: loadRegistryPanel,
     staleTime: Infinity,
@@ -61,13 +103,59 @@ function PublishersPanel() {
     retry: 1,
   });
 
+  const manifestHashes = useMemo(
+    () =>
+      data
+        ? data.inputs.flatMap((input) =>
+            input.epochs.map((epoch) => epoch.manifestHash),
+          )
+        : EMPTY_MANIFEST_HASHES,
+    [data],
+  );
+
+  const { confirmationsByManifest, loading: confirmationsLoading } =
+    useCommonsConfirmations(manifestHashes);
+
+  // Panel publishers come from the active-verifier directory, so
+  // `active: true` — the current-active approximation of §4.4's "active at
+  // the anchor block" (same approximation as review gating).
+  const acceptance = useMemo(
+    () =>
+      data
+        ? evaluateAcceptance({
+            publishers: data.inputs.map((input) => ({
+              address: input.address,
+              active: true,
+              epochs: input.epochs,
+            })),
+            confirmationsByManifest,
+            policy: VINCENT_REGISTRY.acceptancePolicy,
+          })
+        : null,
+    [data, confirmationsByManifest],
+  );
+
+  const latestVerdictByPublisher = useMemo(() => {
+    const map = new Map<string, EpochVerdict>();
+    if (!acceptance) return map;
+    for (const verdict of acceptance.verdicts) {
+      const prev = map.get(verdict.publisher);
+      if (!prev || verdict.epoch > prev.epoch) {
+        map.set(verdict.publisher, verdict);
+      }
+    }
+    return map;
+  }, [acceptance]);
+
+  const acceptanceReady = !confirmationsLoading && acceptance !== null;
+
   return (
     <PanelShell title="Publishers">
       {isPending ? (
         <p className={`${monoTimestampTertiary} text-xs`}>Reading registry…</p>
       ) : isError || !data ? (
         <p className={`${monoTimestampTertiary} text-xs`}>Registry unreachable</p>
-      ) : data.publishers.length === 0 ? (
+      ) : data.model.publishers.length === 0 ? (
         <div className="space-y-2">
           <p className="font-sans text-sm text-text-secondary">
             No community epochs published yet — any active verifier can be first.
@@ -77,53 +165,74 @@ function PublishersPanel() {
           </p>
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-3">
           <ul className="divide-y divide-border-default">
-            {data.publishers.map((publisher) => (
-              <li
-                key={publisher.address}
-                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
-              >
-                <a
-                  href={explorerAddressUrl(
-                    VINCENT_REGISTRY.chainId,
-                    publisher.address,
+            {data.model.publishers.map((publisher) => {
+              const latestVerdict = latestVerdictByPublisher.get(
+                publisher.address,
+              );
+              return (
+                <li
+                  key={publisher.address}
+                  className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
+                >
+                  <a
+                    href={explorerAddressUrl(
+                      VINCENT_REGISTRY.chainId,
+                      publisher.address,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={monoLinkSm}
+                    title={publisher.address}
+                  >
+                    {shortAddress(publisher.address)}
+                  </a>
+                  <span className="font-mono text-xs tabular-nums text-text-secondary">
+                    {publisher.epochCount}{" "}
+                    {publisher.epochCount === 1 ? "epoch" : "epochs"}
+                  </span>
+                  <span
+                    className="font-mono text-xs tabular-nums text-text-secondary"
+                    title={publisher.latestRoot}
+                  >
+                    {truncateContentId(publisher.latestRoot)}
+                  </span>
+                  <span
+                    className={
+                      publisher.lineageOk
+                        ? "font-mono text-xs text-text-tertiary"
+                        : "font-mono text-xs text-status-error"
+                    }
+                  >
+                    {publisher.lineageOk ? "lineage ok" : "lineage broken"}
+                  </span>
+                  {acceptanceReady && latestVerdict && (
+                    <span className="font-mono text-xs tabular-nums text-text-secondary">
+                      {latestVerdict.independentConfirmations}{" "}
+                      {latestVerdict.independentConfirmations === 1
+                        ? "confirmation"
+                        : "confirmations"}
+                    </span>
                   )}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={monoLinkSm}
-                  title={publisher.address}
-                >
-                  {shortAddress(publisher.address)}
-                </a>
-                <span className="font-mono text-xs tabular-nums text-text-secondary">
-                  {publisher.epochCount}{" "}
-                  {publisher.epochCount === 1 ? "epoch" : "epochs"}
-                </span>
-                <span
-                  className="font-mono text-xs tabular-nums text-text-secondary"
-                  title={publisher.latestRoot}
-                >
-                  {truncateContentId(publisher.latestRoot)}
-                </span>
-                <span
-                  className={
-                    publisher.lineageOk
-                      ? "font-mono text-xs text-text-tertiary"
-                      : "font-mono text-xs text-status-error"
-                  }
-                >
-                  {publisher.lineageOk ? "lineage ok" : "lineage broken"}
-                </span>
-              </li>
-            ))}
+                  {acceptanceReady && latestVerdict?.eligible && (
+                    <span className="font-mono text-xs text-text-tertiary">
+                      meets acceptance bar
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-          {data.zeroEpochCount > 0 && (
-            <p className={`${monoTimestampTertiary} pt-2 text-xs`}>
-              {data.zeroEpochCount} active{" "}
-              {data.zeroEpochCount === 1 ? "verifier has" : "verifiers have"} not
-              published yet
+          {data.model.zeroEpochCount > 0 && (
+            <p className={`${monoTimestampTertiary} text-xs`}>
+              {data.model.zeroEpochCount} active{" "}
+              {data.model.zeroEpochCount === 1 ? "verifier has" : "verifiers have"}{" "}
+              not published yet
             </p>
+          )}
+          {acceptanceReady && acceptance.bestEligible && (
+            <EligibleRootReadout bestEligible={acceptance.bestEligible} />
           )}
         </div>
       )}
@@ -162,8 +271,9 @@ function PinnedDatasetCard() {
           </div>
         </div>
         <p className="font-sans text-xs text-text-secondary">
-          The app follows the community acceptance bar (§4.4) starting with the
-          client-policy phase; until then it reads this pinned dataset.
+          The decoder reads this pinned dataset. The acceptance bar (§4.4) is
+          computed above; switching the pin to an eligible root remains a
+          recorded maintainer edit.
         </p>
       </div>
     </PanelShell>

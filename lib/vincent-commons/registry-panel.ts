@@ -9,6 +9,10 @@ export type RegistryEpoch = {
   epoch: number;
   merkleRoot: string;
   parentRoot: string | null;
+  /** Manifest content id — the `d` tag of kind 31862 confirmations (F-4). */
+  manifestHash: string;
+  /** On-chain anchor timestamp (seconds) — acceptance-bar tiebreak (F-4). */
+  timestamp: number;
 };
 
 export type PublisherEpochsInput = {
