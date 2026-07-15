@@ -36,6 +36,9 @@ ignition/deployments/
 .ponder/
 ponder/.ponder
 
+# vincent commons derivation output (pnpm vincent:derive)
+.vincent-commons/
+
 # logs / os
 *.log
 npm-debug.log
