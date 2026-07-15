@@ -1,27 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
+import type { Filter } from "nostr-tools";
 import { useAccount, useReadContracts } from "wagmi";
 
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { COMMONS_REVIEWS_POLICY } from "@/lib/nostr/app-event-store";
 import {
-  applyCommonsReviewEvent,
-  commonsReviewEntries,
+  commonsReviewEntryFromEvent,
   commonsReviewFilterForClaims,
-  createEmptyCommonsReviewState,
-  type CommonsReviewBatchState,
 } from "@/lib/nostr/commons-reviews";
-import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscription";
 import { attestedPubkeysForAddresses } from "@/lib/nostr/resolve-attested-profile";
 import type { CommonsReviewKind } from "@/lib/vincent-commons/review";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
-const INITIAL_LOAD_TIMEOUT_MS = 3000;
-const PROGRESSIVE_FLUSH_MS = 120;
 const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
 
 /** Verified reviewer addresses (lowercased) per claimHash. */
@@ -51,8 +48,8 @@ type UseCommonsReviewsReturn = {
   loading: boolean;
 };
 
-function emptyState(): CommonsReviewBatchState {
-  return createEmptyCommonsReviewState();
+function buildReviewFilter(subscriptionKey: string): Filter {
+  return commonsReviewFilterForClaims(subscriptionKey.split(","));
 }
 
 export function useCommonsReviews(
@@ -71,93 +68,14 @@ export function useCommonsReviews(
 
   const subscriptionKey = enabled && claimKey.length > 0 ? claimKey : "";
 
-  const [state, setState] = useState<CommonsReviewBatchState>(emptyState);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(Boolean(subscriptionKey));
-
-  const [prevSubscriptionKey, setPrevSubscriptionKey] = useState(subscriptionKey);
-  if (subscriptionKey !== prevSubscriptionKey) {
-    setPrevSubscriptionKey(subscriptionKey);
-    setState(emptyState());
-    setSubscriptionLoading(Boolean(subscriptionKey));
-  }
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!subscriptionKey) return;
-
-    const hashes = subscriptionKey.split(",");
-    const pool = getNostrPool();
-    const filter = commonsReviewFilterForClaims(hashes);
-
-    let initialDone = false;
-    let batchState = createEmptyCommonsReviewState();
-    let progressiveTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const publishBatchState = () => {
-      if (!mountedRef.current) return;
-      setState(batchState);
-    };
-
-    const scheduleProgressiveFlush = () => {
-      if (initialDone || progressiveTimer != null) return;
-      progressiveTimer = setTimeout(() => {
-        progressiveTimer = null;
-        if (!mountedRef.current || initialDone) return;
-        publishBatchState();
-        setSubscriptionLoading(false);
-      }, PROGRESSIVE_FLUSH_MS);
-    };
-
-    const finishInitialLoad = () => {
-      if (!mountedRef.current || initialDone) return;
-      initialDone = true;
-      if (progressiveTimer != null) {
-        clearTimeout(progressiveTimer);
-        progressiveTimer = null;
-      }
-      publishBatchState();
-      setSubscriptionLoading(false);
-    };
-
-    const sub = pool.subscribeMany([...NOSTR_RELAYS], filter, {
-      onevent: (ev) => {
-        const next = applyCommonsReviewEvent(batchState, ev);
-        if (next === batchState || !mountedRef.current) return;
-        batchState = next;
-        if (!initialDone) {
-          scheduleProgressiveFlush();
-        } else {
-          publishBatchState();
-        }
-      },
-      oneose: finishInitialLoad,
-      onclose: () => {
-        finishInitialLoad();
-      },
-    });
-
-    const timeout = window.setTimeout(finishInitialLoad, INITIAL_LOAD_TIMEOUT_MS);
-
-    return () => {
-      window.clearTimeout(timeout);
-      if (progressiveTimer != null) clearTimeout(progressiveTimer);
-      try {
-        sub.close();
-      } catch {
-        // ignore
-      }
-    };
-  }, [subscriptionKey]);
-
-  const entries = useMemo(() => commonsReviewEntries(state), [state]);
+  // One batched kind 31860 subscription; latest review per (author, claim)
+  // via the shared latest-per-author-per-d merge (d = claim on parse).
+  const { entries, loading: subscriptionLoading } = useLatestPerAuthorPerDEntries(
+    subscriptionKey,
+    buildReviewFilter,
+    COMMONS_REVIEWS_POLICY,
+    commonsReviewEntryFromEvent,
+  );
 
   const attesterKey = useMemo(() => {
     const deduped = [...new Set(entries.map((e) => e.review.attester.toLowerCase()))];

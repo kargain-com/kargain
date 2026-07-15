@@ -1,42 +1,32 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSignMessage } from "wagmi";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SpinnerIcon } from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  useCommonsReviews,
-  type CommonsReviewTally,
-} from "@/hooks/use-commons-reviews";
+  attributeLabel,
+  CandidateRow,
+  EMPTY_TALLY,
+  ProposalRow,
+  SourceLinks,
+} from "@/components/kar-pro/commons-queue-rows";
+import { ProposeWmiForm } from "@/components/kar-pro/propose-wmi-form";
+import { useCommonsActions } from "@/hooks/use-commons-actions";
+import { useCommonsReviews } from "@/hooks/use-commons-reviews";
 import { useCommonsWmiProposals } from "@/hooks/use-commons-wmi-proposals";
-import { useNostrKey } from "@/hooks/use-nostr-key";
 import {
   getCommonsObservations,
   type CommonsObservationsResult,
 } from "@/app/actions/vincent-commons";
 import {
-  categoryLabel,
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
-  monoLinkSm,
   serialLabel,
-  trustStampBase,
-  trustStampNeutral,
 } from "@/lib/design/instrument-classes";
-import { pubkeyFromPrivateKey } from "@/lib/nostr/app-event-store";
-import {
-  publishCommonsClaimProposal,
-  type CommonsWmiProposalEntry,
-} from "@/lib/nostr/commons-claims";
-import { publishCommonsReview } from "@/lib/nostr/commons-reviews";
-import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
+import type { CommonsWmiProposalEntry } from "@/lib/nostr/commons-claims";
 import { cn } from "@/lib/utils";
 import {
   deriveClaims,
@@ -50,49 +40,6 @@ import {
   orderCommonsCandidates,
   type CommonsCandidate,
 } from "@/lib/vincent-commons/queue";
-import {
-  buildUnsignedCommonsReview,
-  reviewSigningPayload,
-  type CommonsReviewKind,
-} from "@/lib/vincent-commons/review";
-import { buildWmiClaim, wmiProposalThreshold } from "@/lib/vincent-commons/wmi-claim";
-
-const ATTRIBUTE_LABELS: Record<string, string> = {
-  model: "Model",
-  series: "Series",
-  bodyType: "Body type",
-  fuelType: "Fuel type",
-  transmission: "Transmission",
-  engine: "Engine",
-};
-
-function attributeLabel(attribute: string): string {
-  return ATTRIBUTE_LABELS[attribute] ?? attribute;
-}
-
-const EMPTY_TALLY: CommonsReviewTally = {
-  endorsers: [],
-  rejecters: [],
-  endorserPubkeysByAddress: {},
-};
-
-const WMI_BUILD_ERROR_COPY: Record<string, string> = {
-  "manufacturer-required": "Manufacturer is required.",
-  "invalid-country": "Country must be a two-letter ISO 3166-1 code.",
-  "unknown-region": "This WMI has no known region — the claim cannot be built.",
-};
-
-function wmiBuildErrorMessage(reason: string): string {
-  return WMI_BUILD_ERROR_COPY[reason] ?? "The claim could not be built from these values.";
-}
-
-type ProposalFormFields = {
-  manufacturer: string;
-  country: string;
-  vehicleType: string;
-};
-
-type ProposalSubmitOutcome = { ok: true } | { ok: false; message: string | null };
 
 type QueueData = CommonsObservationsResult & {
   report: DeriveReport;
@@ -100,31 +47,18 @@ type QueueData = CommonsObservationsResult & {
   candidates: CommonsCandidate[];
 };
 
-function SourceLinks({ tokenIds }: { tokenIds: string[] }) {
-  if (tokenIds.length === 0) return null;
-  return (
-    <p className="font-sans text-xs text-text-secondary">
-      Sources:{" "}
-      {tokenIds.map((tokenId, index) => (
-        <span key={tokenId}>
-          {index > 0 && " · "}
-          <Link href={`/marketplace/${tokenId}`} className={monoLinkSm}>
-            {formatPassportShortLabel(tokenId)}
-          </Link>
-        </span>
-      ))}
-    </p>
-  );
-}
-
-function isUserRejected(error: unknown): boolean {
-  return error instanceof Error && /user rejected|user denied/i.test(error.message);
+async function loadQueueData(): Promise<QueueData> {
+  const input = await getCommonsObservations();
+  const { claims, report, sources } = await deriveClaims(input.observations);
+  return {
+    ...input,
+    report,
+    sources,
+    candidates: buildCommonsCandidates(claims, sources),
+  };
 }
 
 export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
-  const { signMessageAsync } = useSignMessage();
-  const { ensureNostrKey } = useNostrKey();
-
   // Session-scoped derivation cache: fetch + derive once per session.
   const {
     data,
@@ -133,16 +67,7 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
     refetch,
   } = useQuery<QueueData>({
     queryKey: ["vincent-commons-queue"],
-    queryFn: async () => {
-      const input = await getCommonsObservations();
-      const { claims, report, sources } = await deriveClaims(input.observations);
-      return {
-        ...input,
-        report,
-        sources,
-        candidates: buildCommonsCandidates(claims, sources),
-      };
-    },
+    queryFn: loadQueueData,
     staleTime: Infinity,
     gcTime: Infinity,
     retry: 1,
@@ -168,8 +93,14 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
     { enabled: unknownWmiList.length > 0 },
   );
 
-  // Optimistic 31861 proposals with rollback on publish failure.
-  const [localProposals, setLocalProposals] = useState<CommonsWmiProposalEntry[]>([]);
+  const {
+    localVerdicts,
+    localProposals,
+    pendingClaim,
+    actionError,
+    submitReview,
+    submitProposal,
+  } = useCommonsActions(address);
 
   const mergedProposalsByWmi = useMemo(() => {
     const map = new Map<string, CommonsWmiProposalEntry[]>();
@@ -203,129 +134,8 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
     loading: reviewsLoading,
   } = useCommonsReviews(claimHashes, { enabled: claimHashes.length > 0 });
 
-  // Optimistic own verdicts with rollback on publish failure.
-  const [localVerdicts, setLocalVerdicts] = useState<Map<string, CommonsReviewKind>>(
-    new Map(),
-  );
-  const [pendingClaim, setPendingClaim] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const setLocalVerdict = (claim: string, kind: CommonsReviewKind | undefined) => {
-    setLocalVerdicts((prev) => {
-      const next = new Map(prev);
-      if (kind) {
-        next.set(claim, kind);
-      } else {
-        next.delete(claim);
-      }
-      return next;
-    });
-  };
-
-  const submitReview = async (claim: string, kind: CommonsReviewKind) => {
-    setActionError(null);
-    setPendingClaim(claim);
-    const previous = localVerdicts.get(claim);
-
-    try {
-      const unsigned = buildUnsignedCommonsReview(claim, address, kind);
-      const signature = await signMessageAsync({
-        message: reviewSigningPayload(unsigned),
-      });
-
-      setLocalVerdict(claim, kind);
-
-      const nostrKey = await ensureNostrKey();
-      const ok = nostrKey
-        ? await publishCommonsReview({ ...unsigned, signature }, nostrKey)
-        : false;
-
-      if (!ok) {
-        setLocalVerdict(claim, previous);
-        setActionError("Publishing the review failed. Try again.");
-      }
-    } catch (error) {
-      setLocalVerdict(claim, previous);
-      if (!isUserRejected(error)) {
-        setActionError("Signing the review failed. Try again.");
-      }
-    } finally {
-      setPendingClaim(null);
-    }
-  };
-
   // WMI with the propose-from-document form open.
   const [proposeWmi, setProposeWmi] = useState<string | null>(null);
-
-  /**
-   * One wallet signature — the endorse review over the claimHash; the 31861
-   * proposal itself is Nostr-only. Optimistic proposal row + own endorse
-   * verdict, both rolled back when either publish fails.
-   */
-  const submitProposal = async (
-    wmi: string,
-    fields: ProposalFormFields,
-  ): Promise<ProposalSubmitOutcome> => {
-    const build = buildWmiClaim({ wmi, ...fields });
-    if (!build.ok) {
-      return { ok: false, message: wmiBuildErrorMessage(build.reason) };
-    }
-
-    const hash = build.hash;
-    const previousVerdict = localVerdicts.get(hash);
-    setActionError(null);
-    setPendingClaim(hash);
-
-    let optimistic: CommonsWmiProposalEntry | null = null;
-    const rollback = () => {
-      if (optimistic) {
-        const added = optimistic;
-        setLocalProposals((prev) => prev.filter((entry) => entry !== added));
-      }
-      setLocalVerdict(hash, previousVerdict);
-    };
-
-    try {
-      const unsigned = buildUnsignedCommonsReview(hash, address, "endorse");
-      const signature = await signMessageAsync({
-        message: reviewSigningPayload(unsigned),
-      });
-
-      const nostrKey = await ensureNostrKey();
-      if (!nostrKey) {
-        return { ok: false, message: "Publishing the proposal failed. Try again." };
-      }
-
-      const entry: CommonsWmiProposalEntry = {
-        proposal: { claim: build.claim, claimHash: hash },
-        createdAt: Math.floor(Date.now() / 1000),
-        eventId: "",
-        authorPubkey: pubkeyFromPrivateKey(nostrKey),
-      };
-      optimistic = entry;
-      setLocalProposals((prev) => [...prev, entry]);
-      setLocalVerdict(hash, "endorse");
-
-      const proposalOk = await publishCommonsClaimProposal(build.claim, nostrKey);
-      const reviewOk = proposalOk
-        ? await publishCommonsReview({ ...unsigned, signature }, nostrKey)
-        : false;
-
-      if (!proposalOk || !reviewOk) {
-        rollback();
-        return { ok: false, message: "Publishing the proposal failed. Try again." };
-      }
-      return { ok: true };
-    } catch (error) {
-      rollback();
-      return {
-        ok: false,
-        message: isUserRejected(error) ? null : "Signing the proposal failed. Try again.",
-      };
-    } finally {
-      setPendingClaim(null);
-    }
-  };
 
   if (isPending) {
     return (
@@ -371,6 +181,7 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
   }
 
   const ownLower = address.toLowerCase();
+  const anyPending = pendingClaim != null;
 
   return (
     <div className="space-y-6">
@@ -403,7 +214,6 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
                 candidate,
                 verifierByTokenId,
               ).includes(ownLower);
-              const rowPending = pendingClaim === candidate.claimHash;
 
               let thresholdHint: string;
               if (threshold.met) {
@@ -418,70 +228,16 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
               }
 
               return (
-                <li key={candidate.claimHash} className="space-y-2 py-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                    <div>
-                      <p className={categoryLabel}>{attributeLabel(candidate.attribute)}</p>
-                      <p className="font-mono text-fluid-sm text-text-primary">
-                        {candidate.code}
-                      </p>
-                    </div>
-                    <p className="font-mono text-xs tabular-nums text-text-secondary">
-                      {candidate.wmi} · {candidate.year} · VDS {candidate.vds}
-                    </p>
-                  </div>
-
-                  <SourceLinks tokenIds={candidate.tokenIds} />
-
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <p className="font-mono text-xs tabular-nums text-text-secondary">
-                      {tally.endorsers.length} accepts · {tally.rejecters.length} rejects
-                    </p>
-                    {verdict && (
-                      <span className={cn(trustStampBase, trustStampNeutral)}>
-                        {verdict === "endorse" ? "You accepted" : "You rejected"}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="font-sans text-xs text-text-secondary">{thresholdHint}</p>
-
-                  <div className="flex flex-wrap gap-2">
-                    {verdict !== "endorse" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={pendingClaim != null}
-                        onClick={() => void submitReview(candidate.claimHash, "endorse")}
-                      >
-                        {rowPending ? (
-                          <SpinnerIcon size={16} className="animate-spin" />
-                        ) : verdict === "reject" ? (
-                          "Change to accept"
-                        ) : (
-                          "Accept"
-                        )}
-                      </Button>
-                    )}
-                    {verdict !== "reject" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="text-status-error hover:bg-bg-surface hover:text-status-error"
-                        disabled={pendingClaim != null}
-                        onClick={() => void submitReview(candidate.claimHash, "reject")}
-                      >
-                        {rowPending ? (
-                          <SpinnerIcon size={16} className="animate-spin" />
-                        ) : verdict === "endorse" ? (
-                          "Change to reject"
-                        ) : (
-                          "Reject"
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </li>
+                <CandidateRow
+                  key={candidate.claimHash}
+                  candidate={candidate}
+                  tally={tally}
+                  verdict={verdict}
+                  thresholdHint={thresholdHint}
+                  rowPending={pendingClaim === candidate.claimHash}
+                  anyPending={anyPending}
+                  onReview={submitReview}
+                />
               );
             })}
           </ul>
@@ -538,99 +294,18 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
                       <ul className="space-y-3">
                         {proposals.map((entry) => {
                           const hash = entry.proposal.claimHash;
-                          const value = entry.proposal.claim.value;
-                          const tally = verifiedByClaim.get(hash) ?? EMPTY_TALLY;
-                          const verdict =
-                            localVerdicts.get(hash) ?? ownVerdictByClaim.get(hash);
-                          const threshold = wmiProposalThreshold(
-                            entry.authorPubkey,
-                            tally.endorsers.map((endorser) => ({
-                              address: endorser,
-                              pubkey: tally.endorserPubkeysByAddress[endorser] ?? "",
-                            })),
-                          );
-                          const rowPending = pendingClaim === hash;
-
                           return (
-                            <li
+                            <ProposalRow
                               key={hash}
-                              className="space-y-2 rounded-sm border border-border-default p-3"
-                            >
-                              <div className="flex flex-wrap gap-x-6 gap-y-2">
-                                <div>
-                                  <p className={categoryLabel}>Manufacturer</p>
-                                  <p className="font-mono text-sm text-text-primary">
-                                    {value.manufacturer}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className={categoryLabel}>Country</p>
-                                  <p className="font-mono text-sm text-text-primary">
-                                    {value.country ?? "—"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className={categoryLabel}>Vehicle type</p>
-                                  <p className="font-mono text-sm text-text-primary">
-                                    {value.vehicleType ?? "—"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                                <p className="font-mono text-xs tabular-nums text-text-secondary">
-                                  {tally.endorsers.length} accepts ·{" "}
-                                  {tally.rejecters.length} rejects
-                                </p>
-                                {verdict && (
-                                  <span className={cn(trustStampBase, trustStampNeutral)}>
-                                    {verdict === "endorse" ? "You accepted" : "You rejected"}
-                                  </span>
-                                )}
-                              </div>
-
-                              <p className="font-sans text-xs text-text-secondary">
-                                {threshold.met
-                                  ? "Threshold met — the proposer and an independent accept"
-                                  : "Needs the proposer and one independent accept"}
-                              </p>
-
-                              <div className="flex flex-wrap gap-2">
-                                {verdict !== "endorse" && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    disabled={pendingClaim != null}
-                                    onClick={() => void submitReview(hash, "endorse")}
-                                  >
-                                    {rowPending ? (
-                                      <SpinnerIcon size={16} className="animate-spin" />
-                                    ) : verdict === "reject" ? (
-                                      "Change to accept"
-                                    ) : (
-                                      "Accept"
-                                    )}
-                                  </Button>
-                                )}
-                                {verdict !== "reject" && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    className="text-status-error hover:bg-bg-surface hover:text-status-error"
-                                    disabled={pendingClaim != null}
-                                    onClick={() => void submitReview(hash, "reject")}
-                                  >
-                                    {rowPending ? (
-                                      <SpinnerIcon size={16} className="animate-spin" />
-                                    ) : verdict === "endorse" ? (
-                                      "Change to reject"
-                                    ) : (
-                                      "Reject"
-                                    )}
-                                  </Button>
-                                )}
-                              </div>
-                            </li>
+                              entry={entry}
+                              tally={verifiedByClaim.get(hash) ?? EMPTY_TALLY}
+                              verdict={
+                                localVerdicts.get(hash) ?? ownVerdictByClaim.get(hash)
+                              }
+                              rowPending={pendingClaim === hash}
+                              anyPending={anyPending}
+                              onReview={submitReview}
+                            />
                           );
                         })}
                       </ul>
@@ -639,7 +314,7 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
                     {proposeWmi === candidate.wmi ? (
                       <ProposeWmiForm
                         wmi={candidate.wmi}
-                        pending={pendingClaim != null}
+                        pending={anyPending}
                         onSubmit={(fields) => submitProposal(candidate.wmi, fields)}
                         onClose={() => setProposeWmi(null)}
                       />
@@ -647,7 +322,7 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
                       <Button
                         type="button"
                         variant="ghost"
-                        disabled={pendingClaim != null}
+                        disabled={anyPending}
                         onClick={() => setProposeWmi(candidate.wmi)}
                       >
                         Propose from document
@@ -661,126 +336,5 @@ export function KarProCommonsQueue({ address }: { address: `0x${string}` }) {
         </section>
       )}
     </div>
-  );
-}
-
-/**
- * Inline propose-from-document form. The document itself is never uploaded
- * or described beyond the sighting confirmation (PII, PROTOCOL §4.7).
- */
-function ProposeWmiForm({
-  wmi,
-  pending,
-  onSubmit,
-  onClose,
-}: {
-  wmi: string;
-  pending: boolean;
-  onSubmit: (fields: ProposalFormFields) => Promise<ProposalSubmitOutcome>;
-  onClose: () => void;
-}) {
-  const [manufacturer, setManufacturer] = useState("");
-  const [country, setCountry] = useState("");
-  const [vehicleType, setVehicleType] = useState("");
-  const [sighted, setSighted] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const canSubmit = manufacturer.trim().length > 0 && sighted && !pending;
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    setFormError(null);
-    const outcome = await onSubmit({ manufacturer, country, vehicleType });
-    if (outcome.ok) {
-      onClose();
-      return;
-    }
-    if (outcome.message) {
-      setFormError(outcome.message);
-    }
-  };
-
-  return (
-    <form
-      onSubmit={(event) => void handleSubmit(event)}
-      className="space-y-3 rounded-sm border border-border-default p-3"
-    >
-      <p className={categoryLabel}>Propose from document</p>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="space-y-1.5">
-          <Label htmlFor={`wmi-manufacturer-${wmi}`}>Manufacturer</Label>
-          <Input
-            id={`wmi-manufacturer-${wmi}`}
-            value={manufacturer}
-            onChange={(event) => setManufacturer(event.target.value)}
-            placeholder="Legal manufacturer"
-            disabled={pending}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`wmi-country-${wmi}`}>Country</Label>
-          <Input
-            id={`wmi-country-${wmi}`}
-            value={country}
-            onChange={(event) => setCountry(event.target.value)}
-            placeholder="e.g. DE"
-            maxLength={2}
-            className="font-mono uppercase"
-            disabled={pending}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`wmi-vehicle-type-${wmi}`}>Vehicle type</Label>
-          <Input
-            id={`wmi-vehicle-type-${wmi}`}
-            value={vehicleType}
-            onChange={(event) => setVehicleType(event.target.value)}
-            placeholder="e.g. Passenger car"
-            disabled={pending}
-          />
-        </div>
-      </div>
-
-      <p className="font-sans text-xs text-text-secondary">
-        Country is the two-letter ISO code. Country and vehicle type are optional.
-      </p>
-
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id={`wmi-sighted-${wmi}`}
-          checked={sighted}
-          onCheckedChange={(checked) => setSighted(checked === true)}
-          disabled={pending}
-          className="mt-0.5"
-        />
-        <Label
-          htmlFor={`wmi-sighted-${wmi}`}
-          className="font-normal leading-snug text-text-secondary"
-        >
-          I have sighted a document for this WMI (CoC, registration, or type approval)
-        </Label>
-      </div>
-
-      {formError && (
-        <p role="alert" className="font-sans text-sm text-status-error">
-          {formError}
-        </p>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary" disabled={!canSubmit}>
-          {pending ? (
-            <SpinnerIcon size={16} className="animate-spin" />
-          ) : (
-            "Sign and publish"
-          )}
-        </Button>
-        <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
-          Cancel
-        </Button>
-      </div>
-    </form>
   );
 }

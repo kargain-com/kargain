@@ -110,50 +110,45 @@ export type CommonsWmiProposalEntry = {
   authorPubkey: string;
 };
 
-export type CommonsWmiProposalBatchState = {
-  /** claimHash → earliest valid proposal (dedupe across authors). */
-  byClaimHash: Map<string, CommonsWmiProposalEntry>;
-};
-
-export function createEmptyCommonsWmiProposalState(): CommonsWmiProposalBatchState {
-  return { byClaimHash: new Map() };
-}
-
-/**
- * Apply one incoming event: fail-closed parse, then dedupe identical
- * claimHashes across authors keeping the earliest event — NIP-01 tie
- * resolves to the lower id — so the first proposer stays attributed.
- */
-export function applyCommonsWmiProposalEvent(
-  state: CommonsWmiProposalBatchState,
+/** Fail-closed verify+map for one kind 31861 event (`commonsWmiProposalFromEvent`). */
+export function commonsWmiProposalEntryFromEvent(
   event: Pick<Event, "id" | "pubkey" | "kind" | "tags" | "content" | "created_at">,
-): CommonsWmiProposalBatchState {
+): CommonsWmiProposalEntry | null {
   const proposal = commonsWmiProposalFromEvent(event);
-  if (!proposal) return state;
-
-  const prev = state.byClaimHash.get(proposal.claimHash);
-  if (
-    prev &&
-    (prev.createdAt < event.created_at ||
-      (prev.createdAt === event.created_at && prev.eventId <= event.id))
-  ) {
-    return state;
-  }
-
-  const next = new Map(state.byClaimHash);
-  next.set(proposal.claimHash, {
+  if (!proposal) return null;
+  return {
     proposal,
     createdAt: event.created_at,
     eventId: event.id,
     authorPubkey: event.pubkey,
-  });
-  return { byClaimHash: next };
+  };
 }
 
-export function commonsWmiProposalEntries(
-  state: CommonsWmiProposalBatchState,
+/**
+ * Dedupe identical claimHashes across authors keeping the earliest entry —
+ * NIP-01 tie resolves to the lower event id — so the first proposer stays
+ * attributed. Input entries come from the shared latest-per-author-per-d
+ * merge (lib/nostr/live-policy-subscription.ts), which matches relay
+ * replaceable-event semantics: a stale older copy of a republished proposal
+ * (same author, same `d`) is superseded before this dedupe, so attribution
+ * follows what compliant relays actually serve.
+ */
+export function dedupeCommonsWmiProposalEntries(
+  entries: readonly CommonsWmiProposalEntry[],
 ): CommonsWmiProposalEntry[] {
-  return [...state.byClaimHash.values()];
+  const byClaimHash = new Map<string, CommonsWmiProposalEntry>();
+  for (const entry of entries) {
+    const prev = byClaimHash.get(entry.proposal.claimHash);
+    if (
+      prev &&
+      (prev.createdAt < entry.createdAt ||
+        (prev.createdAt === entry.createdAt && prev.eventId <= entry.eventId))
+    ) {
+      continue;
+    }
+    byClaimHash.set(entry.proposal.claimHash, entry);
+  }
+  return [...byClaimHash.values()];
 }
 
 function toPrivateKeyBytes(privateKey: string): Uint8Array {

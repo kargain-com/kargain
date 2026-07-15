@@ -10,13 +10,13 @@ import { describe, it } from "node:test";
 import { canonicalize, claimHash, parseClaim } from "@kargain/vincent/protocol";
 
 import {
-  applyCommonsWmiProposalEvent,
   buildCommonsClaimProposalEvent,
   commonsClaimProposalFilterForWmis,
-  commonsWmiProposalEntries,
+  commonsWmiProposalEntryFromEvent,
   commonsWmiProposalFromEvent,
   COMMONS_CLAIM_PROPOSAL_KIND,
-  createEmptyCommonsWmiProposalState,
+  dedupeCommonsWmiProposalEntries,
+  type CommonsWmiProposalEntry,
 } from "../lib/nostr/commons-claims.ts";
 import {
   buildWmiClaim,
@@ -218,46 +218,39 @@ describe("kind 31861 envelope", () => {
 });
 
 describe("cross-author dedupe", () => {
-  it("keeps one entry per claimHash — the earliest event wins", () => {
-    let state = createEmptyCommonsWmiProposalState();
-    state = applyCommonsWmiProposalEvent(
-      state,
-      proposalEvent({ id: "e2", pubkey: "pubkey-b", created_at: 1_700_000_100 }),
+  function entriesFromEvents(events: ProposalEvent[]): CommonsWmiProposalEntry[] {
+    return dedupeCommonsWmiProposalEntries(
+      events
+        .map((event) => commonsWmiProposalEntryFromEvent(event))
+        .filter((entry): entry is CommonsWmiProposalEntry => entry !== null),
     );
-    state = applyCommonsWmiProposalEvent(
-      state,
-      proposalEvent({ id: "e1", pubkey: "pubkey-a", created_at: 1_700_000_000 }),
-    );
+  }
 
-    const entries = commonsWmiProposalEntries(state);
+  it("keeps one entry per claimHash — the earliest event wins", () => {
+    const entries = entriesFromEvents([
+      proposalEvent({ id: "e2", pubkey: "pubkey-b", created_at: 1_700_000_100 }),
+      proposalEvent({ id: "e1", pubkey: "pubkey-a", created_at: 1_700_000_000 }),
+    ]);
+
     assert.equal(entries.length, 1);
     assert.equal(entries[0].authorPubkey, "pubkey-a");
     assert.equal(entries[0].createdAt, 1_700_000_000);
   });
 
   it("resolves created_at ties to the lower event id", () => {
-    let state = createEmptyCommonsWmiProposalState();
-    state = applyCommonsWmiProposalEvent(
-      state,
+    const entries = entriesFromEvents([
       proposalEvent({ id: "e9", pubkey: "pubkey-b", created_at: 1_700_000_000 }),
-    );
-    state = applyCommonsWmiProposalEvent(
-      state,
       proposalEvent({ id: "e1", pubkey: "pubkey-a", created_at: 1_700_000_000 }),
-    );
+    ]);
 
-    const entries = commonsWmiProposalEntries(state);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].eventId, "e1");
     assert.equal(entries[0].authorPubkey, "pubkey-a");
   });
 
   it("ignores invalid events entirely", () => {
-    const state = applyCommonsWmiProposalEvent(
-      createEmptyCommonsWmiProposalState(),
-      proposalEvent({ content: "not json" }),
-    );
-    assert.equal(commonsWmiProposalEntries(state).length, 0);
+    const entries = entriesFromEvents([proposalEvent({ content: "not json" })]);
+    assert.equal(entries.length, 0);
   });
 });
 

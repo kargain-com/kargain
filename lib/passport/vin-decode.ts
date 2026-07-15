@@ -62,6 +62,12 @@ async function getDefaultDecode(): Promise<DecodeFn> {
   return decoderPromise;
 }
 
+// Vocabulary invariant for the mapVpic* block below: every encode entry in
+// VPIC_CANONICAL_CODES (lib/vincent-commons/derive-claims.ts) must be
+// recognized by these regexes and map back to the same form value. The
+// exhaustive matrix in test/vincent-commons.test.ts ("round-trips every
+// VPIC_CANONICAL_CODES entry") enforces it — extend both sides together.
+
 /** Map a raw vPIC fuel string to a form option, or null if unmapped. */
 export function mapVpicFuelType(raw: string): FuelOption | null {
   const value = raw.trim();

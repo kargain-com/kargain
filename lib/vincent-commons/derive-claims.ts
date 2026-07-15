@@ -105,6 +105,12 @@ export type DeriveResult = {
  * Kargain form vocabulary → vPIC-canonical codes recognized by the
  * `mapVpic*` reverse direction in lib/passport/vin-decode.ts. Unmapped
  * values (e.g. "Other") are skipped and reported, never guessed.
+ *
+ * Invariant: every entry here must round-trip through the matching
+ * `mapVpic*` decode regex back to the same form value. The encode table and
+ * decode regexes stay separate bounded contexts; the exhaustive matrix in
+ * test/vincent-commons.test.ts ("round-trips every VPIC_CANONICAL_CODES
+ * entry") enforces the invariant — extend both sides together.
  */
 export const VPIC_CANONICAL_CODES = {
   fuelType: {

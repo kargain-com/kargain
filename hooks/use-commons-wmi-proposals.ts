@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import type { Filter } from "nostr-tools";
 
+import { COMMONS_CLAIM_PROPOSALS_POLICY } from "@/lib/nostr/app-event-store";
 import {
-  applyCommonsWmiProposalEvent,
   commonsClaimProposalFilterForWmis,
-  commonsWmiProposalEntries,
-  createEmptyCommonsWmiProposalState,
-  type CommonsWmiProposalBatchState,
+  commonsWmiProposalEntryFromEvent,
+  dedupeCommonsWmiProposalEntries,
   type CommonsWmiProposalEntry,
 } from "@/lib/nostr/commons-claims";
-import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
-
-const INITIAL_LOAD_TIMEOUT_MS = 3000;
-const PROGRESSIVE_FLUSH_MS = 120;
+import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscription";
 
 type UseCommonsWmiProposalsOptions = {
   enabled?: boolean;
@@ -29,8 +26,8 @@ type UseCommonsWmiProposalsReturn = {
   loading: boolean;
 };
 
-function emptyState(): CommonsWmiProposalBatchState {
-  return createEmptyCommonsWmiProposalState();
+function buildProposalFilter(subscriptionKey: string): Filter {
+  return commonsClaimProposalFilterForWmis(subscriptionKey.split(","));
 }
 
 /** One batched kind 31861 subscription for the unknown-WMI list. */
@@ -48,95 +45,16 @@ export function useCommonsWmiProposals(
 
   const subscriptionKey = enabled && wmiKey.length > 0 ? wmiKey : "";
 
-  const [state, setState] = useState<CommonsWmiProposalBatchState>(emptyState);
-  const [loading, setLoading] = useState(Boolean(subscriptionKey));
-
-  const [prevSubscriptionKey, setPrevSubscriptionKey] = useState(subscriptionKey);
-  if (subscriptionKey !== prevSubscriptionKey) {
-    setPrevSubscriptionKey(subscriptionKey);
-    setState(emptyState());
-    setLoading(Boolean(subscriptionKey));
-  }
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!subscriptionKey) return;
-
-    const wmiList = subscriptionKey.split(",");
-    const pool = getNostrPool();
-    const filter = commonsClaimProposalFilterForWmis(wmiList);
-
-    let initialDone = false;
-    let batchState = createEmptyCommonsWmiProposalState();
-    let progressiveTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const publishBatchState = () => {
-      if (!mountedRef.current) return;
-      setState(batchState);
-    };
-
-    const scheduleProgressiveFlush = () => {
-      if (initialDone || progressiveTimer != null) return;
-      progressiveTimer = setTimeout(() => {
-        progressiveTimer = null;
-        if (!mountedRef.current || initialDone) return;
-        publishBatchState();
-        setLoading(false);
-      }, PROGRESSIVE_FLUSH_MS);
-    };
-
-    const finishInitialLoad = () => {
-      if (!mountedRef.current || initialDone) return;
-      initialDone = true;
-      if (progressiveTimer != null) {
-        clearTimeout(progressiveTimer);
-        progressiveTimer = null;
-      }
-      publishBatchState();
-      setLoading(false);
-    };
-
-    const sub = pool.subscribeMany([...NOSTR_RELAYS], filter, {
-      onevent: (ev) => {
-        const next = applyCommonsWmiProposalEvent(batchState, ev);
-        if (next === batchState || !mountedRef.current) return;
-        batchState = next;
-        if (!initialDone) {
-          scheduleProgressiveFlush();
-        } else {
-          publishBatchState();
-        }
-      },
-      oneose: finishInitialLoad,
-      onclose: () => {
-        finishInitialLoad();
-      },
-    });
-
-    const timeout = window.setTimeout(finishInitialLoad, INITIAL_LOAD_TIMEOUT_MS);
-
-    return () => {
-      window.clearTimeout(timeout);
-      if (progressiveTimer != null) clearTimeout(progressiveTimer);
-      try {
-        sub.close();
-      } catch {
-        // ignore
-      }
-    };
-  }, [subscriptionKey]);
+  const { entries, loading } = useLatestPerAuthorPerDEntries(
+    subscriptionKey,
+    buildProposalFilter,
+    COMMONS_CLAIM_PROPOSALS_POLICY,
+    commonsWmiProposalEntryFromEvent,
+  );
 
   const proposalsByWmi = useMemo(() => {
     const map = new Map<string, CommonsWmiProposalEntry[]>();
-    for (const entry of commonsWmiProposalEntries(state)) {
+    for (const entry of dedupeCommonsWmiProposalEntries(entries)) {
       const wmi = entry.proposal.claim.key.wmi;
       const list = map.get(wmi) ?? [];
       list.push(entry);
@@ -149,7 +67,7 @@ export function useCommonsWmiProposals(
       });
     }
     return map;
-  }, [state]);
+  }, [entries]);
 
   return { proposalsByWmi, loading };
 }

@@ -10,6 +10,11 @@ import { describe, it } from "node:test";
 
 import { canonicalize, claimHash, parseClaim } from "@kargain/vincent/protocol";
 
+import {
+  mapVpicBodyType,
+  mapVpicFuelType,
+  mapVpicTransmission,
+} from "../lib/passport/vin-decode.ts";
 import { sortClaimsForJsonl } from "../lib/vincent-commons/claim-sort.ts";
 import {
   communitySchemaName,
@@ -248,6 +253,34 @@ describe("deriveClaims — vocabulary mapping", () => {
       .filter((c) => c.type === "vds-pattern")
       .map((c) => (c.type === "vds-pattern" ? c.value.attribute : ""));
     assert.deepEqual(attributes, ["model"]);
+  });
+
+  // Vocabulary round-trip invariant: every encode entry in
+  // VPIC_CANONICAL_CODES (derive-claims.ts) must be recognized by the
+  // matching mapVpic* decode regex in lib/passport/vin-decode.ts and map
+  // back to the exact form value it came from. Both directions carry a
+  // cross-reference comment pointing here.
+  it("round-trips every VPIC_CANONICAL_CODES entry through the vin-decode mappers", () => {
+    const decoders = {
+      fuelType: mapVpicFuelType,
+      bodyType: mapVpicBodyType,
+      transmission: mapVpicTransmission,
+    } as const;
+
+    for (const attribute of Object.keys(VPIC_CANONICAL_CODES) as Array<
+      keyof typeof VPIC_CANONICAL_CODES
+    >) {
+      const table: Record<string, string> = VPIC_CANONICAL_CODES[attribute];
+      const entries = Object.entries(table);
+      assert.ok(entries.length > 0, `${attribute} table is empty`);
+      for (const [formValue, canonicalCode] of entries) {
+        assert.equal(
+          decoders[attribute](canonicalCode),
+          formValue,
+          `${attribute}: ${formValue} → ${canonicalCode} must decode back to ${formValue}`,
+        );
+      }
+    }
   });
 });
 

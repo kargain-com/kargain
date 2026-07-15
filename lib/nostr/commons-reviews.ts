@@ -35,50 +35,23 @@ export type CommonsReviewEntry = {
   authorPubkey: string;
 };
 
-export type CommonsReviewBatchState = {
-  /** `${authorPubkey}\u0000${claim}` → latest signature-verified entry */
-  byAuthorClaim: Map<string, CommonsReviewEntry>;
-};
-
-export function createEmptyCommonsReviewState(): CommonsReviewBatchState {
-  return { byAuthorClaim: new Map() };
-}
-
 /**
- * Apply one incoming event: signature-verify (fail-closed), then keep the
- * newest review per (author, claim) — NIP-01 tie resolves to the lower id.
+ * Fail-closed verify+map for one kind 31860 event (signature, envelope, and
+ * kind checks in `commonsReviewFromEvent`). Keeping the newest review per
+ * (author, claim) is the shared latest-per-author-per-d merge in
+ * lib/nostr/live-policy-subscription.ts — `d` = claim, enforced on parse.
  */
-export function applyCommonsReviewEvent(
-  state: CommonsReviewBatchState,
+export function commonsReviewEntryFromEvent(
   event: Pick<Event, "id" | "pubkey" | "kind" | "tags" | "content" | "created_at">,
-): CommonsReviewBatchState {
+): CommonsReviewEntry | null {
   const review = commonsReviewFromEvent(event);
-  if (!review) return state;
-
-  const key = `${event.pubkey}\u0000${review.claim}`;
-  const prev = state.byAuthorClaim.get(key);
-  if (
-    prev &&
-    (prev.createdAt > event.created_at ||
-      (prev.createdAt === event.created_at && prev.eventId <= event.id))
-  ) {
-    return state;
-  }
-
-  const next = new Map(state.byAuthorClaim);
-  next.set(key, {
+  if (!review) return null;
+  return {
     review,
     createdAt: event.created_at,
     eventId: event.id,
     authorPubkey: event.pubkey,
-  });
-  return { byAuthorClaim: next };
-}
-
-export function commonsReviewEntries(
-  state: CommonsReviewBatchState,
-): CommonsReviewEntry[] {
-  return [...state.byAuthorClaim.values()];
+  };
 }
 
 function toPrivateKeyBytes(privateKey: string): Uint8Array {

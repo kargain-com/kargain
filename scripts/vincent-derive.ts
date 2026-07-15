@@ -13,7 +13,8 @@
  *     [--baseline path/to/published-epoch.jsonl] \
  *     [--cross-check]
  *
- * All network access lives here; lib/vincent-commons stays pure.
+ * Network wiring (fetchJson) lives here; lib/vincent-commons stays pure —
+ * the shared observations-source module takes fetchJson by injection.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,36 +30,18 @@ import {
   type Claim,
 } from "@kargain/vincent/protocol";
 
-import { parseMetadataJson } from "../lib/passport/parse-metadata-json.js";
 import { VINCENT_DATASET } from "../lib/passport/vincent-dataset.js";
-import { arUriToHttp } from "../lib/storage/ar-gateway.js";
 import {
   deriveClaims,
   VPIC_CANONICAL_CODES,
   type DerivedAttribute,
   type VincentObservation,
 } from "../lib/vincent-commons/derive-claims.js";
+import { fetchVerifiedObservations } from "../lib/vincent-commons/observations-source.js";
 
 const DEFAULT_PONDER_URL = "https://ponder.kargain.com";
 const DEFAULT_OUT_DIR = ".vincent-commons";
 const PAGE_LIMIT = 100;
-
-type PonderPassportRow = {
-  id: string;
-  status: string;
-  tokenUri: string;
-  vin: string;
-  make: string;
-  model: string;
-  year: number;
-};
-
-type PassportsPage = {
-  passports: PonderPassportRow[];
-  total: number;
-  page: number;
-  limit: number;
-};
 
 async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
@@ -66,64 +49,6 @@ async function fetchJson(url: string): Promise<unknown> {
     throw new Error(`GET ${url} failed: HTTP ${res.status}`);
   }
   return res.json();
-}
-
-async function fetchVerifiedPassports(
-  ponderUrl: string,
-): Promise<PonderPassportRow[]> {
-  const rows: PonderPassportRow[] = [];
-  let page = 1;
-  for (;;) {
-    const url = `${ponderUrl}/passports?status=VERIFIED&verifiedFirst=false&page=${page}&limit=${PAGE_LIMIT}`;
-    const body = (await fetchJson(url)) as PassportsPage;
-    rows.push(...body.passports);
-    if (rows.length >= body.total || body.passports.length === 0) break;
-    page += 1;
-  }
-  return rows;
-}
-
-type MetadataFailure = { tokenId: string; reason: string };
-
-async function buildObservations(rows: PonderPassportRow[]): Promise<{
-  observations: VincentObservation[];
-  metadataFailures: MetadataFailure[];
-}> {
-  const observations: VincentObservation[] = [];
-  const metadataFailures: MetadataFailure[] = [];
-
-  for (const row of rows) {
-    const url = arUriToHttp(row.tokenUri);
-    if (!url) {
-      metadataFailures.push({ tokenId: row.id, reason: "unsupported-token-uri" });
-      continue;
-    }
-    let metadata: ReturnType<typeof parseMetadataJson>;
-    try {
-      metadata = parseMetadataJson(await fetchJson(url));
-    } catch {
-      metadataFailures.push({ tokenId: row.id, reason: "metadata-fetch-failed" });
-      continue;
-    }
-    if (!metadata) {
-      metadataFailures.push({ tokenId: row.id, reason: "metadata-parse-failed" });
-      continue;
-    }
-    observations.push({
-      tokenId: row.id,
-      vin: metadata.vin || row.vin,
-      year: metadata.year ?? row.year,
-      make: metadata.make || row.make || undefined,
-      model: metadata.model || row.model || undefined,
-      modelVariant: metadata.modelVariant,
-      bodyType: metadata.bodyType,
-      fuelType: metadata.fuelType,
-      transmission: metadata.transmission,
-      engine: metadata.engine,
-    });
-  }
-
-  return { observations, metadataFailures };
 }
 
 function loadBaselineHashes(path: string): Set<string> {
@@ -276,10 +201,14 @@ async function main(): Promise<void> {
   const outDir = values.out ?? DEFAULT_OUT_DIR;
 
   console.log(`Fetching VERIFIED passports from ${ponderUrl} …`);
-  const rows = await fetchVerifiedPassports(ponderUrl);
-  console.log(`  ${rows.length} VERIFIED passports`);
-
-  const { observations, metadataFailures } = await buildObservations(rows);
+  const { observations, metadataFailures } = await fetchVerifiedObservations({
+    ponderUrl,
+    fetchJson,
+    pageLimit: PAGE_LIMIT,
+  });
+  // Every Ponder row yields exactly one observation or one metadata failure.
+  const verifiedPassports = observations.length + metadataFailures.length;
+  console.log(`  ${verifiedPassports} VERIFIED passports`);
   console.log(
     `  ${observations.length} observations (${metadataFailures.length} metadata failures)`,
   );
@@ -320,7 +249,7 @@ async function main(): Promise<void> {
   const fullReport = {
     generatedFrom: {
       ponderUrl,
-      verifiedPassports: rows.length,
+      verifiedPassports,
       metadataFailures,
     },
     derivation: { ...report, sources },
