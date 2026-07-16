@@ -16,7 +16,7 @@ Generation v2 **env cutover complete** on VPS:
 | Start block | `PONDER_START_BLOCK_84532=43399242` |
 | RPC | `https://sepolia.base.org` |
 | Address resolution | `git pull` → committed fallbacks; optional `pnpm ponder:config` |
-| Docker | `docker compose build ponder` after code pull (see Dockerfile.ponder `COPY patches`) |
+| Docker | `docker compose build ponder` after code pull (see Dockerfile.ponder `COPY patches`) + post-build `docker image prune -f` / `docker builder prune -f --filter until=72h` |
 
 Legacy v1 rows (e.g. `passport id 0`) require **full reindex** after pointing at v2 addresses — not env paste alone. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
 
@@ -110,6 +110,80 @@ Examples that **do not** require reindex:
 
 ---
 
+## Docker disk hygiene
+
+The July 2026 VPS disk incident came from accumulated unused `ponder` images after repeated `docker compose build ponder` runs, not from Postgres data or the relay LMDB. Keep Docker cleanup attached to the deploy flow instead of relying on ad hoc recovery.
+
+### Repo-managed controls
+
+- `docker-compose.yml` uses the Docker `local` logging driver with capped rotation for `postgres`, `ponder`, `cloudflared`, and `strfry`.
+- `.github/workflows/deploy-ponder.yml` prunes dangling images and old build cache after a successful `ponder` deploy.
+- `scripts/ponder-reindex.sh` prints the same post-rebuild cleanup steps for manual VPS runs.
+
+### Host-level Docker defaults (manual VPS step)
+
+Configure `/etc/docker/daemon.json` so new containers inherit sane defaults and BuildKit garbage-collects old cache. Merge with any existing daemon settings rather than replacing unrelated keys.
+
+```json
+{
+  "log-driver": "local",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "5"
+  },
+  "builder": {
+    "gc": {
+      "enabled": true,
+      "defaultKeepStorage": "2GB",
+      "policy": [
+        {
+          "all": true,
+          "keepStorage": "5GB"
+        }
+      ]
+    }
+  }
+}
+```
+
+After editing `daemon.json`:
+
+```bash
+sudo systemctl restart docker
+cd /opt/kargain
+docker compose up -d --force-recreate postgres ponder cloudflared strfry
+```
+
+### Safe inspection and cleanup
+
+```bash
+df -h /
+docker system df
+docker image prune -f
+docker builder prune -f --filter until=72h
+```
+
+- `docker image prune -f` removes dangling images only.
+- `docker builder prune -f --filter until=72h` trims stale build cache while keeping very recent cache hot.
+- Do **not** automate `docker volume prune` or `docker system prune --volumes` on this stack; named volumes hold Postgres and relay state.
+
+### Periodic host automation
+
+Docker does not ship a built-in timer for pruning unused images. Prefer a `systemd` timer on the VPS over cron, for example a weekly service that runs:
+
+```bash
+/usr/bin/docker image prune -af --filter until=168h
+/usr/bin/docker builder prune -af --filter until=168h
+```
+
+After enabling the timer:
+
+```bash
+systemctl list-timers | grep docker-prune
+```
+
+---
+
 ## Steps (production VPS)
 
 Run from the repository root on the server.
@@ -120,6 +194,8 @@ Run from the repository root on the server.
 git pull origin master
 pnpm install   # if dependencies changed
 docker compose build ponder   # only when indexer code / schema changed
+docker image prune -f
+docker builder prune -f --filter until=72h
 ```
 
 ### 2. Stop Ponder
@@ -175,6 +251,7 @@ For G1 schema-only updates (same contract addresses), keep existing infra env; s
 docker compose up -d --force-recreate ponder
 
 docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532
+docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
 docker compose logs -f ponder
 ```
 
@@ -183,6 +260,7 @@ Wait until logs show:
 - `Completed backfill indexing` (or `Detected crash recovery` then a short catch-up)
 - `Started live indexing`
 - No repeated `403` / `MigrationError`
+- log config reports the `local` driver (or the host default you intentionally configured)
 
 **Do not** change `PONDER_START_BLOCK_84532` to `latest` after sync (see above).
 

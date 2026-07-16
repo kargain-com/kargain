@@ -29,4 +29,6 @@ jobs:
             git pull https://github.com/kargain-com/kargain.git master
             docker compose build ponder
             docker compose up -d ponder
+            docker image prune -f
+            docker builder prune -f --filter until=72h
             docker compose ps

@@ -1,5 +1,13 @@
+x-default-logging: &default-logging
+  logging:
+    driver: local
+    options:
+      max-size: "20m"
+      max-file: "5"
+
 services:
   postgres:
+    <<: *default-logging
     image: postgres:16-alpine
     restart: always
     healthcheck:
@@ -17,6 +25,7 @@ services:
       - kargain
 
   ponder:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.ponder
@@ -38,6 +47,7 @@ services:
       - kargain
 
   cloudflared:
+    <<: *default-logging
     image: cloudflare/cloudflared:latest
     restart: always
     command: tunnel --no-autoupdate run
@@ -49,6 +59,7 @@ services:
       - kargain
 
   strfry:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.strfry
