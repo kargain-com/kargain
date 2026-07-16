@@ -248,8 +248,7 @@ describe("messaging contract — scenarios", () => {
     });
     await settleAsync(clock);
     wallet.setAddress("0x2222222222222222222222222222222222222222");
-    // Force address observation via getSnapshot refresh.
-    session.getSnapshot();
+    session.syncWalletAddress();
     resolveProbe?.({ registered: true });
     await settleAsync(clock);
     const snap = session.getSnapshot();

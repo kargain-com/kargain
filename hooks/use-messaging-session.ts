@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Address, WalletClient } from "viem";
 import { useAccount, useWalletClient } from "wagmi";
 
@@ -103,13 +103,8 @@ export function useMessagingSession(): {
   const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
   const { data: walletClient } = useWalletClient({ chainId });
 
-  const entry = useMemo(() => {
-    if (!address || !isConnected) return null;
-    const next = getOrCreateEntry(chainId, address);
-    next.refs.address = address;
-    next.refs.walletClient = walletClient;
-    return next;
-  }, [address, chainId, isConnected, walletClient]);
+  const entryRef = useRef<SessionEntry | null>(null);
+  const [sessionEpoch, setSessionEpoch] = useState(0);
 
   const prevAddressRef = useRef<string | null>(null);
 
@@ -119,32 +114,48 @@ export function useMessagingSession(): {
       disposeEntry(chainId, prev);
     }
     prevAddressRef.current = address && isConnected ? address : null;
-  }, [address, chainId, isConnected]);
+
+    if (!address || !isConnected) {
+      entryRef.current = null;
+      setSessionEpoch((value) => value + 1);
+      return;
+    }
+
+    const entry = getOrCreateEntry(chainId, address);
+    entry.refs.address = address;
+    entry.refs.walletClient = walletClient;
+    entry.session.syncWalletAddress();
+    entry.session.start();
+    entryRef.current = entry;
+    setSessionEpoch((value) => value + 1);
+  }, [address, chainId, isConnected, walletClient]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      if (!entry) return () => undefined;
+      const entry = entryRef.current;
+      if (!entry) return () => {};
       return entry.session.subscribe(onStoreChange);
     },
-    [entry],
+    [sessionEpoch],
   );
 
   const getSnapshot = useCallback((): SessionSnapshot => {
-    if (!entry || !address || !isConnected) {
+    if (!entryRef.current || !address || !isConnected) {
       return { state: "disconnected" };
     }
-    return entry.session.getSnapshot();
-  }, [entry, address, isConnected]);
+    return entryRef.current.session.getSnapshot();
+  }, [sessionEpoch, address, isConnected]);
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const dispatch = useCallback(
     (command: SessionCommand) => {
-      entry?.session.dispatch(command);
+      entryRef.current?.session.dispatch(command);
     },
-    [entry],
+    [sessionEpoch],
   );
 
+  const entry = entryRef.current;
   const client =
     entry && address && isConnected ? entry.session.getXmtpClient() : null;
 

@@ -33,53 +33,51 @@ export const createMessagingSession: CreateMessagingSession = (
     },
   });
 
-  runner.start();
+  let started = false;
 
-  let snapshot: SessionSnapshot = getSessionSnapshot(
-    runner.getState(),
-    input.ports,
-    input.clock.nowMs(),
-  );
-
-  function refreshSnapshot() {
+  function syncWalletAddress() {
     const walletAddress = input.ports.wallet.getAddress();
     const sessionAddress = runner.getState().address;
     if (walletAddress && walletAddress.toLowerCase() !== sessionAddress.toLowerCase()) {
       runner.onAddressChange(walletAddress);
     }
-    snapshot = getSessionSnapshot(runner.getState(), input.ports, input.clock.nowMs());
+  }
+
+  function snapshotNow(): SessionSnapshot {
+    return getSessionSnapshot(runner.getState(), input.ports, input.clock.nowMs());
   }
 
   return {
     getSnapshot() {
-      refreshSnapshot();
-      return snapshot;
+      return snapshotNow();
     },
     subscribe(onChange) {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
     },
     dispatch(command: SessionCommand) {
-      const current = getSessionSnapshot(
-        runner.getState(),
-        input.ports,
-        input.clock.nowMs(),
-      );
+      syncWalletAddress();
+      const current = snapshotNow();
       if (current.state === "disconnected" || current.state === "unsupported") {
         return;
       }
-      refreshSnapshot();
       runner.dispatch(command);
-      refreshSnapshot();
     },
     getXmtpClient() {
-      refreshSnapshot();
+      syncWalletAddress();
       const client = runner.getState().localClient;
       return client ? unbrandClient(client) : null;
     },
+    start() {
+      if (started) return;
+      started = true;
+      runner.start();
+    },
+    syncWalletAddress,
     dispose() {
       runner.dispose();
       listeners.clear();
+      started = false;
     },
   };
 };

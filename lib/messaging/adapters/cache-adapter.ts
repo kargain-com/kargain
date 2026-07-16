@@ -25,6 +25,8 @@ const LEGACY_KEY_PREFIXES = [
   "xmtp:network-registered:",
 ] as const;
 
+let legacyKeysPurged = false;
+
 function purgeLegacyMessagingKeys(): void {
   if (!storageAvailable()) return;
   const keys: string[] = [];
@@ -36,6 +38,12 @@ function purgeLegacyMessagingKeys(): void {
     }
   }
   for (const key of keys) localStorage.removeItem(key);
+}
+
+function purgeLegacyMessagingKeysOnce(): void {
+  if (legacyKeysPurged) return;
+  legacyKeysPurged = true;
+  purgeLegacyMessagingKeys();
 }
 
 function storageAvailable(): boolean {
@@ -50,7 +58,7 @@ export function createMessagingCachePort(
   env: string,
   ttlMs: number = DEFAULT_TTL_MS,
 ): MessagingCachePort {
-  purgeLegacyMessagingKeys();
+  purgeLegacyMessagingKeysOnce();
   function read(address: string): CacheEntry | undefined {
     if (!storageAvailable()) return undefined;
     const raw = localStorage.getItem(cacheKey(address, env));

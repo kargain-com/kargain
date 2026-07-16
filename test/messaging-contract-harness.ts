@@ -296,6 +296,7 @@ export function openSession(
     clock,
     cache,
   });
+  session.start();
   return { session, xmtp, nostr, wallet, clock, cache };
 }
 

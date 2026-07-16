@@ -170,6 +170,10 @@ export type MessagingSession = {
   subscribe(onChange: () => void): () => void;
   dispatch(command: SessionCommand): void;
   getXmtpClient(): import("./adapters/xmtp-adapter").XmtpSdkClient | null;
+  /** Idempotent — begins background reconcile after mount. */
+  start(): void;
+  /** Sync machine address when the wallet port address changes. */
+  syncWalletAddress(): void;
   dispose(): void;
 };
 
