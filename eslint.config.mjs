@@ -59,6 +59,56 @@ const eslintConfig = [
       "no-restricted-imports": "off",
     },
   },
+  {
+    files: ["lib/messaging/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@xmtp/client",
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@xmtp/*"],
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "MemberExpression[object.name='localStorage']",
+          message:
+            "localStorage may only be accessed from lib/messaging/adapters/cache-adapter.ts",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='localStorage']",
+          message:
+            "localStorage may only be accessed from lib/messaging/adapters/cache-adapter.ts",
+        },
+      ],
+    },
+  },
+  {
+    files: ["lib/messaging/adapters/xmtp-adapter.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
+    files: ["lib/messaging/adapters/cache-adapter.ts"],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

@@ -3,13 +3,12 @@
  * R1 replaces {@link createMessagingSession} with the real factory.
  */
 
+import { createMessagingSession } from "../lib/messaging/session-store.ts";
+
 import type {
   BuildLocalResult,
   Clock,
-  CreateMessagingSession,
-  CreateMessagingSessionInput,
   CreateWithSignerResult,
-  MessagingSession,
   MessagingWalletKind,
   NostrPolicyPort,
   ProbeRegistrationResult,
@@ -49,10 +48,17 @@ export function createControlledClock(startMs = 0): ControlledClock {
       now += ms;
     },
     async flush() {
-      const due = waiters.filter((w) => w.dueMs <= now).sort((a, b) => a.dueMs - b.dueMs);
-      for (const w of due) {
-        removeWaiter(w);
-        w.resolve();
+      // Resolve due waiters in waves — a resolve may schedule another sleep.
+      for (let wave = 0; wave < 32; wave += 1) {
+        const due = waiters
+          .filter((w) => w.dueMs <= now)
+          .sort((a, b) => a.dueMs - b.dueMs);
+        if (due.length === 0) return;
+        for (const w of due) {
+          removeWaiter(w);
+          w.resolve();
+        }
+        await Promise.resolve();
       }
     },
     sleep(ms: number, signal?: AbortSignal) {
@@ -243,12 +249,43 @@ export function createFakeWalletPort(
   };
 }
 
-/**
- * Placeholder until R1. Accidental calls fail loudly so todos stay incomplete
- * rather than silently green.
- */
-export const createMessagingSession: CreateMessagingSession = (
-  _input: CreateMessagingSessionInput,
-): MessagingSession => {
-  throw new Error("R1 not implemented");
-};
+const TEST_ADDRESS = "0x1111111111111111111111111111111111111111";
+
+export async function settleAsync(clock: ControlledClock, rounds = 40): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) {
+    await clock.flush();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+}
+
+/** Advance wall clock and flush deadline sleeps so hung probes/builds settle. */
+export async function advanceAndSettle(
+  clock: ControlledClock,
+  ms: number,
+): Promise<void> {
+  await settleAsync(clock);
+  clock.advance(ms);
+  await settleAsync(clock);
+}
+
+export function openSession(
+  clock: ControlledClock,
+  handlers: {
+    xmtp?: Parameters<typeof createFakeXmtpPort>[0];
+    nostr?: Parameters<typeof createFakeNostrPolicyPort>[0];
+    wallet?: Parameters<typeof createFakeWalletPort>[0];
+  } = {},
+) {
+  const xmtp = createFakeXmtpPort(handlers.xmtp);
+  const nostr = createFakeNostrPolicyPort(handlers.nostr);
+  const wallet = createFakeWalletPort(handlers.wallet);
+  const session = createMessagingSession({
+    address: TEST_ADDRESS,
+    ports: { xmtp, nostr, wallet },
+    clock,
+  });
+  return { session, xmtp, nostr, wallet, clock };
+}
+
+export { createMessagingSession };

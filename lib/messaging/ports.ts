@@ -1,5 +1,5 @@
 /**
- * Messaging session ports — R0 executable contract (types only).
+ * Messaging session ports — R0 executable contract + R1 amendments.
  *
  * Truth hierarchy (normative for R0–R4):
  * - Nostr kind 0 `messagesEnabled` = durable cross-device intent
@@ -48,17 +48,17 @@ export type ReconcilingOp =
   | "revoke"
   | "reset";
 
+/** Intent never published (onboarding) vs explicit opt-out on Nostr. */
+export type DisabledIntent = "absent" | "explicit";
+
 /**
  * Discriminated session view. There is no `inactive` / `initializing` /
  * `restore_required` — those map onto reconciling | needs_signature | error.
- *
- * `disabled` = intent not enabled (explicit false or never published);
- * next command is always `enable`.
  */
 export type SessionSnapshot =
   | { state: "disconnected" }
   | { state: "unsupported" }
-  | { state: "disabled"; next: "enable" }
+  | { state: "disabled"; intent: DisabledIntent; next: "enable" }
   | {
       state: "reconciling";
       op: ReconcilingOp;
@@ -70,7 +70,16 @@ export type SessionSnapshot =
       reason: SessionReason;
       next: "enable" | "retry" | "resetIdentity";
     }
-  | { state: "active" }
+  | {
+      state: "active";
+      publiclyReachable: boolean;
+      /** XMTP create succeeded but Nostr publish(true) not yet acked. */
+      publishPending?: true;
+      /** Disable or enable publish failed — inbox stays readable. */
+      publishError?: "publish_failed";
+      /** Present when publish-only retry is required (no second XMTP signature). */
+      next?: "retry";
+    }
   | {
       state: "error";
       reason: SessionReason;
@@ -113,11 +122,10 @@ export type XmtpPort = {
 
 /**
  * Durable intent on Nostr kind 0 `messagesEnabled`.
- * R2 adapter wraps the existing NS-4.3 / NS-5.2.1-guarded profile stack;
- * this module does not import that stack.
+ * R1 adapter wraps the existing NS-4.3 / NS-5.2.1-guarded profile stack.
  */
 export type NostrPolicyPort = {
-  /** `true` = enabled intent; `false` = explicit opt-out; `null` = never published / unknown. */
+  /** `true` = enabled intent; `false` = explicit opt-out; `null` = never published. */
   readIntent(address: string, signal?: AbortSignal): Promise<boolean | null>;
   /**
    * Publish intent. Must ack on relay before the core tears down local state
@@ -165,7 +173,6 @@ export type CreateMessagingSessionInput = {
   clock: Clock;
 };
 
-/** R1 implements this factory; R0 suite targets it via the harness placeholder. */
 export type CreateMessagingSession = (
   input: CreateMessagingSessionInput,
 ) => MessagingSession;
