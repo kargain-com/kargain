@@ -22,6 +22,9 @@ export const createMessagingSession: CreateMessagingSession = (
       ? createInMemoryMessagingCache()
       : createMessagingCachePort(getMessagingXmtpEnv()));
   const listeners = new Set<() => void>();
+  let started = false;
+
+  let cachedSnapshot: SessionSnapshot;
 
   const runner = createEffectsRunner({
     address: input.address,
@@ -29,11 +32,20 @@ export const createMessagingSession: CreateMessagingSession = (
     clock: input.clock,
     cache,
     onChange: () => {
+      refreshCachedSnapshot();
       for (const listener of listeners) listener();
     },
   });
 
-  let started = false;
+  function snapshotNow(): SessionSnapshot {
+    return getSessionSnapshot(runner.getState(), input.ports, input.clock.nowMs());
+  }
+
+  function refreshCachedSnapshot(): void {
+    cachedSnapshot = snapshotNow();
+  }
+
+  refreshCachedSnapshot();
 
   function syncWalletAddress() {
     const walletAddress = input.ports.wallet.getAddress();
@@ -43,13 +55,9 @@ export const createMessagingSession: CreateMessagingSession = (
     }
   }
 
-  function snapshotNow(): SessionSnapshot {
-    return getSessionSnapshot(runner.getState(), input.ports, input.clock.nowMs());
-  }
-
   return {
     getSnapshot() {
-      return snapshotNow();
+      return cachedSnapshot;
     },
     subscribe(onChange) {
       listeners.add(onChange);
@@ -57,14 +65,12 @@ export const createMessagingSession: CreateMessagingSession = (
     },
     dispatch(command: SessionCommand) {
       syncWalletAddress();
-      const current = snapshotNow();
-      if (current.state === "disconnected" || current.state === "unsupported") {
+      if (cachedSnapshot.state === "disconnected" || cachedSnapshot.state === "unsupported") {
         return;
       }
       runner.dispatch(command);
     },
     getXmtpClient() {
-      syncWalletAddress();
       const client = runner.getState().localClient;
       return client ? unbrandClient(client) : null;
     },

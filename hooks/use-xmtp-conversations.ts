@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  useXmtpConversationsContext,
-} from "@/components/providers/xmtp-conversations-provider";
+import { useXmtpConversationsContext } from "@/components/providers/xmtp-conversations-provider";
 import type { ConversationSummary } from "@/lib/messaging/conversations";
 
 export type { ConversationSummary };

@@ -452,6 +452,8 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | Installation limit recovery | `resetIdentity` chain: revoke → reset → create; advisory *Messages on your other devices will need one-time reactivation.* |
 | OPFS identity reset | `error` + `resetIdentity` next — scoped OPFS delete via adapter; advisory *Message history on this device will be re-downloaded from the network.* |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
+| Provider mount | [`MessagingNotificationsProviders`](../components/providers/messaging-notifications-providers.tsx) always mounted in [`app-providers.tsx`](../components/providers/app-providers.tsx); guest hooks no-op until wallet connected |
+| XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; no top-level SDK import in app bundle |
 | Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
@@ -1458,4 +1460,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.56 (July 2026 — Messaging R2: SessionSnapshot activation model, `useMessagingSession`, legacy `lib/xmtp/` removed). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.58 (July 2026 — Messaging lazy XMTP SDK in xmtp-adapter; static notification/messaging providers; no gate). Update when tokens, app shell, or component contracts change.*

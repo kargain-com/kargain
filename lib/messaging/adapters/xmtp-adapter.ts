@@ -1,22 +1,18 @@
 "use client";
 
-import {
+/**
+ * Sole runtime entry for @xmtp/client — dynamic import only (see loadXmtp).
+ * ESLint no-restricted-imports is disabled for this file only.
+ */
+
+import type {
+  AsyncStreamProxy,
   Client,
-  createBackend,
-  generateInboxId,
-  getInboxIdForIdentifier,
-  IdentifierKind,
-  isText,
-  Opfs,
-  OpfsInitializationError,
-  OpfsNotInitializedError,
-  SortDirection,
-  type AsyncStreamProxy,
-  type ClientOptions,
-  type DecodedMessage,
-  type InboxState,
-  type Signer,
-  type XmtpEnv,
+  ClientOptions,
+  DecodedMessage,
+  InboxState,
+  Signer,
+  XmtpEnv,
 } from "@xmtp/client";
 import { getAddress, hexToBytes, type WalletClient } from "viem";
 
@@ -29,6 +25,27 @@ import type {
 } from "../ports";
 import { getMessagingXmtpEnv } from "../xmtp-env";
 
+type XmtpModule = typeof import("@xmtp/client");
+
+let xmtpModulePromise: Promise<XmtpModule> | null = null;
+let xmtpModule: XmtpModule | null = null;
+
+async function loadXmtp(): Promise<XmtpModule> {
+  if (xmtpModule) return xmtpModule;
+  xmtpModulePromise ??= import("@xmtp/client").then((mod) => {
+    xmtpModule = mod;
+    return mod;
+  });
+  return xmtpModulePromise;
+}
+
+function ensureXmtpModule(): XmtpModule {
+  if (!xmtpModule) {
+    throw new Error("XMTP SDK is not loaded yet");
+  }
+  return xmtpModule;
+}
+
 const INSTALLATION_LIMIT_PREFIX =
   "Cannot register a new installation because the InboxID";
 const INSTALLATION_LIMIT_SUFFIX = "Please revoke existing installations first";
@@ -36,8 +53,11 @@ const INSTALLATION_LIMIT_SUFFIX = "Please revoke existing installations first";
 const APP_VERSION = "kargain-app/1.x";
 
 function isOpfsLockError(error: unknown): boolean {
-  if (error instanceof OpfsInitializationError || error instanceof OpfsNotInitializedError) {
-    return true;
+  if (xmtpModule) {
+    const { OpfsInitializationError, OpfsNotInitializedError } = xmtpModule;
+    if (error instanceof OpfsInitializationError || error instanceof OpfsNotInitializedError) {
+      return true;
+    }
   }
   if (error instanceof Error) {
     const { name } = error;
@@ -66,7 +86,7 @@ function classifyCreateError(error: unknown): CreateWithSignerResult {
   return { ok: false, reason: "build_failed" };
 }
 
-function ethereumIdentifier(address: `0x${string}`) {
+function ethereumIdentifier(address: `0x${string}`, IdentifierKind: XmtpModule["IdentifierKind"]) {
   const addr = getAddress(address);
   return {
     identifier: addr.toLowerCase(),
@@ -91,7 +111,10 @@ export function unbrandClient(client: XmtpLocalClient): Client<unknown> {
 
 export type XmtpSdkClient = Client<unknown>;
 
-export { isText };
+export function isText(message: DecodedMessage<unknown>): boolean {
+  return ensureXmtpModule().isText(message);
+}
+
 export function messageText(message: DecodedMessage<unknown>): string {
   if (isText(message)) return String(message.content ?? "");
   return message.fallback ?? "…";
@@ -99,7 +122,9 @@ export function messageText(message: DecodedMessage<unknown>): string {
 
 export function getClientEthereumAddress(client: XmtpSdkClient): `0x${string}` | null {
   const identifier = client.accountIdentifier;
-  if (!identifier || identifier.identifierKind !== IdentifierKind.Ethereum) return null;
+  if (!identifier) return null;
+  const ethKind = xmtpModule?.IdentifierKind.Ethereum;
+  if (ethKind !== undefined && identifier.identifierKind !== ethKind) return null;
   try {
     return getAddress(identifier.identifier as `0x${string}`);
   } catch {
@@ -111,7 +136,10 @@ export function ethereumAddressFromInboxState(
   state: { accountIdentifiers: Array<{ identifier: string; identifierKind: number }> } | undefined,
 ): `0x${string}` | null {
   if (!state) return null;
-  const eth = state.accountIdentifiers.find((id) => id.identifierKind === IdentifierKind.Ethereum);
+  const ethKind = xmtpModule?.IdentifierKind.Ethereum;
+  const eth = state.accountIdentifiers.find(
+    (id) => (ethKind === undefined || id.identifierKind === ethKind) && id.identifier.startsWith("0x"),
+  );
   if (!eth) return null;
   try {
     return getAddress(eth.identifier as `0x${string}`);
@@ -134,22 +162,35 @@ export async function openDmWithPeer(
   client: XmtpSdkClient,
   peerAddress: `0x${string}`,
 ) {
+  const xmtp = await loadXmtp();
   const peer = getAddress(peerAddress);
-  return client.conversations.createDmWithIdentifier(ethereumIdentifier(peer));
+  return client.conversations.createDmWithIdentifier(
+    ethereumIdentifier(peer, xmtp.IdentifierKind),
+  );
 }
 
 export type XmtpDm = Awaited<ReturnType<typeof openDmWithPeer>>;
 
-export { SortDirection };
+/** Sort direction enum — requires SDK load before first read. */
+export const SortDirection = {
+  get Ascending() {
+    return ensureXmtpModule().SortDirection.Ascending;
+  },
+  get Descending() {
+    return ensureXmtpModule().SortDirection.Descending;
+  },
+};
+
 export type { AsyncStreamProxy, DecodedMessage };
 
 export function buildXmtpEoaSigner(
   walletClient: WalletClient,
   address: `0x${string}`,
+  IdentifierKind: XmtpModule["IdentifierKind"],
 ): Signer {
   return {
     type: "EOA",
-    getIdentifier: () => ethereumIdentifier(address),
+    getIdentifier: () => ethereumIdentifier(address, IdentifierKind),
     signMessage: async (message: string) => {
       const hex = await walletClient.signMessage({
         account: address,
@@ -172,16 +213,17 @@ export function installationIdBytesFromInboxState(
 }
 
 export async function resolveInboxId(address: `0x${string}`): Promise<string> {
-  const identifier = ethereumIdentifier(address);
+  const xmtp = await loadXmtp();
+  const identifier = ethereumIdentifier(address, xmtp.IdentifierKind);
   const env = getMessagingXmtpEnv() as XmtpEnv;
   try {
-    const backend = await createBackend({ env });
-    const networkInboxId = await getInboxIdForIdentifier(backend, identifier);
+    const backend = await xmtp.createBackend({ env });
+    const networkInboxId = await xmtp.getInboxIdForIdentifier(backend, identifier);
     if (networkInboxId) return networkInboxId;
   } catch {
     // Network lookup failed — fall back to local derivation.
   }
-  return generateInboxId(identifier);
+  return xmtp.generateInboxId(identifier);
 }
 
 function matchesInboxDatabaseFile(path: string, env: XmtpEnv, inboxId: string): boolean {
@@ -197,9 +239,10 @@ export async function probePeerRegistration(
   signal?: AbortSignal,
 ): Promise<ProbeRegistrationResult> {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const xmtp = await loadXmtp();
   const peer = getAddress(address as `0x${string}`);
-  const identifier = ethereumIdentifier(peer);
-  const response = await Client.canMessage([identifier], getMessagingXmtpEnv() as XmtpEnv);
+  const identifier = ethereumIdentifier(peer, xmtp.IdentifierKind);
+  const response = await xmtp.Client.canMessage([identifier], getMessagingXmtpEnv() as XmtpEnv);
   const registered = response.get(identifier.identifier) === true;
   return { registered };
 }
@@ -213,8 +256,12 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
     async buildLocal(address, signal) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
+        const xmtp = await loadXmtp();
         const peer = getAddress(address as `0x${string}`);
-        const client = await Client.build(ethereumIdentifier(peer), clientOptions());
+        const client = await xmtp.Client.build(
+          ethereumIdentifier(peer, xmtp.IdentifierKind),
+          clientOptions(),
+        );
         const registered = await client.isRegistered();
         if (!registered) {
           client.close();
@@ -235,9 +282,10 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
         return { ok: false, reason: "build_failed" };
       }
       try {
+        const xmtp = await loadXmtp();
         const peer = getAddress(address as `0x${string}`);
-        const signer = buildXmtpEoaSigner(walletClient, peer);
-        const client = await Client.create(signer, clientOptions());
+        const signer = buildXmtpEoaSigner(walletClient, peer, xmtp.IdentifierKind);
+        const client = await xmtp.Client.create(signer, clientOptions());
         if (signal?.aborted) {
           client.close();
           return { ok: false, reason: "create_cancelled" };
@@ -252,21 +300,23 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       const walletClient = input.getWalletClient();
       if (!walletClient) return;
+      const xmtp = await loadXmtp();
       const peer = getAddress(address as `0x${string}`);
-      const signer = buildXmtpEoaSigner(walletClient, peer);
+      const signer = buildXmtpEoaSigner(walletClient, peer, xmtp.IdentifierKind);
       const env = getMessagingXmtpEnv() as XmtpEnv;
       const inboxId = await resolveInboxId(peer);
-      const states = await Client.fetchInboxStates([inboxId], env);
+      const states = await xmtp.Client.fetchInboxStates([inboxId], env);
       const installationIds = installationIdBytesFromInboxState(states[0]);
       if (installationIds.length === 0) return;
-      await Client.revokeInstallations(signer, inboxId, installationIds, env);
+      await xmtp.Client.revokeInstallations(signer, inboxId, installationIds, env);
     },
 
     async resetLocalDb(address) {
+      const xmtp = await loadXmtp();
       const peer = getAddress(address as `0x${string}`);
       const env = getMessagingXmtpEnv() as XmtpEnv;
       const inboxId = await resolveInboxId(peer);
-      const opfs = await Opfs.create();
+      const opfs = await xmtp.Opfs.create();
       try {
         const files = await opfs.listFiles();
         for (const path of files) {

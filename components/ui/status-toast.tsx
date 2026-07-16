@@ -24,23 +24,18 @@ export function StatusToast({
   onClear,
   className,
 }: Props) {
-  const [visible, setVisible] = useState(Boolean(message));
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!message) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-    if (clearAfterMs <= 0) return;
+    if (!message || clearAfterMs <= 0) return;
     const id = window.setTimeout(() => {
-      setVisible(false);
+      setDismissedMessage(message);
       onClear?.();
     }, clearAfterMs);
     return () => window.clearTimeout(id);
   }, [message, clearAfterMs, onClear]);
 
-  const show = Boolean(message) && visible;
+  const show = Boolean(message) && dismissedMessage !== message;
 
   if (!show) return null;
 
