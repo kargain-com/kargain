@@ -11,14 +11,16 @@ import {
 } from "./adapters/cache-adapter";
 import { getMessagingXmtpEnv } from "./xmtp-env";
 import { createEffectsRunner, getSessionSnapshot } from "./effects";
+import { unbrandClient } from "./adapters/xmtp-adapter";
 
 export const createMessagingSession: CreateMessagingSession = (
   input: CreateMessagingSessionInput,
 ): MessagingSession => {
   const cache =
-    typeof localStorage === "undefined"
+    input.cache ??
+    (typeof localStorage === "undefined"
       ? createInMemoryMessagingCache()
-      : createMessagingCachePort(getMessagingXmtpEnv());
+      : createMessagingCachePort(getMessagingXmtpEnv()));
   const listeners = new Set<() => void>();
 
   const runner = createEffectsRunner({
@@ -33,7 +35,11 @@ export const createMessagingSession: CreateMessagingSession = (
 
   runner.start();
 
-  let snapshot: SessionSnapshot = getSessionSnapshot(runner.getState(), input.ports);
+  let snapshot: SessionSnapshot = getSessionSnapshot(
+    runner.getState(),
+    input.ports,
+    input.clock.nowMs(),
+  );
 
   function refreshSnapshot() {
     const walletAddress = input.ports.wallet.getAddress();
@@ -41,7 +47,7 @@ export const createMessagingSession: CreateMessagingSession = (
     if (walletAddress && walletAddress.toLowerCase() !== sessionAddress.toLowerCase()) {
       runner.onAddressChange(walletAddress);
     }
-    snapshot = getSessionSnapshot(runner.getState(), input.ports);
+    snapshot = getSessionSnapshot(runner.getState(), input.ports, input.clock.nowMs());
   }
 
   return {
@@ -54,13 +60,26 @@ export const createMessagingSession: CreateMessagingSession = (
       return () => listeners.delete(onChange);
     },
     dispatch(command: SessionCommand) {
-      const current = getSessionSnapshot(runner.getState(), input.ports);
+      const current = getSessionSnapshot(
+        runner.getState(),
+        input.ports,
+        input.clock.nowMs(),
+      );
       if (current.state === "disconnected" || current.state === "unsupported") {
         return;
       }
       refreshSnapshot();
       runner.dispatch(command);
       refreshSnapshot();
+    },
+    getXmtpClient() {
+      refreshSnapshot();
+      const client = runner.getState().localClient;
+      return client ? unbrandClient(client) : null;
+    },
+    dispose() {
+      runner.dispose();
+      listeners.clear();
     },
   };
 };

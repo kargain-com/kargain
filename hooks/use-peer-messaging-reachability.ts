@@ -8,7 +8,7 @@ import {
   peerReachabilityMessage,
   resolvePeerReachability,
   type PeerReachabilityReason,
-} from "@/lib/xmtp/can-message-peer";
+} from "@/lib/messaging/can-message-peer";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function usePeerMessagingReachability(

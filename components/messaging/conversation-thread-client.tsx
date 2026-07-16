@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { Dm } from "@xmtp/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
@@ -13,12 +12,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpMessages } from "@/hooks/use-xmtp-messages";
 import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
-import { ethereumAddressFromInboxState, formatRelativeTime, setLastSeen } from "@/lib/xmtp/helpers";
+import {
+  ethereumAddressFromInboxState,
+  type XmtpDm,
+} from "@/lib/messaging/adapters/xmtp-adapter";
+import { formatRelativeTime } from "@/lib/format/relative-time";
+import { setLastSeen } from "@/lib/messaging/last-seen";
+import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
   conversationId: string;
@@ -35,9 +39,9 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 
 function ConversationThreadBody({ conversationId }: Props) {
   const { isConnected } = useAccount();
-  const { client } = useXmtpClient();
-  const { isReady, needsSetup, needsDeviceRestore } = useMessagingStatus();
-  const needsMessagingCard = needsSetup || needsDeviceRestore;
+  const { client, snapshot } = useMessagingSession();
+  const isReady = snapshot.state === "active" && client != null;
+  const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const { conversations } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
@@ -63,7 +67,7 @@ function ConversationThreadBody({ conversationId }: Props) {
         const conversation = await client.conversations.getConversationById(conversationId);
         if (!conversation || cancelled) return;
 
-        const peerInboxId = await (conversation as Dm).peerInboxId();
+        const peerInboxId = await (conversation as XmtpDm).peerInboxId();
         const states = await client.preferences.getInboxStates([peerInboxId]);
         const resolved = ethereumAddressFromInboxState(states[0]);
         if (!cancelled && resolved) {
@@ -118,101 +122,107 @@ function ConversationThreadBody({ conversationId }: Props) {
       await sendMessage(draft);
       setDraft("");
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : "Failed to send message.");
+      setSendError(e instanceof Error ? e.message : "Could not send message.");
     }
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-4rem)] max-w-lg flex-col px-4 py-4 text-text-primary md:h-[calc(100dvh-5rem)]">
-      <header className="flex shrink-0 items-center gap-3 border-b border-border-default pb-3">
-        <Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0" asChild>
-          <Link href="/messages" aria-label="Back to inbox">
-            <ArrowLeftIcon size={16} className="h-4 w-4" />
+    <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col px-4 py-8 text-text-primary">
+      <div className="mb-4 flex items-center gap-3">
+        <Button type="button" variant="ghost" size="sm" className="gap-2" asChild>
+          <Link href="/messages">
+            <ArrowLeftIcon size={16} className="h-4 w-4" aria-hidden />
+            Back
           </Link>
         </Button>
-        <div className="flex min-w-0 items-center gap-2">
-          <Link href={profileHref} className="shrink-0">
-            <IdentityAvatar address={peerAddress as Address | undefined} size={32} />
-          </Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Link
-                href={profileHref}
-                className="block truncate font-sans text-sm font-medium text-text-primary transition-colors hover:text-accent-warm"
-              >
-                {displayName || "Unknown peer"}
+        <IdentityAvatar address={peerAddress as Address | undefined} size={36} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {profileHref ? (
+              <Link href={profileHref} className="truncate font-sans text-sm font-medium link">
+                {displayName}
               </Link>
-              {isKarPro && <KarProBadge className="shrink-0" />}
-            </div>
-            <p className="text-[10px] text-text-secondary">End-to-end encrypted</p>
+            ) : (
+              <p className="truncate font-sans text-sm font-medium">{displayName}</p>
+            )}
+            {isKarPro && <KarProBadge className="shrink-0" />}
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-4">
+      <div className="flex-1 space-y-3 overflow-y-auto pb-4">
         {isLoading && (
-          <p className="flex items-center gap-2 text-sm text-text-secondary">
+          <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
             <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
             Loading messages…
           </p>
         )}
+
         {!isLoading && messages.length === 0 && (
-          <EmptyState
-            variant="content"
-            level="B"
-            title="No messages yet."
-            description="Say hello to start."
-          />
+          <EmptyState variant="content" level="A" title="No messages yet." className="py-8" />
         )}
-        <ul className="space-y-3">
-          {messages.map((message) => (
-            <li
-              key={message.id}
-              className={`flex flex-col gap-1 ${message.isMine ? "items-end" : "items-start"}`}
+
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex flex-col ${message.isMine ? "items-end" : "items-start"}`}
+          >
+            <div
+              className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
+                message.isMine
+                  ? "bg-white text-bg-primary"
+                  : "bg-bg-surface text-text-primary"
+              }`}
             >
-              <div
-                className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
-                  message.isMine ? "bg-white text-bg-primary" : "bg-bg-surface text-text-primary"
-                }`}
-              >
-                <p className="whitespace-pre-wrap break-words">{message.content}</p>
-              </div>
-              <time
-                className={`font-mono text-xs text-text-tertiary tabular-nums ${message.isMine ? "text-right" : "text-left"}`}
-                dateTime={message.sentAt.toISOString()}
-              >
-                {formatRelativeTime(message.sentAt)}
-              </time>
-            </li>
-          ))}
-        </ul>
+              {message.content}
+            </div>
+            <time
+              className={`mt-1 font-mono text-xs text-text-tertiary tabular-nums ${
+                message.isMine ? "text-right" : "text-left"
+              }`}
+              dateTime={message.sentAt.toISOString()}
+            >
+              {formatRelativeTime(message.sentAt)}
+            </time>
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 space-y-2 border-t border-border-default pt-3">
-        {sendError && <p className="text-xs text-status-error">{sendError}</p>}
-        <div className="flex gap-2">
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Message…"
-            className="border-border-hover"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void onSend();
-              }
-            }}
-          />
-          <Button type="button" size="sm" disabled={isSending || !draft.trim()} onClick={() => void onSend()}>
-            <SendIcon size={16} className="h-4 w-4" aria-hidden />
-          </Button>
-        </div>
-      </div>
+      <form
+        className="flex items-center gap-2 border-t border-border-default pt-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSend();
+        }}
+      >
+        <Input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Message"
+          disabled={isSending}
+          aria-label="Message"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          className="h-11 w-11 shrink-0 px-0"
+          disabled={isSending || !draft.trim()}
+          aria-label="Send"
+        >
+          <SendIcon size={16} className="h-4 w-4" aria-hidden />
+        </Button>
+      </form>
+
+      {sendError && (
+        <p className="mt-2 text-sm text-status-error" role="alert">
+          {sendError}
+        </p>
+      )}
     </div>
   );
 }
 
 export function ConversationThreadClient({ conversationId }: Props) {
-  return <ConversationThreadBody key={conversationId} conversationId={conversationId} />;
+  return <ConversationThreadBody conversationId={conversationId} />;
 }

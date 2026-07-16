@@ -427,6 +427,68 @@ describe("messaging contract — scenarios", () => {
     assert.equal(snap.state, "active");
     if (snap.state === "active") assert.equal(snap.publiclyReachable, false);
   });
+
+  it("disable without local client publishes false and settles disabled explicit", async () => {
+    const clock = createControlledClock();
+    const { session, xmtp, nostr } = openSession(clock, {
+      nostr: {
+        readIntent: async () => true,
+        publishIntent: async () => ({ ok: true }),
+      },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: false, reason: "build_failed" }),
+      },
+    });
+    await settleAsync(clock);
+    const before = session.getSnapshot();
+    assert.equal(before.state, "needs_signature");
+    session.dispatch({ type: "disable" });
+    await settleAsync(clock);
+    assert.ok(nostr.publishLog.some((p) => p.enabled === false));
+    assert.equal(xmtp.calls.resetLocalDb, 0);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "disabled");
+    if (snap.state === "disabled") assert.equal(snap.intent, "explicit");
+  });
+
+  it("initial mount projects reconciling intent until readIntent resolves", async () => {
+    const clock = createControlledClock();
+    let resolveIntent: ((v: boolean | null) => void) | undefined;
+    const { session } = openSession(clock, {
+      nostr: {
+        readIntent: async () =>
+          new Promise<boolean | null>((resolve) => {
+            resolveIntent = resolve;
+          }),
+      },
+    });
+    const first = session.getSnapshot();
+    assert.equal(first.state, "reconciling");
+    if (first.state === "reconciling") assert.equal(first.op, "intent");
+    resolveIntent?.(true);
+    await settleAsync(clock);
+    const after = session.getSnapshot();
+    assert.notEqual(after.state, "disabled");
+  });
+
+  it("negative networkRegistered memo does not suppress fresh probe", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      cacheSeed: { networkRegistered: false },
+      nostr: { readIntent: async () => true },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.probeRegistration >= 1);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "active");
+    if (snap.state === "active") assert.equal(snap.publiclyReachable, true);
+  });
 });
 
 describe("messaging contract — invariants", () => {

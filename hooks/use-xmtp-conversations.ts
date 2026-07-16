@@ -3,7 +3,7 @@
 import {
   useXmtpConversationsContext,
 } from "@/components/providers/xmtp-conversations-provider";
-import type { ConversationSummary } from "@/lib/xmtp/load-conversation-summaries";
+import type { ConversationSummary } from "@/lib/messaging/conversations";
 
 export type { ConversationSummary };
 

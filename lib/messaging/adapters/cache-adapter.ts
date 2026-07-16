@@ -19,6 +19,25 @@ export type MessagingCachePort = {
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
+const LEGACY_KEY_PREFIXES = [
+  "xmtp:opted-in:",
+  "xmtp:disabled:",
+  "xmtp:network-registered:",
+] as const;
+
+function purgeLegacyMessagingKeys(): void {
+  if (!storageAvailable()) return;
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (LEGACY_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      keys.push(key);
+    }
+  }
+  for (const key of keys) localStorage.removeItem(key);
+}
+
 function storageAvailable(): boolean {
   return typeof localStorage !== "undefined";
 }
@@ -31,6 +50,7 @@ export function createMessagingCachePort(
   env: string,
   ttlMs: number = DEFAULT_TTL_MS,
 ): MessagingCachePort {
+  purgeLegacyMessagingKeys();
   function read(address: string): CacheEntry | undefined {
     if (!storageAvailable()) return undefined;
     const raw = localStorage.getItem(cacheKey(address, env));

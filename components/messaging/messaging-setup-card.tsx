@@ -2,29 +2,16 @@
 
 import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import { useCallback, useState } from "react";
-import { useAccount, useWalletClient } from "wagmi";
+import { useState } from "react";
 
 import { MessagingSetupError } from "@/components/messaging/messaging-setup-error";
 import { Button } from "@/components/ui/button";
-import { useMessagingActivation } from "@/hooks/use-messaging-activation";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import {
   canWalletEnableMessaging,
+  isUserOpInFlight,
   messagingUnsupportedCopy,
-  useMessagingStatus,
-} from "@/hooks/use-messaging-status";
-import { closeXmtpClient } from "@/hooks/use-xmtp-client";
-import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { buildXmtpEoaSigner } from "@/lib/xmtp/client";
-import {
-  enableMessagingFull,
-  enableMessagingFullError,
-} from "@/lib/xmtp/enable-messaging-full";
-import {
-  resetLocalXmtpDatabase,
-  revokeAllInstallations,
-} from "@/lib/xmtp/reset-messaging-identity";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+} from "@/lib/messaging/snapshot-ui";
 import { cn } from "@/lib/utils";
 
 type SetupContext = "account" | "seller" | "karpro";
@@ -55,131 +42,86 @@ function contextCopy(context: SetupContext): { title: string; body: string } {
   }
 }
 
+function errorCopy(reason: string): string {
+  if (reason === "opfs_lock") {
+    return "Messages are already open in another Kargain tab. Close it and retry.";
+  }
+  if (reason === "timeout") {
+    return "Messaging setup timed out. Try again.";
+  }
+  return "Could not restore your messages on this device.";
+}
+
 export function MessagingSetupCard({
   variant = "full",
   context = "account",
   className,
 }: Props) {
-  const { address } = useAccount();
-  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
-  const { data: walletClient } = useWalletClient({ chainId });
-  const { profile, refetch } = useNostrProfile(address);
-  const { status, error, createErrorKind, enableMessages, isReady, walletKind } =
-    useMessagingStatus();
-  const activation = useMessagingActivation();
-  const [busy, setBusy] = useState(false);
+  const { snapshot, dispatch } = useMessagingSession();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const unsupported = messagingUnsupportedCopy(walletKind);
-  const canEnable = canWalletEnableMessaging(walletKind);
+  const unsupported = messagingUnsupportedCopy(snapshot);
+  const canEnable = canWalletEnableMessaging(snapshot);
   const copy = contextCopy(context);
+  const userOpBusy = isUserOpInFlight(snapshot);
+  const ctaDisabled =
+    snapshot.state === "active" ||
+    snapshot.state === "unsupported" ||
+    snapshot.state === "disconnected" ||
+    userOpBusy;
 
-  const runEnable = useCallback(async () => {
-    if (!address || !walletClient) {
-      setActionError("Wallet not ready. Try again.");
-      return;
-    }
+  const createErrorKind =
+    snapshot.state === "error"
+      ? snapshot.reason
+      : snapshot.state === "needs_signature" && snapshot.reason === "installation_limit"
+        ? snapshot.reason
+        : null;
 
-    const result = await enableMessagingFull({
-      enableMessages,
-      address,
-      walletClient,
-      profile,
-      xmtpAlreadyActive: isReady,
-    });
-    if (!result.ok) {
-      setActionError(enableMessagingFullError(result.step, result.verifyDetail));
-      return;
-    }
-    void refetch();
-    activation.refetchNetwork();
-  }, [
-    activation,
-    address,
-    enableMessages,
-    isReady,
-    profile,
-    refetch,
-    walletClient,
-  ]);
+  const storeError =
+    snapshot.state === "error"
+      ? errorCopy(snapshot.reason)
+      : snapshot.state === "needs_signature" && snapshot.reason === "opfs_lock"
+        ? errorCopy(snapshot.reason)
+        : null;
 
-  const onEnable = async () => {
-    if (!address || !walletClient) {
-      setActionError("Wallet not ready. Try again.");
-      return;
-    }
-
-    setActionError(null);
-    setBusy(true);
-    try {
-      await runEnable();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Could not enable messages.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onResetIdentity = async () => {
-    if (!address || busy) return;
-
-    setActionError(null);
-    setBusy(true);
-    try {
-      closeXmtpClient();
-      await resetLocalXmtpDatabase(address);
-      await runEnable();
-    } catch (e) {
-      setActionError(
-        e instanceof Error ? e.message : "Could not reset messaging identity.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onRevokeAndRetry = async () => {
-    if (!address || !walletClient || busy) return;
-
-    setActionError(null);
-    setBusy(true);
-    try {
-      const signer = buildXmtpEoaSigner(walletClient, address);
-      await revokeAllInstallations(signer, address);
-      closeXmtpClient();
-      await resetLocalXmtpDatabase(address);
-      await runEnable();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Could not free device slots.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const showErrorPanel =
+    createErrorKind === "installation_limit" || Boolean(actionError || storeError);
 
   const errorPanel = (
     <MessagingSetupError
       actionError={actionError}
-      storeError={error}
+      storeError={storeError}
       createErrorKind={createErrorKind}
-      showResetIdentity={status === "error" && createErrorKind !== "installation_limit"}
-      busy={busy}
-      onResetIdentity={() => void onResetIdentity()}
-      onRevokeAndRetry={() => void onRevokeAndRetry()}
+      showResetIdentity={
+        snapshot.state === "error" && snapshot.reason !== "installation_limit"
+      }
+      busy={userOpBusy}
+      onResetIdentity={() => dispatch({ type: "resetIdentity" })}
+      onRevokeAndRetry={() => dispatch({ type: "resetIdentity" })}
     />
   );
 
-  const showErrorPanel =
-    createErrorKind === "installation_limit" || Boolean(actionError || error);
+  const ctaRow = (label: string, onClick: () => void) => (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button type="button" size="sm" disabled={ctaDisabled} onClick={onClick}>
+        {label}
+      </Button>
+      {userOpBusy && (
+        <SpinnerIcon className="h-4 w-4 animate-spin text-text-secondary" aria-hidden />
+      )}
+      {variant === "full" && context === "account" && (
+        <Link href="/privacy" className="text-sm text-text-secondary link-underline">
+          How messaging works
+        </Link>
+      )}
+    </div>
+  );
 
-  if (status === "disconnected") {
+  if (snapshot.state === "disconnected" || snapshot.state === "active") {
     return null;
   }
 
-  if (status === "active") {
-    return null;
-  }
-
-  if (status === "unsupported" || !canEnable) {
+  if (snapshot.state === "unsupported" || !canEnable) {
     return (
       <div
         className={cn(
@@ -193,7 +135,7 @@ export function MessagingSetupCard({
     );
   }
 
-  if (status === "disabled") {
+  if (snapshot.state === "disabled" && snapshot.intent === "explicit") {
     return (
       <div
         className={cn(
@@ -205,15 +147,16 @@ export function MessagingSetupCard({
           You turned off incoming messages. Turn them back on to receive buyer and verifier
           messages.
         </p>
-        <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
-          {busy ? "Enabling…" : "Turn on messages"}
-        </Button>
+        {ctaRow("Turn on messages", () => {
+          setActionError(null);
+          dispatch({ type: "enable" });
+        })}
         {showErrorPanel && errorPanel}
       </div>
     );
   }
 
-  if (status === "error") {
+  if (snapshot.state === "error") {
     return (
       <div
         className={cn(
@@ -230,15 +173,16 @@ export function MessagingSetupCard({
             browser.
           </p>
         </div>
-        <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
-          {busy ? "Retrying…" : "Retry"}
-        </Button>
+        {ctaRow("Retry", () => {
+          setActionError(null);
+          dispatch({ type: "retry" });
+        })}
         {showErrorPanel && errorPanel}
       </div>
     );
   }
 
-  if (status === "restore_required") {
+  if (snapshot.state === "needs_signature") {
     return (
       <div
         className={cn(
@@ -253,19 +197,19 @@ export function MessagingSetupCard({
             browser.
           </p>
         </div>
-        <Button type="button" size="sm" disabled={busy} onClick={() => void onEnable()}>
-          {busy ? "Activating…" : "Activate"}
-        </Button>
+        {ctaRow("Activate", () => {
+          setActionError(null);
+          dispatch({ type: "enable" });
+        })}
         {actionError && (
           <p className="text-sm text-status-error" role="alert">
             {actionError}
           </p>
         )}
+        {showErrorPanel && errorPanel}
       </div>
     );
   }
-
-  const isCompact = variant === "compact";
 
   return (
     <div
@@ -282,23 +226,10 @@ export function MessagingSetupCard({
         </div>
       </div>
 
-      {status === "initializing" || busy ? (
-        <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-          <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
-          Confirm in your wallet…
-        </p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" size="sm" onClick={() => void onEnable()}>
-            Enable messages
-          </Button>
-          {!isCompact && (
-            <Link href="/privacy" className="text-sm text-text-secondary link-underline">
-              How messaging works
-            </Link>
-          )}
-        </div>
-      )}
+      {ctaRow("Enable messages", () => {
+        setActionError(null);
+        dispatch({ type: "enable" });
+      })}
 
       {showErrorPanel && errorPanel}
     </div>

@@ -9,18 +9,19 @@ import { useAccount } from "wagmi";
 import { SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingCatchUpBanner } from "@/components/messaging/messaging-catch-up-banner";
-import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { WalletLoginButton } from "@/components/wallet-login-button";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
-import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
-import { formatRelativeTime, getClientEthereumAddress, shortAddress } from "@/lib/xmtp/helpers";
+import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
+import { getClientEthereumAddress } from "@/lib/messaging/adapters/xmtp-adapter";
+import { formatRelativeTime } from "@/lib/format/relative-time";
+import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
+import { shortAddress } from "@/lib/web3/wallet-display";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { isMessageablePeer } from "@/lib/web3/wallet-account";
 
@@ -109,9 +110,9 @@ export function MessageInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address, isConnected, connector } = useAccount();
-  const { client, ensureInitialized } = useXmtpClient();
-  const { isReady, needsSetup, needsDeviceRestore, status } = useMessagingStatus();
-  const needsMessagingCard = needsSetup || needsDeviceRestore;
+  const { client, session, snapshot } = useMessagingSession();
+  const needsMessagingCard = needsMessagingSetupCard(snapshot);
+  const isReady = snapshot.state === "active" && client != null;
   const { conversations, isLoading } = useXmtpConversations();
   const myAddress = client ? getClientEthereumAddress(client) : address;
 
@@ -169,7 +170,7 @@ export function MessageInboxClient() {
     }
 
     if (!isReady || !client) {
-      if ((needsSetup || needsDeviceRestore) && isConnected && initialToRef.current) {
+      if (needsMessagingCard && isConnected && initialToRef.current) {
         setToError("Enable private messages to open this conversation.");
       }
       return;
@@ -192,7 +193,7 @@ export function MessageInboxClient() {
         const provider = await connector?.getProvider?.();
         const dm = await contactPeer({
           client,
-          ensureReady: ensureInitialized,
+          ensureReady: async () => session?.getXmtpClient() ?? null,
           peerAddress: peer,
           nostrProfile: peerProfile,
           provider,
@@ -215,14 +216,14 @@ export function MessageInboxClient() {
     client,
     connector,
     conversations,
-    ensureInitialized,
     isConnected,
     isLoading,
     isReady,
-    needsSetup,
-    needsDeviceRestore,
+    needsMessagingCard,
+    session,
     peerProfile,
     router,
+    snapshot.state,
   ]);
 
   if (!isConnected) {
@@ -254,8 +255,6 @@ export function MessageInboxClient() {
         <MessagingSetupCard variant="full" context="account" />
       )}
 
-      {!needsMessagingCard && <MessagingDriftBanner />}
-
       {!needsMessagingCard && <MessagingCatchUpBanner />}
 
       {openingPeer && (
@@ -265,7 +264,7 @@ export function MessageInboxClient() {
         </p>
       )}
 
-      {status === "initializing" && !needsMessagingCard && (
+      {snapshot.state === "reconciling" && !needsMessagingCard && (
         <p className="flex items-center gap-2 text-sm text-text-secondary" role="status">
           <SpinnerIcon className="h-4 w-4 animate-spin" aria-hidden />
           Restoring messages…

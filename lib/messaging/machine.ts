@@ -6,6 +6,7 @@ import type {
   SessionSnapshot,
   XmtpLocalClient,
 } from "./ports";
+import { PROBE_DEADLINE_MS } from "./ports";
 
 export type IntentValue = boolean | null;
 
@@ -149,9 +150,17 @@ export function projectSnapshot(
   state: MachineState,
   walletAddress: string | null,
   walletKind: MessagingWalletKind | null,
+  nowMs: number = Date.now(),
 ): SessionSnapshot {
   if (!walletAddress) {
     return { state: "disconnected" };
+  }
+  if (walletKind === null) {
+    return {
+      state: "reconciling",
+      op: "intent",
+      deadlineMs: nowMs + PROBE_DEADLINE_MS,
+    };
   }
   if (walletKind === "contract") {
     return { state: "unsupported" };
@@ -221,6 +230,14 @@ export function projectSnapshot(
       state: "needs_signature",
       reason: "not_registered",
       next: "enable",
+    };
+  }
+
+  if (!state.intentLoaded) {
+    return {
+      state: "reconciling",
+      op: "intent",
+      deadlineMs: nowMs + PROBE_DEADLINE_MS,
     };
   }
 

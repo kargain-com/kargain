@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -54,8 +55,8 @@ export function KarProClient({
   });
 
   const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
-  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
-  const needsMessagingCard = needsSetup || needsDeviceRestore;
+  const { snapshot } = useMessagingSession();
+  const needsMessagingCard = needsMessagingSetupCard(snapshot);
 
   const {
     profile: verifierProfile,
@@ -162,7 +163,7 @@ export function KarProClient({
             address={address!}
             name={verifierProfile.name}
             slug={verifierProfile.slug}
-            messagingReady={!needsMessagingCard}
+            messagingReady={messagingReadyForChecklist(snapshot)}
           />
         }
         profile={

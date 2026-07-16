@@ -399,7 +399,7 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Wri
 | Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge source fetched by `{ kinds: [0], authors: [derivedPubkey] }` only (never by `#i`); if existing author content has valid attestation, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `fetchLatestKind0RawByAuthor`; `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
 | Publish guard | `publishNostrProfile` / `publishNostrProfileWithPrivateKey` — when caller passes `expectExisting: true` and merge base fetch returns `{}`, abort (`false`) before attestation signature; default `expectExisting: false` preserves first-ever save |
-| Messaging patch | Enable/disable messaging publishes `{ messagesEnabled }` only — no personal fields re-sent ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx), [`enable-messaging-full.ts`](../lib/xmtp/enable-messaging-full.ts)) |
+| Messaging patch | Enable/disable messaging publishes `{ messagesEnabled }` only — no personal fields re-sent ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx) via `dispatch` enable/disable) |
 | Read resolver | `resolveAttestedProfile` / `resolveAttestedProfiles` / `attestedPubkeyForAddress` — query `#i`, sort `created_at` desc, return **newest event that passes verify** (older attested beats newer spoofed); `null` when none verify |
 | Batch (KP-5) | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — subscription events verified before accumulator; unverified never enter map |
 | Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by `event.id` + normalized address |
@@ -417,30 +417,42 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 ### 4.12 Messages
 
-Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`use-messaging-status.ts`](../hooks/use-messaging-status.ts), [`use-xmtp-network-registration.ts`](../hooks/use-xmtp-network-registration.ts), [`use-xmtp-client.ts`](../hooks/use-xmtp-client.ts), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`reset-messaging-identity.ts`](../lib/xmtp/reset-messaging-identity.ts).
+Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (sole React entry), [`session-store.ts`](../lib/messaging/session-store.ts), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
 
-**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical activation truth:** XMTP network registration (`Client.canMessage` for own address) plus Nostr kind 0 opt-out — not localStorage alone. `xmtp:opted-in` and `xmtp:network-registered` (24h TTL) are self-healing fast-path caches; a positive network check revalidates cache and restores local opt-in. **Local client lifecycle:** passive connect runs `Client.build` only (no wallet signature); explicit user gestures run `Client.create`. `needsSetup` (`inactive` only) surfaces first-time onboarding; `restore_required` surfaces device activation (*Activate messages on this device*); `error` shows recovery/retry copy (OPFS multi-tab or init failure). `initializing` covers silent restore or network-check pending.
+**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent → XMTP network registration → OPFS local client → cache memos (latency only). Legacy `xmtp:opted-in` / `xmtp:disabled` / `xmtp:network-registered` keys are purged on session init — not read.
+
+**SessionSnapshot → surfaces**
+
+| Snapshot | UI |
+|----------|-----|
+| `disconnected` | No wallet — setup surfaces hidden |
+| `unsupported` | Contract wallet — messaging unavailable |
+| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) |
+| `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings |
+| `reconciling` | Spinner beside CTA (probe / build / create / publish / revoke / reset / intent) |
+| `needs_signature` | Device activation card (`not_registered` \| `build_failed`) |
+| `active` | DMs available; `publiclyReachable` drives profile switch + peer reachability |
+| `active` + `publishError` / `publishPending` | Inline publish retry in settings (no second XMTP signature) |
+| `error` | Recovery card (`MessagingSetupError`); `opfs_lock` → close other tab; `installation_limit` → free device slots |
 
 | Element | Rule |
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
-| Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsSetup` or `needsDeviceRestore`; links to `/profile/edit#messages` |
-| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) on `/profile/edit` — **Private messages** [`Switch`](../components/ui/switch.tsx); default accepting (opt-out only with confirm dialog); switch ON only when XMTP local + network + relay verified |
-| Drift repair | [`MessagingDriftBanner`](../components/messaging/messaging-drift-banner.tsx) on owner profile, inbox, and settings when relay opt-out or network registration drifts from local state |
+| Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable`; toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`) |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
-| KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until ready |
-| `?to=` pre-fill | `/messages?to={address}` opens DM after self messaging is ready; uses [`contactPeer`](../lib/xmtp/contact-peer.ts); URL param stripped on mount |
-| Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends *Hi, I'm interested in your listing for {formatPassportTitle}.* before navigating to `/messages/{id}`; existing threads unchanged |
-| Profile entry | Identity header **Message** / **Request verification** when peer reachable; else specific copy from [`peerReachabilityMessage`](../lib/xmtp/can-message-peer.ts) |
-| Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/xmtp/can-message-peer.ts) before DM actions |
-| XMTP init | Passive connect: `Client.build` silent restore only (no wallet signature); explicit **Enable messages** / **Activate** / profile switch ON → `Client.create` (may sign once per device); `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) after client set; disable publishes opt-out first then tears down XMTP; own-address network check on connect |
-| Setup card states | `inactive` → first-time onboarding · `restore_required` → device activation card (*Activate messages on this device*) · `error` → recovery/retry (includes OPFS multi-tab: *Messages are already open in another Kargain tab. Close it and retry.*) |
-| Setup card errors | Primary user copy `text-status-error`; when generic `enableMessagingFull` copy masks the SDK message, raw `store.error` as secondary `text-text-tertiary font-mono text-xs` |
-| Installation limit recovery | `createErrorKind === installation_limit` → *Message device limit reached.* + **Free device slots and retry** (`revokeAllInstallations` then scoped OPFS reset + re-enable); advisory *Messages on your other devices will need one-time reactivation.* |
-| OPFS identity reset | `error` status (non-limit) → text action **Reset messaging identity** (`resetLocalXmtpDatabase` scoped to `xmtp-{env}-{inboxId}.db3` via `Opfs.listFiles` + `deleteFile`, never `clearAll`) then re-enable; advisory *Message history on this device will be re-downloaded from the network.* |
-| Drift banner errors | Same secondary mono diagnostic when local generic copy differs from `store.error`; no new recovery actions |
-| Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber setup dot or unread warm dot; unread from shared [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (syncs on focus / visibility) |
-| Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; Messages nav dot updates on any page; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect (not in Bell `/notifications`) |
+| KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until `messagingReadyForChecklist(snapshot)` |
+| `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
+| Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends listing context before navigating to `/messages/{id}` |
+| Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
+| Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) before DM actions |
+| XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) |
+| Setup card | `enable` / `disable` / `resetIdentity` / `retry` / `cancel` commands; CTA disabled while `isUserOpInFlight(snapshot)` or `active` / `unsupported` / `disconnected` |
+| Setup card errors | Primary user copy `text-status-error`; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
+| Installation limit recovery | `resetIdentity` chain: revoke → reset → create; advisory *Messages on your other devices will need one-time reactivation.* |
+| OPFS identity reset | `error` + `resetIdentity` next — scoped OPFS delete via adapter; advisory *Message history on this device will be re-downloaded from the network.* |
+| Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
+| Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
@@ -449,9 +461,9 @@ Implementation: [`message-inbox-client.tsx`](../components/messaging/message-inb
 | Empty inbox | "No conversations yet." (only when messaging is active) |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
 
-No per-message sender label in the bubble list.
+No per-message sender label in the bubble list. No drift banner — publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 
-Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers. Deployer / `upgradeAuthority` EOAs are never in the static denylist — see [contracts/SPEC.md Part II.4.1](./contracts/SPEC.md#ii41-governance-roles-deployer-vs-timelock-vs-upgrade-authority) (v1.x) and Part I.9.1 (v2 timelock).
+Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
 
 ---
 
@@ -924,7 +936,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 
 **Narrative eyebrows vs serials:** §3 **Caption / eyebrow** (`text-accent-warm`, global `.eyebrow`) applies to **narrative page and section labels** only (§4.6 page intros, form section headers) — not to on-chain serial numbers or factual metadata.
 
-**Relative time:** Canonical formatter: [`lib/xmtp/helpers.ts`](../lib/xmtp/helpers.ts) `formatRelativeTime`. Display output with `font-mono tabular-nums`. Local duplicate formatters (e.g. profile dispute cards) are Phase-2 technical debt — not part of this spec amendment.
+**Relative time:** Canonical formatter: [`lib/format/relative-time.ts`](../lib/format/relative-time.ts) `formatRelativeTime`. Display output with `font-mono tabular-nums`. Local duplicate formatters (e.g. profile dispute cards) are Phase-2 technical debt — not part of this spec amendment.
 
 ---
 
@@ -1446,4 +1458,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.55 (July 2026 — Vincent F-4 acceptance-bar readouts: gated confirmation counts, eligible-root stamp, pinned-dataset comparison). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.56 (July 2026 — Messaging R2: SessionSnapshot activation model, `useMessagingSession`, legacy `lib/xmtp/` removed). Update when tokens, app shell, or component contracts change.*

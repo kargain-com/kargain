@@ -6,12 +6,12 @@ import { useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
+import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
+import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
-import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { isMessageablePeer } from "@/lib/web3/wallet-account";
 
@@ -28,10 +28,8 @@ function buildListingInquiryMessage(tokenId: string): string {
 export function SellerContactButton({ peerAddress, label, listingTokenId }: Props) {
   const { address, isConnected, connector } = useAccount();
   const router = useRouter();
-  const { client, ensureInitialized } = useXmtpClient();
-  const { isInitializing, error, needsSetup, needsDeviceRestore, enableMessages } =
-    useMessagingStatus();
-  const needsMessagingSetup = needsSetup || needsDeviceRestore;
+  const { snapshot, dispatch, client, session } = useMessagingSession();
+  const needsMessagingSetup = needsMessagingSetupCard(snapshot);
   const { profile: peerProfile } = useNostrProfile(peerAddress);
   const { reachable, message, isLoading } = usePeerMessagingReachability(peerAddress);
   const [busy, setBusy] = useState(false);
@@ -70,17 +68,19 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
     setBusy(true);
     try {
       if (needsMessagingSetup) {
-        const enabled = await enableMessages();
-        if (!enabled) return;
+        dispatch({ type: "enable" });
       }
 
-      const activeClient = client ?? (await ensureInitialized());
+      if (!session) return;
+      await awaitActiveSnapshot(session);
+
+      const activeClient = session.getXmtpClient();
       if (!activeClient) return;
 
       const provider = await connector?.getProvider?.();
       const conversation = await contactPeer({
         client: activeClient,
-        ensureReady: ensureInitialized,
+        ensureReady: async () => session.getXmtpClient(),
         peerAddress,
         nostrProfile: peerProfile,
         provider,
@@ -105,8 +105,6 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
     }
   };
 
-  const displayError = actionError ?? error;
-
   return (
     <div className="space-y-2">
       <Button
@@ -114,16 +112,16 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
         variant="outline"
         size="sm"
         className="gap-2"
-        disabled={busy || isInitializing || isLoading}
+        disabled={busy || isLoading}
         onClick={() => void handleClick()}
         aria-label={label}
       >
         <CommentIcon size={16} className="h-4 w-4" aria-hidden />
-        {busy || isInitializing ? "Opening…" : label}
+        {busy ? "Opening…" : label}
       </Button>
-      {displayError && (
+      {actionError && (
         <p className="text-sm text-status-error" role="alert">
-          {displayError}
+          {actionError}
         </p>
       )}
     </div>

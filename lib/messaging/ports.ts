@@ -41,6 +41,7 @@ export type SessionCommand =
 export type SessionCommandType = SessionCommand["type"];
 
 export type ReconcilingOp =
+  | "intent"
   | "probe"
   | "build"
   | "create"
@@ -141,7 +142,10 @@ export type NostrPolicyPort = {
 export type WalletPort = {
   /** Connected EOA/eip7702 address, or null when disconnected. */
   getAddress(): string | null;
+  /** Cached kind after probe; null while probing. */
   getAccountKind(): MessagingWalletKind | null;
+  /** Resolves account kind on session init (chain read). */
+  ensureAccountKindProbed(): Promise<void>;
   /** Resolves when a wallet client is ready for signing, or rejects / times out at the adapter. */
   waitUntilReady(signal?: AbortSignal): Promise<void>;
 };
@@ -165,12 +169,16 @@ export type MessagingSession = {
   getSnapshot(): SessionSnapshot;
   subscribe(onChange: () => void): () => void;
   dispatch(command: SessionCommand): void;
+  getXmtpClient(): import("./adapters/xmtp-adapter").XmtpSdkClient | null;
+  dispose(): void;
 };
 
 export type CreateMessagingSessionInput = {
   address: string;
   ports: MessagingSessionPorts;
   clock: Clock;
+  /** Injectable cache for tests; production uses cache-adapter localStorage. */
+  cache?: import("./adapters/cache-adapter").MessagingCachePort;
 };
 
 export type CreateMessagingSession = (

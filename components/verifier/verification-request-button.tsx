@@ -7,12 +7,12 @@ import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
-import { getCachedXmtpClient, useXmtpClient } from "@/hooks/use-xmtp-client";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
-import { ContactPeerError, contactPeer } from "@/lib/xmtp/contact-peer";
+import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
+import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
   verifierAddress: `0x${string}`;
@@ -71,9 +71,10 @@ export function VerificationRequestButton({
   verificationFee,
 }: Props) {
   const { address: userAddress, isConnected, connector } = useAccount();
-  const { client, ensureInitialized } = useXmtpClient();
-  const { isInitializing, needsSetup, needsDeviceRestore, enableMessages } = useMessagingStatus();
-  const needsMessagingSetup = needsSetup || needsDeviceRestore;
+  const { session, dispatch } = useMessagingSession();
+  const needsMessagingSetup = needsMessagingSetupCard(
+    session?.getSnapshot() ?? { state: "disconnected" },
+  );
   const { profile: verifierProfile } = useNostrProfile(verifierAddress);
   const { reachable, message, isLoading: reachabilityLoading } =
     usePeerMessagingReachability(verifierAddress);
@@ -102,17 +103,16 @@ export function VerificationRequestButton({
       const messageText = buildVerificationMessage(unverified);
 
       if (needsMessagingSetup) {
-        const enabled = await enableMessages();
-        if (!enabled) {
-          setActionError("Enable messages in your profile to send a request.");
-          return;
-        }
+        dispatch({ type: "enable" });
       }
 
-      let activeClient = client ?? getCachedXmtpClient();
-      if (!activeClient) {
-        activeClient = await ensureInitialized();
+      if (!session) {
+        setActionError("Enable messages in your profile to send a request.");
+        return;
       }
+      await awaitActiveSnapshot(session);
+
+      const activeClient = session.getXmtpClient();
       if (!activeClient) {
         setActionError("Enable messages in your profile to send a request.");
         return;
@@ -121,7 +121,7 @@ export function VerificationRequestButton({
       const provider = await connector?.getProvider?.();
       const dm = await contactPeer({
         client: activeClient,
-        ensureReady: ensureInitialized,
+        ensureReady: async () => session.getXmtpClient(),
         peerAddress: verifierAddress,
         nostrProfile: verifierProfile,
         provider,
@@ -141,7 +141,7 @@ export function VerificationRequestButton({
     }
   };
 
-  const isBusy = loading || isInitializing;
+  const isBusy = loading;
 
   if (!isConnected) {
     return (

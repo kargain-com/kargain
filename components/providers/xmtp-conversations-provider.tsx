@@ -11,17 +11,17 @@ import {
   type ReactNode,
 } from "react";
 
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import {
   CONVERSATIONS_SYNC_DEBOUNCE_MS,
   CONVERSATIONS_SYNC_INTERVAL_MS,
   shouldSyncConversations,
-} from "@/lib/xmtp/conversations-sync-schedule";
+} from "@/lib/messaging/conversations-sync";
 import {
   loadConversationSummaries,
   sumUnreadCounts,
   type ConversationSummary,
-} from "@/lib/xmtp/load-conversation-summaries";
+} from "@/lib/messaging/conversations";
 
 const CATCH_UP_DISMISSED_KEY = "xmtp:catchUpDismissed";
 
@@ -48,7 +48,7 @@ export function useXmtpConversationsContext(): XmtpConversationsContextValue {
 }
 
 export function XmtpConversationsProvider({ children }: { children: ReactNode }) {
-  const { client } = useXmtpClient();
+  const { client } = useMessagingSession();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);

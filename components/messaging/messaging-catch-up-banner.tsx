@@ -3,7 +3,7 @@
 import { CloseIcon } from "@/components/ui/icons";
 
 import { useXmtpConversationsContext } from "@/components/providers/xmtp-conversations-provider";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -11,7 +11,8 @@ type Props = {
 };
 
 export function MessagingCatchUpBanner({ className }: Props) {
-  const { isReady } = useMessagingStatus();
+  const { snapshot } = useMessagingSession();
+  const isReady = snapshot.state === "active";
   const { unreadTotal, catchUpNewCount, dismissCatchUp } = useXmtpConversationsContext();
 
   if (!isReady || catchUpNewCount <= 0 || unreadTotal <= 0) {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useXmtpClient } from "@/hooks/use-xmtp-client";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useXmtpUnreadTotal } from "@/hooks/use-xmtp-conversations";
+import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -11,9 +11,8 @@ type Props = {
 
 /** Nav indicator: setup-needed (amber) or unread messages (warm). */
 export function MessagingNavStatus({ className }: Props) {
-  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
-  const needsMessagingCard = needsSetup || needsDeviceRestore;
-  const { client } = useXmtpClient();
+  const { snapshot, client } = useMessagingSession();
+  const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const unreadTotal = useXmtpUnreadTotal();
 
   if (needsMessagingCard) {

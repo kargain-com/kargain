@@ -97,7 +97,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     const remaining = deadlineMs - clock.nowMs();
     if (remaining <= 0) return "timeout";
 
-    const deadlineSignal = new AbortController();
     const work = fn().then(
       (value) => ({ kind: "ok" as const, value }),
       (err: unknown) => ({ kind: "err" as const, err }),
@@ -105,7 +104,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     const timeout = clock.sleep(remaining).then(() => ({ kind: "timeout" as const }));
 
     const raced = await Promise.race([work, timeout]);
-    deadlineSignal.abort();
 
     if (isStale(opGeneration)) return "timeout";
     if (raced.kind === "timeout") {
@@ -173,8 +171,8 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       switch (plan.effect) {
         case "probe": {
           const memo = cache.get(state.address);
-          if (memo?.networkRegistered !== undefined) {
-            apply({ type: "network_observed", registered: memo.networkRegistered });
+          if (memo?.networkRegistered === true) {
+            apply({ type: "network_observed", registered: true });
             break;
           }
           const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
@@ -356,6 +354,12 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       return;
     }
     const opGeneration = generation;
+    apply({
+      type: "effect_started",
+      op: "intent",
+      deadlineMs: clock.nowMs() + PROBE_DEADLINE_MS,
+      generation: opGeneration,
+    });
     try {
       const intent = await ports.nostr.readIntent(state.address);
       if (isStale(opGeneration)) return;
@@ -367,12 +371,21 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         apply({ type: "intent_loaded", intent: null });
         scheduleLoop();
       }
+    } finally {
+      if (!isStale(opGeneration)) {
+        apply({ type: "effect_cleared" });
+      }
     }
   }
 
   return {
     start() {
-      void loadIntent();
+      void (async () => {
+        await ports.wallet.ensureAccountKindProbed();
+        if (disposed) return;
+        notify();
+        await loadIntent();
+      })();
     },
     dispatch(command) {
       if (disposed) return;
@@ -406,15 +419,21 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           }
           scheduleLoop();
           break;
-        case "cancel":
+        case "cancel": {
+          const createInFlight =
+            createAbortController !== null ||
+            state.inFlight?.op === "create";
           createAbortController?.abort();
           createAbortController = null;
           abortInFlight();
           if (state.inFlight) endInFlight();
-          apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
-          apply({ type: "enable_cleared" });
+          if (createInFlight) {
+            apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
+            apply({ type: "enable_cleared" });
+          }
           scheduleLoop();
           break;
+        }
         default:
           break;
       }
@@ -449,10 +468,15 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
   };
 }
 
-export function getSessionSnapshot(state: MachineState, ports: MessagingSessionPorts) {
+export function getSessionSnapshot(
+  state: MachineState,
+  ports: MessagingSessionPorts,
+  nowMs?: number,
+) {
   return projectSnapshot(
     state,
     ports.wallet.getAddress(),
     ports.wallet.getAccountKind(),
+    nowMs ?? Date.now(),
   );
 }

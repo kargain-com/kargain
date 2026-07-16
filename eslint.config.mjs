@@ -24,6 +24,18 @@ const eslintConfig = [
               message:
                 "Use @/components/ui/icons (Mono Icons standard, design-spec §7)",
             },
+            {
+              name: "@xmtp/client",
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@xmtp/*"],
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
           ],
         },
       ],
@@ -60,27 +72,14 @@ const eslintConfig = [
     },
   },
   {
+    files: ["lib/messaging/adapters/xmtp-adapter.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
     files: ["lib/messaging/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "@xmtp/client",
-              message:
-                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
-            },
-          ],
-          patterns: [
-            {
-              group: ["@xmtp/*"],
-              message:
-                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
-            },
-          ],
-        },
-      ],
       "no-restricted-syntax": [
         "error",
         {
@@ -98,13 +97,7 @@ const eslintConfig = [
     },
   },
   {
-    files: ["lib/messaging/adapters/xmtp-adapter.ts"],
-    rules: {
-      "no-restricted-imports": "off",
-    },
-  },
-  {
-    files: ["lib/messaging/adapters/cache-adapter.ts"],
+    files: ["lib/messaging/adapters/cache-adapter.ts", "lib/messaging/last-seen.ts"],
     rules: {
       "no-restricted-syntax": "off",
     },

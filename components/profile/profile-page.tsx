@@ -20,7 +20,6 @@ import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
-import { MessagingDriftBanner } from "@/components/messaging/messaging-drift-banner";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -40,7 +39,7 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
-import { formatRelativeTime } from "@/lib/xmtp/helpers";
+import { formatRelativeTime } from "@/lib/format/relative-time";
 import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = {
@@ -467,7 +466,6 @@ export function ProfilePage({
         <ProfileBio about={about} website={website} />
 
         {isOwner && <AccountSetupBanner />}
-        {isOwner && <MessagingDriftBanner />}
 
         <ProfileVerifierStatsBand
           wallet={wallet}

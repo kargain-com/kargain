@@ -1,9 +1,7 @@
-import { Client } from "@xmtp/client";
 import { getAddress } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { isMessagesAccepting } from "@/lib/nostr/messages-enabled";
-import { ethereumIdentifier, getXmtpEnv } from "@/lib/xmtp/client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import {
   isMessageablePeer,
@@ -12,6 +10,9 @@ import {
   readAccountKindFromProvider,
 } from "@/lib/web3/wallet-account";
 
+import { PROBE_DEADLINE_MS } from "./ports";
+import { probePeerRegistration } from "./adapters/xmtp-adapter";
+
 export type PeerReachabilityReason =
   | "disabled"
   | "not_registered"
@@ -19,15 +20,24 @@ export type PeerReachabilityReason =
   | "contract"
   | null;
 
+const peerProbePort = { probeRegistration: probePeerRegistration };
+
 export function peerAcceptsMessages(profile: NostrProfileData | null | undefined): boolean {
   return isMessagesAccepting(profile);
 }
 
 export async function checkXmtpReachable(address: `0x${string}`): Promise<boolean> {
   const peer = getAddress(address);
-  const identifier = ethereumIdentifier(peer);
-  const response = await Client.canMessage([identifier], getXmtpEnv());
-  return response.get(identifier.identifier) === true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROBE_DEADLINE_MS);
+  try {
+    const result = await peerProbePort.probeRegistration(peer, controller.signal);
+    return result.registered;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function resolvePeerReachability(

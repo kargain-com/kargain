@@ -22,7 +22,7 @@ import type { ListingOffer } from "@/lib/nostr/listing-offers";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { formatRelativeTime } from "@/lib/xmtp/helpers";
+import { formatRelativeTime } from "@/lib/format/relative-time";
 
 type Props = {
   chainId: number;

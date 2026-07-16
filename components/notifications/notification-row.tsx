@@ -16,7 +16,7 @@ import {
   WarningIcon,
   type IconComponent,
 } from "@/components/ui/icons";
-import { formatRelativeTime } from "@/lib/xmtp/helpers";
+import { formatRelativeTime } from "@/lib/format/relative-time";
 import type { NotificationItem, NotificationType } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils";
 

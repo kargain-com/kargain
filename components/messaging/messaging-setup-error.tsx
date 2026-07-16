@@ -1,11 +1,11 @@
 "use client";
 
-import type { XmtpCreateErrorKind } from "@/lib/xmtp/reset-messaging-identity";
+import type { SessionReason } from "@/lib/messaging/ports";
 
 type Props = {
   actionError: string | null;
   storeError: string | null;
-  createErrorKind: XmtpCreateErrorKind | null;
+  createErrorKind: SessionReason | null;
   showResetIdentity?: boolean;
   busy: boolean;
   onResetIdentity: () => void;

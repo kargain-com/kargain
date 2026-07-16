@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parseProfileContent } from "../lib/nostr/parse-profile-content.ts";
-import { peerAcceptsMessages, peerReachabilityMessage } from "../lib/xmtp/can-message-peer.ts";
+import { peerAcceptsMessages, peerReachabilityMessage } from "../lib/messaging/can-message-peer.ts";
 
 describe("parseProfileContent messagesEnabled", () => {
   it("defaults to accepting messages when field is absent", () => {

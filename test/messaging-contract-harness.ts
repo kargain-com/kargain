@@ -16,6 +16,8 @@ import type {
   XmtpLocalClient,
   XmtpPort,
 } from "../lib/messaging/ports.ts";
+import { createInMemoryMessagingCache } from "../lib/messaging/adapters/cache-adapter.ts";
+import type { CacheEntry } from "../lib/messaging/adapters/cache-adapter.ts";
 
 export type ControlledClock = Clock & {
   advance(ms: number): void;
@@ -236,6 +238,9 @@ export function createFakeWalletPort(
     getAccountKind() {
       return kind;
     },
+    async ensureAccountKindProbed() {
+      if (address && !kind) kind = "eoa";
+    },
     setAddress(next) {
       address = next;
     },
@@ -275,17 +280,23 @@ export function openSession(
     xmtp?: Parameters<typeof createFakeXmtpPort>[0];
     nostr?: Parameters<typeof createFakeNostrPolicyPort>[0];
     wallet?: Parameters<typeof createFakeWalletPort>[0];
+    cacheSeed?: Partial<CacheEntry>;
   } = {},
 ) {
   const xmtp = createFakeXmtpPort(handlers.xmtp);
   const nostr = createFakeNostrPolicyPort(handlers.nostr);
   const wallet = createFakeWalletPort(handlers.wallet);
+  const cache = createInMemoryMessagingCache();
+  if (handlers.cacheSeed) {
+    cache.set(TEST_ADDRESS, handlers.cacheSeed);
+  }
   const session = createMessagingSession({
     address: TEST_ADDRESS,
     ports: { xmtp, nostr, wallet },
     clock,
+    cache,
   });
-  return { session, xmtp, nostr, wallet, clock };
+  return { session, xmtp, nostr, wallet, clock, cache };
 }
 
 export { createMessagingSession };

@@ -26,6 +26,8 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
   const chainId = input.chainId ?? DEFAULT_CHAIN_ID;
   let cachedKind: MessagingWalletKind | null = null;
   let kindAddress: string | null = null;
+  let kindProbed = false;
+  let kindProbePromise: Promise<void> | null = null;
 
   async function refreshKind(address: Address): Promise<MessagingWalletKind> {
     const key = address.toLowerCase();
@@ -33,7 +35,27 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
     const kind = mapWalletKind(await readAccountKind(chainId, address));
     kindAddress = key;
     cachedKind = kind;
+    kindProbed = true;
     return kind;
+  }
+
+  async function ensureAccountKindProbed(): Promise<void> {
+    const address = input.getAddress();
+    if (!address) {
+      kindProbed = true;
+      return;
+    }
+    if (kindProbed && kindAddress === address.toLowerCase() && cachedKind) return;
+    if (kindProbePromise) {
+      await kindProbePromise;
+      return;
+    }
+    kindProbePromise = refreshKind(address).then(() => undefined);
+    try {
+      await kindProbePromise;
+    } finally {
+      kindProbePromise = null;
+    }
   }
 
   return {
@@ -45,8 +67,10 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
       const address = input.getAddress();
       if (!address) return null;
       if (kindAddress === address.toLowerCase() && cachedKind) return cachedKind;
-      return "eoa";
+      return null;
     },
+
+    ensureAccountKindProbed,
 
     async waitUntilReady(signal) {
       const deadline = input.clock.nowMs() + WALLET_CLIENT_WAIT_MS;

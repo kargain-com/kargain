@@ -1,11 +1,11 @@
-import type { XmtpClient } from "@/lib/xmtp/helpers";
+import type { XmtpSdkClient } from "./adapters/xmtp-adapter";
 import {
   dateToSentAfterNs,
   ethereumAddressFromInboxState,
-  getLastSeen,
   messageText,
   truncatePreview,
-} from "@/lib/xmtp/helpers";
+} from "./adapters/xmtp-adapter";
+import { getLastSeen } from "./last-seen";
 
 export type ConversationSummary = {
   id: string;
@@ -15,10 +15,10 @@ export type ConversationSummary = {
   unreadCount: number;
 };
 
-type DmConversation = Awaited<ReturnType<XmtpClient["conversations"]["listDms"]>>[number];
+type DmConversation = Awaited<ReturnType<XmtpSdkClient["conversations"]["listDms"]>>[number];
 
 export async function buildConversationSummary(
-  client: XmtpClient,
+  client: XmtpSdkClient,
   dm: DmConversation,
 ): Promise<ConversationSummary> {
   const peerInboxId = await dm.peerInboxId();
@@ -63,7 +63,7 @@ export function sumUnreadCounts(summaries: ConversationSummary[]): number {
 }
 
 export async function loadConversationSummaries(
-  client: XmtpClient,
+  client: XmtpSdkClient,
 ): Promise<ConversationSummary[]> {
   await client.conversations.sync();
   const dms = await client.conversations.listDms();

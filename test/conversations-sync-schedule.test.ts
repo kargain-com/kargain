@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import {
   CONVERSATIONS_SYNC_DEBOUNCE_MS,
   shouldSyncConversations,
-} from "../lib/xmtp/conversations-sync-schedule.ts";
+} from "../lib/messaging/conversations-sync.ts";
 
 describe("shouldSyncConversations", () => {
   it("allows first sync when lastSyncAt is null", () => {

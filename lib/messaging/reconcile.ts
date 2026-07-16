@@ -54,7 +54,7 @@ function shouldPublishTrue(state: MachineState): boolean {
 }
 
 function shouldPublishFalse(state: MachineState): boolean {
-  return state.disableRequested && state.localClient !== null;
+  return state.disableRequested;
 }
 
 export function reconcile(input: ReconcileInput): ReconcilePlan {

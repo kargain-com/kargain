@@ -6,10 +6,14 @@ import {
   generateInboxId,
   getInboxIdForIdentifier,
   IdentifierKind,
+  isText,
   Opfs,
   OpfsInitializationError,
   OpfsNotInitializedError,
+  SortDirection,
+  type AsyncStreamProxy,
   type ClientOptions,
+  type DecodedMessage,
   type InboxState,
   type Signer,
   type XmtpEnv,
@@ -81,6 +85,64 @@ function asBrand(client: Client<unknown>): XmtpLocalClient {
   return client as unknown as XmtpLocalClient;
 }
 
+export function unbrandClient(client: XmtpLocalClient): Client<unknown> {
+  return client as unknown as Client<unknown>;
+}
+
+export type XmtpSdkClient = Client<unknown>;
+
+export { isText };
+export function messageText(message: DecodedMessage<unknown>): string {
+  if (isText(message)) return String(message.content ?? "");
+  return message.fallback ?? "…";
+}
+
+export function getClientEthereumAddress(client: XmtpSdkClient): `0x${string}` | null {
+  const identifier = client.accountIdentifier;
+  if (!identifier || identifier.identifierKind !== IdentifierKind.Ethereum) return null;
+  try {
+    return getAddress(identifier.identifier as `0x${string}`);
+  } catch {
+    return null;
+  }
+}
+
+export function ethereumAddressFromInboxState(
+  state: { accountIdentifiers: Array<{ identifier: string; identifierKind: number }> } | undefined,
+): `0x${string}` | null {
+  if (!state) return null;
+  const eth = state.accountIdentifiers.find((id) => id.identifierKind === IdentifierKind.Ethereum);
+  if (!eth) return null;
+  try {
+    return getAddress(eth.identifier as `0x${string}`);
+  } catch {
+    return null;
+  }
+}
+
+export function truncatePreview(text: string, max = 60): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
+export function dateToSentAfterNs(date: Date): bigint {
+  return BigInt(date.getTime()) * 1_000_000n;
+}
+
+export async function openDmWithPeer(
+  client: XmtpSdkClient,
+  peerAddress: `0x${string}`,
+) {
+  const peer = getAddress(peerAddress);
+  return client.conversations.createDmWithIdentifier(ethereumIdentifier(peer));
+}
+
+export type XmtpDm = Awaited<ReturnType<typeof openDmWithPeer>>;
+
+export { SortDirection };
+export type { AsyncStreamProxy, DecodedMessage };
+
 export function buildXmtpEoaSigner(
   walletClient: WalletClient,
   address: `0x${string}`,
@@ -130,15 +192,22 @@ export type CreateXmtpAdapterInput = {
   getWalletClient: () => WalletClient | undefined;
 };
 
+export async function probePeerRegistration(
+  address: string,
+  signal?: AbortSignal,
+): Promise<ProbeRegistrationResult> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const peer = getAddress(address as `0x${string}`);
+  const identifier = ethereumIdentifier(peer);
+  const response = await Client.canMessage([identifier], getMessagingXmtpEnv() as XmtpEnv);
+  const registered = response.get(identifier.identifier) === true;
+  return { registered };
+}
+
 export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
   return {
     async probeRegistration(address, signal) {
-      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      const peer = getAddress(address as `0x${string}`);
-      const identifier = ethereumIdentifier(peer);
-      const response = await Client.canMessage([identifier], getMessagingXmtpEnv() as XmtpEnv);
-      const registered = response.get(identifier.identifier) === true;
-      return { registered } satisfies ProbeRegistrationResult;
+      return probePeerRegistration(address, signal);
     },
 
     async buildLocal(address, signal) {

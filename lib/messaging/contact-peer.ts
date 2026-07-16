@@ -1,14 +1,14 @@
-import type { Dm } from "@xmtp/client";
 import { getAddress } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+
+import type { XmtpDm, XmtpSdkClient } from "./adapters/xmtp-adapter";
+import { openDmWithPeer } from "./adapters/xmtp-adapter";
 import {
   peerReachabilityMessage,
   resolvePeerReachabilityFromProvider,
-} from "@/lib/xmtp/can-message-peer";
-import type { XmtpClient } from "@/lib/xmtp/helpers";
-import { openDmWithPeer } from "@/lib/xmtp/open-dm";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+} from "./can-message-peer";
 
 export class ContactPeerError extends Error {
   constructor(message: string) {
@@ -26,15 +26,15 @@ function mapSdkError(error: unknown): string {
 }
 
 export type ContactPeerInput = {
-  client: XmtpClient | null;
-  ensureReady: () => Promise<XmtpClient | null>;
+  client: XmtpSdkClient | null;
+  ensureReady: () => Promise<XmtpSdkClient | null>;
   peerAddress: `0x${string}`;
   nostrProfile?: NostrProfileData | null;
   provider?: unknown;
   chainId?: number;
 };
 
-export async function contactPeer(input: ContactPeerInput): Promise<Dm> {
+export async function contactPeer(input: ContactPeerInput): Promise<XmtpDm> {
   const chainId = input.chainId ?? DEFAULT_CHAIN_ID;
   const peer = getAddress(input.peerAddress);
 

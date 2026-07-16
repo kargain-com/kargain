@@ -5,7 +5,7 @@ import {
   sortConversationSummaries,
   sumUnreadCounts,
   type ConversationSummary,
-} from "../lib/xmtp/load-conversation-summaries.ts";
+} from "../lib/messaging/conversations.ts";
 
 function summary(
   id: string,

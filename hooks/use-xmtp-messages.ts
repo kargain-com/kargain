@@ -1,14 +1,17 @@
 "use client";
 
-import { SortDirection, type AsyncStreamProxy, type DecodedMessage, type Dm } from "@xmtp/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { XmtpClient } from "@/lib/xmtp/helpers";
 import {
   ethereumAddressFromInboxState,
   getClientEthereumAddress,
   messageText,
-} from "@/lib/xmtp/helpers";
+  SortDirection,
+  type AsyncStreamProxy,
+  type DecodedMessage,
+  type XmtpDm,
+  type XmtpSdkClient,
+} from "@/lib/messaging/adapters/xmtp-adapter";
 
 export type XmtpMessage = {
   id: string;
@@ -20,7 +23,7 @@ export type XmtpMessage = {
 
 function mapDecodedMessage(
   message: DecodedMessage,
-  client: XmtpClient,
+  client: XmtpSdkClient,
   addressByInbox: Map<string, string>,
 ): XmtpMessage {
   const myInboxId = client.inboxId;
@@ -40,7 +43,7 @@ function mapDecodedMessage(
 }
 
 export function useXmtpMessages(
-  client: XmtpClient | null,
+  client: XmtpSdkClient | null,
   conversationId: string | null,
 ): {
   messages: XmtpMessage[];
@@ -118,7 +121,7 @@ export function useXmtpMessages(
         if (!conversation || cancelled) return;
 
         try {
-          const peerInboxId = await (conversation as Dm).peerInboxId();
+          const peerInboxId = await (conversation as XmtpDm).peerInboxId();
           const states = await client.preferences.getInboxStates([peerInboxId]);
           const peerAddress = ethereumAddressFromInboxState(states[0]);
           if (peerAddress) addressByInboxRef.current.set(peerInboxId, peerAddress);

@@ -3,11 +3,12 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { useMessagingStatus } from "@/hooks/use-messaging-status";
+import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 export function AccountSetupBanner() {
-  const { needsSetup, needsDeviceRestore } = useMessagingStatus();
-  const needsMessagingCard = needsSetup || needsDeviceRestore;
+  const { snapshot } = useMessagingSession();
+  const needsMessagingCard = needsMessagingSetupCard(snapshot);
 
   if (!needsMessagingCard) return null;
 
