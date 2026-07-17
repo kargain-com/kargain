@@ -95,6 +95,7 @@ describe("auctionAgentAuthorizedRow", () => {
       ownerMinAsset: 1_000_000_000_000_000_000n,
       createdAt: 50n,
       updatedAt: 50n,
+      authorizedAt: 50n,
     });
 
     assert.equal(row.id, tokenId);
@@ -103,6 +104,7 @@ describe("auctionAgentAuthorizedRow", () => {
     assert.equal(row.active, true);
     assert.equal(row.expiry, 0n);
     assert.equal(row.ownerMinAsset, 1_000_000_000_000_000_000n);
+    assert.equal(row.authorizedAt, 50n);
   });
 
   it("preserves token asset and expiry", () => {
@@ -116,6 +118,7 @@ describe("auctionAgentAuthorizedRow", () => {
       ownerMinAsset: 500n,
       createdAt: 10n,
       updatedAt: 20n,
+      authorizedAt: 15n,
     });
 
     assert.equal(row.asset, usdc);
@@ -123,5 +126,6 @@ describe("auctionAgentAuthorizedRow", () => {
     assert.equal(row.ownerMinAsset, 500n);
     assert.equal(row.active, true);
     assert.equal(row.updatedAt, 20n);
+    assert.equal(row.authorizedAt, 15n);
   });
 });

@@ -1,6 +1,6 @@
 # Ponder indexer operations (VPS reindex runbook)
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`; **June 2026 listing cards:** `coverPhotoUri` on `passport` — first metadata photo indexed at URI replay).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`; **June 2026 listing cards:** `coverPhotoUri` on `passport` — first metadata photo indexed at URI replay; **July 2026 delegation notifications:** authorization owner and lifecycle timestamps).
 
 Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, **listing card cover photos**, or **notifications feed** (`disputeOpenedAt` for dispute-open events) will be wrong until new on-chain events occur.
 
@@ -82,6 +82,7 @@ After backfill reaches chain head, **leave the same numeric start block**. Ponde
 | Schema migration | New columns on `passport`, new tables |
 | AuctionEscrow indexer (July 2026) | New `auction` / `auction_bid` / `auction_settlement` tables + `AuctionEscrow` in `ponder.config.ts` — **reindex required**; keep `PONDER_START_BLOCK_84532=43399242`; auction contract backfills from **44080895** only ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
 | Auction agent authorizations (b2, July 2026) | New `auction_agent_authorization` table + terminal-event deactivate handlers + `GET /agents/:address/auction-authorizations` — **full reindex required**; same start-block rules as AuctionEscrow ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
+| Delegation notifications (July 2026) | `owner`, `createdAt`, `updatedAt`, and `authorizedAt` on `agent_authorization`; `authorizedAt` on `auction_agent_authorization`; complete terminal deactivation replay — **full reindex required** |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Phase 5) |

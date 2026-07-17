@@ -58,7 +58,11 @@ Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-norma
 
 ### Agent consignment routes — ✅ shipped June–July 2026
 
-Read-only agent-scoped queries in [`src/api/index.ts`](../../src/api/index.ts). **Redeploy ponder image only** — `agentIdx` on `agent_authorization.agent` and `marketplace_listing.agent`; no `ponder-reindex.sql` expected (if `MigrationError` on VPS, see [OPERATIONS.md](./OPERATIONS.md)).
+Read-only agent-scoped queries in
+[`src/api/index.ts`](../../src/api/index.ts). The July 2026 authorization
+lifecycle timestamps and persisted marketplace owner require a **full reindex**
+before delegation notifications are live; see
+[OPERATIONS.md](./OPERATIONS.md).
 
 | Route | Purpose |
 |-------|---------|
@@ -68,7 +72,9 @@ Read-only agent-scoped queries in [`src/api/index.ts`](../../src/api/index.ts). 
 
 `:address` validated with `isAddress`; queries use checksum `getAddress()` to match chain-indexed rows.
 
-**Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain — not these routes. Ponder `agent_authorization` can show stale `active: true` after return events that clear on-chain mapping without `AgentRevoked`.
+**Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain
+— not these routes. Ponder mirrors replacement grants, revokes, and terminal
+storage clears for agent-facing queries and notifications.
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw).
 
@@ -94,7 +100,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
 | `GET /agents/:address/auction-authorizations` | Active auction agent authorizations (`page`, `limit`; passport enrichment; `hasActiveAuction`; optional `?awaiting=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
-| `GET /notifications/:address` | Notification feed |
+| `GET /notifications/:address` | Notification feed, including active marketplace delegation and reserve-auction authorization grants |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string on each row) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |

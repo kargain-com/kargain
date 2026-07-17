@@ -13,6 +13,7 @@ import {
   ShieldCheckIcon,
   ShieldIcon,
   ShieldWarningIcon,
+  UserCheckIcon,
   WarningIcon,
   type IconComponent,
 } from "@/components/ui/icons";
@@ -27,6 +28,8 @@ const ICON_BY_TYPE: Record<NotificationType, IconComponent> = {
   "passport.record_appended": DocumentIcon,
   "passport.attestation_received": CircleCheckIcon,
   "listing.sold": CreditCardIcon,
+  "agent.authorized": UserCheckIcon,
+  "auction_agent.authorized": UserCheckIcon,
   "verifier.dispute_on_verified": WarningIcon,
   "watchlist.status_changed": BookmarkIcon,
   "watchlist.listing_deactivated": BookmarkIcon,

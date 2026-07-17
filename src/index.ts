@@ -40,6 +40,13 @@ import {
 } from "./lib/ponder-passport-metadata";
 import { indexKarProMetadataFromUri } from "./lib/ponder-kar-pro-metadata";
 import {
+  agentAuthorizationId,
+  authorizationDeactivatedPatch,
+  authorizationTermsUpdatedPatch,
+  marketplaceAgentAuthorizedRow,
+  marketplaceAgentReauthorizedPatch,
+} from "./lib/ponder-agent-authorization";
+import {
   normalizeVerifierId,
   patchVerifierIfExists,
   proPassBurnedPatch,
@@ -52,10 +59,6 @@ import {
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
-
-function agentAuthId(tokenId: string, agent: string): string {
-  return `${tokenId}-${agent.toLowerCase()}`;
-}
 
 function currencyFeedId(chainId: number, currencyCode: string): string {
   return `${chainId}-${currencyCode}`;
@@ -73,6 +76,28 @@ async function deactivateAuctionAgentAuth(
     active: false,
     updatedAt,
   });
+}
+
+/** Mirror the singleton on-chain authorization mapping across composite history rows. */
+async function deactivateMarketplaceAgentAuths(
+  context: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"],
+  tokenId: string,
+  updatedAt: bigint,
+) {
+  const rows = await context.db.sql
+    .select({ id: agentAuthorization.id })
+    .from(agentAuthorization)
+    .where(
+      and(
+        eq(agentAuthorization.tokenId, tokenId),
+        eq(agentAuthorization.active, true),
+      ),
+    );
+  for (const row of rows) {
+    await context.db
+      .update(agentAuthorization, { id: row.id })
+      .set(authorizationDeactivatedPatch(updatedAt));
+  }
 }
 
 async function appendUriHistory(
@@ -308,7 +333,8 @@ ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const currencyCode = decodeCurrencyCode(event.args.currencyCode);
   const agent = event.args.agent.toLowerCase();
-  const authId = agent !== ZERO_ADDRESS ? agentAuthId(tokenId, agent) : null;
+  const authId =
+    agent !== ZERO_ADDRESS ? agentAuthorizationId(tokenId, agent) : null;
   const auth = authId ? await context.db.find(agentAuthorization, { id: authId }) : null;
 
   const listingValues = {
@@ -354,15 +380,21 @@ ponder.on("MarketplaceEscrow:ListingUpdated", async ({ event, context }) => {
 });
 
 ponder.on("MarketplaceEscrow:Delisted", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
-    .update(marketplaceListing, { id: event.args.tokenId.toString() })
+    .update(marketplaceListing, { id: tokenId })
     .set({ active: false });
+  await deactivateMarketplaceAgentAuths(context, tokenId, ts);
 });
 
 ponder.on("MarketplaceEscrow:AgentDelisted", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
-    .update(marketplaceListing, { id: event.args.tokenId.toString() })
+    .update(marketplaceListing, { id: tokenId })
     .set({ active: false });
+  await deactivateMarketplaceAgentAuths(context, tokenId, ts);
 });
 
 ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
@@ -393,57 +425,54 @@ ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
     agent,
     timestamp: event.block.timestamp,
   });
+  await deactivateMarketplaceAgentAuths(
+    context,
+    tokenId,
+    event.block.timestamp,
+  );
 });
 
 ponder.on("MarketplaceEscrow:AgentAuthorized", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
-  const agent = event.args.agent;
-  const id = agentAuthId(tokenId, agent);
+  const ts = event.block.timestamp;
+  const values = marketplaceAgentAuthorizedRow({
+    tokenId,
+    owner: event.args.owner,
+    agent: event.args.agent,
+    expiry: BigInt(event.args.expiry),
+    ownerMinPrice1e8: event.args.ownerMinPrice1e8,
+    timestamp: ts,
+  });
 
+  await deactivateMarketplaceAgentAuths(context, tokenId, ts);
   await context.db
     .insert(agentAuthorization)
-    .values({
-      id,
-      tokenId,
-      agent,
-      expiry: BigInt(event.args.expiry),
-      ownerMinPrice1e8: event.args.ownerMinPrice1e8,
-      active: true,
-    })
-    .onConflictDoUpdate({
-      tokenId,
-      agent,
-      expiry: BigInt(event.args.expiry),
-      ownerMinPrice1e8: event.args.ownerMinPrice1e8,
-      active: true,
-    });
+    .values(values)
+    .onConflictDoUpdate(marketplaceAgentReauthorizedPatch(values));
 });
 
 ponder.on("MarketplaceEscrow:AgentRevoked", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
-  const agent = event.args.agent;
-  const id = agentAuthId(tokenId, agent);
-
-  await context.db
-    .update(agentAuthorization, { id })
-    .set({ active: false });
-
-  const listing = await context.db.find(marketplaceListing, { id: tokenId });
-  if (listing && listing.agent.toLowerCase() === agent.toLowerCase()) {
-    await context.db
-      .update(marketplaceListing, { id: tokenId })
-      .set({ agent: "" });
-  }
+  await deactivateMarketplaceAgentAuths(
+    context,
+    tokenId,
+    event.block.timestamp,
+  );
 });
 
 ponder.on("MarketplaceEscrow:OwnerMinPriceUpdated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const listing = await context.db.find(marketplaceListing, { id: tokenId });
   if (listing?.agent) {
-    const id = agentAuthId(tokenId, listing.agent);
+    const id = agentAuthorizationId(tokenId, listing.agent);
     await context.db
       .update(agentAuthorization, { id })
-      .set({ ownerMinPrice1e8: event.args.newMin });
+      .set(
+        authorizationTermsUpdatedPatch(
+          event.args.newMin,
+          event.block.timestamp,
+        ),
+      );
   }
   await context.db
     .update(marketplaceListing, { id: tokenId })
@@ -495,9 +524,12 @@ ponder.on("MarketplaceEscrow:ReturnRequested", async ({ event, context }) => {
 });
 
 ponder.on("MarketplaceEscrow:ForceReturn", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const ts = event.block.timestamp;
   await context.db
-    .update(marketplaceListing, { id: event.args.tokenId.toString() })
+    .update(marketplaceListing, { id: tokenId })
     .set({ active: false });
+  await deactivateMarketplaceAgentAuths(context, tokenId, ts);
 });
 
 ponder.on("MarketplaceEscrow:ExternalPaymentConfirmed", async ({ event, context }) => {
@@ -508,6 +540,11 @@ ponder.on("MarketplaceEscrow:ExternalPaymentConfirmed", async ({ event, context 
       active: false,
       externalPaymentConfirmedAt: event.block.timestamp,
     });
+  await deactivateMarketplaceAgentAuths(
+    context,
+    tokenId,
+    event.block.timestamp,
+  );
 });
 
 ponder.on("MarketplaceEscrow:SettlementNoteSet", async () => {
@@ -543,6 +580,7 @@ ponder.on("AuctionEscrow:AuctionAgentAuthorized", async ({ event, context }) => 
     ownerMinAsset: BigInt(event.args.ownerMinAsset),
     createdAt: ts,
     updatedAt: ts,
+    authorizedAt: ts,
   });
 
   await context.db
@@ -557,6 +595,7 @@ ponder.on("AuctionEscrow:AuctionAgentAuthorized", async ({ event, context }) => 
       ownerMinAsset: values.ownerMinAsset,
       active: true,
       updatedAt: ts,
+      authorizedAt: ts,
     });
 });
 

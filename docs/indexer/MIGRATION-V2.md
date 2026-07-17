@@ -131,14 +131,33 @@ Deprecate `payAsset` enum column for generation v2 rows.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | text | `{tokenId}` or composite key |
+| `id` | text | `{tokenId}-{lowercase agent}` composite key |
 | `tokenId` | text | Passport id |
+| `owner` | text | Owner from the authorization event |
 | `agent` | text | Authorized agent |
 | `expiry` | bigint | Unix; 0 = none |
 | `ownerMinPrice1e8` | bigint | Floor in listing currency |
 | `active` | boolean | Cleared on revoke / list end |
+| `createdAt` | bigint | First authorization event that created the row |
+| `updatedAt` | bigint | Last event that touched the row |
+| `authorizedAt` | bigint | Latest authorization grant; notification window source |
 
-**HTTP API (June 2026):** `GET /agents/:address/authorizations` and `GET /agents/:address/listings` — see [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026). Owner-facing authorization status on listing detail still uses on-chain `agentAuthorizations` (Ponder row can be stale after return without `AgentRevoked`).
+`AgentAuthorized` deactivates any prior active composite row for the token before
+upserting the new grant. `AgentRevoked`, `Delisted`, `AgentDelisted`, `Sale`,
+`ForceReturn`, and `ExternalPaymentConfirmed` mirror the contract's storage
+clear by setting the indexed row inactive. Term changes advance `updatedAt`
+without advancing `authorizedAt`.
+
+**July 2026 schema addition:** `owner`, lifecycle timestamps, and
+`authorizedAt` require a **full reindex** before delegation notifications are
+live. `auction_agent_authorization.authorizedAt` is added in the same replay.
+Use [OPERATIONS.md](./OPERATIONS.md).
+
+**HTTP API (June–July 2026):** `GET /agents/:address/authorizations`,
+`GET /agents/:address/listings`, and delegation grant items on
+`GET /notifications/:address` — see
+[indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
+Owner-facing authorization status on listing detail still reads the contract.
 
 ### New table: `currency_feed`
 
@@ -225,7 +244,11 @@ Agent-scoped browse for the **Consigned vehicles** profile tab and **Active cons
 | `GET /agents/:address/authorizations` | Paginated active authorizations; `hasActiveListing` per row; optional `?hasActiveListing=true\|false` (filtered `total`) |
 | `GET /agents/:address/listings` | Paginated listings where `agent` matches; optional `?active=true\|false` |
 
-**Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side fetch-all). **Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain — not these routes. Ponder `agent_authorization` can show stale `active: true` after return events that clear on-chain mapping without `AgentRevoked`; the dashboard awaiting section also chain-reads `agentAuthorizations` to hide stale rows.
+**Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side
+fetch-all). **Owner authorization UI** still reads
+`agentAuthorizations(tokenId)` on-chain — not these routes. Ponder mirrors
+revoke, replacement authorization, and terminal storage clears; the dashboard
+continues to chain-read authorization truth as a fail-closed client guard.
 
 **Buyer UI (July 2026):** `agent` on listing responses powers browse-card and detail attribution; buyers see agent identity, not `agentFeeBps` or `ownerMinPrice1e8`. See [design-spec.md](../design-spec.md) §4.16.
 

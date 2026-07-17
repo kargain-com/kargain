@@ -88,6 +88,7 @@ export function auctionAgentAuthorizedRow(params: {
   ownerMinAsset: bigint;
   createdAt: bigint;
   updatedAt: bigint;
+  authorizedAt: bigint;
 }) {
   return {
     id: params.tokenId,
@@ -100,5 +101,6 @@ export function auctionAgentAuthorizedRow(params: {
     active: true,
     createdAt: params.createdAt,
     updatedAt: params.updatedAt,
+    authorizedAt: params.authorizedAt,
   };
 }

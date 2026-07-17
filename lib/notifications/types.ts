@@ -7,6 +7,8 @@ export type NotificationType =
   | "passport.record_appended"
   | "passport.attestation_received"
   | "listing.sold"
+  | "agent.authorized"
+  | "auction_agent.authorized"
   | "verifier.dispute_on_verified"
   | "watchlist.status_changed"
   | "watchlist.listing_deactivated"

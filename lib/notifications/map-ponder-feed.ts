@@ -12,6 +12,14 @@ const PONDER_TYPE_CONFIG: Record<
   "passport.record_appended": { body: "A new record was added to your passport", priority: "normal" },
   "passport.attestation_received": { body: "You received an attestation", priority: "high" },
   "listing.sold": { body: "Your listing was sold", priority: "high" },
+  "agent.authorized": {
+    body: "A vehicle was delegated to you for sale",
+    priority: "high",
+  },
+  "auction_agent.authorized": {
+    body: "You were authorized to run a reserve auction",
+    priority: "high",
+  },
   "verifier.dispute_on_verified": {
     body: "A dispute was opened on a passport you verified",
     priority: "normal",

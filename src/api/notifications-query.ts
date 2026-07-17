@@ -1,9 +1,16 @@
 import { db } from "ponder:api";
-import { marketplaceListing, passport, passportRecord } from "ponder:schema";
-import { desc, eq } from "ponder";
+import {
+  agentAuthorization,
+  auctionAgentAuthorization,
+  marketplaceListing,
+  passport,
+  passportRecord,
+} from "ponder:schema";
+import { and, desc, eq, gt } from "ponder";
 import { getAddress } from "viem";
 
 import type { PonderFeedItem } from "../../lib/notifications/types";
+import { authorizationNotificationItems } from "../lib/ponder-agent-authorization";
 
 export type PonderDb = typeof db;
 
@@ -100,6 +107,56 @@ export async function buildNotificationFeed(
   }
 
   const checksumAddress = getAddress(normalizedAddress);
+  const [marketplaceAuthorizations, auctionAuthorizations] =
+    await Promise.all([
+      ponderDb
+        .select({
+          tokenId: agentAuthorization.tokenId,
+          owner: agentAuthorization.owner,
+          agent: agentAuthorization.agent,
+          active: agentAuthorization.active,
+          authorizedAt: agentAuthorization.authorizedAt,
+        })
+        .from(agentAuthorization)
+        .where(
+          and(
+            eq(agentAuthorization.agent, checksumAddress),
+            eq(agentAuthorization.active, true),
+            gt(agentAuthorization.authorizedAt, since),
+          ),
+        ),
+      ponderDb
+        .select({
+          tokenId: auctionAgentAuthorization.tokenId,
+          owner: auctionAgentAuthorization.owner,
+          agent: auctionAgentAuthorization.agent,
+          active: auctionAgentAuthorization.active,
+          authorizedAt: auctionAgentAuthorization.authorizedAt,
+        })
+        .from(auctionAgentAuthorization)
+        .where(
+          and(
+            eq(auctionAgentAuthorization.agent, checksumAddress),
+            eq(auctionAgentAuthorization.active, true),
+            gt(auctionAgentAuthorization.authorizedAt, since),
+          ),
+        ),
+    ]);
+  items.push(
+    ...authorizationNotificationItems(
+      marketplaceAuthorizations,
+      "agent.authorized",
+      checksumAddress,
+      since,
+    ),
+    ...authorizationNotificationItems(
+      auctionAuthorizations,
+      "auction_agent.authorized",
+      checksumAddress,
+      since,
+    ),
+  );
+
   const verifiedByMe = await ponderDb
     .select()
     .from(passport)

@@ -104,10 +104,14 @@ export const agentAuthorization = onchainTable(
   (t) => ({
     id: t.text().primaryKey(),
     tokenId: t.text().notNull(),
+    owner: t.text().notNull(),
     agent: t.text().notNull(),
     expiry: t.bigint().notNull().default(0n),
     ownerMinPrice1e8: t.bigint().notNull().default(0n),
     active: t.boolean().notNull().default(true),
+    createdAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+    authorizedAt: t.bigint().notNull(),
   }),
   (table) => ({
     agentIdx: index().on(table.agent),
@@ -127,6 +131,7 @@ export const auctionAgentAuthorization = onchainTable(
     active: t.boolean().notNull().default(true),
     createdAt: t.bigint().notNull(),
     updatedAt: t.bigint().notNull(),
+    authorizedAt: t.bigint().notNull(),
   }),
   (table) => ({
     agentIdx: index().on(table.agent),
