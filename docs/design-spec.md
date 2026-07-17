@@ -539,6 +539,7 @@ Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 | Asking price | List denomination in ISO fiat (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
 | Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
 | Direct payment | Optional seller `settlementNotes` (bank, BTC, Lightning, etc.); buy panel **Direct payment** card when note set — detected identifiers render as QR + copy blocks; raw note unchanged below; *Not verified by Kargain* |
+| Seller preview | The listing seller sees the same read-only **Direct payment** card below *Buyers see these direct payment instructions.* when a note is set; no caption or card when the note is empty |
 | Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; ETH / USDC toggle |
 | Disclosure | Bordered panel: seller receives (asking fiat), you pay, rate at settlement — method-specific rows |
 | USDC buy | ERC-20 `approve` then `buyWithToken(tokenId, usdc)`; disabled when USDC not configured on chain |
@@ -1478,4 +1479,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.60 (July 2026 — auction verification guidance on the owner sell group and Manage listing Delist section). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.61 (July 2026 — seller direct-payment instructions preview on listing detail). Update when tokens, app shell, or component contracts change.*

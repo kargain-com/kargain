@@ -503,6 +503,14 @@ export function ListingBuyPanel({
       <div className="space-y-3">
         {priceBlock}
         <p className="text-sm text-text-secondary">You listed this vehicle.</p>
+        {directPaymentBlock ? (
+          <>
+            <p className="font-sans text-xs text-text-tertiary">
+              Buyers see these direct payment instructions.
+            </p>
+            {directPaymentBlock}
+          </>
+        ) : null}
       </div>
     );
   }
