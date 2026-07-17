@@ -10,7 +10,7 @@ import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
@@ -27,6 +27,13 @@ import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 type Props = {
   conversationId: string;
 };
+
+const COMPOSER_MAX_HEIGHT_PX = 160;
+
+function resizeComposer(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
+}
 
 function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
   if (!raw) return undefined;
@@ -47,6 +54,7 @@ function ConversationThreadBody({ conversationId }: Props) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const peerAddressRaw = useMemo(
     () => conversations.find((conversation) => conversation.id === conversationId)?.peerAddress,
@@ -121,6 +129,9 @@ function ConversationThreadBody({ conversationId }: Props) {
     try {
       await sendMessage(draft);
       setDraft("");
+      if (composerRef.current) {
+        composerRef.current.style.height = "auto";
+      }
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "Could not send message.");
     }
@@ -168,7 +179,7 @@ function ConversationThreadBody({ conversationId }: Props) {
             className={`flex flex-col ${message.isMine ? "items-end" : "items-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
+              className={`max-w-[85%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-sm ${
                 message.isMine
                   ? "bg-white text-bg-primary"
                   : "bg-bg-surface text-text-primary"
@@ -190,18 +201,31 @@ function ConversationThreadBody({ conversationId }: Props) {
       </div>
 
       <form
-        className="flex items-center gap-2 border-t border-border-default pt-4"
+        className="flex items-end gap-2 border-t border-border-default pt-4"
         onSubmit={(event) => {
           event.preventDefault();
           void onSend();
         }}
       >
-        <Input
+        <Textarea
+          ref={composerRef}
+          rows={1}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            resizeComposer(event.currentTarget);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+
+            event.preventDefault();
+            void onSend();
+          }}
           placeholder="Message"
           disabled={isSending}
           aria-label="Message"
+          className="min-h-11 max-h-40 resize-none overflow-y-auto"
         />
         <Button
           type="submit"

@@ -458,8 +458,9 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
+| Bubble content | `whitespace-pre-wrap break-words` preserves sent and received newlines and wraps long tokens |
 | Timestamps | Below bubble, `font-mono text-xs text-text-tertiary tabular-nums`, aligned with sender side (inbox row: `font-mono text-[10px] text-text-secondary tabular-nums`) |
-| Composer | `Input` + icon `Button`; Enter sends |
+| Composer | Auto-growing `Textarea` (`rows=1`, `min-h-11`, approximately six lines max, then scroll) + icon `Button`; Enter sends, Shift+Enter inserts a newline, and composing IME Enter / keyCode 229 never sends; successful send resets the field height |
 | Empty inbox | "No conversations yet." (only when messaging is active) |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
 
@@ -1479,4 +1480,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.61 (July 2026 — seller direct-payment instructions preview on listing detail). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.62 (July 2026 — multiline message composer and newline-preserving bubbles). Update when tokens, app shell, or component contracts change.*
