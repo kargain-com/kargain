@@ -4,6 +4,7 @@ import { useReadContract } from "wagmi";
 
 import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
+import { PassportSellPanel } from "@/components/passport/passport-sell-panel";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { useAuctionDetail } from "@/hooks/use-auction-detail";
 import {
@@ -88,6 +89,17 @@ export function PassportCommerce({
     detail.uiState,
     detail.auction?.active ?? false,
   );
+  const auctionHoldOpen = Boolean(
+    detail.hold?.open && detail.hold.releaseAt !== 0n,
+  );
+  const auctionBlocksSellSurface =
+    !escrow
+      ? false
+      : auctionOwnsCommerce || Boolean(detail.auction?.active) || auctionHoldOpen
+        ? true
+        : !detail.commerceReadResolved || detail.ponderPending
+          ? undefined
+          : false;
 
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
@@ -119,7 +131,17 @@ export function PassportCommerce({
             passportStatus={passportStatus}
             duplicateVin={duplicateVin}
             hadDispute={hadDispute}
-            auctionBlocksCommerce={false}
+          />
+          <PassportSellPanel
+            chainId={chainId}
+            tokenId={tokenId}
+            listing={listing}
+            passportOwner={passportOwner}
+            passportStatus={passportStatus}
+            auctionBlocks={auctionBlocksSellSurface}
+            hasActiveAuction={Boolean(detail.auction?.active)}
+            now={detail.now}
+            onAuctionChanged={detail.invalidateAfterTx}
           />
         </>
       )}

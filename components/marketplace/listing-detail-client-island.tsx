@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 
-import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
-import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-agent-buyer-attribution";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { ListingMakeOfferButton } from "@/components/marketplace/listing-make-offer-button";
@@ -64,8 +62,6 @@ type Props = {
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
-  /** When true, hide buy/list CTAs (auction island owns commerce). */
-  auctionBlocksCommerce?: boolean;
 };
 
 function formatChainTimestamp(value: string | number | undefined): string {
@@ -85,11 +81,9 @@ export function ListingDetailClientIsland({
   passportStatus,
   duplicateVin,
   hadDispute,
-  auctionBlocksCommerce = false,
 }: Props) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
-  const [authorizeOpen, setAuthorizeOpen] = useState(false);
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
@@ -225,19 +219,7 @@ export function ListingDetailClientIsland({
   });
 
   const canManageListing = Boolean(
-    !auctionBlocksCommerce &&
-    market &&
-    address &&
-    (isSeller || (!listingActive && isOwner)),
-  );
-
-  const showDelegateEntry = Boolean(
-    !auctionBlocksCommerce &&
-    isOwner &&
-    !listingActive &&
-    !agentAuthActive &&
-    market &&
-    address,
+    market && address && listingActive && isSeller,
   );
 
   const showReturnFlow = Boolean(
@@ -245,12 +227,8 @@ export function ListingDetailClientIsland({
   );
 
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
-  const manageLabel = listingActive ? "Manage listing" : "List for sale";
   const showDelistBeforeAuctionHint = Boolean(
-    !auctionBlocksCommerce &&
-      listingActive &&
-      isSeller &&
-      auctionEscrowAddress(chainId),
+    listingActive && isSeller && auctionEscrowAddress(chainId),
   );
 
   const externalPaymentDate = formatChainTimestamp(listing?.externalPaymentConfirmedAt);
@@ -262,7 +240,7 @@ export function ListingDetailClientIsland({
 
   return (
     <div className="space-y-6">
-      {!auctionBlocksCommerce && listingActive && effectiveListing ? (
+      {listingActive && effectiveListing ? (
         <ListingBuyPanel
           chainId={chainId}
           tokenId={tokenId}
@@ -272,15 +250,15 @@ export function ListingDetailClientIsland({
           hadDispute={hadDispute}
           directPaymentNote={directPaymentNote}
         />
-      ) : !auctionBlocksCommerce && isChainReadsLoading && market ? (
+      ) : isChainReadsLoading && market ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Checking listing…
         </p>
-      ) : !auctionBlocksCommerce ? (
+      ) : (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Not currently listed
         </p>
-      ) : null}
+      )}
 
       {!listingActive && externalPaymentConfirmed && (
         <div className={commerceConfirmedPanel} role="status">
@@ -333,16 +311,6 @@ export function ListingDetailClientIsland({
           />
         )}
 
-      {isOwner && agentAuthActive && agentAuth && (
-        <AgentAuthorizationStatus
-          chainId={chainId}
-          tokenId={tokenId}
-          agentAuth={agentAuth}
-          listingActive={listingActive}
-          onChanged={() => void refetchChainReads()}
-        />
-      )}
-
       {showReturnFlow && (
         <OwnerReturnRequestPanel
           chainId={chainId}
@@ -362,29 +330,10 @@ export function ListingDetailClientIsland({
             </p>
           )}
           <Button asChild variant="secondary" className="w-full">
-            <Link href={editHref}>{manageLabel}</Link>
+            <Link href={editHref}>Manage listing</Link>
           </Button>
         </div>
       )}
-
-      {showDelegateEntry && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          onClick={() => setAuthorizeOpen(true)}
-        >
-          Delegate to a pro
-        </Button>
-      )}
-
-      <AuthorizeAgentDialog
-        chainId={chainId}
-        tokenId={tokenId}
-        open={authorizeOpen}
-        onOpenChange={setAuthorizeOpen}
-        onAuthorized={() => void refetchChainReads()}
-      />
 
       {contactPeer && !holder && !isSeller && (
         <div className="flex flex-wrap gap-2">

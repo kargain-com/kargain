@@ -588,9 +588,9 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 
 | Rule | Value |
 |------|-------|
-| Delegate to a pro | **Delegate to a pro** opens [`authorize-agent-dialog.tsx`](../components/marketplace/authorize-agent-dialog.tsx) when owner, listing inactive, no active on-chain authorization; KarPro picker via [`verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) `onSelectAgent` mode |
+| Delegate to a pro | The unified [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) owns **Delegate to a pro**; it opens [`authorize-agent-dialog.tsx`](../components/marketplace/authorize-agent-dialog.tsx) when owner, listing inactive, no active on-chain authorization; KarPro picker via [`verifier-directory.tsx`](../components/verifier/verifier-directory.tsx) `onSelectAgent` mode |
 | Owner minimum price | No currency selector on authorize form — `ownerMinPrice1e8` is a raw on-chain scalar until the agent lists (`listOnBehalf` picks currency); label uses [`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts); confirmation copy: guaranteed minimum *in the currency the agent chooses* |
-| Agent authorization | [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); shows agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
+| Agent authorization | [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); an active row replaces Delegate with [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx), showing agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
 | Owner return flow | When owner + active consignment (`agent` non-zero): [`owner-return-request-panel.tsx`](../components/marketplace/owner-return-request-panel.tsx) — **Request return** (`requestReturn`) → 7-day [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) (live countdown) → **Force return** (`forceReturn`) when elapsed; request button hidden (not disabled) during cooldown; force button disabled until countdown ends; chain `agentAuthorizations` gates force submit; `returnRequestedAt` from Ponder + chain read |
 
@@ -608,7 +608,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Rule | Value |
 |------|-------|
 | Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); `encodeCurrencyCode` for `list()` |
-| Owner list | **List for sale** → `/marketplace/{tokenId}/edit` when viewer holds NFT (`ownerOf`) and listing inactive |
+| Owner list | Unified [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx): **List for sale** → `/marketplace/{tokenId}/edit` when the connected viewer is confirmed by `ownerOf` and the chain listing is inactive |
 | Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
 | Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
 
@@ -680,6 +680,17 @@ Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[
 
 **г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.**
 
+#### Unified owner sell group
+
+[`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) is the sole owner sale-start surface on the passport page. `PassportCommerce` mounts it only in the non-auction branch. The fixed-price and auction islands retain active commerce and management, but render no owner sale-start CTA.
+
+- One neutral Level B frame headed **Sell this vehicle**, ordered **Fixed price** → **Delegation** → **Auction**.
+- Fixed price shows **List for sale**. Delegation shows **Delegate to a pro**, replaced by the existing marketplace authorization status card while authorization is active.
+- The auction row exists only for VERIFIED passports. An active KarPro owner sees the direct create panel; another owner sees **Authorize auction agent**. An active auction authorization takes precedence over both and renders [`auction-agent-authorization-status.tsx`](../components/auction/auction-agent-authorization-status.tsx): agent, asset minimum, expiry, neutral expired tag, and **Manage** opening the existing revoke-capable dialog.
+- Expiry does not hide an active authorization card: expired authorization remains owner-revocable, while agent create remains disabled.
+- Owner, listing, authorization, verifier, auction, and open-hold facts are chain-read with explicit `chainId`. Each row fails closed while its required fact is unresolved or unavailable; Ponder fallback never enables a new owner write. Dialog callbacks refetch the panel reads, and auction changes also invalidate shared auction detail.
+- [`sell-surface.ts`](../lib/passport/sell-surface.ts) is the pure six-flag visibility policy. Successful inactive chain listing state is required for the group; active listing, live auction, settlement hold, or non-owner returns all flags false.
+
 #### Role matrix
 
 | Role | Sees | Can do |
@@ -711,7 +722,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
 | **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
-**Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides listing CTAs; chain `isListed` (fail-closed while unread) + Ponder `listing.active` hide **Start auction** / authorize while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). **Start auction** also hidden while `holds.releaseAt ≠ 0` (U9). Unlisted KarPro may see **List for sale** and **Start auction** side by side (sale-form choice). Seller (listed) sees neutral hint *To start a reserve auction, delist this fixed-price listing first.* above **Manage listing** and under Delist on the edit page (`DELIST_BEFORE_AUCTION_HINT`) when auction escrow is deployed.
+**Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides the entire owner sell group; chain listing truth hides all new sale-start choices while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). Auction creation/authorization also stays hidden while `holds.releaseAt ≠ 0` (U9). An unlisted KarPro sees **List for sale** and the direct create panel together inside **Sell this vehicle** (sale-form choice). Seller (listed) sees neutral hint *To start a reserve auction, delist this fixed-price listing first.* above **Manage listing** and under Delist on the edit page (`DELIST_BEFORE_AUCTION_HINT`) when auction escrow is deployed.
 
 #### Settlement (г-3)
 
@@ -739,7 +750,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 | Surface | Behavior |
 |---------|----------|
-| Authorize | [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — approve auction escrow → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; inline **Revoke** when authorized and no active auction |
+| Authorize | Unified sell group opens [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — approve auction escrow → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; active authorization becomes an always-visible neutral status card; **Manage** opens inline **Revoke** when no active auction |
 | Create on behalf | [`agent-create-auction-panel.tsx`](../components/auction/agent-create-auction-panel.tsx) — chain-read auth (U2); asset locked; reserve / 3–7 d / commission ≤ 30%; net preview at reserve; blocked when `BelowOwnerMinAsset` |
 | Cancel (S1) | [`auction-cancel-panel.tsx`](../components/auction/auction-cancel-panel.tsx) — seller `cancelAuction` / agent `agentCancelAuction` while `startedAt == 0` |
 | Owner return | [`owner-auction-return-panel.tsx`](../components/auction/owner-auction-return-panel.tsx) — `requestReturn` → 7-day cooldown → `forceReturn` (pre-start only) |
@@ -792,7 +803,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Id | Rule |
 |----|------|
 | **U4** | Auction `ownerMinAsset` is asset units (wei / USDC 6) — [`owner-min-asset.ts`](../lib/auction/owner-min-asset.ts); never fiat 1e8 helpers |
-| **U2** | Agent create / authorize revoke: chain-read `auctionAgentAuthorizations` on panel/dialog mount only |
+| **U2** | Unified owner sell group and agent-create island chain-read `auctionAgentAuthorizations`; dialog re-reads on open and owns authorize/revoke writes |
 | **U7** | Return timer visible to all viewers when `returnRequestedAt` set |
 | **U8** | Settlement dispute bond is always native ETH — label even on USDC auctions |
 | **U9** | `holds(tokenId).releaseAt ≠ 0` gates create + authorize with settlement-window copy |
@@ -805,7 +816,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Surface | Budget |
 |---------|--------|
 | `/auctions` cards | 0 chain reads, 0 subscriptions; one shared minute ticker |
-| Lot island | One batched `useReadContracts` (incl. return + settlement config); auth read on demand only; detail poll 15s / bids 7s when S1–S4 **or** settlement poll-active **and** tab visible; `staleTime ≥ 30s`; refetch on own tx receipt |
+| Lot commerce | Shared detail uses one batched `useReadContracts` (incl. return + settlement config); agent-create island retains its auth read; owner sell group reads owner/listing/auth/verifier once and refetches on its writes; detail poll 15s / bids 7s when S1–S4 **or** settlement poll-active **and** tab visible; `staleTime ≥ 30s` |
 | Consigned auction lists | Ponder only — 0 per-row chain reads |
 | FX / discussion / live signals | Reuse nav FX + existing discussion rail; **0** new oracle or Nostr/XMTP subscriptions; extension flash + outbid toast derive from existing detail refetch only |
 | No websockets | — |
@@ -1460,4 +1471,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.58 (July 2026 — Messaging lazy XMTP SDK in xmtp-adapter; static notification/messaging providers; no gate). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.59 (July 2026 — unified owner “Sell this vehicle” group; active marketplace/auction authorizations replace their CTAs with status cards). Update when tokens, app shell, or component contracts change.*

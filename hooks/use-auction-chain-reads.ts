@@ -121,6 +121,8 @@ export function useAuctionChainReads({
 
   const hold: OnChainHold | null =
     data?.[1]?.status === "success" ? parseOnChainHold(data[1].result) : null;
+  const commerceReadResolved =
+    data?.[0]?.status === "success" && data?.[1]?.status === "success";
 
   const minIncrementBps =
     data?.[2]?.status === "success" ? Number(data[2].result) : undefined;
@@ -173,6 +175,7 @@ export function useAuctionChainReads({
     settlementDisputeBond,
     settlementHold,
     disputeResolutionTimeout,
+    commerceReadResolved,
     isPending: readsEnabled && isPending,
     isFetching,
     refetch,

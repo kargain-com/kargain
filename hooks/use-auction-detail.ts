@@ -235,6 +235,7 @@ export function useAuctionDetail({
     disputeResolutionTimeout:
       chain.disputeResolutionTimeout ?? DEFAULT_DISPUTE_RESOLUTION_TIMEOUT,
     escrow: chain.escrow,
+    commerceReadResolved: chain.commerceReadResolved,
     chainPending: chain.isPending,
     ponderPending: ponderQuery.isPending,
     ponderError: ponderQuery.error,

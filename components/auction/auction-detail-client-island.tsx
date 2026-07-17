@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
@@ -11,10 +10,7 @@ import { AuctionFinalizePanel } from "@/components/auction/auction-finalize-pane
 import { AuctionReadoutPanel } from "@/components/auction/auction-readout-panel";
 import { AuctionReturnAdvisory } from "@/components/auction/auction-return-advisory";
 import { AuctionSettlementPanel } from "@/components/auction/auction-settlement-panel";
-import { AuthorizeAuctionAgentDialog } from "@/components/auction/authorize-auction-agent-dialog";
-import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
 import { OwnerAuctionReturnPanel } from "@/components/auction/owner-auction-return-panel";
-import { Button } from "@/components/ui/button";
 import { StatusToast } from "@/components/ui/status-toast";
 import { useAuctionBids } from "@/hooks/use-auction-bids";
 import type { useAuctionDetail } from "@/hooks/use-auction-detail";
@@ -25,12 +21,9 @@ import {
   parseAuctionAgentAuthorization,
 } from "@/lib/auction/auction-agent";
 import { auctionBlocksListingCommerce } from "@/lib/auction/map-ponder-auction";
-import { AuctionEscrowAbi, KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  auctionEscrowAddress,
-  karProStakingAddress,
-} from "@/lib/web3/deployment-addresses";
+import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
@@ -63,8 +56,6 @@ export function AuctionDetailClientIsland({
 }: Props) {
   const { address, isConnected } = useAccount();
   const escrow = auctionEscrowAddress(chainId);
-  const staking = karProStakingAddress(chainId);
-  const [authorizeOpen, setAuthorizeOpen] = useState(false);
 
   const auction = detail.auction;
   const uiState = detail.uiState;
@@ -86,15 +77,6 @@ export function AuctionDetailClientIsland({
     ),
   });
 
-  const { data: isActiveVerifier } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "isActiveVerifier",
-    args: address ? [address] : undefined,
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(staking && address) },
-  });
-
   const noBlockingAuction =
     !auctionBlocksListingCommerce(uiState, auction?.active ?? false) &&
     !(auction?.active);
@@ -102,22 +84,6 @@ export function AuctionDetailClientIsland({
   const isOwner =
     Boolean(address) &&
     address!.toLowerCase() === passportOwner.toLowerCase();
-
-  const showCreate =
-    isConnected &&
-    isOwner &&
-    isActiveVerifier === true &&
-    passportStatus === "VERIFIED" &&
-    !listingBlocksAuction &&
-    noBlockingAuction &&
-    (uiState === "NONE" || uiState === "S8" || uiState === "S9");
-
-  const showAuthorize =
-    isConnected &&
-    isOwner &&
-    passportStatus === "VERIFIED" &&
-    !listingBlocksAuction &&
-    noBlockingAuction;
 
   /** Single on-demand auth read for agent CTA (not always-on batch). */
   const { data: authRaw } = useReadContract({
@@ -130,7 +96,6 @@ export function AuctionDetailClientIsland({
       enabled: Boolean(
         escrow &&
           address &&
-          !showCreate &&
           noBlockingAuction &&
           !listingBlocksAuction &&
           passportStatus === "VERIFIED",
@@ -180,12 +145,7 @@ export function AuctionDetailClientIsland({
 
   if (!escrow) return null;
 
-  if (
-    !showLiveCommerce &&
-    !showCreate &&
-    !showAuthorize &&
-    !showAgentCreate
-  ) {
+  if (!showLiveCommerce && !showAgentCreate) {
     // Listed (or isListed unread): create impossible — do not flash checking UI over Manage listing.
     if (listingBlocksAuction) return null;
     if (detail.chainPending || detail.ponderPending) {
@@ -286,33 +246,6 @@ export function AuctionDetailClientIsland({
         </>
       )}
 
-      {showAuthorize && (
-        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="font-sans text-sm text-text-secondary">
-            Authorize a KarPro to create a reserve auction for this vehicle, or
-            revoke an existing authorization before the auction starts.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            onClick={() => setAuthorizeOpen(true)}
-          >
-            Authorize auction agent
-          </Button>
-          <AuthorizeAuctionAgentDialog
-            chainId={chainId}
-            tokenId={tokenId}
-            open={authorizeOpen}
-            onOpenChange={setAuthorizeOpen}
-            hasActiveAuction={Boolean(auction?.active)}
-            onAuthorized={() => {
-              detail.invalidateAfterTx();
-            }}
-          />
-        </div>
-      )}
-
       {showAgentCreate && (
         <AgentCreateAuctionPanel
           chainId={chainId}
@@ -321,17 +254,6 @@ export function AuctionDetailClientIsland({
         />
       )}
 
-      {showCreate && (
-        <CreateAuctionPanel
-          chainId={chainId}
-          tokenId={tokenId}
-          passportStatus={passportStatus}
-          listingActive={listingBlocksAuction}
-          isOwner={isOwner}
-          isActiveVerifier={isActiveVerifier === true}
-          onSuccess={() => detail.invalidateAfterTx()}
-        />
-      )}
     </div>
   );
 }
