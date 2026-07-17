@@ -42,6 +42,7 @@ import {
   mapAgentListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
+import { parseMarketplaceAgentAuthorization } from "@/lib/marketplace/agent-authorization";
 import { parseReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import type {
   PassportStatus,
@@ -59,8 +60,6 @@ type PassportEnrichment = {
   year: number;
   status: PassportStatus;
 };
-
-type AgentAuthTuple = readonly [Address, bigint, bigint, boolean];
 
 type Props = {
   wallet: Address;
@@ -437,8 +436,11 @@ function AwaitingAuthorizationsSection({
         map.set(tokenId, { active: true, failed: true });
         return;
       }
-      const result = read.result as AgentAuthTuple | undefined;
-      map.set(tokenId, { active: result?.[3] === true, failed: false });
+      const authorization = parseMarketplaceAgentAuthorization(read.result);
+      map.set(tokenId, {
+        active: authorization?.active === true,
+        failed: false,
+      });
     });
     return map;
   }, [chainAuthReads, awaitingTokenIds]);

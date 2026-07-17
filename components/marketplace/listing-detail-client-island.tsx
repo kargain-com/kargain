@@ -21,9 +21,13 @@ import {
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { parseMarketplaceAgentAuthorization } from "@/lib/marketplace/agent-authorization";
+import {
+  resolveEffectiveListing,
+  type ChainListingRead,
+} from "@/lib/marketplace/effective-listing";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 import { getNostrPool } from "@/lib/nostr/nostr-client";
@@ -41,13 +45,6 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-type ActiveListing = {
-  active: true;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  seller: `0x${string}`;
-};
-
 type ListingProp = {
   active: boolean;
   fiatPrice1e8: string;
@@ -56,13 +53,6 @@ type ListingProp = {
   agent?: string;
   returnRequestedAt?: string | number;
   externalPaymentConfirmedAt?: string | number;
-};
-
-type AgentAuthResult = {
-  agent: `0x${string}`;
-  expiry: bigint;
-  ownerMinPrice1e8: bigint;
-  active: boolean;
 };
 
 type Props = {
@@ -155,44 +145,35 @@ export function ListingDetailClientIsland({
   });
 
   const onChainOwner = chainReads?.[0]?.result as `0x${string}` | undefined;
-  const chainRow = parseOnChainListing(chainReads?.[1]?.result);
-  const agentAuthRaw = chainReads?.[2]?.result as AgentAuthResult | undefined;
+  const listingRead = chainReads?.[1];
+  const chainListingRead: ChainListingRead =
+    listingRead?.status === "success"
+      ? "success"
+      : listingRead?.status === "failure"
+        ? "failure"
+        : "pending";
+  const chainRow = parseOnChainListing(
+    listingRead?.status === "success" ? listingRead.result : null,
+  );
+  const agentAuthRaw = parseMarketplaceAgentAuthorization(
+    chainReads?.[2]?.result,
+  );
   const chainReturnRequestedAt = chainReads?.[3]?.result as bigint | undefined;
   const directPaymentNote = decodeSettlementNote(chainReads?.[4]?.result).trim();
   const hasDirectPayment = directPaymentNote.length > 0;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
-  const agentAuth = useMemo((): AgentAuthResult | null => {
-    if (!agentAuthRaw || !agentAuthRaw.active) return null;
-    return {
-      agent: agentAuthRaw.agent,
-      expiry: BigInt(agentAuthRaw.expiry),
-      ownerMinPrice1e8: BigInt(agentAuthRaw.ownerMinPrice1e8),
-      active: agentAuthRaw.active,
-    };
+  const agentAuth = useMemo(() => {
+    if (agentAuthRaw?.active !== true) return null;
+    return agentAuthRaw;
   }, [agentAuthRaw]);
 
   const agentAuthActive = agentAuth?.active === true;
 
-  const effectiveListing = useMemo((): ActiveListing | null => {
-    if (chainRow?.active) {
-      return {
-        active: true,
-        fiatPrice1e8: String(chainRow.fiatPrice1e8),
-        fiatCurrency: normalizeListingFiatCurrency(chainRow.fiatCurrency),
-        seller: chainRow.seller,
-      };
-    }
-    if (listing?.active) {
-      return {
-        active: true,
-        fiatPrice1e8: listing.fiatPrice1e8,
-        fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency),
-        seller: listing.seller,
-      };
-    }
-    return null;
-  }, [chainRow, listing]);
+  const effectiveListing = useMemo(
+    () => resolveEffectiveListing(chainListingRead, chainRow, listing),
+    [chainListingRead, chainRow, listing],
+  );
 
   const listingActive = Boolean(effectiveListing?.active);
   const listingSeller = effectiveListing?.seller;

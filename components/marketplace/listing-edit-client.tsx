@@ -44,6 +44,13 @@ type Props = {
   chainId: number;
 };
 
+const DELIST_CONFIRM_ATTEMPTS = 5;
+const DELIST_CONFIRM_INTERVAL_MS = 1_000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function ListingEditClient({ tokenId, chainId }: Props) {
   const config = useConfig();
   const wc = wagmiChainId(chainId);
@@ -58,6 +65,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   );
   const [settlementNote, setSettlementNote] = useState("");
   const [log, setLog] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
@@ -73,24 +81,28 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
               abi: KarPassportAbi,
               functionName: "ownerOf",
               args: [tid],
+              chainId: wc,
             },
             {
               address: passport,
               abi: KarPassportAbi,
               functionName: "getApproved",
               args: [tid],
+              chainId: wc,
             },
             {
               address: market,
               abi: MarketplaceEscrowAbi,
               functionName: "listings",
               args: [tid],
+              chainId: wc,
             },
             {
               address: market,
               abi: MarketplaceEscrowAbi,
               functionName: "settlementNotes",
               args: [tid],
+              chainId: wc,
             },
           ]
         : [],
@@ -124,6 +136,22 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
 
   const isApproved =
     Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
+  const actionsPending = isPending || confirming;
+
+  const confirmListingInactive = useCallback(async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < DELIST_CONFIRM_ATTEMPTS; attempt += 1) {
+      const refreshed = await refetchReads();
+      const listingRead = refreshed.data?.[2];
+      if (listingRead?.status === "success") {
+        const refreshedRow = parseOnChainListing(listingRead.result);
+        if (refreshedRow?.active === false) return true;
+      }
+      if (attempt < DELIST_CONFIRM_ATTEMPTS - 1) {
+        await wait(DELIST_CONFIRM_INTERVAL_MS);
+      }
+    }
+    return false;
+  }, [refetchReads]);
 
   const saveSettlementNote = useCallback(
     async (note: string) => {
@@ -144,6 +172,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
     if (!canDelist || !market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Delisting…");
+    setConfirming(true);
     try {
       const hash = await writeContractAsync({
         address: market,
@@ -152,12 +181,28 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         args: [tid],
       });
       await waitForTransactionReceipt(config, { hash });
-      await refetchListing();
-      setLog("Delisted.");
+      const confirmed = await confirmListingInactive();
+      setLog(
+        confirmed
+          ? "Delisted."
+          : "Delisted — waiting for network confirmation.",
+      );
     } catch (err) {
       setLog(txErrorMessage(err));
+    } finally {
+      setConfirming(false);
     }
-  }, [canDelist, wrongChain, market, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
+  }, [
+    canDelist,
+    wrongChain,
+    market,
+    tid,
+    config,
+    wc,
+    confirmListingInactive,
+    switchChainAsync,
+    writeContractAsync,
+  ]);
 
   const runApprove = useCallback(async () => {
     if (!address || !passport || !market) return;
@@ -377,7 +422,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             type="button"
             variant="outline"
             className="border-status-error text-status-error hover:bg-bg-surface"
-            disabled={isPending}
+            disabled={actionsPending}
             onClick={() => void runDelist()}
           >
             Delist
@@ -401,9 +446,9 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-update"
             showSettlementFields={false}
-            disabled={isPending}
+            disabled={actionsPending}
           />
-          <Button type="button" disabled={isPending} onClick={() => void runUpdatePrice()}>
+          <Button type="button" disabled={actionsPending} onClick={() => void runUpdatePrice()}>
             Update asking price
           </Button>
         </section>
@@ -425,9 +470,9 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             onSettlementNoteChange={setSettlementNote}
             priceInputId="settlement-only"
             showAskingFields={false}
-            disabled={isPending}
+            disabled={actionsPending}
           />
-          <Button type="button" variant="secondary" disabled={isPending} onClick={() => void runSaveSettlementNote()}>
+          <Button type="button" variant="secondary" disabled={actionsPending} onClick={() => void runSaveSettlementNote()}>
             Save payment instructions
           </Button>
         </section>
@@ -437,7 +482,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">List for sale</h2>
           {!isApproved && (
-            <Button type="button" variant="outline" disabled={isPending} onClick={() => void runApprove()}>
+            <Button type="button" variant="outline" disabled={actionsPending} onClick={() => void runApprove()}>
               Approve marketplace
             </Button>
           )}
@@ -451,9 +496,9 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-new"
-            disabled={isPending}
+            disabled={actionsPending}
           />
-          <Button type="button" disabled={isPending || !isApproved} onClick={() => void runList()}>
+          <Button type="button" disabled={actionsPending || !isApproved} onClick={() => void runList()}>
             List for sale
           </Button>
         </section>
