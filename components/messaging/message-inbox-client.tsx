@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
-import { SpinnerIcon } from "@/components/ui/icons";
+import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { MessagingCatchUpBanner } from "@/components/messaging/messaging-catch-up-banner";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
@@ -282,12 +282,14 @@ export function MessageInboxClient() {
       {isReady && !isLoading && (
         <ul className="space-y-2" role="list">
           {conversations.length === 0 && (
-            <li className="rounded-md border border-dashed border-border-default p-6 text-center text-sm text-text-secondary">
+            <li>
               <EmptyState
                 variant="content"
                 level="A"
-                className="py-0"
-                title="No conversations yet."
+                icon={CommentIcon}
+                title="No conversations yet"
+                description="Conversations with buyers and sellers appear here. Start one from any listing with Message seller."
+                action={{ label: "Browse marketplace", href: "/" }}
               />
             </li>
           )}

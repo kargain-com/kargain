@@ -461,7 +461,7 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | Bubble content | `whitespace-pre-wrap break-words` preserves sent and received newlines and wraps long tokens |
 | Timestamps | Below bubble, `font-mono text-xs text-text-tertiary tabular-nums`, aligned with sender side (inbox row: `font-mono text-[10px] text-text-secondary tabular-nums`) |
 | Composer | Auto-growing `Textarea` (`rows=1`, `min-h-11`, approximately six lines max, then scroll) + icon `Button`; Enter sends, Shift+Enter inserts a newline, and composing IME Enter / keyCode 229 never sends; successful send resets the field height |
-| Empty inbox | "No conversations yet." (only when messaging is active) |
+| Empty inbox | Comment icon + title *No conversations yet* + description *Conversations with buyers and sellers appear here. Start one from any listing with Message seller.* + **Browse marketplace** → `/`; only when messaging is active |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
 
 No per-message sender label in the bubble list. No drift banner — publish/network gaps surface inline on settings (`publishError`) or via setup card states.
@@ -1480,4 +1480,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.63 (July 2026 — KarPro section-nav scroll affordance). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.64 (July 2026 — inbox empty-state composition). Update when tokens, app shell, or component contracts change.*
