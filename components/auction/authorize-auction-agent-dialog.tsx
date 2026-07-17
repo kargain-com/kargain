@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { zeroAddress } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
-  useConfig,
   useReadContract,
   useReadContracts,
   useSwitchChain,
@@ -29,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   hasAuctionAgent,
   isAuctionAuthExpired,
@@ -103,18 +102,19 @@ export function AuthorizeAuctionAgentDialog({
   onAuthorized,
   hasActiveAuction = false,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const passport = karPassportAddress(chainId);
   const escrow = auctionEscrowAddress(chainId);
   const usdc = usdcAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== wc;
+  const busy = isPending || phase !== "idle";
 
   const [step, setStep] = useState<Step>("approval");
   const [txError, setTxError] = useState<string | null>(null);
@@ -257,7 +257,7 @@ export function AuthorizeAuctionAgentDialog({
         functionName: "setApprovalForAll",
         args: [escrow, true],
       });
-      await waitForTransactionReceipt(config, { hash });
+      await awaitReceipt(hash);
       await refetchApproval();
       setStep("agent");
     } catch (err) {
@@ -270,7 +270,7 @@ export function AuthorizeAuctionAgentDialog({
     switchChainAsync,
     wc,
     writeContractAsync,
-    config,
+    awaitReceipt,
     refetchApproval,
   ]);
 
@@ -285,7 +285,7 @@ export function AuthorizeAuctionAgentDialog({
         functionName: "approve",
         args: [escrow, tid],
       });
-      await waitForTransactionReceipt(config, { hash });
+      await awaitReceipt(hash);
       await refetchApproval();
       setStep("agent");
     } catch (err) {
@@ -298,38 +298,33 @@ export function AuthorizeAuctionAgentDialog({
     switchChainAsync,
     wc,
     writeContractAsync,
-    config,
+    awaitReceipt,
     tid,
     refetchApproval,
   ]);
 
   const runRevoke = useCallback(async () => {
     if (!escrow || hasActiveAuction) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
-    try {
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "revokeAuctionAgent",
         args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       await refetchAuth();
       onAuthorized();
       handleOpenChange(false);
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
     escrow,
     hasActiveAuction,
-    wrongChain,
-    switchChainAsync,
-    wc,
     writeContractAsync,
     tid,
-    config,
+    runTx,
     refetchAuth,
     onAuthorized,
     handleOpenChange,
@@ -367,33 +362,28 @@ export function AuthorizeAuctionAgentDialog({
       );
       return;
     }
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
-    try {
-      const ownerMinAsset = parseOwnerMinAsset(minAssetInput, assetKind);
-      if (ownerMinAsset == null) return;
-      const asset = assetKind === "ETH" ? zeroAddress : usdc!;
-      const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
-      const hash = await writeContractAsync({
+    const ownerMinAsset = parseOwnerMinAsset(minAssetInput, assetKind);
+    if (ownerMinAsset == null) return;
+    const asset = assetKind === "ETH" ? zeroAddress : usdc!;
+    const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "authorizeAuctionAgent",
         args: [tid, selectedAgent.address, expiry, asset, ownerMinAsset],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onAuthorized();
       handleOpenChange(false);
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
     escrow,
     selectedAgent,
     canSubmitTerms,
     settlementPending,
-    wrongChain,
-    switchChainAsync,
-    wc,
     minAssetInput,
     assetKind,
     usdc,
@@ -401,7 +391,7 @@ export function AuthorizeAuctionAgentDialog({
     expiryDate,
     writeContractAsync,
     tid,
-    config,
+    runTx,
     onAuthorized,
     handleOpenChange,
   ]);
@@ -461,19 +451,24 @@ export function AuthorizeAuctionAgentDialog({
                 )}
               </p>
             </div>
-            {txError && (
+            {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <Button
               type="button"
               variant="outline"
               className="w-full"
-              disabled={isPending || hasActiveAuction}
+              disabled={busy || hasActiveAuction}
               onClick={() => void runRevoke()}
             >
-              Revoke
+              {phase === "indexing" || busy ? "Confirming…" : "Revoke"}
             </Button>
           </div>
         )}
@@ -484,26 +479,35 @@ export function AuthorizeAuctionAgentDialog({
               Approve the auction contract to hold your passport when your agent
               starts the auction.
             </p>
-            {txError && (
+            {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <div className="flex flex-col gap-2">
               <Button
                 type="button"
-                disabled={isPending}
+                disabled={busy}
                 onClick={() => void runSetApprovalForAll()}
               >
-                Approve auction escrow for all passports
+                {phase === "indexing" || busy
+                  ? "Confirming…"
+                  : "Approve auction escrow for all passports"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                disabled={isPending}
+                disabled={busy}
                 onClick={() => void runApproveToken()}
               >
-                Approve this passport only
+                {phase === "indexing" || busy
+                  ? "Confirming…"
+                  : "Approve this passport only"}
               </Button>
             </div>
           </div>
@@ -663,9 +667,14 @@ export function AuthorizeAuctionAgentDialog({
               </p>
             )}
 
-            {txError && (
+            {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
 
@@ -679,10 +688,10 @@ export function AuthorizeAuctionAgentDialog({
               </Button>
               <Button
                 type="button"
-                disabled={!canSubmitTerms || isPending}
+                disabled={!canSubmitTerms || busy}
                 onClick={() => void runAuthorize()}
               >
-                Authorize agent
+                {phase === "indexing" || busy ? "Confirming…" : "Authorize agent"}
               </Button>
             </div>
           </div>

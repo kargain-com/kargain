@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   useAccount,
@@ -8,12 +7,11 @@ import {
   useReadContract,
   useSwitchChain,
   useWriteContract,
-  useConfig,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   endsAtDateTimeAttr,
   formatAuctionAmount,
@@ -92,14 +90,19 @@ export function AuctionSettlementPanel({
   auctionUiState,
   onSuccess,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const {
+    runTx: runSyncedTx,
+    awaitReceipt,
+    runFlow,
+    busy,
+    error,
+    syncLagged,
+  } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const escrow = auctionEscrowAddress(chainId);
   const passport = karPassportAddress(chainId);
@@ -185,20 +188,11 @@ export function AuctionSettlementPanel({
   ): Promise<boolean> {
     setTxError(null);
     if (!escrow) return false;
-    setBusy(true);
-    try {
-      await ensureChain();
-      const hash = await write();
-      await waitForTransactionReceipt(config, { hash });
+    const succeeded = await runSyncedTx(write);
+    if (succeeded) {
       onSuccess?.();
-      router.refresh();
-      return true;
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-      return false;
-    } finally {
-      setBusy(false);
     }
+    return succeeded !== false;
   }
 
   async function onConfirmReceipt() {
@@ -258,38 +252,36 @@ export function AuctionSettlementPanel({
   }
 
   async function onReturnAndRefund() {
-    if (!escrow || !passport || !address) return;
-    setTxError(null);
-    setBusy(true);
-    try {
-      await ensureChain();
-      if (!approvedForAll) {
-        const approveHash = await writeContractAsync({
-          address: passport,
-          abi: KarPassportAbi,
-          functionName: "setApprovalForAll",
-          args: [escrow, true],
-          chainId: wagmiChainId(chainId),
-        });
-        await waitForTransactionReceipt(config, { hash: approveHash });
-        await refetchApproval();
-        return;
+    await runFlow(async () => {
+      if (!escrow || !passport || !address) return;
+      setTxError(null);
+      try {
+        if (!approvedForAll) {
+          await ensureChain();
+          const approveHash = await writeContractAsync({
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "setApprovalForAll",
+            args: [escrow, true],
+            chainId: wagmiChainId(chainId),
+          });
+          await awaitReceipt(approveHash);
+          await refetchApproval();
+          return;
+        }
+        await runTx(() =>
+          writeContractAsync({
+            address: escrow,
+            abi: AuctionEscrowAbi,
+            functionName: "returnPassportAndRefund",
+            args: [BigInt(tokenId)],
+            chainId: wagmiChainId(chainId),
+          }),
+        );
+      } catch (err) {
+        setTxError(txErrorMessage(err));
       }
-      const hash = await writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "returnPassportAndRefund",
-        args: [BigInt(tokenId)],
-        chainId: wagmiChainId(chainId),
-      });
-      await waitForTransactionReceipt(config, { hash });
-      onSuccess?.();
-      router.refresh();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function onClaimAbandoned() {
@@ -383,9 +375,14 @@ export function AuctionSettlementPanel({
           <WalletLoginButton />
         ) : (
           <>
-            {txError && (
+            {(txError ?? error) && (
               <p className="font-sans text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <Button
@@ -435,9 +432,14 @@ export function AuctionSettlementPanel({
             <p className="font-sans text-sm text-text-secondary">
               Resolve as an active KarPro. You are not a party to this sale.
             </p>
-            {txError && (
+            {(txError ?? error) && (
               <p className="font-sans text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <div className="space-y-2">
@@ -499,9 +501,14 @@ export function AuctionSettlementPanel({
 
         {isBuyer && isConnected && (
           <>
-            {txError && (
+            {(txError ?? error) && (
               <p className="font-sans text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <Button
@@ -541,9 +548,14 @@ export function AuctionSettlementPanel({
                   Keeping the vehicle keeps the deal. Claim abandoned payment to
                   receive the held proceeds while the buyer keeps the passport.
                 </p>
-                {txError && (
+                {(txError ?? error) && (
                   <p className="font-sans text-sm text-status-error" role="alert">
-                    {txError}
+                    {txError ?? error}
+                  </p>
+                )}
+                {syncLagged && (
+                  <p role="status" className="font-sans text-xs text-text-tertiary">
+                    {TX_SYNC_LAG_ADVISORY}
                   </p>
                 )}
                 <Button
@@ -602,12 +614,17 @@ export function AuctionSettlementPanel({
               <WalletLoginButton />
             ) : (
               <>
-                {txError && (
+                {(txError ?? error) && (
                   <p
                     className="font-sans text-sm text-status-error"
                     role="alert"
                   >
-                    {txError}
+                    {txError ?? error}
+                  </p>
+                )}
+                {syncLagged && (
+                  <p role="status" className="font-sans text-xs text-text-tertiary">
+                    {TX_SYNC_LAG_ADVISORY}
                   </p>
                 )}
                 <Button

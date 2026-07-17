@@ -1,18 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useReadContract,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useVerifyGasEstimate } from "@/hooks/use-verify-gas-estimate";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { categoryLabel } from "@/lib/design/instrument-classes";
@@ -21,7 +15,6 @@ import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { fiatCurrencyOptionLabel } from "@/lib/marketplace/fiat-format";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   canComposeFeeInDisplayCurrency,
   composeTotalFeeWei,
@@ -30,7 +23,7 @@ import {
   formatFeeWeiEth,
   formatFeeWeiInDisplayCurrency,
 } from "@/lib/verifier/fee-composer-math";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 type KarProFeeSectionProps = {
   address: `0x${string}`;
@@ -44,11 +37,8 @@ function displayCurrencyLabel(currency: string): string {
 
 export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
   const chainId = DEFAULT_CHAIN_ID;
-  const config = useConfig();
-  const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
 
   const { displayCurrency, isRatesLoading, ...rateFields } = useDisplayCurrency();
   const rates = useMemo(() => pickPartialFxRates(rateFields), [rateFields]);
@@ -57,7 +47,7 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
   useMarketRates({ enabled: true });
   const { costWei: gasCostWei, isLoading: gasLoading } = useVerifyGasEstimate({ enabled: true });
 
-  const { data: onChainFee, refetch: refetchFee } = useReadContract({
+  const { data: onChainFee } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "verificationFee",
@@ -65,14 +55,13 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
     query: { enabled: Boolean(staking && address) },
   });
 
-  const wrongChain = walletChain !== chainId;
   const ratesReady = canComposeFeeInDisplayCurrency(displayCurrency, rates);
 
   const [marginInput, setMarginInput] = useState("");
   const [marginInitialized, setMarginInitialized] = useState(false);
-  const [feeSaving, setFeeSaving] = useState(false);
   const [feeSaved, setFeeSaved] = useState(false);
   const [feeError, setFeeError] = useState<string | null>(null);
+  const feeSaving = txPhase !== "idle";
 
   useEffect(() => {
     if (marginInitialized || onChainFee === undefined) return;
@@ -119,25 +108,17 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
 
     setFeeError(null);
     setFeeSaved(false);
-    setFeeSaving(true);
 
-    try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: staking,
         abi: KarProStakingAbi,
         functionName: "setVerificationFee",
         args: [totalWei],
-      });
-
-      await waitForTransactionReceipt(config, { hash });
-      void refetchFee();
+      }),
+    );
+    if (succeeded) {
       setFeeSaved(true);
-    } catch (err) {
-      setFeeError(txErrorMessage(err));
-    } finally {
-      setFeeSaving(false);
     }
   };
 
@@ -218,7 +199,7 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
             disabled={feeSaveDisabled}
             onClick={() => void onSaveFee()}
           >
-            {feeSaving ? "Saving…" : "Save fee"}
+            {txPhase === "indexing" ? "Confirming…" : feeSaving ? "Saving…" : "Save fee"}
           </Button>
           {feeSaved && (
             <p className="font-sans text-sm text-text-secondary" role="status">
@@ -227,9 +208,14 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
           )}
         </div>
 
-        {feeError && (
+        {(feeError ?? txSyncError) && (
           <p role="alert" className="font-sans text-sm text-status-error">
-            {feeError}
+            {feeError ?? txSyncError}
+          </p>
+        )}
+        {syncLagged && (
+          <p role="status" className="font-sans text-xs text-text-tertiary">
+            {TX_SYNC_LAG_ADVISORY}
           </p>
         )}
       </div>

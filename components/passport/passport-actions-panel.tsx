@@ -1,18 +1,12 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatEther } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
-  useChainId,
-  useConfig,
   useReadContract,
   useSignMessage,
-  useSwitchChain,
   useWriteContract,
 } from "wagmi";
 
@@ -23,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
   elevatedAdvisoryPanel,
@@ -33,8 +28,6 @@ import {
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
-import { invalidatePassportChainReads } from "@/lib/passport/invalidate-passport-chain-reads";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
 import {
   isOnChainNftOwner,
@@ -97,14 +90,10 @@ export function PassportActionsPanel({
   onBusyChange,
   embeddedInSheet = false,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
-  const queryClient = useQueryClient();
   const { address, isConnected, connector } = useAccount();
-  const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [disputeReason, setDisputeReason] = useState("");
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
@@ -133,7 +122,6 @@ export function PassportActionsPanel({
   const passport = karPassportAddress(chainId);
   const staking = karProStakingAddress(chainId);
   const wc = wagmiChainId(chainId);
-  const wrongChain = isConnected && walletChain !== chainId;
   const tid = BigInt(tokenId);
 
   const { data: reads } = useReadContracts({
@@ -145,6 +133,7 @@ export function PassportActionsPanel({
               abi: KarProStakingAbi,
               functionName: "isActiveVerifier",
               args: [address],
+              chainId: wc,
             },
           ]
         : [],
@@ -185,30 +174,12 @@ export function PassportActionsPanel({
     return () => window.clearTimeout(timer);
   }, [recordAddedSuccess]);
 
-  const completePassportTx = useCallback(
-    async (hash: `0x${string}`) => {
-      await waitForTransactionReceipt(config, { hash });
-      await invalidatePassportChainReads(queryClient, config, chainId, tokenId);
-      router.refresh();
-    },
-    [chainId, config, queryClient, router, tokenId],
-  );
-
   const run = useCallback(
     async (fn: () => Promise<`0x${string}`>, success: string) => {
       if (!passport) return;
-      if (wrongChain) {
-        await switchChainAsync?.({ chainId: wc });
-      }
-      try {
-        const hash = await fn();
-        await completePassportTx(hash);
-        setMessage(success);
-      } catch (err) {
-        setMessage(txErrorMessage(err));
-      }
+      if (await runTx(fn)) setMessage(success);
     },
-    [completePassportTx, passport, switchChainAsync, wc, wrongChain],
+    [passport, runTx],
   );
 
   const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
@@ -278,38 +249,32 @@ export function PassportActionsPanel({
     const description = recordDescription.trim();
     if (description.length < 10 || !passport) return;
 
-    if (wrongChain) {
-      await switchChainAsync?.({ chainId: wc });
-    }
-
-    try {
+    const result = await runTx(async () => {
       const evidenceCID = await resolveOwnerRecordEvidence();
-      const hash = await writeContractAsync({
+      return writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendRecord",
         args: [tid, recordType, description, evidenceCID],
+        chainId: wc,
       });
+    });
+    if (result) {
       setRecordFormOpen(false);
       setRecordType("service");
       setRecordDescription("");
       setRecordEvidencePaste("");
       setRecordEvidenceFile(null);
       setRecordAddedSuccess(true);
-      await completePassportTx(hash);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
-    completePassportTx,
     passport,
     recordDescription,
     recordType,
     resolveOwnerRecordEvidence,
-    switchChainAsync,
+    runTx,
     tid,
     wc,
-    wrongChain,
     writeContractAsync,
   ]);
 
@@ -317,35 +282,29 @@ export function PassportActionsPanel({
     const description = discrepancyText.trim();
     if (!description || !passport) return;
 
-    if (wrongChain) {
-      await switchChainAsync?.({ chainId: wc });
-    }
-
-    try {
+    const result = await runTx(async () => {
       const evidenceCID = await resolveDiscrepancyEvidence();
-      const hash = await writeContractAsync({
+      return writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "reportDiscrepancy",
         args: [tid, description, evidenceCID],
+        chainId: wc,
       });
+    });
+    if (result) {
       setDiscrepancyText("");
       setDiscrepancyEvidencePaste("");
       setDiscrepancyEvidenceFile(null);
-      await completePassportTx(hash);
       setMessage("Discrepancy reported.");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
-    completePassportTx,
     discrepancyText,
     passport,
     resolveDiscrepancyEvidence,
-    switchChainAsync,
+    runTx,
     tid,
     wc,
-    wrongChain,
     writeContractAsync,
   ]);
 
@@ -353,35 +312,29 @@ export function PassportActionsPanel({
     const description = clarificationText.trim();
     if (!description || !passport) return;
 
-    if (wrongChain) {
-      await switchChainAsync?.({ chainId: wc });
-    }
-
-    try {
+    const result = await runTx(async () => {
       const evidenceCID = await resolveClarificationEvidence();
-      const hash = await writeContractAsync({
+      return writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendRecord",
         args: [tid, "dispute-clarification", description, evidenceCID],
+        chainId: wc,
       });
+    });
+    if (result) {
       setClarificationText("");
       setClarificationEvidencePaste("");
       setClarificationEvidenceFile(null);
-      await completePassportTx(hash);
       setMessage("Clarification appended.");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
     clarificationText,
-    completePassportTx,
     passport,
     resolveClarificationEvidence,
-    switchChainAsync,
+    runTx,
     tid,
     wc,
-    wrongChain,
     writeContractAsync,
   ]);
 
@@ -389,39 +342,33 @@ export function PassportActionsPanel({
     const description = attestationText.trim();
     if (!description || !passport) return;
 
-    if (wrongChain) {
-      await switchChainAsync?.({ chainId: wc });
-    }
-
-    try {
+    const result = await runTx(async () => {
       const evidenceCID = await resolveAttestationEvidence();
-      const hash = await writeContractAsync({
+      return writeContractAsync({
         address: passport,
         abi: KarPassportAbi,
         functionName: "appendAttestation",
         args: [tid, description, evidenceCID],
+        chainId: wc,
       });
+    });
+    if (result) {
       setAttestationText("");
       setAttestationEvidencePaste("");
       setAttestationEvidenceFile(null);
-      await completePassportTx(hash);
       setMessage("Attestation appended.");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Transaction failed.");
     }
   }, [
     attestationText,
-    completePassportTx,
     passport,
     resolveAttestationEvidence,
-    switchChainAsync,
+    runTx,
     tid,
     wc,
-    wrongChain,
     writeContractAsync,
   ]);
 
-  const actionsBusy = isPending || isUploadingEvidence;
+  const actionsBusy = isPending || isUploadingEvidence || phase !== "idle";
 
   const actionsDirty =
     Boolean(
@@ -519,6 +466,7 @@ export function PassportActionsPanel({
                     abi: KarPassportAbi,
                     functionName: "verifyPassport",
                     args: [tid],
+                    chainId: wc,
                   }),
                 "Passport verified.",
               )
@@ -551,7 +499,7 @@ export function PassportActionsPanel({
             variant="outline"
             className="w-full border-status-error text-status-error"
             disabled={
-              isPending ||
+              actionsBusy ||
               disputeDepositLoading ||
               disputeDeposit === undefined ||
               !disputeReason.trim()
@@ -565,6 +513,7 @@ export function PassportActionsPanel({
                     functionName: "disputePassport",
                     args: [tid, disputeReason.trim()],
                     value: disputeDeposit,
+                    chainId: wc,
                   }),
                 "Dispute opened.",
               )
@@ -598,6 +547,7 @@ export function PassportActionsPanel({
                           abi: KarPassportAbi,
                           functionName: "resolveDispute",
                           args: [tid, 0],
+                          chainId: wc,
                         }),
                       "Dispute confirmed. Passport is now unverified.",
                     )
@@ -623,6 +573,7 @@ export function PassportActionsPanel({
                           abi: KarPassportAbi,
                           functionName: "resolveDispute",
                           args: [tid, 1],
+                          chainId: wc,
                         }),
                       "Dispute rejected. Verification stands.",
                     )
@@ -648,7 +599,7 @@ export function PassportActionsPanel({
             type="button"
             variant="secondary"
             className="w-full"
-            disabled={isPending}
+            disabled={actionsBusy}
             onClick={() =>
               void run(
                 () =>
@@ -657,6 +608,7 @@ export function PassportActionsPanel({
                     abi: KarPassportAbi,
                     functionName: "withdrawDispute",
                     args: [tid],
+                    chainId: wc,
                   }),
                 "Dispute withdrawn. Your deposit has been refunded.",
               )
@@ -861,9 +813,14 @@ export function PassportActionsPanel({
       </div>
       )}
 
-      {message && (
+      {(error ?? message) && (
         <p className="text-sm text-text-secondary" role="status">
-          {message}
+          {error ?? message}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </section>

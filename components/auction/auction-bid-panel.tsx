@@ -1,21 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   useAccount,
   useBalance,
   useChainId,
   useReadContract,
-  useSwitchChain,
   useWriteContract,
-  useConfig,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { Button } from "@/components/ui/button";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { minNextBid } from "@/lib/auction/auction-bid-math";
 import { formatExtensionHelp } from "@/lib/auction/auction-live-signals";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
@@ -89,16 +86,14 @@ export function AuctionBidPanel({
   extensionFlash = null,
   onSuccess,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { runTx, awaitReceipt, runFlow, phase, busy, error, syncLagged } =
+    useTxSync(chainId);
 
   const [amountStr, setAmountStr] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const escrow = auctionEscrowAddress(chainId);
   const usdc = usdcAddress(chainId);
@@ -184,97 +179,89 @@ export function AuctionBidPanel({
     isWriting ||
     insufficientBalance;
 
+  const mapBidError = (err: unknown): string => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("BidTooLow")) {
+      return formatBidTooLowMessage(minLabel, minIncrementBps);
+    }
+    if (msg.includes("PassportNotVerified")) {
+      return formatPassportBidBlockedMessage("unverified");
+    }
+    if (msg.includes("PassportDisputed")) {
+      return formatPassportBidBlockedMessage("disputed");
+    }
+    return txErrorMessage(err);
+  };
+
   async function onBid() {
-    setTxError(null);
-    if (!escrow || !address) return;
+    await runFlow(async () => {
+      setTxError(null);
+      if (!escrow || !address) return;
 
-    const amount = parseOwnerMinAsset(amountStr, assetLabel);
-    if (amount == null) {
-      setTxError(
-        `Bid at least ${minLabel} — enter a valid ${assetLabel} amount.`,
-      );
-      return;
-    }
-
-    if (amount < minNext) {
-      setTxError(formatBidTooLowMessage(minLabel, minIncrementBps));
-      return;
-    }
-
-    if (isUsdcAuction) {
-      if (!usdc) {
-        setTxError("USDC is not configured on this chain.");
+      const amount = parseOwnerMinAsset(amountStr, assetLabel);
+      if (amount == null) {
+        setTxError(
+          `Bid at least ${minLabel} — enter a valid ${assetLabel} amount.`,
+        );
         return;
       }
-      if (usdcBalance != null && usdcBalance < amount) {
-        setTxError("Insufficient USDC balance for this bid.");
+
+      if (amount < minNext) {
+        setTxError(formatBidTooLowMessage(minLabel, minIncrementBps));
         return;
       }
-    } else if (ethBalance && ethBalance.value < amount) {
-      setTxError("Insufficient ETH balance for this bid.");
-      return;
-    }
 
-    setBusy(true);
-    try {
-      if (wrongChain) {
-        await switchChainAsync({ chainId: wagmiChainId(chainId) });
-      }
-
-      if (isUsdcAuction && usdc) {
-        const allowance = usdcAllowance ?? 0n;
-        if (allowance < amount) {
-          const approveHash = await writeContractAsync({
-            address: usdc,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [escrow, amount],
-            chainId: wagmiChainId(chainId),
-          });
-          await waitForTransactionReceipt(config, { hash: approveHash });
-          await refetchUsdcAllowance();
-          await refetchUsdcBalance();
+      if (isUsdcAuction) {
+        if (!usdc) {
+          setTxError("USDC is not configured on this chain.");
           return;
         }
-
-        const hash = await writeContractAsync({
-          address: escrow,
-          abi: AuctionEscrowAbi,
-          functionName: "bid",
-          args: [BigInt(tokenId), amount],
-          value: 0n,
-          chainId: wagmiChainId(chainId),
-        });
-        await waitForTransactionReceipt(config, { hash });
-      } else {
-        const hash = await writeContractAsync({
-          address: escrow,
-          abi: AuctionEscrowAbi,
-          functionName: "bid",
-          args: [BigInt(tokenId), amount],
-          value: amount,
-          chainId: wagmiChainId(chainId),
-        });
-        await waitForTransactionReceipt(config, { hash });
+        if (usdcBalance != null && usdcBalance < amount) {
+          setTxError("Insufficient USDC balance for this bid.");
+          return;
+        }
+      } else if (ethBalance && ethBalance.value < amount) {
+        setTxError("Insufficient ETH balance for this bid.");
+        return;
       }
 
-      setAmountStr("");
-      onSuccess?.();
-      router.refresh();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("BidTooLow")) {
-        setTxError(formatBidTooLowMessage(minLabel, minIncrementBps));
-      } else if (msg.includes("PassportNotVerified")) {
-        setTxError(formatPassportBidBlockedMessage("unverified"));
-      } else if (msg.includes("PassportDisputed")) {
-        setTxError(formatPassportBidBlockedMessage("disputed"));
-      } else {
-        setTxError(txErrorMessage(err));
+      try {
+        if (isUsdcAuction && usdc) {
+          const allowance = usdcAllowance ?? 0n;
+          if (allowance < amount) {
+            const approveHash = await writeContractAsync({
+              address: usdc,
+              abi: ERC20_ABI,
+              functionName: "approve",
+              args: [escrow, amount],
+              chainId: wagmiChainId(chainId),
+            });
+            await awaitReceipt(approveHash, { mapError: mapBidError });
+            await refetchUsdcAllowance();
+            await refetchUsdcBalance();
+          }
+        }
+
+        const succeeded = await runTx(
+          () =>
+            writeContractAsync({
+              address: escrow,
+              abi: AuctionEscrowAbi,
+              functionName: "bid",
+              args: [BigInt(tokenId), amount],
+              value: isUsdcAuction ? 0n : amount,
+              chainId: wagmiChainId(chainId),
+            }),
+          { mapError: mapBidError },
+        );
+        if (succeeded) {
+          setAmountStr("");
+          onSuccess?.();
+        }
+      } catch (err) {
+        setTxError(mapBidError(err));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   if (!isConnected) {
@@ -354,9 +341,14 @@ export function AuctionBidPanel({
         <p className="font-sans text-sm text-text-secondary">{disabledReason}</p>
       )}
 
-      {txError && (
+      {(txError ?? error) && (
         <p className="font-sans text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
@@ -366,10 +358,10 @@ export function AuctionBidPanel({
         disabled={bidDisabled || !amountStr.trim()}
         onClick={() => void onBid()}
       >
-        {busy || isWriting
+        {phase === "indexing" || busy || isWriting
           ? "Confirming…"
           : needsUsdcApproval
-            ? "Approve USDC"
+            ? "Approve USDC and place bid"
             : "Place bid"}
       </Button>
 

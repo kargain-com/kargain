@@ -1,16 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
 
 import { ReturnCooldownDisplay, useReturnRemainingSeconds } from "@/components/marketplace/return-cooldown-display";
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   effectiveReturnRequestedAt,
@@ -37,11 +32,12 @@ export function OwnerReturnRequestPanel({
   agentAuthActive,
   onChanged,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
@@ -68,13 +64,15 @@ export function OwnerReturnRequestPanel({
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "requestReturn",
-        args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "requestReturn",
+          args: [tid],
+        }),
+      );
+      if (!succeeded) return;
       onChanged();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -87,8 +85,8 @@ export function OwnerReturnRequestPanel({
     wc,
     writeContractAsync,
     tid,
-    config,
     onChanged,
+    runTx,
   ]);
 
   const runForceReturn = useCallback(async () => {
@@ -96,13 +94,15 @@ export function OwnerReturnRequestPanel({
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "forceReturn",
-        args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "forceReturn",
+          args: [tid],
+        }),
+      );
+      if (!succeeded) return;
       onChanged();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -116,8 +116,8 @@ export function OwnerReturnRequestPanel({
     wc,
     writeContractAsync,
     tid,
-    config,
     onChanged,
+    runTx,
   ]);
 
   return (
@@ -138,10 +138,10 @@ export function OwnerReturnRequestPanel({
           type="button"
           variant="secondary"
           className="w-full"
-          disabled={isPending}
+          disabled={busy}
           onClick={() => void runRequestReturn()}
         >
-          Request return
+          {busy ? "Confirming…" : "Request return"}
         </Button>
       )}
 
@@ -155,10 +155,10 @@ export function OwnerReturnRequestPanel({
             type="button"
             variant="outline"
             className="w-full border-status-error text-status-error hover:bg-bg-surface"
-            disabled={isPending || cooldownActive || !agentAuthActive}
+            disabled={busy || cooldownActive || !agentAuthActive}
             onClick={() => void runForceReturn()}
           >
-            Force return
+            {busy ? "Confirming…" : "Force return"}
           </Button>
           {cooldownActive && (
             <p className="text-center text-xs text-text-secondary">
@@ -179,9 +179,14 @@ export function OwnerReturnRequestPanel({
         </div>
       )}
 
-      {txError && (
+      {(txError ?? error) && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

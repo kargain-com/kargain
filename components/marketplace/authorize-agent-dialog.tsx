@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseUnits } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
-  useConfig,
   useReadContracts,
   useSwitchChain,
   useWriteContract,
@@ -25,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { sansLink } from "@/lib/design/instrument-classes";
 import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -88,12 +87,13 @@ export function AuthorizeAgentDialog({
   onOpenChange,
   onAuthorized,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
@@ -198,7 +198,7 @@ export function AuthorizeAgentDialog({
         functionName: "setApprovalForAll",
         args: [market, true],
       });
-      await waitForTransactionReceipt(config, { hash });
+      await awaitReceipt(hash);
       await refetchApproval();
       setStep("agent");
     } catch (err) {
@@ -211,8 +211,8 @@ export function AuthorizeAgentDialog({
     switchChainAsync,
     wc,
     writeContractAsync,
-    config,
     refetchApproval,
+    awaitReceipt,
   ]);
 
   const runApproveToken = useCallback(async () => {
@@ -226,7 +226,7 @@ export function AuthorizeAgentDialog({
         functionName: "approve",
         args: [market, tid],
       });
-      await waitForTransactionReceipt(config, { hash });
+      await awaitReceipt(hash);
       await refetchApproval();
       setStep("agent");
     } catch (err) {
@@ -239,9 +239,9 @@ export function AuthorizeAgentDialog({
     switchChainAsync,
     wc,
     writeContractAsync,
-    config,
     tid,
     refetchApproval,
+    awaitReceipt,
   ]);
 
   const handleSelectAgent = useCallback((entry: VerifierDirectoryEntry) => {
@@ -280,13 +280,15 @@ export function AuthorizeAgentDialog({
     try {
       const ownerMinPrice = parseUnits(minPriceInput, 8);
       const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "authorizeAgent",
-        args: [tid, selectedAgent.address, expiry, ownerMinPrice],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "authorizeAgent",
+          args: [tid, selectedAgent.address, expiry, ownerMinPrice],
+        }),
+      );
+      if (!succeeded) return;
       onAuthorized();
       handleOpenChange(false);
     } catch (err) {
@@ -304,9 +306,9 @@ export function AuthorizeAgentDialog({
     expiryDate,
     writeContractAsync,
     tid,
-    config,
     onAuthorized,
     handleOpenChange,
+    runTx,
   ]);
 
   const agentName = selectedAgent ? agentDisplayName(selectedAgent) : "";
@@ -328,26 +330,31 @@ export function AuthorizeAgentDialog({
               Before delegating, approve the marketplace contract to hold your passport when your
               agent lists it for sale. This avoids surprises when they try to list on your behalf.
             </p>
-            {txError && (
+            {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
             <div className="flex flex-col gap-2">
               <Button
                 type="button"
-                disabled={isPending}
+                disabled={busy}
                 onClick={() => void runSetApprovalForAll()}
               >
-                Approve marketplace for all passports
+                {busy ? "Confirming…" : "Approve marketplace for all passports"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                disabled={isPending}
+                disabled={busy}
                 onClick={() => void runApproveToken()}
               >
-                Approve this passport only
+                {busy ? "Confirming…" : "Approve this passport only"}
               </Button>
             </div>
           </div>
@@ -465,9 +472,14 @@ export function AuthorizeAgentDialog({
               </p>
             )}
 
-            {txError && (
+            {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
-                {txError}
+                {txError ?? error}
+              </p>
+            )}
+            {syncLagged && (
+              <p role="status" className="font-sans text-xs text-text-tertiary">
+                {TX_SYNC_LAG_ADVISORY}
               </p>
             )}
 
@@ -477,10 +489,10 @@ export function AuthorizeAgentDialog({
               </Button>
               <Button
                 type="button"
-                disabled={!canSubmitTerms || isPending}
+                disabled={!canSubmitTerms || busy}
                 onClick={() => void runAuthorize()}
               >
-                Authorize agent
+                {busy ? "Confirming…" : "Authorize agent"}
               </Button>
             </div>
           </div>

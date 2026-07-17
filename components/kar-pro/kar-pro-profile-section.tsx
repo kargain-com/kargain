@@ -2,20 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useAccount,
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useAccount, useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
   type KarProProfileFieldValues,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProPassAbi } from "@/lib/contracts/abis.generated";
 import {
   parseKarProMetadataJson,
@@ -24,7 +18,7 @@ import {
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 type KarProProfileSectionProps = {
   category: number;
@@ -67,11 +61,9 @@ export function KarProProfileSection({
   onUpdated,
 }: KarProProfileSectionProps) {
   const chainId = DEFAULT_CHAIN_ID;
-  const config = useConfig();
   const { connector } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
 
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState<KarProProfileFieldValues>({
@@ -85,9 +77,8 @@ export function KarProProfileSection({
   const [error, setError] = useState<string | null>(null);
 
   const proPass = karProPassAddress(chainId);
-  const wc = wagmiChainId(chainId);
-  const wrongChain = walletChain !== chainId;
   const showroomSlug = (slugProp ?? "").trim() || fields.slug.trim();
+  const isBusy = loading || txPhase !== "idle";
 
   useEffect(() => {
     if (!editing) return;
@@ -115,8 +106,6 @@ export function KarProProfileSection({
     setLoading(true);
 
     try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-
       const provider = await getWalletUploadProvider(connector ?? undefined);
       const metadataUri = await uploadKarProMetadata(
         {
@@ -129,22 +118,30 @@ export function KarProProfileSection({
         provider,
       );
 
-      const hash = await writeContractAsync({
-        address: proPass,
-        abi: KarProPassAbi,
-        functionName: "updateProfile",
-        args: [fields.categoryIndex, fields.name.trim(), metadataUri],
-      });
-
-      await waitForTransactionReceipt(config, { hash });
-      setEditing(false);
-      onUpdated?.();
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("User rejected")) {
-        setError("Transaction cancelled.");
-      } else {
-        setError(err instanceof Error ? err.message : "Update failed. Try again.");
+      setLoading(false);
+      const succeeded = await runTx(
+        () =>
+          writeContractAsync({
+            address: proPass,
+            abi: KarProPassAbi,
+            functionName: "updateProfile",
+            args: [fields.categoryIndex, fields.name.trim(), metadataUri],
+          }),
+        {
+          mapError: (err) =>
+            err instanceof Error && err.message.includes("User rejected")
+              ? "Transaction cancelled."
+              : err instanceof Error
+                ? err.message
+                : "Update failed. Try again.",
+        },
+      );
+      if (succeeded) {
+        setEditing(false);
+        onUpdated?.();
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed. Try again.");
     } finally {
       setLoading(false);
     }
@@ -158,21 +155,21 @@ export function KarProProfileSection({
             idPrefix="kar-pro-edit"
             values={fields}
             onChange={setFields}
-            disabled={loading}
+            disabled={isBusy}
             ownerAddress={address}
           />
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              disabled={loading || !fields.name.trim() || !fields.slug.trim()}
+              disabled={isBusy || !fields.name.trim() || !fields.slug.trim()}
               onClick={() => void onSaveProfile()}
             >
-              {loading ? "Saving…" : "Save profile"}
+              {txPhase === "indexing" ? "Confirming…" : isBusy ? "Saving…" : "Save profile"}
             </Button>
             <Button
               type="button"
               variant="ghost"
-              disabled={loading}
+              disabled={isBusy}
               onClick={() => {
                 setEditing(false);
                 setError(null);
@@ -184,7 +181,7 @@ export function KarProProfileSection({
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="ghost" disabled={loading} onClick={() => setEditing(true)}>
+          <Button type="button" variant="ghost" disabled={isBusy} onClick={() => setEditing(true)}>
             Update profile
           </Button>
           {showroomSlug && (
@@ -195,9 +192,14 @@ export function KarProProfileSection({
         </div>
       )}
 
-      {error && (
+      {(error ?? txSyncError) && (
         <p role="alert" className="mt-4 font-sans text-fluid-sm text-status-error">
-          {error}
+          {error ?? txSyncError}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

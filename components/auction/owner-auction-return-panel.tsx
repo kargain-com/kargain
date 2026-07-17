@@ -1,23 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useCallback, useMemo } from "react";
+import { useWriteContract } from "wagmi";
 
 import {
   ReturnCooldownDisplay,
   useReturnRemainingSeconds,
 } from "@/components/marketplace/return-cooldown-display";
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
   chainId: number;
@@ -39,17 +32,12 @@ export function OwnerAuctionReturnPanel({
   preStart,
   onChanged,
 }: Props) {
-  const config = useConfig();
-  const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
   const escrow = auctionEscrowAddress(chainId);
   const tid = useMemo(() => BigInt(tokenId), [tokenId]);
-  const wrongChain = walletChain !== wc;
-
-  const [txError, setTxError] = useState<string | null>(null);
+  const busy = phase !== "idle";
 
   const returnAt = returnRequestedAt > 0n ? returnRequestedAt : 0n;
   const remaining = useReturnRemainingSeconds(returnAt);
@@ -59,59 +47,47 @@ export function OwnerAuctionReturnPanel({
 
   const runRequestReturn = useCallback(async () => {
     if (!escrow || !noRequestYet || !preStart) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    setTxError(null);
-    try {
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "requestReturn",
         args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onChanged();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
     escrow,
     noRequestYet,
     preStart,
-    wrongChain,
-    switchChainAsync,
-    wc,
     writeContractAsync,
     tid,
-    config,
+    runTx,
     onChanged,
   ]);
 
   const runForceReturn = useCallback(async () => {
     if (!escrow || !cooldownElapsed || !preStart) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    setTxError(null);
-    try {
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "forceReturn",
         args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onChanged();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
     escrow,
     cooldownElapsed,
     preStart,
-    wrongChain,
-    switchChainAsync,
-    wc,
     writeContractAsync,
     tid,
-    config,
+    runTx,
     onChanged,
   ]);
 
@@ -135,10 +111,10 @@ export function OwnerAuctionReturnPanel({
           type="button"
           variant="secondary"
           className="w-full"
-          disabled={isPending}
+          disabled={busy || isPending}
           onClick={() => void runRequestReturn()}
         >
-          Request return
+          {phase === "indexing" || busy ? "Confirming…" : "Request return"}
         </Button>
       )}
 
@@ -152,10 +128,10 @@ export function OwnerAuctionReturnPanel({
             type="button"
             variant="outline"
             className="w-full border-status-error text-status-error hover:bg-bg-surface"
-            disabled={isPending || cooldownActive}
+            disabled={busy || isPending || cooldownActive}
             onClick={() => void runForceReturn()}
           >
-            Force return
+            {phase === "indexing" || busy ? "Confirming…" : "Force return"}
           </Button>
           {cooldownActive && (
             <p className="text-center text-xs text-text-secondary">
@@ -165,9 +141,14 @@ export function OwnerAuctionReturnPanel({
         </div>
       )}
 
-      {txError && (
+      {error && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

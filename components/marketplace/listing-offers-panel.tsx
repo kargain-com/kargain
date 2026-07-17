@@ -2,19 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useListingOffers } from "@/hooks/use-listing-offers";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
@@ -94,7 +89,7 @@ function ListingOfferRow({
               disabled={isPanelPending}
               onClick={() => void onConfirm(buyer)}
             >
-              Yes, confirm
+              {isPanelPending ? "Confirming…" : "Yes, confirm"}
             </Button>
             <Button
               type="button"
@@ -137,11 +132,12 @@ export function ListingOffersPanel({
   hasDirectPayment,
   onConfirmed,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
@@ -159,13 +155,15 @@ export function ListingOffersPanel({
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
       setTxError(null);
       try {
-        const hash = await writeContractAsync({
-          address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "confirmExternalPayment",
-          args: [tid, buyer],
-        });
-        await waitForTransactionReceipt(config, { hash });
+        const succeeded = await runTx(() =>
+          writeContractAsync({
+            address: market,
+            abi: MarketplaceEscrowAbi,
+            functionName: "confirmExternalPayment",
+            args: [tid, buyer],
+          }),
+        );
+        if (!succeeded) return;
         setConfirmedBuyer(buyer);
         setConfirmingBuyer(null);
         onConfirmed();
@@ -181,8 +179,8 @@ export function ListingOffersPanel({
       wc,
       writeContractAsync,
       tid,
-      config,
       onConfirmed,
+      runTx,
     ],
   );
 
@@ -195,9 +193,14 @@ export function ListingOffersPanel({
           payment.
         </p>
       )}
-      {txError && (
+      {(txError ?? error) && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
       {isLoading && offers.length === 0 ? (
@@ -220,7 +223,7 @@ export function ListingOffersPanel({
               key={offer.eventId}
               offer={offer}
               hasDirectPayment={hasDirectPayment}
-              isPanelPending={isPending}
+              isPanelPending={busy}
               confirmingBuyer={confirmingBuyer}
               confirmedBuyer={confirmedBuyer}
               onStartConfirm={setConfirmingBuyer}

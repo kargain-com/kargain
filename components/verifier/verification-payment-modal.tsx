@@ -2,15 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, stringToHex } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useBalance,
-  useChainId,
-  useConfig,
   useReadContract,
   useSendTransaction,
-  useSwitchChain,
   useWriteContract,
 } from "wagmi";
 
@@ -28,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { QrCode } from "@/components/ui/qr-code";
 import { NwcConnectField } from "@/components/profile/nwc-connect-field";
 import { useNwcWallet, nwcPayErrorMessage } from "@/hooks/use-nwc-wallet";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { ctaLink } from "@/lib/design/instrument-classes";
 import { parseLud16 } from "@/lib/lightning/lud16";
 import {
@@ -35,7 +32,6 @@ import {
   fetchLnurlVerifySettled,
   lnurlPayErrorMessage,
 } from "@/lib/lightning/lnurl-pay-client";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useMarketRates } from "@/lib/marketplace/use-market-rates";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -133,13 +129,11 @@ export function VerificationPaymentModal({
   verifierName,
 }: VerificationPaymentModalProps) {
   const chainId = DEFAULT_CHAIN_ID;
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useWriteContract();
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
     enabled: open,
@@ -147,8 +141,7 @@ export function VerificationPaymentModal({
 
   const usdc = usdcAddress(chainId);
   const staking = karProStakingAddress(chainId);
-  const wrongChain = walletChain !== chainId;
-  const isPending = isEthPending || isWritePending;
+  const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
   const { data: chainFeeWei } = useReadContract({
     address: staking,
@@ -166,7 +159,6 @@ export function VerificationPaymentModal({
   const [successViaLightning, setSuccessViaLightning] = useState(false);
   const [successViaNwc, setSuccessViaNwc] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
-  const [txError, setTxError] = useState<string | null>(null);
   const [passportsLoading, setPassportsLoading] = useState(false);
   const [unverifiedPassports, setUnverifiedPassports] = useState<PassportRow[]>([]);
   const [selectedTokenId, setSelectedTokenId] = useState("");
@@ -265,7 +257,6 @@ export function VerificationPaymentModal({
     setSuccessViaLightning(false);
     setSuccessViaNwc(false);
     setPaymentMethod("ETH");
-    setTxError(null);
     setSelectedTokenId("");
     setManualTokenId("");
     setUnverifiedPassports([]);
@@ -413,60 +404,50 @@ export function VerificationPaymentModal({
 
   const payEth = useCallback(async () => {
     if (!hasTokenId) return;
-    setTxError(null);
-    try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-      const hash = await sendTransactionAsync({
+    const succeeded = await runTx(() =>
+      sendTransactionAsync({
         to: verifierAddress,
         value: effectiveFeeWei,
         data: stringToHex(`kargain:verify:${tokenId}`),
         chainId: wc,
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       setSuccessViaLightning(false);
       setPhase("success");
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
-    config,
     effectiveFeeWei,
     hasTokenId,
+    runTx,
     sendTransactionAsync,
-    switchChainAsync,
     tokenId,
     verifierAddress,
     wc,
-    wrongChain,
   ]);
 
   const payUsdc = useCallback(async () => {
     if (!usdc || !hasTokenId || usdcAmount === 0n) return;
-    setTxError(null);
-    try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: usdc,
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [verifierAddress, usdcAmount],
         chainId: wc,
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       setSuccessViaLightning(false);
       setPhase("success");
-    } catch (err) {
-      setTxError(txErrorMessage(err));
     }
   }, [
-    config,
     hasTokenId,
-    switchChainAsync,
+    runTx,
     usdc,
     usdcAmount,
     verifierAddress,
     wc,
-    wrongChain,
     writeContractAsync,
   ]);
 
@@ -487,7 +468,7 @@ export function VerificationPaymentModal({
   }, [lightningInvoice]);
 
   const payDisabled = useMemo(() => {
-    if (!hasTokenId || isPending || wrongChain) return true;
+    if (!hasTokenId || isPending) return true;
     if (paymentMethod === "ETH") {
       return insufficientEthBalance;
     }
@@ -502,7 +483,6 @@ export function VerificationPaymentModal({
     isPending,
     paymentMethod,
     usdcOptionDisabled,
-    wrongChain,
   ]);
 
   const title = verifierName?.trim()
@@ -598,14 +578,7 @@ export function VerificationPaymentModal({
                 )}
               </div>
 
-              {wrongChain ? (
-                <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-                  <p className="font-sans text-sm text-text-secondary">Switch to Base Sepolia</p>
-                  <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
-                    Switch network
-                  </Button>
-                </div>
-              ) : zeroFee ? (
+              {zeroFee ? (
                 <p className="font-sans text-sm text-text-secondary">
                   This verifier has not set a fee. Contact them for a quote.
                 </p>
@@ -621,7 +594,6 @@ export function VerificationPaymentModal({
                     <button
                       type="button"
                       onClick={() => {
-                        setTxError(null);
                         setPaymentMethod("ETH");
                         resetLightningState();
                       }}
@@ -641,7 +613,6 @@ export function VerificationPaymentModal({
                       type="button"
                       disabled={usdcOptionDisabled || isPending}
                       onClick={() => {
-                        setTxError(null);
                         setPaymentMethod("USDC");
                         resetLightningState();
                       }}
@@ -661,7 +632,6 @@ export function VerificationPaymentModal({
                         type="button"
                         disabled={isPending}
                         onClick={() => {
-                          setTxError(null);
                           setPaymentMethod("LIGHTNING");
                           resetLightningState();
                         }}
@@ -848,13 +818,18 @@ export function VerificationPaymentModal({
                       disabled={payDisabled}
                       onClick={handlePay}
                     >
-                      {isPending ? "Sending…" : "Send payment"}
+                      {txPhase === "indexing" ? "Confirming…" : isPending ? "Sending…" : "Send payment"}
                     </Button>
                   )}
 
-                  {txError && paymentMethod !== "LIGHTNING" && (
+                  {txSyncError && paymentMethod !== "LIGHTNING" && (
                     <p className="font-sans text-sm text-status-error" role="alert">
-                      {txError}
+                      {txSyncError}
+                    </p>
+                  )}
+                  {syncLagged && paymentMethod !== "LIGHTNING" && (
+                    <p role="status" className="font-sans text-xs text-text-tertiary">
+                      {TX_SYNC_LAG_ADVISORY}
                     </p>
                   )}
                 </>

@@ -21,6 +21,7 @@ export function PassportIndexerSyncBanner({
   enabled = true,
   variant = "detail",
 }: Props) {
+  // Entity polling covers externally initiated indexing when no receipt block is known.
   const { isSyncing } = usePassportIndexerSync(tokenId, chainId, enabled);
 
   if (!isSyncing) return null;

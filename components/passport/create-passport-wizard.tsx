@@ -1,14 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
 import {
   useAccount,
   useChainId,
   useSignMessage,
   useSwitchChain,
-  useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 
@@ -18,6 +17,7 @@ import { PassportUploadProgressPanel } from "@/components/passport/passport-uplo
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -56,18 +56,8 @@ function isWalletRejection(err: unknown): boolean {
   return err instanceof Error && err.message.includes("User rejected");
 }
 
-type MintReceiptOutcome =
-  | { status: "pending" }
-  | { status: "receipt_error" }
-  | {
-      status: "parse_error";
-      message: string;
-    }
-  | { status: "success"; tokenId: string; txHash: string };
-
 const MINT_PARSE_ERROR_MESSAGE =
   "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
-const MINT_RECEIPT_ERROR_MESSAGE = "Transaction failed on-chain. Please try again.";
 
 export function CreatePassportWizard() {
   const router = useRouter();
@@ -85,18 +75,18 @@ export function CreatePassportWizard() {
     address,
     connector,
   );
+  const {
+    runTx,
+    phase: txPhase,
+    error: txError,
+    syncLagged,
+  } = useTxSync(chainId);
 
   const [step, setStep] = useState<Step>(1);
   const [phase, setPhase] = useState<Phase>("idle");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [mintHash, setMintHash] = useState<Hash | undefined>();
-
-  const {
-    data: mintReceipt,
-    isLoading: isConfirming,
-    error: mintReceiptError,
-  } = useWaitForTransactionReceipt({ hash: mintHash });
 
   const [form, setForm] = useState<FormState>(() => emptyPassportFormInput());
 
@@ -143,7 +133,7 @@ export function CreatePassportWizard() {
         return;
       }
 
-      const contractAddress = karPassportAddress(walletChain);
+      const contractAddress = karPassportAddress(chainId);
       if (!contractAddress) {
         setFormError("Passport contract not available on this network");
         setPhase("error");
@@ -155,70 +145,65 @@ export function CreatePassportWizard() {
       resetWrite();
       setMintHash(undefined);
 
-      try {
-        const hash = await writeContractAsync({
-          address: contractAddress,
-          abi: KarPassportAbi,
-          functionName: "mintPassport",
-          args: [address, uri],
-        });
-        setMintHash(hash);
-      } catch (err) {
-        if (isWalletRejection(err)) {
+      let mappedError: string | null = null;
+      const result = await runTx(
+        async () => {
+          const hash = await writeContractAsync({
+            address: contractAddress,
+            abi: KarPassportAbi,
+            functionName: "mintPassport",
+            args: [address, uri],
+            chainId: wc,
+          });
+          setMintHash(hash);
+          return hash;
+        },
+        {
+          mapError: (err) => {
+            mappedError = isWalletRejection(err)
+              ? "Transaction cancelled. Try again when ready."
+              : err instanceof Error
+                ? err.message
+                : "Mint failed. Please try again.";
+            return mappedError;
+          },
+        },
+      );
+
+      if (!result) {
+        if (mappedError === "Transaction cancelled. Try again when ready.") {
           setPhase("idle");
-          setFormError("Transaction cancelled. Try again when ready.");
         } else {
           setPhase("error");
-          setFormError(
-            err instanceof Error ? err.message : "Mint failed. Please try again.",
-          );
         }
+        setFormError(mappedError ?? "Mint failed. Please try again.");
+        resetWrite();
+        return;
       }
+
+      const events = parseEventLogs({
+        abi: KarPassportAbi,
+        logs: result.receipt.logs,
+        eventName: "PassportMinted",
+      });
+      const minted = events[0];
+      if (!minted || minted.eventName !== "PassportMinted") {
+        setPhase("error");
+        setFormError(MINT_PARSE_ERROR_MESSAGE);
+        resetWrite();
+        return;
+      }
+
+      const tokenId = minted.args.tokenId.toString();
+      const txHash = result.receipt.transactionHash;
+      setPhase("success");
+      resetWrite();
+      router.push(
+        `/marketplace/${tokenId}/created?chain=${chainId}&tx=${txHash}`,
+      );
     },
-    [address, walletChain, writeContractAsync, resetWrite],
+    [address, chainId, resetWrite, router, runTx, wc, writeContractAsync],
   );
-
-  const mintReceiptOutcome = useMemo((): MintReceiptOutcome => {
-    if (mintReceiptError) return { status: "receipt_error" };
-    if (!mintReceipt) return { status: "pending" };
-
-    const events = parseEventLogs({
-      abi: KarPassportAbi,
-      logs: mintReceipt.logs,
-      eventName: "PassportMinted",
-    });
-    const minted = events[0];
-    if (!minted || minted.eventName !== "PassportMinted") {
-      return { status: "parse_error", message: MINT_PARSE_ERROR_MESSAGE };
-    }
-
-    return {
-      status: "success",
-      tokenId: minted.args.tokenId.toString(),
-      txHash: mintReceipt.transactionHash,
-    };
-  }, [mintReceipt, mintReceiptError]);
-
-  const effectivePhase: Phase =
-    mintReceiptOutcome.status === "receipt_error" || mintReceiptOutcome.status === "parse_error"
-      ? "error"
-      : mintReceiptOutcome.status === "success"
-        ? "success"
-        : phase;
-
-  const effectiveFormError =
-    mintReceiptOutcome.status === "receipt_error"
-      ? MINT_RECEIPT_ERROR_MESSAGE
-      : mintReceiptOutcome.status === "parse_error"
-        ? mintReceiptOutcome.message
-        : formError;
-
-  useEffect(() => {
-    if (mintReceiptOutcome.status !== "success") return;
-    router.push(
-      `/marketplace/${mintReceiptOutcome.tokenId}/created?chain=${walletChain}&tx=${mintReceiptOutcome.txHash}`,
-    );
-  }, [mintReceiptOutcome, router, walletChain]);
 
   const onCreatePassport = async () => {
     setFormError(null);
@@ -286,11 +271,16 @@ export function CreatePassportWizard() {
     }
   };
 
+  const displayPhase: Phase =
+    phase === "minting" && txPhase !== "idle" ? "minting" : phase;
+
   const isBusy =
-    effectivePhase === "uploading" ||
-    effectivePhase === "minting" ||
+    displayPhase === "uploading" ||
+    displayPhase === "minting" ||
     isWritePending ||
-    (isConfirming && mintReceiptOutcome.status === "pending");
+    txPhase !== "idle";
+
+  const displayError = formError ?? txError;
 
   if (!isConnected) {
     return (
@@ -331,9 +321,14 @@ export function CreatePassportWizard() {
         </p>
       )}
 
-      {(effectiveFormError) && (
+      {displayError && (
         <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
-          {effectiveFormError}
+          {displayError}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
@@ -373,26 +368,31 @@ export function CreatePassportWizard() {
             disabled={isBusy}
           />
 
-          {effectivePhase === "uploading" &&
+          {displayPhase === "uploading" &&
             (uploadProgress ? (
               <PassportUploadProgressPanel uploadProgress={uploadProgress} context="create" />
             ) : (
               <p className="font-sans text-sm text-text-secondary">Starting upload…</p>
             ))}
 
-          {effectivePhase === "minting" && (
+          {displayPhase === "minting" && (
             <div className="space-y-1">
               <p className="font-sans text-sm text-text-secondary">
                 Creating passport on-chain…
               </p>
-              {(isWritePending || !mintHash) && (
+              {(txPhase === "wallet" || isWritePending || !mintHash) && (
                 <p className="font-sans text-xs text-text-tertiary">
                   Confirm the transaction in your wallet
                 </p>
               )}
-              {mintHash && isConfirming && (
+              {mintHash && txPhase === "confirming" && (
                 <p className="font-sans text-xs text-text-tertiary">
                   Waiting for confirmation…
+                </p>
+              )}
+              {txPhase === "indexing" && (
+                <p className="font-sans text-xs text-text-tertiary">
+                  Confirming…
                 </p>
               )}
             </div>
@@ -416,9 +416,9 @@ export function CreatePassportWizard() {
               disabled={isBusy || photos.length < 1}
               onClick={() => void onCreatePassport()}
             >
-              {effectivePhase === "uploading"
+              {displayPhase === "uploading"
                 ? "Uploading…"
-                : effectivePhase === "minting"
+                : displayPhase === "minting"
                   ? "Creating passport…"
                   : "Create passport"}
             </Button>

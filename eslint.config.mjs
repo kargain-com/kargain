@@ -1,5 +1,39 @@
 import next from "eslint-config-next";
 
+const restrictedSdkPaths = [
+  {
+    name: "lucide-react",
+    message:
+      "Use @/components/ui/icons (Mono Icons standard, design-spec §7)",
+  },
+  {
+    name: "@xmtp/client",
+    message:
+      "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+  },
+];
+
+const restrictedReceiptPaths = [
+  {
+    name: "wagmi/actions",
+    importNames: ["waitForTransactionReceipt"],
+    message:
+      "Use useTxSync: runTx for final writes or awaitReceipt for prerequisites.",
+  },
+  {
+    name: "@wagmi/core",
+    importNames: ["waitForTransactionReceipt"],
+    message:
+      "Use useTxSync: runTx for final writes or awaitReceipt for prerequisites.",
+  },
+  {
+    name: "wagmi",
+    importNames: ["useWaitForTransactionReceipt"],
+    message:
+      "Use useTxSync: runTx for final writes or awaitReceipt for prerequisites.",
+  },
+];
+
 const eslintConfig = [
   ...next,
   {
@@ -18,18 +52,7 @@ const eslintConfig = [
       "no-restricted-imports": [
         "error",
         {
-          paths: [
-            {
-              name: "lucide-react",
-              message:
-                "Use @/components/ui/icons (Mono Icons standard, design-spec §7)",
-            },
-            {
-              name: "@xmtp/client",
-              message:
-                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
-            },
-          ],
+          paths: [...restrictedSdkPaths, ...restrictedReceiptPaths],
           patterns: [
             {
               group: ["@xmtp/*"],
@@ -52,6 +75,24 @@ const eslintConfig = [
     },
   },
   {
+    files: ["hooks/use-tx-sync.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: restrictedSdkPaths,
+          patterns: [
+            {
+              group: ["@xmtp/*"],
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["lib/nostr/resolve-attested-profile.ts"],
     rules: {
       "no-restricted-syntax": "off",
@@ -68,13 +109,20 @@ const eslintConfig = [
     files: ["test/**", "scripts/**"],
     rules: {
       "no-restricted-syntax": "off",
-      "no-restricted-imports": "off",
     },
   },
   {
     files: ["lib/messaging/adapters/xmtp-adapter.ts"],
     rules: {
-      "no-restricted-imports": "off",
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            restrictedSdkPaths[0],
+            ...restrictedReceiptPaths,
+          ],
+        },
+      ],
     },
   },
   {

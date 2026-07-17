@@ -1,19 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { parseEther, parseUnits, zeroAddress } from "viem";
 import {
   useAccount,
   useChainId,
   useReadContract,
-  useSwitchChain,
   useWriteContract,
-  useConfig,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
 import { parseOnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import { AuctionEscrowAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -22,7 +19,6 @@ import {
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   auctionEscrowAddress,
@@ -54,23 +50,21 @@ export function CreateAuctionPanel({
   isActiveVerifier,
   onSuccess,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
+  const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const [assetKind, setAssetKind] = useState<"ETH" | "USDC">("ETH");
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
-  const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const escrow = auctionEscrowAddress(chainId);
   const passport = karPassportAddress(chainId);
   const usdc = usdcAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const busy = phase !== "idle";
 
   const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
     address: passport,
@@ -126,15 +120,15 @@ export function CreateAuctionPanel({
       args: [escrow, true],
       chainId: wagmiChainId(chainId),
     });
-    await waitForTransactionReceipt(config, { hash });
+    await awaitReceipt(hash);
     await refetchApproval();
   }
 
   async function onCreate() {
-    setTxError(null);
+    setFormError(null);
     if (!escrow) return;
     if (settlementPending) {
-      setTxError(
+      setFormError(
         "The previous sale of this vehicle is still settling. Try again after the hold ends.",
       );
       return;
@@ -142,7 +136,7 @@ export function CreateAuctionPanel({
 
     const durationSec = durationDays * 24 * 60 * 60;
     if (durationSec < THREE_DAYS || durationSec > SEVEN_DAYS) {
-      setTxError("Duration must be between 3 and 7 days.");
+      setFormError("Duration must be between 3 and 7 days.");
       return;
     }
 
@@ -153,41 +147,31 @@ export function CreateAuctionPanel({
           ? parseEther(reserveStr.trim())
           : parseUnits(reserveStr.trim(), 6);
     } catch {
-      setTxError("Enter a valid reserve amount.");
+      setFormError("Enter a valid reserve amount.");
       return;
     }
     if (reserve <= 0n) {
-      setTxError("Enter a valid reserve amount.");
+      setFormError("Enter a valid reserve amount.");
       return;
     }
 
     if (assetKind === "USDC" && !usdc) {
-      setTxError("USDC is not configured on this chain.");
+      setFormError("USDC is not configured on this chain.");
       return;
     }
 
-    setBusy(true);
-    try {
-      if (wrongChain) {
-        await switchChainAsync({ chainId: wagmiChainId(chainId) });
-      }
+    const succeeded = await runTx(async () => {
       await ensureApproval();
       const asset = assetKind === "ETH" ? zeroAddress : usdc!;
-      const hash = await writeContractAsync({
+      return writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "createAuction",
         args: [BigInt(tokenId), asset, reserve, durationSec],
         chainId: wagmiChainId(chainId),
       });
-      await waitForTransactionReceipt(config, { hash });
-      onSuccess?.();
-      router.refresh();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
+    });
+    if (succeeded) onSuccess?.();
   }
 
   return (
@@ -255,7 +239,7 @@ export function CreateAuctionPanel({
           autoComplete="off"
           value={reserveStr}
           onChange={(e) => setReserveStr(e.target.value)}
-          disabled={busy || isWriting}
+          disabled={busy}
           className={cn(
             "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
             "font-mono text-sm tabular-nums text-text-primary",
@@ -278,7 +262,7 @@ export function CreateAuctionPanel({
           id="auction-duration"
           value={durationDays}
           onChange={(e) => setDurationDays(Number(e.target.value))}
-          disabled={busy || isWriting}
+          disabled={busy}
           className={cn(
             "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
             "font-mono text-sm tabular-nums text-text-primary",
@@ -299,21 +283,26 @@ export function CreateAuctionPanel({
         </p>
       )}
 
-      {txError && (
+      {(formError ?? error) && (
         <p className="font-sans text-sm text-status-error" role="alert">
-          {txError}
+          {formError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
       <Button
         type="button"
         className="w-full"
-        disabled={
-          busy || isWriting || !reserveStr.trim() || settlementPending
-        }
+        disabled={busy || !reserveStr.trim() || settlementPending}
         onClick={() => void onCreate()}
       >
-        {busy || isWriting
+        {phase === "indexing"
+          ? "Confirming…"
+          : busy
           ? approvedForAll
             ? "Confirming…"
             : "Approving passport…"

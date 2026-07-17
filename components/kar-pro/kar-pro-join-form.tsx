@@ -1,14 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useAccount,
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useAccount, useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
@@ -17,6 +10,7 @@ import {
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   categoryIndexToLabel,
@@ -25,17 +19,15 @@ import {
 } from "@/lib/kar-pro/kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
-type LoadingPhase = "idle" | "uploading" | "confirming";
+type LoadingPhase = "idle" | "uploading";
 
 export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const chainId = DEFAULT_CHAIN_ID;
-  const config = useConfig();
   const { address, connector } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [fields, setFields] = useState<KarProProfileFieldValues>({
@@ -50,11 +42,9 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const staking = karProStakingAddress(chainId);
-  const wc = wagmiChainId(chainId);
-  const wrongChain = walletChain !== chainId;
 
   const { minStake, stakeLabel } = useMinStakeNative();
-  const isBusy = loadingPhase !== "idle";
+  const isBusy = loadingPhase !== "idle" || txPhase !== "idle";
   const stakeReady = minStake !== undefined;
 
   const onContinue = () => {
@@ -88,8 +78,6 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
 
     try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-
       setLoadingPhase("uploading");
       const provider = await getWalletUploadProvider(connector ?? undefined);
       const metadataUri = await uploadKarProMetadata(
@@ -103,25 +91,29 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         provider,
       );
 
-      setLoadingPhase("confirming");
-      const hash = await writeContractAsync({
-        address: staking,
-        abi: KarProStakingAbi,
-        functionName: "becomeVerifierNative",
-        args: [fields.categoryIndex, fields.name.trim(), metadataUri],
-        value: minStake,
-      });
-
-      await waitForTransactionReceipt(config, { hash });
       setLoadingPhase("idle");
-      onSuccess();
+      const succeeded = await runTx(
+        () =>
+          writeContractAsync({
+            address: staking,
+            abi: KarProStakingAbi,
+            functionName: "becomeVerifierNative",
+            args: [fields.categoryIndex, fields.name.trim(), metadataUri],
+            value: minStake,
+          }),
+        {
+          mapError: (err) =>
+            err instanceof Error && err.message.includes("User rejected")
+              ? "Transaction cancelled."
+              : err instanceof Error
+                ? err.message
+                : "Something went wrong. Try again.",
+        },
+      );
+      if (succeeded) onSuccess();
     } catch (err) {
       setLoadingPhase("idle");
-      if (err instanceof Error && err.message.includes("User rejected")) {
-        setError("Transaction cancelled.");
-      } else {
-        setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
-      }
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };
 
@@ -135,9 +127,14 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
           ownerAddress={address}
           onSlugAvailabilityChange={setSlugAvailability}
         />
-        {error && (
+        {(error ?? txSyncError) && (
           <p role="alert" className="font-sans text-fluid-sm text-status-error">
-            {error}
+            {error ?? txSyncError}
+          </p>
+        )}
+        {syncLagged && (
+          <p role="status" className="font-sans text-xs text-text-tertiary">
+            {TX_SYNC_LAG_ADVISORY}
           </p>
         )}
         <Button type="button" variant="ghost" disabled={isBusy} onClick={onContinue}>
@@ -181,7 +178,9 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         >
           {loadingPhase === "uploading"
             ? "Uploading profile…"
-            : loadingPhase === "confirming"
+            : txPhase === "indexing"
+              ? "Confirming…"
+              : txPhase !== "idle"
               ? "Confirming transaction…"
               : `Stake ${stakeLabel} ETH & become KarPro`}
         </Button>
@@ -196,9 +195,14 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
         >
           Back
         </Button>
-        {error && (
+        {(error ?? txSyncError) && (
           <p role="alert" className="font-sans text-fluid-sm text-status-error">
-            {error}
+            {error ?? txSyncError}
+          </p>
+        )}
+        {syncLagged && (
+          <p role="status" className="font-sans text-xs text-text-tertiary">
+            {TX_SYNC_LAG_ADVISORY}
           </p>
         )}
       </div>

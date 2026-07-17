@@ -1,22 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-  useConfig,
-} from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
+import { useAccount, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -36,14 +27,10 @@ export function AuctionFinalizePanel({
   passportStatus,
   onSuccess,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
   const { isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
-  const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = phase !== "idle";
 
   const escrow = auctionEscrowAddress(chainId);
   const useVoid = passportStatus === "UNVERIFIED";
@@ -53,27 +40,18 @@ export function AuctionFinalizePanel({
       : null;
 
   async function onFinalize() {
-    setTxError(null);
     if (!escrow) return;
-    setBusy(true);
-    try {
-      if (walletChainId !== wagmiChainId(chainId)) {
-        await switchChainAsync({ chainId: wagmiChainId(chainId) });
-      }
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: useVoid ? "voidAuction" : "settle",
         args: [BigInt(tokenId)],
         chainId: wagmiChainId(chainId),
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onSuccess?.();
-      router.refresh();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -111,9 +89,14 @@ export function AuctionFinalizePanel({
           hold.
         </p>
       )}
-      {txError && (
+      {error && (
         <p className="font-sans text-sm text-status-error" role="alert">
-          {txError}
+          {error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
       <Button
@@ -122,7 +105,7 @@ export function AuctionFinalizePanel({
         disabled={busy || isPending || !escrow}
         onClick={() => void onFinalize()}
       >
-        {busy || isPending
+        {phase === "indexing" || busy || isPending
           ? "Confirming…"
           : useVoid
             ? "Void auction"

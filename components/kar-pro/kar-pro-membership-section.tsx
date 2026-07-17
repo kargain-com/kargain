@@ -1,21 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
-import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
 type KarProMembershipSectionProps = {
@@ -30,46 +25,38 @@ export function KarProMembershipSection({
   onLeft,
 }: KarProMembershipSectionProps) {
   const chainId = DEFAULT_CHAIN_ID;
-  const config = useConfig();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const { stakeLabel } = useMinStakeNative();
 
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const staking = karProStakingAddress(chainId);
-  const wc = wagmiChainId(chainId);
-  const wrongChain = walletChain !== chainId;
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
+  const loading = txPhase !== "idle";
 
   const onLeave = async () => {
     if (!staking) return;
-    setError(null);
-    setLoading(true);
 
-    try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-
-      const hash = await writeContractAsync({
-        address: staking,
-        abi: KarProStakingAbi,
-        functionName: "leave",
-      });
-
-      await waitForTransactionReceipt(config, { hash });
+    const succeeded = await runTx(
+      () =>
+        writeContractAsync({
+          address: staking,
+          abi: KarProStakingAbi,
+          functionName: "leave",
+        }),
+      {
+        mapError: (err) =>
+          err instanceof Error && err.message.includes("User rejected")
+            ? "Transaction cancelled."
+            : err instanceof Error
+              ? err.message
+              : "Leave failed. Try again.",
+      },
+    );
+    if (succeeded) {
       setLeaveConfirm(false);
       onLeft?.();
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("User rejected")) {
-        setError("Transaction cancelled.");
-      } else {
-        setError(err instanceof Error ? err.message : "Leave failed. Try again.");
-      }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -119,7 +106,7 @@ export function KarProMembershipSection({
                 disabled={loading}
                 onClick={() => void onLeave()}
               >
-                Confirm leave
+                {txPhase === "indexing" ? "Confirming…" : "Confirm leave"}
               </Button>
               <Button
                 type="button"
@@ -127,7 +114,6 @@ export function KarProMembershipSection({
                 disabled={loading}
                 onClick={() => {
                   setLeaveConfirm(false);
-                  setError(null);
                 }}
               >
                 Cancel
@@ -147,9 +133,14 @@ export function KarProMembershipSection({
         )}
       </div>
 
-      {error && (
+      {txSyncError && (
         <p role="alert" className="mt-4 font-sans text-fluid-sm text-status-error">
-          {error}
+          {txSyncError}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

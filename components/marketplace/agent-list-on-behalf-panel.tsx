@@ -2,11 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
-  useConfig,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -15,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   SellerNetCalculator,
   sellerNetSatisfied,
@@ -68,12 +67,13 @@ export function AgentListOnBehalfPanel({
   wallet,
   onSuccess,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
@@ -130,19 +130,21 @@ export function AgentListOnBehalfPanel({
       const noteBytes = settlementNote.trim()
         ? stringToHex(settlementNote.trim())
         : ("0x" as const);
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "listOnBehalf",
-        args: [
-          tid,
-          price1e8,
-          encodeCurrencyCode(listingCurrency),
-          agentFeeBps,
-          noteBytes,
-        ],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "listOnBehalf",
+          args: [
+            tid,
+            price1e8,
+            encodeCurrencyCode(listingCurrency),
+            agentFeeBps,
+            noteBytes,
+          ],
+        }),
+      );
+      if (!succeeded) return;
       onSuccess();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -160,8 +162,8 @@ export function AgentListOnBehalfPanel({
     tid,
     listingCurrency,
     agentFeeBps,
-    config,
     onSuccess,
+    runTx,
   ]);
 
   return (
@@ -176,7 +178,7 @@ export function AgentListOnBehalfPanel({
           placeholder="42,000"
           value={priceInput}
           onChange={(e) => setPriceInput(e.target.value)}
-          disabled={isPending}
+          disabled={busy}
           className="border-border-default bg-bg-card"
         />
       </div>
@@ -189,7 +191,7 @@ export function AgentListOnBehalfPanel({
           placeholder="5"
           value={commissionInput}
           onChange={(e) => setCommissionInput(e.target.value)}
-          disabled={isPending}
+          disabled={busy}
           className="border-border-default bg-bg-card"
         />
         {commissionInput.trim() && !validCommission && (
@@ -207,7 +209,7 @@ export function AgentListOnBehalfPanel({
           onChange={(e) => setSettlementNote(e.target.value)}
           placeholder="e.g. Bank IBAN, BTC address, or payment instructions for the buyer"
           rows={2}
-          disabled={isPending}
+          disabled={busy}
           className="border-border-default bg-bg-card"
         />
       </div>
@@ -220,23 +222,28 @@ export function AgentListOnBehalfPanel({
         currencyCode={listingCurrency}
       />
 
-      {txError && (
+      {(txError ?? error) && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
-      {submitDisabledReason && !isPending && (
+      {submitDisabledReason && !busy && (
         <p className="text-xs text-text-secondary">{submitDisabledReason}</p>
       )}
 
       <Button
         type="button"
         className="w-full"
-        disabled={isPending || Boolean(submitDisabledReason)}
+        disabled={busy || Boolean(submitDisabledReason)}
         onClick={() => void runListOnBehalf()}
       >
-        List for sale
+        {busy ? "Confirming…" : "List for sale"}
       </Button>
     </div>
   );

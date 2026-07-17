@@ -1,16 +1,15 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
-  useConfig,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
@@ -24,12 +23,13 @@ type Props = {
 };
 
 export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
@@ -45,13 +45,15 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "agentDelist",
-        args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "agentDelist",
+          args: [tid],
+        }),
+      );
+      if (!succeeded) return;
       onSuccess();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -64,15 +66,20 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
     wc,
     writeContractAsync,
     tid,
-    config,
     onSuccess,
+    runTx,
   ]);
 
   return (
     <div className="mt-3 border-t border-border-default pt-3">
-      {txError && (
+      {(txError ?? error) && (
         <p className="mb-2 text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
       {!isAgentWallet && (
@@ -84,10 +91,10 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
         type="button"
         variant="outline"
         className="w-full border-status-error text-status-error hover:bg-bg-surface"
-        disabled={isPending || !isAgentWallet}
+        disabled={busy || !isAgentWallet}
         onClick={() => void runAgentDelist()}
       >
-        Return to owner
+        {busy ? "Confirming…" : "Return to owner"}
       </Button>
     </div>
   );

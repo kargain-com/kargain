@@ -1,18 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   useAccount,
   useChainId,
-  useConfig,
   useReadContract,
-  useSwitchChain,
   useWriteContract,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   auctionReserveMeetsOwnerMin,
   isAuctionAuthUsableForCreate,
@@ -63,18 +60,16 @@ export function AgentCreateAuctionPanel({
   tokenId,
   onSuccess,
 }: Props) {
-  const router = useRouter();
-  const config = useConfig();
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
   const [commissionInput, setCommissionInput] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const busy = phase !== "idle";
 
   const escrow = auctionEscrowAddress(chainId);
   const usdc = usdcAddress(chainId);
@@ -196,25 +191,17 @@ export function AgentCreateAuctionPanel({
       return;
     }
 
-    setBusy(true);
-    try {
-      if (wrongChain) {
-        await switchChainAsync({ chainId: wagmiChainId(chainId) });
-      }
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: "createAuctionOnBehalf",
         args: [tid, auth.asset, reserve, durationSec, agentFeeBps],
         chainId: wagmiChainId(chainId),
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onSuccess?.();
-      router.refresh();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -344,9 +331,14 @@ export function AgentCreateAuctionPanel({
         </p>
       )}
 
-      {txError && (
+      {(txError ?? error) && (
         <p className="font-sans text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
@@ -363,7 +355,9 @@ export function AgentCreateAuctionPanel({
         }
         onClick={() => void onCreate()}
       >
-        {busy || isWriting ? "Confirming…" : "Start auction"}
+        {phase === "indexing" || busy || isWriting
+          ? "Confirming…"
+          : "Start auction"}
       </Button>
     </div>
   );

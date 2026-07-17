@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
 import {
   useAccount,
   useChainId,
   useReadContracts,
   useSwitchChain,
   useWriteContract,
-  useConfig,
 } from "wagmi";
 
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
@@ -18,6 +16,7 @@ import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   encodeCurrencyCode,
   listingCurrencyCodesForChain,
@@ -49,24 +48,18 @@ type Props = {
   passportStatus?: PassportStatus;
 };
 
-const DELIST_CONFIRM_ATTEMPTS = 5;
-const DELIST_CONFIRM_INTERVAL_MS = 1_000;
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function ListingEditClient({
   tokenId,
   chainId,
   passportStatus,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
+    useTxSync(chainId);
   const currencyOptions = listingCurrencyCodesForChain(chainId);
   const [priceInput, setPriceInput] = useState("");
   const [askingCurrency, setAskingCurrency] = useState<ListingCurrencyCode>(
@@ -74,7 +67,6 @@ export function ListingEditClient({
   );
   const [settlementNote, setSettlementNote] = useState("");
   const [log, setLog] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
   const passport = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
@@ -145,75 +137,49 @@ export function ListingEditClient({
 
   const isApproved =
     Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
-  const actionsPending = isPending || confirming;
+  const actionsPending = isPending || busy;
   const auctionHint =
     passportStatus !== undefined && passportStatus !== "VERIFIED"
       ? AUCTION_REQUIRES_VERIFICATION_HINT
       : DELIST_BEFORE_AUCTION_HINT;
 
-  const confirmListingInactive = useCallback(async (): Promise<boolean> => {
-    for (let attempt = 0; attempt < DELIST_CONFIRM_ATTEMPTS; attempt += 1) {
-      const refreshed = await refetchReads();
-      const listingRead = refreshed.data?.[2];
-      if (listingRead?.status === "success") {
-        const refreshedRow = parseOnChainListing(listingRead.result);
-        if (refreshedRow?.active === false) return true;
-      }
-      if (attempt < DELIST_CONFIRM_ATTEMPTS - 1) {
-        await wait(DELIST_CONFIRM_INTERVAL_MS);
-      }
-    }
-    return false;
-  }, [refetchReads]);
-
   const saveSettlementNote = useCallback(
-    async (note: string) => {
-      if (!market || !note.trim()) return;
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "setSettlementNote",
-        args: [tid, stringToHex(note.trim())],
-      });
-      await waitForTransactionReceipt(config, { hash });
-      await refetchListing();
+    async (note: string): Promise<boolean> => {
+      if (!market || !note.trim()) return false;
+      return (
+        (await runTx(() =>
+          writeContractAsync({
+            address: market,
+            abi: MarketplaceEscrowAbi,
+            functionName: "setSettlementNote",
+            args: [tid, stringToHex(note.trim())],
+            chainId: wc,
+          }),
+        )) !== false
+      );
     },
-    [config, market, refetchListing, tid, writeContractAsync],
+    [market, runTx, tid, wc, writeContractAsync],
   );
 
   const runDelist = useCallback(async () => {
     if (!canDelist || !market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Delisting…");
-    setConfirming(true);
-    try {
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: market,
         abi: MarketplaceEscrowAbi,
         functionName: "delist",
         args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
-      const confirmed = await confirmListingInactive();
-      setLog(
-        confirmed
-          ? "Delisted."
-          : "Delisted — waiting for network confirmation.",
-      );
-    } catch (err) {
-      setLog(txErrorMessage(err));
-    } finally {
-      setConfirming(false);
-    }
+        chainId: wc,
+      }),
+    );
+    if (succeeded) setLog("Delisted.");
   }, [
     canDelist,
-    wrongChain,
     market,
     tid,
-    config,
     wc,
-    confirmListingInactive,
-    switchChainAsync,
+    runTx,
     writeContractAsync,
   ]);
 
@@ -228,40 +194,52 @@ export function ListingEditClient({
         functionName: "approve",
         args: [market, tid],
       });
-      await waitForTransactionReceipt(config, { hash });
+      await awaitReceipt(hash);
       await refetchListing();
       setLog("Marketplace approved.");
     } catch (err) {
       setLog(txErrorMessage(err));
     }
-  }, [address, wrongChain, passport, market, tid, config, wc, refetchListing, switchChainAsync, writeContractAsync]);
+  }, [address, wrongChain, passport, market, tid, wc, refetchListing, switchChainAsync, writeContractAsync, awaitReceipt]);
 
   const runList = useCallback(async () => {
-    if (!canList || !market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    const amount = parseUnits(priceInput || "0", 8);
-    if (amount <= 0n) {
-      setLog("Enter a valid asking price.");
-      return;
-    }
-    setLog("Listing…");
-    try {
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "list",
-        args: [tid, amount, encodeCurrencyCode(askingCurrency)],
-      });
-      await waitForTransactionReceipt(config, { hash });
-      if (settlementNote.trim()) {
-        setLog("Saving payment instructions…");
-        await saveSettlementNote(settlementNote);
+    await runFlow(async () => {
+      if (!canList || !market) return;
+      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      const amount = parseUnits(priceInput || "0", 8);
+      if (amount <= 0n) {
+        setLog("Enter a valid asking price.");
+        return;
       }
-      await refetchListing();
-      setLog("Listed.");
-    } catch (err) {
-      setLog(txErrorMessage(err));
-    }
+      setLog("Listing…");
+      try {
+        if (settlementNote.trim()) {
+          const hash = await writeContractAsync({
+            address: market,
+            abi: MarketplaceEscrowAbi,
+            functionName: "list",
+            args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+          });
+          await awaitReceipt(hash);
+          setLog("Saving payment instructions…");
+          if (!(await saveSettlementNote(settlementNote))) return;
+        } else {
+          const succeeded = await runTx(() =>
+            writeContractAsync({
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "list",
+              args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+            }),
+          );
+          if (!succeeded) return;
+        }
+        await refetchListing();
+        setLog("Listed.");
+      } catch (err) {
+        setLog(txErrorMessage(err));
+      }
+    });
   }, [
     canList,
     wrongChain,
@@ -270,56 +248,70 @@ export function ListingEditClient({
     askingCurrency,
     settlementNote,
     tid,
-    config,
     wc,
     refetchListing,
     saveSettlementNote,
     switchChainAsync,
     writeContractAsync,
+    awaitReceipt,
+    runTx,
+    runFlow,
   ]);
 
   const runUpdatePrice = useCallback(async () => {
-    if (!canDelist || !market || !passport) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
-    const amount = parseUnits(priceInput || "0", 8);
-    if (amount <= 0n) {
-      setLog("Enter a valid asking price.");
-      return;
-    }
-    setLog("Updating price (delist + relist)…");
-    try {
-      let hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "delist",
-        args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
-      if (!isApproved) {
-        hash = await writeContractAsync({
-          address: passport,
-          abi: KarPassportAbi,
-          functionName: "approve",
-          args: [market, tid],
+    await runFlow(async () => {
+      if (!canDelist || !market || !passport) return;
+      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      const amount = parseUnits(priceInput || "0", 8);
+      if (amount <= 0n) {
+        setLog("Enter a valid asking price.");
+        return;
+      }
+      setLog("Updating price (delist + relist)…");
+      try {
+        let hash = await writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "delist",
+          args: [tid],
         });
-        await waitForTransactionReceipt(config, { hash });
+        await awaitReceipt(hash);
+        if (!isApproved) {
+          hash = await writeContractAsync({
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "approve",
+            args: [market, tid],
+          });
+          await awaitReceipt(hash);
+        }
+        if (settlementNote.trim()) {
+          hash = await writeContractAsync({
+            address: market,
+            abi: MarketplaceEscrowAbi,
+            functionName: "list",
+            args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+          });
+          await awaitReceipt(hash);
+          setLog("Saving payment instructions…");
+          if (!(await saveSettlementNote(settlementNote))) return;
+        } else {
+          const succeeded = await runTx(() =>
+            writeContractAsync({
+              address: market,
+              abi: MarketplaceEscrowAbi,
+              functionName: "list",
+              args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+            }),
+          );
+          if (!succeeded) return;
+        }
+        await refetchListing();
+        setLog("Price updated.");
+      } catch (err) {
+        setLog(txErrorMessage(err));
       }
-      hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "list",
-        args: [tid, amount, encodeCurrencyCode(askingCurrency)],
-      });
-      await waitForTransactionReceipt(config, { hash });
-      if (settlementNote.trim()) {
-        setLog("Saving payment instructions…");
-        await saveSettlementNote(settlementNote);
-      }
-      await refetchListing();
-      setLog("Price updated.");
-    } catch (err) {
-      setLog(txErrorMessage(err));
-    }
+    });
   }, [
     canDelist,
     wrongChain,
@@ -330,12 +322,14 @@ export function ListingEditClient({
     settlementNote,
     isApproved,
     tid,
-    config,
     wc,
     refetchListing,
     saveSettlementNote,
     switchChainAsync,
     writeContractAsync,
+    awaitReceipt,
+    runTx,
+    runFlow,
   ]);
 
   const runSaveSettlementNote = useCallback(async () => {
@@ -344,23 +338,16 @@ export function ListingEditClient({
       setLog("Enter direct payment instructions.");
       return;
     }
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Saving payment instructions…");
-    try {
-      await saveSettlementNote(settlementNote);
+    if (await saveSettlementNote(settlementNote)) {
       setLog("Payment instructions saved.");
-    } catch (err) {
-      setLog(txErrorMessage(err));
     }
   }, [
     active,
     isSeller,
     market,
     settlementNote,
-    wrongChain,
-    wc,
     saveSettlementNote,
-    switchChainAsync,
   ]);
 
   if (!isConnected) {
@@ -438,7 +425,7 @@ export function ListingEditClient({
             disabled={actionsPending}
             onClick={() => void runDelist()}
           >
-            Delist
+            {actionsPending ? "Confirming…" : "Delist"}
           </Button>
         </section>
       )}
@@ -462,7 +449,7 @@ export function ListingEditClient({
             disabled={actionsPending}
           />
           <Button type="button" disabled={actionsPending} onClick={() => void runUpdatePrice()}>
-            Update asking price
+            {actionsPending ? "Confirming…" : "Update asking price"}
           </Button>
         </section>
       )}
@@ -486,7 +473,7 @@ export function ListingEditClient({
             disabled={actionsPending}
           />
           <Button type="button" variant="secondary" disabled={actionsPending} onClick={() => void runSaveSettlementNote()}>
-            Save payment instructions
+            {actionsPending ? "Confirming…" : "Save payment instructions"}
           </Button>
         </section>
       )}
@@ -496,7 +483,7 @@ export function ListingEditClient({
           <h2 className="text-sm font-medium text-text-primary">List for sale</h2>
           {!isApproved && (
             <Button type="button" variant="outline" disabled={actionsPending} onClick={() => void runApprove()}>
-              Approve marketplace
+              {actionsPending ? "Confirming…" : "Approve marketplace"}
             </Button>
           )}
           {isApproved && <p className="text-xs text-text-secondary">Marketplace approved.</p>}
@@ -512,14 +499,19 @@ export function ListingEditClient({
             disabled={actionsPending}
           />
           <Button type="button" disabled={actionsPending || !isApproved} onClick={() => void runList()}>
-            List for sale
+            {actionsPending ? "Confirming…" : "List for sale"}
           </Button>
         </section>
       )}
 
-      {log && (
+      {(error ?? log) && (
         <p className="text-sm text-text-secondary" role="status">
-          {log}
+          {error ?? log}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

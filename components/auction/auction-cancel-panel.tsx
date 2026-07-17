@@ -1,22 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
+import { useAccount, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { hasAuctionAgent } from "@/lib/auction/auction-agent";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
   chainId: number;
@@ -35,17 +26,13 @@ export function AuctionCancelPanel({
   auction,
   onSuccess,
 }: Props) {
-  const config = useConfig();
   const { address } = useAccount();
-  const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
-  const [txError, setTxError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const busy = phase !== "idle";
 
   const escrow = auctionEscrowAddress(chainId);
-  const wrongChain = walletChainId !== wagmiChainId(chainId);
 
   const isSeller =
     Boolean(address) &&
@@ -60,24 +47,16 @@ export function AuctionCancelPanel({
 
   const runCancel = async () => {
     if (!escrow) return;
-    setTxError(null);
-    setBusy(true);
-    try {
-      if (wrongChain) {
-        await switchChainAsync?.({ chainId: wagmiChainId(chainId) });
-      }
-      const hash = await writeContractAsync({
+    const succeeded = await runTx(() =>
+      writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
         functionName: isAgent ? "agentCancelAuction" : "cancelAuction",
         args: [BigInt(tokenId)],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      }),
+    );
+    if (succeeded) {
       onSuccess?.();
-    } catch (err) {
-      setTxError(txErrorMessage(err));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -93,11 +72,18 @@ export function AuctionCancelPanel({
         disabled={busy || isPending}
         onClick={() => void runCancel()}
       >
-        {busy || isPending ? "Cancelling…" : "Cancel auction"}
+        {phase === "indexing" || busy || isPending
+          ? "Confirming…"
+          : "Cancel auction"}
       </Button>
-      {txError && (
+      {error && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
     </div>

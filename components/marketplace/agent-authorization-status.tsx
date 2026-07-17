@@ -3,13 +3,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { parseUnits } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import {
-  useChainId,
-  useConfig,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { listingCurrencyCodesForChain } from "@/lib/marketplace/currency-code";
@@ -57,11 +52,12 @@ export function AgentAuthorizationStatus({
   listingActive,
   onChanged,
 }: Props) {
-  const config = useConfig();
   const wc = wagmiChainId(chainId);
   const walletChain = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { runTx, phase, error, syncLagged } = useTxSync(chainId);
+  const busy = isPending || phase !== "idle";
 
   const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
@@ -108,13 +104,15 @@ export function AgentAuthorizationStatus({
     setTxError(null);
     try {
       const newMin = parseUnits(lowerInput, 8);
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "updateOwnerMinPrice",
-        args: [tid, newMin],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "updateOwnerMinPrice",
+          args: [tid, newMin],
+        }),
+      );
+      if (!succeeded) return;
       onChanged();
       handleLowerOpenChange(false);
     } catch (err) {
@@ -129,9 +127,9 @@ export function AgentAuthorizationStatus({
     lowerInput,
     writeContractAsync,
     tid,
-    config,
     onChanged,
     handleLowerOpenChange,
+    runTx,
   ]);
 
   const runRevoke = useCallback(async () => {
@@ -139,13 +137,15 @@ export function AgentAuthorizationStatus({
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "revokeAgent",
-        args: [tid],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      const succeeded = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: MarketplaceEscrowAbi,
+          functionName: "revokeAgent",
+          args: [tid],
+        }),
+      );
+      if (!succeeded) return;
       onChanged();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -158,8 +158,8 @@ export function AgentAuthorizationStatus({
     wc,
     writeContractAsync,
     tid,
-    config,
     onChanged,
+    runTx,
   ]);
 
   return (
@@ -201,9 +201,14 @@ export function AgentAuthorizationStatus({
         </div>
       </dl>
 
-      {txError && !lowerOpen && (
+      {(txError ?? error) && !lowerOpen && (
         <p className="text-sm text-status-error" role="alert">
-          {txError}
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && !lowerOpen && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
 
@@ -220,10 +225,10 @@ export function AgentAuthorizationStatus({
           type="button"
           variant="outline"
           className="w-full"
-          disabled={listingActive || isPending}
+          disabled={listingActive || busy}
           onClick={() => void runRevoke()}
         >
-          Revoke agent
+          {busy ? "Confirming…" : "Revoke agent"}
         </Button>
         {listingActive && (
           <p className="text-center text-xs text-text-secondary">
@@ -260,9 +265,14 @@ export function AgentAuthorizationStatus({
             )}
           </div>
 
-          {txError && (
+          {(txError ?? error) && (
             <p className="text-sm text-status-error" role="alert">
-              {txError}
+              {txError ?? error}
+            </p>
+          )}
+          {syncLagged && (
+            <p role="status" className="font-sans text-xs text-text-tertiary">
+              {TX_SYNC_LAG_ADVISORY}
             </p>
           )}
 
@@ -272,10 +282,10 @@ export function AgentAuthorizationStatus({
             </Button>
             <Button
               type="button"
-              disabled={!canSubmitLower || isPending}
+              disabled={!canSubmitLower || busy}
               onClick={() => void runLowerMin()}
             >
-              Update minimum
+              {busy ? "Confirming…" : "Update minimum"}
             </Button>
           </div>
         </DialogContent>
