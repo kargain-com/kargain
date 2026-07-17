@@ -18,6 +18,7 @@ export type SellSurfaceFlags = {
   showAuctionCreate: boolean;
   showAuctionAuthorize: boolean;
   showAuctionAuthCard: boolean;
+  showAuctionRequirementNote: boolean;
 };
 
 type AuctionAuthState = {
@@ -31,6 +32,7 @@ export type SellSurfaceInput = {
   listingState: SellListingState;
   /** `undefined` means auction truth is unresolved or unavailable. */
   auctionBlocks: boolean | undefined;
+  auctionEscrowConfigured: boolean;
   passportStatus: PassportStatus;
   /** `undefined` means the staking read is unresolved or unavailable. */
   isActiveVerifier: boolean | undefined;
@@ -47,6 +49,7 @@ const HIDDEN_FLAGS: SellSurfaceFlags = {
   showAuctionCreate: false,
   showAuctionAuthorize: false,
   showAuctionAuthCard: false,
+  showAuctionRequirementNote: false,
 };
 
 /**
@@ -96,5 +99,7 @@ export function deriveSellSurface(
     showAuctionAuthorize:
       mayChooseAuctionPath && input.isActiveVerifier === false,
     showAuctionAuthCard,
+    showAuctionRequirementNote:
+      input.auctionEscrowConfigured && !verified,
   };
 }

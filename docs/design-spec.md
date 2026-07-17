@@ -686,10 +686,17 @@ Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[
 
 - One neutral Level B frame headed **Sell this vehicle**, ordered **Fixed price** → **Delegation** → **Auction**.
 - Fixed price shows **List for sale**. Delegation shows **Delegate to a pro**, replaced by the existing marketplace authorization status card while authorization is active.
-- The auction row exists only for VERIFIED passports. An active KarPro owner sees the direct create panel; another owner sees **Authorize auction agent**. An active auction authorization takes precedence over both and renders [`auction-agent-authorization-status.tsx`](../components/auction/auction-agent-authorization-status.tsx): agent, asset minimum, expiry, neutral expired tag, and **Manage** opening the existing revoke-capable dialog.
+- The auction row shows a quiet text-only verification requirement for an owner of a non-VERIFIED passport when auction escrow is configured. For a VERIFIED passport, an active KarPro owner sees the direct create panel; another owner sees **Authorize auction agent**. An active auction authorization takes precedence over both and renders [`auction-agent-authorization-status.tsx`](../components/auction/auction-agent-authorization-status.tsx): agent, asset minimum, expiry, neutral expired tag, and **Manage** opening the existing revoke-capable dialog.
 - Expiry does not hide an active authorization card: expired authorization remains owner-revocable, while agent create remains disabled.
 - Owner, listing, authorization, verifier, auction, and open-hold facts are chain-read with explicit `chainId`. Each row fails closed while its required fact is unresolved or unavailable; Ponder fallback never enables a new owner write. Dialog callbacks refetch the panel reads, and auction changes also invalidate shared auction detail.
-- [`sell-surface.ts`](../lib/passport/sell-surface.ts) is the pure six-flag visibility policy. Successful inactive chain listing state is required for the group; active listing, live auction, settlement hold, or non-owner returns all flags false.
+- [`sell-surface.ts`](../lib/passport/sell-surface.ts) is the pure seven-flag visibility policy. Successful inactive chain listing state is required for the group; active listing, live auction, settlement hold, or non-owner returns all flags false.
+
+#### Copy (verbatim catalog subset)
+
+| Surface | Gate | Copy |
+|---------|------|------|
+| Owner **Sell this vehicle** Auction row; Manage listing Delist section | Auction escrow configured and passport status known non-VERIFIED | *Reserve auctions require a verified passport. Get this vehicle verified by a KarPro to enable auctions.* |
+| Manage listing Delist section | Auction escrow configured and passport VERIFIED, or status unavailable | *To start a reserve auction, delist this fixed-price listing first.* |
 
 #### Role matrix
 
@@ -722,7 +729,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
 | **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
-**Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides the entire owner sell group; chain listing truth hides all new sale-start choices while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). Auction creation/authorization also stays hidden while `holds.releaseAt ≠ 0` (U9). An unlisted KarPro sees **List for sale** and the direct create panel together inside **Sell this vehicle** (sale-form choice). Seller (listed) sees neutral hint *To start a reserve auction, delist this fixed-price listing first.* above **Manage listing** and under Delist on the edit page (`DELIST_BEFORE_AUCTION_HINT`) when auction escrow is deployed.
+**Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides the entire owner sell group; chain listing truth hides all new sale-start choices while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). Auction creation/authorization also stays hidden while `holds.releaseAt ≠ 0` (U9). An unlisted KarPro sees **List for sale** and the direct create panel together inside **Sell this vehicle** (sale-form choice). Seller (listed) sees the status-aware neutral hint from the catalog above under Delist on the edit page when auction escrow is deployed. If Ponder status is unavailable, the page keeps the existing delist-before-auction hint and adds no error surface.
 
 #### Settlement (г-3)
 
@@ -1471,4 +1478,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.59 (July 2026 — unified owner “Sell this vehicle” group; active marketplace/auction authorizations replace their CTAs with status cards). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.60 (July 2026 — auction verification guidance on the owner sell group and Manage listing Delist section). Update when tokens, app shell, or component contracts change.*

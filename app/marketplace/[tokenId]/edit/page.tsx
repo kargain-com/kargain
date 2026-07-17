@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { ListingEditClient } from "@/components/marketplace/listing-edit-client";
+import { fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { parseChainParam } from "@/lib/web3/parse-chain-param";
 
 function EditFallback() {
@@ -43,9 +44,17 @@ async function MarketplaceListingEditInner({
     notFound();
   }
 
+  const passportResult = await fetchPassportDetailCached(tokenId, chainId);
+
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
-      <ListingEditClient tokenId={tokenId} chainId={chainId} />
+      <ListingEditClient
+        tokenId={tokenId}
+        chainId={chainId}
+        passportStatus={
+          passportResult.ok ? passportResult.passport.status : undefined
+        }
+      />
     </div>
   );
 }

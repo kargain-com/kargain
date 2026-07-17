@@ -27,11 +27,15 @@ import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format"
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
+import {
+  AUCTION_REQUIRES_VERIFICATION_HINT,
+  DELIST_BEFORE_AUCTION_HINT,
+} from "@/lib/auction/sale-form-copy";
 import {
   KarPassportAbi,
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
+import type { PassportStatus } from "@/lib/types/ponder";
 import {
   auctionEscrowAddress,
   karPassportAddress,
@@ -42,6 +46,7 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 type Props = {
   tokenId: string;
   chainId: number;
+  passportStatus?: PassportStatus;
 };
 
 const DELIST_CONFIRM_ATTEMPTS = 5;
@@ -51,7 +56,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function ListingEditClient({ tokenId, chainId }: Props) {
+export function ListingEditClient({
+  tokenId,
+  chainId,
+  passportStatus,
+}: Props) {
   const config = useConfig();
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
@@ -137,6 +146,10 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
   const isApproved =
     Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
   const actionsPending = isPending || confirming;
+  const auctionHint =
+    passportStatus !== undefined && passportStatus !== "VERIFIED"
+      ? AUCTION_REQUIRES_VERIFICATION_HINT
+      : DELIST_BEFORE_AUCTION_HINT;
 
   const confirmListingInactive = useCallback(async (): Promise<boolean> => {
     for (let attempt = 0; attempt < DELIST_CONFIRM_ATTEMPTS; attempt += 1) {
@@ -415,7 +428,7 @@ export function ListingEditClient({ tokenId, chainId }: Props) {
           <h2 className="text-sm font-medium text-text-primary">Delist</h2>
           {auctionEscrowAddress(chainId) ? (
             <p className="font-sans text-sm text-text-secondary" role="status">
-              {DELIST_BEFORE_AUCTION_HINT}
+              {auctionHint}
             </p>
           ) : null}
           <Button

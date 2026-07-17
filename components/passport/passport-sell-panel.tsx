@@ -17,6 +17,7 @@ import {
   MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
 import { parseAuctionAgentAuthorization } from "@/lib/auction/auction-agent";
+import { AUCTION_REQUIRES_VERIFICATION_HINT } from "@/lib/auction/sale-form-copy";
 import { parseMarketplaceAgentAuthorization } from "@/lib/marketplace/agent-authorization";
 import { resolveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
@@ -191,6 +192,7 @@ export function PassportSellPanel({
     isOwner,
     listingState,
     auctionBlocks,
+    auctionEscrowConfigured: Boolean(auctionEscrow),
     passportStatus,
     isActiveVerifier: activeVerifierSuccess
       ? activeVerifier === true
@@ -215,7 +217,8 @@ export function PassportSellPanel({
   const showAuctionRow =
     flags.showAuctionCreate ||
     flags.showAuctionAuthorize ||
-    flags.showAuctionAuthCard;
+    flags.showAuctionAuthCard ||
+    flags.showAuctionRequirementNote;
 
   return (
     <section className="rounded-md border border-border-default bg-bg-card p-4">
@@ -264,7 +267,14 @@ export function PassportSellPanel({
         {showAuctionRow && (
           <div className="space-y-3 pt-4">
             <p className="font-sans text-sm text-text-secondary">Auction</p>
-            {flags.showAuctionAuthCard && auctionAuth ? (
+            {flags.showAuctionRequirementNote ? (
+              <p
+                className="font-sans text-sm text-text-secondary"
+                role="status"
+              >
+                {AUCTION_REQUIRES_VERIFICATION_HINT}
+              </p>
+            ) : flags.showAuctionAuthCard && auctionAuth ? (
               <AuctionAgentAuthorizationStatus
                 authorization={auctionAuth}
                 now={now}

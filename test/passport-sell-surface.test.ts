@@ -19,6 +19,7 @@ const allHidden: SellSurfaceFlags = {
   showAuctionCreate: false,
   showAuctionAuthorize: false,
   showAuctionAuthCard: false,
+  showAuctionRequirementNote: false,
 };
 
 const inactiveAuctionAuth: AuctionAgentAuth = {
@@ -36,6 +37,7 @@ function input(
     isOwner: true,
     listingState: "inactive",
     auctionBlocks: false,
+    auctionEscrowConfigured: true,
     passportStatus: "VERIFIED",
     isActiveVerifier: false,
     marketplaceAuthActive: false,
@@ -45,14 +47,33 @@ function input(
 }
 
 describe("deriveSellSurface", () => {
-  it("shows only list and delegation for an unverified owner", () => {
+  it("shows the auction requirement note for an unverified owner", () => {
     assert.deepEqual(
       deriveSellSurface(input({ passportStatus: "UNVERIFIED" })),
       {
         ...allHidden,
         showList: true,
         showDelegate: true,
+        showAuctionRequirementNote: true,
       },
+    );
+  });
+
+  it("shows the auction requirement note for a disputed owner", () => {
+    assert.equal(
+      deriveSellSurface(input({ passportStatus: "DISPUTED" }))
+        .showAuctionRequirementNote,
+      true,
+    );
+  });
+
+  it("hides the auction requirement note when escrow is unconfigured", () => {
+    assert.equal(
+      deriveSellSurface(input({
+        passportStatus: "UNVERIFIED",
+        auctionEscrowConfigured: false,
+      })).showAuctionRequirementNote,
+      false,
     );
   });
 
