@@ -21,6 +21,7 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
+import { DelegatedVehiclesTab } from "@/components/profile/delegated-vehicles-tab";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
@@ -55,7 +56,15 @@ export type ProfileListing = {
   model?: string;
 };
 
-type TabId = "passports" | "listings" | "saved" | "verified" | "disputes" | "consigned" | "attestations";
+type TabId =
+  | "passports"
+  | "listings"
+  | "delegated"
+  | "saved"
+  | "verified"
+  | "disputes"
+  | "consigned"
+  | "attestations";
 
 export type ProfilePageProps = {
   wallet: Address;
@@ -70,6 +79,7 @@ export type ProfilePageProps = {
   attestations: PonderVerifierAttestation[];
   ponderErr: string | null;
   consignedCount?: number | null;
+  delegatedCount?: number | null;
 };
 
 function countLabel(base: string, count: number): ReactNode {
@@ -89,6 +99,7 @@ function buildTabList(
   counts: {
     passports: number;
     listings: number;
+    delegated: number;
     verified: number;
     attestations: number;
     disputes: number;
@@ -100,6 +111,10 @@ function buildTabList(
     { id: "listings", label: countLabel("Listings", counts.listings) },
   ];
   if (isOwner) {
+    tabs.push({
+      id: "delegated",
+      label: countLabel("Delegated vehicles", counts.delegated),
+    });
     tabs.push({ id: "saved", label: "Saved" });
   }
   if (showVerifierHistory) {
@@ -386,6 +401,7 @@ export function ProfilePage({
   attestations,
   ponderErr,
   consignedCount = null,
+  delegatedCount = null,
 }: ProfilePageProps) {
   const searchParams = useSearchParams();
   const { isConnected } = useAccount();
@@ -403,6 +419,7 @@ export function ProfilePage({
       buildTabList(isOwner, isActiveVerifier, showVerifierHistory, {
         passports: passports.length,
         listings: listings.length,
+        delegated: delegatedCount ?? 0,
         verified: verifiedPassports.length,
         attestations: attestations.length,
         disputes: disputedPassports.length,
@@ -414,6 +431,7 @@ export function ProfilePage({
       showVerifierHistory,
       passports.length,
       listings.length,
+      delegatedCount,
       verifiedPassports.length,
       attestations.length,
       disputedPassports.length,
@@ -660,6 +678,16 @@ export function ProfilePage({
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === "delegated" && isOwner && (
+            <section
+              role="tabpanel"
+              id="profile-panel-delegated"
+              aria-labelledby="profile-tab-delegated"
+            >
+              <DelegatedVehiclesTab wallet={wallet} chainId={chainId} />
             </section>
           )}
 

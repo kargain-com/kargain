@@ -2,8 +2,16 @@
 
 import { getAddress } from "viem";
 
-import type { PonderAuctionAuthorizationsResponse } from "@/app/actions/auction-agent";
+import type {
+  AgentActiveAuctionsResult,
+  PonderAuctionAuthorizationsResponse,
+} from "@/app/actions/auction-agent";
+import {
+  mapPonderAuctionRow,
+  type PonderAuctionRaw,
+} from "@/lib/auction/map-ponder-auction";
 import type { PonderAgentAuthorizationsResponse } from "@/lib/types/ponder";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -20,6 +28,13 @@ const EMPTY_AUCTION_AUTHS: PonderAuctionAuthorizationsResponse = {
   total: 0,
   page: 1,
   limit: 20,
+};
+
+type PonderAuctionsResponse = {
+  auctions: PonderAuctionRaw[];
+  total: number;
+  page: number;
+  limit: number;
 };
 
 function parseOwnerAddress(address: string): `0x${string}` | null {
@@ -129,5 +144,59 @@ export async function getOwnerDelegatedCount(
     return { count: data.total };
   } catch {
     return { count: null, ponderError: "PONDER_UNAVAILABLE" };
+  }
+}
+
+/** Active auctions where the address is the seller (owner-out portfolio). */
+export async function getOwnerActiveAuctions(
+  address: string,
+  page = 1,
+  limit = 20,
+  chainId: number = DEFAULT_CHAIN_ID,
+): Promise<AgentActiveAuctionsResult> {
+  const owner = parseOwnerAddress(address);
+  if (!owner) {
+    return { ok: true, rows: [], total: 0, page, limit };
+  }
+
+  try {
+    const url = new URL(`${PONDER_URL}/auctions`);
+    url.searchParams.set("seller", owner);
+    url.searchParams.set("active", "true");
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(limit));
+
+    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    if (!res.ok) {
+      return {
+        ok: true,
+        rows: [],
+        total: 0,
+        page,
+        limit,
+        ponderError: "PONDER_UNAVAILABLE",
+      };
+    }
+
+    const data = (await res.json()) as PonderAuctionsResponse;
+    const rows = (data.auctions ?? []).map((row) =>
+      mapPonderAuctionRow(row, chainId),
+    );
+    return {
+      ok: true,
+      rows,
+      total: data.total ?? rows.length,
+      page: data.page ?? page,
+      limit: data.limit ?? limit,
+    };
+  } catch {
+    return {
+      ok: true,
+      rows: [],
+      total: 0,
+      page,
+      limit,
+      ponderError: "PONDER_UNAVAILABLE",
+    };
   }
 }

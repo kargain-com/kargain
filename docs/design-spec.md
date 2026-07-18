@@ -595,6 +595,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Agent authorization | [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); an active row replaces Delegate with [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx), showing agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
 | Owner return flow | When owner + active consignment (`agent` non-zero): [`owner-return-request-panel.tsx`](../components/marketplace/owner-return-request-panel.tsx) — **Request return** (`requestReturn`) → 7-day [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) (live countdown) → **Force return** (`forceReturn`) when elapsed; request button hidden (not disabled) during cooldown; force button disabled until countdown ends; chain `agentAuthorizations` gates force submit; `returnRequestedAt` from Ponder + chain read |
+| Delegated vehicles | Owner-only profile tab [`delegated-vehicles-tab.tsx`](../components/profile/delegated-vehicles-tab.tsx) (`?tab=delegated`); badge count = marketplace `GET /owners/:address/authorizations` `total`; sections **Needs attention** → **Awaiting agent** → **Live** → **Past** (`omitWhenEmpty`); rows via shared [`consignment-portfolio-row.tsx`](../components/consignment/consignment-portfolio-row.tsx) + [`lib/consignment/lifecycle.ts`](../lib/consignment/lifecycle.ts); CTA **View** → `/marketplace/{tokenId}` only (revoke/return stay on passport/lot); Ponder-only (owner auth + profile listings + seller auctions) |
 
 #### Agent consignment — KarPro agents
 
@@ -1480,4 +1481,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.66 (July 2026 — homepage auction stats). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.67 (July 2026 — delegated vehicles owner tab). Update when tokens, app shell, or component contracts change.*

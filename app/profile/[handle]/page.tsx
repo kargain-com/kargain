@@ -5,6 +5,7 @@ import { getAddress } from "viem";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { getAgentConsignmentCount } from "@/app/actions/agent-consignment";
+import { getOwnerDelegatedCount } from "@/app/actions/owner-consignment";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -87,6 +88,14 @@ export default async function PublicProfilePage({
     }
   }
 
+  let delegatedCount: number | null = null;
+  {
+    const countResult = await getOwnerDelegatedCount(wallet);
+    if (countResult.count != null && !countResult.ponderError) {
+      delegatedCount = countResult.count;
+    }
+  }
+
   let ponderErr: string | null = null;
   let passports: {
     tokenId: string;
@@ -149,6 +158,7 @@ export default async function PublicProfilePage({
           attestations={attestations}
           ponderErr={ponderErr}
           consignedCount={consignedCount}
+          delegatedCount={delegatedCount}
         />
       </Suspense>
     </div>
