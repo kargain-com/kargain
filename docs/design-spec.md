@@ -604,7 +604,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Agent dashboard | **Consigned vehicles** tab on `/profile/[handle]` when owner + active KarPro ([`consigned-vehicles-tab.tsx`](../components/profile/consigned-vehicles-tab.tsx)); awaiting marketplace/auction row headers share [`consignment-portfolio-row.tsx`](../components/consignment/consignment-portfolio-row.tsx) + [`lib/consignment/lifecycle.ts`](../lib/consignment/lifecycle.ts) status labels (`Awaiting listing` / `Authorization expired` / auction equivalents); list/edit/create/cancel ops panels unchanged; awaiting section via Ponder `GET /agents/:address/authorizations?hasActiveListing=false` (paginated) + `/passports/batch` enrichment; chain `agentAuthorizations` filters stale rows; **List vehicle** expand → [`agent-list-on-behalf-panel.tsx`](../components/marketplace/agent-list-on-behalf-panel.tsx) with live [`seller-net-calculator.tsx`](../components/marketplace/seller-net-calculator.tsx) (submit blocked when owner minimum not met; `platformFeeBps` chain-read). Active section: **Edit listing** / **Return to owner** ([`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx), [`agent-delist-button.tsx`](../components/marketplace/agent-delist-button.tsx)); read-only [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) when owner requested return. Past section read-only |
 | Agent settlement note | [`agent-update-listing-panel.tsx`](../components/marketplace/agent-update-listing-panel.tsx) — read-only **Direct payment instructions** (chain `settlementNotes`); copy notes owner edits on manage listing; agents set note only at `listOnBehalf` |
 | Agent confirm payment | Same [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) as seller on active consignment listings with direct payment |
-| Pro showroom | **Active consignments** on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) with **View all N consignments →** to `?tab=consigned` when truncated at 100 |
+| Pro showroom | **Active consignments** teaser on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) (≤100); **View all N consignments →** → public [`/pro/[slug]/consignments`](../app/pro/[slug]/consignments/page.tsx) paginated active fixed-price agent listings ([`getAgentListings`](../app/actions/agent-consignment.ts)); private profile `?tab=consigned` remains agent ops only |
 
 #### Seller listing management
 
@@ -1481,4 +1481,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.68 (July 2026 — agent consigned shared portfolio row). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.69 (July 2026 — Pro public consignments catalog). Update when tokens, app shell, or component contracts change.*

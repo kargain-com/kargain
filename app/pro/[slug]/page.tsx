@@ -18,6 +18,7 @@ import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import { proConsignmentsHref } from "@/lib/kar-pro/pro-consignments-href";
 import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -385,7 +386,7 @@ export default async function ProShowroomPage({
               </div>
               {data.activeConsignmentTotal > data.activeConsignments.length && (
                 <Link
-                  href={`/profile/${address}?tab=consigned`}
+                  href={proConsignmentsHref(slug)}
                   className={cn("mt-8 inline-block", sansLinkUnderline)}
                 >
                   View all {data.activeConsignmentTotal} consignments →
