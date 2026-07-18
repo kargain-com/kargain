@@ -7,9 +7,9 @@ import {
   deriveFixedPriceConsignment,
 } from "../lib/consignment/lifecycle.ts";
 import {
-  ownerAuctionAuthToLifecycleInput,
-  ownerMarketplaceAuthToLifecycleInput,
-} from "../lib/consignment/map-owner-authorization.ts";
+  auctionAuthToLifecycleInput,
+  marketplaceAuthToLifecycleInput,
+} from "../lib/consignment/map-authorization.ts";
 import type { PonderAgentAuthorization } from "../lib/types/ponder.ts";
 
 const TOKEN = "123";
@@ -47,18 +47,14 @@ function auctionRow(
   };
 }
 
-describe("ownerMarketplaceAuthToLifecycleInput", () => {
+describe("marketplaceAuthToLifecycleInput", () => {
   it("maps awaiting authorization to M1", () => {
-    const input = ownerMarketplaceAuthToLifecycleInput(
-      marketplaceRow(),
-      null,
-      NOW,
-    );
+    const input = marketplaceAuthToLifecycleInput(marketplaceRow(), null, NOW);
     assert.equal(deriveFixedPriceConsignment(input).stateId, "M1");
   });
 
   it("maps listed + agent to M2", () => {
-    const input = ownerMarketplaceAuthToLifecycleInput(
+    const input = marketplaceAuthToLifecycleInput(
       marketplaceRow({ hasActiveListing: true }),
       { active: true, agent: AGENT },
       NOW,
@@ -67,7 +63,7 @@ describe("ownerMarketplaceAuthToLifecycleInput", () => {
   });
 
   it("maps return-requested listing to M2r", () => {
-    const input = ownerMarketplaceAuthToLifecycleInput(
+    const input = marketplaceAuthToLifecycleInput(
       marketplaceRow({ hasActiveListing: true }),
       {
         active: true,
@@ -80,7 +76,7 @@ describe("ownerMarketplaceAuthToLifecycleInput", () => {
   });
 
   it("maps expired authorization to M1e", () => {
-    const input = ownerMarketplaceAuthToLifecycleInput(
+    const input = marketplaceAuthToLifecycleInput(
       marketplaceRow({ expiry: String(NOW - 1) }),
       null,
       NOW,
@@ -89,15 +85,15 @@ describe("ownerMarketplaceAuthToLifecycleInput", () => {
   });
 });
 
-describe("ownerAuctionAuthToLifecycleInput", () => {
+describe("auctionAuthToLifecycleInput", () => {
   it("maps null auction + auth to A1", () => {
-    const input = ownerAuctionAuthToLifecycleInput(auctionRow(), null, NOW);
+    const input = auctionAuthToLifecycleInput(auctionRow(), null, NOW);
     assert.equal(input.auction, null);
     assert.equal(deriveAuctionConsignment(input).stateId, "A1");
   });
 
   it("maps S1 auction facts to A2", () => {
-    const input = ownerAuctionAuthToLifecycleInput(
+    const input = auctionAuthToLifecycleInput(
       auctionRow(),
       {
         active: true,
@@ -113,7 +109,7 @@ describe("ownerAuctionAuthToLifecycleInput", () => {
   });
 
   it("never emits unresolved auction undefined from the mapper", () => {
-    const input = ownerAuctionAuthToLifecycleInput(auctionRow(), null, NOW);
+    const input = auctionAuthToLifecycleInput(auctionRow(), null, NOW);
     assert.notEqual(input.auction, undefined);
   });
 });

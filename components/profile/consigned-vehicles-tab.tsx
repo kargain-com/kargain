@@ -20,6 +20,7 @@ import {
 import { fetchPassportBatch } from "@/app/actions/notifications";
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
 import { AuctionCancelPanel } from "@/components/auction/auction-cancel-panel";
+import { ConsignmentPortfolioRow } from "@/components/consignment/consignment-portfolio-row";
 import { AgentDelistButton } from "@/components/marketplace/agent-delist-button";
 import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
 import { AgentUpdateListingPanel } from "@/components/marketplace/agent-update-listing-panel";
@@ -29,13 +30,19 @@ import { ReturnCooldownDisplay } from "@/components/marketplace/return-cooldown-
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
-import { isAuctionAuthExpired } from "@/lib/auction/auction-agent";
+import {
+  deriveAuctionConsignment,
+  deriveFixedPriceConsignment,
+} from "@/lib/consignment/lifecycle";
+import {
+  auctionAuthToLifecycleInput,
+  marketplaceAuthToLifecycleInput,
+} from "@/lib/consignment/map-authorization";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
-import { sansLinkUnderline } from "@/lib/design/instrument-classes";
+import { categoryLabel, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { LISTING_CARD_GRID_NARROW } from "@/lib/marketplace/listing-card-grid";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -52,6 +59,7 @@ import type {
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useNow } from "@/hooks/use-now";
+import { cn } from "@/lib/utils";
 
 type PassportEnrichment = {
   owner: string;
@@ -112,9 +120,7 @@ function PonderErrorBanner({ message }: { message: string }) {
 }
 
 function SectionHeading({ children }: { children: string }) {
-  return (
-    <h3 className="mb-4 font-sans text-sm font-medium text-text-primary">{children}</h3>
-  );
+  return <h3 className={cn(categoryLabel, "mb-3")}>{children}</h3>;
 }
 
 function AuthorizedAwaitingCard({
@@ -129,6 +135,8 @@ function AuthorizedAwaitingCard({
   ownerMinPrice1e8,
   platformFeeBps,
   wallet,
+  expiry,
+  nowSec,
   onConsignmentChanged,
 }: {
   tokenId: string;
@@ -142,45 +150,52 @@ function AuthorizedAwaitingCard({
   ownerMinPrice1e8: bigint;
   platformFeeBps: bigint | null | undefined;
   wallet: Address;
+  expiry: bigint;
+  nowSec: number;
   onConsignmentChanged: () => void;
 }) {
   const [listExpanded, setListExpanded] = useState(false);
+  const item = deriveFixedPriceConsignment(
+    marketplaceAuthToLifecycleInput(
+      {
+        tokenId,
+        agent: wallet,
+        expiry: String(expiry),
+        ownerMinPrice1e8: String(ownerMinPrice1e8),
+        active: true,
+        hasActiveListing: false,
+      },
+      null,
+      nowSec,
+    ),
+  );
 
   return (
-    <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={`/marketplace/${tokenId}?chain=${chainId}`}
-          className="text-text-primary underline-offset-2 hover:text-accent-warm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-        >
-          <PassportIdLabel
-            tokenId={tokenId}
-            chainId={chainId}
-            prefix="none"
-            variant="mono"
-            className="text-inherit"
-          />
-        </Link>
-        <PassportStatusBadge status={status} />
-      </div>
-      {make && model && (
-        <p className="mt-1 font-sans text-sm text-text-primary">
-          {year != null && year > 0 ? `${year} ` : ""}
-          {make} {model}
-        </p>
-      )}
-      <p className="mt-2 font-sans text-xs text-text-secondary">
-        Owner{" "}
-        <EnsWalletLink
-          address={owner}
-          href={`/profile/${owner}`}
-          className="hover:underline"
-        />
-      </p>
-      {chainStatusUnavailable && (
-        <p className="mt-1 font-sans text-xs text-text-tertiary">Status unavailable</p>
-      )}
-
+    <ConsignmentPortfolioRow
+      tokenId={tokenId}
+      chainId={chainId}
+      href={`/marketplace/${tokenId}?chain=${chainId}`}
+      statusLabel={item.statusLabel}
+      trackLabel="Fixed price"
+      peerAddress={owner}
+      peerLabel="Owner"
+      make={make}
+      model={model}
+      year={year}
+      attention={item.attention}
+      extraMeta={
+        <>
+          <div className="pt-1">
+            <PassportStatusBadge status={status} />
+          </div>
+          {chainStatusUnavailable ? (
+            <p className="font-sans text-xs text-text-tertiary">
+              Status unavailable
+            </p>
+          ) : null}
+        </>
+      }
+    >
       {!listExpanded ? (
         <Button
           type="button"
@@ -214,7 +229,7 @@ function AuthorizedAwaitingCard({
           />
         </>
       )}
-    </div>
+    </ConsignmentPortfolioRow>
   );
 }
 
@@ -369,6 +384,7 @@ function AwaitingAuthorizationsSection({
   const inView = useInView(loadMoreRef, { margin: "200px" });
   const market = marketplaceAddress(chainId);
   const wc = wagmiChainId(chainId);
+  const nowSec = useNow(30);
 
   const {
     data,
@@ -544,6 +560,8 @@ function AwaitingAuthorizationsSection({
                   ownerMinPrice1e8={BigInt(auth.ownerMinPrice1e8)}
                   platformFeeBps={platformFeeBps}
                   wallet={wallet}
+                  expiry={BigInt(auth.expiry || 0)}
+                  nowSec={nowSec}
                   onConsignmentChanged={onConsignmentChanged}
                 />
               </li>
@@ -731,11 +749,10 @@ function AwaitingAuctionCard({
   onConsignmentChanged: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const expiry =
-    auth.expiry != null && auth.expiry !== ""
-      ? BigInt(auth.expiry)
-      : 0n;
-  const expired = isAuctionAuthExpired(expiry, nowSec);
+  const item = deriveAuctionConsignment(
+    auctionAuthToLifecycleInput(auth, null, nowSec),
+  );
+  const expired = item.stateId === "A1e";
   const assetLabel = auctionAssetLabelFromAddress(auth.asset);
   const ownerMin =
     auth.ownerMinAsset != null ? BigInt(auth.ownerMinAsset) : 0n;
@@ -745,45 +762,29 @@ function AwaitingAuctionCard({
   const year = auth.year ?? undefined;
 
   return (
-    <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={`/marketplace/${auth.tokenId}?chain=${chainId}`}
-          className="text-text-primary underline-offset-2 hover:text-accent-warm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-        >
-          <PassportIdLabel
-            tokenId={auth.tokenId}
-            chainId={chainId}
-            prefix="none"
-            variant="mono"
-            className="text-inherit"
-          />
-        </Link>
-        <PassportStatusBadge status={status} />
-        {expired && (
-          <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-text-tertiary">
-            Expired
-          </span>
-        )}
-      </div>
-      {make && model && (
-        <p className="mt-1 font-sans text-sm text-text-primary">
-          {year != null && year > 0 ? `${year} ` : ""}
-          {make} {model}
-        </p>
-      )}
-      <p className="mt-2 font-mono text-xs tabular-nums text-text-secondary">
-        Min {formatAuctionAmount(ownerMin, assetLabel)} · {assetLabel}
-      </p>
-      <p className="mt-1 font-sans text-xs text-text-secondary">
-        Owner{" "}
-        <EnsWalletLink
-          address={auth.owner}
-          href={`/profile/${auth.owner}`}
-          className="hover:underline"
-        />
-      </p>
-
+    <ConsignmentPortfolioRow
+      tokenId={auth.tokenId}
+      chainId={chainId}
+      href={`/marketplace/${auth.tokenId}?chain=${chainId}`}
+      statusLabel={item.statusLabel}
+      trackLabel="Auction"
+      peerAddress={auth.owner}
+      peerLabel="Owner"
+      make={make}
+      model={model}
+      year={year}
+      attention={item.attention}
+      extraMeta={
+        <>
+          <div className="pt-1">
+            <PassportStatusBadge status={status} />
+          </div>
+          <p className="font-mono text-xs tabular-nums text-text-secondary">
+            Min {formatAuctionAmount(ownerMin, assetLabel)} · {assetLabel}
+          </p>
+        </>
+      }
+    >
       {!expired &&
         (!expanded ? (
           <Button
@@ -817,7 +818,7 @@ function AwaitingAuctionCard({
             </div>
           </>
         ))}
-    </div>
+    </ConsignmentPortfolioRow>
   );
 }
 
@@ -924,7 +925,36 @@ function ActiveAuctionCard({
   auction: AuctionRow;
   onConsignmentChanged: () => void;
 }) {
+  const nowSec = useNow(30);
   const preStart = auction.startedAt === 0n;
+  const item = deriveAuctionConsignment(
+    auctionAuthToLifecycleInput(
+      {
+        tokenId: auction.tokenId,
+        owner: auction.seller,
+        agent: auction.agent ?? "",
+        expiry: 0,
+        asset: auction.asset,
+        ownerMinAsset: String(auction.ownerMinAsset),
+        active: true,
+      },
+      {
+        active: auction.active,
+        phase: auction.phase,
+        startedAt: auction.startedAt,
+        endsAtChain: auction.endsAt,
+        returnRequestedAt: auction.returnRequestedAt ?? 0n,
+        passportStatus: auction.passportStatus,
+      },
+      nowSec,
+    ),
+  );
+  const statusLabel =
+    item.stateId === "A2" || item.stateId === "A2r" || item.stateId === "A3"
+      ? item.statusLabel
+      : preStart
+        ? "Awaiting first bid"
+        : "Live auction";
 
   return (
     <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm">
@@ -966,9 +996,7 @@ function ActiveAuctionCard({
         </div>
         <div className="flex justify-between gap-2">
           <dt>Status</dt>
-          <dd className="text-text-primary">
-            {preStart ? "Awaiting first bid" : "Bidding"}
-          </dd>
+          <dd className="text-text-primary">{statusLabel}</dd>
         </div>
       </dl>
       <p className="mt-3">

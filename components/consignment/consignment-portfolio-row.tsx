@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
@@ -14,11 +15,14 @@ export type ConsignmentPortfolioRowProps = {
   href: string;
   statusLabel: string;
   trackLabel: "Fixed price" | "Auction";
-  agentAddress?: string | null;
+  peerAddress?: string | null;
+  peerLabel?: "Agent" | "Owner";
   make?: string | null;
   model?: string | null;
   year?: number | null;
   attention?: boolean;
+  extraMeta?: ReactNode;
+  children?: ReactNode;
 };
 
 export function ConsignmentPortfolioRow({
@@ -27,11 +31,14 @@ export function ConsignmentPortfolioRow({
   href,
   statusLabel,
   trackLabel,
-  agentAddress,
+  peerAddress,
+  peerLabel = "Agent",
   make,
   model,
   year,
   attention = false,
+  extraMeta,
+  children,
 }: ConsignmentPortfolioRowProps) {
   const title =
     make && model
@@ -66,21 +73,23 @@ export function ConsignmentPortfolioRow({
             <p className="font-sans text-sm text-text-primary">{title}</p>
           )}
           <p className="font-sans text-xs text-text-secondary">{statusLabel}</p>
-          {agentAddress ? (
+          {peerAddress ? (
             <p className="font-sans text-xs text-text-secondary">
-              Agent{" "}
+              {peerLabel}{" "}
               <EnsWalletLink
-                address={agentAddress}
-                href={`/profile/${agentAddress}`}
+                address={peerAddress}
+                href={`/profile/${peerAddress}`}
                 className="hover:underline"
               />
             </p>
           ) : null}
+          {extraMeta}
         </div>
         <Link href={href} className={cn(sansLink, "shrink-0")}>
           View
         </Link>
       </div>
+      {children}
     </div>
   );
 }

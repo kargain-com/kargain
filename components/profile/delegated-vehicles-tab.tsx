@@ -22,9 +22,9 @@ import {
   type ConsignmentTrack,
 } from "@/lib/consignment/lifecycle";
 import {
-  ownerAuctionAuthToLifecycleInput,
-  ownerMarketplaceAuthToLifecycleInput,
-} from "@/lib/consignment/map-owner-authorization";
+  auctionAuthToLifecycleInput,
+  marketplaceAuthToLifecycleInput,
+} from "@/lib/consignment/map-authorization";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import type { PonderAgentAuthorization } from "@/lib/types/ponder";
@@ -138,7 +138,7 @@ function buildMarketplaceRows(
             }
           : null;
     const item = deriveFixedPriceConsignment(
-      ownerMarketplaceAuthToLifecycleInput(auth, listingFacts, nowSec),
+      marketplaceAuthToLifecycleInput(auth, listingFacts, nowSec),
     );
     if (item.stateId === "none") continue;
     const passport = passportsByToken.get(auth.tokenId);
@@ -178,7 +178,7 @@ function buildAuctionRows(
           }
         : null;
     const item = deriveAuctionConsignment(
-      ownerAuctionAuthToLifecycleInput(auth, auctionFacts, nowSec),
+      auctionAuthToLifecycleInput(auth, auctionFacts, nowSec),
     );
     if (item.stateId === "none") continue;
     const passport = passportsByToken.get(auth.tokenId);
@@ -369,7 +369,8 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
               }
               statusLabel={row.item.statusLabel}
               trackLabel={trackLabel(row.track)}
-              agentAddress={row.agentAddress}
+              peerAddress={row.agentAddress}
+              peerLabel="Agent"
               make={row.make}
               model={row.model}
               year={row.year}
