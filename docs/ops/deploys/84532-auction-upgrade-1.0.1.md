@@ -101,15 +101,15 @@ Expect AuctionEscrow VERSION check (`g`) → `1.0.1-draft`; authority / `isAucti
 
 | | |
 |--|--|
-| Date | July 14, 2026 (impl + schedule); execute pending ETA |
-| Git commit (wiring) | `f1e7896` (+ Hardhat-3 argv fix for `upgrade:auction`) |
+| Date | July 14, 2026 (impl + schedule); July 18, 2026 (execute + manifest merge) |
+| Git commit (wiring) | `f1e7896` (+ Hardhat-3 argv / ETA fixes) |
 | New impl | [`0x7aCED69A61d77C208140107E2b46d3D7d7266a66`](https://sepolia.basescan.org/address/0x7aCED69A61d77C208140107E2b46d3D7d7266a66) |
 | Impl block / tx | **44127565** / `0x9736d227de595e13534af13dc8c258c35714c6b4d1bd7e1fa5442e4540a1086a` |
 | Timelock operation id | `0x9ec869f9e3ef0b5e7c266e93501b5bc9c9ce5f3549b65acc53e62c1d3f37dd81` |
 | Schedule tx | `0x907e68ee166972cbb18e71842d6f293a8b3244cd5d5beb8d526041a012cf20be` (block 44127590) |
 | ETA | **1784196268** → `2026-07-16T10:04:28.000Z` (48h) |
-| Execute tx | |
-| `pnpm smoke:sepolia` | |
+| Execute tx | `0x54292ad9c824f14f2558fbf26de1a06b18126e615f1df8ef7821965ee0d2d436` (block **44293417**) — first `--execute` hit stale VERSION read; re-run merged manifest |
+| `pnpm smoke:sepolia` | **18/18** (`VERSION` `1.0.1-draft`) |
 
 ---
 
@@ -124,6 +124,7 @@ Expect AuctionEscrow VERSION check (`g`) → `1.0.1-draft`; authority / `isAucti
 | Stale pending file | Confirm no Waiting/Ready op for the salt; delete `84532.pending-auction-impl.json`; re-run `--deploy-impl` |
 | `verify:sepolia` still hits old impl | Pending file missing — re-run `--deploy-impl` or check path |
 | Smoke fails VERSION after execute | Upgrade did not land — check execute receipt / impl pointer on Basescan |
+| Post-execute VERSION still old, then smoke passes | Stale RPC after execute — re-run `--execute` to merge manifest (idempotent when proxy already new) |
 
 ---
 

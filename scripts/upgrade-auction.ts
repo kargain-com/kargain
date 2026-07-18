@@ -498,9 +498,18 @@ async function cmdExecute(viem: ViemSuite, manifest: DeploymentManifest) {
   const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
   console.log(`execute tx: ${hash} (block ${receipt.blockNumber})`);
 
-  const newVersion = (await auction.read.VERSION([])) as string;
+  // RPC can briefly return the pre-upgrade VERSION after execute; retry before failing.
+  let newVersion = "";
+  for (let attempt = 0; attempt < 8; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+    newVersion = (await auction.read.VERSION([])) as string;
+    if (newVersion === expected) break;
+  }
   if (newVersion !== expected) {
-    throw new Error(`Post-execute VERSION mismatch: expected ${expected}, got ${newVersion}`);
+    throw new Error(
+      `Post-execute VERSION mismatch after retries: expected ${expected}, got ${newVersion}. ` +
+        "If Basescan shows the new impl, re-run --execute to merge the manifest.",
+    );
   }
   const auth = getAddress((await auction.read.upgradeAuthority([])) as `0x${string}`);
   if (auth !== timelockAddress) {
@@ -519,9 +528,7 @@ async function cmdExecute(viem: ViemSuite, manifest: DeploymentManifest) {
   console.log(`  Manifest: ${SEPOLIA_DEPLOYMENT_PATH}`);
   console.log("");
   console.log("Next: pnpm smoke:sepolia");
-  console.log(
-    "Then update SPEC I.9.1 AuctionEscrow impl row + drop the I.1 “84532 runs 1.0.0-draft” note.",
-  );
+  console.log("Then confirm SPEC I.9.1 impl row matches the new implementation.");
 }
 
 async function main() {
