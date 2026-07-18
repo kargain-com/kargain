@@ -1,40 +1,43 @@
+import { fetchActiveAuctionCount } from "@/app/actions/auction-browse";
 import { fetchActiveVerifierCount } from "@/app/actions/verifier-directory";
 import { fetchMarketplaceStats } from "@/app/actions/marketplace-listings";
 import { MARKETPLACE_SHELL_CONTAINER } from "@/lib/marketplace/listing-card-grid";
+import { formatMarketplaceStatsLine } from "@/lib/marketplace/marketplace-stats-line";
 import type { MarketplaceStatsResponse } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
 export async function MarketplaceStatsLine() {
-  let activeListings = 0;
-  let verifiedCount = 0;
+  let listings = 0;
+  let auctions = 0;
+  let verified = 0;
   let activeVerifiers = 0;
 
   try {
-    const [statsRaw, verifierCount] = await Promise.all([
+    const [statsRaw, auctionCount, verifierCount] = await Promise.all([
       fetchMarketplaceStats(),
+      fetchActiveAuctionCount(),
       fetchActiveVerifierCount(),
     ]);
     const stats = statsRaw as MarketplaceStatsResponse | null;
-    activeListings = stats?.totalActive ?? 0;
+    listings = stats?.totalActive ?? 0;
+    auctions = auctionCount;
     activeVerifiers = verifierCount;
-    verifiedCount = stats?.statusCounts?.VERIFIED ?? 0;
+    verified = stats?.statusCounts?.VERIFIED ?? 0;
   } catch {
     return null;
   }
 
-  if (activeListings <= 0 && verifiedCount <= 0 && activeVerifiers <= 0) {
-    return null;
-  }
+  const line = formatMarketplaceStatsLine({
+    listings,
+    auctions,
+    verified,
+    activeVerifiers,
+  });
+  if (line == null) return null;
 
   return (
     <div className={cn(MARKETPLACE_SHELL_CONTAINER, "pt-4 pb-0")}>
-      <p className="font-mono text-xs text-text-tertiary tabular-nums">
-        {activeListings > 0 ? `${activeListings} listings` : null}
-        {activeListings > 0 && verifiedCount > 0 ? " · " : null}
-        {verifiedCount > 0 ? `${verifiedCount} verified` : null}
-        {(activeListings > 0 || verifiedCount > 0) && activeVerifiers > 0 ? " · " : null}
-        {activeVerifiers > 0 ? `${activeVerifiers} active verifiers` : null}
-      </p>
+      <p className="font-mono text-xs text-text-tertiary tabular-nums">{line}</p>
     </div>
   );
 }

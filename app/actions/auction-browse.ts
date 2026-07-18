@@ -27,6 +27,29 @@ type PonderAuctionsResponse = {
   limit: number;
 };
 
+/** Lightweight active-auction total for homepage stats — no row mapping. */
+export async function fetchActiveAuctionCount(): Promise<number> {
+  try {
+    const url = new URL(`${PONDER_URL}/auctions`);
+    url.searchParams.set("active", "true");
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "1");
+
+    const res = await fetch(url.toString(), {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return 0;
+
+    const data = (await res.json()) as Pick<PonderAuctionsResponse, "total">;
+    const total = data.total;
+    return typeof total === "number" && Number.isFinite(total) && total > 0
+      ? Math.floor(total)
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function searchActiveAuctions(opts?: {
   page?: number;
   limit?: number;
