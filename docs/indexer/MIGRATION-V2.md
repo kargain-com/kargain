@@ -244,6 +244,8 @@ Agent-scoped browse for the **Consigned vehicles** profile tab and **Active cons
 | `GET /agents/:address/authorizations` | Paginated active authorizations; `hasActiveListing` per row; optional `?hasActiveListing=true\|false` (filtered `total`) |
 | `GET /agents/:address/listings` | Paginated listings where `agent` matches; optional `?active=true\|false` |
 
+**Owner-symmetric reads (July 2026):** `GET /owners/:address/authorizations` and `GET /owners/:address/auction-authorizations` mirror the agent filters (`hasActiveListing` / `awaiting`) with `ownerIdx` — **redeploy only**, no reindex. Per-passport owner writes still use chain `agentAuthorizations(tokenId)`.
+
 **Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side
 fetch-all). **Owner authorization UI** still reads
 `agentAuthorizations(tokenId)` on-chain — not these routes. Ponder mirrors

@@ -1132,6 +1132,233 @@ app.get("/agents/:address/listings", async (c) => {
   );
 });
 
+app.get("/owners/:address/authorizations", async (c) => {
+  const owner = parseAddressParam(c.req.param("address"));
+  if (!owner) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const hasActiveListingFilter = parseOptionalBoolean(
+    c.req.query("hasActiveListing"),
+  );
+
+  const conditions = [
+    eq(agentAuthorization.owner, owner),
+    eq(agentAuthorization.active, true),
+  ];
+
+  if (hasActiveListingFilter !== undefined) {
+    const listedRows = await db
+      .select({ tokenId: marketplaceListing.tokenId })
+      .from(marketplaceListing)
+      .where(
+        and(
+          eq(marketplaceListing.seller, owner),
+          eq(marketplaceListing.active, true),
+        ),
+      );
+    const listedTokenIds = [...new Set(listedRows.map((row) => row.tokenId))];
+
+    if (hasActiveListingFilter === true) {
+      if (listedTokenIds.length === 0) {
+        return c.json(
+          jsonBody({
+            authorizations: [],
+            total: 0,
+            page,
+            limit,
+          }),
+        );
+      }
+      conditions.push(inArray(agentAuthorization.tokenId, listedTokenIds));
+    } else if (listedTokenIds.length > 0) {
+      conditions.push(notInArray(agentAuthorization.tokenId, listedTokenIds));
+    }
+  }
+
+  const where = and(...conditions);
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        tokenId: agentAuthorization.tokenId,
+        owner: agentAuthorization.owner,
+        agent: agentAuthorization.agent,
+        expiry: agentAuthorization.expiry,
+        ownerMinPrice1e8: agentAuthorization.ownerMinPrice1e8,
+        active: agentAuthorization.active,
+      })
+      .from(agentAuthorization)
+      .where(where)
+      .orderBy(desc(agentAuthorization.tokenId))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(agentAuthorization).where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+
+  let authorizations;
+  if (hasActiveListingFilter !== undefined) {
+    authorizations = rows.map((row) => ({
+      ...row,
+      hasActiveListing: hasActiveListingFilter,
+    }));
+  } else {
+    const tokenIds = rows.map((row) => row.tokenId);
+    let listedTokenIds = new Set<string>();
+    if (tokenIds.length > 0) {
+      const activeListings = await db
+        .select({ tokenId: marketplaceListing.tokenId })
+        .from(marketplaceListing)
+        .where(
+          and(
+            inArray(marketplaceListing.tokenId, tokenIds),
+            eq(marketplaceListing.seller, owner),
+            eq(marketplaceListing.active, true),
+          ),
+        );
+      listedTokenIds = new Set(activeListings.map((row) => row.tokenId));
+    }
+
+    authorizations = rows.map((row) => ({
+      ...row,
+      hasActiveListing: listedTokenIds.has(row.tokenId),
+    }));
+  }
+
+  return c.json(
+    jsonBody({
+      authorizations,
+      total,
+      page,
+      limit,
+    }),
+  );
+});
+
+app.get("/owners/:address/auction-authorizations", async (c) => {
+  const owner = parseAddressParam(c.req.param("address"));
+  if (!owner) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+  const awaitingFilter = parseOptionalBoolean(c.req.query("awaiting"));
+
+  const conditions = [
+    eq(auctionAgentAuthorization.owner, owner),
+    eq(auctionAgentAuthorization.active, true),
+  ];
+
+  if (awaitingFilter !== undefined) {
+    const activeAuctionRows = await db
+      .select({ tokenId: auction.tokenId })
+      .from(auction)
+      .where(eq(auction.active, true));
+    const activeAuctionTokenIds = [
+      ...new Set(activeAuctionRows.map((row) => row.tokenId)),
+    ];
+
+    if (awaitingFilter === true) {
+      if (activeAuctionTokenIds.length > 0) {
+        conditions.push(
+          notInArray(
+            auctionAgentAuthorization.tokenId,
+            activeAuctionTokenIds,
+          ),
+        );
+      }
+    } else if (activeAuctionTokenIds.length === 0) {
+      return c.json(
+        jsonBody({
+          authorizations: [],
+          total: 0,
+          page,
+          limit,
+        }),
+      );
+    } else {
+      conditions.push(
+        inArray(auctionAgentAuthorization.tokenId, activeAuctionTokenIds),
+      );
+    }
+  }
+
+  const where = and(...conditions);
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        tokenId: auctionAgentAuthorization.tokenId,
+        owner: auctionAgentAuthorization.owner,
+        agent: auctionAgentAuthorization.agent,
+        expiry: auctionAgentAuthorization.expiry,
+        asset: auctionAgentAuthorization.asset,
+        ownerMinAsset: auctionAgentAuthorization.ownerMinAsset,
+        active: auctionAgentAuthorization.active,
+        createdAt: auctionAgentAuthorization.createdAt,
+        updatedAt: auctionAgentAuthorization.updatedAt,
+      })
+      .from(auctionAgentAuthorization)
+      .where(where)
+      .orderBy(desc(auctionAgentAuthorization.tokenId))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(auctionAgentAuthorization)
+      .where(where),
+  ]);
+
+  const total = totalRow[0]?.total ?? 0;
+  const tokenIds = rows.map((row) => row.tokenId);
+  const passportMap = await loadPassportMap(tokenIds);
+
+  let authorizations;
+  if (awaitingFilter !== undefined) {
+    const hasActiveAuction = awaitingFilter === false;
+    authorizations = rows.map((row) =>
+      enrichAuctionAuthorization(row, passportMap, hasActiveAuction),
+    );
+  } else {
+    let activeAuctionTokenIds = new Set<string>();
+    if (tokenIds.length > 0) {
+      const activeAuctions = await db
+        .select({ tokenId: auction.tokenId })
+        .from(auction)
+        .where(
+          and(inArray(auction.tokenId, tokenIds), eq(auction.active, true)),
+        );
+      activeAuctionTokenIds = new Set(
+        activeAuctions.map((row) => row.tokenId),
+      );
+    }
+
+    authorizations = rows.map((row) =>
+      enrichAuctionAuthorization(
+        row,
+        passportMap,
+        activeAuctionTokenIds.has(row.tokenId),
+      ),
+    );
+  }
+
+  return c.json(
+    jsonBody({
+      authorizations,
+      total,
+      page,
+      limit,
+    }),
+  );
+});
+
 app.get("/verifiers", async (c) => {
   const [rows, verificationRows] = await Promise.all([
     db

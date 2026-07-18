@@ -115,6 +115,7 @@ export const agentAuthorization = onchainTable(
   }),
   (table) => ({
     agentIdx: index().on(table.agent),
+    ownerIdx: index().on(table.owner),
   }),
 );
 
@@ -135,6 +136,7 @@ export const auctionAgentAuthorization = onchainTable(
   }),
   (table) => ({
     agentIdx: index().on(table.agent),
+    ownerIdx: index().on(table.owner),
   }),
 );
 

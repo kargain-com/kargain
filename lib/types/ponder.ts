@@ -240,6 +240,8 @@ export type PonderVerifierAttestationsResponse = {
 export type PonderAgentAuthorization = {
   tokenId: string;
   agent: string;
+  /** Present on owner-scoped authorization routes. */
+  owner?: string;
   expiry: string;
   ownerMinPrice1e8: string;
   active: boolean;

@@ -31,6 +31,7 @@ AuctionEscrow proxy: `SEPOLIA_ACTIVE.auctionEscrow` after `git pull`. Per-contra
 | `GET /auctions/:tokenId/bids` | Bid history (`page`, `limit`; newest first) |
 | `GET /profile/:address/auctions` | Auctions where `seller` matches address |
 | `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires active auction) |
+| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner; same enrichment + `?awaiting=` as the agent route |
 
 **VPS (July 14, 2026):** full reindex after auction schema (b) **completed**. Iteration **(b2)** `auction_agent_authorization` needs another **full reindex** after deploy. `GET /auctions` returns `total: 0` until the first `AuctionCreated`; listings/verifiers remain populated. Global start block unchanged.
 
@@ -69,12 +70,15 @@ before delegation notifications are live; see
 | `GET /agents/:address/authorizations` | Active authorizations for agent; `{ authorizations, total, page, limit }`; each row includes `hasActiveListing`; optional `?hasActiveListing=true\|false` filters before pagination (`total` reflects filter) |
 | `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires `auction.active`); pagination same envelope |
 | `GET /agents/:address/listings` | Listings where `agent` matches; same pagination envelope; optional `?active=true\|false`; enrichment matches `GET /profile/:address/listings` |
+| `GET /owners/:address/authorizations` | Active authorizations **granted by** owner; same envelope + `hasActiveListing` filters; rows include `owner` + `agent`; listing join uses `seller === owner` (**redeploy only** — `ownerIdx`) |
+| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner; same shape as agent auction-authorizations (`?awaiting=`, passport enrich) |
 
 `:address` validated with `isAddress`; queries use checksum `getAddress()` to match chain-indexed rows.
 
 **Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain
-— not these routes. Ponder mirrors replacement grants, revokes, and terminal
-storage clears for agent-facing queries and notifications.
+for per-passport writes — owner list routes feed the delegated portfolio (read).
+Ponder mirrors replacement grants, revokes, and terminal storage clears for
+agent- and owner-facing queries and notifications.
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw).
 
@@ -100,6 +104,8 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
 | `GET /agents/:address/auction-authorizations` | Active auction agent authorizations (`page`, `limit`; passport enrichment; `hasActiveAuction`; optional `?awaiting=true\|false`) |
 | `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
+| `GET /owners/:address/authorizations` | Active authorizations granted by owner (`page`, `limit`; `hasActiveListing`; optional filter) |
+| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner (`page`, `limit`; `?awaiting=`; passport enrichment) |
 | `GET /notifications/:address` | Notification feed, including active marketplace delegation and reserve-auction authorization grants |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string on each row) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string) |

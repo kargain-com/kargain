@@ -99,6 +99,7 @@ Examples that **do not** require reindex:
 - Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
+- Owner consignment read API (July 2026): `ownerIdx` on `agent_authorization` / `auction_agent_authorization` + `GET /owners/:address/authorizations` (+ auction) — **redeploy ponder image only**; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
 
 ---
 
