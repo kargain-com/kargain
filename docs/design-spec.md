@@ -606,6 +606,16 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Agent confirm payment | Same [`listing-offers-panel.tsx`](../components/marketplace/listing-offers-panel.tsx) as seller on active consignment listings with direct payment |
 | Pro showroom | **Active consignments** teaser on [`/pro/[slug]`](../app/pro/[slug]/page.tsx) (≤100); **View all N consignments →** → public [`/pro/[slug]/consignments`](../app/pro/[slug]/consignments/page.tsx) paginated active fixed-price agent listings ([`getAgentListings`](../app/actions/agent-consignment.ts)); private profile `?tab=consigned` remains agent ops only |
 
+#### Portfolio surfaces (owner · agent · Pro)
+
+Private portfolios share one lifecycle vocabulary ([`lib/consignment/lifecycle.ts`](../lib/consignment/lifecycle.ts): M1/M1e/M2/M2r · A1/A1e/A2/A2r/A3) and row chrome ([`consignment-portfolio-row.tsx`](../components/consignment/consignment-portfolio-row.tsx)). Badge counts and auction visibility differ by surface:
+
+| Surface | Tab / route | Badge or total | Auction |
+|---------|-------------|----------------|---------|
+| Owner | `?tab=delegated` | [`getOwnerDelegatedCount`](../app/actions/owner-consignment.ts) → `GET /owners/:address/authorizations` `total` (active **marketplace** auths only) | In portfolio (owner auction auths + seller auctions) |
+| Agent | `?tab=consigned` | [`getAgentConsignmentCount`](../app/actions/agent-consignment.ts) → `GET /agents/:address/authorizations` `total` (active **marketplace** auths — not listing count, not auction-auth count) | In portfolio (awaiting + active auction sections) |
+| Public Pro | `/pro/[slug]` teaser + `/pro/[slug]/consignments` | `activeConsignmentTotal` from `GET /agents/:address/listings?active=true` (active fixed-price listings) | **Not in Pro v1** — catalog is fixed-price listings only |
+
 #### Seller listing management
 
 | Rule | Value |
@@ -1481,4 +1491,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.69 (July 2026 — Pro public consignments catalog). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.70 (July 2026 — consignment portfolio surfaces close-out). Update when tokens, app shell, or component contracts change.*

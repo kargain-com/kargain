@@ -64,6 +64,8 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | `/marketplace/[tokenId]` | Listing / passport detail |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
 | `/kar-pro` | KarPro onboarding |
+| `/pro/[slug]` | KarPro verifier showroom |
+| `/pro/[slug]/consignments` | Public active consignments catalog |
 | `/verifiers` | Verifier directory |
 | `/profile/[handle]` | Public profile |
 | `/about` | Product overview (public prose) |
