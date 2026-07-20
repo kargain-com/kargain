@@ -84,7 +84,7 @@ export async function getAgentAuctionAuthorizations(
     } else if (awaiting === false) {
       url.searchParams.set("awaiting", "false");
     }
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return {
         ...EMPTY_AUTHS,
@@ -129,7 +129,7 @@ export async function getAgentActiveAuctions(
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return {
         ok: true,

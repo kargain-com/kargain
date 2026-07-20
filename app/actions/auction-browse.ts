@@ -36,7 +36,7 @@ export async function fetchActiveAuctionCount(): Promise<number> {
     url.searchParams.set("limit", "1");
 
     const res = await fetch(url.toString(), {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) return 0;
 
@@ -66,7 +66,7 @@ export async function searchActiveAuctions(opts?: {
     url.searchParams.set("limit", String(limit));
 
     const res = await fetch(url.toString(), {
-      next: { revalidate: 15 },
+      cache: "no-store",
     });
     if (!res.ok) {
       return {

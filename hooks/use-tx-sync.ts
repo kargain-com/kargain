@@ -9,6 +9,7 @@ import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { getIndexerBlockNumber } from "@/app/actions/indexer-status";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   TX_SYNC_LAG_ADVISORY,
@@ -110,6 +111,7 @@ export function useTxSync(chainId: number) {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["readContract"] }),
           queryClient.invalidateQueries({ queryKey: ["readContracts"] }),
+          invalidateIndexerQueries(queryClient),
         ]);
         router.refresh();
         setSyncLagged(!synced);

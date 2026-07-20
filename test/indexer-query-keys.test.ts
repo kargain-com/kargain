@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import {
+  INDEXER_QUERY_KEY_PREFIXES,
+  invalidateIndexerQueries,
+  type IndexerQueryClient,
+} from "../lib/web3/indexer-query-keys.ts";
+
+/** Commerce / portfolio keys that must stay in the sync contract. */
+const REQUIRED_COMMERCE_PREFIXES = [
+  "marketplace-listings",
+  "watchlist-listings",
+  "watchlist-batch",
+  "auction-browse",
+  "auction-detail",
+  "auction-bids",
+  "agent-awaiting",
+  "agent-awaiting-passports",
+  "agent-listings",
+  "agent-auction-awaiting",
+  "agent-auction-active",
+  "owner-delegated-auths",
+  "owner-delegated-auction-auths",
+  "owner-delegated-profile",
+  "owner-delegated-auctions",
+  "owner-delegated-passports",
+  "pro-active-consignments",
+  "ponder-notifications",
+  "owned-passport-token-ids",
+  "kar-pro-verifier",
+] as const;
+
+describe("INDEXER_QUERY_KEY_PREFIXES", () => {
+  it("includes every required commerce prefix exactly once", () => {
+    const set = new Set(INDEXER_QUERY_KEY_PREFIXES);
+    assert.equal(set.size, INDEXER_QUERY_KEY_PREFIXES.length);
+    for (const prefix of REQUIRED_COMMERCE_PREFIXES) {
+      assert.ok(set.has(prefix), `missing prefix: ${prefix}`);
+    }
+  });
+
+  it("matches the required commerce set (no silent extras without test update)", () => {
+    assert.deepEqual(
+      [...INDEXER_QUERY_KEY_PREFIXES].sort(),
+      [...REQUIRED_COMMERCE_PREFIXES].sort(),
+    );
+  });
+});
+
+describe("invalidateIndexerQueries", () => {
+  it("invalidates each prefix as a queryKey head", async () => {
+    const seen: string[][] = [];
+    const queryClient: IndexerQueryClient = {
+      invalidateQueries: async ({ queryKey }) => {
+        seen.push(queryKey.map(String));
+      },
+    };
+
+    await invalidateIndexerQueries(queryClient);
+
+    assert.equal(seen.length, INDEXER_QUERY_KEY_PREFIXES.length);
+    assert.deepEqual(
+      seen.map((k) => k[0]).sort(),
+      [...INDEXER_QUERY_KEY_PREFIXES].sort(),
+    );
+    for (const key of seen) {
+      assert.equal(key.length, 1);
+    }
+  });
+});

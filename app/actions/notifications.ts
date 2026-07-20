@@ -50,7 +50,7 @@ type PonderProfilePassportsResponse = {
 export async function fetchOwnedPassportTokenIds(address: string): Promise<string[]> {
   try {
     const res = await fetch(`${PONDER_URL}/profile/${encodeURIComponent(address)}/passports`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) return [];
 
@@ -72,7 +72,7 @@ export async function fetchNotificationFeed(
     url.searchParams.set("since", String(since));
     url.searchParams.set("limit", "50");
 
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return { items: [], ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -89,7 +89,7 @@ export async function fetchPassportBatch(tokenIds: string[]): Promise<PassportBa
   try {
     const url = new URL(`${PONDER_URL}/passports/batch`);
     url.searchParams.set("ids", tokenIds.join(","));
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return { passports: [], ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -105,7 +105,7 @@ export async function fetchListingBatch(tokenIds: string[]): Promise<ListingBatc
   try {
     const url = new URL(`${PONDER_URL}/listings/batch`);
     url.searchParams.set("ids", tokenIds.join(","));
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return { listings: [], ponderError: "PONDER_UNAVAILABLE" };
     }

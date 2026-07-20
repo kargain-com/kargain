@@ -50,7 +50,7 @@ export async function getAgentAuthorizations(
     } else if (hasActiveListing === true) {
       url.searchParams.set("hasActiveListing", "true");
     }
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return { ...EMPTY_AUTHORIZATIONS, page, limit, ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -75,7 +75,7 @@ export async function getAgentListings(
     url.searchParams.set("limit", String(limit));
     if (active === true) url.searchParams.set("active", "true");
     else if (active === false) url.searchParams.set("active", "false");
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return { ...EMPTY_LISTINGS, page, limit, ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -100,7 +100,7 @@ export async function getAgentConsignmentCount(
     const url = new URL(`${PONDER_URL}/agents/${agent}/authorizations`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "1");
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return { count: null, ponderError: "PONDER_UNAVAILABLE" };
     const data = (await res.json()) as PonderAgentAuthorizationsResponse;
     return { count: data.total };

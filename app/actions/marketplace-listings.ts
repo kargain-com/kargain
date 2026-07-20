@@ -139,7 +139,7 @@ export async function searchMarketplaceListings(
   const p = filterSchema.parse(input);
   try {
     const res = await fetch(buildPonderListingsUrl(p).toString(), {
-      next: { revalidate: 30 },
+      cache: "no-store",
     });
     if (!res.ok) {
       return {
@@ -183,7 +183,7 @@ export async function searchMarketplaceFromUrlQuery(
 export async function getPassportFromPonder(tokenId: string) {
   try {
     const res = await fetch(`${PONDER_URL}/passports/${tokenId}`, {
-      next: { revalidate: 10 },
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return res.json();
@@ -196,10 +196,10 @@ export async function getProfileData(address: string) {
   try {
     const [passportsRes, listingsRes] = await Promise.all([
       fetch(`${PONDER_URL}/profile/${address}/passports`, {
-        next: { revalidate: 30 },
+        cache: "no-store",
       }),
       fetch(`${PONDER_URL}/profile/${address}/listings`, {
-        next: { revalidate: 30 },
+        cache: "no-store",
       }),
     ]);
     return {
@@ -231,7 +231,7 @@ export async function getPassportsByVerifier(
     url.searchParams.set("verifier", address);
     url.searchParams.set("status", "VERIFIED");
     url.searchParams.set("limit", "100");
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return [];
     const data = (await res.json()) as { passports: Array<Record<string, unknown>> };
     return (data.passports ?? []).map((p) => ({
@@ -249,7 +249,7 @@ export async function getPassportsByVerifier(
 export async function fetchMarketplaceStats() {
   try {
     const res = await fetch(`${PONDER_URL}/listings/stats`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return res.json();
@@ -261,7 +261,7 @@ export async function fetchMarketplaceStats() {
 export async function fetchListingFacets() {
   try {
     const res = await fetch(`${PONDER_URL}/listings/facets`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return res.json();
@@ -275,7 +275,7 @@ export async function loadFavoriteListingCards(tokenIds: string[]) {
     tokenIds.map(async (tokenId) => {
       try {
         const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
-          next: { revalidate: 30 },
+          cache: "no-store",
         });
         if (!res.ok) return null;
         const listing = (await res.json()) as PonderListing;

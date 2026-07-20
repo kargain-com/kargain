@@ -1,6 +1,5 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useReadContracts } from "wagmi";
 
 import { KarProCommonsSection } from "@/components/kar-pro/kar-pro-commons-section";
@@ -31,7 +30,6 @@ export function KarProClient({
   onVerifierStatusChange?: (isActiveVerifier: boolean) => void;
 }) {
   const chainId = DEFAULT_CHAIN_ID;
-  const queryClient = useQueryClient();
   const { address, isConnected } = useAccount();
 
   const staking = karProStakingAddress(chainId);
@@ -72,9 +70,6 @@ export function KarProClient({
     void refetch().then((result) => {
       const active = result.data?.[0]?.result === true;
       onVerifierStatusChange?.(active);
-      if (active && address) {
-        void queryClient.invalidateQueries({ queryKey: ["kar-pro-verifier", address] });
-      }
     });
   };
 

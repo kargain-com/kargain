@@ -40,7 +40,7 @@ export async function getAuctionDetail(
 ): Promise<AuctionDetailResult> {
   try {
     const res = await fetch(`${PONDER_URL}/auctions/${tokenId}`, {
-      next: { revalidate: 10 },
+      cache: "no-store",
     });
     if (res.status === 404) {
       return { ok: true, auction: null };
@@ -76,7 +76,7 @@ export async function getAuctionBids(
     url.searchParams.set("limit", String(limit));
 
     const res = await fetch(url.toString(), {
-      next: { revalidate: 5 },
+      cache: "no-store",
     });
     if (!res.ok) {
       return {

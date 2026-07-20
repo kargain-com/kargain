@@ -93,7 +93,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   try {
     const verifierBySlug = await fetch(
       `${PONDER_URL}/verifiers/by-slug/${encodeURIComponent(slug)}`,
-      { next: { revalidate: 30 } },
+      { cache: "no-store" },
     );
     if (!verifierBySlug.ok) return null;
     const data = (await verifierBySlug.json()) as { address?: string };
@@ -104,7 +104,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   }
 
   const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
-  const revalidate = { next: { revalidate: 30 } as const };
+  const ponderFetch = { cache: "no-store" as const };
 
   let isActiveVerifier = false;
   let verifier: VerifierRow | null = null;
@@ -130,10 +130,10 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
             .catch(() => false)
         : Promise.resolve(false),
       fetchVerifierPublicData(address),
-      fetch(`${PONDER_URL}/profile/${address}/listings`, revalidate),
+      fetch(`${PONDER_URL}/profile/${address}/listings`, ponderFetch),
       fetch(
         `${PONDER_URL}/agents/${address}/listings?active=true&limit=100`,
-        revalidate,
+        ponderFetch,
       ),
     ]);
 

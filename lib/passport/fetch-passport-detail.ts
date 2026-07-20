@@ -233,7 +233,7 @@ export async function fetchPassportDetail(
   let raw: unknown;
   try {
     const res = await fetch(`${PONDER_URL}/passports/${tokenId}`, {
-      next: { revalidate: 10 },
+      cache: "no-store",
     });
     if (res.status === 404) {
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
@@ -308,7 +308,7 @@ export const fetchPassportDetailCached = cache(fetchPassportDetail);
 export async function fetchListingDetail(tokenId: string) {
   try {
     const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
-      next: { revalidate: 10 },
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return res.json();

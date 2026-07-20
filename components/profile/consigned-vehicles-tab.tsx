@@ -1,10 +1,9 @@
 "use client";
 
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useInView } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
@@ -76,24 +75,6 @@ type Props = {
 
 const LISTINGS_PAGE_SIZE = 20;
 
-async function invalidateAgentConsignmentQueries(
-  wallet: Address,
-  queryClient: ReturnType<typeof useQueryClient>,
-  router: ReturnType<typeof useRouter>,
-) {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["agent-awaiting", wallet] }),
-    queryClient.invalidateQueries({ queryKey: ["agent-listings", wallet] }),
-    queryClient.invalidateQueries({
-      queryKey: ["agent-auction-awaiting", wallet],
-    }),
-    queryClient.invalidateQueries({
-      queryKey: ["agent-auction-active", wallet],
-    }),
-  ]);
-  router.refresh();
-}
-
 function AwaitingCardSkeleton() {
   return (
     <div className="rounded-md border border-border-default bg-bg-surface px-4 py-3">
@@ -137,7 +118,6 @@ function AuthorizedAwaitingCard({
   wallet,
   expiry,
   nowSec,
-  onConsignmentChanged,
 }: {
   tokenId: string;
   chainId: number;
@@ -152,7 +132,6 @@ function AuthorizedAwaitingCard({
   wallet: Address;
   expiry: bigint;
   nowSec: number;
-  onConsignmentChanged: () => void;
 }) {
   const [listExpanded, setListExpanded] = useState(false);
   const item = deriveFixedPriceConsignment(
@@ -224,7 +203,6 @@ function AuthorizedAwaitingCard({
             wallet={wallet}
             onSuccess={() => {
               setListExpanded(false);
-              onConsignmentChanged();
             }}
           />
         </>
@@ -239,14 +217,12 @@ function ActiveConsignmentCard({
   chainId,
   platformFeeBps,
   wallet,
-  onConsignmentChanged,
 }: {
   listing: PonderAgentListingRaw;
   row: MarketplaceListingRow;
   chainId: number;
   platformFeeBps: bigint | null | undefined;
   wallet: Address;
-  onConsignmentChanged: () => void;
 }) {
   const [editExpanded, setEditExpanded] = useState(false);
   const tokenId = String(listing.tokenId ?? listing.id ?? "");
@@ -276,7 +252,6 @@ function ActiveConsignmentCard({
               chainId={chainId}
               tokenId={tokenId}
               wallet={wallet}
-              onSuccess={onConsignmentChanged}
             />
           </div>
         ) : (
@@ -297,14 +272,12 @@ function ActiveConsignmentCard({
               wallet={wallet}
               onSuccess={() => {
                 setEditExpanded(false);
-                onConsignmentChanged();
               }}
             />
             <AgentDelistButton
               chainId={chainId}
               tokenId={tokenId}
               wallet={wallet}
-              onSuccess={onConsignmentChanged}
             />
           </>
         )}
@@ -372,13 +345,11 @@ function AwaitingAuthorizationsSection({
   chainId,
   wrongChain,
   platformFeeBps,
-  onConsignmentChanged,
 }: {
   wallet: Address;
   chainId: number;
   wrongChain: boolean;
   platformFeeBps: bigint | null | undefined;
-  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -562,7 +533,6 @@ function AwaitingAuthorizationsSection({
                   wallet={wallet}
                   expiry={BigInt(auth.expiry || 0)}
                   nowSec={nowSec}
-                  onConsignmentChanged={onConsignmentChanged}
                 />
               </li>
             ))}
@@ -588,7 +558,6 @@ function ListingsSection({
   emptyMessage,
   omitWhenEmpty,
   platformFeeBps,
-  onConsignmentChanged,
 }: {
   title: string;
   wallet: Address;
@@ -596,7 +565,6 @@ function ListingsSection({
   emptyMessage: string;
   omitWhenEmpty?: boolean;
   platformFeeBps: bigint | null | undefined;
-  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -673,7 +641,6 @@ function ListingsSection({
                     chainId={row.chainId}
                     platformFeeBps={platformFeeBps}
                     wallet={wallet}
-                    onConsignmentChanged={onConsignmentChanged}
                   />
                 ) : (
                   <ListingCard row={row} />
@@ -741,12 +708,10 @@ function AwaitingAuctionCard({
   auth,
   chainId,
   nowSec,
-  onConsignmentChanged,
 }: {
   auth: PonderAuctionAuthorizationRaw;
   chainId: number;
   nowSec: number;
-  onConsignmentChanged: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const item = deriveAuctionConsignment(
@@ -812,7 +777,6 @@ function AwaitingAuctionCard({
                 tokenId={auth.tokenId}
                 onSuccess={() => {
                   setExpanded(false);
-                  onConsignmentChanged();
                 }}
               />
             </div>
@@ -825,11 +789,9 @@ function AwaitingAuctionCard({
 function AwaitingAuctionAuthorizationsSection({
   wallet,
   chainId,
-  onConsignmentChanged,
 }: {
   wallet: Address;
   chainId: number;
-  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -899,7 +861,6 @@ function AwaitingAuctionAuthorizationsSection({
                   auth={auth}
                   chainId={chainId}
                   nowSec={nowSec}
-                  onConsignmentChanged={onConsignmentChanged}
                 />
               </li>
             ))}
@@ -920,10 +881,8 @@ function AwaitingAuctionAuthorizationsSection({
 
 function ActiveAuctionCard({
   auction,
-  onConsignmentChanged,
 }: {
   auction: AuctionRow;
-  onConsignmentChanged: () => void;
 }) {
   const nowSec = useNow(30);
   const preStart = auction.startedAt === 0n;
@@ -1013,7 +972,6 @@ function ActiveAuctionCard({
             chainId={auction.chainId}
             tokenId={auction.tokenId}
             auction={auction}
-            onSuccess={onConsignmentChanged}
           />
         </div>
       )}
@@ -1024,11 +982,9 @@ function ActiveAuctionCard({
 function ActiveAuctionsSection({
   wallet,
   chainId,
-  onConsignmentChanged,
 }: {
   wallet: Address;
   chainId: number;
-  onConsignmentChanged: () => void;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
@@ -1095,7 +1051,6 @@ function ActiveAuctionsSection({
               <li key={auction.tokenId}>
                 <ActiveAuctionCard
                   auction={auction}
-                  onConsignmentChanged={onConsignmentChanged}
                 />
               </li>
             ))}
@@ -1116,8 +1071,6 @@ function ActiveAuctionsSection({
 
 export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const { chainId: connectedChainId } = useAccount();
-  const queryClient = useQueryClient();
-  const router = useRouter();
   const wc = wagmiChainId(chainId);
   const market = marketplaceAddress(chainId);
   const wrongChain =
@@ -1134,10 +1087,6 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const platformFeeBps =
     platformFeeBpsRaw != null ? BigInt(platformFeeBpsRaw) : undefined;
 
-  const onConsignmentChanged = useCallback(() => {
-    void invalidateAgentConsignmentQueries(wallet, queryClient, router);
-  }, [wallet, queryClient, router]);
-
   return (
     <div className="space-y-2">
       {wrongChain && (
@@ -1151,7 +1100,6 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         chainId={chainId}
         wrongChain={wrongChain}
         platformFeeBps={platformFeeBps}
-        onConsignmentChanged={onConsignmentChanged}
       />
 
       <ListingsSection
@@ -1160,7 +1108,6 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         active
         emptyMessage="No active consignments"
         platformFeeBps={platformFeeBps}
-        onConsignmentChanged={onConsignmentChanged}
       />
 
       <ListingsSection
@@ -1170,19 +1117,16 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         emptyMessage="No past consignments"
         omitWhenEmpty
         platformFeeBps={platformFeeBps}
-        onConsignmentChanged={onConsignmentChanged}
       />
 
       <AwaitingAuctionAuthorizationsSection
         wallet={wallet}
         chainId={chainId}
-        onConsignmentChanged={onConsignmentChanged}
       />
 
       <ActiveAuctionsSection
         wallet={wallet}
         chainId={chainId}
-        onConsignmentChanged={onConsignmentChanged}
       />
     </div>
   );

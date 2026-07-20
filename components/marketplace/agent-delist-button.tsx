@@ -19,7 +19,8 @@ type Props = {
   chainId: number;
   tokenId: string;
   wallet: `0x${string}`;
-  onSuccess: () => void;
+  /** Optional local UI hook (collapse panels). Indexer refresh is owned by `useTxSync`. */
+  onSuccess?: () => void;
 };
 
 export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props) {
@@ -54,7 +55,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
         }),
       );
       if (!succeeded) return;
-      onSuccess();
+      onSuccess?.();
     } catch (err) {
       setTxError(txErrorMessage(err));
     }

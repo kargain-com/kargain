@@ -63,7 +63,7 @@ export async function getOwnerAuthorizations(
     } else if (hasActiveListing === true) {
       url.searchParams.set("hasActiveListing", "true");
     }
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return {
         ...EMPTY_AUTHORIZATIONS,
@@ -103,7 +103,7 @@ export async function getOwnerAuctionAuthorizations(
     } else if (awaiting === false) {
       url.searchParams.set("awaiting", "false");
     }
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return {
         ...EMPTY_AUCTION_AUTHS,
@@ -138,7 +138,7 @@ export async function getOwnerDelegatedCount(
     const url = new URL(`${PONDER_URL}/owners/${owner}/authorizations`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "1");
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return { count: null, ponderError: "PONDER_UNAVAILABLE" };
     const data = (await res.json()) as PonderAgentAuthorizationsResponse;
     return { count: data.total };
@@ -166,7 +166,7 @@ export async function getOwnerActiveAuctions(
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) {
       return {
         ok: true,
