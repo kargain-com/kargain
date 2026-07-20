@@ -487,6 +487,18 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from payload; status UNVERIFIED on spoke (no KarPassport status mapping on ONFT — fresh mint).
 5. **Return path:** Burn on spoke, unlock/mint on hub per ONFT721 standard debit/credit pairing.
 
+### 7.6 LayerZero security configuration (normative)
+
+Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form incident context: [docs/research/layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+
+- **No defaults.** Default send/receive library and DVN configurations are forbidden. Every OApp/ONFT deployment MUST explicitly pin send and receive libraries and the per-pathway DVN set (required + optional). Never depend on LayerZero Labs-controlled defaults.
+- **DVN quorum.** Minimum **2** required DVNs from independent operators on testnet pathways; **3–5** on any mainnet pathway. LayerZero Labs DVN MAY be one required DVN; it MUST NOT be the only one. **1-of-1** DVN configurations are forbidden permanently.
+- **Config authority.** OApp delegate / config ownership follows the same governance pattern as other protocol contracts (Timelock48h upgrade authority). No EOA-held config ownership on mainnet.
+- **Provider isolation.** LayerZero imports are confined to bridge adapter modules (`ProxyONFT721Adapter`, `KarPassportONFT721`, and their deploy/config scripts). Core contracts, `app/`, `lib/`, and `hooks/` remain messaging-provider agnostic so the provider is swappable (e.g. CCIP / Hyperlane) at the adapter boundary.
+- **Monitoring.** Bridge config and ownership changes MUST be observable (LayerZero Console or equivalent alerting) before any mainnet pathway goes live.
+- **Phase 2 checkpoint.** Bridge remains testnet-scope until a re-assessment confirms: (a) LayerZero default migration to 5/5 is complete, (b) a timelock on library upgrades is in place, and (c) 6+ months without new LayerZero security incidents. See [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+- **Risk framing.** Kargain bridges passport identity/metadata (spoke mints **UNVERIFIED** per §7.1; trust is never ported), not fungible value custody. Blast radius of a messaging compromise is data integrity, not fund loss. This framing does **not** relax any rule above.
+
 ---
 
 ### I.8. Security model
@@ -511,7 +523,7 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 | **Oracle staleness** | `maxFeedStaleness` (default 3600s); stale feeds revert buys |
 | **External payment trust** | `confirmExternalPayment` is seller attestation — no on-chain payment proof |
 | **`verificationFee`** | Informational on-chain signal only — no escrow or payment enforcement; Kargain UI may facilitate direct owner→verifier ETH (memo) or USDC transfer |
-| **Bridge trust** | LayerZero + ONFT config; misconfigured peers are operational risk |
+| **Bridge trust** | LayerZero + ONFT config per §7.6 (pinned config, ≥2 independent DVNs, no defaults); misconfigured peers are operational risk |
 
 ### Permanent invariants
 
