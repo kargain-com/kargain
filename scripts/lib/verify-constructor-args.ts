@@ -144,7 +144,7 @@ export const VERIFY_TARGETS = {
     buildArgs: marketplaceProxyConstructorArgs,
   },
   proxyOnftAdapter: {
-    label: "ProxyONFT721Adapter (1.0.0-rc.1)",
+    label: "ProxyONFT721Adapter (1.1.0-rc.1)",
     contract: "contracts/ProxyONFT721Adapter.sol:ProxyONFT721Adapter",
     addressKey: "proxyOnftAdapter" as const,
     buildArgs: proxyOnftAdapterConstructorArgs,

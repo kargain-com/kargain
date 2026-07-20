@@ -18,6 +18,7 @@
 | Generation | Section |
 |------------|---------|
 | v2 active (84532) | [Part I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| v2 spoke (11155111) | [Part I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | v1.x historical (84532) | [Part II.4](#ii4-historical-deployment-base-sepolia-84532) |
 
 ## Part 0 — Conventions
@@ -49,7 +50,7 @@
 | MarketplaceEscrow | `2.0.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
 | AuctionEscrow | `1.0.1-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow |
-| ProxyONFT721Adapter | `1.0.0-rc.1` | Immutable | Hub-chain lock-and-bridge adapter |
+| ProxyONFT721Adapter | `1.1.0-rc.1` | Immutable | Hub-chain lock-and-bridge adapter |
 | KarPassportONFT721 | `1.0.0-rc.1` | Immutable | Spoke-chain mint/burn ONFT |
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants).
@@ -462,7 +463,7 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 - Wraps existing KarPassport ERC-721.
 - `_debit`: reverts **`ListedInMarketplace`** if `marketplace.isListed(tokenId)`; then reverts **`PassportDisputed`** if `passportStatus(tokenId) == DISPUTED` (via minimal `IKarPassportStatus` on `innerToken`).
 - `_buildMsgAndOptions`: embeds `tokenURI(tokenId)` as `abi.encode(string)` compose payload.
-- **Deployed 84532 remains `1.0.0-rc.1` until bridge redeploy** (source `VERSION` is `1.1.0-rc.1`; `CONTRACT_VERSIONS` / I.9.1 stay on the live build until then).
+- Live 84532: `VERSION` `1.1.0-rc.1` — address in [I.9.1](#i91-active-deployment-base-sepolia-84532).
 
 ### 7.3 KarPassportONFT721 v1.0.0 (spoke)
 
@@ -495,7 +496,7 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 
 Confirmations: **5** both directions — explicit fallback (`confirmations.source: "explicit-fallback"`); the metadata API does not expose pathway defaults for this pair.
 
-Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live execution is iteration 5.
+Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 20, 2026).
 ### 7.5 Bridge flow (step by step)
 
 1. **Preconditions:** Passport not listed; user owns token on hub; LZ peers configured (testnet↔testnet only).
@@ -558,7 +559,7 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
 | Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (RC) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
-| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD, EUR, GBP, JPY | Planned |
+| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD, EUR, GBP, JPY | Deployed (spoke) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
@@ -582,16 +583,35 @@ Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **4
 | MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` | [code](https://sepolia.basescan.org/address/0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19#code) |
 | AuctionEscrow impl | `1.0.1-draft` | `0x7aCED69A61d77C208140107E2b46d3D7d7266a66` | [code](https://sepolia.basescan.org/address/0x7aCED69A61d77C208140107E2b46d3D7d7266a66#code) |
 | AuctionEscrow proxy | `1.0.1-draft` | `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` | [code](https://sepolia.basescan.org/address/0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce#code) |
-| ProxyONFT721Adapter | `1.0.0-rc.1` | `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` | [code](https://sepolia.basescan.org/address/0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c#code) |
+| ProxyONFT721Adapter | `1.1.0-rc.1` | `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` | [code](https://sepolia.basescan.org/address/0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0#code) |
 | USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
 
 **Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
-**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) · AuctionEscrow additive: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md) · UUPS upgrade to `1.0.1-draft`: [ops/deploys/84532-auction-upgrade-1.0.1.md](../ops/deploys/84532-auction-upgrade-1.0.1.md)
+> **Superseded adapter:** Prior ProxyONFT721Adapter `1.0.0-rc.1` `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` (block 43399505) — replaced July 20, 2026. Historical stack pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md).
+
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) · AuctionEscrow additive: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md) · UUPS upgrade to `1.0.1-draft`: [ops/deploys/84532-auction-upgrade-1.0.1.md](../ops/deploys/84532-auction-upgrade-1.0.1.md) · Bridge hub↔spoke: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
 
 **AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-101-draft). Additive deploy record: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+
+### I.9.2 Active deployment (Ethereum Sepolia 11155111)
+
+> **Single source of truth** for active spoke ONFT addresses and the wired hub↔spoke pathway. Other docs link here.
+
+Deployed July 20, 2026 · spoke ONFT semver **`1.0.0-rc.1`** · manifest: `deployments/11155111.json` (not in git) · hub peer adapter: [I.9.1](#i91-active-deployment-base-sepolia-84532)
+
+| Contract | VERSION | Address | Etherscan |
+|----------|---------|---------|-----------|
+| KarPassportONFT721 | `1.0.0-rc.1` | `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` | [code](https://sepolia.etherscan.io/address/0x5b7fD0ffF9B82255AD4d043a491e81948b76e703#code) |
+| LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.etherscan.io/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
+
+**Deploy block:** KarPassportONFT721 **11312959**.
+
+**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas · `pathwayConfigHash` `0x3ef27aa72ed7b2d5aadf100d99d4dfd4fa1e2b1adc915523b0ddc8c9bf2d517e`
+
+**Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · runbook: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md) · security policy: [§7.6](#76-layerzero-security-configuration).
 
 ---
 

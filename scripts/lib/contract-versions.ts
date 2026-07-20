@@ -6,7 +6,7 @@ export const CONTRACT_VERSIONS = {
   MarketplaceEscrow: "2.0.0-rc.1",
   Timelock48h: "1.0.0-rc.1",
   KarPassportONFT721: "1.0.0-rc.1",
-  ProxyONFT721Adapter: "1.0.0-rc.1",
+  ProxyONFT721Adapter: "1.1.0-rc.1",
   AuctionEscrow: "1.0.1-draft",
 } as const;
 
