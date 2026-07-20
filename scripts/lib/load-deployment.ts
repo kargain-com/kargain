@@ -29,6 +29,19 @@ export type DeploymentBlocks = {
   auctionEscrowImpl?: number;
 };
 
+/** Prior hub adapter address retained when `pnpm deploy:adapter:sepolia` overwrites. */
+export type HistoricalProxyOnftAdapter = {
+  address: `0x${string}`;
+  block?: number;
+  txHash?: string;
+  version?: string;
+  replacedAt: string;
+};
+
+export type DeploymentHistorical = {
+  proxyOnftAdapter?: HistoricalProxyOnftAdapter[];
+};
+
 export type DeploymentManifest = {
   chainId: number;
   generation: string;
@@ -54,6 +67,8 @@ export type DeploymentManifest = {
   tokenIdOffset?: string;
   deployedAt: string;
   unchanged?: string[];
+  /** Replaced addresses kept for ops (adapter redeploy). */
+  historical?: DeploymentHistorical;
   blocks: DeploymentBlocks;
   indexFromBlock: number;
   txHashes?: Record<string, string>;
@@ -112,6 +127,21 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
   };
 }
 
+function normalizeHistorical(
+  historical: DeploymentHistorical | undefined,
+): DeploymentHistorical | undefined {
+  if (!historical) return undefined;
+  const adapters = historical.proxyOnftAdapter;
+  if (!adapters) return historical;
+  return {
+    ...historical,
+    proxyOnftAdapter: adapters.map((entry) => ({
+      ...entry,
+      address: getAddress(entry.address),
+    })),
+  };
+}
+
 function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
   return {
     ...raw,
@@ -130,6 +160,7 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
     ...(raw.proxyOnftAdapter ? { proxyOnftAdapter: getAddress(raw.proxyOnftAdapter) } : {}),
     ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
+    ...(raw.historical ? { historical: normalizeHistorical(raw.historical) } : {}),
   };
 }
 
