@@ -468,6 +468,7 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 
 - Standalone ONFT ERC-721 on destination chain.
 - `_lzReceive`: mint to recipient; decode URI from compose extension; emit `ONFTReceived`.
+- URI decode is guarded at the helper (`_memoryTail`); compose extensions ≤ 32 bytes yield a mint without URI.
 - `_debit`: burn on outbound bridge.
 
 ### 7.4 LayerZero EndpointV2 — testnet EIDs

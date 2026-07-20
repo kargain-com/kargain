@@ -102,6 +102,10 @@ contract KarPassportONFT721 is ONFT721Core, ERC721URIStorage {
         return super.tokenURI(tokenId);
     }
 
+    /// @dev Helper-level invariant: reverts `ComposeMsgTooShort` when `data.length < offset`.
+    /// Unreachable via the current `_lzReceive` path, which only calls this when
+    /// `extension.length > _SENDER_BYTES` (32). Kept as a defensive guard for any
+    /// future caller that passes a short buffer.
     function _memoryTail(bytes memory data, uint256 offset) internal pure returns (bytes memory tail) {
         if (data.length < offset) revert ComposeMsgTooShort();
         tail = new bytes(data.length - offset);
