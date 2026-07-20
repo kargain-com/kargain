@@ -34,6 +34,11 @@ const contracts = [
     artifactPath:
       "artifacts/contracts/ProxyONFT721Adapter.sol/ProxyONFT721Adapter.json",
   },
+  {
+    exportName: "KarPassportONFT721",
+    artifactPath:
+      "artifacts/contracts/KarPassportONFT721.sol/KarPassportONFT721.json",
+  },
 ];
 
 const lines = [

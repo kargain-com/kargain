@@ -481,6 +481,21 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 
 EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib/chainlink-feeds.ts`).
 
+**Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`.
+
+| Side | sendUln302 | receiveUln302 | executor |
+|------|------------|---------------|----------|
+| Hub 40245 (Base Sepolia) | `0xC1868e054425D378095A003EcbA3823a5D0135C9` | `0x12523de19dc41c91F7d2093E0CFbB76b17012C8d` | `0x8A3D588D9f6AC041476b094f97FF94ec30169d3D` |
+| Spoke 40161 (Ethereum Sepolia) | `0xcc1ae8Cf5D3904Cef3360A9532B477529b177cCE` | `0xdAf00F5eE2158dD58E0d3857851c432E34A3A851` | `0x718B92b5CB0a5552039B593faF724D182A881eDA` |
+
+| Side | Required DVNs (LayerZero Labs + Nethermind) | Backup (snapshot only) |
+|------|---------------------------------------------|------------------------|
+| Hub 40245 | Labs `0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6` · Nethermind `0xd9222CC3Ccd1DF7c070d700EA377D4aDA2B86Eb5` | P2P · Horizen |
+| Spoke 40161 | Labs `0x8eebf8b423B73bFCa51a1Db4B7354AA0bFCA9193` · Nethermind `0x68802e01D6321D5159208478f297d7007A7516Ed` | P2P · Horizen |
+
+Confirmations: **5** both directions — explicit fallback (`confirmations.source: "explicit-fallback"`); the metadata API does not expose pathway defaults for this pair.
+
+Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live execution is iteration 5.
 ### 7.5 Bridge flow (step by step)
 
 1. **Preconditions:** Passport not listed; user owns token on hub; LZ peers configured (testnet↔testnet only).
@@ -495,6 +510,10 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 
 - **No defaults.** Default send/receive library and DVN configurations are forbidden. Every OApp/ONFT deployment MUST explicitly pin send and receive libraries and the per-pathway DVN set (required + optional). Never depend on LayerZero Labs-controlled defaults.
 - **DVN quorum.** Minimum **2** required DVNs from independent operators on testnet pathways; **3–5** on any mainnet pathway. LayerZero Labs DVN MAY be one required DVN; it MUST NOT be the only one. **1-of-1** DVN configurations are forbidden permanently.
+- **EID allowlist + star topology.** Testnet wire scripts allow only EIDs `{40245, 40161}` and only the hub↔spoke star (no spoke↔spoke peers). Never wire testnet EIDs to mainnet EIDs.
+- **Read-back.** After every config write, re-read on-chain state and fail if `requiredDVNCount < 2`, a default library is in use, a dead DVN is in the required set, or peers are non-reciprocal. Ops drift check: `pnpm bridge:wire:read-only` (zero transactions).
+- **Receive library change policy.** Initial `setReceiveLibrary` only. Changing an already-set **non-default** receive library is refused by `bridge-wire` — use the explicit `setReceiveLibraryTimeout` / grace-period procedure (out of scope for the wire script).
+- **Pinned metadata.** Library and DVN addresses MUST come from the committed LayerZero metadata snapshot (`pnpm lz:snapshot`), not from chat or memory. Snapshot `endpointV2` MUST equal `LZ_ENDPOINT_V2_BY_CHAIN`.
 - **Config authority.** OApp delegate / config ownership follows the same governance pattern as other protocol contracts (Timelock48h upgrade authority). No EOA-held config ownership on mainnet.
 - **Provider isolation.** LayerZero imports are confined to bridge adapter modules (`ProxyONFT721Adapter`, `KarPassportONFT721`, and their deploy/config scripts). Core contracts, `app/`, `lib/`, and `hooks/` remain messaging-provider agnostic so the provider is swappable (e.g. CCIP / Hyperlane) at the adapter boundary.
 - **Monitoring.** Bridge config and ownership changes MUST be observable (LayerZero Console or equivalent alerting) before any mainnet pathway goes live.

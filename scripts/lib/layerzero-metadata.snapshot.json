@@ -1,0 +1,44 @@
+{
+  "fetchedAt": "2026-07-20T12:09:58.763Z",
+  "source": "https://metadata.layerzero-api.com/v1/metadata",
+  "chains": {
+    "40161": {
+      "chainKey": "sepolia-testnet",
+      "chainId": 11155111,
+      "eid": 40161,
+      "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+      "sendUln302": "0xcc1ae8Cf5D3904Cef3360A9532B477529b177cCE",
+      "receiveUln302": "0xdAf00F5eE2158dD58E0d3857851c432E34A3A851",
+      "executor": "0x718B92b5CB0a5552039B593faF724D182A881eDA",
+      "dvns": {
+        "layerzero-labs": "0x8eebf8b423B73bFCa51a1Db4B7354AA0bFCA9193",
+        "nethermind": "0x68802e01D6321D5159208478f297d7007A7516Ed",
+        "p2p": "0x9efBA56c8598853E5b40FD9a66B54a6c163742d7",
+        "horizen": "0x843139c725c2FB9814dE6A12fB890D8dBf3e1698"
+      },
+      "deadDvn": "0x8b450b0acF56E1B0e25C581bB04FBAbeeb0644b8"
+    },
+    "40245": {
+      "chainKey": "base-sepolia",
+      "chainId": 84532,
+      "eid": 40245,
+      "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+      "sendUln302": "0xC1868e054425D378095A003EcbA3823a5D0135C9",
+      "receiveUln302": "0x12523de19dc41c91F7d2093E0CFbB76b17012C8d",
+      "executor": "0x8A3D588D9f6AC041476b094f97FF94ec30169d3D",
+      "dvns": {
+        "layerzero-labs": "0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6",
+        "nethermind": "0xd9222CC3Ccd1DF7c070d700EA377D4aDA2B86Eb5",
+        "p2p": "0x63ef73671245D1A290F2a675Be9D906090f72a8D",
+        "horizen": "0xB1B2319767B86800C4CFe8623a72C00D9d90cFb6"
+      },
+      "deadDvn": "0x78551ADC2553EF1858a558F5300F7018Aad2FA7e"
+    }
+  },
+  "confirmations": {
+    "40245→40161": 5,
+    "40161→40245": 5,
+    "source": "explicit-fallback"
+  },
+  "sha256": "1e0a5eda896ad43522624e5b0832e92b139076055325c1ff2e42e69072c60782"
+}

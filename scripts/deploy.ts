@@ -241,7 +241,7 @@ async function main() {
     console.log(`  Manifest:                ${SEPOLIA_DEPLOYMENT_PATH}`);
     console.log("");
     console.log("Next: update lib/web3/sepolia-addresses.ts (SEPOLIA_ACTIVE) in the same PR, then pnpm ponder:config");
-    console.log("Configure LayerZero peers among 40xxx testnet eids before bridging.");
+    console.log("Next: pnpm bridge:wire (after spoke deploy + verify) to pin peers / ULN / enforcedOptions");
     console.log(`Basescan: ${BASESCAN}/address/${proxy.address}`);
   } finally {
     await connection.close();

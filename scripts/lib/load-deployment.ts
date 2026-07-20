@@ -60,6 +60,14 @@ export type DeploymentManifest = {
   contractVersions?: { [K in ContractVersionName]: string };
 };
 
+/** Hub↔spoke peer bookkeeping written by `pnpm bridge:wire` on successful full wire. */
+export type SpokePathwayPeers = {
+  hubEid: 40245;
+  spokeEid: 40161;
+  hubOApp: `0x${string}`;
+  spokeOApp: `0x${string}`;
+};
+
 /** Ethereum Sepolia spoke ONFT — peers/pathwayConfigHash filled by wiring iteration. */
 export type SpokeDeploymentManifest = {
   chainId: typeof SPOKE_CHAIN_ID;
@@ -70,8 +78,8 @@ export type SpokeDeploymentManifest = {
   /** Delegate passed to KarPassportONFT721 constructor — needed for explorer verify. */
   deployer: `0x${string}`;
   blocks: { karPassportOnft: number };
-  peers: null;
-  pathwayConfigHash: null;
+  peers: SpokePathwayPeers | null;
+  pathwayConfigHash: `0x${string}` | null;
 };
 
 export type PonderAddressBundle = {
@@ -120,6 +128,20 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
     ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
     ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
+    ...(raw.proxyOnftAdapter ? { proxyOnftAdapter: getAddress(raw.proxyOnftAdapter) } : {}),
+    ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
+  };
+}
+
+function normalizeSpokePeers(
+  peers: SpokePathwayPeers | null | undefined,
+): SpokePathwayPeers | null {
+  if (peers == null) return null;
+  return {
+    hubEid: 40245,
+    spokeEid: 40161,
+    hubOApp: getAddress(peers.hubOApp),
+    spokeOApp: getAddress(peers.spokeOApp),
   };
 }
 
@@ -130,8 +152,8 @@ function normalizeSpokeManifest(raw: SpokeDeploymentManifest): SpokeDeploymentMa
     karPassportOnft: getAddress(raw.karPassportOnft),
     layerZeroEndpoint: getAddress(raw.layerZeroEndpoint),
     deployer: getAddress(raw.deployer),
-    peers: null,
-    pathwayConfigHash: null,
+    peers: normalizeSpokePeers(raw.peers),
+    pathwayConfigHash: raw.pathwayConfigHash ?? null,
   };
 }
 

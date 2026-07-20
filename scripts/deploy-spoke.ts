@@ -146,7 +146,7 @@ async function main() {
     console.log(`  Manifest:           ${SPOKE_DEPLOYMENT_PATH}`);
     console.log(`  peers / pathwayConfigHash: null (wiring iteration)`);
     console.log("");
-    console.log("Next: pnpm verify:spoke:sepolia");
+    console.log("Next: pnpm verify:spoke:sepolia, then pnpm bridge:wire");
     console.log(`Etherscan: ${ETHERSCAN}/address/${spoke.address}`);
   } finally {
     await connection.close();
