@@ -1,26 +1,23 @@
 "use server";
 
-import {
-  SLUG_MAX_LENGTH,
-  SLUG_MIN_LENGTH,
-  SLUG_PATTERN,
-} from "@/lib/kar-pro/kar-pro-metadata";
+import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
+export type SlugAvailabilityResult = {
+  available: boolean;
+  reason?: "invalid_format" | "invalid_length" | "taken" | "error";
+};
+
 export async function checkSlugAvailability(
   slug: string,
   ownerAddress?: string,
-): Promise<{ available: boolean; reason?: string }> {
+): Promise<SlugAvailabilityResult> {
   const trimmed = slug.trim();
 
-  if (!SLUG_PATTERN.test(trimmed)) {
+  if (!isValidSlug(trimmed)) {
     return { available: false, reason: "invalid_format" };
-  }
-
-  if (trimmed.length < SLUG_MIN_LENGTH || trimmed.length > SLUG_MAX_LENGTH) {
-    return { available: false, reason: "invalid_length" };
   }
 
   try {
@@ -35,7 +32,10 @@ export async function checkSlugAvailability(
       return { available: false, reason: "error" };
     }
     const data = (await res.json()) as { available?: boolean };
-    return { available: data.available === true };
+    if (data.available === true) {
+      return { available: true };
+    }
+    return { available: false, reason: "taken" };
   } catch {
     return { available: false, reason: "error" };
   }

@@ -14,9 +14,9 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   categoryIndexToLabel,
-  SLUG_PATTERN,
   uploadKarProMetadata,
 } from "@/lib/kar-pro/kar-pro-metadata";
+import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
@@ -65,7 +65,9 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
       setError(
         slugAvailability === "taken"
           ? "That pro URL is already taken."
-          : "Choose an available pro URL before continuing.",
+          : slugAvailability === "error"
+            ? "Could not check that pro URL. Try again."
+            : "Choose an available pro URL before continuing.",
       );
       return;
     }

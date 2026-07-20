@@ -6,17 +6,17 @@ import {
   CircleErrorIcon,
   SpinnerIcon,
 } from "@/components/ui/icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import { checkSlugAvailability } from "@/app/actions/kar-pro-slug";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  KAR_PRO_CATEGORY_OPTIONS,
-  SLUG_PATTERN,
-  slugify,
-} from "@/lib/kar-pro/kar-pro-metadata";
+  useSlugAvailability,
+  type SlugAvailabilityStatus,
+} from "@/hooks/use-slug-availability";
+import { KAR_PRO_CATEGORY_OPTIONS } from "@/lib/kar-pro/kar-pro-metadata";
+import { slugify } from "@/lib/kar-pro/kar-pro-slug-rules";
 
 export type KarProProfileFieldValues = {
   categoryIndex: number;
@@ -26,12 +26,7 @@ export type KarProProfileFieldValues = {
   website: string;
 };
 
-export type SlugAvailabilityStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "taken"
-  | "invalid_format";
+export type { SlugAvailabilityStatus };
 
 type KarProProfileFieldsProps = {
   idPrefix?: string;
@@ -56,57 +51,15 @@ export function KarProProfileFields({
   const descriptionId = `${idPrefix}-description`;
   const websiteId = `${idPrefix}-website`;
 
-  const [asyncResult, setAsyncResult] = useState<{
-    slug: string;
-    status: "available" | "taken" | "idle" | "invalid_format";
-  } | null>(null);
   const lastAutoSuggestion = useRef("");
-  const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const trimmedSlug = values.slug.trim();
-  const syncSlugStatus: SlugAvailabilityStatus = !trimmedSlug
-    ? "idle"
-    : !SLUG_PATTERN.test(trimmedSlug)
-      ? "invalid_format"
-      : "checking";
-
-  const slugStatus: SlugAvailabilityStatus =
-    syncSlugStatus !== "checking"
-      ? syncSlugStatus
-      : asyncResult?.slug === trimmedSlug
-        ? asyncResult.status
-        : "checking";
+  const slugStatus = useSlugAvailability({
+    slug: values.slug,
+    ownerAddress,
+  });
 
   useEffect(() => {
     onSlugAvailabilityChange?.(slugStatus);
   }, [slugStatus, onSlugAvailabilityChange]);
-
-  useEffect(() => {
-    if (syncSlugStatus !== "checking") return;
-
-    if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
-
-    const slug = trimmedSlug;
-    slugDebounceRef.current = setTimeout(() => {
-      void checkSlugAvailability(slug, ownerAddress).then((result) => {
-        if (!result.available) {
-          if (result.reason === "invalid_format" || result.reason === "invalid_length") {
-            setAsyncResult({ slug, status: "invalid_format" });
-          } else if (result.reason === "error") {
-            setAsyncResult({ slug, status: "idle" });
-          } else {
-            setAsyncResult({ slug, status: "taken" });
-          }
-        } else {
-          setAsyncResult({ slug, status: "available" });
-        }
-      });
-    }, 500);
-
-    return () => {
-      if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
-    };
-  }, [trimmedSlug, ownerAddress, syncSlugStatus]);
 
   const handleNameChange = (name: string) => {
     const prevSuggestion = lastAutoSuggestion.current;
@@ -154,6 +107,14 @@ export function KarProProfileFields({
         <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
           <CircleErrorIcon size={14} aria-hidden />
           Letters, numbers, hyphens only
+        </span>
+      );
+    }
+    if (slugStatus === "error") {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-status-error">
+          <CircleErrorIcon size={14} aria-hidden />
+          Could not check availability
         </span>
       );
     }
@@ -224,7 +185,11 @@ export function KarProProfileFields({
               value={values.slug}
               onChange={(e) => onChange({ ...values, slug: e.target.value.toLowerCase() })}
               className="rounded-l-none border-border-default"
-              aria-invalid={slugStatus === "invalid_format" || slugStatus === "taken"}
+              aria-invalid={
+                slugStatus === "invalid_format" ||
+                slugStatus === "taken" ||
+                slugStatus === "error"
+              }
             />
           </div>
           {slugIndicator}

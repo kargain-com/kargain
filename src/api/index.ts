@@ -39,7 +39,7 @@ import {
   SLUG_MAX_LENGTH,
   SLUG_MIN_LENGTH,
   SLUG_PATTERN,
-} from "../../lib/kar-pro/kar-pro-metadata";
+} from "../../lib/kar-pro/kar-pro-slug-rules";
 import { buildNotificationFeed } from "./notifications-query";
 import { legacyFiatFromCurrencyCode } from "../../lib/marketplace/currency-code";
 

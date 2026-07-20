@@ -1,4 +1,5 @@
 import { uploadJson } from "@/lib/storage/irys-client";
+import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 
 export type KarProCategoryEnum =
   | "MECHANIC"
@@ -7,10 +8,6 @@ export type KarProCategoryEnum =
   | "BROKER"
   | "DEALER"
   | "OTHER";
-
-export const SLUG_MIN_LENGTH = 3;
-export const SLUG_MAX_LENGTH = 32;
-export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type KarProMetadata = {
   version: "1.0";
@@ -28,24 +25,6 @@ export type KarProProfileFields = {
   description?: string;
   website?: string;
 };
-
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function isValidSlug(slug: string): boolean {
-  return (
-    slug.length >= SLUG_MIN_LENGTH &&
-    slug.length <= SLUG_MAX_LENGTH &&
-    SLUG_PATTERN.test(slug)
-  );
-}
 
 export const KAR_PRO_CATEGORY_OPTIONS = [
   { index: 0, label: "Mechanic", enumLabel: "MECHANIC" as const },
