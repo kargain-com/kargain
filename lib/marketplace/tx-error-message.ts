@@ -101,6 +101,10 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
     "AuctionSettleable",
     "This auction ended normally — finalize it instead of voiding.",
   ],
+  [
+    "ListedInMarketplace",
+    "Delist this vehicle before bridging.",
+  ],
 ];
 
 /** Format BidTooLow with mono min-bid + increment % (blueprint §4.3). */
@@ -117,6 +121,11 @@ export function formatPassportBidBlockedMessage(
   status: "unverified" | "disputed",
 ): string {
   return `Bidding requires a verified passport. This vehicle is currently ${status}.`;
+}
+
+/** Bridge-context override for PassportDisputed (global map is auction-oriented). */
+export function formatPassportBridgeBlockedMessage(): string {
+  return "Resolve the dispute before bridging.";
 }
 
 function mapRevertReason(message: string): string | null {

@@ -4,6 +4,7 @@ import { useReadContract } from "wagmi";
 
 import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
+import { PassportBridgePanel } from "@/components/passport/passport-bridge-panel";
 import { PassportSellPanel } from "@/components/passport/passport-sell-panel";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { useAuctionDetail } from "@/hooks/use-auction-detail";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import type { BridgeListingState } from "@/lib/passport/bridge-surface";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   auctionEscrowAddress,
@@ -62,7 +64,11 @@ export function PassportCommerce({
   const escrow = auctionEscrowAddress(chainId);
   const tid = BigInt(tokenId);
 
-  const { data: isListed, isPending: isListedPending } = useReadContract({
+  const {
+    data: isListed,
+    isPending: isListedPending,
+    isError: isListedError,
+  } = useReadContract({
     address: market,
     abi: MarketplaceEscrowAbi,
     functionName: "isListed",
@@ -100,6 +106,18 @@ export function PassportCommerce({
         : !detail.commerceReadResolved || detail.ponderPending
           ? undefined
           : false;
+
+  const bridgeListingState: BridgeListingState = !market
+    ? "failure"
+    : isListedPending
+      ? "pending"
+      : isListedError
+        ? "failure"
+        : isListed === true
+          ? "active"
+          : isListed === false
+            ? "inactive"
+            : "failure";
 
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
@@ -145,6 +163,14 @@ export function PassportCommerce({
           />
         </>
       )}
+      <PassportBridgePanel
+        chainId={chainId}
+        tokenId={tokenId}
+        passportOwner={passportOwner}
+        passportStatus={passportStatus}
+        listingState={bridgeListingState}
+        auctionBlocks={auctionBlocksSellSurface}
+      />
     </div>
   );
 }

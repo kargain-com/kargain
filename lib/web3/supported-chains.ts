@@ -28,6 +28,8 @@ export function getViemChain(chainId: number): Chain | undefined {
 const FALLBACK_RPC: Record<number, string> = {
   31337: "http://127.0.0.1:8545",
   84532: "https://sepolia.base.org",
+  /** Spoke read-only — not in `kargainChains` / wagmi write union. */
+  11155111: "https://ethereum-sepolia-rpc.publicnode.com",
 };
 
 function parseRpcMap(): Record<string, string> {

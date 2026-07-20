@@ -16,7 +16,7 @@ export const SEPOLIA_ACTIVE = {
   nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
   timelock: "0x9319e223ff31c954A940b14F04025B56A53ED384",
-  proxyOnftAdapter: "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
+  proxyOnftAdapter: "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
   auctionEscrow: "0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
@@ -29,7 +29,7 @@ export const SEPOLIA_ACTIVE = {
     karPassport: 43_399_258,
     marketplaceImpl: 43_399_261,
     marketplace: 43_399_264,
-    proxyOnftAdapter: 43_399_505,
+    proxyOnftAdapter: 44_392_489,
     auctionEscrow: 44_080_895,
   },
 } as const satisfies Record<string, `0x${string}` | number | Record<string, number>>;
@@ -39,4 +39,26 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x6378469256907D7DC14BBfce0261ceDE22314507",
   "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
   "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
+  "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
 ];
+
+/**
+ * Ethereum Sepolia spoke (11155111) — read-only in the app (not in wagmi write union).
+ * Canonical doc: docs/contracts/SPEC.md Part I.9.2
+ */
+export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
+
+/** Official Ethereum Sepolia public RPC — spoke ownerOf polls only. */
+export const ETHEREUM_SEPOLIA_PUBLIC_RPC =
+  "https://ethereum-sepolia-rpc.publicnode.com";
+
+export const ETHEREUM_SEPOLIA_SPOKE = {
+  chainId: ETHEREUM_SEPOLIA_CHAIN_ID,
+  karPassportOnft: "0x5b7fD0ffF9B82255AD4d043a491e81948b76e703",
+  layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
+  hubEid: 40245,
+  spokeEid: 40161,
+  blocks: {
+    karPassportOnft: 11_312_959,
+  },
+} as const;
