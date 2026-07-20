@@ -76,6 +76,16 @@ export function deriveBridgeSurface(
     };
   }
 
+  // Trust state first: DISPUTED surfaces over listed/auction when both apply.
+  if (input.passportStatus === "DISPUTED") {
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: "disputed",
+    };
+  }
+
   if (input.listingState === "active") {
     return {
       visible: true,
@@ -91,15 +101,6 @@ export function deriveBridgeSurface(
       mode: "action",
       canBridge: false,
       blockReason: "auction",
-    };
-  }
-
-  if (input.passportStatus === "DISPUTED") {
-    return {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "disputed",
     };
   }
 

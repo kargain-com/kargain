@@ -34,6 +34,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 |----------|---------|
 | [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify + **completed** VPS cutover |
 | [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | July 2026 AuctionEscrow additive deploy on 84532 |
+| [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | July 2026 hub↔spoke bridge pathway (84532 ↔ 11155111) |
 
 ## Product onboarding
 

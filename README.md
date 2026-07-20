@@ -2,9 +2,9 @@
 
 Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
-Messaging and payments without intermediaries.
+Messaging and payments without intermediaries — including Lightning for verification fees and seller settlement notes.
 
-**Multi-chain platform** — Base Sepolia (84532) is the current integration testnet; Base mainnet and additional chains follow validation.
+**Multi-chain platform** — Base Sepolia (84532) is the hub integration testnet (passports, marketplace, auctions, KarPro). Ethereum Sepolia (11155111) hosts the spoke ONFT for passport bridging. Base mainnet and additional chains follow validation.
 
 MIT License · Open Source
 
@@ -17,11 +17,13 @@ Kargain combines on-chain vehicle passports, professional verification, and escr
 | Layer | Role |
 |-------|------|
 | **KarPassport** | Permissionless NFT mint; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED lifecycle |
-| **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`) |
+| **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`); verification fees (ETH / USDC / Lightning) |
 | **MarketplaceEscrow** | Listings in registered fiat codes, native/ERC-20 checkout, agent consignment, external payment confirmation |
-| **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (comments, watchlist, notifications), XMTP messaging |
+| **AuctionEscrow** | English reserve auctions with settlement hold (browse at `/auctions`) |
+| **Bridge** | Hub↔spoke ONFT pathway (Base Sepolia ↔ Ethereum Sepolia); lock-and-mint on hub, mint/burn on spoke |
+| **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (profiles, comments, watchlist, notifications), XMTP messaging, Lightning (LNURL-pay + optional NWC) |
 
-Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)**.  
+Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)** (active hub [I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532), spoke [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111)).  
 UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 
 ---
@@ -35,7 +37,8 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Contracts, metadata, deploy addresses | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
 | Ponder indexer (API, ops, v2 reference) | [docs/indexer/README.md](docs/indexer/README.md) |
 | VPS reindex runbook | [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
-| June 2026 v2 deploy record | [docs/ops/deploys/84532-v2.md](docs/ops/deploys/84532-v2.md) |
+| Generation v2 deploy (84532) | [docs/ops/deploys/84532-v2.md](docs/ops/deploys/84532-v2.md) |
+| Bridge pathway (84532 ↔ 11155111) | [docs/ops/deploys/bridge-84532-11155111.md](docs/ops/deploys/bridge-84532-11155111.md) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
@@ -49,7 +52,9 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Contracts | Solidity 0.8.28, Hardhat 3, OpenZeppelin 5 |
 | Storage | Arweave via Irys |
 | Social / messaging | Nostr (NIP-01, NIP-51, NIP-78), XMTP |
-| Chain (today) | Base Sepolia (84532) |
+| Payments | ETH / USDC on-chain; Lightning (LNURL-pay, NWC); seller settlement notes (bank / BTC / Lightning) |
+| Display FX | USD hub + fiat/crypto display currencies (Chainlink + CoinGecko) |
+| Chains (today) | Base Sepolia **84532** (hub writes); Ethereum Sepolia **11155111** (spoke bridge, app read-only) |
 
 ---
 
@@ -61,9 +66,9 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | `/passport/new` | Mint KarPassport |
 | `/passport/[tokenId]/edit` | Edit passport metadata |
 | `/auctions` | Active auction browse |
-| `/marketplace/[tokenId]` | Listing / passport detail |
+| `/marketplace/[tokenId]` | Listing / passport detail (sell, buy, bridge) |
 | `/marketplace/[tokenId]/edit` | Seller listing edit |
-| `/kar-pro` | KarPro onboarding |
+| `/kar-pro` | KarPro hub (profile, fee, payments, membership, Commons) |
 | `/pro/[slug]` | KarPro verifier showroom |
 | `/pro/[slug]/consignments` | Public active consignments catalog |
 | `/verifiers` | Verifier directory |
@@ -91,7 +96,7 @@ pnpm dev                    # Next.js → http://localhost:3000
 pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)
 ```
 
-Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). For mobile wallets in Safari/Chrome, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com).
+Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). For mobile wallets, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com). Spoke bridge delivery polls need `ETH_SEPOLIA_RPC_URL` / `NEXT_PUBLIC_RPC_BY_CHAIN` with `11155111` (read-only).
 
 ### Local chain (31337)
 
@@ -132,7 +137,8 @@ After compile: `node scripts/export-abis.mjs`
 ## Known limitations
 
 - **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are re-encoded to WebP (up to 100 KB each) in the browser before upload. Smart contract wallets may still fail when multiple photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
-- **Ponder** indexes Base Sepolia today; other chains need per-network deploy + indexer config.
+- **Indexer and commerce writes** target Base Sepolia today; other chains need per-network deploy + Ponder config. The Ethereum Sepolia spoke is bridge-only (app read-only `ownerOf` polls).
+- **Passport bridge** is testnet-scope (84532 ↔ 11155111) until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md) clears; spoke→hub return UI is not shipped.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
 ---

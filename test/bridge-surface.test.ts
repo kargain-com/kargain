@@ -136,6 +136,24 @@ describe("deriveBridgeSurface", () => {
     );
   });
 
+  it("DISPUTED wins over listed", () => {
+    assert.equal(
+      deriveBridgeSurface(
+        input({ listingState: "active", passportStatus: "DISPUTED" }),
+      ).blockReason,
+      "disputed",
+    );
+  });
+
+  it("DISPUTED wins over auction", () => {
+    assert.equal(
+      deriveBridgeSurface(
+        input({ auctionBlocks: true, passportStatus: "DISPUTED" }),
+      ).blockReason,
+      "disputed",
+    );
+  });
+
   it("spoke info wins over hub gate checks", () => {
     assert.equal(
       deriveBridgeSurface(

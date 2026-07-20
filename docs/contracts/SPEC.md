@@ -456,6 +456,7 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 - **Lock-and-mint** on hub (adapter locks underlying KarPassport); **mint/burn** on spoke (`KarPassportONFT721`).
 - KarPassport core contract stays bridge-agnostic; bridge is external adapter + spoke ONFT.
 - Destination mint: status **UNVERIFIED** (trust not ported); `tokenURI` carried in LZ message extension.
+- **Star topology only (hub ↔ spoke).** Spoke↔spoke pathways are forbidden. Hub `ProxyONFT721Adapter` embeds `tokenURI` in the LZ compose payload (`_buildMsgAndOptions`); spoke `KarPassportONFT721` uses base `ONFT721Core` outbound debit (burn only) and does **not** embed `tokenURI` on send — spoke↔spoke would drop metadata. Wire tooling enforces the `{40245, 40161}` star (`scripts/bridge-wire.ts` / `layerzero-pathway`); see also §7.6 EID allowlist.
 - **Never wire testnet EIDs to mainnet EIDs** in `setPeer`.
 
 ### 7.2 ProxyONFT721Adapter v1.1.0-rc.1 (hub)
@@ -499,11 +500,11 @@ Confirmations: **5** both directions — explicit fallback (`confirmations.sourc
 Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 20, 2026).
 ### 7.5 Bridge flow (step by step)
 
-1. **Preconditions:** Passport not listed; user owns token on hub; LZ peers configured (testnet↔testnet only).
-2. **Hub:** User calls ONFT send via `ProxyONFT721Adapter` → `_debit` locks NFT in adapter; message includes tokenId + URI.
-3. **LayerZero:** Message delivered to spoke endpoint.
-4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from payload; status UNVERIFIED on spoke (no KarPassport status mapping on ONFT — fresh mint).
-5. **Return path:** Burn on spoke, unlock/mint on hub per ONFT721 standard debit/credit pairing.
+1. **Preconditions:** Owner on hub; passport **not** marketplace-listed; passport **not** `DISPUTED`; LZ peers wired (testnet↔testnet only; star per §7.1 / §7.6).
+2. **Hub:** User calls ONFT send via `ProxyONFT721Adapter` → `_debit` reverts **`ListedInMarketplace`** then **`PassportDisputed`** (v1.1.0-rc.1); locks NFT in adapter; message carries tokenId + URI compose.
+3. **LayerZero:** Message delivered to spoke endpoint (DVN quorum / confirmations per §7.4 / §7.6).
+4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from compose when present. Spoke ONFT has **no** on-chain `passportStatus` — **UNVERIFIED** is product/UI semantics for a fresh spoke mint (trust not ported), not a written hub status field.
+5. **Return path:** Burn on spoke → unlock on hub via ONFT debit/credit pairing. Hub KarPassport row (including `passportStatus`) is **preserved** under lock-and-mint; return does not remint or rewrite hub trust state.
 
 ### 7.6 LayerZero security configuration (normative)
 
@@ -518,7 +519,11 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 - **Config authority.** OApp delegate / config ownership follows the same governance pattern as other protocol contracts (Timelock48h upgrade authority). No EOA-held config ownership on mainnet.
 - **Provider isolation.** LayerZero imports are confined to bridge adapter modules (`ProxyONFT721Adapter`, `KarPassportONFT721`, and their deploy/config scripts). Core contracts, `app/`, `lib/`, and `hooks/` remain messaging-provider agnostic so the provider is swappable (e.g. CCIP / Hyperlane) at the adapter boundary.
 - **Monitoring.** Bridge config and ownership changes MUST be observable (LayerZero Console or equivalent alerting) before any mainnet pathway goes live.
-- **Phase 2 checkpoint.** Bridge remains testnet-scope until a re-assessment confirms: (a) LayerZero default migration to 5/5 is complete, (b) a timelock on library upgrades is in place, and (c) 6+ months without new LayerZero security incidents. See [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+- **Phase 2 checkpoint.** Bridge remains **testnet-scope** until a maintainer re-assessment clears the gates below. Before any mainnet pathway, the following testnet→mainnet deltas **MUST** be re-derived (testnet values are not portable). See [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+  - **(a) Confirmations.** Shipped testnet pathway uses confirmations **5/5** (explicit-fallback on 40245↔40161). Mainnet MUST re-derive confirmations from the pinned metadata snapshot for the mainnet EID pair — do not copy testnet 5/5.
+  - **(b) Config delegate.** Testnet may use deployer EOA as OApp/ONFT config owner. Mainnet MUST move config ownership to **Timelock48h** (no EOA-held config; see Config authority above).
+  - **(c) DVN count.** Testnet minimum is **2** required DVNs (Labs + Nethermind). Mainnet MUST use **3–5** independent required DVNs.
+  - **(d) Research gates.** Also confirm from the research doc: (1) LayerZero **default migration** to 5/5 (or documented floor) is complete, (2) a **timelock on library upgrades** is in place, and (3) **6+ months** without new LayerZero security incidents.
 - **Risk framing.** Kargain bridges passport identity/metadata (spoke mints **UNVERIFIED** per §7.1; trust is never ported), not fungible value custody. Blast radius of a messaging compromise is data integrity, not fund loss. This framing does **not** relax any rule above.
 
 ---
