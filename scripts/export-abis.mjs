@@ -29,6 +29,11 @@ const contracts = [
     artifactPath:
       "artifacts/contracts/AuctionEscrow.sol/AuctionEscrow.json",
   },
+  {
+    exportName: "ProxyONFT721Adapter",
+    artifactPath:
+      "artifacts/contracts/ProxyONFT721Adapter.sol/ProxyONFT721Adapter.json",
+  },
 ];
 
 const lines = [

@@ -457,11 +457,12 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 - Destination mint: status **UNVERIFIED** (trust not ported); `tokenURI` carried in LZ message extension.
 - **Never wire testnet EIDs to mainnet EIDs** in `setPeer`.
 
-### 7.2 ProxyONFT721Adapter v1.0.0 (hub)
+### 7.2 ProxyONFT721Adapter v1.1.0-rc.1 (hub)
 
 - Wraps existing KarPassport ERC-721.
-- `_debit`: reverts **`ListedInMarketplace`** if `marketplace.isListed(tokenId)`.
+- `_debit`: reverts **`ListedInMarketplace`** if `marketplace.isListed(tokenId)`; then reverts **`PassportDisputed`** if `passportStatus(tokenId) == DISPUTED` (via minimal `IKarPassportStatus` on `innerToken`).
 - `_buildMsgAndOptions`: embeds `tokenURI(tokenId)` as `abi.encode(string)` compose payload.
+- **Deployed 84532 remains `1.0.0-rc.1` until bridge redeploy** (source `VERSION` is `1.1.0-rc.1`; `CONTRACT_VERSIONS` / I.9.1 stay on the live build until then).
 
 ### 7.3 KarPassportONFT721 v1.0.0 (spoke)
 

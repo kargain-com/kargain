@@ -17,6 +17,7 @@ import {SendParam} from "@layerzerolabs/onft-evm/contracts/onft721/interfaces/IO
 import {ONFT721MsgCodec} from "@layerzerolabs/onft-evm/contracts/onft721/libs/ONFT721MsgCodec.sol";
 import {IOAppMsgInspector} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppMsgInspector.sol";
 
+import {IKarPassportStatus} from "./interfaces/IKarPassportStatus.sol";
 import {IMarketplaceEscrow} from "./interfaces/IMarketplaceEscrow.sol";
 
 interface IERC721MetadataURI {
@@ -25,10 +26,10 @@ interface IERC721MetadataURI {
 
 /// @title ProxyONFT721Adapter
 /// @notice LayerZero adapter for an existing KarPassport ERC-721 on the hub chain (lock-and-bridge).
-/// @dev Embeds tokenURI in the ONFT message extension; blocks bridge while listed on MarketplaceEscrow.
-/// @custom:version 1.0.0-rc.1
+/// @dev Embeds tokenURI in the ONFT message extension; blocks bridge while listed or DISPUTED.
+/// @custom:version 1.1.0-rc.1
 contract ProxyONFT721Adapter is ONFT721Adapter {
-    string public constant VERSION = "1.0.0-rc.1";
+    string public constant VERSION = "1.1.0-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
@@ -36,6 +37,7 @@ contract ProxyONFT721Adapter is ONFT721Adapter {
     IMarketplaceEscrow public immutable marketplace;
 
     error ListedInMarketplace();
+    error PassportDisputed();
 
     /// @notice Deploys the adapter wrapping an existing ERC-721 KarPassport.
     /// @param token Underlying KarPassport address.
@@ -51,6 +53,12 @@ contract ProxyONFT721Adapter is ONFT721Adapter {
     /// @inheritdoc ONFT721Adapter
     function _debit(address from, uint256 tokenId, uint32 dstEid) internal virtual override {
         if (marketplace.isListed(tokenId)) revert ListedInMarketplace();
+        if (
+            IKarPassportStatus(address(innerToken)).passportStatus(tokenId)
+                == IKarPassportStatus.Status.DISPUTED
+        ) {
+            revert PassportDisputed();
+        }
         super._debit(from, tokenId, dstEid);
     }
 

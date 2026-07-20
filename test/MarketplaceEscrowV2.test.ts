@@ -5,6 +5,7 @@ import { getAddress, padHex, stringToHex, toHex } from "viem";
 
 import {
   CURRENCY_USD,
+  DISPUTE_DEPOSIT,
   deployEscrowStack,
   deployMarketplaceViaProxy,
   deployPassportStack,
@@ -20,6 +21,24 @@ function revertsWith(errorName: string) {
   return (err: unknown) => {
     if (!(err instanceof Error)) return false;
     return err.message.includes(errorName);
+  };
+}
+
+function revertsWithoutBridgeGuards() {
+  return (err: unknown) => {
+    if (!(err instanceof Error)) return false;
+    return (
+      !err.message.includes("PassportDisputed") && !err.message.includes("ListedInMarketplace")
+    );
+  };
+}
+
+function revertsWithEitherBridgeGuard() {
+  return (err: unknown) => {
+    if (!(err instanceof Error)) return false;
+    return (
+      err.message.includes("ListedInMarketplace") || err.message.includes("PassportDisputed")
+    );
   };
 }
 
@@ -385,6 +404,124 @@ describe("MarketplaceEscrow v2 — audit fixes", () => {
         account: seller.account,
       }),
       revertsWith("ListedInMarketplace"),
+    );
+  });
+
+  it("bridge while DISPUTED reverts PassportDisputed", async () => {
+    const { viem } = connection;
+    const { admin, seller, verifier, passport, marketplace, staking } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bridge-disputed");
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([tokenId], { account: verifier.account });
+    await passport.write.disputePassport([tokenId, "bridge"], {
+      account: seller.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    const lzStub = await viem.deployContract("SelfDestructSender", []);
+    const adapter = await viem.deployContract("ProxyONFT721Adapter", [
+      passport.address,
+      marketplace.address,
+      lzStub.address,
+      admin.account.address,
+    ]);
+    await passport.write.setApprovalForAll([adapter.address, true], { account: seller.account });
+    const sendParam = {
+      dstEid: 1,
+      to: padHex(seller.account.address, { size: 32 }),
+      tokenId,
+      extraOptions: "0x" as `0x${string}`,
+      composeMsg: "0x" as `0x${string}`,
+      onftCmd: "0x" as `0x${string}`,
+    };
+    await assert.rejects(
+      adapter.write.send([sendParam, { nativeFee: 0n, lzTokenFee: 0n }, seller.account.address], {
+        account: seller.account,
+      }),
+      revertsWith("PassportDisputed"),
+    );
+  });
+
+  it("bridge UNVERIFIED / VERIFIED does not hit PassportDisputed or ListedInMarketplace", async () => {
+    const { viem } = connection;
+    const { admin, seller, verifier, passport, marketplace, staking } = await deployEscrowStack(viem);
+    const unverifiedId = await mintPassport(
+      passport,
+      seller,
+      seller.account.address,
+      "ar://bridge-unverified",
+    );
+    const verifiedId = await mintPassport(
+      passport,
+      seller,
+      seller.account.address,
+      "ar://bridge-verified",
+    );
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([verifiedId], { account: verifier.account });
+    const lzStub = await viem.deployContract("SelfDestructSender", []);
+    const adapter = await viem.deployContract("ProxyONFT721Adapter", [
+      passport.address,
+      marketplace.address,
+      lzStub.address,
+      admin.account.address,
+    ]);
+    await passport.write.setApprovalForAll([adapter.address, true], { account: seller.account });
+    for (const tokenId of [unverifiedId, verifiedId]) {
+      const sendParam = {
+        dstEid: 1,
+        to: padHex(seller.account.address, { size: 32 }),
+        tokenId,
+        extraOptions: "0x" as `0x${string}`,
+        composeMsg: "0x" as `0x${string}`,
+        onftCmd: "0x" as `0x${string}`,
+      };
+      await assert.rejects(
+        adapter.write.send([sendParam, { nativeFee: 0n, lzTokenFee: 0n }, seller.account.address], {
+          account: seller.account,
+        }),
+        revertsWithoutBridgeGuards(),
+      );
+    }
+  });
+
+  it("bridge listed and DISPUTED reverts before endpoint", async () => {
+    const { viem } = connection;
+    const { admin, seller, verifier, passport, marketplace, staking } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(
+      passport,
+      seller,
+      seller.account.address,
+      "ar://bridge-listed-disputed",
+    );
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([tokenId], { account: verifier.account });
+    await passport.write.disputePassport([tokenId, "bridge listed"], {
+      account: seller.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const lzStub = await viem.deployContract("SelfDestructSender", []);
+    const adapter = await viem.deployContract("ProxyONFT721Adapter", [
+      passport.address,
+      marketplace.address,
+      lzStub.address,
+      admin.account.address,
+    ]);
+    await passport.write.setApprovalForAll([adapter.address, true], { account: seller.account });
+    const sendParam = {
+      dstEid: 1,
+      to: padHex(seller.account.address, { size: 32 }),
+      tokenId,
+      extraOptions: "0x" as `0x${string}`,
+      composeMsg: "0x" as `0x${string}`,
+      onftCmd: "0x" as `0x${string}`,
+    };
+    await assert.rejects(
+      adapter.write.send([sendParam, { nativeFee: 0n, lzTokenFee: 0n }, seller.account.address], {
+        account: seller.account,
+      }),
+      revertsWithEitherBridgeGuard(),
     );
   });
 
