@@ -166,7 +166,9 @@ async function quoteAndSend(params: {
     args: [params.send, false],
   })) as MessagingFee;
 
-  const { request, result } = await params.publicClient.simulateContract({
+  // Simulate for MessagingReceipt.guid; write without address-only `account`
+  // (that triggers wallet_sendTransaction on public HTTP RPCs).
+  const { result } = await params.publicClient.simulateContract({
     address: params.oapp,
     abi: params.abi,
     functionName: "send",
@@ -175,7 +177,14 @@ async function quoteAndSend(params: {
     value: fee.nativeFee,
   });
 
-  const hash = await params.wallet.writeContract(request);
+  const hash = await params.wallet.writeContract({
+    address: params.oapp,
+    abi: params.abi,
+    functionName: "send",
+    args: [params.send, fee, params.account],
+    value: fee.nativeFee,
+    chain: params.wallet.chain,
+  });
   await params.publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
 
   const receipt = result as MessagingReceipt;

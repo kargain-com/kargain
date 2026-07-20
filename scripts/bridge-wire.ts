@@ -221,12 +221,14 @@ async function writeContract(
   if (!side.clients.wallet || !side.clients.account) {
     throw new Error("Wallet required for writes (omit --read-only)");
   }
+  // WalletClient is already bound to the local private-key account. Passing an
+  // address-only `account` makes viem call wallet_sendTransaction (unsupported
+  // on public HTTP RPCs like sepolia.base.org).
   const hash = await side.clients.wallet.writeContract({
     address: params.address,
     abi: params.abi,
     functionName: params.functionName,
     args: params.args as never,
-    account: side.clients.account,
     chain: side.clients.wallet.chain,
   });
   await side.clients.public.waitForTransactionReceipt({ hash });
