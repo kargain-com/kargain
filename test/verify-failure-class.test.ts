@@ -26,6 +26,15 @@ describe("verify failure classification", () => {
     assert.equal(isBytecodeMismatchVerifyError("Invalid API Key"), false);
   });
 
+  it("does not treat minimal-input retry prose alone as mismatch", () => {
+    assert.equal(
+      isBytecodeMismatchVerifyError(
+        "The initial verification attempt failed using the minimal compiler input.\nTrying again with the full solc input",
+      ),
+      false,
+    );
+  });
+
   it("summarizes first line with Hardhat code when present", () => {
     const summary = summarizeVerifyError("Error: Invalid API Key\nmore detail");
     assert.match(summary, /Invalid API Key/);

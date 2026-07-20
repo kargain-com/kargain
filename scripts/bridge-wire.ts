@@ -12,26 +12,29 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { config as loadEnv } from "dotenv";
 import {
-  createPublicClient,
-  createWalletClient,
   decodeAbiParameters,
   getAddress,
-  http,
   isHex,
   zeroAddress,
   type Abi,
   type Address,
   type Hex,
   type PublicClient,
-  type WalletClient,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia, sepolia } from "viem/chains";
 
 import {
   KarPassportONFT721Abi,
   ProxyONFT721AdapterAbi,
 } from "../lib/contracts/abis.generated.js";
+import {
+  createDeployerClients,
+  createPublicClientForChain,
+  hubRpcUrl,
+  spokeRpcUrl,
+  writeContractLocal,
+  type DeployerClients,
+} from "./lib/deployer-viem.js";
 import {
   canonicalizeJson,
   EID_HUB,
@@ -119,52 +122,23 @@ function parseFlags(argv: string[]): WireFlags {
   };
 }
 
-function hubRpcUrl(): string {
-  return (
-    process.env.BASE_SEPOLIA_RPC_URL?.trim() ||
-    process.env.NEXT_PUBLIC_RPC_84532?.trim() ||
-    "https://sepolia.base.org"
-  );
-}
-
-function spokeRpcUrl(): string {
-  return (
-    process.env.ETH_SEPOLIA_RPC_URL?.trim() ||
-    "https://ethereum-sepolia-rpc.publicnode.com"
-  );
-}
-
-function deployerAccount() {
-  const pk = process.env.DEPLOYER_PRIVATE_KEY?.trim();
-  if (!pk) {
-    throw new Error("DEPLOYER_PRIVATE_KEY not set (.env.local)");
-  }
-  const hex = (pk.startsWith("0x") ? pk : `0x${pk}`) as Hex;
-  return privateKeyToAccount(hex);
-}
-
-type SideClients = {
-  public: PublicClient;
-  wallet: WalletClient | null;
-  account: Address | null;
-};
+type SideClients =
+  | { kind: "read"; public: PublicClient }
+  | { kind: "write"; deployer: DeployerClients };
 
 function makeClients(
   chain: typeof baseSepolia | typeof sepolia,
   rpcUrl: string,
   readOnly: boolean,
 ): SideClients {
-  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
   if (readOnly) {
-    return { public: publicClient, wallet: null, account: null };
+    return { kind: "read", public: createPublicClientForChain(chain, rpcUrl) };
   }
-  const account = deployerAccount();
-  const wallet = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
-  return { public: publicClient, wallet, account: account.address };
+  return { kind: "write", deployer: createDeployerClients(chain, rpcUrl) };
+}
+
+function sidePublic(clients: SideClients): PublicClient {
+  return clients.kind === "read" ? clients.public : clients.deployer.public;
 }
 
 type SideContext = {
@@ -218,20 +192,10 @@ async function writeContract(
     args: readonly unknown[];
   },
 ): Promise<Hex> {
-  if (!side.clients.wallet || !side.clients.account) {
+  if (side.clients.kind !== "write") {
     throw new Error("Wallet required for writes (omit --read-only)");
   }
-  // WalletClient is already bound to the local private-key account. Passing an
-  // address-only `account` makes viem call wallet_sendTransaction (unsupported
-  // on public HTTP RPCs like sepolia.base.org).
-  const hash = await side.clients.wallet.writeContract({
-    address: params.address,
-    abi: params.abi,
-    functionName: params.functionName,
-    args: params.args as never,
-    chain: side.clients.wallet.chain,
-  });
-  await side.clients.public.waitForTransactionReceipt({ hash });
+  const { hash } = await writeContractLocal(side.clients.deployer, params);
   return hash;
 }
 
@@ -242,7 +206,7 @@ async function wireSide(
   errors: string[],
 ): Promise<ActionResult[]> {
   const results: ActionResult[] = [];
-  const { public: pc } = side.clients;
+  const pc = sidePublic(side.clients);
   const endpoint = getAddress(side.chainSnap.endpointV2);
   const remoteEid = side.remoteEid;
   const expectedPeer = addressToBytes32(side.remoteOApp);

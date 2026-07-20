@@ -5,31 +5,24 @@
  *   pnpm smoke:bridge --token-id <id>
  *   pnpm smoke:bridge --token-id <id> --skip-return
  *
- * Delivery gate: dest-chain RPC ownership (not LZ Scan). GUID from send receipt;
- * Scan status is best-effort for the summary table only.
- *
- * No Cursor live txs — user runs this after wire is green.
+ * Delivery gate: dest-chain RPC ownership (not LZ Scan). GUID from ONFTSent
+ * receipt log; Scan status is best-effort for the summary table only.
  */
 import { spawnSync } from "node:child_process";
 import { config as loadEnv } from "dotenv";
-import {
-  createPublicClient,
-  createWalletClient,
-  getAddress,
-  http,
-  type Address,
-  type Hex,
-  type PublicClient,
-  type WalletClient,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia, sepolia } from "viem/chains";
+import { getAddress, type Address, type Hex } from "viem";
 
 import {
   KarPassportAbi,
   KarPassportONFT721Abi,
   ProxyONFT721AdapterAbi,
 } from "../lib/contracts/abis.generated.js";
+import {
+  createHubDeployerClients,
+  createSpokeDeployerClients,
+  writeContractLocal,
+  type DeployerClients,
+} from "./lib/deployer-viem.js";
 import {
   requireSepoliaDeployment,
   requireSpokeDeployment,
@@ -41,6 +34,7 @@ import {
   MSG_TYPE_SEND_AND_COMPOSE,
 } from "./lib/layerzero-pathway.js";
 import { EID_HUB, EID_SPOKE } from "./lib/layerzero-metadata.js";
+import { onftSentGuidFromLogs } from "./lib/onft-sent.js";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
@@ -50,7 +44,6 @@ const DELIVERY_POLL_MS = 8_000;
 const SCAN_TESTNET_BASE = "https://scan-testnet.layerzero-api.com/v1";
 
 type MessagingFee = { nativeFee: bigint; lzTokenFee: bigint };
-type MessagingReceipt = { guid: Hex; nonce: bigint; fee: MessagingFee };
 
 type SmokeFlags = {
   tokenId: bigint;
@@ -107,31 +100,10 @@ function parseFlags(argv: string[]): SmokeFlags {
   return { tokenId, skipReturn };
 }
 
-function hubRpcUrl(): string {
-  return (
-    process.env.BASE_SEPOLIA_RPC_URL?.trim() ||
-    process.env.NEXT_PUBLIC_RPC_84532?.trim() ||
-    "https://sepolia.base.org"
-  );
-}
-
-function spokeRpcUrl(): string {
-  return (
-    process.env.ETH_SEPOLIA_RPC_URL?.trim() ||
-    "https://ethereum-sepolia-rpc.publicnode.com"
-  );
-}
-
-function deployerAccount() {
-  const pk = process.env.DEPLOYER_PRIVATE_KEY?.trim();
-  if (!pk) {
-    fail("DEPLOYER_PRIVATE_KEY not set (.env.local)");
-  }
-  const hex = (pk.startsWith("0x") ? pk : `0x${pk}`) as Hex;
-  return privateKeyToAccount(hex);
-}
-
-function optionsFor(msgType: typeof MSG_TYPE_SEND | typeof MSG_TYPE_SEND_AND_COMPOSE, remoteEid: number): Hex {
+function optionsFor(
+  msgType: typeof MSG_TYPE_SEND | typeof MSG_TYPE_SEND_AND_COMPOSE,
+  remoteEid: number,
+): Hex {
   const params = buildEnforcedOptions(remoteEid);
   const match = params.find((p) => p.msgType === msgType);
   if (!match) {
@@ -152,43 +124,32 @@ function sendParam(dstEid: number, to: Address, tokenId: bigint, extraOptions: H
 }
 
 async function quoteAndSend(params: {
-  publicClient: PublicClient;
-  wallet: WalletClient;
-  account: Address;
+  clients: DeployerClients;
   oapp: Address;
   abi: typeof ProxyONFT721AdapterAbi | typeof KarPassportONFT721Abi;
   send: ReturnType<typeof sendParam>;
-}): Promise<{ hash: Hex; receipt: MessagingReceipt; fee: MessagingFee }> {
-  const fee = (await params.publicClient.readContract({
+}): Promise<{ hash: Hex; guid: Hex; fee: MessagingFee }> {
+  const fee = (await params.clients.public.readContract({
     address: params.oapp,
     abi: params.abi,
     functionName: "quoteSend",
     args: [params.send, false],
   })) as MessagingFee;
 
-  // Simulate for MessagingReceipt.guid; write without address-only `account`
-  // (that triggers wallet_sendTransaction on public HTTP RPCs).
-  const { result } = await params.publicClient.simulateContract({
+  const refund = getAddress(params.clients.account.address);
+  const { hash, receipt } = await writeContractLocal(params.clients, {
     address: params.oapp,
     abi: params.abi,
     functionName: "send",
-    args: [params.send, fee, params.account],
-    account: params.account,
+    args: [params.send, fee, refund],
     value: fee.nativeFee,
   });
 
-  const hash = await params.wallet.writeContract({
-    address: params.oapp,
-    abi: params.abi,
-    functionName: "send",
-    args: [params.send, fee, params.account],
-    value: fee.nativeFee,
-    chain: params.wallet.chain,
-  });
-  await params.publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
-
-  const receipt = result as MessagingReceipt;
-  return { hash, receipt, fee };
+  return {
+    hash,
+    guid: onftSentGuidFromLogs(params.abi, receipt.logs),
+    fee,
+  };
 }
 
 async function pollUntil(
@@ -293,27 +254,9 @@ async function main(): Promise<void> {
   const karPassport = getAddress(hubManifest.karPassport);
   const spokeOnft = getAddress(spokeManifest.karPassportOnft);
 
-  const account = deployerAccount();
-  const accountAddress = getAddress(account.address);
-
-  const hubPublic = createPublicClient({
-    chain: baseSepolia,
-    transport: http(hubRpcUrl()),
-  });
-  const spokePublic = createPublicClient({
-    chain: sepolia,
-    transport: http(spokeRpcUrl()),
-  });
-  const hubWallet = createWalletClient({
-    account,
-    chain: baseSepolia,
-    transport: http(hubRpcUrl()),
-  });
-  const spokeWallet = createWalletClient({
-    account,
-    chain: sepolia,
-    transport: http(spokeRpcUrl()),
-  });
+  const hub = createHubDeployerClients();
+  const spoke = createSpokeDeployerClients();
+  const accountAddress = getAddress(hub.account.address);
 
   console.log("Kargain bridge smoke");
   console.log(`  tokenId:   ${flags.tokenId}`);
@@ -324,7 +267,6 @@ async function main(): Promise<void> {
   console.log(`  skipReturn:${flags.skipReturn}`);
   console.log("");
 
-  // (0) wire read-only gate
   try {
     runWireReadOnly();
     steps.push({ step: "0", ok: true, detail: "wire read-only" });
@@ -338,9 +280,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Preflight
   const originalOwner = getAddress(
-    (await hubPublic.readContract({
+    (await hub.public.readContract({
       address: karPassport,
       abi: KarPassportAbi,
       functionName: "ownerOf",
@@ -354,21 +295,21 @@ async function main(): Promise<void> {
   }
 
   const statusBefore = Number(
-    await hubPublic.readContract({
+    await hub.public.readContract({
       address: karPassport,
       abi: KarPassportAbi,
       functionName: "passportStatus",
       args: [flags.tokenId],
     }),
   );
-  const hubUriBefore = (await hubPublic.readContract({
+  const hubUriBefore = (await hub.public.readContract({
     address: karPassport,
     abi: KarPassportAbi,
     functionName: "tokenURI",
     args: [flags.tokenId],
   })) as string;
 
-  const approved = (await hubPublic.readContract({
+  const approved = (await hub.public.readContract({
     address: karPassport,
     abi: KarPassportAbi,
     functionName: "isApprovedForAll",
@@ -383,16 +324,14 @@ async function main(): Promise<void> {
   console.log(`  preflight: owner=${originalOwner} status=${statusBefore} uri=${hubUriBefore}`);
   console.log("");
 
-  // (1) quote hub→spoke
   const hubSendParam = sendParam(
     EID_SPOKE,
     accountAddress,
     flags.tokenId,
     optionsFor(MSG_TYPE_SEND_AND_COMPOSE, EID_SPOKE),
   );
-  let hubFee: MessagingFee;
   try {
-    hubFee = (await hubPublic.readContract({
+    const hubFee = (await hub.public.readContract({
       address: adapter,
       abi: ProxyONFT721AdapterAbi,
       functionName: "quoteSend",
@@ -411,7 +350,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // (2) send hub→spoke + poll delivery
   let hubLeg: LegSummary = {
     label: "hub→spoke",
     txHash: null,
@@ -421,9 +359,7 @@ async function main(): Promise<void> {
   };
   try {
     const sent = await quoteAndSend({
-      publicClient: hubPublic,
-      wallet: hubWallet,
-      account: accountAddress,
+      clients: hub,
       oapp: adapter,
       abi: ProxyONFT721AdapterAbi,
       send: hubSendParam,
@@ -431,18 +367,18 @@ async function main(): Promise<void> {
     hubLeg = {
       label: "hub→spoke",
       txHash: sent.hash,
-      guid: sent.receipt.guid,
+      guid: sent.guid,
       feeWei: sent.fee.nativeFee,
       scanStatus: null,
     };
     legs.push(hubLeg);
-    console.log(`  send hub→spoke tx=${sent.hash} guid=${sent.receipt.guid}`);
+    console.log(`  send hub→spoke tx=${sent.hash} guid=${sent.guid}`);
 
     await pollUntil(
       "spoke ownerOf",
       async () => {
         const owner = getAddress(
-          (await spokePublic.readContract({
+          (await spoke.public.readContract({
             address: spokeOnft,
             abi: KarPassportONFT721Abi,
             functionName: "ownerOf",
@@ -453,7 +389,7 @@ async function main(): Promise<void> {
       },
       DELIVERY_TIMEOUT_MS,
     );
-    hubLeg.scanStatus = await fetchScanStatus(sent.receipt.guid);
+    hubLeg.scanStatus = await fetchScanStatus(sent.guid);
     pass("2", `delivered; scan=${hubLeg.scanStatus}`);
     steps.push({ step: "2", ok: true, detail: `tx=${sent.hash}` });
   } catch (err) {
@@ -465,24 +401,23 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // (3) asserts after hub→spoke
   try {
     const spokeOwner = getAddress(
-      (await spokePublic.readContract({
+      (await spoke.public.readContract({
         address: spokeOnft,
         abi: KarPassportONFT721Abi,
         functionName: "ownerOf",
         args: [flags.tokenId],
       })) as Address,
     );
-    const spokeUri = (await spokePublic.readContract({
+    const spokeUri = (await spoke.public.readContract({
       address: spokeOnft,
       abi: KarPassportONFT721Abi,
       functionName: "tokenURI",
       args: [flags.tokenId],
     })) as string;
     const hubOwner = getAddress(
-      (await hubPublic.readContract({
+      (await hub.public.readContract({
         address: karPassport,
         abi: KarPassportAbi,
         functionName: "ownerOf",
@@ -490,7 +425,7 @@ async function main(): Promise<void> {
       })) as Address,
     );
     const statusAfter = Number(
-      await hubPublic.readContract({
+      await hub.public.readContract({
         address: karPassport,
         abi: KarPassportAbi,
         functionName: "passportStatus",
@@ -534,7 +469,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // (4) return spoke→hub
   const returnParam = sendParam(
     EID_HUB,
     originalOwner,
@@ -549,7 +483,7 @@ async function main(): Promise<void> {
     scanStatus: null,
   };
   try {
-    const returnFee = (await spokePublic.readContract({
+    const returnFee = (await spoke.public.readContract({
       address: spokeOnft,
       abi: KarPassportONFT721Abi,
       functionName: "quoteSend",
@@ -560,9 +494,7 @@ async function main(): Promise<void> {
     }
 
     const sent = await quoteAndSend({
-      publicClient: spokePublic,
-      wallet: spokeWallet,
-      account: accountAddress,
+      clients: spoke,
       oapp: spokeOnft,
       abi: KarPassportONFT721Abi,
       send: returnParam,
@@ -570,18 +502,18 @@ async function main(): Promise<void> {
     returnLeg = {
       label: "spoke→hub",
       txHash: sent.hash,
-      guid: sent.receipt.guid,
+      guid: sent.guid,
       feeWei: sent.fee.nativeFee,
       scanStatus: null,
     };
     legs.push(returnLeg);
-    console.log(`  send spoke→hub tx=${sent.hash} guid=${sent.receipt.guid}`);
+    console.log(`  send spoke→hub tx=${sent.hash} guid=${sent.guid}`);
 
     await pollUntil(
       "hub ownerOf unlock",
       async () => {
         const owner = getAddress(
-          (await hubPublic.readContract({
+          (await hub.public.readContract({
             address: karPassport,
             abi: KarPassportAbi,
             functionName: "ownerOf",
@@ -592,7 +524,7 @@ async function main(): Promise<void> {
       },
       DELIVERY_TIMEOUT_MS,
     );
-    returnLeg.scanStatus = await fetchScanStatus(sent.receipt.guid);
+    returnLeg.scanStatus = await fetchScanStatus(sent.guid);
     pass("4", `returned; scan=${returnLeg.scanStatus}`);
     steps.push({ step: "4", ok: true, detail: `tx=${sent.hash}` });
   } catch (err) {
@@ -604,10 +536,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // (5) asserts after return
   try {
     const hubOwner = getAddress(
-      (await hubPublic.readContract({
+      (await hub.public.readContract({
         address: karPassport,
         abi: KarPassportAbi,
         functionName: "ownerOf",
@@ -615,7 +546,7 @@ async function main(): Promise<void> {
       })) as Address,
     );
     const statusFinal = Number(
-      await hubPublic.readContract({
+      await hub.public.readContract({
         address: karPassport,
         abi: KarPassportAbi,
         functionName: "passportStatus",
@@ -625,7 +556,7 @@ async function main(): Promise<void> {
 
     let spokeBurned = false;
     try {
-      await spokePublic.readContract({
+      await spoke.public.readContract({
         address: spokeOnft,
         abi: KarPassportONFT721Abi,
         functionName: "ownerOf",
@@ -658,7 +589,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // (6) summary
   printSummary(legs, steps);
 }
 

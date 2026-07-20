@@ -8,6 +8,15 @@ const BYTECODE_MISMATCH_PATTERNS = [
 ] as const;
 
 export function isBytecodeMismatchVerifyError(output: string): boolean {
+  // Hardhat may retry after a failed *minimal* solc input; that prose alone is
+  // not a terminal mismatch (full input can still verify successfully).
+  if (
+    /failed using the minimal compiler input/i.test(output) &&
+    !/HHE80009/i.test(output) &&
+    !/bytecode doesn'?t match/i.test(output)
+  ) {
+    return false;
+  }
   return BYTECODE_MISMATCH_PATTERNS.some((pattern) => pattern.test(output));
 }
 
