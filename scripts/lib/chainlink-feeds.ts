@@ -51,7 +51,11 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
   },
 };
 
-export const LZ_ENDPOINT_V2 = "0x6EDCE65403992e310A62460808c4b910D972f10f" as const;
+/** LayerZero EndpointV2 — same address on Base Sepolia and Ethereum Sepolia today. */
+export const LZ_ENDPOINT_V2_BY_CHAIN: Record<84532 | 11155111, `0x${string}`> = {
+  84532: "0x6EDCE65403992e310A62460808c4b910D972f10f",
+  11155111: "0x6EDCE65403992e310A62460808c4b910D972f10f",
+};
 
 export function currencyCodeBytes32(code: string): Hex {
   const padded = code.padEnd(32, "\0");

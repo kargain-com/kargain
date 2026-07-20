@@ -59,6 +59,11 @@ const eslintConfig = [
               message:
                 "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
             },
+            {
+              group: ["@layerzerolabs/*"],
+              message:
+                "LayerZero SDK may only be imported from lib/web3/bridge/ (bridge adapter boundary)",
+            },
           ],
         },
       ],
@@ -86,6 +91,11 @@ const eslintConfig = [
               group: ["@xmtp/*"],
               message:
                 "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+            {
+              group: ["@layerzerolabs/*"],
+              message:
+                "LayerZero SDK may only be imported from lib/web3/bridge/ (bridge adapter boundary)",
             },
           ],
         },
@@ -120,6 +130,51 @@ const eslintConfig = [
           paths: [
             restrictedSdkPaths[0],
             ...restrictedReceiptPaths,
+          ],
+          patterns: [
+            {
+              group: ["@layerzerolabs/*"],
+              message:
+                "LayerZero SDK may only be imported from lib/web3/bridge/ (bridge adapter boundary)",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Bridge adapter boundary (§7.6) — LZ SDK only here (dir may be empty until wiring).
+    files: ["lib/web3/bridge/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [...restrictedSdkPaths, ...restrictedReceiptPaths],
+          patterns: [
+            {
+              group: ["@xmtp/*"],
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Hardhat bridge suite uses LZ Options + EndpointV2Mock artifact resolve.
+    files: ["test/bridge-onft.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [...restrictedSdkPaths, ...restrictedReceiptPaths],
+          patterns: [
+            {
+              group: ["@xmtp/*"],
+              message:
+                "XMTP SDK may only be imported from lib/messaging/adapters/xmtp-adapter.ts",
+            },
           ],
         },
       ],

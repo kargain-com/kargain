@@ -12,7 +12,7 @@ import {
 import { runHardhatVerify, type VerifyRunResult } from "./lib/run-hardhat-verify.js";
 import {
   VERIFY_TARGETS,
-  type VerifyTargetKey,
+  type HubVerifyTargetKey,
 } from "./lib/verify-constructor-args.js";
 
 loadEnv({ path: ".env.local" });
@@ -24,7 +24,7 @@ const PENDING_AUCTION_IMPL_PATH = join(
   "deployments/84532.pending-auction-impl.json",
 );
 
-const FULL_VERIFY_ORDER: VerifyTargetKey[] = [
+const FULL_VERIFY_ORDER: HubVerifyTargetKey[] = [
   "timelock",
   "karProStaking",
   "karPassport",
@@ -35,7 +35,7 @@ const FULL_VERIFY_ORDER: VerifyTargetKey[] = [
   "auctionEscrowProxy",
 ];
 
-const AUCTION_VERIFY_ORDER: VerifyTargetKey[] = ["auctionEscrowImpl", "auctionEscrowProxy"];
+const AUCTION_VERIFY_ORDER: HubVerifyTargetKey[] = ["auctionEscrowImpl", "auctionEscrowProxy"];
 
 type VerifyStatus = VerifyRunResult | "missing" | "failed";
 
@@ -53,14 +53,16 @@ function pendingAuctionImplAddress(): `0x${string}` | null {
 }
 
 async function verifyTarget(
-  key: VerifyTargetKey,
+  key: HubVerifyTargetKey,
   manifest: DeploymentManifest,
   apiKey: string,
   force: boolean,
 ): Promise<VerifyStatus> {
   const target = VERIFY_TARGETS[key];
   let addressSource = "manifest";
-  let rawAddress = manifest[target.addressKey];
+  let rawAddress = manifest[target.addressKey as keyof DeploymentManifest] as
+    | `0x${string}`
+    | undefined;
 
   if (key === "auctionEscrowImpl") {
     const pendingAddr = pendingAuctionImplAddress();

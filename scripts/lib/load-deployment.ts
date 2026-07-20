@@ -8,9 +8,11 @@ import type { ContractVersionName } from "./contract-versions.js";
 
 export const LOCAL_CHAIN_ID = 31337;
 export const SEPOLIA_CHAIN_ID = 84532;
+export const SPOKE_CHAIN_ID = 11155111;
 
 export const DEPLOYMENT_PATH = join(process.cwd(), "deployments/31337.json");
 export const SEPOLIA_DEPLOYMENT_PATH = join(process.cwd(), "deployments/84532.json");
+export const SPOKE_DEPLOYMENT_PATH = join(process.cwd(), "deployments/11155111.json");
 
 /** Active Base Sepolia fallbacks when no manifest / env. Re-export from lib/web3/sepolia-addresses.ts */
 export const SEPOLIA_FALLBACK = SEPOLIA_ACTIVE;
@@ -56,6 +58,20 @@ export type DeploymentManifest = {
   indexFromBlock: number;
   txHashes?: Record<string, string>;
   contractVersions?: { [K in ContractVersionName]: string };
+};
+
+/** Ethereum Sepolia spoke ONFT — peers/pathwayConfigHash filled by wiring iteration. */
+export type SpokeDeploymentManifest = {
+  chainId: typeof SPOKE_CHAIN_ID;
+  gitCommit: string;
+  contractVersions: { KarPassportONFT721: string };
+  karPassportOnft: `0x${string}`;
+  layerZeroEndpoint: `0x${string}`;
+  /** Delegate passed to KarPassportONFT721 constructor — needed for explorer verify. */
+  deployer: `0x${string}`;
+  blocks: { karPassportOnft: number };
+  peers: null;
+  pathwayConfigHash: null;
 };
 
 export type PonderAddressBundle = {
@@ -107,6 +123,18 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
   };
 }
 
+function normalizeSpokeManifest(raw: SpokeDeploymentManifest): SpokeDeploymentManifest {
+  return {
+    ...raw,
+    chainId: SPOKE_CHAIN_ID,
+    karPassportOnft: getAddress(raw.karPassportOnft),
+    layerZeroEndpoint: getAddress(raw.layerZeroEndpoint),
+    deployer: getAddress(raw.deployer),
+    peers: null,
+    pathwayConfigHash: null,
+  };
+}
+
 function readJsonFile<T>(path: string): T | null {
   if (!existsSync(path)) return null;
   try {
@@ -141,6 +169,21 @@ export function requireSepoliaDeployment(): DeploymentManifest {
   if (!deployment) {
     throw new Error(
       "Missing deployments/84532.json — run `pnpm deploy:sepolia` on Base Sepolia first",
+    );
+  }
+  return deployment;
+}
+
+export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
+  const raw = readJsonFile<SpokeDeploymentManifest>(SPOKE_DEPLOYMENT_PATH);
+  return raw ? normalizeSpokeManifest(raw) : null;
+}
+
+export function requireSpokeDeployment(): SpokeDeploymentManifest {
+  const deployment = loadSpokeDeployment();
+  if (!deployment) {
+    throw new Error(
+      "Missing deployments/11155111.json — run `pnpm deploy:spoke:sepolia` on Ethereum Sepolia first",
     );
   }
   return deployment;

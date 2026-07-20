@@ -46,6 +46,15 @@ const config: HardhatUserConfig = {
       chainType: "op",
       ...(deployerKey ? { accounts: [deployerKey] } : {}),
     },
+    ethereumSepolia: {
+      type: "http",
+      url:
+        process.env.ETH_SEPOLIA_RPC_URL ??
+        "https://ethereum-sepolia-rpc.publicnode.com",
+      chainId: 11155111,
+      chainType: "l1",
+      ...(deployerKey ? { accounts: [deployerKey] } : {}),
+    },
   },
   chainDescriptors: {
     84532: {
@@ -55,6 +64,17 @@ const config: HardhatUserConfig = {
         basescan: {
           name: "BaseScan",
           url: "https://sepolia.basescan.org",
+          apiUrl: "https://api.etherscan.io/v2/api",
+        },
+      },
+    },
+    11155111: {
+      name: "Ethereum Sepolia",
+      chainType: "l1",
+      blockExplorers: {
+        etherscan: {
+          name: "Etherscan",
+          url: "https://sepolia.etherscan.io",
           apiUrl: "https://api.etherscan.io/v2/api",
         },
       },

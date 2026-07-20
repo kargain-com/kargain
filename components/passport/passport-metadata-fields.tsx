@@ -53,6 +53,8 @@ const DECODE_FIELD_KEYS: readonly VinDecodedFieldKey[] = [
   "engine",
 ] as const;
 
+const EMPTY_DECODED_MARKERS: ReadonlySet<VinDecodedFieldKey> = new Set();
+
 type Props = {
   form: PassportCreateFormInput;
   errors: PassportCreateFormErrors;
@@ -138,12 +140,19 @@ export function PassportMetadataFields({
   const decodeManuallyEditedRef = useRef(new Set<VinDecodedFieldKey>());
   const decodedMarkersRef = useRef(new Set<VinDecodedFieldKey>());
   const formRef = useRef(form);
-  formRef.current = form;
-  const [vinOrigin, setVinOrigin] = useState<VinInsightOrigin | null>(null);
+  useEffect(() => {
+    formRef.current = form;
+  });
+
+  const [vinOriginByVin, setVinOriginByVin] = useState<{
+    vin: string;
+    origin: VinInsightOrigin;
+  } | null>(null);
   const [yearFromVin, setYearFromVin] = useState(false);
-  const [decodedMarkers, setDecodedMarkers] = useState(
-    () => new Set<VinDecodedFieldKey>(),
-  );
+  const [decodedByVin, setDecodedByVin] = useState<{
+    vin: string;
+    markers: Set<VinDecodedFieldKey>;
+  } | null>(null);
 
   const vinInsight = useMemo(() => {
     if (!form.vin.trim()) return null;
@@ -152,9 +161,22 @@ export function PassportMetadataFields({
 
   const normalizedVin = useMemo(() => normalizeVin(form.vin), [form.vin]);
 
+  const vinOrigin =
+    vinOriginByVin != null && vinOriginByVin.vin === normalizedVin
+      ? vinOriginByVin.origin
+      : null;
+
+  const canDecode =
+    normalizedVin.length === MAX_VIN_LENGTH &&
+    (vinInsight?.status === "ok" || vinInsight?.status === "warning");
+
+  const decodedMarkers =
+    canDecode && decodedByVin != null && decodedByVin.vin === normalizedVin
+      ? decodedByVin.markers
+      : EMPTY_DECODED_MARKERS;
+
   useEffect(() => {
     if (normalizedVin.length < MIN_VIN_LENGTH) {
-      setVinOrigin(null);
       return;
     }
 
@@ -163,7 +185,8 @@ export function PassportMetadataFields({
       const vinAtResolve = normalizedVin;
       void resolveVinOrigin(vinAtResolve).then((origin) => {
         if (cancelled || normalizeVin(form.vin) !== vinAtResolve) return;
-        setVinOrigin(origin);
+        if (origin == null) return;
+        setVinOriginByVin({ vin: vinAtResolve, origin });
       });
     }, ORIGIN_RESOLVE_DEBOUNCE_MS);
 
@@ -182,8 +205,9 @@ export function PassportMetadataFields({
     const suggested = String(yearSuggestion);
     if (!form.year.trim()) {
       onFieldChange("year", suggested);
-      setYearFromVin(true);
-      return;
+      // Defer marker state — sync setState in effect trips react-hooks/set-state-in-effect.
+      const mark = window.setTimeout(() => setYearFromVin(true), 0);
+      return () => window.clearTimeout(mark);
     }
 
     if (yearFromVin && form.year !== suggested) {
@@ -192,15 +216,9 @@ export function PassportMetadataFields({
   }, [vinInsight, form.year, yearFromVin, onFieldChange]);
 
   useEffect(() => {
-    const status = vinInsight?.status;
-    const canDecode =
-      normalizedVin.length === MAX_VIN_LENGTH &&
-      (status === "ok" || status === "warning");
-
     if (!canDecode) {
       if (decodedMarkersRef.current.size > 0) {
         decodedMarkersRef.current = new Set();
-        setDecodedMarkers(new Set());
       }
       return;
     }
@@ -243,7 +261,7 @@ export function PassportMetadataFields({
         }
 
         decodedMarkersRef.current = nextMarkers;
-        setDecodedMarkers(nextMarkers);
+        setDecodedByVin({ vin: vinAtResolve, markers: nextMarkers });
       });
     }, DECODE_RESOLVE_DEBOUNCE_MS);
 
@@ -252,8 +270,8 @@ export function PassportMetadataFields({
       window.clearTimeout(timer);
     };
   }, [
+    canDecode,
     normalizedVin,
-    vinInsight?.status,
     vinInsight?.yearSuggestion,
     form.year,
     onFieldChange,
@@ -275,7 +293,7 @@ export function PassportMetadataFields({
     const next = new Set(decodedMarkersRef.current);
     next.delete(key);
     decodedMarkersRef.current = next;
-    setDecodedMarkers(next);
+    setDecodedByVin({ vin: normalizedVin, markers: next });
   };
 
   const handleDecodedTextChange = (key: VinDecodedFieldKey, value: string) => {

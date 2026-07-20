@@ -5,7 +5,7 @@ import {
   currencyCodeBytes32,
   filterLiveFeeds,
   getChainFeedConfig,
-  LZ_ENDPOINT_V2,
+  LZ_ENDPOINT_V2_BY_CHAIN,
 } from "./lib/chainlink-feeds.js";
 import {
   SEPOLIA_CHAIN_ID,
@@ -174,7 +174,7 @@ async function main() {
     const onftAdapter = await deployStep(viem, "ProxyONFT721Adapter", "ProxyONFT721Adapter", [
       karPassport.address,
       proxy.address,
-      LZ_ENDPOINT_V2,
+      LZ_ENDPOINT_V2_BY_CHAIN[84532],
       deployerAddress,
     ]);
 
@@ -206,7 +206,7 @@ async function main() {
       nativeFeed: feedConfig.nativeUsdFeed,
       timelock: timelock.address,
       proxyOnftAdapter: onftAdapter.address,
-      layerZeroEndpoint: LZ_ENDPOINT_V2,
+      layerZeroEndpoint: LZ_ENDPOINT_V2_BY_CHAIN[84532],
       platformRecipient: PLATFORM_RECIPIENT,
       deployer: deployerAddress,
       upgradeAuthority,

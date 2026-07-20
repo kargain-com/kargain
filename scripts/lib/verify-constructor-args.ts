@@ -1,10 +1,12 @@
 import { encodeFunctionData } from "viem";
 
 import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
+import { LZ_ENDPOINT_V2_BY_CHAIN } from "./chainlink-feeds.js";
 import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
   type DeploymentManifest,
+  type SpokeDeploymentManifest,
 } from "./load-deployment.js";
 
 /** Canonical Base Sepolia WETH — AuctionEscrow wrappedNative immutable. */
@@ -67,14 +69,17 @@ export function marketplaceProxyConstructorArgs(manifest: DeploymentManifest) {
 export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
   const lzEndpoint =
-    manifest.layerZeroEndpoint ??
-    ("0x6EDCE65403992e310A62460808c4b910D972f10f" as const);
+    manifest.layerZeroEndpoint ?? LZ_ENDPOINT_V2_BY_CHAIN[84532];
   return [
     manifest.karPassport,
     manifest.marketplace,
     lzEndpoint,
     deployer,
   ] as const;
+}
+
+export function karPassportOnftConstructorArgs(manifest: SpokeDeploymentManifest) {
+  return [manifest.layerZeroEndpoint, manifest.deployer] as const;
 }
 
 export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
@@ -157,6 +162,15 @@ export const VERIFY_TARGETS = {
     addressKey: "auctionEscrow" as const,
     buildArgs: auctionEscrowProxyConstructorArgs,
   },
+  karPassportOnft: {
+    label: `KarPassportONFT721 (${CONTRACT_VERSIONS.KarPassportONFT721})`,
+    contract: "contracts/KarPassportONFT721.sol:KarPassportONFT721",
+    addressKey: "karPassportOnft" as const,
+    buildArgs: karPassportOnftConstructorArgs,
+  },
 } as const;
 
 export type VerifyTargetKey = keyof typeof VERIFY_TARGETS;
+
+/** Hub Base Sepolia targets — excludes spoke `karPassportOnft`. */
+export type HubVerifyTargetKey = Exclude<VerifyTargetKey, "karPassportOnft">;
