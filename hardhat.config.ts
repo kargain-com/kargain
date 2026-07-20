@@ -21,9 +21,17 @@ const config: HardhatUserConfig = {
     ],
   },
   networks: {
+    // Tests use Hardhat 3's implicit `default` edr network (not hardhatMain).
+    default: {
+      type: "edr-simulated",
+      chainType: "l1",
+      // EndpointV2Mock (LZ test-devtools) exceeds EIP-170; local tests only.
+      allowUnlimitedContractSize: true,
+    },
     hardhatMain: {
       type: "edr-simulated",
       chainType: "l1",
+      allowUnlimitedContractSize: true,
     },
     localhost: {
       type: "http",

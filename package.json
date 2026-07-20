@@ -90,8 +90,10 @@
   "devDependencies": {
     "@kargain/vincent-compiler": "0.1.0",
     "@layerzerolabs/lz-evm-protocol-v2": "3.0.148",
+    "@layerzerolabs/lz-v2-utilities": "3.0.75",
     "@layerzerolabs/oapp-evm": "0.4.1",
     "@layerzerolabs/onft-evm": "0.2.4",
+    "@layerzerolabs/test-devtools-evm-hardhat": "0.5.3",
     "@nomicfoundation/hardhat-ignition": "^3.1.0",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.3",
     "@openzeppelin/contracts": "^5.2.0",
