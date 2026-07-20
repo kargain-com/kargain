@@ -1,4 +1,4 @@
-import type { KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
+import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 

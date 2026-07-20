@@ -12,7 +12,10 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
-import type { DisputedPassportRow, KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
+import type {
+  DisputedPassportRow,
+  KarProVerifierProfile,
+} from "@/lib/verifier/verifier-profile-types";
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";

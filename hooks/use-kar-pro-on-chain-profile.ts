@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useReadContracts } from "wagmi";
 
-import type { KarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
+import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import {
   buildKarProProfileFromChain,
   resolveKarProJoinedAt,

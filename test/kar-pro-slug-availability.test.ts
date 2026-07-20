@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   isValidSlug,
@@ -9,10 +12,10 @@ import {
   SLUG_MIN_LENGTH,
 } from "../lib/kar-pro/kar-pro-slug-rules.ts";
 import {
+  buildSlugAvailablePath,
   deriveSlugAvailabilityStatus,
-  fetchSlugAvailability,
   mapSlugAvailabilityResult,
-  resolvePonderApiBaseUrl,
+  slugAvailabilityFromPonderPayload,
 } from "../lib/kar-pro/slug-availability.ts";
 
 describe("kar-pro-slug-rules", () => {
@@ -42,15 +45,55 @@ describe("kar-pro-slug-rules", () => {
   });
 });
 
-describe("slug-availability mapping", () => {
-  it("resolvePonderApiBaseUrl trims and falls back", () => {
-    assert.equal(resolvePonderApiBaseUrl(undefined), "http://localhost:42069");
-    assert.equal(resolvePonderApiBaseUrl(""), "http://localhost:42069");
-    assert.equal(resolvePonderApiBaseUrl("   "), "http://localhost:42069");
-    assert.equal(
-      resolvePonderApiBaseUrl("https://ponder.kargain.com/"),
-      "https://ponder.kargain.com",
+describe("slug-availability pure helpers", () => {
+  it("client-safe module has no process.env or fetch", () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../lib/kar-pro/slug-availability.ts"),
+      "utf8",
     );
+    assert.equal(source.includes("process.env"), false);
+    assert.equal(/\bfetch\s*\(/.test(source), false);
+  });
+
+  it("kar-pro server actions do not re-export types", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    for (const rel of [
+      "app/actions/kar-pro-slug.ts",
+      "app/actions/vincent-commons.ts",
+      "app/actions/kar-pro-verifier.ts",
+    ]) {
+      const source = readFileSync(join(root, rel), "utf8");
+      assert.equal(
+        /^export type\b/m.test(source),
+        false,
+        `${rel} must not export types from a "use server" module`,
+      );
+    }
+  });
+
+  it("buildSlugAvailablePath encodes slug and optional address", () => {
+    assert.equal(
+      buildSlugAvailablePath("testdealer"),
+      "/verifiers/slug-available/testdealer",
+    );
+    assert.equal(
+      buildSlugAvailablePath("taken-slug", "0xAbc"),
+      "/verifiers/slug-available/taken-slug?address=0xAbc",
+    );
+  });
+
+  it("slugAvailabilityFromPonderPayload maps wire bodies", () => {
+    assert.deepEqual(slugAvailabilityFromPonderPayload({ available: true }), {
+      available: true,
+    });
+    assert.deepEqual(slugAvailabilityFromPonderPayload({ available: false }), {
+      available: false,
+      reason: "taken",
+    });
+    assert.deepEqual(slugAvailabilityFromPonderPayload({}), {
+      available: false,
+      reason: "taken",
+    });
   });
 
   it("mapSlugAvailabilityResult covers wire reasons", () => {
@@ -72,49 +115,6 @@ describe("slug-availability mapping", () => {
       "error",
     );
     assert.equal(mapSlugAvailabilityResult({ available: false }), "taken");
-  });
-
-  it("fetchSlugAvailability maps ponder responses", async () => {
-    assert.deepEqual(await fetchSlugAvailability({ slug: "ab" }), {
-      available: false,
-      reason: "invalid_format",
-    });
-
-    const available = await fetchSlugAvailability({
-      slug: "testdealer",
-      ponderBaseUrl: "https://ponder.test",
-      fetchImpl: async (input) => {
-        assert.equal(
-          String(input),
-          "https://ponder.test/verifiers/slug-available/testdealer",
-        );
-        return new Response(JSON.stringify({ available: true, slug: "testdealer" }), {
-          status: 200,
-        });
-      },
-    });
-    assert.deepEqual(available, { available: true });
-
-    const taken = await fetchSlugAvailability({
-      slug: "taken-slug",
-      ownerAddress: "0xAbc",
-      ponderBaseUrl: "https://ponder.test",
-      fetchImpl: async (input) => {
-        const url = new URL(String(input));
-        assert.equal(url.searchParams.get("address"), "0xAbc");
-        return new Response(JSON.stringify({ available: false, slug: "taken-slug" }), {
-          status: 200,
-        });
-      },
-    });
-    assert.deepEqual(taken, { available: false, reason: "taken" });
-
-    const upstreamError = await fetchSlugAvailability({
-      slug: "hello-world",
-      ponderBaseUrl: "https://ponder.test",
-      fetchImpl: async () => new Response("nope", { status: 502 }),
-    });
-    assert.deepEqual(upstreamError, { available: false, reason: "error" });
   });
 
   it("deriveSlugAvailabilityStatus prefers format, then debounce, then query", () => {

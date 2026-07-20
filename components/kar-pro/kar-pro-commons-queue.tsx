@@ -17,10 +17,7 @@ import { ProposeWmiForm } from "@/components/kar-pro/propose-wmi-form";
 import { useCommonsActions } from "@/hooks/use-commons-actions";
 import { useCommonsReviews } from "@/hooks/use-commons-reviews";
 import { useCommonsWmiProposals } from "@/hooks/use-commons-wmi-proposals";
-import {
-  getCommonsObservations,
-  type CommonsObservationsResult,
-} from "@/app/actions/vincent-commons";
+import { getCommonsObservations } from "@/app/actions/vincent-commons";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
@@ -33,6 +30,7 @@ import {
   type DeriveReport,
   type DeriveSources,
 } from "@/lib/vincent-commons/derive-claims";
+import type { CommonsObservationsResult } from "@/lib/vincent-commons/observations-source";
 import {
   buildCommonsCandidates,
   candidateRecordVerifiers,

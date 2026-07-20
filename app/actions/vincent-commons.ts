@@ -2,11 +2,8 @@
 
 import {
   fetchVerifiedObservations,
-  type CommonsMetadataFailure,
   type CommonsObservationsResult,
 } from "@/lib/vincent-commons/observations-source";
-
-export type { CommonsMetadataFailure, CommonsObservationsResult };
 
 const PONDER_URL = process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 const PAGE_LIMIT = 100;
@@ -27,6 +24,10 @@ async function fetchJson(url: string): Promise<unknown> {
  * from the Ponder HTTP API plus full metadata JSON per tokenUri. Derivation
  * runs client-side in the KarPro Commons section; no Ponder schema or API
  * changes.
+ *
+ * Types: import from `@/lib/vincent-commons/observations-source` — do not
+ * re-export types from this `"use server"` file (Next registers them as
+ * runtime server references and crashes the action bundle).
  */
 export async function getCommonsObservations(): Promise<CommonsObservationsResult> {
   return fetchVerifiedObservations({
