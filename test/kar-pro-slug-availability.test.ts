@@ -10,7 +10,9 @@ import {
 } from "../lib/kar-pro/kar-pro-slug-rules.ts";
 import {
   deriveSlugAvailabilityStatus,
+  fetchSlugAvailability,
   mapSlugAvailabilityResult,
+  resolvePonderApiBaseUrl,
 } from "../lib/kar-pro/slug-availability.ts";
 
 describe("kar-pro-slug-rules", () => {
@@ -41,6 +43,16 @@ describe("kar-pro-slug-rules", () => {
 });
 
 describe("slug-availability mapping", () => {
+  it("resolvePonderApiBaseUrl trims and falls back", () => {
+    assert.equal(resolvePonderApiBaseUrl(undefined), "http://localhost:42069");
+    assert.equal(resolvePonderApiBaseUrl(""), "http://localhost:42069");
+    assert.equal(resolvePonderApiBaseUrl("   "), "http://localhost:42069");
+    assert.equal(
+      resolvePonderApiBaseUrl("https://ponder.kargain.com/"),
+      "https://ponder.kargain.com",
+    );
+  });
+
   it("mapSlugAvailabilityResult covers wire reasons", () => {
     assert.equal(mapSlugAvailabilityResult({ available: true }), "available");
     assert.equal(
@@ -60,6 +72,49 @@ describe("slug-availability mapping", () => {
       "error",
     );
     assert.equal(mapSlugAvailabilityResult({ available: false }), "taken");
+  });
+
+  it("fetchSlugAvailability maps ponder responses", async () => {
+    assert.deepEqual(await fetchSlugAvailability({ slug: "ab" }), {
+      available: false,
+      reason: "invalid_format",
+    });
+
+    const available = await fetchSlugAvailability({
+      slug: "testdealer",
+      ponderBaseUrl: "https://ponder.test",
+      fetchImpl: async (input) => {
+        assert.equal(
+          String(input),
+          "https://ponder.test/verifiers/slug-available/testdealer",
+        );
+        return new Response(JSON.stringify({ available: true, slug: "testdealer" }), {
+          status: 200,
+        });
+      },
+    });
+    assert.deepEqual(available, { available: true });
+
+    const taken = await fetchSlugAvailability({
+      slug: "taken-slug",
+      ownerAddress: "0xAbc",
+      ponderBaseUrl: "https://ponder.test",
+      fetchImpl: async (input) => {
+        const url = new URL(String(input));
+        assert.equal(url.searchParams.get("address"), "0xAbc");
+        return new Response(JSON.stringify({ available: false, slug: "taken-slug" }), {
+          status: 200,
+        });
+      },
+    });
+    assert.deepEqual(taken, { available: false, reason: "taken" });
+
+    const upstreamError = await fetchSlugAvailability({
+      slug: "hello-world",
+      ponderBaseUrl: "https://ponder.test",
+      fetchImpl: async () => new Response("nope", { status: 502 }),
+    });
+    assert.deepEqual(upstreamError, { available: false, reason: "error" });
   });
 
   it("deriveSlugAvailabilityStatus prefers format, then debounce, then query", () => {

@@ -37,8 +37,7 @@ export function useSlugAvailability({
     return () => clearTimeout(handle);
   }, [trimmed]);
 
-  const formatReady =
-    enabled && slugFormatStatus(debouncedSlug) === "ready";
+  const formatReady = enabled && slugFormatStatus(debouncedSlug) === "ready";
 
   const query = useQuery({
     queryKey: ["kar-pro-slug-availability", debouncedSlug, ownerAddress ?? ""],

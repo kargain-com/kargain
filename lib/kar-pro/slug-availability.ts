@@ -1,5 +1,9 @@
-import type { SlugAvailabilityResult } from "@/app/actions/kar-pro-slug";
-import { slugFormatStatus } from "@/lib/kar-pro/kar-pro-slug-rules";
+import { isValidSlug, slugFormatStatus } from "@/lib/kar-pro/kar-pro-slug-rules";
+
+export type SlugAvailabilityResult = {
+  available: boolean;
+  reason?: "invalid_format" | "invalid_length" | "taken" | "error";
+};
 
 export type SlugAvailabilityStatus =
   | "idle"
@@ -9,7 +13,55 @@ export type SlugAvailabilityStatus =
   | "invalid_format"
   | "error";
 
-/** Map a successful server-action result onto UI status (never "checking"). */
+/** Resolve Ponder base URL (trim; empty env → local default; no trailing slash). */
+export function resolvePonderApiBaseUrl(
+  envValue: string | undefined = process.env.PONDER_SQL_API_URL,
+): string {
+  const trimmed = envValue?.trim();
+  if (!trimmed) return "http://localhost:42069";
+  return trimmed.replace(/\/+$/, "");
+}
+
+/**
+ * Check slug uniqueness against Ponder. Injectable fetch for unit tests;
+ * production callers use the thin server action in `app/actions/kar-pro-slug.ts`.
+ */
+export async function fetchSlugAvailability(input: {
+  slug: string;
+  ownerAddress?: string;
+  ponderBaseUrl?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<SlugAvailabilityResult> {
+  const trimmed = input.slug.trim();
+  if (!isValidSlug(trimmed)) {
+    return { available: false, reason: "invalid_format" };
+  }
+
+  const base = input.ponderBaseUrl ?? resolvePonderApiBaseUrl();
+  const fetchImpl = input.fetchImpl ?? fetch;
+
+  try {
+    const params = new URLSearchParams();
+    if (input.ownerAddress?.trim()) {
+      params.set("address", input.ownerAddress.trim());
+    }
+    const query = params.toString();
+    const url = `${base}/verifiers/slug-available/${encodeURIComponent(trimmed)}${query ? `?${query}` : ""}`;
+    const res = await fetchImpl(url, { cache: "no-store" });
+    if (!res.ok) {
+      return { available: false, reason: "error" };
+    }
+    const data = (await res.json()) as { available?: boolean };
+    if (data.available === true) {
+      return { available: true };
+    }
+    return { available: false, reason: "taken" };
+  } catch {
+    return { available: false, reason: "error" };
+  }
+}
+
+/** Map a wire/API result onto UI status (never "checking" / "idle"). */
 export function mapSlugAvailabilityResult(
   result: SlugAvailabilityResult,
 ): Exclude<SlugAvailabilityStatus, "checking" | "idle"> {
