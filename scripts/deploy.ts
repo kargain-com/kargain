@@ -72,6 +72,12 @@ async function waitForBytecode(viem: ViemSuite, address: `0x${string}`, label: s
   throw new Error(`${label} bytecode not visible on RPC after 120s (${address})`);
 }
 
+function isTransientDeployError(message: string): boolean {
+  return /TransactionNotFoundError|could not be found|NonceTooLow|nonce.*lower|in-flight transaction limit|replacement transaction underpriced|unexpected status code|rate limit|429|timeout|ECONNRESET|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
 async function deployStep(
   viem: ViemSuite,
   label: string,
@@ -81,7 +87,7 @@ async function deployStep(
   const publicClient = await viem.getPublicClient();
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     try {
       const { contract, deploymentTransaction } = await viem.sendDeploymentTransaction(
         contractName,
@@ -93,6 +99,8 @@ async function deployStep(
       });
       await waitForBytecode(viem, contract.address, label);
       console.log(`${label} tx: ${deploymentTransaction.hash} (block ${receipt.blockNumber})`);
+      // Pace sequential deploys — EIP-7702 / public RPCs cap in-flight txs.
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       return {
         address: contract.address,
         txHash: deploymentTransaction.hash,
@@ -101,9 +109,46 @@ async function deployStep(
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);
-      if (/TransactionNotFoundError|could not be found/i.test(message) && attempt < 5) {
-        console.warn(`${label}: RPC lag on attempt ${attempt}, retrying in 5s…`);
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      if (isTransientDeployError(message) && attempt < 8) {
+        const waitMs = Math.min(60_000, 5_000 * attempt);
+        console.warn(
+          `${label}: transient RPC/nonce on attempt ${attempt}, retrying in ${waitMs / 1000}s…`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
+}
+
+/** Wait for a write tx hash with the same transient-error retries as deployStep. */
+async function writeStep(
+  viem: ViemSuite,
+  label: string,
+  send: () => Promise<Hash>,
+): Promise<Hash> {
+  const publicClient = await viem.getPublicClient();
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    try {
+      const hash = await send();
+      await publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
+      console.log(`  ${label} tx: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return hash;
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (isTransientDeployError(message) && attempt < 8) {
+        const waitMs = Math.min(60_000, 5_000 * attempt);
+        console.warn(
+          `${label}: transient RPC/nonce on attempt ${attempt}, retrying in ${waitMs / 1000}s…`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
       throw err;
@@ -186,8 +231,9 @@ async function runLiveDeploy() {
       deployerAddress,
     ]);
     const proPass = await viem.getContractAt("KarProPass", karProPass.address);
-    await proPass.write.setStaking([staking.address], { account: deployer.account });
-    console.log("  setStaking → KarProStaking");
+    await writeStep(viem, "setStaking", () =>
+      proPass.write.setStaking([staking.address], { account: deployer.account }),
+    );
 
     const karPassport = await deployStep(viem, "KarPassport", "KarPassport", [
       staking.address,
@@ -220,15 +266,17 @@ async function runLiveDeploy() {
     const marketplace = await viem.getContractAt("MarketplaceEscrow", proxy.address);
 
     // USD-only: skip setCurrencyFeed for non-USD feeds even when live in CHAINLINK_FEEDS.
-    await marketplace.write.approvePaymentToken([externals.usdc, ADDRESS_ZERO], {
-      account: deployer.account,
-    });
-    console.log(`  approvePaymentToken(usdc=${externals.usdc})`);
+    await writeStep(viem, `approvePaymentToken(usdc=${externals.usdc})`, () =>
+      marketplace.write.approvePaymentToken([externals.usdc, ADDRESS_ZERO], {
+        account: deployer.account,
+      }),
+    );
 
-    await marketplace.write.transferUpgradeAuthority([timelock.address], {
-      account: deployer.account,
-    });
-    console.log("  transferUpgradeAuthority → Timelock48h");
+    await writeStep(viem, "transferUpgradeAuthority → Timelock48h", () =>
+      marketplace.write.transferUpgradeAuthority([timelock.address], {
+        account: deployer.account,
+      }),
+    );
 
     const auctionImpl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
       karPassport.address,
@@ -264,9 +312,9 @@ async function runLiveDeploy() {
     );
 
     const passport = await viem.getContractAt("KarPassport", karPassport.address);
-    await passport.write.setBridgeGateway([gateway.address], { account: deployer.account });
-    console.log(`  setBridgeGateway → ${gateway.address}`);
-
+    await writeStep(viem, `setBridgeGateway → ${gateway.address}`, () =>
+      passport.write.setBridgeGateway([gateway.address], { account: deployer.account }),
+    );
     const boundGateway = getAddress(
       (await passport.read.bridgeGateway([])) as `0x${string}`,
     );

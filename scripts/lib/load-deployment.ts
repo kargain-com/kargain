@@ -47,6 +47,14 @@ export type DeploymentHistorical = {
   proxyOnftAdapter?: HistoricalProxyOnftAdapter[];
 };
 
+/** Hub↔spoke peer bookkeeping written by `pnpm bridge:wire` on successful full wire. */
+export type SpokePathwayPeers = {
+  hubEid: 40245;
+  spokeEid: 40161;
+  hubOApp: `0x${string}`;
+  spokeOApp: `0x${string}`;
+};
+
 export type DeploymentManifest = {
   chainId: number;
   generation: string;
@@ -63,7 +71,7 @@ export type DeploymentManifest = {
   deployer?: `0x${string}`;
   /** On-chain MarketplaceEscrow.upgradeAuthority (timelock contract or deployer EOA). */
   upgradeAuthority?: `0x${string}`;
-  /** v2: LayerZero hub adapter */
+  /** v2: LayerZero hub adapter / nuclear commercial gateway */
   proxyOnftAdapter?: `0x${string}`;
   /** English reserve auction escrow (additive deploy) */
   auctionEscrow?: `0x${string}`;
@@ -78,14 +86,9 @@ export type DeploymentManifest = {
   indexFromBlock: number;
   txHashes?: Record<string, string>;
   contractVersions?: { [K in ContractVersionName]: string };
-};
-
-/** Hub↔spoke peer bookkeeping written by `pnpm bridge:wire` on successful full wire. */
-export type SpokePathwayPeers = {
-  hubEid: 40245;
-  spokeEid: 40161;
-  hubOApp: `0x${string}`;
-  spokeOApp: `0x${string}`;
+  /** Hub↔spoke peers written by `pnpm bridge:wire` on successful full wire (nuclear eth stack). */
+  peers?: SpokePathwayPeers | null;
+  pathwayConfigHash?: `0x${string}` | null;
 };
 
 /** Ethereum Sepolia spoke ONFT — peers/pathwayConfigHash filled by wiring iteration. */
@@ -147,6 +150,23 @@ function normalizeHistorical(
   };
 }
 
+function isCommercialManifestShape(raw: unknown): raw is DeploymentManifest {
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    typeof (raw as { karPassport?: unknown }).karPassport === "string" &&
+    typeof (raw as { marketplace?: unknown }).marketplace === "string"
+  );
+}
+
+function isThinOnftSpokeManifestShape(raw: unknown): raw is SpokeDeploymentManifest {
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    typeof (raw as { karPassportOnft?: unknown }).karPassportOnft === "string"
+  );
+}
+
 function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
   return {
     ...raw,
@@ -166,6 +186,10 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.proxyOnftAdapter ? { proxyOnftAdapter: getAddress(raw.proxyOnftAdapter) } : {}),
     ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
     ...(raw.historical ? { historical: normalizeHistorical(raw.historical) } : {}),
+    ...(raw.peers !== undefined ? { peers: normalizeSpokePeers(raw.peers) } : {}),
+    ...(raw.pathwayConfigHash !== undefined
+      ? { pathwayConfigHash: raw.pathwayConfigHash }
+      : {}),
   };
 }
 
@@ -233,8 +257,9 @@ export function requireSepoliaDeployment(): DeploymentManifest {
 }
 
 export function loadCommercialDeployment(chainId: number): DeploymentManifest | null {
-  const raw = readJsonFile<DeploymentManifest>(commercialDeploymentPath(chainId));
-  return raw ? normalizeManifest(raw) : null;
+  const raw = readJsonFile<unknown>(commercialDeploymentPath(chainId));
+  if (!isCommercialManifestShape(raw)) return null;
+  return normalizeManifest(raw);
 }
 
 export function requireCommercialDeployment(chainId: number): DeploymentManifest {
@@ -248,15 +273,16 @@ export function requireCommercialDeployment(chainId: number): DeploymentManifest
 }
 
 export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
-  const raw = readJsonFile<SpokeDeploymentManifest>(SPOKE_DEPLOYMENT_PATH);
-  return raw ? normalizeSpokeManifest(raw) : null;
+  const raw = readJsonFile<unknown>(SPOKE_DEPLOYMENT_PATH);
+  if (!isThinOnftSpokeManifestShape(raw)) return null;
+  return normalizeSpokeManifest(raw);
 }
 
 export function requireSpokeDeployment(): SpokeDeploymentManifest {
   const deployment = loadSpokeDeployment();
   if (!deployment) {
     throw new Error(
-      "Missing deployments/11155111.json — run `pnpm deploy:spoke:sepolia` on Ethereum Sepolia first",
+      "Missing thin-ONFT deployments/11155111.json — run nuclear deploy (commercial gateway) or legacy `pnpm deploy:spoke:sepolia`",
     );
   }
   return deployment;

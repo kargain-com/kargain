@@ -42,6 +42,7 @@
     "deploy:adapter:sepolia": "HARDHAT_NETWORK=baseSepolia node --import tsx scripts/deploy-adapter.ts",
     "upgrade:auction": "HARDHAT_NETWORK=baseSepolia node --import tsx scripts/upgrade-auction.ts",
     "verify:sepolia": "node --import tsx scripts/verify.ts",
+    "verify:sepolia:eth": "node --import tsx scripts/verify.ts --eth",
     "verify:spoke:sepolia": "node --import tsx scripts/verify-spoke.ts",
     "smoke:sepolia": "hardhat run scripts/smoke-deploy.ts --network baseSepolia",
     "smoke:bridge": "node --import tsx scripts/smoke-bridge.ts",

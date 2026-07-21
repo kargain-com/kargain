@@ -1,9 +1,13 @@
 /**
- * Live bridge E2E smoke — hub (84532 / EID 40245) ↔ spoke (11155111 / EID 40161).
+ * Live bridge E2E smoke — hub (84532 / EID 40245) ↔ eth (11155111 / EID 40161).
+ *
+ * Nuclear dual commercial stacks: both sides are KarPassport + gateway
+ * (`proxyOnftAdapter`). Legacy thin-ONFT eth manifest still resolves for OApp.
  *
  * Usage:
+ *   pnpm smoke:bridge
  *   pnpm smoke:bridge --token-id <id>
- *   pnpm smoke:bridge --token-id <id> --skip-return
+ *   pnpm smoke:bridge --skip-return
  *
  * Delivery gate: dest-chain RPC ownership (not LZ Scan). GUID from ONFTSent
  * receipt log; Scan status is best-effort for the summary table only.
@@ -23,8 +27,10 @@ import {
   type DeployerClients,
 } from "./lib/deployer-viem.js";
 import {
+  loadCommercialDeployment,
+  loadSpokeDeployment,
   requireSepoliaDeployment,
-  requireSpokeDeployment,
+  SPOKE_CHAIN_ID,
 } from "./lib/load-deployment.js";
 import {
   addressToBytes32,
@@ -41,11 +47,12 @@ loadEnv();
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 const DELIVERY_POLL_MS = 8_000;
 const SCAN_TESTNET_BASE = "https://scan-testnet.layerzero-api.com/v1";
+const NUCLEAR_SMOKE_URI = "ar://nuclear-smoke";
 
 type MessagingFee = { nativeFee: bigint; lzTokenFee: bigint };
 
 type SmokeFlags = {
-  tokenId: bigint;
+  tokenId: bigint | null;
   skipReturn: boolean;
 };
 
@@ -57,6 +64,15 @@ type LegSummary = {
   guid: Hex | null;
   feeWei: bigint | null;
   scanStatus: string | null;
+};
+
+type ResolvedBridge = {
+  hubGateway: Address;
+  hubPassport: Address;
+  ethGateway: Address;
+  ethPassport: Address;
+  /** True when eth side is nuclear commercial KarPassport+gateway (not thin ONFT). */
+  ethCommercial: boolean;
 };
 
 function fail(msg: string): never {
@@ -87,7 +103,7 @@ function parseFlags(argv: string[]): SmokeFlags {
     }
   }
   if (tokenIdRaw == null || tokenIdRaw === "") {
-    fail("Required: --token-id <uint256>");
+    return { tokenId: null, skipReturn };
   }
   let tokenId: bigint;
   try {
@@ -97,6 +113,40 @@ function parseFlags(argv: string[]): SmokeFlags {
   }
   if (tokenId < 0n) fail(`--token-id must be non-negative (got ${tokenId})`);
   return { tokenId, skipReturn };
+}
+
+function resolveBridgeAddresses(): ResolvedBridge {
+  const hubManifest = requireSepoliaDeployment();
+  if (!hubManifest.proxyOnftAdapter) {
+    fail(`proxyOnftAdapter missing in deployments/84532.json`);
+  }
+
+  const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
+  if (ethCommercial?.proxyOnftAdapter && ethCommercial.karPassport) {
+    return {
+      hubGateway: getAddress(hubManifest.proxyOnftAdapter),
+      hubPassport: getAddress(hubManifest.karPassport),
+      ethGateway: getAddress(ethCommercial.proxyOnftAdapter),
+      ethPassport: getAddress(ethCommercial.karPassport),
+      ethCommercial: true,
+    };
+  }
+
+  const legacySpoke = loadSpokeDeployment();
+  if (legacySpoke?.karPassportOnft) {
+    const onft = getAddress(legacySpoke.karPassportOnft);
+    return {
+      hubGateway: getAddress(hubManifest.proxyOnftAdapter),
+      hubPassport: getAddress(hubManifest.karPassport),
+      ethGateway: onft,
+      ethPassport: onft,
+      ethCommercial: false,
+    };
+  }
+
+  fail(
+    `Eth OApp missing in deployments/11155111.json — run nuclear deploy (commercial proxyOnftAdapter) or legacy pnpm deploy:spoke:sepolia`,
+  );
 }
 
 function optionsFor(
@@ -234,35 +284,131 @@ function printSummary(legs: LegSummary[], steps: StepResult[]): void {
   console.log("");
 }
 
+async function readOwnerOf(
+  clients: DeployerClients,
+  nft: Address,
+  tokenId: bigint,
+  commercial: boolean,
+): Promise<Address> {
+  return getAddress(
+    (await clients.public.readContract({
+      address: nft,
+      abi: commercial ? KarPassportAbi : KarPassportBridgeGatewayAbi,
+      functionName: "ownerOf",
+      args: [tokenId],
+    })) as Address,
+  );
+}
+
+async function readTokenUri(
+  clients: DeployerClients,
+  nft: Address,
+  tokenId: bigint,
+  commercial: boolean,
+): Promise<string> {
+  return (await clients.public.readContract({
+    address: nft,
+    abi: commercial ? KarPassportAbi : KarPassportBridgeGatewayAbi,
+    functionName: "tokenURI",
+    args: [tokenId],
+  })) as string;
+}
+
+async function ensureApprovalForAll(
+  clients: DeployerClients,
+  passport: Address,
+  gateway: Address,
+  owner: Address,
+): Promise<void> {
+  const approved = (await clients.public.readContract({
+    address: passport,
+    abi: KarPassportAbi,
+    functionName: "isApprovedForAll",
+    args: [owner, gateway],
+  })) as boolean;
+  if (approved) return;
+  await writeContractLocal(clients, {
+    address: passport,
+    abi: KarPassportAbi,
+    functionName: "setApprovalForAll",
+    args: [gateway, true],
+  });
+  console.log(`  approved gateway ${gateway} on ${passport}`);
+}
+
+async function mintSmokePassport(
+  hub: DeployerClients,
+  hubPassport: Address,
+  to: Address,
+): Promise<bigint> {
+  const tokenId = (await hub.public.readContract({
+    address: hubPassport,
+    abi: KarPassportAbi,
+    functionName: "nextTokenId",
+  })) as bigint;
+  await writeContractLocal(hub, {
+    address: hubPassport,
+    abi: KarPassportAbi,
+    functionName: "mintPassport",
+    args: [to, NUCLEAR_SMOKE_URI],
+  });
+  console.log(`  minted passport tokenId=${tokenId} uri=${NUCLEAR_SMOKE_URI}`);
+  return tokenId;
+}
+
+/**
+ * Resolve a deployer-owned hub passport: use --token-id when owned;
+ * otherwise mint (also when --token-id omitted or token missing / not owned).
+ */
+async function resolveTokenId(params: {
+  hub: DeployerClients;
+  hubPassport: Address;
+  hubGateway: Address;
+  accountAddress: Address;
+  requested: bigint | null;
+}): Promise<bigint> {
+  const { hub, hubPassport, hubGateway, accountAddress, requested } = params;
+
+  if (requested != null) {
+    try {
+      const owner = await readOwnerOf(hub, hubPassport, requested, true);
+      if (owner === accountAddress) {
+        await ensureApprovalForAll(hub, hubPassport, hubGateway, accountAddress);
+        return requested;
+      }
+      console.log(
+        `  token ${requested} owned by ${owner} ≠ deployer; minting new passport`,
+      );
+    } catch {
+      console.log(`  token ${requested} missing on hub; minting new passport`);
+    }
+  }
+
+  const tokenId = await mintSmokePassport(hub, hubPassport, accountAddress);
+  await ensureApprovalForAll(hub, hubPassport, hubGateway, accountAddress);
+  return tokenId;
+}
+
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2));
   const steps: StepResult[] = [];
   const legs: LegSummary[] = [];
 
-  const hubManifest = requireSepoliaDeployment();
-  const spokeManifest = requireSpokeDeployment();
-
-  if (!hubManifest.proxyOnftAdapter) {
-    fail(`proxyOnftAdapter missing in deployments/84532.json`);
-  }
-  if (!spokeManifest.karPassportOnft) {
-    fail(`karPassportOnft missing in deployments/11155111.json`);
-  }
-
-  const adapter = getAddress(hubManifest.proxyOnftAdapter);
-  const karPassport = getAddress(hubManifest.karPassport);
-  const spokeOnft = getAddress(spokeManifest.karPassportOnft);
-
+  const bridge = resolveBridgeAddresses();
   const hub = createHubDeployerClients();
   const spoke = createSpokeDeployerClients();
   const accountAddress = getAddress(hub.account.address);
 
   console.log("Kargain bridge smoke");
-  console.log(`  tokenId:   ${flags.tokenId}`);
+  console.log(
+    `  tokenId:   ${flags.tokenId != null ? flags.tokenId.toString() : "(mint if needed)"}`,
+  );
   console.log(`  recipient: ${accountAddress} (deployer)`);
-  console.log(`  adapter:   ${adapter}`);
-  console.log(`  passport:  ${karPassport}`);
-  console.log(`  spoke:     ${spokeOnft}`);
+  console.log(`  hub gw:    ${bridge.hubGateway}`);
+  console.log(`  hub nft:   ${bridge.hubPassport}`);
+  console.log(`  eth gw:    ${bridge.ethGateway}`);
+  console.log(`  eth nft:   ${bridge.ethPassport}`);
+  console.log(`  eth mode:  ${bridge.ethCommercial ? "nuclear commercial" : "legacy thin ONFT"}`);
   console.log(`  skipReturn:${flags.skipReturn}`);
   console.log("");
 
@@ -279,46 +425,32 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const originalOwner = getAddress(
-    (await hub.public.readContract({
-      address: karPassport,
-      abi: KarPassportAbi,
-      functionName: "ownerOf",
-      args: [flags.tokenId],
-    })) as Address,
-  );
+  const tokenId = await resolveTokenId({
+    hub,
+    hubPassport: bridge.hubPassport,
+    hubGateway: bridge.hubGateway,
+    accountAddress,
+    requested: flags.tokenId,
+  });
+  console.log(`  using tokenId=${tokenId}`);
+  console.log("");
+
+  const originalOwner = await readOwnerOf(hub, bridge.hubPassport, tokenId, true);
   if (originalOwner !== accountAddress) {
     fail(
-      `Preflight: token ${flags.tokenId} owner ${originalOwner} ≠ deployer ${accountAddress}`,
+      `Preflight: token ${tokenId} owner ${originalOwner} ≠ deployer ${accountAddress}`,
     );
   }
 
   const statusBefore = Number(
     await hub.public.readContract({
-      address: karPassport,
+      address: bridge.hubPassport,
       abi: KarPassportAbi,
       functionName: "passportStatus",
-      args: [flags.tokenId],
+      args: [tokenId],
     }),
   );
-  const hubUriBefore = (await hub.public.readContract({
-    address: karPassport,
-    abi: KarPassportAbi,
-    functionName: "tokenURI",
-    args: [flags.tokenId],
-  })) as string;
-
-  const approved = (await hub.public.readContract({
-    address: karPassport,
-    abi: KarPassportAbi,
-    functionName: "isApprovedForAll",
-    args: [accountAddress, adapter],
-  })) as boolean;
-  if (!approved) {
-    fail(
-      `Preflight: setApprovalForAll(${adapter}, true) required on KarPassport before send`,
-    );
-  }
+  const hubUriBefore = await readTokenUri(hub, bridge.hubPassport, tokenId, true);
 
   console.log(`  preflight: owner=${originalOwner} status=${statusBefore} uri=${hubUriBefore}`);
   console.log("");
@@ -326,12 +458,12 @@ async function main(): Promise<void> {
   const hubSendParam = sendParam(
     EID_SPOKE,
     accountAddress,
-    flags.tokenId,
+    tokenId,
     optionsFor(MSG_TYPE_SEND_AND_COMPOSE, EID_SPOKE),
   );
   try {
     const hubFee = (await hub.public.readContract({
-      address: adapter,
+      address: bridge.hubGateway,
       abi: KarPassportBridgeGatewayAbi,
       functionName: "quoteSend",
       args: [hubSendParam, false],
@@ -339,7 +471,7 @@ async function main(): Promise<void> {
     if (hubFee.nativeFee <= 0n) {
       fail(`(1) quoteSend nativeFee is ${hubFee.nativeFee} (expected > 0)`);
     }
-    pass("1", `quoteSend hub→spoke fee=${hubFee.nativeFee} wei`);
+    pass("1", `quoteSend hub→eth fee=${hubFee.nativeFee} wei`);
     steps.push({ step: "1", ok: true, detail: `fee=${hubFee.nativeFee}` });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -350,7 +482,7 @@ async function main(): Promise<void> {
   }
 
   let hubLeg: LegSummary = {
-    label: "hub→spoke",
+    label: "hub→eth",
     txHash: null,
     guid: null,
     feeWei: null,
@@ -359,30 +491,28 @@ async function main(): Promise<void> {
   try {
     const sent = await quoteAndSend({
       clients: hub,
-      oapp: adapter,
+      oapp: bridge.hubGateway,
       abi: KarPassportBridgeGatewayAbi,
       send: hubSendParam,
     });
     hubLeg = {
-      label: "hub→spoke",
+      label: "hub→eth",
       txHash: sent.hash,
       guid: sent.guid,
       feeWei: sent.fee.nativeFee,
       scanStatus: null,
     };
     legs.push(hubLeg);
-    console.log(`  send hub→spoke tx=${sent.hash} guid=${sent.guid}`);
+    console.log(`  send hub→eth tx=${sent.hash} guid=${sent.guid}`);
 
     await pollUntil(
-      "spoke ownerOf",
+      "eth ownerOf",
       async () => {
-        const owner = getAddress(
-          (await spoke.public.readContract({
-            address: spokeOnft,
-            abi: KarPassportBridgeGatewayAbi,
-            functionName: "ownerOf",
-            args: [flags.tokenId],
-          })) as Address,
+        const owner = await readOwnerOf(
+          spoke,
+          bridge.ethPassport,
+          tokenId,
+          bridge.ethCommercial,
         );
         return owner === accountAddress;
       },
@@ -401,46 +531,37 @@ async function main(): Promise<void> {
   }
 
   try {
-    const spokeOwner = getAddress(
-      (await spoke.public.readContract({
-        address: spokeOnft,
-        abi: KarPassportBridgeGatewayAbi,
-        functionName: "ownerOf",
-        args: [flags.tokenId],
-      })) as Address,
+    const ethOwner = await readOwnerOf(
+      spoke,
+      bridge.ethPassport,
+      tokenId,
+      bridge.ethCommercial,
     );
-    const spokeUri = (await spoke.public.readContract({
-      address: spokeOnft,
-      abi: KarPassportBridgeGatewayAbi,
-      functionName: "tokenURI",
-      args: [flags.tokenId],
-    })) as string;
-    const hubOwner = getAddress(
-      (await hub.public.readContract({
-        address: karPassport,
-        abi: KarPassportAbi,
-        functionName: "ownerOf",
-        args: [flags.tokenId],
-      })) as Address,
+    const ethUri = await readTokenUri(
+      spoke,
+      bridge.ethPassport,
+      tokenId,
+      bridge.ethCommercial,
     );
+    const hubOwner = await readOwnerOf(hub, bridge.hubPassport, tokenId, true);
     const statusAfter = Number(
       await hub.public.readContract({
-        address: karPassport,
+        address: bridge.hubPassport,
         abi: KarPassportAbi,
         functionName: "passportStatus",
-        args: [flags.tokenId],
+        args: [tokenId],
       }),
     );
 
     const errors: string[] = [];
-    if (spokeOwner !== accountAddress) {
-      errors.push(`spoke ownerOf ${spokeOwner} ≠ recipient ${accountAddress}`);
+    if (ethOwner !== accountAddress) {
+      errors.push(`eth ownerOf ${ethOwner} ≠ recipient ${accountAddress}`);
     }
-    if (spokeUri !== hubUriBefore) {
-      errors.push(`spoke tokenURI mismatch (spoke=${spokeUri} hub=${hubUriBefore})`);
+    if (ethUri !== hubUriBefore) {
+      errors.push(`eth tokenURI mismatch (eth=${ethUri} hub=${hubUriBefore})`);
     }
-    if (hubOwner !== adapter) {
-      errors.push(`hub ownerOf ${hubOwner} ≠ adapter ${adapter}`);
+    if (hubOwner !== bridge.hubGateway) {
+      errors.push(`hub ownerOf ${hubOwner} ≠ gateway ${bridge.hubGateway}`);
     }
     if (statusAfter !== statusBefore) {
       errors.push(`passportStatus changed ${statusBefore} → ${statusAfter}`);
@@ -450,9 +571,9 @@ async function main(): Promise<void> {
     }
     pass(
       "3",
-      `spoke owner+URI ok; hub locked in adapter; status=${statusAfter} unchanged`,
+      `eth owner+URI ok; hub locked in gateway; status=${statusAfter} unchanged`,
     );
-    steps.push({ step: "3", ok: true, detail: "post hub→spoke asserts" });
+    steps.push({ step: "3", ok: true, detail: "post hub→eth asserts" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error(`FAIL  (3) ${detail}`);
@@ -463,19 +584,28 @@ async function main(): Promise<void> {
 
   if (flags.skipReturn) {
     console.log("");
-    console.log("--skip-return: stopping after hub→spoke");
+    console.log("--skip-return: stopping after hub→eth");
     printSummary(legs, steps);
     return;
+  }
+
+  if (bridge.ethCommercial) {
+    await ensureApprovalForAll(
+      spoke,
+      bridge.ethPassport,
+      bridge.ethGateway,
+      accountAddress,
+    );
   }
 
   const returnParam = sendParam(
     EID_HUB,
     originalOwner,
-    flags.tokenId,
+    tokenId,
     optionsFor(MSG_TYPE_SEND, EID_HUB),
   );
   let returnLeg: LegSummary = {
-    label: "spoke→hub",
+    label: "eth→hub",
     txHash: null,
     guid: null,
     feeWei: null,
@@ -483,7 +613,7 @@ async function main(): Promise<void> {
   };
   try {
     const returnFee = (await spoke.public.readContract({
-      address: spokeOnft,
+      address: bridge.ethGateway,
       abi: KarPassportBridgeGatewayAbi,
       functionName: "quoteSend",
       args: [returnParam, false],
@@ -494,31 +624,24 @@ async function main(): Promise<void> {
 
     const sent = await quoteAndSend({
       clients: spoke,
-      oapp: spokeOnft,
+      oapp: bridge.ethGateway,
       abi: KarPassportBridgeGatewayAbi,
       send: returnParam,
     });
     returnLeg = {
-      label: "spoke→hub",
+      label: "eth→hub",
       txHash: sent.hash,
       guid: sent.guid,
       feeWei: sent.fee.nativeFee,
       scanStatus: null,
     };
     legs.push(returnLeg);
-    console.log(`  send spoke→hub tx=${sent.hash} guid=${sent.guid}`);
+    console.log(`  send eth→hub tx=${sent.hash} guid=${sent.guid}`);
 
     await pollUntil(
       "hub ownerOf unlock",
       async () => {
-        const owner = getAddress(
-          (await hub.public.readContract({
-            address: karPassport,
-            abi: KarPassportAbi,
-            functionName: "ownerOf",
-            args: [flags.tokenId],
-          })) as Address,
-        );
+        const owner = await readOwnerOf(hub, bridge.hubPassport, tokenId, true);
         return owner === originalOwner;
       },
       DELIVERY_TIMEOUT_MS,
@@ -536,41 +659,29 @@ async function main(): Promise<void> {
   }
 
   try {
-    const hubOwner = getAddress(
-      (await hub.public.readContract({
-        address: karPassport,
-        abi: KarPassportAbi,
-        functionName: "ownerOf",
-        args: [flags.tokenId],
-      })) as Address,
-    );
+    const hubOwner = await readOwnerOf(hub, bridge.hubPassport, tokenId, true);
     const statusFinal = Number(
       await hub.public.readContract({
-        address: karPassport,
+        address: bridge.hubPassport,
         abi: KarPassportAbi,
         functionName: "passportStatus",
-        args: [flags.tokenId],
+        args: [tokenId],
       }),
     );
 
-    let spokeBurned = false;
+    let ethBurned = false;
     try {
-      await spoke.public.readContract({
-        address: spokeOnft,
-        abi: KarPassportBridgeGatewayAbi,
-        functionName: "ownerOf",
-        args: [flags.tokenId],
-      });
+      await readOwnerOf(spoke, bridge.ethPassport, tokenId, bridge.ethCommercial);
     } catch {
-      spokeBurned = true;
+      ethBurned = true;
     }
 
     const errors: string[] = [];
     if (hubOwner !== originalOwner) {
       errors.push(`hub ownerOf ${hubOwner} ≠ original ${originalOwner}`);
     }
-    if (!spokeBurned) {
-      errors.push("spoke ownerOf still succeeds (expected burn / revert)");
+    if (!ethBurned) {
+      errors.push("eth ownerOf still succeeds (expected burn / revert)");
     }
     if (statusFinal !== statusBefore) {
       errors.push(`passportStatus changed ${statusBefore} → ${statusFinal}`);
@@ -578,7 +689,7 @@ async function main(): Promise<void> {
     if (errors.length > 0) {
       fail(`(5) ${errors.join("; ")}`);
     }
-    pass("5", `hub unlocked to owner; spoke burned; status=${statusFinal} unchanged`);
+    pass("5", `hub unlocked to owner; eth burned; status=${statusFinal} unchanged`);
     steps.push({ step: "5", ok: true, detail: "post return asserts" });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

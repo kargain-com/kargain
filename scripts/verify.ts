@@ -5,6 +5,8 @@ import { getAddress } from "viem";
 
 import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
 import {
+  commercialDeploymentPath,
+  requireCommercialDeployment,
   requireSepoliaDeployment,
   SEPOLIA_DEPLOYMENT_PATH,
   type DeploymentManifest,
@@ -18,7 +20,6 @@ import {
 loadEnv({ path: ".env.local" });
 loadEnv();
 
-const BASESCAN = "https://sepolia.basescan.org";
 const PENDING_AUCTION_IMPL_PATH = join(
   process.cwd(),
   "deployments/84532.pending-auction-impl.json",
@@ -39,6 +40,17 @@ const AUCTION_VERIFY_ORDER: HubVerifyTargetKey[] = ["auctionEscrowImpl", "auctio
 
 type VerifyStatus = VerifyRunResult | "missing" | "failed";
 
+function explorerForChain(chainId: number): { name: string; url: string } {
+  if (chainId === 11155111) {
+    return { name: "Etherscan", url: "https://sepolia.etherscan.io" };
+  }
+  return { name: "Basescan", url: "https://sepolia.basescan.org" };
+}
+
+function hardhatNetworkForChain(chainId: number): string {
+  return chainId === 11155111 ? "ethereumSepolia" : "baseSepolia";
+}
+
 function pendingAuctionImplAddress(): `0x${string}` | null {
   if (!existsSync(PENDING_AUCTION_IMPL_PATH)) return null;
   try {
@@ -57,6 +69,8 @@ async function verifyTarget(
   manifest: DeploymentManifest,
   apiKey: string,
   force: boolean,
+  network: string,
+  explorerUrl: string,
 ): Promise<VerifyStatus> {
   const target = VERIFY_TARGETS[key];
   let addressSource = "manifest";
@@ -64,7 +78,7 @@ async function verifyTarget(
     | `0x${string}`
     | undefined;
 
-  if (key === "auctionEscrowImpl") {
+  if (key === "auctionEscrowImpl" && manifest.chainId === 84532) {
     const pendingAddr = pendingAuctionImplAddress();
     if (pendingAddr) {
       rawAddress = pendingAddr;
@@ -86,12 +100,16 @@ async function verifyTarget(
   if (addressSource === "pending") {
     console.log(`  Source:  pending file (${PENDING_AUCTION_IMPL_PATH})`);
   }
-  console.log(`  Basescan: ${BASESCAN}/address/${address}`);
+  console.log(`  Explorer: ${explorerUrl}/address/${address}`);
 
   if (!force) {
-    const alreadyVerified = await isContractVerifiedOnEtherscan(address, apiKey);
+    const alreadyVerified = await isContractVerifiedOnEtherscan(
+      address,
+      apiKey,
+      manifest.chainId,
+    );
     if (alreadyVerified === true) {
-      console.log("  Skipping — source already verified on Basescan.");
+      console.log("  Skipping — source already verified on explorer.");
       return "skipped";
     }
   }
@@ -102,9 +120,10 @@ async function verifyTarget(
       address,
       contract: target.contract,
       constructorArgs,
+      network,
     });
     if (result === "bytecode_mismatch") {
-      console.log("  Confirm behavior with: pnpm smoke:sepolia");
+      console.log("  Confirm behavior with smoke / on-chain reads.");
       return "bytecode_mismatch";
     }
     console.log(`  Done (${result}).`);
@@ -121,6 +140,7 @@ function parseVerifyArgv(argv: string[]) {
     force: argv.includes("--force"),
     strict: argv.includes("--strict"),
     auctionOnly: argv.includes("--auction-only"),
+    eth: argv.includes("--eth") || argv.includes("--chain=11155111"),
   };
 }
 
@@ -135,20 +155,25 @@ async function main() {
     process.exit(1);
   }
 
-  const { force, strict, auctionOnly } = parseVerifyArgv(process.argv.slice(2));
+  const { force, strict, auctionOnly, eth } = parseVerifyArgv(process.argv.slice(2));
   let manifest: DeploymentManifest;
   try {
-    manifest = requireSepoliaDeployment();
+    manifest = eth
+      ? requireCommercialDeployment(11155111)
+      : requireSepoliaDeployment();
   } catch {
-    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:sepolia first`);
+    const path = eth ? commercialDeploymentPath(11155111) : SEPOLIA_DEPLOYMENT_PATH;
+    console.error(`Missing ${path} — run nuclear deploy first`);
     process.exit(1);
   }
 
   const order = auctionOnly ? AUCTION_VERIFY_ORDER : FULL_VERIFY_ORDER;
+  const explorer = explorerForChain(manifest.chainId);
+  const network = hardhatNetworkForChain(manifest.chainId);
 
-  console.log("Basescan verification for Kargain (Base Sepolia)");
+  console.log(`${explorer.name} verification for Kargain`);
   console.log(`Generation: ${manifest.generation}`);
-  console.log(`Chain: ${manifest.chainId}`);
+  console.log(`Chain: ${manifest.chainId} (hardhat network ${network})`);
   if (auctionOnly) {
     console.log("Scope:    auction targets only (--auction-only)");
   }
@@ -158,19 +183,31 @@ async function main() {
   if (manifest.auctionEscrow) {
     console.log(`AuctionEscrow proxy: ${manifest.auctionEscrow}`);
   }
+  if (manifest.proxyOnftAdapter) {
+    console.log(`Bridge gateway:      ${manifest.proxyOnftAdapter}`);
+  }
   if (force) console.log("Force mode: re-submitting even if explorer shows verified source.");
   if (strict) console.log("Strict mode: exit 1 on bytecode mismatch or unexpected failure.");
 
   const summary: Record<string, VerifyStatus> = {};
   for (const key of order) {
-    summary[key] = await verifyTarget(key, manifest, apiKey, force);
+    summary[key] = await verifyTarget(
+      key,
+      manifest,
+      apiKey,
+      force,
+      network,
+      explorer.url,
+    );
   }
 
   console.log("\nSummary:");
   for (const key of order) {
     console.log(`  ${VERIFY_TARGETS[key].label}: ${summary[key]}`);
   }
-  console.log("\nOpen proxy on Basescan to confirm implementation link after impl + proxy verify.");
+  console.log(
+    `\nOpen proxy on ${explorer.name} to confirm implementation link after impl + proxy verify.`,
+  );
 
   const failed = order.filter((key) => summary[key] === "failed");
   const mismatches = order.filter((key) => summary[key] === "bytecode_mismatch");
@@ -180,14 +217,13 @@ async function main() {
     console.log(
       `\n${mismatches.length} bytecode mismatch(es) — explorer verify skipped; on-chain deploy is still valid.`,
     );
-    console.log("  Gate: pnpm smoke:sepolia");
     if (!strict) {
       console.log("  (Use --strict to fail this run when mismatches occur.)");
     }
   }
 
   if (verified.length > 0) {
-    console.log(`\n${verified.length} contract(s) newly verified on Basescan.`);
+    console.log(`\n${verified.length} contract(s) newly verified on ${explorer.name}.`);
   }
 
   if (failed.length > 0) {

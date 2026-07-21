@@ -65,15 +65,20 @@ import {
   type UlnConfig,
 } from "./lib/layerzero-pathway.js";
 import {
+  commercialDeploymentPath,
+  loadCommercialDeployment,
+  loadSpokeDeployment,
   requireSepoliaDeployment,
-  requireSpokeDeployment,
   SEPOLIA_CHAIN_ID,
   SEPOLIA_DEPLOYMENT_PATH,
   SPOKE_CHAIN_ID,
   SPOKE_DEPLOYMENT_PATH,
-  type SpokeDeploymentManifest,
+  type SpokePathwayPeers,
 } from "./lib/load-deployment.js";
-import { writeSpokeDeploymentManifest } from "./lib/write-deployment.js";
+import {
+  writeDeploymentManifest,
+  writeSpokeDeploymentManifest,
+} from "./lib/write-deployment.js";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
@@ -612,31 +617,37 @@ async function main(): Promise<void> {
     }
   }
 
-  try {
-    const spokeManifest = requireSpokeDeployment();
-    spokeOApp = getAddress(spokeManifest.karPassportOnft);
-  } catch (err) {
-    if (flags.spoke && !flags.readOnly) {
-      throw err instanceof Error
-        ? err
-        : new Error(`Missing spoke manifest ${SPOKE_DEPLOYMENT_PATH}`);
-    }
-    if (flags.spoke && flags.readOnly) {
-      process.stderr.write(
-        `Note: spoke manifest missing (${SPOKE_DEPLOYMENT_PATH}). Continuing hub-only read-only.\n`,
-      );
-      flags.spoke = false;
-      if (!flags.hub) {
-        throw new Error(`Nothing to check — spoke missing and --hub not selected`);
+  {
+    const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
+    if (ethCommercial?.proxyOnftAdapter) {
+      spokeOApp = getAddress(ethCommercial.proxyOnftAdapter);
+    } else {
+      const legacySpoke = loadSpokeDeployment();
+      if (legacySpoke?.karPassportOnft) {
+        spokeOApp = getAddress(legacySpoke.karPassportOnft);
       }
     }
   }
 
+  if (!spokeOApp && flags.spoke && flags.readOnly) {
+    process.stderr.write(
+      `Note: eth OApp missing in ${SPOKE_DEPLOYMENT_PATH} (nuclear commercial gateway or legacy thin ONFT). Continuing hub-only read-only.\n`,
+    );
+    flags.spoke = false;
+    if (!flags.hub) {
+      throw new Error(`Nothing to check — eth OApp missing and --hub not selected`);
+    }
+  }
+
   if (flags.hub && !hubOApp) {
-    throw new Error(`Hub OApp required — deploy hub and ensure ${SEPOLIA_DEPLOYMENT_PATH}`);
+    throw new Error(
+      `Hub OApp required — nuclear commercial deploy (or hub gateway) and ensure ${SEPOLIA_DEPLOYMENT_PATH}`,
+    );
   }
   if (flags.spoke && !spokeOApp) {
-    throw new Error(`Spoke OApp required — run pnpm deploy:spoke:sepolia first`);
+    throw new Error(
+      `Eth OApp required — run nuclear deploy for 11155111 (commercial proxyOnftAdapter) or legacy pnpm deploy:spoke:sepolia`,
+    );
   }
 
   const effectiveSpoke = spokeOApp ?? zeroAddress;
@@ -707,21 +718,36 @@ async function main(): Promise<void> {
     });
     const pathwayConfigHash =
       `0x${createHash("sha256").update(canonicalizeJson(applied), "utf8").digest("hex")}` as Hex;
-    const spokeManifest = requireSpokeDeployment();
-    const updated: SpokeDeploymentManifest = {
-      ...spokeManifest,
-      peers: {
-        hubEid: EID_HUB,
-        spokeEid: EID_SPOKE,
-        hubOApp,
-        spokeOApp,
-      },
-      pathwayConfigHash,
+    const peersBook: SpokePathwayPeers = {
+      hubEid: EID_HUB,
+      spokeEid: EID_SPOKE,
+      hubOApp,
+      spokeOApp,
     };
-    writeSpokeDeploymentManifest(SPOKE_DEPLOYMENT_PATH, updated);
-    process.stdout.write(
-      `Updated ${SPOKE_DEPLOYMENT_PATH} peers + pathwayConfigHash=${pathwayConfigHash}\n`,
-    );
+
+    const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
+    if (ethCommercial) {
+      writeDeploymentManifest(commercialDeploymentPath(SPOKE_CHAIN_ID), {
+        ...ethCommercial,
+        peers: peersBook,
+        pathwayConfigHash,
+      });
+      process.stdout.write(
+        `Updated ${commercialDeploymentPath(SPOKE_CHAIN_ID)} peers + pathwayConfigHash=${pathwayConfigHash}\n`,
+      );
+    }
+
+    const legacySpoke = loadSpokeDeployment();
+    if (legacySpoke) {
+      writeSpokeDeploymentManifest(SPOKE_DEPLOYMENT_PATH, {
+        ...legacySpoke,
+        peers: peersBook,
+        pathwayConfigHash,
+      });
+      process.stdout.write(
+        `Updated ${SPOKE_DEPLOYMENT_PATH} (legacy thin ONFT) peers + pathwayConfigHash=${pathwayConfigHash}\n`,
+      );
+    }
   }
 
   if (allErrors.length > 0) {
