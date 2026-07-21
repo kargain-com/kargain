@@ -7,14 +7,12 @@ import { getProfileData } from "@/app/actions/marketplace-listings";
 import { getAgentConsignmentCount } from "@/app/actions/agent-consignment";
 import { getOwnerDelegatedCount } from "@/app/actions/owner-consignment";
 import { ProfilePage } from "@/components/profile/profile-page";
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
 import {
   mapProfileListing,
   mapProfilePassport,
 } from "@/lib/passport/map-profile-passport";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import {
   isProtocolAddressOnCommercialChains,
@@ -31,24 +29,6 @@ function parseProfileWallet(raw: string): `0x${string}` | null {
     return getAddress(handle);
   } catch {
     return null;
-  }
-}
-
-async function readIsActiveVerifier(
-  chainId: number,
-  wallet: `0x${string}`,
-): Promise<boolean> {
-  const staking = karProStakingAddress(chainId);
-  if (!staking) return false;
-  try {
-    return await getPublicClient(chainId).readContract({
-      address: staking,
-      abi: KarProStakingAbi,
-      functionName: "isActiveVerifier",
-      args: [wallet],
-    });
-  } catch {
-    return false;
   }
 }
 
@@ -75,7 +55,7 @@ export default async function PublicProfilePage({
   const wallet = parseProfileWallet(raw);
   if (!wallet) notFound();
 
-  // Hub-scoped for KarPro stake / account-kind until Eth KarPro is productized.
+  // account-kind / ProfilePage.chainId remain hub-default; Pro badge is commercial OR.
   const chainId = DEFAULT_CHAIN_ID;
 
   if (isProtocolAddressOnCommercialChains(wallet)) notFound();
@@ -83,7 +63,7 @@ export default async function PublicProfilePage({
   if (accountKind === "contract") notFound();
 
   const [isActiveVerifier, profileData] = await Promise.all([
-    readIsActiveVerifier(chainId, wallet),
+    isActiveVerifierOnCommercialChains(wallet),
     getProfileData(wallet),
   ]);
 

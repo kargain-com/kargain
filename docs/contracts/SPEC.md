@@ -32,7 +32,7 @@
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
-**Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility. Only **MarketplaceEscrow** has semver major **2**; KarPassport is **1.2.0-rc.1**.
+**Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility. Only **MarketplaceEscrow** has semver major **2**; KarPassport is **`1.3.0-rc.1`** (Nuclear).
 
 ---
 
@@ -44,16 +44,15 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.2.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits |
+| KarPassport | `1.3.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits, bridge mint/burn/lock hooks |
 | KarProPass | `1.0.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `1.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` |
 | MarketplaceEscrow | `2.0.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
 | AuctionEscrow | `1.0.1-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
-| Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow |
-| ProxyONFT721Adapter | `1.1.0-rc.1` | Immutable | Hub-chain lock-and-bridge adapter |
-| KarPassportONFT721 | `1.0.0-rc.1` | Immutable | Spoke-chain mint/burn ONFT |
+| Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
+| KarPassportBridgeGateway | `1.1.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X) |
 
-Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants).
+Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
 
 ### v1.x → generation v2 summary
 
@@ -66,7 +65,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 | KarPassport tokenId | Sequential from 0 | `chainId << 128 \| localSequence` |
 | Disputes | Deposit-free; D6 withdraw via `reportDiscrepancy` | Payable deposit; `withdrawDispute`; `DisputeOutcome` enum |
 | Verifier pricing | None on-chain | `verificationFee` (informational) |
-| Bridge | None | LayerZero ONFT (lock on hub, mint on spoke) |
+| Bridge | None | LayerZero ONFT (lock on hub, mint on spoke) → **end-state:** Unified Passport v1.3 + symmetric `KarPassportBridgeGateway` ([§I.12](#i12-multi-chain-architecture-normative)) |
 | Checkout | ETH + USDC | Native + any approved ERC-20 payment token |
 
 ### Fee configuration note
@@ -523,9 +522,9 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 - **Config authority.** OApp delegate / config ownership follows the same governance pattern as other protocol contracts (Timelock48h upgrade authority). No EOA-held config ownership on mainnet.
 - **Provider isolation.** LayerZero imports are confined to bridge adapter modules (`ProxyONFT721Adapter`, `KarPassportONFT721`, and their deploy/config scripts). Core contracts, `app/`, `lib/`, and `hooks/` remain messaging-provider agnostic so the provider is swappable (e.g. CCIP / Hyperlane) at the adapter boundary.
 - **Monitoring.** Bridge config and ownership changes MUST be observable (LayerZero Console or equivalent alerting) before any mainnet pathway goes live.
-- **Phase 2 checkpoint.** Bridge remains **testnet-scope** until a maintainer re-assessment clears the gates below. Before any mainnet pathway, the following testnet→mainnet deltas **MUST** be re-derived (testnet values are not portable). See [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+- **Phase 2 checkpoint.** Bridge remains **testnet-scope** until a maintainer re-assessment clears the gates below. Before any mainnet pathway, the following testnet→mainnet deltas **MUST** be re-derived (testnet values are not portable). Maintainer dossier (prepared, **not activated**): [ops/deploys/phase2-checkpoint-dossier.md](../ops/deploys/phase2-checkpoint-dossier.md). Research: [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
   - **(a) Confirmations.** Shipped testnet pathway uses confirmations **5/5** (explicit-fallback on 40245↔40161). Mainnet MUST re-derive confirmations from the pinned metadata snapshot for the mainnet EID pair — do not copy testnet 5/5.
-  - **(b) Config delegate.** Testnet may use deployer EOA as OApp/ONFT config owner. Mainnet MUST move config ownership to **Timelock48h** (no EOA-held config; see Config authority above).
+  - **(b) Config delegate.** Testnet may use deployer EOA as OApp/ONFT / gateway config owner and recovery authority. Mainnet MUST move config ownership **and** gateway owner / `recoverLockedHome` to **Timelock48h** (no EOA-held config; see Config authority above and [recovery-bridge.md](../ops/recovery-bridge.md)).
   - **(c) DVN count.** Testnet minimum is **2** required DVNs (Labs + Nethermind). Mainnet MUST use **3–5** independent required DVNs.
   - **(d) Research gates.** Also confirm from the research doc: (1) LayerZero **default migration** to 5/5 (or documented floor) is complete, (2) a **timelock on library upgrades** is in place, and (3) **6+ months** without new LayerZero security incidents.
 - **Risk framing.** Kargain bridges passport identity/metadata (spoke mints **UNVERIFIED** per §7.1; trust is never ported), not fungible value custody. Blast radius of a messaging compromise is data integrity, not fund loss. This framing does **not** relax any rule above.
@@ -1228,6 +1227,8 @@ Requires running Hardhat node + `pnpm deploy:local` (or use `./scripts/e2e-local
 | 10 | `appendRecord` on VERIFIED | status unchanged (T10) |
 
 Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm hardhat test`
+
+**Dual-chain hub↔spoke:** not part of `e2e-local` (single 31337). Covered by Hardhat `gatewayHub`/`gatewaySpoke` (`KarPassportBridgeGateway` suite) + live `pnpm smoke:bridge`. Maintainer browser/ops checklist: [ops/deploys/multichain-browser-e2e-checklist.md](../ops/deploys/multichain-browser-e2e-checklist.md).
 
 **Note:** `localhost` Hardhat network uses the node's default funded accounts, not `DEPLOYER_PRIVATE_KEY`.
 

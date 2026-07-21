@@ -2,9 +2,9 @@
 
 Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
-Messaging and payments without intermediaries — including Lightning for verification fees and seller settlement notes.
+Messaging and payments without intermediaries. Including Lightning for verification fees and seller settlement notes.
 
-**Multi-chain platform** — Base Sepolia (84532) is the hub integration testnet (passports, marketplace, auctions, KarPro). Ethereum Sepolia (11155111) hosts the spoke ONFT for passport bridging. Base mainnet and additional chains follow validation.
+**Multi-chain platform** — identical Nuclear stacks on Base Sepolia (84532) and Ethereum Sepolia (11155111): KarPassport v1.3, marketplace, auctions, KarPro, and `KarPassportBridgeGateway`. Commerce follows the passport’s custody chain. Mainnet stays gated on the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative).
 
 MIT License · Open Source
 
@@ -20,10 +20,10 @@ Kargain combines on-chain vehicle passports, professional verification, and escr
 | **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`); verification fees (ETH / USDC / Lightning) |
 | **MarketplaceEscrow** | Listings in registered fiat codes, native/ERC-20 checkout, agent consignment, external payment confirmation |
 | **AuctionEscrow** | English reserve auctions with settlement hold (browse at `/auctions`) |
-| **Bridge** | Hub↔spoke ONFT pathway (Base Sepolia ↔ Ethereum Sepolia); lock-and-mint on hub, mint/burn on spoke |
+| **Bridge** | Symmetric `KarPassportBridgeGateway` hub↔spoke (Base Sepolia ↔ Ethereum Sepolia); trust resets on every crossing |
 | **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (profiles, comments, watchlist, notifications), XMTP messaging, Lightning (LNURL-pay + optional NWC) |
 
-Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)** (active hub [I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532), spoke [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111)).  
+Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)** ([I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) Base Sepolia · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) Ethereum Sepolia · multichain [§I.12](docs/contracts/SPEC.md#i12-multi-chain-architecture-normative)).
 UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 
 ---
@@ -54,7 +54,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Social / messaging | Nostr (NIP-01, NIP-51, NIP-78), XMTP |
 | Payments | ETH / USDC on-chain; Lightning (LNURL-pay, NWC); seller settlement notes (bank / BTC / Lightning) |
 | Display FX | USD hub + fiat/crypto display currencies (Chainlink + CoinGecko) |
-| Chains (today) | Base Sepolia **84532** (hub writes); Ethereum Sepolia **11155111** (spoke bridge, app read-only) |
+| Chains (today) | Base Sepolia **84532** + Ethereum Sepolia **11155111** (commerce on custody chain; bridge both ways) |
 
 ---
 
@@ -96,7 +96,7 @@ pnpm dev                    # Next.js → http://localhost:3000
 pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)
 ```
 
-Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) (must match [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)). For mobile wallets, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com). Spoke bridge delivery polls need `ETH_SEPOLIA_RPC_URL` / `NEXT_PUBLIC_RPC_BY_CHAIN` with `11155111` (read-only).
+Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) / [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) (must match [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) and [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111)). For mobile wallets, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com). Dual-chain RPC: `NEXT_PUBLIC_RPC_BY_CHAIN` (or `ETH_SEPOLIA_RPC_URL`) must include **11155111**.
 
 ### Local chain (31337)
 
@@ -130,7 +130,7 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Production indexer
 
-- API: https://ponder.kargain.com (generation v2, from block **43399242**)
+- API: https://ponder.kargain.com (dual commercial chains; Nuclear hub from block **44434865**, Eth from **11319840**)
 - Stack: `docker compose up -d` · diagnostic: `pnpm ponder:config`
 - Reindex after schema changes: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
@@ -139,8 +139,7 @@ After compile: `node scripts/export-abis.mjs`
 ## Known limitations
 
 - **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are re-encoded to WebP (up to 100 KB each) in the browser before upload. Smart contract wallets may still fail when multiple photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
-- **Indexer and commerce writes** target Base Sepolia today; other chains need per-network deploy + Ponder config. The Ethereum Sepolia spoke is bridge-only (app read-only `ownerOf` polls).
-- **Passport bridge** is testnet-scope (84532 ↔ 11155111) until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md) clears; spoke→hub return UI is not shipped.
+- **Passport bridge** is testnet-scope (84532 ↔ 11155111) until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative) clears — no mainnet pathway yet.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
 ---

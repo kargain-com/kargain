@@ -18,6 +18,8 @@ Normative product rules: [contracts/SPEC.md §I.12.11](../contracts/SPEC.md#i12-
 | Endpoint `skip` / `nilify` / `burn` / `clear` | OApp **delegate** = Timelock48h |
 | `recoverLockedHome` | Gateway **owner** = Timelock48h (same address as constructor `delegate`) |
 
+**Testnet today:** Nuclear deploy sets gateway `delegate` / owner to the **deployer EOA**. That is allowed on testnet only ([SPEC §7.6](../contracts/SPEC.md#76-layerzero-security-configuration-normative) (b)). **Before mainnet:** both roles MUST move to Timelock48h — see [phase2-checkpoint-dossier.md](./deploys/phase2-checkpoint-dossier.md) (prepared, not activated).
+
 No EOA-held config or recovery authority on mainnet (§7.6 / §I.12.9).
 
 ## Step 1 — Kill the counterpart inbound (destination chain)

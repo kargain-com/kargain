@@ -9,7 +9,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 | [contracts/SPEC.md](./contracts/SPEC.md) | **Single specification** — generation v2 (current), v1.x (historical), metadata JSON, addresses |
 | [contracts/README.md](./contracts/README.md) | How to read the spec |
 
-**Addresses:** [SPEC Part I.9.1](./contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) (active) · [SPEC Part II.4](./contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) (historical)
+**Addresses:** [SPEC I.9.1](./contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) (84532) · [SPEC I.9.2](./contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) (11155111) · [SPEC Part II.4](./contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) (historical)
 
 ## Indexer (Ponder)
 
@@ -35,6 +35,8 @@ Start here. Each area has **one canonical document**; other files link in — th
 | [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify + **completed** VPS cutover |
 | [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | July 2026 AuctionEscrow additive deploy on 84532 |
 | [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | July 2026 hub↔spoke bridge pathway (84532 ↔ 11155111) |
+| [ops/deploys/multichain-browser-e2e-checklist.md](./ops/deploys/multichain-browser-e2e-checklist.md) | Maintainer dual-chain browser/ops checklist (testnet) |
+| [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
 
 ## Product onboarding
 
