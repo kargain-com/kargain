@@ -6553,6 +6553,16 @@ export const KarPassportBridgeGatewayAbi = [
   },
   {
     "inputs": [],
+    "name": "NotHomeToken",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotLocked",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotRepresentationOwner",
     "type": "error"
   },
@@ -6651,6 +6661,11 @@ export const KarPassportBridgeGatewayAbi = [
       }
     ],
     "name": "SimulationResult",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroRecipient",
     "type": "error"
   },
   {
@@ -6807,6 +6822,25 @@ export const KarPassportBridgeGatewayAbi = [
       }
     ],
     "name": "PreCrimeSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "RecoveredLockedHome",
     "type": "event"
   },
   {
@@ -7428,6 +7462,24 @@ export const KarPassportBridgeGatewayAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "recoverLockedHome",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

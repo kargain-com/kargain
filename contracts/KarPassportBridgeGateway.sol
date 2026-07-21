@@ -36,9 +36,9 @@ interface IERC721MetadataURI {
 /// @title KarPassportBridgeGateway
 /// @notice Symmetric lock-and-mint / burn-and-unlock OApp for KarPassport v1.3 (SPEC §I.12).
 /// @dev LayerZero imports are confined to this gateway (§7.6 provider isolation).
-/// @custom:version 1.0.0-rc.1
+/// @custom:version 1.1.0-rc.1
 contract KarPassportBridgeGateway is ONFT721Adapter {
-    string public constant VERSION = "1.0.0-rc.1";
+    string public constant VERSION = "1.1.0-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
@@ -54,13 +54,19 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     error InSettlementHold();
     error NotRepresentationOwner();
     error ComposeMsgTooShort();
+    error NotHomeToken();
+    error NotLocked();
+    error ZeroRecipient();
+
+    /// @notice Timelock restored a stranded locked home token after Endpoint kill (SPEC §I.12.11).
+    event RecoveredLockedHome(uint256 indexed tokenId, address indexed to);
 
     /// @notice Deploys the symmetric bridge gateway wrapping a KarPassport.
     /// @param karPassport Underlying KarPassport address.
     /// @param marketplace_ MarketplaceEscrow for `isListed` outbound guard.
     /// @param auctionEscrow_ AuctionEscrow for settlement-hold guard (or zero).
     /// @param lzEndpoint LayerZero EndpointV2 address.
-    /// @param delegate OApp delegate (typically owner).
+    /// @param delegate OApp Endpoint delegate and Ownable owner (Timelock48h on mainnet).
     constructor(
         address karPassport,
         address marketplace_,
@@ -74,6 +80,19 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
 
     function _isHome(uint256 tokenId) internal view returns (bool) {
         return (tokenId >> 128) == block.chainid;
+    }
+
+    /// @notice Governed home restore after the dest Endpoint inbound is permanently killed (SPEC §I.12.11).
+    /// @dev `onlyOwner` — production owner is Timelock48h (same as OApp delegate). Cannot mint: only
+    ///      releases a home token this gateway already holds. Kill-then-restore is the runbook.
+    function recoverLockedHome(uint256 tokenId, address to) external onlyOwner {
+        if (to == address(0)) revert ZeroRecipient();
+        if (!_isHome(tokenId)) revert NotHomeToken();
+        if (IERC721(address(innerToken)).ownerOf(tokenId) != address(this)) revert NotLocked();
+
+        IKarPassportBridge(address(innerToken)).bridgeResetOnUnlock(tokenId, "");
+        IERC721(address(innerToken)).transferFrom(address(this), to, tokenId);
+        emit RecoveredLockedHome(tokenId, to);
     }
 
     /// @notice Send caches URI before debit so foreign `bridgeBurn` does not clear metadata mid-send.

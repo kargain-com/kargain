@@ -5,7 +5,7 @@ export const CONTRACT_VERSIONS = {
   KarProStaking: "1.1.0-rc.1",
   MarketplaceEscrow: "2.0.0-rc.1",
   Timelock48h: "1.0.0-rc.1",
-  KarPassportBridgeGateway: "1.0.0-rc.1",
+  KarPassportBridgeGateway: "1.1.0-rc.1",
   /** @deprecated C2 — removed thin ONFT; kept for historical smoke key lookups */
   KarPassportONFT721: "1.0.0-rc.1",
   /** @deprecated C2 — removed adapter; kept for historical smoke key lookups */

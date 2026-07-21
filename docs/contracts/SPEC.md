@@ -878,6 +878,19 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 
 `KarPassport` is immutable and `MarketplaceEscrow.karPassport` / `AuctionEscrow.karPassport` are immutable bindings, so v1.3 requires a **full-stack redeploy on 84532**. Testnet mode is **Nuclear**: deploy the identical full stack + v1.3 + gateway on both 84532 and 11155111; the prior hub stack and thin ONFT `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` move to historical/denylist; Ponder reindexes from the new hub addresses. Existing testnet-RC passports are abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from first deploy.
 
+### 12.11 Recovery (Approach A) — kill then restore
+
+If a bridge message is permanently undeliverable, a home-origin passport can be stranded locked in the gateway (`ownerOf == gateway`, `custodyLocked`). Restoration is **governed**, not a user one-click:
+
+1. **Kill** the stuck inbound on the destination LayerZero EndpointV2 (`skip` / `nilify` / `burn` / `clear` as applicable). Callable by the OApp or its **delegate** — production delegate is **Timelock48h**. No new Kargain contract code for the kill side.
+2. **Restore** on the home chain: `KarPassportBridgeGateway.recoverLockedHome(tokenId, to)` (`onlyOwner`; production owner = Timelock48h). Requires home-origin id and that the gateway holds the token; calls `bridgeResetOnUnlock(tokenId, "")` then `transferFrom` to `to`; emits `RecoveredLockedHome`. **No mint/burn path.**
+
+**Contract guarantee:** `recoverLockedHome` can only release one token the gateway already custodies — structurally incapable of minting a duplicate home instance.
+
+**Governed guarantee:** cross-chain non-duplication depends on step 1 preceding step 2 (observers get the 48h Timelock delay). This is the standard ONFT recovery model.
+
+Procedure: [ops/recovery-bridge.md](../ops/recovery-bridge.md). Hardhat gate: gateway suite **#10** (blocks live C2 cutover until green).
+
 ---
 
 # Part II — Generation v1.x (historical reference)

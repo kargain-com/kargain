@@ -869,7 +869,147 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     assert.equal(await spoke.stack.passport.read.custodyLocked([foreignId]), false);
   });
 
-  it("VERSION is 1.0.0-rc.1", async () => {
-    assert.equal(await pair.hub.gateway.read.VERSION(), "1.0.0-rc.1");
+  it("#10 recoverLockedHome: stranded outbound restore + revert matrix", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const admin = hub.stack.admin;
+
+    // Stranded outbound: hub→spoke send without spoke lzReceive
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://stranded",
+    );
+    await joinVerifier(hub.stack.staking, hub.stack.verifier);
+    await hub.stack.passport.write.verifyPassport([tokenId], {
+      account: hub.stack.verifier.account,
+    });
+    await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+      account: seller.account,
+    });
+    await bridgeSend(
+      hub.gateway,
+      sendParam(EID_SPOKE, seller.account.address, tokenId),
+      seller.account,
+    );
+
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(hub.gateway.address),
+    );
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
+    await assert.rejects(
+      spoke.stack.passport.read.ownerOf([tokenId]),
+      (err: unknown) => err instanceof Error && err.message.includes("ERC721NonexistentToken"),
+    );
+
+    // Non-owner
+    await assert.rejects(
+      hub.gateway.write.recoverLockedHome([tokenId, seller.account.address], {
+        account: seller.account,
+      }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+
+    // Zero recipient
+    await assert.rejects(
+      hub.gateway.write.recoverLockedHome([tokenId, zeroAddress], {
+        account: admin.account,
+      }),
+      revertsWith("ZeroRecipient"),
+    );
+
+    // Happy path
+    const recoverHash = (await hub.gateway.write.recoverLockedHome(
+      [tokenId, seller.account.address],
+      { account: admin.account },
+    )) as Hex;
+    const recoverReceipt = await hub.publicClient.waitForTransactionReceipt({
+      hash: recoverHash,
+    });
+    const recoveredTopic = keccak256(toBytes("RecoveredLockedHome(uint256,address)"));
+    assert.ok(
+      recoverReceipt.logs.some((log) => log.topics[0] === recoveredTopic),
+      "RecoveredLockedHome emitted",
+    );
+
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
+    const [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(status, STATUS_UNVERIFIED);
+    await assert.rejects(
+      spoke.stack.passport.read.ownerOf([tokenId]),
+      (err: unknown) => err instanceof Error && err.message.includes("ERC721NonexistentToken"),
+    );
+
+    // Free home (never locked) → NotLocked
+    const freeId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://free",
+    );
+    await assert.rejects(
+      hub.gateway.write.recoverLockedHome([freeId, seller.account.address], {
+        account: admin.account,
+      }),
+      revertsWith("NotLocked"),
+    );
+
+    // Foreign-origin id → NotHomeToken (gateway does not hold it; home check first)
+    const foreignId = tokenIdOn(999n, 7n);
+    await assert.rejects(
+      hub.gateway.write.recoverLockedHome([foreignId, seller.account.address], {
+        account: admin.account,
+      }),
+      revertsWith("NotHomeToken"),
+    );
+
+    // After normal round-trip, recover cannot double-release
+    const roundId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://roundtrip",
+    );
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId: roundId,
+      uri: "ar://roundtrip",
+      senderAccount: seller.account,
+    });
+    const hubWallets = await hub.viem.getWalletClients();
+    const spokeWallets = await spoke.viem.getWalletClients();
+    const sellerIdx = hubWallets.findIndex(
+      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+    );
+    await relaySend({
+      src: spoke,
+      dst: hub,
+      to: seller.account.address,
+      tokenId: roundId,
+      uri: "ar://roundtrip",
+      senderAccount: spokeWallets[sellerIdx]!.account,
+    });
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([roundId])),
+      getAddress(seller.account.address),
+    );
+    await assert.rejects(
+      hub.gateway.write.recoverLockedHome([roundId, seller.account.address], {
+        account: admin.account,
+      }),
+      revertsWith("NotLocked"),
+    );
+  });
+
+  it("VERSION is 1.1.0-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.1.0-rc.1");
   });
 });
