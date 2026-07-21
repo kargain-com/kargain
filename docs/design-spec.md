@@ -843,6 +843,22 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts) · [`settlement-state.ts`](../lib/auction/settlement-state.ts).
 
+### 4.19 Passport bridge panel
+
+Hub→spoke bridge on the passport commerce rail (Base Sepolia → Ethereum Sepolia). On-chain truth: [SPEC §7](./contracts/SPEC.md) and [I.9.2](./contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) — this section is the UI contract only.
+
+| Surface | Contract |
+|---------|----------|
+| Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx) |
+| Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; hub chain 84532; listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
+| Quote / fee | Mono `tabular-nums` (Instrument Layer) |
+| Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = spoke RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
+| Spoke | Informational only (*Return to Base Sepolia to bridge…*) — no spoke write path in the app |
+| Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
+| Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
+
+**Non-goals:** spoke→hub return UI; Ponder indexing of 11155111; marketplace or commerce on spoke; “bridged away” profile ownership (separate initiative).
+
 ---
 
 ## 5. Motion
@@ -1491,4 +1507,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.70 (July 2026 — consignment portfolio surfaces close-out). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.71 (July 2026 — passport bridge panel UI contract §4.19). Update when tokens, app shell, or component contracts change.*
