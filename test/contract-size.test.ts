@@ -28,12 +28,9 @@ const PRODUCTION_CONTRACTS = [
   },
   { name: "Timelock48h", artifactPath: "artifacts/contracts/Timelock48h.sol/Timelock48h.json" },
   {
-    name: "ProxyONFT721Adapter",
-    artifactPath: "artifacts/contracts/ProxyONFT721Adapter.sol/ProxyONFT721Adapter.json",
-  },
-  {
-    name: "KarPassportONFT721",
-    artifactPath: "artifacts/contracts/KarPassportONFT721.sol/KarPassportONFT721.json",
+    name: "KarPassportBridgeGateway",
+    artifactPath:
+      "artifacts/contracts/KarPassportBridgeGateway.sol/KarPassportBridgeGateway.json",
   },
 ] as const;
 

@@ -24,8 +24,7 @@ import {
 import { baseSepolia, sepolia } from "viem/chains";
 
 import {
-  KarPassportONFT721Abi,
-  ProxyONFT721AdapterAbi,
+  KarPassportBridgeGatewayAbi,
 } from "../lib/contracts/abis.generated.js";
 import {
   createDeployerClients,
@@ -151,7 +150,7 @@ type SideContext = {
   chainSnap: LayerZeroChainSnapshot;
   remoteSnap: LayerZeroChainSnapshot;
   clients: SideClients;
-  oappAbi: typeof ProxyONFT721AdapterAbi | typeof KarPassportONFT721Abi;
+  oappAbi: typeof KarPassportBridgeGatewayAbi;
 };
 
 type ActionResult = { action: string; status: "skip" | "write" | "read" | "refuse"; detail: string };
@@ -666,7 +665,7 @@ async function main(): Promise<void> {
       chainSnap: snapshot.chains[EID_HUB],
       remoteSnap: snapshot.chains[EID_SPOKE],
       clients: makeClients(baseSepolia, hubRpcUrl(), flags.readOnly),
-      oappAbi: ProxyONFT721AdapterAbi,
+      oappAbi: KarPassportBridgeGatewayAbi,
     };
     const results = await wireSide(side, snapshot, flags.readOnly, allErrors);
     sideRuns.push({ side, results });
@@ -683,7 +682,7 @@ async function main(): Promise<void> {
       chainSnap: snapshot.chains[EID_SPOKE],
       remoteSnap: snapshot.chains[EID_HUB],
       clients: makeClients(sepolia, spokeRpcUrl(), flags.readOnly),
-      oappAbi: KarPassportONFT721Abi,
+      oappAbi: KarPassportBridgeGatewayAbi,
     };
     const results = await wireSide(side, snapshot, flags.readOnly, allErrors);
     sideRuns.push({ side, results });

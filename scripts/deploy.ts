@@ -171,12 +171,19 @@ async function main() {
 
     await marketplace.write.transferUpgradeAuthority([timelock.address], { account: deployer.account });
 
-    const onftAdapter = await deployStep(viem, "ProxyONFT721Adapter", "ProxyONFT721Adapter", [
-      karPassport.address,
-      proxy.address,
-      LZ_ENDPOINT_V2_BY_CHAIN[84532],
-      deployerAddress,
-    ]);
+    const zeroAddress = "0x0000000000000000000000000000000000000000" as const;
+    const onftAdapter = await deployStep(
+      viem,
+      "KarPassportBridgeGateway",
+      "KarPassportBridgeGateway",
+      [
+        karPassport.address,
+        proxy.address,
+        zeroAddress,
+        LZ_ENDPOINT_V2_BY_CHAIN[84532],
+        deployerAddress,
+      ],
+    );
 
     const upgradeAuthority = getAddress(
       (await marketplace.read.upgradeAuthority([])) as `0x${string}`,
@@ -235,7 +242,7 @@ async function main() {
     console.log(`  KarProStaking:           ${staking.address}`);
     console.log(`  KarPassport:             ${karPassport.address}`);
     console.log(`  MarketplaceEscrow proxy: ${proxy.address}`);
-    console.log(`  ProxyONFT721Adapter:     ${onftAdapter.address}`);
+    console.log(`  KarPassportBridgeGateway: ${onftAdapter.address}`);
     console.log(`  upgradeAuthority:        ${upgradeAuthority}`);
     console.log(`  tokenIdOffset:           ${tokenIdOffset}`);
     console.log(`  Manifest:                ${SEPOLIA_DEPLOYMENT_PATH}`);

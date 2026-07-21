@@ -7,7 +7,7 @@ import {
   type Log,
 } from "viem";
 
-import { ProxyONFT721AdapterAbi } from "../lib/contracts/abis.generated.ts";
+import { KarPassportBridgeGatewayAbi } from "../lib/contracts/abis.generated.ts";
 import { onftSentGuidFromLogs } from "../scripts/lib/onft-sent.ts";
 
 describe("onftSentGuidFromLogs", () => {
@@ -16,7 +16,7 @@ describe("onftSentGuidFromLogs", () => {
       "0x93f0463fc0cd85f24087e86d415447e74d56dd3d9f941c54968608b195e11670" as const;
     const fromAddress = "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77" as const;
     const topics = encodeEventTopics({
-      abi: ProxyONFT721AdapterAbi as Abi,
+      abi: KarPassportBridgeGatewayAbi as Abi,
       eventName: "ONFTSent",
       args: { guid, fromAddress },
     });
@@ -35,12 +35,12 @@ describe("onftSentGuidFromLogs", () => {
       removed: false,
       topics: topics as [`0x${string}`, ...`0x${string}`[]],
     };
-    assert.equal(onftSentGuidFromLogs(ProxyONFT721AdapterAbi as Abi, [log]), guid);
+    assert.equal(onftSentGuidFromLogs(KarPassportBridgeGatewayAbi as Abi, [log]), guid);
   });
 
   it("throws when ONFTSent is absent", () => {
     assert.throws(
-      () => onftSentGuidFromLogs(ProxyONFT721AdapterAbi as Abi, []),
+      () => onftSentGuidFromLogs(KarPassportBridgeGatewayAbi as Abi, []),
       /ONFTSent/,
     );
   });

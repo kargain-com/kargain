@@ -1,12 +1,12 @@
 import type { Address, PublicClient } from "viem";
 
-import { ProxyONFT721AdapterAbi } from "@/lib/contracts/abis.generated";
+import { KarPassportBridgeGatewayAbi } from "@/lib/contracts/abis.generated";
 
 import type { BridgeMessagingFee, BridgeSendParam } from "./bridge-send";
 
 /**
- * Quote native fee for adapter `quoteSend` — the only LayerZero ABI surface
- * the UI touches (via generated ProxyONFT721Adapter ABI).
+ * Quote native fee for gateway `quoteSend` — the only LayerZero ABI surface
+ * the UI touches (via generated KarPassportBridgeGateway ABI).
  */
 export async function quoteNativeFee(params: {
   publicClient: PublicClient;
@@ -15,7 +15,7 @@ export async function quoteNativeFee(params: {
 }): Promise<bigint> {
   const fee = (await params.publicClient.readContract({
     address: params.adapter,
-    abi: ProxyONFT721AdapterAbi,
+    abi: KarPassportBridgeGatewayAbi,
     functionName: "quoteSend",
     args: [params.sendParam, false],
   })) as BridgeMessagingFee;
@@ -30,7 +30,7 @@ export async function quoteMessagingFee(params: {
 }): Promise<BridgeMessagingFee> {
   const fee = (await params.publicClient.readContract({
     address: params.adapter,
-    abi: ProxyONFT721AdapterAbi,
+    abi: KarPassportBridgeGatewayAbi,
     functionName: "quoteSend",
     args: [params.sendParam, false],
   })) as BridgeMessagingFee;

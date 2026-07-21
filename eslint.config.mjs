@@ -165,7 +165,7 @@ const eslintConfig = [
     // Hardhat bridge suite uses LZ Options + EndpointV2Mock artifact resolve.
     // Pathway tooling (§7.6 config scripts) may import LZ Options / protocol ABIs.
     files: [
-      "test/bridge-onft.test.ts",
+      "test/KarPassportBridgeGateway.test.ts",
       "test/layerzero-pathway.test.ts",
       "scripts/lib/layerzero-pathway.ts",
       "scripts/bridge-wire.ts",

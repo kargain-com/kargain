@@ -51,7 +51,7 @@ async function main() {
     const staking = await viem.getContractAt("KarProStaking", manifest.karProStaking);
     const marketplace = await viem.getContractAt("MarketplaceEscrow", manifest.marketplace);
     const timelockContract = await viem.getContractAt("Timelock48h", timelock);
-    const onftAdapter = await viem.getContractAt("ProxyONFT721Adapter", adapter);
+    const onftAdapter = await viem.getContractAt("KarPassportBridgeGateway", adapter);
     const auctionEscrow = manifest.auctionEscrow
       ? await viem.getContractAt("AuctionEscrow", manifest.auctionEscrow)
       : null;
@@ -79,6 +79,7 @@ async function main() {
         { id: "c", name: "KarProPass", read: () => proPass.read.VERSION([]) as Promise<string> },
         { id: "d", name: "MarketplaceEscrow", read: () => marketplace.read.VERSION([]) as Promise<string> },
         { id: "e", name: "Timelock48h", read: () => timelockContract.read.VERSION([]) as Promise<string> },
+        // Live 84532 still hosts ProxyONFT721Adapter until C2 gateway cutover.
         { id: "f", name: "ProxyONFT721Adapter", read: () => onftAdapter.read.VERSION([]) as Promise<string> },
         ...(auctionEscrow
           ? [

@@ -14,8 +14,7 @@ import { getAddress, type Address, type Hex } from "viem";
 
 import {
   KarPassportAbi,
-  KarPassportONFT721Abi,
-  ProxyONFT721AdapterAbi,
+  KarPassportBridgeGatewayAbi,
 } from "../lib/contracts/abis.generated.js";
 import {
   createHubDeployerClients,
@@ -126,7 +125,7 @@ function sendParam(dstEid: number, to: Address, tokenId: bigint, extraOptions: H
 async function quoteAndSend(params: {
   clients: DeployerClients;
   oapp: Address;
-  abi: typeof ProxyONFT721AdapterAbi | typeof KarPassportONFT721Abi;
+  abi: typeof KarPassportBridgeGatewayAbi;
   send: ReturnType<typeof sendParam>;
 }): Promise<{ hash: Hex; guid: Hex; fee: MessagingFee }> {
   const fee = (await params.clients.public.readContract({
@@ -333,7 +332,7 @@ async function main(): Promise<void> {
   try {
     const hubFee = (await hub.public.readContract({
       address: adapter,
-      abi: ProxyONFT721AdapterAbi,
+      abi: KarPassportBridgeGatewayAbi,
       functionName: "quoteSend",
       args: [hubSendParam, false],
     })) as MessagingFee;
@@ -361,7 +360,7 @@ async function main(): Promise<void> {
     const sent = await quoteAndSend({
       clients: hub,
       oapp: adapter,
-      abi: ProxyONFT721AdapterAbi,
+      abi: KarPassportBridgeGatewayAbi,
       send: hubSendParam,
     });
     hubLeg = {
@@ -380,7 +379,7 @@ async function main(): Promise<void> {
         const owner = getAddress(
           (await spoke.public.readContract({
             address: spokeOnft,
-            abi: KarPassportONFT721Abi,
+            abi: KarPassportBridgeGatewayAbi,
             functionName: "ownerOf",
             args: [flags.tokenId],
           })) as Address,
@@ -405,14 +404,14 @@ async function main(): Promise<void> {
     const spokeOwner = getAddress(
       (await spoke.public.readContract({
         address: spokeOnft,
-        abi: KarPassportONFT721Abi,
+        abi: KarPassportBridgeGatewayAbi,
         functionName: "ownerOf",
         args: [flags.tokenId],
       })) as Address,
     );
     const spokeUri = (await spoke.public.readContract({
       address: spokeOnft,
-      abi: KarPassportONFT721Abi,
+      abi: KarPassportBridgeGatewayAbi,
       functionName: "tokenURI",
       args: [flags.tokenId],
     })) as string;
@@ -485,7 +484,7 @@ async function main(): Promise<void> {
   try {
     const returnFee = (await spoke.public.readContract({
       address: spokeOnft,
-      abi: KarPassportONFT721Abi,
+      abi: KarPassportBridgeGatewayAbi,
       functionName: "quoteSend",
       args: [returnParam, false],
     })) as MessagingFee;
@@ -496,7 +495,7 @@ async function main(): Promise<void> {
     const sent = await quoteAndSend({
       clients: spoke,
       oapp: spokeOnft,
-      abi: KarPassportONFT721Abi,
+      abi: KarPassportBridgeGatewayAbi,
       send: returnParam,
     });
     returnLeg = {
@@ -558,7 +557,7 @@ async function main(): Promise<void> {
     try {
       await spoke.public.readContract({
         address: spokeOnft,
-        abi: KarPassportONFT721Abi,
+        abi: KarPassportBridgeGatewayAbi,
         functionName: "ownerOf",
         args: [flags.tokenId],
       });

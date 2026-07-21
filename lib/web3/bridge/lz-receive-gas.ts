@@ -4,7 +4,7 @@
  * Pathway `enforcedOptions` pin type2 gas at {@link ENFORCED_GAS_SEND_AND_COMPOSE}
  * (floor for typical Irys/`ar://` URIs). Sender may raise Executor lzReceive gas
  * via `extraOptions` when the compose URI is longer — see Hardhat dest gas table
- * in `test/bridge-onft.test.ts` (endpoint-impersonated lzReceive):
+ * in `test/KarPassportBridgeGateway.test.ts` (endpoint-impersonated lzReceive):
  *
  * | Path | gasUsed (anchor) |
  * |------|------------------|
@@ -14,7 +14,7 @@
  *
  * Linear model (before margin): `BASE + byteLen * PER_BYTE`, then margin BPS,
  * then `max(floor, …)`. Over {@link LZ_RECEIVE_GAS_CAP}: fail closed (refuse
- * quote/send) — do not clamp and risk OOG lock in the adapter.
+ * quote/send) — do not clamp and risk OOG lock in the gateway.
  */
 
 /** Pathway floor — ONFT SEND (return / non-compose). */

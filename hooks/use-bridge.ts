@@ -15,8 +15,7 @@ import {
 import { useTxSync } from "@/hooks/use-tx-sync";
 import {
   KarPassportAbi,
-  KarPassportONFT721Abi,
-  ProxyONFT721AdapterAbi,
+  KarPassportBridgeGatewayAbi,
 } from "@/lib/contracts/abis.generated";
 import {
   formatPassportBridgeBlockedMessage,
@@ -83,7 +82,8 @@ async function pollSpokeOwner(
       const owner = getAddress(
         (await spoke.readContract({
           address: onft,
-          abi: KarPassportONFT721Abi,
+          // Live spoke is still thin ONFT (ERC721); C2 will poll KarPassport.
+          abi: KarPassportAbi,
           functionName: "ownerOf",
           args: [tokenId],
         })) as Address,
@@ -231,7 +231,7 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
             () =>
               writeContractAsync({
                 address: adapter,
-                abi: ProxyONFT721AdapterAbi,
+                abi: KarPassportBridgeGatewayAbi,
                 functionName: "send",
                 args: [...sendArgs(sendParam, fee, recipient)],
                 value: fee.nativeFee,
@@ -246,7 +246,7 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
           }
 
           const sentGuid = onftSentGuidFromLogs(
-            ProxyONFT721AdapterAbi,
+            KarPassportBridgeGatewayAbi,
             result.receipt.logs,
           );
           setGuid(sentGuid);

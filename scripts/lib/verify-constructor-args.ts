@@ -66,21 +66,32 @@ export function marketplaceProxyConstructorArgs(manifest: DeploymentManifest) {
   return [manifest.marketplaceImpl, initData] as const;
 }
 
-export function proxyOnftAdapterConstructorArgs(manifest: DeploymentManifest) {
+/** Zero address when auctionEscrow is not yet on the hub manifest. */
+const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as const;
+
+export function karPassportBridgeGatewayConstructorArgs(
+  manifest: DeploymentManifest,
+) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
   const lzEndpoint =
     manifest.layerZeroEndpoint ?? LZ_ENDPOINT_V2_BY_CHAIN[84532];
   return [
     manifest.karPassport,
     manifest.marketplace,
+    manifest.auctionEscrow ?? ADDRESS_ZERO,
     lzEndpoint,
     deployer,
   ] as const;
 }
 
+/** @deprecated C2 — thin ONFT removed; spoke verify aborted until gateway deploy. */
 export function karPassportOnftConstructorArgs(manifest: SpokeDeploymentManifest) {
   return [manifest.layerZeroEndpoint, manifest.deployer] as const;
 }
+
+/** @deprecated C2 — alias name for historical verify scripts / tests. */
+export const proxyOnftAdapterConstructorArgs =
+  karPassportBridgeGatewayConstructorArgs;
 
 export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
   const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
@@ -125,7 +136,7 @@ export const VERIFY_TARGETS = {
     buildArgs: karProStakingConstructorArgs,
   },
   karPassport: {
-    label: "KarPassport (1.2.0-rc.1)",
+    label: `KarPassport (${CONTRACT_VERSIONS.KarPassport})`,
     contract: "contracts/KarPassport.sol:KarPassport",
     addressKey: "karPassport" as const,
     buildArgs: karPassportConstructorArgs,
@@ -143,11 +154,12 @@ export const VERIFY_TARGETS = {
     addressKey: "marketplace" as const,
     buildArgs: marketplaceProxyConstructorArgs,
   },
+  /** Manifest key stays `proxyOnftAdapter` until C2 address cutover. */
   proxyOnftAdapter: {
-    label: "ProxyONFT721Adapter (1.1.0-rc.1)",
-    contract: "contracts/ProxyONFT721Adapter.sol:ProxyONFT721Adapter",
+    label: `KarPassportBridgeGateway (${CONTRACT_VERSIONS.KarPassportBridgeGateway})`,
+    contract: "contracts/KarPassportBridgeGateway.sol:KarPassportBridgeGateway",
     addressKey: "proxyOnftAdapter" as const,
-    buildArgs: proxyOnftAdapterConstructorArgs,
+    buildArgs: karPassportBridgeGatewayConstructorArgs,
   },
   auctionEscrowImpl: {
     label: `AuctionEscrow impl (${CONTRACT_VERSIONS.AuctionEscrow})`,
@@ -162,15 +174,9 @@ export const VERIFY_TARGETS = {
     addressKey: "auctionEscrow" as const,
     buildArgs: auctionEscrowProxyConstructorArgs,
   },
-  karPassportOnft: {
-    label: `KarPassportONFT721 (${CONTRACT_VERSIONS.KarPassportONFT721})`,
-    contract: "contracts/KarPassportONFT721.sol:KarPassportONFT721",
-    addressKey: "karPassportOnft" as const,
-    buildArgs: karPassportOnftConstructorArgs,
-  },
 } as const;
 
 export type VerifyTargetKey = keyof typeof VERIFY_TARGETS;
 
-/** Hub Base Sepolia targets — excludes spoke `karPassportOnft`. */
-export type HubVerifyTargetKey = Exclude<VerifyTargetKey, "karPassportOnft">;
+/** Hub Base Sepolia verify targets (spoke gateway verify lands in C2). */
+export type HubVerifyTargetKey = VerifyTargetKey;

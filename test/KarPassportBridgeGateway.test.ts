@@ -1,0 +1,875 @@
+/**
+ * KarPassportBridgeGateway suite — symmetric OApp on dual Hardhat networks
+ * (84532 hub + 11155111 spoke) with EndpointV2Mock + manual lzReceive relay.
+ *
+ * Mock: @layerzerolabs/test-devtools-evm-hardhat EndpointV2Mock artifact.
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import hardhat from "hardhat";
+import { Options } from "@layerzerolabs/lz-v2-utilities";
+import {
+  encodeAbiParameters,
+  encodePacked,
+  getAddress,
+  getContract,
+  keccak256,
+  padHex,
+  parseEther,
+  toBytes,
+  toHex,
+  zeroAddress,
+  type Abi,
+  type Address,
+  type Hex,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
+
+import {
+  CURRENCY_USD,
+  DISPUTE_DEPOSIT,
+  deployAuctionEscrow,
+  deployEscrowStack,
+  deployTimelock,
+  joinVerifier,
+  mintPassport,
+  type DeployedContract,
+  type ViemSuite,
+  ZERO,
+} from "../scripts/lib/local-stack.js";
+
+const EID_HUB = 1;
+const EID_SPOKE = 2;
+const LZ_RECEIVE_GAS = 1_000_000n;
+const STATUS_UNVERIFIED = 0;
+const STATUS_VERIFIED = 1;
+const STATUS_DISPUTED = 2;
+const HUB_CHAIN_ID = 84532n;
+const SPOKE_CHAIN_ID = 11155111n;
+const THIRD_ORIGIN = 999n;
+
+const require = createRequire(import.meta.url);
+const endpointArtifactPath = require
+  .resolve("@layerzerolabs/test-devtools-evm-hardhat/package.json")
+  .replace(/package.json$/, "artifacts/contracts/mocks/EndpointV2Mock.sol/EndpointV2Mock.json");
+const endpointArtifact = JSON.parse(readFileSync(endpointArtifactPath, "utf8")) as {
+  abi: Abi;
+  bytecode: Hex;
+};
+
+/** Custom-error selectors when mock/endpoint ABI cannot decode passport/gateway errors. */
+const ERROR_SELECTORS: Record<string, string> = {
+  ListedInMarketplace: keccak256(toBytes("ListedInMarketplace()")).slice(0, 10),
+  PassportDisputed: keccak256(toBytes("PassportDisputed()")).slice(0, 10),
+  InSettlementHold: keccak256(toBytes("InSettlementHold()")).slice(0, 10),
+  NotRepresentationOwner: keccak256(toBytes("NotRepresentationOwner()")).slice(0, 10),
+};
+
+function revertsWith(errorName: string) {
+  return (err: unknown) => {
+    if (!(err instanceof Error)) return false;
+    if (err.message.includes(errorName)) return true;
+    const selector = ERROR_SELECTORS[errorName];
+    return selector != null && err.message.includes(selector);
+  };
+}
+
+function addressToBytes32(addr: Address): Hex {
+  return padHex(addr, { size: 32 });
+}
+
+function lzReceiveOptions(): Hex {
+  return Options.newOptions().addExecutorLzReceiveOption(Number(LZ_RECEIVE_GAS), 0).toHex() as Hex;
+}
+
+function encodeOnftMessage(params: {
+  to: Address;
+  tokenId: bigint;
+  sender?: Address;
+  composeBody?: Hex;
+}): Hex {
+  if (params.composeBody != null && params.sender != null) {
+    return encodePacked(
+      ["bytes32", "uint256", "bytes32", "bytes"],
+      [
+        addressToBytes32(params.to),
+        params.tokenId,
+        addressToBytes32(params.sender),
+        params.composeBody,
+      ],
+    );
+  }
+  return encodePacked(["bytes32", "uint256"], [addressToBytes32(params.to), params.tokenId]);
+}
+
+function encodeUriCompose(uri: string): Hex {
+  return encodeAbiParameters([{ type: "string" }], [uri]);
+}
+
+function tokenIdOn(chainId: bigint, localSeq: bigint): bigint {
+  return (chainId << 128n) | localSeq;
+}
+
+async function deployEndpointMock(
+  viem: ViemSuite,
+  eid: number,
+  wallet: WalletClient,
+  publicClient: PublicClient,
+) {
+  const hash = await wallet.deployContract({
+    abi: endpointArtifact.abi,
+    bytecode: endpointArtifact.bytecode,
+    args: [eid],
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  assert.ok(receipt.contractAddress, "EndpointV2Mock deploy missing address");
+  return getContract({
+    address: receipt.contractAddress,
+    abi: endpointArtifact.abi,
+    client: { public: publicClient, wallet },
+  });
+}
+
+type EndpointMock = Awaited<ReturnType<typeof deployEndpointMock>>;
+
+async function impersonateAs(
+  publicClient: PublicClient,
+  viem: ViemSuite & { getWalletClient: (address: Address) => Promise<WalletClient> },
+  address: Address,
+): Promise<WalletClient> {
+  await publicClient.request({
+    method: "hardhat_impersonateAccount",
+    params: [address],
+  });
+  await publicClient.request({
+    method: "hardhat_setBalance",
+    params: [address, toHex(parseEther("10"))],
+  });
+  return viem.getWalletClient(address);
+}
+
+async function stopImpersonating(publicClient: PublicClient, address: Address) {
+  await publicClient.request({
+    method: "hardhat_stopImpersonatingAccount",
+    params: [address],
+  });
+}
+
+type ChainSide = {
+  stack: Awaited<ReturnType<typeof deployEscrowStack>>;
+  holdMock: DeployedContract;
+  auction: DeployedContract;
+  gateway: DeployedContract;
+  endpoint: EndpointMock;
+  publicClient: PublicClient;
+  viem: ViemSuite;
+  eid: number;
+  chainId: bigint;
+};
+
+type GatewayPair = {
+  hub: ChainSide;
+  spoke: ChainSide;
+};
+
+async function deploySide(
+  networkName: "gatewayHub" | "gatewaySpoke",
+  eid: number,
+  chainId: bigint,
+): Promise<ChainSide> {
+  const connection = await hardhat.network.connect(networkName);
+  const viem = connection.viem as ViemSuite;
+  const stack = await deployEscrowStack(viem);
+  const [wallet] = await viem.getWalletClients();
+  const publicClient = await viem.getPublicClient();
+
+  const chainIdOnNet = await publicClient.getChainId();
+  assert.equal(BigInt(chainIdOnNet), chainId, `${networkName} chainId`);
+
+  const endpoint = await deployEndpointMock(viem, eid, wallet, publicClient);
+  const holdMock = await viem.deployContract("MockAuctionHold", []);
+  const timelock = await deployTimelock(viem, stack.admin.account.address);
+  const { auction } = await deployAuctionEscrow(
+    viem,
+    {
+      passport: stack.passport,
+      staking: stack.staking,
+      usdc: stack.usdc,
+      timelock,
+      admin: stack.admin,
+    },
+    { feeBps: 250n, upgradeAuthority: stack.admin.account.address },
+  );
+
+  const gateway = await viem.deployContract("KarPassportBridgeGateway", [
+    stack.passport.address,
+    stack.marketplace.address,
+    holdMock.address,
+    endpoint.address,
+    stack.admin.account.address,
+  ]);
+  await stack.passport.write.setBridgeGateway([gateway.address], {
+    account: stack.admin.account,
+  });
+
+  return {
+    stack,
+    holdMock,
+    auction,
+    gateway,
+    endpoint,
+    publicClient,
+    viem,
+    eid,
+    chainId,
+  };
+}
+
+async function deployGatewayPair(): Promise<{
+  pair: GatewayPair;
+  close: () => Promise<void>;
+}> {
+  const hub = await deploySide("gatewayHub", EID_HUB, HUB_CHAIN_ID);
+  const spoke = await deploySide("gatewaySpoke", EID_SPOKE, SPOKE_CHAIN_ID);
+
+  await hub.gateway.write.setPeer([EID_SPOKE, addressToBytes32(spoke.gateway.address)], {
+    account: hub.stack.admin.account,
+  });
+  await spoke.gateway.write.setPeer([EID_HUB, addressToBytes32(hub.gateway.address)], {
+    account: spoke.stack.admin.account,
+  });
+
+  return {
+    pair: { hub, spoke },
+    close: async () => {
+      // Connections are closed by afterEach via stored refs when needed.
+    },
+  };
+}
+
+function sendParam(dstEid: number, to: Address, tokenId: bigint, extraOptions: Hex = lzReceiveOptions()) {
+  return {
+    dstEid,
+    to: addressToBytes32(to),
+    tokenId,
+    extraOptions,
+    composeMsg: "0x" as Hex,
+    onftCmd: "0x" as Hex,
+  };
+}
+
+async function bridgeSend(
+  oapp: DeployedContract,
+  param: ReturnType<typeof sendParam>,
+  account: WalletClient["account"],
+) {
+  const fee = (await oapp.read.quoteSend([param, false])) as {
+    nativeFee: bigint;
+    lzTokenFee: bigint;
+  };
+  return (await oapp.write.send([param, fee, account!.address], {
+    account,
+    value: fee.nativeFee,
+  })) as Hex;
+}
+
+async function callLzReceive(params: {
+  oapp: DeployedContract;
+  endpoint: Address;
+  origin: { srcEid: number; sender: Hex; nonce: bigint };
+  guid: Hex;
+  message: Hex;
+  publicClient: PublicClient;
+  viem: ViemSuite;
+}): Promise<Hex> {
+  const wallet = await impersonateAs(
+    params.publicClient,
+    params.viem as ViemSuite & { getWalletClient: (address: Address) => Promise<WalletClient> },
+    params.endpoint,
+  );
+  try {
+    return (await params.oapp.write.lzReceive(
+      [params.origin, params.guid, params.message, zeroAddress, "0x"],
+      { account: wallet.account },
+    )) as Hex;
+  } finally {
+    await stopImpersonating(params.publicClient, params.endpoint);
+  }
+}
+
+let nonceCounter = 1n;
+
+async function relaySend(params: {
+  src: ChainSide;
+  dst: ChainSide;
+  to: Address;
+  tokenId: bigint;
+  uri: string;
+  senderAccount: WalletClient["account"];
+  recipient?: Address;
+}) {
+  const recipient = params.recipient ?? params.to;
+  await params.src.stack.passport.write.setApprovalForAll([params.src.gateway.address, true], {
+    account: params.senderAccount,
+  });
+  await bridgeSend(
+    params.src.gateway,
+    sendParam(params.dst.eid, recipient, params.tokenId),
+    params.senderAccount,
+  );
+  const message = encodeOnftMessage({
+    to: recipient,
+    tokenId: params.tokenId,
+    sender: params.src.gateway.address,
+    composeBody: encodeUriCompose(params.uri),
+  });
+  const nonce = nonceCounter++;
+  const guid = padHex(toHex(nonce), { size: 32 });
+  await callLzReceive({
+    oapp: params.dst.gateway,
+    endpoint: params.dst.endpoint.address,
+    origin: {
+      srcEid: params.src.eid,
+      sender: addressToBytes32(params.src.gateway.address),
+      nonce,
+    },
+    guid,
+    message,
+    publicClient: params.dst.publicClient,
+    viem: params.dst.viem,
+  });
+}
+
+describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
+  let hubConn: Awaited<ReturnType<typeof hardhat.network.connect>>;
+  let spokeConn: Awaited<ReturnType<typeof hardhat.network.connect>>;
+  let pair: GatewayPair;
+
+  beforeEach(async () => {
+    hubConn = await hardhat.network.connect("gatewayHub");
+    spokeConn = await hardhat.network.connect("gatewaySpoke");
+    // Redeploy via deploySide using the open connections' network names —
+    // deployGatewayPair opens its own connections; instead build on these.
+    const hubViem = hubConn.viem as ViemSuite;
+    const spokeViem = spokeConn.viem as ViemSuite;
+
+    async function buildSide(
+      viem: ViemSuite,
+      eid: number,
+      chainId: bigint,
+    ): Promise<ChainSide> {
+      const stack = await deployEscrowStack(viem);
+      const [wallet] = await viem.getWalletClients();
+      const publicClient = await viem.getPublicClient();
+      assert.equal(BigInt(await publicClient.getChainId()), chainId);
+      const endpoint = await deployEndpointMock(viem, eid, wallet, publicClient);
+      const holdMock = await viem.deployContract("MockAuctionHold", []);
+      const timelock = await deployTimelock(viem, stack.admin.account.address);
+      const { auction } = await deployAuctionEscrow(
+        viem,
+        {
+          passport: stack.passport,
+          staking: stack.staking,
+          usdc: stack.usdc,
+          timelock,
+          admin: stack.admin,
+        },
+        { feeBps: 250n, upgradeAuthority: stack.admin.account.address },
+      );
+      const gateway = await viem.deployContract("KarPassportBridgeGateway", [
+        stack.passport.address,
+        stack.marketplace.address,
+        holdMock.address,
+        endpoint.address,
+        stack.admin.account.address,
+      ]);
+      await stack.passport.write.setBridgeGateway([gateway.address], {
+        account: stack.admin.account,
+      });
+      return {
+        stack,
+        holdMock,
+        auction,
+        gateway,
+        endpoint,
+        publicClient,
+        viem,
+        eid,
+        chainId,
+      };
+    }
+
+    const hub = await buildSide(hubViem, EID_HUB, HUB_CHAIN_ID);
+    const spoke = await buildSide(spokeViem, EID_SPOKE, SPOKE_CHAIN_ID);
+    await hub.gateway.write.setPeer([EID_SPOKE, addressToBytes32(spoke.gateway.address)], {
+      account: hub.stack.admin.account,
+    });
+    await spoke.gateway.write.setPeer([EID_HUB, addressToBytes32(hub.gateway.address)], {
+      account: spoke.stack.admin.account,
+    });
+    // Dual-network: dest OApp is not on this chain. Point lookup at the local
+    // endpoint so send() debit succeeds; receivePayload try/catch swallows the
+    // failed local lzReceive. Real credit is applied via callLzReceive on dest.
+    await hub.endpoint.write.setDestLzEndpoint(
+      [spoke.gateway.address, hub.endpoint.address],
+      { account: hub.stack.admin.account },
+    );
+    await spoke.endpoint.write.setDestLzEndpoint(
+      [hub.gateway.address, spoke.endpoint.address],
+      { account: spoke.stack.admin.account },
+    );
+    pair = { hub, spoke };
+  });
+
+  afterEach(async () => {
+    await hubConn.close();
+    await spokeConn.close();
+  });
+
+  it("#1 master invariant: home lock + spoke mint UNVERIFIED; return unlocks", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://home-1",
+    );
+    assert.equal(await hub.stack.passport.read.chainIdOf([tokenId]), HUB_CHAIN_ID);
+
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://home-1",
+      senderAccount: seller.account,
+    });
+
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(hub.gateway.address),
+    );
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
+    assert.equal(
+      getAddress(await spoke.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+    const [spokeStatus] = await spoke.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(spokeStatus, STATUS_UNVERIFIED);
+
+    // Return spoke → hub
+    const spokeSeller = spoke.stack.seller;
+    // Same address index as hub seller — fund/use spoke wallet at same index
+    const spokeWallets = await spoke.viem.getWalletClients();
+    const hubWallets = await hub.viem.getWalletClients();
+    const sellerIdx = hubWallets.findIndex(
+      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+    );
+    const spokeSender = spokeWallets[sellerIdx]!;
+
+    // Rep lives on spoke under hub seller address; transfer to matching spoke account if needed
+    const repOwner = getAddress(await spoke.stack.passport.read.ownerOf([tokenId]));
+    assert.equal(repOwner, getAddress(seller.account.address));
+
+    await relaySend({
+      src: spoke,
+      dst: hub,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://home-1",
+      senderAccount: spokeSender.account,
+    });
+
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
+    await assert.rejects(
+      spoke.stack.passport.read.ownerOf([tokenId]),
+      (err: unknown) => err instanceof Error && err.message.includes("ERC721NonexistentToken"),
+    );
+    void spokeSeller;
+  });
+
+  it("#4 URI sync (G5): returned URI adopted; home status UNVERIFIED", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://original",
+    );
+    await joinVerifier(hub.stack.staking, hub.stack.verifier);
+    await hub.stack.passport.write.verifyPassport([tokenId], {
+      account: hub.stack.verifier.account,
+    });
+    let [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(status, STATUS_VERIFIED);
+
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://original",
+      senderAccount: seller.account,
+    });
+
+    const hubWallets = await hub.viem.getWalletClients();
+    const spokeWallets = await spoke.viem.getWalletClients();
+    const sellerIdx = hubWallets.findIndex(
+      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+    );
+    const spokeSender = spokeWallets[sellerIdx]!;
+
+    await spoke.stack.passport.write.setPassportURI([tokenId, "ar://edited-on-spoke"], {
+      account: spokeSender.account,
+    });
+    assert.equal(await spoke.stack.passport.read.tokenURI([tokenId]), "ar://edited-on-spoke");
+
+    await relaySend({
+      src: spoke,
+      dst: hub,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://edited-on-spoke",
+      senderAccount: spokeSender.account,
+    });
+
+    assert.equal(await hub.stack.passport.read.tokenURI([tokenId]), "ar://edited-on-spoke");
+    [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(status, STATUS_UNVERIFIED);
+  });
+
+  it("#5 outbound guards (G1): listed, DISPUTED, InSettlementHold, NotRepresentationOwner", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+
+    // listed
+    {
+      const tokenId = await mintPassport(
+        hub.stack.passport,
+        seller,
+        seller.account.address,
+        "ar://listed",
+      );
+      await hub.stack.passport.write.setApprovalForAll([hub.stack.marketplace.address, true], {
+        account: seller.account,
+      });
+      await hub.stack.marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+        account: seller.account,
+      });
+      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+        account: seller.account,
+      });
+      await assert.rejects(
+        bridgeSend(
+          hub.gateway,
+          sendParam(EID_SPOKE, seller.account.address, tokenId),
+          seller.account,
+        ),
+        revertsWith("ListedInMarketplace"),
+      );
+    }
+
+    // DISPUTED
+    {
+      const tokenId = await mintPassport(
+        hub.stack.passport,
+        seller,
+        seller.account.address,
+        "ar://disputed",
+      );
+      await joinVerifier(hub.stack.staking, hub.stack.verifier);
+      await hub.stack.passport.write.verifyPassport([tokenId], {
+        account: hub.stack.verifier.account,
+      });
+      await hub.stack.passport.write.disputePassport([tokenId, "bad"], {
+        account: seller.account,
+        value: DISPUTE_DEPOSIT,
+      });
+      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+        account: seller.account,
+      });
+      await assert.rejects(
+        bridgeSend(
+          hub.gateway,
+          sendParam(EID_SPOKE, seller.account.address, tokenId),
+          seller.account,
+        ),
+        revertsWith("PassportDisputed"),
+      );
+    }
+
+    // InSettlementHold via mock
+    {
+      const tokenId = await mintPassport(
+        hub.stack.passport,
+        seller,
+        seller.account.address,
+        "ar://hold",
+      );
+      await hub.holdMock.write.setReleaseAt([tokenId, 1], {
+        account: hub.stack.admin.account,
+      });
+      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+        account: seller.account,
+      });
+      await assert.rejects(
+        bridgeSend(
+          hub.gateway,
+          sendParam(EID_SPOKE, seller.account.address, tokenId),
+          seller.account,
+        ),
+        revertsWith("InSettlementHold"),
+      );
+      await hub.holdMock.write.setReleaseAt([tokenId, 0], {
+        account: hub.stack.admin.account,
+      });
+    }
+
+    // NotRepresentationOwner — mint foreign on hub via lzReceive, non-owner send
+    {
+      const foreignId = tokenIdOn(THIRD_ORIGIN, 1n);
+      const message = encodeOnftMessage({
+        to: seller.account.address,
+        tokenId: foreignId,
+        sender: spoke.gateway.address,
+        composeBody: encodeUriCompose("ar://foreign"),
+      });
+      await callLzReceive({
+        oapp: hub.gateway,
+        endpoint: hub.endpoint.address,
+        origin: {
+          srcEid: EID_SPOKE,
+          sender: addressToBytes32(spoke.gateway.address),
+          nonce: nonceCounter++,
+        },
+        guid: padHex(toHex(nonceCounter), { size: 32 }),
+        message,
+        publicClient: hub.publicClient,
+        viem: hub.viem,
+      });
+      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+        account: hub.stack.stranger.account,
+      });
+      await assert.rejects(
+        bridgeSend(
+          hub.gateway,
+          sendParam(EID_SPOKE, hub.stack.stranger.account.address, foreignId),
+          hub.stack.stranger.account,
+        ),
+        revertsWith("NotRepresentationOwner"),
+      );
+    }
+  });
+
+  it("#7 unlock only-locked (G7): non-held unlock reverts; happy unlock succeeds", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://g7",
+    );
+
+    // Crafted unlock while gateway does not hold
+    const badMessage = encodeOnftMessage({
+      to: seller.account.address,
+      tokenId,
+      sender: spoke.gateway.address,
+      composeBody: encodeUriCompose("ar://g7"),
+    });
+    await assert.rejects(
+      callLzReceive({
+        oapp: hub.gateway,
+        endpoint: hub.endpoint.address,
+        origin: {
+          srcEid: EID_SPOKE,
+          sender: addressToBytes32(spoke.gateway.address),
+          nonce: nonceCounter++,
+        },
+        guid: padHex(toHex(9n), { size: 32 }),
+        message: badMessage,
+        publicClient: hub.publicClient,
+        viem: hub.viem,
+      }),
+      (err: unknown) => err instanceof Error,
+    );
+
+    // Happy path: lock then unlock
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://g7",
+      senderAccount: seller.account,
+    });
+    const hubWallets = await hub.viem.getWalletClients();
+    const spokeWallets = await spoke.viem.getWalletClients();
+    const sellerIdx = hubWallets.findIndex(
+      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+    );
+    await relaySend({
+      src: spoke,
+      dst: hub,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://g7",
+      senderAccount: spokeWallets[sellerIdx]!.account,
+    });
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+  });
+
+  it("#9 S11: spoke-origin mint bridges to hub as UNVERIFIED foreign rep; return resets spoke", async () => {
+    const { hub, spoke } = pair;
+    const spokeSeller = spoke.stack.seller;
+    const tokenId = await mintPassport(
+      spoke.stack.passport,
+      spokeSeller,
+      spokeSeller.account.address,
+      "ar://spoke-native",
+    );
+    assert.equal(await spoke.stack.passport.read.chainIdOf([tokenId]), SPOKE_CHAIN_ID);
+
+    await joinVerifier(spoke.stack.staking, spoke.stack.verifier);
+    await spoke.stack.passport.write.verifyPassport([tokenId], {
+      account: spoke.stack.verifier.account,
+    });
+
+    await relaySend({
+      src: spoke,
+      dst: hub,
+      to: spokeSeller.account.address,
+      tokenId,
+      uri: "ar://spoke-native",
+      senderAccount: spokeSeller.account,
+    });
+
+    assert.equal(await spoke.stack.passport.read.custodyLocked([tokenId]), true);
+    const [hubStatus] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(hubStatus, STATUS_UNVERIFIED);
+
+    const hubWallets = await hub.viem.getWalletClients();
+    const spokeWallets = await spoke.viem.getWalletClients();
+    const idx = spokeWallets.findIndex(
+      (w) => getAddress(w.account.address) === getAddress(spokeSeller.account.address),
+    );
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: spokeSeller.account.address,
+      tokenId,
+      uri: "ar://spoke-native",
+      senderAccount: hubWallets[idx]!.account,
+    });
+
+    assert.equal(await spoke.stack.passport.read.custodyLocked([tokenId]), false);
+    const [spokeStatus] = await spoke.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(spokeStatus, STATUS_UNVERIFIED);
+  });
+
+  it("#11 auction×bridge (A16): InSettlementHold then succeeds after clear", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://a16",
+    );
+    await hub.holdMock.write.setReleaseAt([tokenId, 42], {
+      account: hub.stack.admin.account,
+    });
+    await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      bridgeSend(
+        hub.gateway,
+        sendParam(EID_SPOKE, seller.account.address, tokenId),
+        seller.account,
+      ),
+      revertsWith("InSettlementHold"),
+    );
+
+    await hub.holdMock.write.setReleaseAt([tokenId, 0], {
+      account: hub.stack.admin.account,
+    });
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://a16",
+      senderAccount: seller.account,
+    });
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
+  });
+
+  it("#S14: third-origin hub rep → spoke burns hub rep and mints spoke; no home custody", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const foreignId = tokenIdOn(THIRD_ORIGIN, 7n);
+
+    const mintMsg = encodeOnftMessage({
+      to: seller.account.address,
+      tokenId: foreignId,
+      sender: spoke.gateway.address,
+      composeBody: encodeUriCompose("ar://s14"),
+    });
+    await callLzReceive({
+      oapp: hub.gateway,
+      endpoint: hub.endpoint.address,
+      origin: {
+        srcEid: EID_SPOKE,
+        sender: addressToBytes32(spoke.gateway.address),
+        nonce: nonceCounter++,
+      },
+      guid: padHex(toHex(77n), { size: 32 }),
+      message: mintMsg,
+      publicClient: hub.publicClient,
+      viem: hub.viem,
+    });
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([foreignId])),
+      getAddress(seller.account.address),
+    );
+
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId: foreignId,
+      uri: "ar://s14",
+      senderAccount: seller.account,
+    });
+
+    await assert.rejects(
+      hub.stack.passport.read.ownerOf([foreignId]),
+      (err: unknown) => err instanceof Error && err.message.includes("ERC721NonexistentToken"),
+    );
+    assert.equal(
+      getAddress(await spoke.stack.passport.read.ownerOf([foreignId])),
+      getAddress(seller.account.address),
+    );
+    // Third-origin: never home on hub or spoke
+    assert.equal(await hub.stack.passport.read.custodyLocked([foreignId]), false);
+    assert.equal(await spoke.stack.passport.read.custodyLocked([foreignId]), false);
+  });
+
+  it("VERSION is 1.0.0-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.0.0-rc.1");
+  });
+});

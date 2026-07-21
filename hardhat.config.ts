@@ -33,6 +33,20 @@ const config: HardhatUserConfig = {
       chainType: "l1",
       allowUnlimitedContractSize: true,
     },
+    /** C1.2 dual-chain gateway harness — hub (Base Sepolia chainId). */
+    gatewayHub: {
+      type: "edr-simulated",
+      chainType: "l1",
+      chainId: 84532,
+      allowUnlimitedContractSize: true,
+    },
+    /** C1.2 dual-chain gateway harness — spoke (Ethereum Sepolia chainId). */
+    gatewaySpoke: {
+      type: "edr-simulated",
+      chainType: "l1",
+      chainId: 11155111,
+      allowUnlimitedContractSize: true,
+    },
     localhost: {
       type: "http",
       url: "http://127.0.0.1:8545",
