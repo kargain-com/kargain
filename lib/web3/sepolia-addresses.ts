@@ -48,7 +48,7 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
 ];
 
 /**
- * Ethereum Sepolia (11155111) — app read-only (not in wagmi write union).
+ * Ethereum Sepolia (11155111) — bridge spoke surface (Nuclear full stack).
  * Nuclear full stack: `karPassportOnft` is the Eth KarPassport NFT (ownerOf delivery polls).
  */
 export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;

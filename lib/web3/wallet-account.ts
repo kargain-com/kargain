@@ -2,15 +2,14 @@ import { getAddress } from "viem";
 
 import {
   auctionEscrowAddress,
-  BASE_SEPOLIA_CHAIN_ID,
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
   karPassportAddress,
   karProPassAddress,
   karProStakingAddress,
+  kargainContractDenylist,
   marketplaceAddress,
   proxyOnftAdapterAddress,
-  sepoliaKargainContractDenylist,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -55,9 +54,8 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
     auctionEscrowAddress(cid),
   ];
 
-  if (cid === BASE_SEPOLIA_CHAIN_ID) {
-    candidates.push(...sepoliaKargainContractDenylist());
-  }
+  candidates.push(...kargainContractDenylist(cid));
+
 
   const seen = new Set<string>();
   const out: `0x${string}`[] = [];

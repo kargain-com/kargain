@@ -11,10 +11,12 @@ import {
   messagingWalletError,
 } from "../lib/web3/wallet-account.ts";
 import { kargainTimelockAddress } from "../lib/web3/deployment-addresses.ts";
+import { COMMERCIAL_ACTIVE } from "../lib/web3/commercial-active.ts";
 import { SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
 import { SEPOLIA_FALLBACK } from "../scripts/lib/load-deployment.ts";
 
 const SEPOLIA_DEPLOYER = SEPOLIA_FALLBACK.deployer;
+const SPOKE = COMMERCIAL_ACTIVE[11155111]!;
 
 describe("classifyBytecode", () => {
   it("classifies clean EOA", () => {
@@ -38,6 +40,14 @@ describe("isProtocolAddress", () => {
       isProtocolAddress("0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19", 84532),
       true,
     );
+  });
+
+  it("flags spoke KarPassport on Ethereum Sepolia", () => {
+    assert.equal(isProtocolAddress(SPOKE.karPassport, 11155111), true);
+  });
+
+  it("flags spoke KarPassport as historical on Base Sepolia", () => {
+    assert.equal(isProtocolAddress(SPOKE.karPassport, 84532), true);
   });
 
   it("does not flag arbitrary EOA", () => {

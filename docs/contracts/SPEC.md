@@ -912,12 +912,12 @@ Contract addresses are **not** unique across networks. The same CREATE address h
 
 - Every off-chain identify / filter of protocol contracts **must** use `(chainId, address)` — never an address string alone.
 - Denylist, address resolvers, and indexer compound keys are **per-chain**.
-- Today's `SEPOLIA_HISTORICAL_DENYLIST` / `sepoliaKargainContractDenylist()` are **84532-only**; applying them chain-blind would treat live 11155111 contracts as abandoned.
+- Today's `SEPOLIA_HISTORICAL_DENYLIST` is **84532-only**; `kargainContractDenylist(chainId)` builds per-chain lists from `COMMERCIAL_ACTIVE` + that historical set. Applying Base historical addresses chain-blind would treat live 11155111 contracts as abandoned.
 
 **Hard requirements for upcoming work:**
 
 - **C3 (indexer):** entity / API keys include `chainId` (no address-only identity across commercial chains).
-- **C4 (app):** messaging/profile denylist is per-chain (do not reuse the Base Sepolia denylist for other `chainId`s).
+- **C4 (app):** messaging/profile denylist is per-chain via `kargainContractDenylist(chainId)` (C4.1); do not reuse Base historical addresses for other `chainId`s.
 
 ---
 
