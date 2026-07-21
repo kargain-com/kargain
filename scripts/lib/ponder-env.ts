@@ -10,6 +10,7 @@ import {
   SPOKE_CHAIN_ID,
   type PonderAddressBundle,
 } from "./load-deployment.js";
+import { resolveMaxRequestsPerSecond } from "./ponder-max-rps.js";
 
 export type ContractBlockKey = keyof DeploymentBlocks;
 
@@ -160,12 +161,12 @@ export function buildPonderRuntime() {
     chains.baseSepolia = {
       id: SEPOLIA_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_84532 ?? "https://base-sepolia-rpc.publicnode.com",
-      maxRequestsPerSecond: 10,
+      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SEPOLIA_CHAIN_ID),
     };
     chains.ethereumSepolia = {
       id: SPOKE_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC,
-      maxRequestsPerSecond: 10,
+      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SPOKE_CHAIN_ID),
     };
   }
 
@@ -173,7 +174,7 @@ export function buildPonderRuntime() {
     chains.localhost = {
       id: LOCAL_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
-      maxRequestsPerSecond: 20,
+      maxRequestsPerSecond: resolveMaxRequestsPerSecond(LOCAL_CHAIN_ID),
     };
   }
 

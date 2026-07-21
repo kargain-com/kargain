@@ -69,8 +69,9 @@ function currencyFeedId(chainId: number, currencyCode: string): string {
   return `${chainId}-${currencyCode}`;
 }
 
-function eventChainId(event: { chain: { id: number | bigint } }): number {
-  return Number(event.chain.id);
+/** Ponder 0.16 exposes the indexing network on `context.chain`, not `event.chain`. */
+function indexingChainId(context: { chain: { id: number } }): number {
+  return Number(context.chain.id);
 }
 
 /** Mirror `_clearAuctionStorage` silent auth delete — no-op when no row. */
@@ -138,7 +139,7 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const uri = event.args.uri;
   const origin = originChainIdOf(event.args.tokenId);
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
   const ts = event.block.timestamp;
   const custodyChain =
     nextCustodyChain(undefined, {
@@ -183,7 +184,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const uri = event.args.uri;
   const origin = originChainIdOf(event.args.tokenId);
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
   const candidate =
     nextCustodyChain(undefined, {
       kind: "bridge-mint",
@@ -260,7 +261,7 @@ ponder.on("KarPassport:PassportBridgeBurned", async () => {
 ponder.on("KarPassport:CustodyLockSet", async ({ event, context }) => {
   if (event.args.locked) return;
   const tokenId = event.args.tokenId.toString();
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
   const candidate = nextCustodyChain(undefined, {
     kind: "custody-unlock",
     eventChainId: chainId,
@@ -326,7 +327,7 @@ ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const existing = await context.db.find(passport, { id: tokenId });
   const origin = existing?.chainId ?? originChainIdOf(event.args.tokenId);
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
   // Unlock-on-home emits VerificationReset; set custody to home when event is on origin.
   const custodyPatch =
     chainId === origin
@@ -354,7 +355,7 @@ ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const existing = await context.db.find(passport, { id: tokenId });
   const previousUri = existing?.tokenUri ?? "";
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
 
   const verificationReset =
     existing != null &&
@@ -391,7 +392,7 @@ ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
   await context.db.insert(passportRecord).values({
     id: `${event.transaction.hash}-${event.log.logIndex}`,
     tokenId,
-    chainId: eventChainId(event),
+    chainId: indexingChainId(context),
     author: event.args.author,
     recordType: event.args.recordType,
     description: event.args.description,
@@ -433,7 +434,7 @@ ponder.on("KarPassport:Transfer", async ({ event, context }) => {
 ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
   await upsertVerifierFromStakingJoin(
     context.db,
-    eventChainId(event),
+    indexingChainId(context),
     event.args.verifier,
     Number(event.args.asset),
     event.args.amount,
@@ -444,7 +445,7 @@ ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
 ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(eventChainId(event), event.args.verifier),
+    normalizeVerifierId(indexingChainId(context), event.args.verifier),
     verifierLeftPatch(event.block.timestamp),
   );
 });
@@ -452,7 +453,7 @@ ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
 ponder.on("KarProStaking:VerificationFeeUpdated", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(eventChainId(event), event.args.verifier),
+    normalizeVerifierId(indexingChainId(context), event.args.verifier),
     verificationFeePatch(event.args.fee),
   );
 });
@@ -461,7 +462,7 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await upsertVerifierFromProPassMint(
     context.db,
-    eventChainId(event),
+    indexingChainId(context),
     event.args.holder,
     Number(event.args.category),
     event.args.name,
@@ -474,7 +475,7 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(eventChainId(event), event.args.holder),
+    normalizeVerifierId(indexingChainId(context), event.args.holder),
     proPassProfilePatch(
       Number(event.args.category),
       event.args.name,
@@ -487,14 +488,14 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
 ponder.on("KarProPass:ProPassBurned", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(eventChainId(event), event.args.holder),
+    normalizeVerifierId(indexingChainId(context), event.args.holder),
     proPassBurnedPatch(),
   );
 });
 
 ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
-  const chainId = eventChainId(event);
+  const chainId = indexingChainId(context);
   const currencyCode = decodeCurrencyCode(event.args.currencyCode);
   const agent = event.args.agent.toLowerCase();
   const authId =
@@ -581,7 +582,7 @@ ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
   await context.db.insert(marketplaceSale).values({
     id: `${tokenId}-${event.transaction.hash}`,
     tokenId,
-    chainId: eventChainId(event),
+    chainId: indexingChainId(context),
     buyer: event.args.buyer,
     seller: event.args.seller,
     gross: event.args.gross,
@@ -648,7 +649,7 @@ ponder.on("MarketplaceEscrow:OwnerMinPriceUpdated", async ({ event, context }) =
 
 ponder.on("MarketplaceEscrow:CurrencyFeedSet", async ({ event, context }) => {
   const currencyCode = decodeCurrencyCode(event.args.currencyCode);
-  const chainId = Number(event.chain.id);
+  const chainId = indexingChainId(context);
   const id = currencyFeedId(chainId, currencyCode);
 
   await context.db
@@ -672,7 +673,7 @@ ponder.on("MarketplaceEscrow:CurrencyFeedSet", async ({ event, context }) => {
 
 ponder.on("MarketplaceEscrow:CurrencyFeedRevoked", async ({ event, context }) => {
   const currencyCode = decodeCurrencyCode(event.args.currencyCode);
-  const chainId = Number(event.chain.id);
+  const chainId = indexingChainId(context);
   const id = currencyFeedId(chainId, currencyCode);
 
   await context.db
@@ -778,7 +779,7 @@ ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const values = auctionCreatedRow({
     tokenId,
-    chainId: eventChainId(event),
+    chainId: indexingChainId(context),
     seller: event.args.seller,
     agent: event.args.agent,
     asset: event.args.asset,

@@ -17,7 +17,7 @@ Nuclear full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One 
 | Hub start block | `PONDER_START_BLOCK_84532=44434865` |
 | Eth start block | `PONDER_START_BLOCK_11155111=11319840` |
 | Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
-| Eth RPC | `PONDER_RPC_URL_11155111` (default `https://ethereum-sepolia-rpc.publicnode.com`) |
+| Eth RPC | `PONDER_RPC_URL_11155111` (Alchemy/Infura/QuickNode; PublicNode often 403) · `PONDER_MAX_RPS_11155111` default **5** |
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
 | Docker | `docker compose build ponder` after code pull + post-build prune |
 
@@ -37,9 +37,12 @@ Historical June 2026 v2 cutover used start block **43399242** (pre-Nuclear) — 
 
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
-PONDER_RPC_URL_11155111=https://ethereum-sepolia-rpc.publicnode.com
+PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
 PONDER_START_BLOCK_84532=44434865
 PONDER_START_BLOCK_11155111=11319840
+# Optional per-chain RPS (defaults 10 / 5):
+# PONDER_MAX_RPS_84532=10
+# PONDER_MAX_RPS_11155111=5
 ```
 
 Optional: Alchemy/QuickNode for heavy backfills. Bare `https://base-sepolia.publicnode.com` (no `-rpc` path / token) may **403** on archive `eth_getLogs`.
@@ -236,9 +239,11 @@ Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optiona
 
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
-PONDER_RPC_URL_11155111=https://ethereum-sepolia-rpc.publicnode.com
+PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
 PONDER_START_BLOCK_84532=44434865
 PONDER_START_BLOCK_11155111=11319840
+# PONDER_MAX_RPS_84532=10
+# PONDER_MAX_RPS_11155111=5
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
@@ -301,7 +306,11 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 
 | Symptom | Action |
 |---------|--------|
-| `403` / "Archive requests require a personal token" on `eth_getLogs` | Set `PONDER_RPC_URL_84532=https://sepolia.base.org` (or PublicNode with token); `docker compose up -d --force-recreate ponder` |
+| `403` / "Archive requests require a personal token" on Base `eth_getLogs` | Set `PONDER_RPC_URL_84532=https://sepolia.base.org` (or PublicNode with token); `docker compose up -d --force-recreate ponder` |
+| `403` on Ethereum Sepolia PublicNode | Set `PONDER_RPC_URL_11155111` to Alchemy/Infura/QuickNode Sepolia (not PublicNode without token) |
+| `404` HTML from `rpc.sepolia.org` | Endpoint is dead — use a real Sepolia JSON-RPC URL |
+| `Unable to find available JSON-RPC provider` / `rate_limit` on `ethereumSepolia` | Lower `PONDER_MAX_RPS_11155111` (default 5) below provider capacity, or upgrade RPC plan |
+| `Cannot read properties of undefined (reading 'id')` in handlers | Ensure image has `context.chain.id` indexing (not `event.chain`) — pull + rebuild |
 | `MigrationError` / "different Ponder app" | Run `ponder-reindex.sql`, then backfill again. **If data already synced:** do not switch start block to `latest` — revert to the numeric block used at backfill |
 | `MigrationError` immediately after `git pull` + new image | Expected when `ponder.schema.ts` changed — run step 3 (SQL) before starting new container |
 | Ponder exits on start (“build_id”) | Run full `ponder-reindex.sql`, not table truncate only |
@@ -322,7 +331,8 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
 | `scripts/lib/resolve-sepolia-stack.ts` | `resolveCommercialStack`: env → manifest → `COMMERCIAL_ACTIVE` |
 | `Dockerfile.ponder` | Copy `patches/` before `pnpm install` (Docker build on VPS) |
-| `scripts/lib/ponder-env.ts` | Dual-chain RPC + contract start blocks |
+| `scripts/lib/ponder-env.ts` | Dual-chain RPC + contract start blocks + per-chain RPS |
+| `scripts/lib/ponder-max-rps.ts` | `PONDER_MAX_RPS_<chainId>` parser + defaults |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
 | `scripts/deploy.ts` | Nuclear commercial deploy (84532 / 11155111) |
 | `lib/web3/commercial-active.ts` | **Committed** per-chain stacks (VPS / CI fallback) |
