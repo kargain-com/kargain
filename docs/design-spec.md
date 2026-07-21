@@ -845,6 +845,8 @@ Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-a
 
 ### 4.19 Passport bridge panel
 
+> **Superseded by the multichain commerce initiative ([SPEC §I.12](./contracts/SPEC.md#i12-multi-chain-architecture-normative)).** The panel and non-goals below describe **Bridge-1–7 milestone scope only** (hub→spoke transport, thin ONFT). The end-state has full commerce on every chain, symmetric return UI, and custody-chain-aware surfaces — see the C4 app plan in [multichain-implementation-plan-2026.md](./research/multichain-implementation-plan-2026.md).
+
 Hub→spoke bridge on the passport commerce rail (Base Sepolia → Ethereum Sepolia). On-chain truth: [SPEC §7](./contracts/SPEC.md) and [I.9.2](./contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) — this section is the UI contract only.
 
 | Surface | Contract |
@@ -857,7 +859,7 @@ Hub→spoke bridge on the passport commerce rail (Base Sepolia → Ethereum Sepo
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
 | Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
 
-**Non-goals:** spoke→hub return UI; Ponder indexing of 11155111; marketplace or commerce on spoke; “bridged away” profile ownership (separate initiative).
+**Non-goals (Bridge-1–7 milestone scope only — all superseded by SPEC §I.12 / C3–C4):** spoke→hub return UI; Ponder indexing of 11155111; marketplace or commerce on spoke; “bridged away” profile ownership. Each becomes in-scope in the multichain commerce initiative.
 
 ---
 

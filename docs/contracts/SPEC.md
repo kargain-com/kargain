@@ -451,6 +451,8 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 
 ### I.7. Bridge architecture
 
+> **Superseded for the multichain end-state by [§I.12](#i12-multi-chain-architecture-normative).** §I.7 documents Bridge-1–7 (thin ONFT + `ProxyONFT721Adapter`, lock-and-mint hub → ONFT spoke). The end-state is the Unified Passport v1.3 + symmetric `KarPassportBridgeGateway` (§I.12); custody/trust/metadata rules are normative in §I.12. §7.4 (EIDs/pathway) and §7.6 (LayerZero security) remain in force for every pathway.
+
 ### 7.1 Design decisions
 
 - **Lock-and-mint** on hub (adapter locks underlying KarPassport); **mint/burn** on spoke (`KarPassportONFT721`).
@@ -506,7 +508,7 @@ Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridg
 2. **Hub:** User calls ONFT send via `ProxyONFT721Adapter` → `_debit` reverts **`ListedInMarketplace`** then **`PassportDisputed`** (v1.1.0-rc.1); locks NFT in adapter; message carries tokenId + URI compose.
 3. **LayerZero:** Message delivered to spoke endpoint (DVN quorum / confirmations per §7.4 / §7.6).
 4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from compose when present. Spoke ONFT has **no** on-chain `passportStatus` — **UNVERIFIED** is product/UI semantics for a fresh spoke mint (trust not ported), not a written hub status field.
-5. **Return path:** Burn on spoke → unlock on hub via ONFT debit/credit pairing. Hub KarPassport row (including `passportStatus`) is **preserved** under lock-and-mint; return does not remint or rewrite hub trust state.
+5. **Return path (end-state, [§I.12.3](#i12-multi-chain-architecture-normative)):** Burn representation on spoke → unlock on home via gateway debit/credit pairing. **On unlock the home row resets to `UNVERIFIED`** (verifier/verifiedAt cleared, `VerificationReset` emitted) and adopts the returned URI (§I.12.5). *Note: the Bridge-1–7 thin ONFT preserved hub status on return; that is superseded — once commerce exists at the destination, preserving trust across a round trip re-attaches verification to a possibly-mutated asset/new owner.*
 
 ### 7.6 LayerZero security configuration (normative)
 
@@ -825,6 +827,56 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 `AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `AuctionVoided` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · config / `Paused` / `UpgradeAuthorityTransferred`.
 
 Indexer tables and HTTP routes: [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md).
+
+---
+
+### I.12. Multi-chain architecture (normative)
+
+> **Single source of truth** for bridge custody, trust, and metadata across chains. Supersedes the custody/trust wording in §7.1/§7.5. §7.4/§7.6 remain the LayerZero pathway and security reference. Research annexes: [multichain-architecture-decision-2026.md](../research/multichain-architecture-decision-2026.md), [multichain-security-model-2026.md](../research/multichain-security-model-2026.md).
+
+### 12.1 Model
+
+Every commercial Kargain chain runs the **identical** stack: `KarPassport v1.3` + KarProPass + KarProStaking + MarketplaceEscrow (+ AuctionEscrow) + one `KarPassportBridgeGateway`. There is exactly **one** passport contract type and **one** bridge contract type across all chains. The thin `KarPassportONFT721` and `ProxyONFT721Adapter` are retired.
+
+**Identity.** `tokenId = (chainId << 128) | localSeq`; `chainIdOf(tokenId)` is the immutable **origin/home** chain. tokenIds are globally unique and **travel unchanged** — the gateway never re-encodes an id.
+
+**Custody = lock-and-mint.** A token's canonical row lives on its home chain. When bridged away, the home gateway **locks** it and the destination gateway **mints a representation** with the same tokenId. *Origin/home* (`chainIdOf`) and *routing hub* (the LayerZero star center, currently EID 40245 Base) are **distinct**: messages relay **through the hub**, not "to the origin first." Star topology and the `{40245, 40161}` EID allowlist are unchanged (§7.6).
+
+### 12.2 Master custody invariant
+
+For every `tokenId`, the number of **usable** instances across all chains is **exactly one**: one free home token, or one locked-home + one representation, or transiently zero in-flight (locked/burned on source, retriable message not yet credited). No guard may permit two usable instances.
+
+### 12.3 Trust never survives a crossing (supersedes §7.5 "preserved on return")
+
+Every crossing lands **UNVERIFIED**, in **both** directions. Outbound mints the representation UNVERIFIED. **On unlock at home, status resets to UNVERIFIED** (`passportVerifier`/`passportVerifiedAt` cleared, `VerificationReset` emitted). Verification is chain-local; re-verify with a local KarPro or sell UNVERIFIED. KarPro is per-chain.
+
+### 12.4 Custody-lock freezes the home trust surface
+
+`KarPassport v1.3` tracks `custodyLocked[tokenId]` (set by the gateway on lock, cleared on unlock). While locked, **all trust-mutating paths revert**: `verifyPassport`, `disputePassport`, `withdrawDispute`, `resolveDispute`, `reportDiscrepancy`, `appendAttestation`, `appendRecord`, `setPassportURI`.
+
+### 12.5 Metadata authority is symmetric
+
+URI is embedded on **every** send (both directions) and written by the receiver: `bridgeMint` sets the representation URI; **unlock overwrites the home URI** with the returned URI, then resets trust. The traveling side is the metadata source of truth while away.
+
+### 12.6 Outbound guards
+
+The gateway refuses to send a token that is: marketplace-`isListed`; in an active auction; **under an active auction settlement hold (`AuctionEscrow.holds(tokenId).releaseAt != 0`)**; `DISPUTED`; or already custody-locked here. The settlement-hold guard is mandatory: after `settle` the NFT is free in the buyer's wallet, so `returnPassportAndRefund` (buyer→seller on a refund-resolved dispute, `AuctionEscrow.sol`) would break if the token were bridged away.
+
+### 12.7 Bridge entrypoints (gateway-only)
+
+`KarPassport v1.3` exposes, callable **only** by the bound `bridgeGateway`: `bridgeMint(to, tokenId, uri)` (require `chainIdOf != local`, not-exists; status UNVERIFIED); `bridgeBurn(tokenId)` (require `chainIdOf != local`); `setCustodyLock(tokenId, bool)`; `bridgeResetOnUnlock(tokenId, uri)` (status→UNVERIFIED, clear verifier, set URI). The gateway is bound **once** via `setBridgeGateway` (one-time, owner-only — same pattern as `KarProPass.setStaking`). Unlock releases only a token the gateway actually holds and had locked. `KarPassport` imports no LayerZero — it knows only a `bridgeGateway` address (§7.6 provider isolation).
+
+### 12.8 Records are chain-sharded, globally aggregated
+
+Each chain stores records appended while the token lived there, keyed by the same global tokenId. The **indexer** unions `passport_record`/`passport_uri_history` by global tokenId across chains and tracks each token's **custody chain** (distinct from origin), so provenance is continuous through moves. This is a correctness requirement.
+
+### 12.9 Unlock = crown-jewel
+
+The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT); the §7.6 "data integrity, not fund loss" framing does **not** apply to unlock. Before any mainnet unlock pathway: ≥3 independent DVNs, Timelock48h as OApp config owner, no default libraries, monitoring live.
+
+### 12.10 84532 hub migration (testnet) — Nuclear
+
+`KarPassport` is immutable and `MarketplaceEscrow.karPassport` / `AuctionEscrow.karPassport` are immutable bindings, so v1.3 requires a **full-stack redeploy on 84532**. Testnet mode is **Nuclear**: deploy the identical full stack + v1.3 + gateway on both 84532 and 11155111; the prior hub stack and thin ONFT `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` move to historical/denylist; Ponder reindexes from the new hub addresses. Existing testnet-RC passports are abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from first deploy.
 
 ---
 
