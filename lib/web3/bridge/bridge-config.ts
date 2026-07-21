@@ -1,19 +1,27 @@
 import {
   ETHEREUM_SEPOLIA_CHAIN_ID,
-  ETHEREUM_SEPOLIA_SPOKE,
   SEPOLIA_CHAIN_ID,
 } from "@/lib/web3/sepolia-addresses";
-import { bridgeGatewayAddress } from "@/lib/web3/deployment-addresses";
+import {
+  bridgeGatewayAddress,
+  karPassportAddress,
+} from "@/lib/web3/deployment-addresses";
 
-/** Hub chain for bridge writes (wagmi). */
+/** Star hub chain id (reference). */
 export const BRIDGE_HUB_CHAIN_ID = SEPOLIA_CHAIN_ID;
 
-/** Spoke chain — app read-only (ownerOf delivery polls). */
+/** Star spoke chain id (reference). */
 export const BRIDGE_SPOKE_CHAIN_ID = ETHEREUM_SEPOLIA_CHAIN_ID;
 
-/** LayerZero destination EID keyed by source chain id. */
-export const BRIDGE_DST_EID_BY_SRC_CHAIN: Readonly<Record<number, number>> = {
-  [BRIDGE_HUB_CHAIN_ID]: ETHEREUM_SEPOLIA_SPOKE.spokeEid,
+/** LayerZero endpoint id per commercial chain. */
+export const EID_BY_CHAIN: Readonly<Record<number, number>> = {
+  [BRIDGE_HUB_CHAIN_ID]: 40245,
+  [BRIDGE_SPOKE_CHAIN_ID]: 40161,
+};
+
+const COUNTERPART: Readonly<Record<number, number>> = {
+  [BRIDGE_HUB_CHAIN_ID]: BRIDGE_SPOKE_CHAIN_ID,
+  [BRIDGE_SPOKE_CHAIN_ID]: BRIDGE_HUB_CHAIN_ID,
 };
 
 export const BRIDGE_DELIVERY_POLL_MS = 8_000;
@@ -27,12 +35,26 @@ export function bridgeAdapterAddress(
   return bridgeGatewayAddress(chainId);
 }
 
-export function bridgeSpokeOnftAddress(): `0x${string}` {
-  return ETHEREUM_SEPOLIA_SPOKE.karPassportOnft;
+/** Star counterpart chain for `src` (hub↔spoke). */
+export function bridgeCounterpartChainId(src: number): number | undefined {
+  return COUNTERPART[src];
 }
 
+/**
+ * Destination LayerZero EID for a send from `srcChainId`
+ * (EID of the star counterpart).
+ */
 export function bridgeDstEid(srcChainId: number): number | undefined {
-  return BRIDGE_DST_EID_BY_SRC_CHAIN[srcChainId];
+  const dst = COUNTERPART[srcChainId];
+  if (dst == null) return undefined;
+  return EID_BY_CHAIN[dst];
+}
+
+/** KarPassport ERC721 on `chainId` (ownerOf delivery poll target). */
+export function bridgeTokenAddress(
+  chainId: number,
+): `0x${string}` | undefined {
+  return karPassportAddress(chainId);
 }
 
 /** LayerZero Scan testnet deep link for an ONFTSent GUID. */

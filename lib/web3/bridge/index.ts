@@ -1,14 +1,16 @@
 export {
   BRIDGE_DELIVERY_POLL_MS,
   BRIDGE_DELIVERY_TIMEOUT_MS,
-  BRIDGE_DST_EID_BY_SRC_CHAIN,
   BRIDGE_HUB_CHAIN_ID,
   BRIDGE_SPOKE_CHAIN_ID,
+  EID_BY_CHAIN,
   bridgeAdapterAddress,
+  bridgeCounterpartChainId,
   bridgeDstEid,
-  bridgeSpokeOnftAddress,
+  bridgeTokenAddress,
   layerZeroScanTxUrl,
 } from "./bridge-config";
+export { getBridgeReadClient } from "./bridge-read-client";
 export { onftSentGuidFromLogs } from "./bridge-guid";
 export { quoteMessagingFee, quoteNativeFee } from "./bridge-quote";
 export {
@@ -26,4 +28,3 @@ export {
   requiredLzReceiveGasForUri,
   type LzReceiveGasResult,
 } from "./lz-receive-gas";
-export { getSpokeReadClient } from "./spoke-read-client";
