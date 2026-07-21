@@ -18,9 +18,10 @@ import {
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProProfileSectionProps = {
+  chainId: number;
   category: number;
   name: string;
   slug?: string;
@@ -53,6 +54,7 @@ async function fetchMetadataFields(
 }
 
 export function KarProProfileSection({
+  chainId,
   category,
   name,
   slug: slugProp,
@@ -60,10 +62,10 @@ export function KarProProfileSection({
   address,
   onUpdated,
 }: KarProProfileSectionProps) {
-  const chainId = DEFAULT_CHAIN_ID;
   const { connector } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
+  const wc = wagmiChainId(chainId);
 
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState<KarProProfileFieldValues>({
@@ -126,6 +128,7 @@ export function KarProProfileSection({
             abi: KarProPassAbi,
             functionName: "updateProfile",
             args: [fields.categoryIndex, fields.name.trim(), metadataUri],
+            chainId: wc,
           }),
         {
           mapError: (err) =>

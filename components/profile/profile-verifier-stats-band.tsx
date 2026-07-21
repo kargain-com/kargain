@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useAccount } from "wagmi";
 
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
@@ -33,11 +35,14 @@ export function ProfileVerifierStatsBand({
   isOwner,
   nostrProfile = null,
 }: ProfileVerifierStatsBandProps) {
+  const { chainId: walletChainId } = useAccount();
+  const chainId = resolveKarProTargetChainId(walletChainId);
   const { profile: liveProfile } = useKarProVerifierProfile(wallet, {
     isActiveVerifier: isActiveVerifier || Boolean(initialProfile?.active),
+    chainId,
     syncWhileMissing: isOwner,
   });
-  const { stakeLabel } = useMinStakeNative();
+  const { stakeLabel } = useMinStakeNative(chainId ?? undefined);
 
   const profile = liveProfile ?? initialProfile;
   const verificationCount = profile?.verificationCount ?? 0;

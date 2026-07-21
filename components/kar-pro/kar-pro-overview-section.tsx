@@ -14,10 +14,11 @@ import { replaceKarProSectionUrl } from "@/lib/kar-pro/kar-pro-section-url";
 import { deriveSetupChecklist } from "@/lib/kar-pro/setup-checklist";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
 type KarProOverviewSectionProps = {
+  chainId: number;
   passId?: bigint;
   joinedAt: number;
   verificationCount: number;
@@ -37,6 +38,7 @@ function formatJoinedDate(timestamp: number): string {
 }
 
 export function KarProOverviewSection({
+  chainId,
   passId,
   joinedAt,
   verificationCount,
@@ -46,10 +48,10 @@ export function KarProOverviewSection({
   messagingReady,
 }: KarProOverviewSectionProps) {
   const pathname = usePathname();
-  const chainId = DEFAULT_CHAIN_ID;
   const staking = karProStakingAddress(chainId);
+  const wc = wagmiChainId(chainId);
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
-  const { stakeLabel } = useMinStakeNative();
+  const { stakeLabel } = useMinStakeNative(chainId);
   const { profile: nostrProfile } = useNostrProfile(address);
 
   const { data: onChainFee } = useReadContract({
@@ -57,6 +59,7 @@ export function KarProOverviewSection({
     abi: KarProStakingAbi,
     functionName: "verificationFee",
     args: [address],
+    chainId: wc,
     query: { enabled: Boolean(staking && address) },
   });
 
@@ -89,7 +92,7 @@ export function KarProOverviewSection({
             tokenId={resolvedPassId}
             chainId={chainId}
             prefix="none"
-            showChain={false}
+            showChain={true}
             variant="mono"
             className="text-fluid-sm"
           />

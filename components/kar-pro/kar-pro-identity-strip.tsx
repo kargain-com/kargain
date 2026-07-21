@@ -3,9 +3,9 @@
 import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 type KarProIdentityStripProps = {
+  chainId: number;
   passId?: bigint;
   category: number;
   name: string;
@@ -13,12 +13,12 @@ type KarProIdentityStripProps = {
 };
 
 export function KarProIdentityStrip({
+  chainId,
   passId,
   category,
   name,
   address,
 }: KarProIdentityStripProps) {
-  const chainId = DEFAULT_CHAIN_ID;
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
 
   return (
@@ -42,7 +42,7 @@ export function KarProIdentityStrip({
           tokenId={resolvedPassId}
           chainId={chainId}
           prefix="none"
-          showChain={false}
+          showChain={true}
           variant="mono"
           className="text-fluid-sm"
         />

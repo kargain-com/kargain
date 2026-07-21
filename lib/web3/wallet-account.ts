@@ -1,5 +1,6 @@
 import { getAddress } from "viem";
 
+import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
 import {
   auctionEscrowAddress,
   chainlinkEurUsdFeed,
@@ -74,6 +75,16 @@ export function isProtocolAddress(address: string, chainId?: number): boolean {
   if (!normalized) return false;
   const lower = normalized.toLowerCase();
   return allProtocolAddresses(chainId).some((addr) => addr.toLowerCase() === lower);
+}
+
+/**
+ * True if `address` is a protocol/denylist contract on any commercial chain.
+ * Membership remains per-chainId (SPEC §I.12.12) — no flat address-only set.
+ */
+export function isProtocolAddressOnCommercialChains(address: string): boolean {
+  return Object.keys(COMMERCIAL_ACTIVE).some((id) =>
+    isProtocolAddress(address, Number(id)),
+  );
 }
 
 export function isMessageablePeer(address: string, chainId?: number): boolean {

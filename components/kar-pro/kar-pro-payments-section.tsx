@@ -11,13 +11,11 @@ import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import type { PaymentMethodId } from "@/lib/nostr/payment-method-id";
 import { publishNostrProfile } from "@/lib/nostr/profile";
-import {
-  acceptedPaymentMethods,
-  paymentMethodIdsToArray,
-} from "@/lib/verifier/payment-methods";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { acceptedPaymentMethods, paymentMethodIdsToArray } from "@/lib/verifier/payment-methods";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProPaymentsSectionProps = {
+  chainId: number;
   address: `0x${string}`;
 };
 
@@ -27,8 +25,8 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
   lightning: "Lightning",
 };
 
-export function KarProPaymentsSection({ address }: KarProPaymentsSectionProps) {
-  const wc = wagmiChainId(DEFAULT_CHAIN_ID);
+export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectionProps) {
+  const wc = wagmiChainId(chainId);
   const { data: walletClient } = useWalletClient({ chainId: wc });
 
   const { profile: ownProfile, loading: ownProfileLoading, refetch: refetchProfile } = useNostrProfile(address);

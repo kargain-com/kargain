@@ -11,13 +11,15 @@ import { navShortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
   agentAddress: `0x${string}`;
+  chainId: number;
 };
 
-export function ListingAgentBuyerAttribution({ agentAddress }: Props) {
-  const { displayName, isKarPro, isLoading } = usePeerIdentity(agentAddress);
+export function ListingAgentBuyerAttribution({ agentAddress, chainId }: Props) {
+  const { displayName, isKarPro, isLoading } = usePeerIdentity(agentAddress, { chainId });
 
   const { profile, isLoading: profileLoading } = useKarProVerifierProfile(agentAddress, {
     isActiveVerifier: isKarPro,
+    chainId,
     syncWhileMissing: false,
   });
 

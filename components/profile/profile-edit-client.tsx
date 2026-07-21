@@ -33,8 +33,9 @@ import {
 import { publishNostrProfile } from "@/lib/nostr/profile";
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { useNostrKey } from "@/hooks/use-nostr-key";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ABOUT_MAX = 280;
 
@@ -71,7 +72,7 @@ function KarProReadoutRow({
 }
 
 export function ProfileEditClient() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId: walletChainId } = useAccount();
   const { data: walletClient } = useWalletClient();
   const { identityMismatch } = useNostrKey();
   const touchedRef = useRef<Set<ProfileEditFieldKey>>(new Set());
@@ -88,22 +89,26 @@ export function ProfileEditClient() {
 
   const { profile, loading, refetch } = useNostrProfile(address);
 
-  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
-  const verifierStatusEnabled = Boolean(staking && address);
+  const chainId = resolveKarProTargetChainId(walletChainId);
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const verifierStatusEnabled = Boolean(staking && address && chainId != null);
 
   const { data: isActiveVerifier, isPending: verifierReadPending } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
+    chainId: wc,
     query: { enabled: verifierStatusEnabled },
   });
 
   const { profile: verifierProfile } = useKarProVerifierProfile(address, {
     isActiveVerifier: isActiveVerifier === true,
+    chainId,
     syncWhileMissing: true,
   });
-  const { stakeLabel } = useMinStakeNative();
+  const { stakeLabel } = useMinStakeNative(chainId ?? undefined);
 
   useEffect(() => {
     if (!profile) return;

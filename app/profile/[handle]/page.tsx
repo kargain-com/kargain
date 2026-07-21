@@ -8,12 +8,18 @@ import { getAgentConsignmentCount } from "@/app/actions/agent-consignment";
 import { getOwnerDelegatedCount } from "@/app/actions/owner-consignment";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import type { PassportStatus } from "@/lib/types/ponder";
+import {
+  mapProfileListing,
+  mapProfilePassport,
+} from "@/lib/passport/map-profile-passport";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import { isProtocolAddress, readAccountKind } from "@/lib/web3/wallet-account";
+import {
+  isProtocolAddressOnCommercialChains,
+  readAccountKind,
+} from "@/lib/web3/wallet-account";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const getCachedVerifierPublicData = cache(fetchVerifierPublicData);
@@ -69,9 +75,10 @@ export default async function PublicProfilePage({
   const wallet = parseProfileWallet(raw);
   if (!wallet) notFound();
 
+  // Hub-scoped for KarPro stake / account-kind until Eth KarPro is productized.
   const chainId = DEFAULT_CHAIN_ID;
 
-  if (isProtocolAddress(wallet, chainId)) notFound();
+  if (isProtocolAddressOnCommercialChains(wallet)) notFound();
   const accountKind = await readAccountKind(chainId, wallet);
   if (accountKind === "contract") notFound();
 
@@ -97,17 +104,8 @@ export default async function PublicProfilePage({
   }
 
   let ponderErr: string | null = null;
-  let passports: {
-    tokenId: string;
-    status: PassportStatus;
-    vin?: string | null;
-  }[] = [];
-  let listings: {
-    tokenId: string;
-    passportStatus: PassportStatus;
-    make?: string;
-    model?: string;
-  }[] = [];
+  let passports: NonNullable<ReturnType<typeof mapProfilePassport>>[] = [];
+  let listings: NonNullable<ReturnType<typeof mapProfileListing>>[] = [];
   let verifiedPassports: Awaited<
     ReturnType<typeof getCachedVerifierPublicData>
   >["verifiedPassports"] = [];
@@ -125,19 +123,12 @@ export default async function PublicProfilePage({
     verifiedPassports = verifierData.verifiedPassports;
     attestations = verifierData.attestations;
 
-    passports = (profileData.passports as Array<Record<string, unknown>>).map((p) => ({
-      tokenId: String(p.id ?? ""),
-      status: (p.status as PassportStatus) ?? "UNVERIFIED",
-      vin: typeof p.vin === "string" && p.vin ? p.vin : null,
-    }));
-    listings = (profileData.listings as Array<Record<string, unknown>>)
-      .filter((l) => l.active === true)
-      .map((l) => ({
-        tokenId: String(l.tokenId ?? l.id ?? ""),
-        passportStatus: (l.passportStatus as PassportStatus) ?? "UNVERIFIED",
-        make: typeof l.make === "string" ? l.make : undefined,
-        model: typeof l.model === "string" ? l.model : undefined,
-      }));
+    passports = (profileData.passports as unknown[])
+      .map(mapProfilePassport)
+      .filter((p): p is NonNullable<typeof p> => p != null);
+    listings = (profileData.listings as unknown[])
+      .map(mapProfileListing)
+      .filter((l): l is NonNullable<typeof l> => l != null);
   } catch {
     ponderErr = "PONDER_UNAVAILABLE";
   }

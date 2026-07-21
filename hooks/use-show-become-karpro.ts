@@ -3,19 +3,32 @@
 import { useAccount, useReadContract } from "wagmi";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import {
+  resolveKarProTargetChainId,
+  shouldShowBecomeKarPro,
+} from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useShowBecomeKarPro(): boolean {
-  const { address, isConnected } = useAccount();
-  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
+  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const chainId = resolveKarProTargetChainId(walletChainId);
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+
   const { data: isActiveVerifier } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
-    query: { enabled: Boolean(isConnected && staking && address) },
+    chainId: wc,
+    query: {
+      enabled: Boolean(isConnected && staking && address && chainId != null),
+    },
   });
 
-  return isConnected && isActiveVerifier !== true;
+  // Non-commercial wallet → not active on target → still show CTA (/kar-pro prompts switch).
+  const isActiveOnTarget = chainId != null && isActiveVerifier === true;
+
+  return shouldShowBecomeKarPro({ isConnected, isActiveOnTarget });
 }

@@ -15,17 +15,19 @@ import {
   karProPassAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useKarProOnChainProfile(
   address: `0x${string}` | undefined,
   enabled: boolean,
+  chainId: number | undefined,
 ): { profile: KarProVerifierProfile | null; isLoading: boolean } {
-  const chainId = DEFAULT_CHAIN_ID;
-  const wc = wagmiChainId(chainId);
-  const proPass = karProPassAddress(chainId);
-  const staking = karProStakingAddress(chainId);
-  const readsEnabled = Boolean(enabled && address && proPass && staking);
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const proPass = chainId != null ? karProPassAddress(chainId) : undefined;
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const readsEnabled = Boolean(
+    enabled && address && chainId != null && proPass && staking && wc != null,
+  );
 
   const passTokenId = address ? proPassTokenIdFromAddress(address) : 0n;
 
@@ -37,14 +39,14 @@ export function useKarProOnChainProfile(
             abi: KarProPassAbi,
             functionName: "getProPassData" as const,
             args: [passTokenId] as const,
-            chainId: wc,
+            chainId: wc!,
           },
           {
             address: staking!,
             abi: KarProStakingAbi,
             functionName: "stakes" as const,
             args: [address!] as const,
-            chainId: wc,
+            chainId: wc!,
           },
         ]
       : [],
@@ -77,7 +79,7 @@ export function useKarProOnChainProfile(
   const chainFieldsReady = readsEnabled && !readsPending && hasPass && stakeActive;
 
   const { data: slug, isPending: slugPending } = useQuery({
-    queryKey: ["kar-pro-slug", metadataURI],
+    queryKey: ["kar-pro-slug", chainId ?? 0, metadataURI],
     queryFn: () => resolveKarProSlugFromMetadataUri(metadataURI!),
     enabled: chainFieldsReady && Boolean(metadataURI?.trim()),
     staleTime: 60_000,

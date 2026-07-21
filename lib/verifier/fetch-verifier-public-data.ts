@@ -2,6 +2,7 @@ import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-type
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
+import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 import { mapVerifierDetailToProfile } from "./map-verifier-profile";
 
@@ -31,6 +32,10 @@ export function buildVerifierAttestationsQueryUrl(
 
 export type VerifierPublicPassportRow = VerifierPassportRow & {
   verifiedAt: string;
+  /** Origin / mint home. */
+  chainId: number;
+  /** Where the token lives — detail links use this. */
+  custodyChain: number;
 };
 
 export type VerifierPublicData = {
@@ -47,7 +52,15 @@ function ponderFetchInit(options?: FetchOptions): RequestInit {
   return options?.fresh ? { cache: "no-store" } : { next: { revalidate: 30 } };
 }
 
+function parsePositiveChainId(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
 function mapVerifierPassportRow(p: Record<string, unknown>): VerifierPublicPassportRow {
+  const chainId = parsePositiveChainId(p.chainId) ?? DEFAULT_CHAIN_ID;
+  const custodyChain = parsePositiveChainId(p.custodyChain) ?? chainId;
   return {
     tokenId: String(p.id ?? ""),
     status: (p.status as PassportStatus) ?? "UNVERIFIED",
@@ -55,6 +68,8 @@ function mapVerifierPassportRow(p: Record<string, unknown>): VerifierPublicPassp
     model: typeof p.model === "string" ? p.model : "",
     year: typeof p.year === "number" ? p.year : Number(p.year ?? 0),
     verifiedAt: p.verifiedAt != null ? String(p.verifiedAt) : "0",
+    chainId,
+    custodyChain,
   };
 }
 

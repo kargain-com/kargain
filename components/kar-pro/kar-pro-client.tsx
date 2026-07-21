@@ -7,6 +7,7 @@ import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership
 import { KarProFeeSection } from "@/components/kar-pro/kar-pro-fee-section";
 import { KarProIdentityStrip } from "@/components/kar-pro/kar-pro-identity-strip";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
+import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
 import { KarProOverviewSection } from "@/components/kar-pro/kar-pro-overview-section";
 import { KarProPaymentsSection } from "@/components/kar-pro/kar-pro-payments-section";
 import { KarProProfileSection } from "@/components/kar-pro/kar-pro-profile-section";
@@ -17,10 +18,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function KarProClient({
   embedded = false,
@@ -29,13 +31,14 @@ export function KarProClient({
   embedded?: boolean;
   onVerifierStatusChange?: (isActiveVerifier: boolean) => void;
 }) {
-  const chainId = DEFAULT_CHAIN_ID;
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const chainId = resolveKarProTargetChainId(walletChainId);
 
-  const staking = karProStakingAddress(chainId);
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
 
   const { data: reads, refetch } = useReadContracts({
-    contracts: staking
+    contracts: staking && wc != null
       ? [
           ...(address
             ? [
@@ -44,12 +47,13 @@ export function KarProClient({
                   abi: KarProStakingAbi,
                   functionName: "isActiveVerifier" as const,
                   args: [address] as const,
+                  chainId: wc,
                 },
               ]
             : []),
         ]
       : [],
-    query: { enabled: Boolean(staking && address) },
+    query: { enabled: Boolean(staking && address && chainId != null) },
   });
 
   const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
@@ -63,6 +67,7 @@ export function KarProClient({
     refetch: refetchProfile,
   } = useKarProVerifierProfile(address, {
     isActiveVerifier,
+    chainId,
     syncWhileMissing: true,
   });
 
@@ -99,6 +104,14 @@ export function KarProClient({
     );
   }
 
+  if (chainId == null) {
+    return (
+      <div className={containerClass}>
+        <KarProNetworkPrompt />
+      </div>
+    );
+  }
+
   if (!staking) {
     return (
       <div className={containerClass}>
@@ -112,7 +125,7 @@ export function KarProClient({
   if (!isActiveVerifier) {
     return (
       <div className={containerClass}>
-        <KarProJoinForm onSuccess={handleJoinSuccess} />
+        <KarProJoinForm chainId={chainId} onSuccess={handleJoinSuccess} />
       </div>
     );
   }
@@ -146,6 +159,7 @@ export function KarProClient({
     <div className={containerClass}>
       {needsMessagingCard && <MessagingSetupCard context="karpro" variant="full" />}
       <KarProIdentityStrip
+        chainId={chainId}
         category={verifierProfile.category}
         name={verifierProfile.name}
         address={address!}
@@ -153,6 +167,7 @@ export function KarProClient({
       <KarProSectionNav
         overview={
           <KarProOverviewSection
+            chainId={chainId}
             joinedAt={verifierProfile.joinedAt}
             verificationCount={verifierProfile.verificationCount}
             address={address!}
@@ -163,6 +178,7 @@ export function KarProClient({
         }
         profile={
           <KarProProfileSection
+            chainId={chainId}
             category={verifierProfile.category}
             name={verifierProfile.name}
             slug={verifierProfile.slug}
@@ -171,11 +187,12 @@ export function KarProClient({
             onUpdated={() => void refetchProfile()}
           />
         }
-        fee={<KarProFeeSection address={address!} staking={staking} />}
-        payments={<KarProPaymentsSection address={address!} />}
+        fee={<KarProFeeSection chainId={chainId} address={address!} staking={staking} />}
+        payments={<KarProPaymentsSection chainId={chainId} address={address!} />}
         commons={<KarProCommonsSection address={address!} />}
         membership={
           <KarProMembershipSection
+            chainId={chainId}
             address={address!}
             onLeft={handleLeave}
           />

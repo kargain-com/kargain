@@ -8,6 +8,7 @@ import {
   explorerAddressUrl,
   isMessageablePeer,
   isProtocolAddress,
+  isProtocolAddressOnCommercialChains,
   messagingWalletError,
 } from "../lib/web3/wallet-account.ts";
 import { kargainTimelockAddress } from "../lib/web3/deployment-addresses.ts";
@@ -16,6 +17,7 @@ import { SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
 import { SEPOLIA_FALLBACK } from "../scripts/lib/load-deployment.ts";
 
 const SEPOLIA_DEPLOYER = SEPOLIA_FALLBACK.deployer;
+const HUB = COMMERCIAL_ACTIVE[84532]!;
 const SPOKE = COMMERCIAL_ACTIVE[11155111]!;
 
 describe("classifyBytecode", () => {
@@ -71,6 +73,35 @@ describe("isProtocolAddress", () => {
       SEPOLIA_FALLBACK.upgradeAuthority.toLowerCase(),
       SEPOLIA_FALLBACK.timelock!.toLowerCase(),
     );
+  });
+});
+
+describe("isProtocolAddressOnCommercialChains", () => {
+  it("flags hub marketplace via commercial union", () => {
+    assert.equal(
+      isProtocolAddressOnCommercialChains(HUB.marketplace),
+      true,
+    );
+  });
+
+  it("flags spoke KarPassport via commercial union", () => {
+    assert.equal(
+      isProtocolAddressOnCommercialChains(SPOKE.karPassport),
+      true,
+    );
+  });
+
+  it("does not flag ordinary EOA", () => {
+    assert.equal(
+      isProtocolAddressOnCommercialChains(
+        "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+      ),
+      false,
+    );
+  });
+
+  it("does not flag deployer EOA", () => {
+    assert.equal(isProtocolAddressOnCommercialChains(SEPOLIA_DEPLOYER), false);
   });
 });
 

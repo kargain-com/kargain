@@ -5,9 +5,10 @@ import { useAccount, useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
 import { formatStakeEth } from "@/lib/kar-pro/stake-format";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const VALUE_PROPS = [
   { label: "Fully refundable stake", stakeStat: true as const },
@@ -16,9 +17,10 @@ const VALUE_PROPS = [
 ] as const;
 
 export function KarProPageContent() {
-  const chainId = DEFAULT_CHAIN_ID;
-  const { address, isConnected } = useAccount();
-  const staking = karProStakingAddress(chainId);
+  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const chainId = resolveKarProTargetChainId(walletChainId);
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
   const [postTxActive, setPostTxActive] = useState<boolean | null>(null);
 
   const { data: onChainActive } = useReadContract({
@@ -26,20 +28,22 @@ export function KarProPageContent() {
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
-    query: { enabled: Boolean(staking && address && isConnected) },
+    chainId: wc,
+    query: { enabled: Boolean(staking && address && isConnected && chainId != null) },
   });
 
   const { data: minStake, isPending: minStakePending } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "minStakeNative",
-    query: { enabled: Boolean(staking) },
+    chainId: wc,
+    query: { enabled: Boolean(staking && chainId != null) },
   });
 
   const stakeLabel = formatStakeEth(minStake);
 
-  const [prevIdentity, setPrevIdentity] = useState(`${address}:${isConnected}`);
-  const identity = `${address}:${isConnected}`;
+  const [prevIdentity, setPrevIdentity] = useState(`${address}:${isConnected}:${chainId}`);
+  const identity = `${address}:${isConnected}:${chainId}`;
   if (identity !== prevIdentity) {
     setPrevIdentity(identity);
     if (postTxActive !== null) setPostTxActive(null);
@@ -60,7 +64,7 @@ export function KarProPageContent() {
             >
               <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                 {"stakeStat" in prop ? (
-                  minStakePending ? (
+                  chainId == null || minStakePending ? (
                     <span
                       className="inline-block h-4 w-16 animate-pulse rounded-sm bg-bg-surface align-baseline"
                       aria-hidden

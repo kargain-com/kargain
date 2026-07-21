@@ -10,24 +10,26 @@ import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 
 type KarProMembershipSectionProps = {
+  chainId: number;
   passId?: bigint;
   address: `0x${string}`;
   onLeft?: () => void;
 };
 
 export function KarProMembershipSection({
+  chainId,
   passId,
   address,
   onLeft,
 }: KarProMembershipSectionProps) {
-  const chainId = DEFAULT_CHAIN_ID;
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
-  const { stakeLabel } = useMinStakeNative();
+  const { stakeLabel } = useMinStakeNative(chainId);
+  const wc = wagmiChainId(chainId);
 
   const [leaveConfirm, setLeaveConfirm] = useState(false);
 
@@ -44,6 +46,7 @@ export function KarProMembershipSection({
           address: staking,
           abi: KarProStakingAbi,
           functionName: "leave",
+          chainId: wc,
         }),
       {
         mapError: (err) =>
@@ -67,7 +70,7 @@ export function KarProMembershipSection({
           {stakeLabel} ETH staked
         </p>
         <p className="font-mono text-fluid-sm text-text-secondary">
-          {formatKarProPassTitle(resolvedPassId, chainId, { showChain: false })}
+          {formatKarProPassTitle(resolvedPassId, chainId, { showChain: true })}
         </p>
         <p className="font-sans text-fluid-sm text-text-secondary">
           Fully refundable · No slash · Leave anytime
@@ -96,7 +99,7 @@ export function KarProMembershipSection({
           <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
             <p className="font-sans text-sm text-text-primary">
               This will burn your{" "}
-              {formatKarProPassTitle(resolvedPassId, chainId, { showChain: false })}. Continue?
+              {formatKarProPassTitle(resolvedPassId, chainId, { showChain: true })}. Continue?
             </p>
             <div className="flex flex-wrap gap-2">
               <Button

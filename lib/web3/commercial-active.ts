@@ -121,6 +121,11 @@ export function commercialActive(chainId: number): CommercialActiveStack | undef
   return COMMERCIAL_ACTIVE[chainId];
 }
 
+/** True when `chainId` has a committed commercial stack (84532, 11155111, …). */
+export function isCommercialChainId(chainId: number): boolean {
+  return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId);
+}
+
 export function requireCommercialActive(chainId: number): CommercialActiveStack {
   const stack = COMMERCIAL_ACTIVE[chainId];
   if (!stack) {

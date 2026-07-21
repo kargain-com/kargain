@@ -23,9 +23,10 @@ import {
   formatFeeWeiEth,
   formatFeeWeiInDisplayCurrency,
 } from "@/lib/verifier/fee-composer-math";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProFeeSectionProps = {
+  chainId: number;
   address: `0x${string}`;
   staking: `0x${string}` | undefined;
 };
@@ -35,23 +36,27 @@ function displayCurrencyLabel(currency: string): string {
   return fiatCurrencyOptionLabel(currency as Parameters<typeof fiatCurrencyOptionLabel>[0]);
 }
 
-export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
-  const chainId = DEFAULT_CHAIN_ID;
+export function KarProFeeSection({ chainId, address, staking }: KarProFeeSectionProps) {
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
+  const wc = wagmiChainId(chainId);
 
   const { displayCurrency, isRatesLoading, ...rateFields } = useDisplayCurrency();
   const rates = useMemo(() => pickPartialFxRates(rateFields), [rateFields]);
 
   useMarketRatesRequest(true);
   useMarketRates({ enabled: true });
-  const { costWei: gasCostWei, isLoading: gasLoading } = useVerifyGasEstimate({ enabled: true });
+  const { costWei: gasCostWei, isLoading: gasLoading } = useVerifyGasEstimate({
+    chainId,
+    enabled: true,
+  });
 
   const { data: onChainFee } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "verificationFee",
     args: [address],
+    chainId: wc,
     query: { enabled: Boolean(staking && address) },
   });
 
@@ -115,6 +120,7 @@ export function KarProFeeSection({ address, staking }: KarProFeeSectionProps) {
         abi: KarProStakingAbi,
         functionName: "setVerificationFee",
         args: [totalWei],
+        chainId: wc,
       }),
     );
     if (succeeded) {

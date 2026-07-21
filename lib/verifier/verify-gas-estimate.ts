@@ -11,3 +11,8 @@ export function verifyGasCostWei(
   if (gasUnits <= 0n || maxFeePerGasWei <= 0n) return 0n;
   return gasUnits * maxFeePerGasWei;
 }
+
+/** React Query key — chain-scoped so hub/spoke estimates do not collide. */
+export function verifyGasEstimateQueryKey(chainId: number) {
+  return ["verify-gas-estimate", chainId] as const;
+}

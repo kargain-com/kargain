@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   VERIFY_PASSPORT_GAS_UNITS,
   verifyGasCostWei,
+  verifyGasEstimateQueryKey,
 } from "../lib/verifier/verify-gas-estimate.ts";
 
 describe("verifyGasCostWei", () => {
@@ -20,5 +21,15 @@ describe("verifyGasCostWei", () => {
 describe("VERIFY_PASSPORT_GAS_UNITS", () => {
   it("is 110_000", () => {
     assert.equal(VERIFY_PASSPORT_GAS_UNITS, 110_000n);
+  });
+});
+
+describe("verifyGasEstimateQueryKey", () => {
+  it("is chain-scoped", () => {
+    assert.deepEqual(verifyGasEstimateQueryKey(84532), ["verify-gas-estimate", 84532]);
+    assert.notDeepEqual(
+      verifyGasEstimateQueryKey(84532),
+      verifyGasEstimateQueryKey(11155111),
+    );
   });
 });

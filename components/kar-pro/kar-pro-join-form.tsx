@@ -19,15 +19,21 @@ import {
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type LoadingPhase = "idle" | "uploading";
 
-export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
-  const chainId = DEFAULT_CHAIN_ID;
+export function KarProJoinForm({
+  chainId,
+  onSuccess,
+}: {
+  chainId: number;
+  onSuccess: () => void;
+}) {
   const { address, connector } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
+  const wc = wagmiChainId(chainId);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [fields, setFields] = useState<KarProProfileFieldValues>({
@@ -43,9 +49,10 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
 
   const staking = karProStakingAddress(chainId);
 
-  const { minStake, stakeLabel } = useMinStakeNative();
+  const { minStake, stakeLabel } = useMinStakeNative(chainId);
   const isBusy = loadingPhase !== "idle" || txPhase !== "idle";
   const stakeReady = minStake !== undefined;
+  const networkLabel = shortChainName(chainId);
 
   const onContinue = () => {
     if (!fields.name.trim()) {
@@ -102,6 +109,7 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
             functionName: "becomeVerifierNative",
             args: [fields.categoryIndex, fields.name.trim(), metadataUri],
             value: minStake,
+            chainId: wc,
           }),
         {
           mapError: (err) =>
@@ -122,6 +130,10 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
   if (step === 1) {
     return (
       <div className="space-y-6">
+        <p className="font-mono text-xs tabular-nums text-text-tertiary">
+          Creating on {networkLabel}{" "}
+          <span className="text-text-tertiary">({chainId})</span>
+        </p>
         <KarProProfileFields
           values={fields}
           onChange={setFields}
@@ -148,6 +160,10 @@ export function KarProJoinForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="space-y-6">
+      <p className="font-mono text-xs tabular-nums text-text-tertiary">
+        Creating on {networkLabel}{" "}
+        <span className="text-text-tertiary">({chainId})</span>
+      </p>
       <article className="rounded-md border border-border-default bg-bg-card p-6">
         <p className="font-sans text-fluid-sm text-text-secondary">Profile summary</p>
         <p className="mt-2 font-sans text-base font-medium text-text-primary">{fields.name.trim()}</p>

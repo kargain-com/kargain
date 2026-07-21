@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { categoryLabel } from "@/lib/design/instrument-classes";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 
 export type KarProStatusWidgetProps = {
@@ -17,7 +19,9 @@ export function KarProStatusWidget({
   isOwner,
   isActiveVerifier,
 }: KarProStatusWidgetProps) {
-  const { stakeLabel } = useMinStakeNative();
+  const { chainId: walletChainId } = useAccount();
+  const chainId = resolveKarProTargetChainId(walletChainId);
+  const { stakeLabel } = useMinStakeNative(chainId ?? undefined);
 
   if (!isOwner || !isActiveVerifier) {
     return null;

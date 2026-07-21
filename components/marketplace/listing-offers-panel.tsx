@@ -29,6 +29,7 @@ type Props = {
 
 type RowProps = {
   offer: ListingOffer;
+  chainId: number;
   hasDirectPayment: boolean;
   isPanelPending: boolean;
   confirmingBuyer: `0x${string}` | null;
@@ -40,6 +41,7 @@ type RowProps = {
 
 function ListingOfferRow({
   offer,
+  chainId,
   hasDirectPayment,
   isPanelPending,
   confirmingBuyer,
@@ -48,9 +50,10 @@ function ListingOfferRow({
   onCancelConfirm,
   onConfirm,
 }: RowProps) {
-  const { displayName, isKarPro } = usePeerIdentity(offer.buyerEthAddress);
+  const { displayName, isKarPro } = usePeerIdentity(offer.buyerEthAddress, { chainId });
   const { profile } = useKarProVerifierProfile(offer.buyerEthAddress, {
     isActiveVerifier: isKarPro,
+    chainId,
     syncWhileMissing: false,
   });
 
@@ -222,6 +225,7 @@ export function ListingOffersPanel({
             <ListingOfferRow
               key={offer.eventId}
               offer={offer}
+              chainId={chainId}
               hasDirectPayment={hasDirectPayment}
               isPanelPending={busy}
               confirmingBuyer={confirmingBuyer}

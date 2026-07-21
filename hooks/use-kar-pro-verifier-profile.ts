@@ -12,6 +12,8 @@ import {
 
 type UseKarProVerifierProfileOptions = {
   isActiveVerifier: boolean;
+  /** Commercial chain for on-chain ProPass fallback; null disables chain reads. */
+  chainId: number | null;
   syncWhileMissing?: boolean;
 };
 
@@ -19,8 +21,9 @@ export function useKarProVerifierProfile(
   address: `0x${string}` | undefined,
   options: UseKarProVerifierProfileOptions,
 ) {
-  const { isActiveVerifier, syncWhileMissing = false } = options;
+  const { isActiveVerifier, chainId, syncWhileMissing = false } = options;
   const enabled = Boolean(address && isActiveVerifier);
+  const chainReadsEnabled = enabled && chainId != null;
   const pollKey = address ?? "";
   const [nullFetchCount, setNullFetchCount] = useState(0);
   const [trackedPollKey, setTrackedPollKey] = useState(pollKey);
@@ -31,7 +34,7 @@ export function useKarProVerifierProfile(
   const failureCount = pollKey === trackedPollKey ? nullFetchCount : 0;
 
   const ponderQuery = useQuery({
-    queryKey: ["kar-pro-verifier", address],
+    queryKey: ["kar-pro-verifier", address, chainId],
     queryFn: async () => {
       const profile = await fetchKarProVerifierProfile(address!, { fresh: true });
       setNullFetchCount((prev) => (profile ? 0 : prev + 1));
@@ -47,10 +50,14 @@ export function useKarProVerifierProfile(
     refetchIntervalInBackground: false,
   });
 
-  const chainQuery = useKarProOnChainProfile(address, enabled);
+  const chainQuery = useKarProOnChainProfile(
+    address,
+    chainReadsEnabled,
+    chainId ?? undefined,
+  );
 
   const ponderProfile = ponderQuery.data ?? null;
-  const chainProfile = chainQuery.profile;
+  const chainProfile = chainReadsEnabled ? chainQuery.profile : null;
   const profile = ponderProfile ?? chainProfile ?? null;
 
   const pollExhausted =
@@ -62,7 +69,7 @@ export function useKarProVerifierProfile(
   const isLoading =
     enabled &&
     !profile &&
-    (ponderQuery.isPending || chainQuery.isLoading) &&
+    (ponderQuery.isPending || (chainReadsEnabled && chainQuery.isLoading)) &&
     !pollExhausted;
 
   const isSyncing = enabled && Boolean(chainProfile) && !ponderProfile;

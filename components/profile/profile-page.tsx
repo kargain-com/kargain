@@ -16,7 +16,7 @@ import type {
   DisputedPassportRow,
   KarProVerifierProfile,
 } from "@/lib/verifier/verifier-profile-types";
-import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
+import type { VerifierPublicPassportRow } from "@/lib/verifier/fetch-verifier-public-data";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
 import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-stats-band";
@@ -44,20 +44,17 @@ import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/format/relative-time";
+import {
+  isProfilePassportBridgedAway,
+  type ProfileListingRow,
+  type ProfilePassportRow,
+} from "@/lib/passport/map-profile-passport";
 import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
+import { shortChainName } from "@/lib/web3/supported-chains";
 
-export type ProfileOwnedPassport = {
-  tokenId: string;
-  status: PassportStatus;
-  vin?: string | null;
-};
+export type ProfileOwnedPassport = ProfilePassportRow;
 
-export type ProfileListing = {
-  tokenId: string;
-  passportStatus: PassportStatus;
-  make?: string;
-  model?: string;
-};
+export type ProfileListing = ProfileListingRow;
 
 type TabId =
   | "passports"
@@ -77,7 +74,7 @@ export type ProfilePageProps = {
   initialNostrProfile: NostrProfileData | null;
   passports: ProfileOwnedPassport[];
   listings: ProfileListing[];
-  verifiedPassports: VerifierPassportRow[];
+  verifiedPassports: VerifierPublicPassportRow[];
   disputedPassports: DisputedPassportRow[];
   attestations: PonderVerifierAttestation[];
   ponderErr: string | null;
@@ -219,6 +216,7 @@ function PassportProfileCard({
   tokenId,
   status,
   chainId,
+  custodyChain,
   vin,
   make,
   model,
@@ -226,15 +224,21 @@ function PassportProfileCard({
 }: {
   tokenId: string;
   status: PassportStatus;
+  /** Origin chain for id label. */
   chainId: number;
+  /** Custody chain for detail link + bridged-away badge. */
+  custodyChain: number;
   vin?: string | null;
   make?: string;
   model?: string;
   year?: number;
 }) {
+  const bridgedAway = isProfilePassportBridgedAway(chainId, custodyChain);
+  const custodyLabel = shortChainName(custodyChain);
+
   return (
     <Link
-      href={`/marketplace/${tokenId}?chain=${chainId}`}
+      href={`/marketplace/${tokenId}?chain=${custodyChain}`}
       className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm transition-colors duration-150 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
     >
       <PassportIdLabel
@@ -247,6 +251,14 @@ function PassportProfileCard({
       <span className="ml-2">
         <PassportStatusBadge status={status} />
       </span>
+      {bridgedAway && (
+        <span
+          className="ml-2 font-mono text-xs tabular-nums text-text-tertiary"
+          title={`Custody on chain ${custodyChain}`}
+        >
+          on {custodyLabel}
+        </span>
+      )}
       {vin && <span className="ml-2 text-xs text-text-secondary">{vin}</span>}
       {make && model && (
         <p className="mt-1 font-sans text-sm text-text-primary">
@@ -568,11 +580,12 @@ export function ProfilePage({
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {passports.map((p) => (
-                    <li key={p.tokenId}>
+                    <li key={`${p.tokenId}-${p.custodyChain}`}>
                       <PassportProfileCard
                         tokenId={p.tokenId}
                         status={p.status}
-                        chainId={chainId}
+                        chainId={p.chainId}
+                        custodyChain={p.custodyChain}
                         vin={p.vin}
                       />
                     </li>
@@ -600,11 +613,12 @@ export function ProfilePage({
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {listings.map((l) => (
-                    <li key={l.tokenId}>
+                    <li key={`${l.tokenId}-${l.custodyChain}`}>
                       <PassportProfileCard
                         tokenId={l.tokenId}
                         status={l.passportStatus}
-                        chainId={chainId}
+                        chainId={l.originChainId ?? l.custodyChain}
+                        custodyChain={l.custodyChain}
                         make={l.make}
                         model={l.model}
                       />
@@ -643,11 +657,12 @@ export function ProfilePage({
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {verifiedPassports.map((p) => (
-                    <li key={p.tokenId}>
+                    <li key={`${p.tokenId}-${p.custodyChain}`}>
                       <PassportProfileCard
                         tokenId={p.tokenId}
                         status={p.status}
-                        chainId={chainId}
+                        chainId={p.chainId}
+                        custodyChain={p.custodyChain}
                         make={p.make}
                         model={p.model}
                         year={p.year}

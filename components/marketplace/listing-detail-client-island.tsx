@@ -293,7 +293,10 @@ export function ListingDetailClientIsland({
       )}
 
       {listingActive && hasListingAgent(listing?.agent) && (
-        <ListingAgentBuyerAttribution agentAddress={listing!.agent as `0x${string}`} />
+        <ListingAgentBuyerAttribution
+          agentAddress={listing!.agent as `0x${string}`}
+          chainId={chainId}
+        />
       )}
 
       {isSeller && listingActive && <SellerMessagingBanner />}
