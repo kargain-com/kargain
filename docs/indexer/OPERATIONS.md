@@ -12,13 +12,13 @@ Nuclear full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One 
 
 | Item | Value |
 |------|--------|
-| Hub contracts | `deployments/84532.json` / `SEPOLIA_ACTIVE` — `indexFromBlock` **44434865** |
-| Eth contracts | `deployments/11155111.json` (manifest-only) — `indexFromBlock` **11319840** |
+| Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **44434865** |
+| Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11319840** |
 | Hub start block | `PONDER_START_BLOCK_84532=44434865` |
 | Eth start block | `PONDER_START_BLOCK_11155111=11319840` |
 | Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
 | Eth RPC | `PONDER_RPC_URL_11155111` (default `https://ethereum-sepolia-rpc.publicnode.com`) |
-| Address resolution | Per-chain from manifests only (SPEC §I.12.12) — never address-alone |
+| Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
 | Docker | `docker compose build ponder` after code pull + post-build prune |
 
 **C3 schema (July 2026):** `chainId` on listing/sale/auction/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`.
@@ -105,9 +105,9 @@ Examples that **do not** require reindex:
 ## Prerequisites
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
-- **`git pull`** so Ponder uses committed hub addresses (`SEPOLIA_ACTIVE`) and Eth manifest `deployments/11155111.json` is present on the deploy machine / image build context as required
+- **`git pull`** so Ponder uses committed `COMMERCIAL_ACTIVE` (84532 + 11155111) from `lib/web3/commercial-active.ts`
 - **`PONDER_RPC_URL_84532`** + **`PONDER_RPC_URL_11155111`** and both numeric start blocks (see Nuclear steady state above)
-- Remove stale `deployments/84532.json` on the VPS if it points at pre-Nuclear addresses — `pnpm ponder:config` warns on drift
+- Remove stale `deployments/<chainId>.json` on the VPS if present (gitignored local artifacts override committed — `pnpm ponder:config` warns on drift)
 
 ---
 
@@ -230,7 +230,7 @@ This drops and recreates the `kargain` and `ponder_sync` schemas (truncate alone
 pnpm ponder:config
 ```
 
-Contract addresses resolve automatically **per chain** (SPEC §I.12.12): hub via `PONDER_*_ADDRESS` env (optional) → `deployments/84532.json` → **`SEPOLIA_ACTIVE`**; Eth via **`deployments/11155111.json` only**. After a Nuclear redeploy, commit both manifests / `SEPOLIA_ACTIVE` and **`git pull` on the VPS** — do not paste address exports into `.env`.
+Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optional `PONDER_*` env (84532 debug) → local `deployments/<chainId>.json` → **`COMMERCIAL_ACTIVE[chainId]`** in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts). After a Nuclear redeploy, update `COMMERCIAL_ACTIVE` + SPEC I.9.x in git and **`git pull` on the VPS** — do not paste address exports into `.env`, and do not require copying gitignored manifests onto the server.
 
 **VPS `.env` — infrastructure only (Nuclear steady state):**
 
@@ -244,7 +244,7 @@ DATABASE_URL=...                    # Postgres for Ponder
 
 Optional advanced overrides (84532 only): `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, `PONDER_AUCTION_ESCROW_ADDRESS`, … only when debugging.
 
-**Per-contract start blocks:** from each commercial manifest’s `blocks.*`. Confirm with `pnpm ponder:config` after pull.
+**Per-contract start blocks:** from `COMMERCIAL_ACTIVE[chainId].blocks` (or local manifest when present). Confirm with `pnpm ponder:config` after pull.
 
 For G1 schema-only updates (same contract addresses), keep existing infra env; still set start blocks to each `indexFromBlock` for a full replay unless you intentionally use higher checkpoints.
 
@@ -320,13 +320,15 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
-| `scripts/lib/resolve-sepolia-stack.ts` | env → manifest → `SEPOLIA_ACTIVE` resolver |
+| `scripts/lib/resolve-sepolia-stack.ts` | `resolveCommercialStack`: env → manifest → `COMMERCIAL_ACTIVE` |
 | `Dockerfile.ponder` | Copy `patches/` before `pnpm install` (Docker build on VPS) |
-| `scripts/lib/ponder-env.ts` | Default RPC fallback (`sepolia.base.org`) |
+| `scripts/lib/ponder-env.ts` | Dual-chain RPC + contract start blocks |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
-| `scripts/deploy.ts` | Base Sepolia deploy (generation v2) |
-| `deployments/84532.json` | Manifest (`generation`, `indexFromBlock`) — not in git |
-| [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Sepolia addresses |
+| `scripts/deploy.ts` | Nuclear commercial deploy (84532 / 11155111) |
+| `lib/web3/commercial-active.ts` | **Committed** per-chain stacks (VPS / CI fallback) |
+| `deployments/<chainId>.json` | Local deploy artifact — not in git; optional override when present |
+| [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Base Sepolia addresses |
+| [contracts/SPEC.md Part I.9.2](../contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) | **Active** Ethereum Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + FX extension |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | Deploy record (84532 generation v2) |

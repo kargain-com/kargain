@@ -1,8 +1,11 @@
 import { getAddress } from "viem";
 
 import {
-  SEPOLIA_ACTIVE,
-  SEPOLIA_CHAIN_ID,
+  requireCommercialActive,
+  type CommercialActiveStack,
+} from "../../lib/web3/commercial-active.js";
+import {
+  ETHEREUM_SEPOLIA_PUBLIC_RPC,
   SEPOLIA_PUBLIC_RPC,
 } from "../../lib/web3/sepolia-addresses.js";
 import type {
@@ -10,12 +13,22 @@ import type {
   DeploymentManifest,
   PonderAddressBundle,
 } from "./load-deployment.js";
-import { loadSepoliaDeployment, SEPOLIA_DEPLOYMENT_PATH } from "./load-deployment.js";
+import {
+  commercialDeploymentPath,
+  loadCommercialDeployment,
+  loadSepoliaDeployment,
+  SEPOLIA_CHAIN_ID as HUB_CHAIN_ID,
+  SEPOLIA_DEPLOYMENT_PATH,
+  SPOKE_CHAIN_ID,
+} from "./load-deployment.js";
 
-export type SepoliaStackSource = "env" | "manifest" | "committed";
+export type CommercialStackSource = "env" | "manifest" | "committed";
 
-export type ResolvedSepoliaStack = {
-  source: SepoliaStackSource;
+/** @deprecated Use CommercialStackSource */
+export type SepoliaStackSource = CommercialStackSource;
+
+export type ResolvedCommercialStack = {
+  source: CommercialStackSource;
   chainId: number;
   generation: string;
   karPassport: `0x${string}`;
@@ -32,6 +45,9 @@ export type ResolvedSepoliaStack = {
   blocks: DeploymentBlocks;
 };
 
+/** @deprecated Use ResolvedCommercialStack */
+export type ResolvedSepoliaStack = ResolvedCommercialStack;
+
 const CORE_ENV_KEYS = [
   "PONDER_KAR_PASSPORT_ADDRESS",
   "PONDER_KAR_PRO_PASS_ADDRESS",
@@ -39,17 +55,48 @@ const CORE_ENV_KEYS = [
   "PONDER_MARKETPLACE_ADDRESS",
 ] as const;
 
-function parseStartBlockEnv(): number | undefined {
+function parseStartBlockEnv(chainId: number): number | undefined {
+  const specificKey =
+    chainId === HUB_CHAIN_ID
+      ? "PONDER_START_BLOCK_84532"
+      : chainId === SPOKE_CHAIN_ID
+        ? "PONDER_START_BLOCK_11155111"
+        : undefined;
   const raw =
-    process.env.PONDER_START_BLOCK_84532?.trim() ||
-    process.env.PONDER_START_BLOCK?.trim();
+    (specificKey ? process.env[specificKey]?.trim() : undefined) ||
+    (chainId === HUB_CHAIN_ID ? process.env.PONDER_START_BLOCK?.trim() : undefined);
   if (!raw || raw === "latest") return undefined;
   const block = Number.parseInt(raw, 10);
   if (!Number.isFinite(block) || block < 0) return undefined;
   return block;
 }
 
-function stackFromManifest(manifest: DeploymentManifest, source: SepoliaStackSource): ResolvedSepoliaStack {
+function stackFromCommitted(chainId: number): ResolvedCommercialStack {
+  const active = requireCommercialActive(chainId);
+  return {
+    source: "committed",
+    chainId: active.chainId,
+    generation: "v2",
+    karPassport: active.karPassport,
+    karProPass: active.karProPass,
+    karProStaking: active.karProStaking,
+    marketplace: active.marketplace,
+    marketplaceImpl: active.marketplaceImpl,
+    usdc: active.usdc,
+    nativeFeed: active.nativeFeed,
+    timelock: active.timelock,
+    proxyOnftAdapter: active.proxyOnftAdapter,
+    auctionEscrow: active.auctionEscrow,
+    indexFromBlock: active.indexFromBlock,
+    blocks: { ...active.blocks },
+  };
+}
+
+function stackFromManifest(
+  manifest: DeploymentManifest,
+  source: CommercialStackSource,
+  committed: CommercialActiveStack,
+): ResolvedCommercialStack {
   return {
     source,
     chainId: manifest.chainId,
@@ -59,8 +106,8 @@ function stackFromManifest(manifest: DeploymentManifest, source: SepoliaStackSou
     karProStaking: manifest.karProStaking,
     marketplace: manifest.marketplace,
     marketplaceImpl: manifest.marketplaceImpl,
-    usdc: manifest.usdc ?? SEPOLIA_ACTIVE.usdc,
-    nativeFeed: manifest.nativeFeed ?? SEPOLIA_ACTIVE.nativeFeed,
+    usdc: manifest.usdc ?? committed.usdc,
+    nativeFeed: manifest.nativeFeed ?? committed.nativeFeed,
     ...(manifest.timelock ? { timelock: manifest.timelock } : {}),
     ...(manifest.proxyOnftAdapter ? { proxyOnftAdapter: manifest.proxyOnftAdapter } : {}),
     ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
@@ -69,37 +116,24 @@ function stackFromManifest(manifest: DeploymentManifest, source: SepoliaStackSou
   };
 }
 
-function stackFromCommitted(): ResolvedSepoliaStack {
-  return {
-    source: "committed",
-    chainId: SEPOLIA_CHAIN_ID,
-    generation: "v2",
-    karPassport: SEPOLIA_ACTIVE.karPassport,
-    karProPass: SEPOLIA_ACTIVE.karProPass,
-    karProStaking: SEPOLIA_ACTIVE.karProStaking,
-    marketplace: SEPOLIA_ACTIVE.marketplace,
-    marketplaceImpl: SEPOLIA_ACTIVE.marketplaceImpl,
-    usdc: SEPOLIA_ACTIVE.usdc,
-    nativeFeed: SEPOLIA_ACTIVE.nativeFeed,
-    timelock: SEPOLIA_ACTIVE.timelock,
-    proxyOnftAdapter: SEPOLIA_ACTIVE.proxyOnftAdapter,
-    auctionEscrow: SEPOLIA_ACTIVE.auctionEscrow,
-    indexFromBlock: SEPOLIA_ACTIVE.indexFromBlock,
-    blocks: { ...SEPOLIA_ACTIVE.blocks },
-  };
-}
-
-function stackFromEnv(): ResolvedSepoliaStack | null {
+/**
+ * Debug overrides for hub (84532) only — all four core PONDER_* addresses required.
+ * Do not invent per-chain env maps here; Eth uses manifest → committed.
+ */
+function stackFromEnv84532(): ResolvedCommercialStack | null {
   const karPassport = process.env.PONDER_KAR_PASSPORT_ADDRESS;
   const karProPass = process.env.PONDER_KAR_PRO_PASS_ADDRESS;
   const karProStaking = process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
   const marketplace = process.env.PONDER_MARKETPLACE_ADDRESS;
   if (!karPassport || !karProPass || !karProStaking || !marketplace) return null;
 
+  const committed = requireCommercialActive(HUB_CHAIN_ID);
   const manifest = loadSepoliaDeployment();
-  const base = manifest ? stackFromManifest(manifest, "env") : stackFromCommitted();
+  const base = manifest
+    ? stackFromManifest(manifest, "env", committed)
+    : stackFromCommitted(HUB_CHAIN_ID);
 
-  const indexFromBlock = parseStartBlockEnv() ?? base.indexFromBlock;
+  const indexFromBlock = parseStartBlockEnv(HUB_CHAIN_ID) ?? base.indexFromBlock;
 
   return {
     ...base,
@@ -124,8 +158,7 @@ function stackFromEnv(): ResolvedSepoliaStack | null {
   };
 }
 
-export function ponderSepoliaAddresses(): PonderAddressBundle {
-  const stack = resolveSepoliaStack();
+export function ponderAddressesFromStack(stack: ResolvedCommercialStack): PonderAddressBundle {
   return {
     karPassport: stack.karPassport,
     karProPass: stack.karProPass,
@@ -133,6 +166,46 @@ export function ponderSepoliaAddresses(): PonderAddressBundle {
     marketplace: stack.marketplace,
     marketplaceImpl: stack.marketplaceImpl,
     ...(stack.auctionEscrow ? { auctionEscrow: stack.auctionEscrow } : {}),
+  };
+}
+
+/**
+ * Uniform commercial resolver: optional env (84532) → deployments/<chainId>.json → COMMERCIAL_ACTIVE.
+ */
+export function resolveCommercialStack(chainId: number): ResolvedCommercialStack {
+  if (chainId === HUB_CHAIN_ID) {
+    const fromEnv = stackFromEnv84532();
+    if (fromEnv) return fromEnv;
+  }
+
+  const committed = requireCommercialActive(chainId);
+  const manifest = loadCommercialDeployment(chainId);
+  if (manifest) return stackFromManifest(manifest, "manifest", committed);
+
+  return stackFromCommitted(chainId);
+}
+
+/** Hub convenience — same as resolveCommercialStack(84532). */
+export function resolveSepoliaStack(): ResolvedCommercialStack {
+  return resolveCommercialStack(HUB_CHAIN_ID);
+}
+
+export function ponderSepoliaAddresses(): PonderAddressBundle {
+  return ponderAddressesFromStack(resolveSepoliaStack());
+}
+
+export function ponderCommercialAddresses(chainId: number): {
+  addresses: PonderAddressBundle;
+  blocks: DeploymentBlocks;
+  indexFromBlock: number;
+  source: CommercialStackSource;
+} {
+  const stack = resolveCommercialStack(chainId);
+  return {
+    addresses: ponderAddressesFromStack(stack),
+    blocks: stack.blocks,
+    indexFromBlock: stack.indexFromBlock,
+    source: stack.source,
   };
 }
 
@@ -144,19 +217,8 @@ export function sepoliaIndexFromBlock(): number {
   return resolveSepoliaIndexFromBlock();
 }
 
-/** Single resolver: PONDER_* env → deployments/84532.json → lib/web3/sepolia-addresses.ts */
-export function resolveSepoliaStack(): ResolvedSepoliaStack {
-  const fromEnv = stackFromEnv();
-  if (fromEnv) return fromEnv;
-
-  const manifest = loadSepoliaDeployment();
-  if (manifest) return stackFromManifest(manifest, "manifest");
-
-  return stackFromCommitted();
-}
-
 export function resolveSepoliaIndexFromBlock(): number {
-  return parseStartBlockEnv() ?? resolveSepoliaStack().indexFromBlock;
+  return parseStartBlockEnv(HUB_CHAIN_ID) ?? resolveSepoliaStack().indexFromBlock;
 }
 
 export function resolveSepoliaBlocksForPonder(): DeploymentBlocks {
@@ -164,7 +226,7 @@ export function resolveSepoliaBlocksForPonder(): DeploymentBlocks {
 }
 
 type AddressField = keyof Pick<
-  ResolvedSepoliaStack,
+  ResolvedCommercialStack,
   "karPassport" | "karProPass" | "karProStaking" | "marketplace" | "marketplaceImpl"
 >;
 
@@ -177,19 +239,20 @@ const COMPARE_FIELDS: AddressField[] = [
 ];
 
 /** Warn when local manifest diverges from committed fallbacks (common VPS drift). */
-export function manifestCommittedDrift(): string[] {
-  const manifest = loadSepoliaDeployment();
+export function manifestCommittedDrift(chainId: number = HUB_CHAIN_ID): string[] {
+  const manifest = loadCommercialDeployment(chainId);
   if (!manifest) return [];
 
-  const committed = stackFromCommitted();
+  const committed = stackFromCommitted(chainId);
   const warnings: string[] = [];
+  const path = commercialDeploymentPath(chainId);
 
   for (const field of COMPARE_FIELDS) {
     const a = manifest[field].toLowerCase();
     const b = committed[field].toLowerCase();
     if (a !== b) {
       warnings.push(
-        `${field}: manifest ${manifest[field]} ≠ committed ${committed[field]} — git pull or remove stale ${SEPOLIA_DEPLOYMENT_PATH}`,
+        `${field}: manifest ${manifest[field]} ≠ committed ${committed[field]} — git pull or remove stale ${path}`,
       );
     }
   }
@@ -203,54 +266,64 @@ export function manifestCommittedDrift(): string[] {
   return warnings;
 }
 
-export function formatSepoliaStackReport(stack: ResolvedSepoliaStack): string {
+export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string {
+  const eth = resolveCommercialStack(SPOKE_CHAIN_ID);
   const lines: string[] = [
-    "Kargain Base Sepolia stack (84532)",
-    "================================",
-    `Address source: ${stack.source}`,
-    `Generation:     ${stack.generation}`,
-    `indexFromBlock: ${stack.indexFromBlock}`,
+    "Kargain commercial stacks",
+    "=========================",
     "",
-    "Contracts (Ponder + app fallbacks use these when env unset):",
-    `  karPassport:      ${stack.karPassport}`,
-    `  karProPass:       ${stack.karProPass}`,
-    `  karProStaking:    ${stack.karProStaking}`,
-    `  marketplace:      ${stack.marketplace}`,
-    `  marketplaceImpl:  ${stack.marketplaceImpl}`,
-    ...(stack.timelock ? [`  timelock:           ${stack.timelock}`] : []),
-    ...(stack.proxyOnftAdapter ? [`  proxyOnftAdapter:   ${stack.proxyOnftAdapter}`] : []),
-    ...(stack.auctionEscrow ? [`  auctionEscrow:      ${stack.auctionEscrow}`] : []),
-    ...(stack.blocks.auctionEscrow !== undefined
-      ? [`  blocks.auctionEscrow: ${stack.blocks.auctionEscrow}`]
-      : []),
+    `Base Sepolia (84532) — source: ${stack.source}`,
+    `  Generation:     ${stack.generation}`,
+    `  indexFromBlock: ${stack.indexFromBlock}`,
+    `  karPassport:    ${stack.karPassport}`,
+    `  marketplace:    ${stack.marketplace}`,
+    `  auctionEscrow:  ${stack.auctionEscrow ?? "(none)"}`,
+    `  gateway:        ${stack.proxyOnftAdapter ?? "(none)"}`,
     "",
-    "Network (set once on VPS / Vercel — see .env.example):",
-    `  NEXT_PUBLIC_CHAIN_ID=84532`,
-    `  NEXT_PUBLIC_RPC_BY_CHAIN={"84532":"${SEPOLIA_PUBLIC_RPC}"}`,
+    `Ethereum Sepolia (11155111) — source: ${eth.source}`,
+    `  indexFromBlock: ${eth.indexFromBlock}`,
+    `  karPassport:    ${eth.karPassport}`,
+    `  marketplace:    ${eth.marketplace}`,
+    `  auctionEscrow:  ${eth.auctionEscrow ?? "(none)"}`,
+    `  gateway:        ${eth.proxyOnftAdapter ?? "(none)"}`,
+    "",
+    "Network (VPS — see .env.example):",
     `  PONDER_RPC_URL_84532=${process.env.PONDER_RPC_URL_84532 ?? SEPOLIA_PUBLIC_RPC}`,
+    `  PONDER_RPC_URL_11155111=${process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC}`,
     `  PONDER_START_BLOCK_84532=${stack.indexFromBlock}`,
+    `  PONDER_START_BLOCK_11155111=${eth.indexFromBlock}`,
+    `  NEXT_PUBLIC_RPC_BY_CHAIN={"84532":"${SEPOLIA_PUBLIC_RPC}","11155111":"${ETHEREUM_SEPOLIA_PUBLIC_RPC}"}`,
     "",
   ];
 
-  const drift = manifestCommittedDrift();
+  const drift = [
+    ...manifestCommittedDrift(HUB_CHAIN_ID),
+    ...manifestCommittedDrift(SPOKE_CHAIN_ID),
+  ];
   if (drift.length > 0) {
     lines.push("Warnings (manifest vs committed in git):");
     for (const w of drift) lines.push(`  ⚠ ${w}`);
     lines.push("");
   }
 
-  if (stack.source === "committed") {
+  if (stack.source === "committed" && eth.source === "committed") {
     lines.push(
-      "Ponder contract addresses: no PONDER_*_ADDRESS overrides needed after git pull.",
-      "Vercel contract addresses: no NEXT_PUBLIC_* overrides needed (SEPOLIA_ACTIVE in repo).",
-    );
-  } else if (stack.source === "manifest") {
-    lines.push(
-      `Using ${SEPOLIA_DEPLOYMENT_PATH} on disk.`,
-      "After deploy: commit lib/web3/sepolia-addresses.ts in the same PR, then git pull on VPS.",
+      "Addresses: COMMERCIAL_ACTIVE in lib/web3/commercial-active.ts (git pull + rebuild).",
+      "No PONDER_*_ADDRESS or deployments/*.json required on VPS.",
     );
   } else {
-    lines.push(`Using PONDER_* env overrides (${CORE_ENV_KEYS.join(", ")}).`);
+    if (stack.source === "env") {
+      lines.push(`Hub using PONDER_* env overrides (${CORE_ENV_KEYS.join(", ")}).`);
+    }
+    if (stack.source === "manifest") {
+      lines.push(`Hub using ${SEPOLIA_DEPLOYMENT_PATH} on disk.`);
+    }
+    if (eth.source === "manifest") {
+      lines.push(`Eth using ${commercialDeploymentPath(SPOKE_CHAIN_ID)} on disk.`);
+    }
+    lines.push(
+      "After Nuclear cutover: update COMMERCIAL_ACTIVE + SPEC I.9.x in the same PR, then git pull on VPS.",
+    );
   }
 
   lines.push(
@@ -261,3 +334,5 @@ export function formatSepoliaStackReport(stack: ResolvedSepoliaStack): string {
 
   return lines.join("\n");
 }
+
+export { HUB_CHAIN_ID as SEPOLIA_CHAIN_ID, CORE_ENV_KEYS };

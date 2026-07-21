@@ -13,8 +13,10 @@
 
 Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12):
 
-- Hub 84532: `deployments/84532.json` → `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`); optional `PONDER_*_ADDRESS` env overrides
-- Eth 11155111: `deployments/11155111.json` only (no committed fallback)
+**Addresses (per chainId, SPEC §I.12.12):**
+- Committed: `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE`) — VPS / CI after `git pull`
+- Optional local: `deployments/<chainId>.json` (gitignored deploy artifact; overrides when present)
+- Optional debug (84532 only): `PONDER_*_ADDRESS` env
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) + Eth nuclear table
 

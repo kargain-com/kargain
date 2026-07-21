@@ -578,9 +578,9 @@ Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
-> **Single source of truth** for active 84532 contract addresses and semver. Other docs link here. Matches `deployments/84532.json` and `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`).
+> **Single source of truth** for active 84532 contract addresses and semver. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[84532]` / `SEPOLIA_ACTIVE`). Local `deployments/84532.json` is a deploy-machine artifact (not in git).
 
-Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **44434865** · manifest: `deployments/84532.json` (not in git)
+Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **44434865** · committed: `COMMERCIAL_ACTIVE[84532]`
 
 | Contract | VERSION | Address | Basescan |
 |----------|---------|---------|----------|
@@ -607,9 +607,9 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
-> **Single source of truth** for the Nuclear full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `deployments/11155111.json`.
+> **Single source of truth** for the Nuclear full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[11155111]`). Local `deployments/11155111.json` is a deploy-machine artifact (not in git).
 
-Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **11319840** · manifest: `deployments/11155111.json` (not in git) · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
+Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **11319840** · committed: `COMMERCIAL_ACTIVE[11155111]` · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
 
 | Contract | VERSION | Address | Etherscan |
 |----------|---------|---------|-----------|

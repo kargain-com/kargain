@@ -1,4 +1,12 @@
-/** Base Sepolia (84532) — single source for committed fallbacks. Canonical doc: docs/contracts/SPEC.md Part I.9.1 */
+/**
+ * Base Sepolia (84532) surface + Eth Sepolia read-only bridge constants.
+ * Committed stacks: lib/web3/commercial-active.ts (SPEC I.9.x).
+ */
+
+import {
+  COMMERCIAL_ACTIVE,
+  requireCommercialActive,
+} from "./commercial-active";
 
 export const SEPOLIA_CHAIN_ID = 84532;
 
@@ -6,41 +14,10 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
 
 /**
- * Active Nuclear stack — July 21, 2026 cutover.
+ * Active Nuclear stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
  * KarPassport `1.3.0-rc.1` + KarPassportBridgeGateway `1.1.0-rc.1` (manifest key `proxyOnftAdapter`).
- * Addresses from `deployments/84532.json`.
  */
-export const SEPOLIA_ACTIVE = {
-  karPassport: "0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a",
-  karProPass: "0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25",
-  karProStaking: "0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f",
-  marketplace: "0x60336c550946AF79c8FCfaDfA65d76224B356323",
-  marketplaceImpl: "0x0F98B21857386dF0c3B0323c94e63e140533495F",
-  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-  /** Chainlink EUR/USD — not registered on USD-only Nuclear marketplace; kept for display/FX helpers. */
-  eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
-  timelock: "0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760",
-  /** KarPassportBridgeGateway (manifest key remains `proxyOnftAdapter`). */
-  proxyOnftAdapter: "0x2a4339656393da943730b7Ac728480f40909f14C",
-  auctionEscrow: "0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04",
-  layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
-  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
-  deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760",
-  indexFromBlock: 44_434_865,
-  blocks: {
-    timelock: 44_434_875,
-    karProPass: 44_434_878,
-    karProStaking: 44_434_885,
-    karPassport: 44_434_921,
-    marketplaceImpl: 44_434_934,
-    marketplace: 44_434_937,
-    auctionEscrowImpl: 44_434_946,
-    auctionEscrow: 44_434_977,
-    proxyOnftAdapter: 44_434_981,
-  },
-} as const satisfies Record<string, `0x${string}` | number | Record<string, number>>;
+export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
 
 /**
  * Abandoned / historical Kargain contracts on **Base Sepolia only**.
@@ -71,8 +48,8 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
 ];
 
 /**
- * Ethereum Sepolia spoke (11155111) — read-only in the app (not in wagmi write union).
- * Thin ONFT address retained until C4 app wiring; live full stack: SPEC I.9.2 + `deployments/11155111.json`.
+ * Ethereum Sepolia (11155111) — app read-only (not in wagmi write union).
+ * Nuclear full stack: `karPassportOnft` is the Eth KarPassport NFT (ownerOf delivery polls).
  */
 export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
 
@@ -80,13 +57,19 @@ export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
 export const ETHEREUM_SEPOLIA_PUBLIC_RPC =
   "https://ethereum-sepolia-rpc.publicnode.com";
 
+const ethActive = requireCommercialActive(ETHEREUM_SEPOLIA_CHAIN_ID);
+
 export const ETHEREUM_SEPOLIA_SPOKE = {
   chainId: ETHEREUM_SEPOLIA_CHAIN_ID,
-  karPassportOnft: "0x5b7fD0ffF9B82255AD4d043a491e81948b76e703",
-  layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
+  /** Nuclear Eth KarPassport — NFT ownership for bridge delivery polls. */
+  karPassportOnft: ethActive.karPassport,
+  /** Eth KarPassportBridgeGateway (OApp peer). */
+  bridgeGateway: ethActive.proxyOnftAdapter,
+  layerZeroEndpoint: ethActive.layerZeroEndpoint,
   hubEid: 40245,
   spokeEid: 40161,
   blocks: {
-    karPassportOnft: 11_312_959,
+    karPassportOnft: ethActive.blocks.karPassport!,
+    bridgeGateway: ethActive.blocks.proxyOnftAdapter!,
   },
 } as const;
