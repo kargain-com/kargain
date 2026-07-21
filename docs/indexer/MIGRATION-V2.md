@@ -1,16 +1,21 @@
 # Ponder generation v2 migration guide
 
-**Status (June 2026):**
+**Status:**
 
 | Area | Status |
 |------|--------|
-| VPS env + contract addresses | ✅ Complete — `SEPOLIA_ACTIVE`, reindex from **43399242** ([ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)) |
+| VPS env + contract addresses (June 2026 v2) | ✅ Complete — reindex from **43399242** ([ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)) — **superseded for production by Nuclear below** |
 | v1 ghost index data | ✅ Cleared after production reindex |
 | Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
+| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — VPS **full reindex** from hub **44434865** + Eth **11319840** ([OPERATIONS.md](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **AuctionEscrow** indexing is documented in [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md). This document remains as reference for the v2 mapping and FX display work (§6).
 
-**Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook)
+### Nuclear dual-chain (C3)
+
+Identical commercial stacks on Base Sepolia (**84532**) and Ethereum Sepolia (**11155111**). Addresses only from `deployments/<chainId>.json`. Entity/API keys include `chainId`; `passport.custodyChain` tracks the usable instance (SPEC §I.12.8 / §I.12.12). `passport_record` / `passport_uri_history` are written by both networks into one table (UNION by global `tokenId`).
+
+**Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook) · [SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)
 
 **Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. `2.0.0-rc.1` for MarketplaceEscrow). Indexer migration follows generation, not semver major alone.
 

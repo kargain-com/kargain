@@ -36,6 +36,11 @@ import {
   verificationResetTrustFields,
 } from "./lib/ponder-g1-fields";
 import {
+  nextCustodyChain,
+  originChainIdOf,
+  resolveCustody,
+} from "./lib/ponder-custody";
+import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
 import { indexKarProMetadataFromUri } from "./lib/ponder-kar-pro-metadata";
@@ -62,6 +67,10 @@ const ZERO_ADDRESS =
 
 function currencyFeedId(chainId: number, currencyCode: string): string {
   return `${chainId}-${currencyCode}`;
+}
+
+function eventChainId(event: { chain: { id: number | bigint } }): number {
+  return Number(event.chain.id);
 }
 
 /** Mirror `_clearAuctionStorage` silent auth delete — no-op when no row. */
@@ -104,6 +113,7 @@ async function appendUriHistory(
   context: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"],
   params: {
     tokenId: string;
+    chainId: number;
     previousUri: string;
     newUri: string;
     author: string;
@@ -115,6 +125,7 @@ async function appendUriHistory(
   await context.db.insert(passportUriHistory).values({
     id: params.historyId,
     tokenId: params.tokenId,
+    chainId: params.chainId,
     previousUri: params.previousUri,
     newUri: params.newUri,
     author: params.author,
@@ -126,28 +137,155 @@ async function appendUriHistory(
 ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const uri = event.args.uri;
+  const origin = originChainIdOf(event.args.tokenId);
+  const chainId = eventChainId(event);
+  const ts = event.block.timestamp;
+  const custodyChain =
+    nextCustodyChain(undefined, {
+      kind: "native-mint",
+      eventChainId: chainId,
+      tokenId: event.args.tokenId,
+    }) ?? origin;
+  const custody =
+    resolveCustody(undefined, custodyChain, ts) ?? {
+      custodyChain,
+      custodyUpdatedAt: ts,
+    };
 
   await context.db.insert(passport).values({
     id: tokenId,
+    chainId: origin,
+    custodyChain: custody.custodyChain,
+    custodyUpdatedAt: custody.custodyUpdatedAt,
     owner: event.args.to,
     status: "UNVERIFIED",
     verifier: "",
     verifiedAt: 0n,
     tokenUri: uri,
-    ...passportMintTrustFields(event.block.timestamp),
+    ...passportMintTrustFields(ts),
   });
 
   await appendUriHistory(context, {
     tokenId,
+    chainId,
     previousUri: "",
     newUri: uri,
     author: event.args.to,
     verificationReset: false,
-    timestamp: event.block.timestamp,
+    timestamp: ts,
     historyId: `${event.transaction.hash}-${event.log.logIndex}`,
   });
 
-  await indexPassportMetadataFromUri(context, tokenId, uri, event.block.timestamp);
+  await indexPassportMetadataFromUri(context, tokenId, uri, ts);
+});
+
+ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
+  const tokenId = event.args.tokenId.toString();
+  const uri = event.args.uri;
+  const origin = originChainIdOf(event.args.tokenId);
+  const chainId = eventChainId(event);
+  const candidate =
+    nextCustodyChain(undefined, {
+      kind: "bridge-mint",
+      eventChainId: chainId,
+    }) ?? chainId;
+  const ts = event.block.timestamp;
+  const trust = passportMintTrustFields(ts);
+
+  const existing = await context.db.find(passport, { id: tokenId });
+  const custody = resolveCustody(
+    existing
+      ? {
+          custodyChain: existing.custodyChain,
+          custodyUpdatedAt: existing.custodyUpdatedAt,
+        }
+      : undefined,
+    candidate,
+    ts,
+  );
+
+  if (existing) {
+    await context.db.update(passport, { id: tokenId }).set({
+      ...(custody
+        ? {
+            custodyChain: custody.custodyChain,
+            custodyUpdatedAt: custody.custodyUpdatedAt,
+          }
+        : {}),
+      owner: event.args.to,
+      status: "UNVERIFIED",
+      verifier: "",
+      verifiedAt: 0n,
+      tokenUri: uri,
+      ...verificationResetTrustFields(existing.verificationResetCount, ts),
+      lastMetadataChangeAt: trust.lastMetadataChangeAt,
+    });
+  } else {
+    const initial =
+      custody ??
+      ({ custodyChain: candidate, custodyUpdatedAt: ts } as const);
+    await context.db.insert(passport).values({
+      id: tokenId,
+      chainId: origin,
+      custodyChain: initial.custodyChain,
+      custodyUpdatedAt: initial.custodyUpdatedAt,
+      owner: event.args.to,
+      status: "UNVERIFIED",
+      verifier: "",
+      verifiedAt: 0n,
+      tokenUri: uri,
+      ...trust,
+    });
+  }
+
+  await appendUriHistory(context, {
+    tokenId,
+    chainId,
+    previousUri: existing?.tokenUri ?? "",
+    newUri: uri,
+    author: event.args.to,
+    verificationReset: true,
+    timestamp: ts,
+    historyId: `${event.transaction.hash}-${event.log.logIndex}`,
+  });
+
+  await indexPassportMetadataFromUri(context, tokenId, uri, ts);
+});
+
+ponder.on("KarPassport:PassportBridgeBurned", async () => {
+  // Token left this network. Do not recalculate custodyChain —
+  // destination PassportBridgeMinted owns the update (SPEC §I.12.8).
+});
+
+ponder.on("KarPassport:CustodyLockSet", async ({ event, context }) => {
+  if (event.args.locked) return;
+  const tokenId = event.args.tokenId.toString();
+  const chainId = eventChainId(event);
+  const candidate = nextCustodyChain(undefined, {
+    kind: "custody-unlock",
+    eventChainId: chainId,
+  });
+  if (candidate === undefined) return;
+
+  const existing = await context.db.find(passport, { id: tokenId });
+  const ts = event.block.timestamp;
+  const custody = resolveCustody(
+    existing
+      ? {
+          custodyChain: existing.custodyChain,
+          custodyUpdatedAt: existing.custodyUpdatedAt,
+        }
+      : undefined,
+    candidate,
+    ts,
+  );
+  if (custody === null) return;
+
+  await context.db.update(passport, { id: tokenId }).set({
+    custodyChain: custody.custodyChain,
+    custodyUpdatedAt: custody.custodyUpdatedAt,
+    updatedAt: ts,
+  });
 });
 
 ponder.on("KarPassport:PassportVerified", async ({ event, context }) => {
@@ -187,15 +325,36 @@ ponder.on("KarPassport:DisputeWithdrawn", async ({ event, context }) => {
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const existing = await context.db.find(passport, { id: tokenId });
+  const origin = existing?.chainId ?? originChainIdOf(event.args.tokenId);
+  const chainId = eventChainId(event);
+  // Unlock-on-home emits VerificationReset; set custody to home when event is on origin.
+  const custodyPatch =
+    chainId === origin
+      ? {
+          custodyChain:
+            nextCustodyChain(existing?.custodyChain, {
+              kind: "verification-reset-home",
+              eventChainId: chainId,
+              originChainId: origin,
+            }) ?? origin,
+        }
+      : {};
   await context.db
     .update(passport, { id: tokenId })
-    .set(verificationResetTrustFields(existing?.verificationResetCount ?? 0, event.block.timestamp));
+    .set({
+      ...verificationResetTrustFields(
+        existing?.verificationResetCount ?? 0,
+        event.block.timestamp,
+      ),
+      ...custodyPatch,
+    });
 });
 
 ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const existing = await context.db.find(passport, { id: tokenId });
   const previousUri = existing?.tokenUri ?? "";
+  const chainId = eventChainId(event);
 
   const verificationReset =
     existing != null &&
@@ -210,6 +369,7 @@ ponder.on("KarPassport:PassportURIUpdated", async ({ event, context }) => {
 
   await appendUriHistory(context, {
     tokenId,
+    chainId,
     previousUri,
     newUri: event.args.newURI,
     author: event.args.author,
@@ -231,6 +391,7 @@ ponder.on("KarPassport:RecordAppended", async ({ event, context }) => {
   await context.db.insert(passportRecord).values({
     id: `${event.transaction.hash}-${event.log.logIndex}`,
     tokenId,
+    chainId: eventChainId(event),
     author: event.args.author,
     recordType: event.args.recordType,
     description: event.args.description,
@@ -272,6 +433,7 @@ ponder.on("KarPassport:Transfer", async ({ event, context }) => {
 ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
   await upsertVerifierFromStakingJoin(
     context.db,
+    eventChainId(event),
     event.args.verifier,
     Number(event.args.asset),
     event.args.amount,
@@ -282,7 +444,7 @@ ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
 ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(event.args.verifier),
+    normalizeVerifierId(eventChainId(event), event.args.verifier),
     verifierLeftPatch(event.block.timestamp),
   );
 });
@@ -290,7 +452,7 @@ ponder.on("KarProStaking:VerifierLeft", async ({ event, context }) => {
 ponder.on("KarProStaking:VerificationFeeUpdated", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(event.args.verifier),
+    normalizeVerifierId(eventChainId(event), event.args.verifier),
     verificationFeePatch(event.args.fee),
   );
 });
@@ -299,6 +461,7 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await upsertVerifierFromProPassMint(
     context.db,
+    eventChainId(event),
     event.args.holder,
     Number(event.args.category),
     event.args.name,
@@ -311,7 +474,7 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
   const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(event.args.holder),
+    normalizeVerifierId(eventChainId(event), event.args.holder),
     proPassProfilePatch(
       Number(event.args.category),
       event.args.name,
@@ -324,13 +487,14 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
 ponder.on("KarProPass:ProPassBurned", async ({ event, context }) => {
   await patchVerifierIfExists(
     context.db,
-    normalizeVerifierId(event.args.holder),
+    normalizeVerifierId(eventChainId(event), event.args.holder),
     proPassBurnedPatch(),
   );
 });
 
 ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
+  const chainId = eventChainId(event);
   const currencyCode = decodeCurrencyCode(event.args.currencyCode);
   const agent = event.args.agent.toLowerCase();
   const authId =
@@ -340,6 +504,7 @@ ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
   const listingValues = {
     id: tokenId,
     tokenId,
+    chainId,
     seller: event.args.seller,
     fiatPrice1e8: event.args.fiatPrice1e8,
     currencyCode,
@@ -356,6 +521,7 @@ ponder.on("MarketplaceEscrow:Listed", async ({ event, context }) => {
     .insert(marketplaceListing)
     .values(listingValues)
     .onConflictDoUpdate({
+      chainId: listingValues.chainId,
       seller: listingValues.seller,
       fiatPrice1e8: listingValues.fiatPrice1e8,
       currencyCode: listingValues.currencyCode,
@@ -415,6 +581,7 @@ ponder.on("MarketplaceEscrow:Sale", async ({ event, context }) => {
   await context.db.insert(marketplaceSale).values({
     id: `${tokenId}-${event.transaction.hash}`,
     tokenId,
+    chainId: eventChainId(event),
     buyer: event.args.buyer,
     seller: event.args.seller,
     gross: event.args.gross,
@@ -611,6 +778,7 @@ ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const values = auctionCreatedRow({
     tokenId,
+    chainId: eventChainId(event),
     seller: event.args.seller,
     agent: event.args.agent,
     asset: event.args.asset,
@@ -625,6 +793,7 @@ ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
     .insert(auction)
     .values(values)
     .onConflictDoUpdate({
+      chainId: values.chainId,
       seller: values.seller,
       agent: values.agent,
       asset: values.asset,

@@ -11,43 +11,83 @@ import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
 /**
  * Indexing is configured via server .env (never committed):
  *
- *   PONDER_START_BLOCK_84532=<N>      — backfill from block N; keep same N after sync (Ponder 0.16)
- *   PONDER_START_BLOCK_84532=latest   — only for fresh installs; changing N→latest changes build_id
- *   PONDER_START_BLOCK_31337=0        — local Hardhat replay
- *   PONDER_RPC_URL_84532              — VPS: https://sepolia.base.org (see docs/indexer/OPERATIONS.md)
+ *   PONDER_START_BLOCK_84532=<N>       — Base Sepolia backfill (Nuclear hub indexFromBlock 44434865)
+ *   PONDER_START_BLOCK_11155111=<N>    — Ethereum Sepolia backfill (Nuclear indexFromBlock 11319840)
+ *   PONDER_START_BLOCK_31337=0         — local Hardhat replay
+ *   PONDER_RPC_URL_84532               — default: base-sepolia-rpc.publicnode.com
+ *   PONDER_RPC_URL_11155111            — default: ethereum-sepolia-rpc.publicnode.com
  *
- * Addresses: PONDER_*_ADDRESS env → deployments/84532.json → lib/web3/sepolia-addresses.ts (SEPOLIA_ACTIVE)
+ * Addresses: per-chain from deployments/<chainId>.json only (SPEC §I.12.12).
+ *   Hub 84532: PONDER_* env → deployments/84532.json → SEPOLIA_ACTIVE
+ *   Eth 11155111: deployments/11155111.json (manifest-only)
  *
- * After redeploy: update SEPOLIA_ACTIVE, git pull on VPS, run ponder-reindex.sql — see docs/indexer/OPERATIONS.md
+ * After Nuclear redeploy: one full ponder-reindex.sql covers both chains —
+ * see docs/indexer/OPERATIONS.md
  */
-const { chains, addresses, localAddresses, contractEntry, database } = buildPonderRuntime();
+const {
+  chains,
+  addresses,
+  ethereumSepoliaAddresses,
+  localAddresses,
+  contractEntry,
+  database,
+} = buildPonderRuntime();
+
+function dualEntry(
+  hubAddress: `0x${string}`,
+  contract: "karPassport" | "karProPass" | "karProStaking" | "marketplace" | "auctionEscrow",
+  localAddress?: `0x${string}`,
+) {
+  const ethAddress =
+    ethereumSepoliaAddresses?.[
+      contract === "marketplace"
+        ? "marketplace"
+        : contract === "auctionEscrow"
+          ? "auctionEscrow"
+          : contract
+    ];
+  return contractEntry(hubAddress, contract, {
+    ...(ethAddress ? { ethereumSepoliaAddress: ethAddress } : {}),
+    ...(localAddress ? { localAddress } : {}),
+  });
+}
+
+const auctionOnHub = addresses.auctionEscrow;
 
 export default createConfig({
+  // Cross-chain consistency for owner/status/uri via global timestamp order.
+  // Omnichain waits on both networks (consistency > liveness).
+  // custodyChain is additionally protected by the monotonic custodyUpdatedAt gate.
+  ordering: "omnichain",
   database,
   chains,
   contracts: {
     KarPassport: {
       abi: KarPassportAbi,
-      ...contractEntry(addresses.karPassport, "karPassport", localAddresses?.karPassport),
+      ...dualEntry(addresses.karPassport, "karPassport", localAddresses?.karPassport),
     },
     KarProPass: {
       abi: KarProPassAbi,
-      ...contractEntry(addresses.karProPass, "karProPass", localAddresses?.karProPass),
+      ...dualEntry(addresses.karProPass, "karProPass", localAddresses?.karProPass),
     },
     KarProStaking: {
       abi: KarProStakingAbi,
-      ...contractEntry(addresses.karProStaking, "karProStaking", localAddresses?.karProStaking),
+      ...dualEntry(
+        addresses.karProStaking,
+        "karProStaking",
+        localAddresses?.karProStaking,
+      ),
     },
     MarketplaceEscrow: {
       abi: MarketplaceEscrowAbi,
-      ...contractEntry(addresses.marketplace, "marketplace", localAddresses?.marketplace),
+      ...dualEntry(addresses.marketplace, "marketplace", localAddresses?.marketplace),
     },
-    ...(addresses.auctionEscrow
+    ...(auctionOnHub
       ? {
           AuctionEscrow: {
             abi: AuctionEscrowAbi,
-            ...contractEntry(
-              addresses.auctionEscrow,
+            ...dualEntry(
+              auctionOnHub,
               "auctionEscrow",
               localAddresses?.auctionEscrow,
             ),

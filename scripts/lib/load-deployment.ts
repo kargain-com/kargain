@@ -325,3 +325,34 @@ export {
   sepoliaBlocksForPonder,
   sepoliaIndexFromBlock,
 } from "./resolve-sepolia-stack.js";
+
+/**
+ * Map a commercial deployment manifest to the Ponder address bundle.
+ * Used for Ethereum Sepolia (11155111) — manifest-only, no SEPOLIA_ACTIVE fallback.
+ */
+export function ponderAddressesFromCommercialManifest(
+  manifest: DeploymentManifest,
+): PonderAddressBundle {
+  return {
+    karPassport: manifest.karPassport,
+    karProPass: manifest.karProPass,
+    karProStaking: manifest.karProStaking,
+    marketplace: manifest.marketplace,
+    ...(manifest.marketplaceImpl ? { marketplaceImpl: manifest.marketplaceImpl } : {}),
+    ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
+  };
+}
+
+/** Load commercial Ponder addresses for a non-84532 chain (e.g. 11155111). */
+export function ponderCommercialAddresses(chainId: number): {
+  addresses: PonderAddressBundle;
+  blocks: DeploymentBlocks;
+  indexFromBlock: number;
+} {
+  const manifest = requireCommercialDeployment(chainId);
+  return {
+    addresses: ponderAddressesFromCommercialManifest(manifest),
+    blocks: manifest.blocks,
+    indexFromBlock: manifest.indexFromBlock,
+  };
+}

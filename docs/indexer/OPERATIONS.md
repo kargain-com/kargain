@@ -1,75 +1,73 @@
 # Ponder indexer operations (VPS reindex runbook)
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields: `lastMetadataChangeAt`, `verificationResetCount`, `hadDispute`, `lastDisputeResolvedAt`, `disputeOpenedAt`; **June 2026 filter facets:** `condition`, `vehicleType`, `colour`, `locationLabel` on `passport`; **June 2026 listing cards:** `coverPhotoUri` on `passport` — first metadata photo indexed at URI replay; **July 2026 delegation notifications:** authorization owner and lifecycle timestamps).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; filter facets; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` / `custodyChain` columns + chain-scoped verifier keys).
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, **listing card cover photos**, or **notifications feed** (`disputeOpenedAt` for dispute-open events) will be wrong until new on-chain events occur.
+Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, **listing card cover photos**, **notifications feed**, or **dual-chain custody / verifier identity** will be wrong until new on-chain events occur.
 
 ---
 
-## Production state (validated June 2026)
+## Production state (Nuclear dual-chain — July 2026)
 
-Generation v2 **env cutover complete** on VPS:
+Nuclear full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One full `ponder-reindex.sql` backfills **both** networks.
 
 | Item | Value |
 |------|--------|
-| Contract set | `SEPOLIA_ACTIVE` in git — KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` |
-| Start block | `PONDER_START_BLOCK_84532=43399242` |
-| RPC | `https://sepolia.base.org` |
-| Address resolution | `git pull` → committed fallbacks; optional `pnpm ponder:config` |
-| Docker | `docker compose build ponder` after code pull (see Dockerfile.ponder `COPY patches`) + post-build `docker image prune -f` / `docker builder prune -f --filter until=72h` |
+| Hub contracts | `deployments/84532.json` / `SEPOLIA_ACTIVE` — `indexFromBlock` **44434865** |
+| Eth contracts | `deployments/11155111.json` (manifest-only) — `indexFromBlock` **11319840** |
+| Hub start block | `PONDER_START_BLOCK_84532=44434865` |
+| Eth start block | `PONDER_START_BLOCK_11155111=11319840` |
+| Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
+| Eth RPC | `PONDER_RPC_URL_11155111` (default `https://ethereum-sepolia-rpc.publicnode.com`) |
+| Address resolution | Per-chain from manifests only (SPEC §I.12.12) — never address-alone |
+| Docker | `docker compose build ponder` after code pull + post-build prune |
 
-Legacy v1 rows (e.g. `passport id 0`) require **full reindex** after pointing at v2 addresses — not env paste alone. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
+**C3 schema (July 2026):** `chainId` on listing/sale/auction/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`.
 
-**Handlers:** v2 event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
+**Omnichain ordering:** `ponder.config.ts` sets `ordering: "omnichain"`. Cross-chain consistency for owner/status/uri waits on both networks (**consistency > liveness**). Custody is additionally fail-closed via the monotonic `custodyUpdatedAt` gate if one chain lags and delivers a stale bridge-mint after a fresher unlock.
+
+Historical June 2026 v2 cutover used start block **43399242** (pre-Nuclear) — superseded by Nuclear hub **44434865**. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
+
+**Handlers:** dual-chain event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
 
 ---
 
-## Production RPC and start block (VPS — June 2026)
+## Production RPC and start block (VPS — dual-chain)
 
-Validated on Base Sepolia production VPS.
-
-### RPC — use `sepolia.base.org`
-
-| RPC | Ponder backfill / catch-up | Live indexing |
-|-----|----------------------------|---------------|
-| **`https://sepolia.base.org`** | ✅ Recommended (official Base Sepolia public endpoint) | ✅ |
-| **`https://base-sepolia.publicnode.com`** (no token) | ❌ **403** on archive `eth_getLogs` | ⚠️ Fails on restart if Ponder must catch up historical blocks |
-
-PublicNode requires a [personal token](https://www.allnodes.com/publicnode) for archive log queries. That affects **full backfill** and **crash-recovery catch-up** (even a 0.1% gap at 99.9% sync).
-
-**Recommended VPS `.env` (steady state):**
+### Recommended VPS `.env` (Nuclear steady state)
 
 ```bash
-PONDER_RPC_URL_84532=https://sepolia.base.org
-PONDER_START_BLOCK_84532=<indexFromBlock or checkpoint block used at backfill>
+PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
+PONDER_RPC_URL_11155111=https://ethereum-sepolia-rpc.publicnode.com
+PONDER_START_BLOCK_84532=44434865
+PONDER_START_BLOCK_11155111=11319840
 ```
 
-Optional alternatives: PublicNode **with** token, Alchemy, QuickNode.
+Optional: Alchemy/QuickNode for heavy backfills. Bare `https://base-sepolia.publicnode.com` (no `-rpc` path / token) may **403** on archive `eth_getLogs`.
 
-### Start block — keep the numeric value after sync
+### Start block — keep numeric values after sync
 
-**Do not** switch `PONDER_START_BLOCK_84532` to `latest` after backfill on Ponder **0.16**.
+**Do not** switch `PONDER_START_BLOCK_84532` or `PONDER_START_BLOCK_11155111` to `latest` after backfill on Ponder **0.16**.
 
-Ponder embeds contract `startBlock` in the app `build_id`. Changing `42990588` → `latest` changes `build_id` and triggers:
+Ponder embeds contract `startBlock` in the app `build_id`. Changing a numeric start block → `latest` changes `build_id` and triggers:
 
 ```
 MigrationError: Schema "kargain" was previously used by a different Ponder app.
 ```
 
-After backfill reaches chain head, **leave the same numeric start block**. Ponder uses crash recovery and continues **live indexing** (`Started live indexing` in logs).
+After backfill reaches chain head, **leave the same numeric start blocks**. Ponder continues **live indexing** on both chains.
 
-| When | `PONDER_START_BLOCK_84532` |
-|------|----------------------------|
-| One-time backfill after `ponder-reindex.sql` | `indexFromBlock` from `deployments/84532.json`, or a **checkpoint** block (e.g. just before a known test mint) |
-| Steady production (after sync) | **Same numeric value** — do not set `latest` |
-| Fresh deploy after schema wipe | Set back to `indexFromBlock` only when running `ponder-reindex.sql` again |
+| When | Start blocks |
+|------|----------------|
+| One-time backfill after `ponder-reindex.sql` | Hub **44434865** + Eth **11319840** (or checkpoints) |
+| Steady production (after sync) | **Same numeric values** — do not set `latest` |
+| Fresh deploy after schema wipe | Reset both to manifest `indexFromBlock` when running `ponder-reindex.sql` again |
 
 ### Deploy new Ponder code (schema change)
 
 1. `docker compose stop ponder`
 2. `ponder-reindex.sql` — **before** starting the new image
-3. Backfill with `sepolia.base.org` + numeric start block
-4. After 100% sync, keep the same start block and RPC
+3. Backfill with both RPCs + both numeric start blocks (one reindex covers hub + spoke)
+4. After 100% sync on both chains, keep the same start blocks and RPCs
 
 **Restart without code/image change:** `docker compose stop ponder` → edit `.env` (RPC only) → `docker compose up -d ponder` (no `--build` unless the image changed).
 
@@ -80,13 +78,14 @@ After backfill reaches chain head, **leave the same numeric start block**. Ponde
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| AuctionEscrow indexer (July 2026) | New `auction` / `auction_bid` / `auction_settlement` tables + `AuctionEscrow` in `ponder.config.ts` — **reindex required**; keep `PONDER_START_BLOCK_84532=43399242`; auction contract backfills from **44080895** only ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
-| Auction agent authorizations (b2, July 2026) | New `auction_agent_authorization` table + terminal-event deactivate handlers + `GET /agents/:address/auction-authorizations` — **full reindex required**; same start-block rules as AuctionEscrow ([MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md)) |
-| Delegation notifications (July 2026) | `owner`, `createdAt`, `updatedAt`, and `authorizedAt` on `agent_authorization`; `authorizedAt` on `auction_agent_authorization`; complete terminal deactivation replay — **full reindex required** |
+| **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; hub **44434865** + Eth **11319840** |
+| AuctionEscrow indexer (July 2026) | New `auction` tables — **reindex required**; Nuclear hub auction start from manifest `blocks.auctionEscrow` |
+| Auction agent authorizations (b2, July 2026) | `auction_agent_authorization` — **full reindex required** |
+| Delegation notifications (July 2026) | Authorization owner and lifecycle timestamps — **full reindex required** |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
-| Contract redeploy | KarPassport / Marketplace address change (Phase 5) |
-| Handler shape change | New denormalized fields written on mint / URI update / dispute |
+| Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
+| Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
 | Stuck / corrupt sync | Ponder refuses to start after config change |
 | `MigrationError` after deploy | New `ponder.schema.ts` in Docker image without `ponder-reindex.sql` |
 
@@ -106,9 +105,9 @@ Examples that **do not** require reindex:
 ## Prerequisites
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
-- **`git pull`** so Ponder and the app use committed addresses in `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`)
-- **`PONDER_RPC_URL_84532=https://sepolia.base.org`** for backfill and production (see above)
-- Remove stale `deployments/84532.json` on the VPS if it points at old v1 addresses — `pnpm ponder:config` warns on drift
+- **`git pull`** so Ponder uses committed hub addresses (`SEPOLIA_ACTIVE`) and Eth manifest `deployments/11155111.json` is present on the deploy machine / image build context as required
+- **`PONDER_RPC_URL_84532`** + **`PONDER_RPC_URL_11155111`** and both numeric start blocks (see Nuclear steady state above)
+- Remove stale `deployments/84532.json` on the VPS if it points at pre-Nuclear addresses — `pnpm ponder:config` warns on drift
 
 ---
 
@@ -231,28 +230,30 @@ This drops and recreates the `kargain` and `ponder_sync` schemas (truncate alone
 pnpm ponder:config
 ```
 
-Contract addresses resolve automatically: `PONDER_*_ADDRESS` env (optional override) → `deployments/84532.json` (local deploy only) → **`SEPOLIA_ACTIVE`** in git. After a redeploy, update `lib/web3/sepolia-addresses.ts` in the same PR and **`git pull` on the VPS** — do not paste address exports into `.env`.
+Contract addresses resolve automatically **per chain** (SPEC §I.12.12): hub via `PONDER_*_ADDRESS` env (optional) → `deployments/84532.json` → **`SEPOLIA_ACTIVE`**; Eth via **`deployments/11155111.json` only**. After a Nuclear redeploy, commit both manifests / `SEPOLIA_ACTIVE` and **`git pull` on the VPS** — do not paste address exports into `.env`.
 
-**VPS `.env` — infrastructure only (steady state):**
+**VPS `.env` — infrastructure only (Nuclear steady state):**
 
 ```bash
-PONDER_RPC_URL_84532=https://sepolia.base.org
-PONDER_START_BLOCK_84532=43399242   # SEPOLIA_ACTIVE.indexFromBlock — or a checkpoint for partial replay
+PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
+PONDER_RPC_URL_11155111=https://ethereum-sepolia-rpc.publicnode.com
+PONDER_START_BLOCK_84532=44434865
+PONDER_START_BLOCK_11155111=11319840
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
-Optional advanced overrides: `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, `PONDER_AUCTION_ESCROW_ADDRESS`, … only when debugging or pre-PR deploy smoke on a machine with a fresh manifest.
+Optional advanced overrides (84532 only): `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, `PONDER_AUCTION_ESCROW_ADDRESS`, … only when debugging.
 
-**AuctionEscrow start block:** resolved per-contract from `SEPOLIA_ACTIVE.blocks.auctionEscrow` (**44080895**) — not from `PONDER_START_BLOCK_84532`. Confirm with `pnpm ponder:config` after pull.
+**Per-contract start blocks:** from each commercial manifest’s `blocks.*`. Confirm with `pnpm ponder:config` after pull.
 
-For G1 schema-only updates (same contract addresses), keep existing infra env; still set start block to `indexFromBlock` for a full replay unless you intentionally use a higher checkpoint.
+For G1 schema-only updates (same contract addresses), keep existing infra env; still set start blocks to each `indexFromBlock` for a full replay unless you intentionally use higher checkpoints.
 
 ### 5. Start Ponder and wait for sync
 
 ```bash
 docker compose up -d --force-recreate ponder
 
-docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532
+docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532 PONDER_RPC_URL_11155111 PONDER_START_BLOCK_11155111
 docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
 docker compose logs -f ponder
 ```

@@ -2,6 +2,12 @@ import { index, onchainTable } from "ponder";
 
 export const passport = onchainTable("passport", (t) => ({
   id: t.text().primaryKey(),
+  /** Immutable origin — `chainIdOf(tokenId)` (= `tokenId >> 128`). */
+  chainId: t.integer().notNull(),
+  /** Network where the usable instance currently lives (SPEC §I.12.8). */
+  custodyChain: t.integer().notNull(),
+  /** Timestamp of last accepted custody-changing event (monotonic gate). */
+  custodyUpdatedAt: t.bigint().notNull().default(0n),
   owner: t.text().notNull(),
   status: t.text().notNull(),
   verifier: t.text().notNull().default(""),
@@ -38,6 +44,8 @@ export const passport = onchainTable("passport", (t) => ({
 export const passportUriHistory = onchainTable("passport_uri_history", (t) => ({
   id: t.text().primaryKey(),
   tokenId: t.text().notNull(),
+  /** Network that emitted the URI update (provenance). */
+  chainId: t.integer().notNull(),
   previousUri: t.text().notNull().default(""),
   newUri: t.text().notNull(),
   author: t.text().notNull(),
@@ -55,6 +63,8 @@ export const vinIndex = onchainTable("vin_index", (t) => ({
 export const passportRecord = onchainTable("passport_record", (t) => ({
   id: t.text().primaryKey(),
   tokenId: t.text().notNull(),
+  /** Network that emitted the record (provenance; UNION by global tokenId). */
+  chainId: t.integer().notNull(),
   author: t.text().notNull(),
   recordType: t.text().notNull(),
   description: t.text().notNull().default(""),
@@ -67,6 +77,7 @@ export const marketplaceListing = onchainTable(
   (t) => ({
     id: t.text().primaryKey(),
     tokenId: t.text().notNull(),
+    chainId: t.integer().notNull(),
     seller: t.text().notNull(),
     fiatPrice1e8: t.bigint().notNull(),
     currencyCode: t.text().notNull().default("USD"),
@@ -88,6 +99,7 @@ export const marketplaceListing = onchainTable(
 export const marketplaceSale = onchainTable("marketplace_sale", (t) => ({
   id: t.text().primaryKey(),
   tokenId: t.text().notNull(),
+  chainId: t.integer().notNull(),
   buyer: t.text().notNull(),
   seller: t.text().notNull(),
   gross: t.bigint().notNull(),
@@ -150,7 +162,9 @@ export const currencyFeed = onchainTable("currency_feed", (t) => ({
 }));
 
 export const verifier = onchainTable("verifier", (t) => ({
+  /** Chain-scoped PK: `${chainId}-${address.toLowerCase()}` (SPEC §I.12.12). */
   id: t.text().primaryKey(),
+  chainId: t.integer().notNull(),
   address: t.text().notNull(),
   category: t.integer().notNull().default(5),
   name: t.text().notNull().default(""),
@@ -169,6 +183,7 @@ export const auction = onchainTable(
   (t) => ({
     id: t.text().primaryKey(),
     tokenId: t.text().notNull(),
+    chainId: t.integer().notNull(),
     seller: t.text().notNull(),
     agent: t.text().notNull().default(""),
     asset: t.text().notNull().default(""),

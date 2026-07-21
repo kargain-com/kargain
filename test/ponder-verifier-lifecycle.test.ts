@@ -19,6 +19,8 @@ import {
 
 const HOLDER = "0xCf1eb0E7ed453Ed266bF90E7C09e0E4769580b77";
 const VERIFIER_ADDR = "0xAbC0000000000000000000000000000000000001";
+const HUB = 84532;
+const SPOKE = 11155111;
 
 function createMockVerifierDb(): VerifierIndexerDb & { rows: Map<string, VerifierRow> } {
   const rows = new Map<string, VerifierRow>();
@@ -49,13 +51,27 @@ function createMockVerifierDb(): VerifierIndexerDb & { rows: Map<string, Verifie
 }
 
 describe("ponder verifier lifecycle builders", () => {
-  it("normalizes verifier id to lowercase", () => {
-    assert.equal(normalizeVerifierId(HOLDER), HOLDER.toLowerCase());
+  it("normalizes verifier id as chain-scoped key", () => {
+    assert.equal(
+      normalizeVerifierId(HUB, HOLDER),
+      `${HUB}-${HOLDER.toLowerCase()}`,
+    );
+    assert.notEqual(
+      normalizeVerifierId(HUB, HOLDER),
+      normalizeVerifierId(SPOKE, HOLDER),
+    );
   });
 
-  it("builds staking join row", () => {
-    const row = verifierJoinedRow(VERIFIER_ADDR, 0, 50_000_000_000_000_000n, 100n);
-    assert.equal(row.id, VERIFIER_ADDR.toLowerCase());
+  it("builds staking join row with chainId", () => {
+    const row = verifierJoinedRow(
+      HUB,
+      VERIFIER_ADDR,
+      0,
+      50_000_000_000_000_000n,
+      100n,
+    );
+    assert.equal(row.id, `${HUB}-${VERIFIER_ADDR.toLowerCase()}`);
+    assert.equal(row.chainId, HUB);
     assert.equal(row.address, VERIFIER_ADDR);
     assert.equal(row.stakeAsset, 0);
     assert.equal(row.stakeAmount, "50000000000000000");
@@ -63,8 +79,10 @@ describe("ponder verifier lifecycle builders", () => {
     assert.equal(row.joinedAt, 100n);
   });
 
-  it("builds pro pass mint row", () => {
-    const row = proPassMintedRow(HOLDER, 2, "Acme Verify", "ar://meta", "acme");
+  it("builds pro pass mint row with chainId", () => {
+    const row = proPassMintedRow(SPOKE, HOLDER, 2, "Acme Verify", "ar://meta", "acme");
+    assert.equal(row.chainId, SPOKE);
+    assert.equal(row.id, `${SPOKE}-${HOLDER.toLowerCase()}`);
     assert.equal(row.category, 2);
     assert.equal(row.name, "Acme Verify");
     assert.equal(row.slug, "acme");
@@ -91,7 +109,7 @@ describe("ponder verifier lifecycle builders", () => {
 describe("patchVerifierIfExists", () => {
   it("no-ops on empty db without creating a row", async () => {
     const db = createMockVerifierDb();
-    const id = normalizeVerifierId(HOLDER);
+    const id = normalizeVerifierId(HUB, HOLDER);
 
     const patched = await patchVerifierIfExists(db, id, proPassBurnedPatch());
 
@@ -101,7 +119,7 @@ describe("patchVerifierIfExists", () => {
 
   it("no-ops profile and fee updates when row is missing", async () => {
     const db = createMockVerifierDb();
-    const id = normalizeVerifierId(HOLDER);
+    const id = normalizeVerifierId(HUB, HOLDER);
 
     assert.equal(
       await patchVerifierIfExists(
@@ -120,9 +138,17 @@ describe("patchVerifierIfExists", () => {
 
   it("deactivates after pro pass mint", async () => {
     const db = createMockVerifierDb();
-    const id = normalizeVerifierId(HOLDER);
+    const id = normalizeVerifierId(HUB, HOLDER);
 
-    await upsertVerifierFromProPassMint(db, HOLDER, 1, "Shop", "ar://shop", "shop");
+    await upsertVerifierFromProPassMint(
+      db,
+      HUB,
+      HOLDER,
+      1,
+      "Shop",
+      "ar://shop",
+      "shop",
+    );
     assert.equal(db.rows.get(id)?.active, true);
 
     const patched = await patchVerifierIfExists(db, id, proPassBurnedPatch());
@@ -133,9 +159,16 @@ describe("patchVerifierIfExists", () => {
 
   it("deactivates after staking join", async () => {
     const db = createMockVerifierDb();
-    const id = normalizeVerifierId(VERIFIER_ADDR);
+    const id = normalizeVerifierId(HUB, VERIFIER_ADDR);
 
-    await upsertVerifierFromStakingJoin(db, VERIFIER_ADDR, 0, 50_000_000_000_000_000n, 100n);
+    await upsertVerifierFromStakingJoin(
+      db,
+      HUB,
+      VERIFIER_ADDR,
+      0,
+      50_000_000_000_000_000n,
+      100n,
+    );
     assert.equal(db.rows.get(id)?.active, true);
 
     const patched = await patchVerifierIfExists(db, id, verifierLeftPatch(300n));
@@ -149,9 +182,9 @@ describe("patchVerifierIfExists", () => {
 
   it("updates profile when row exists", async () => {
     const db = createMockVerifierDb();
-    const id = normalizeVerifierId(HOLDER);
+    const id = normalizeVerifierId(HUB, HOLDER);
 
-    await upsertVerifierFromProPassMint(db, HOLDER, 1, "Old", "ar://old", "old");
+    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "Old", "ar://old", "old");
     await patchVerifierIfExists(
       db,
       id,
@@ -163,14 +196,43 @@ describe("patchVerifierIfExists", () => {
     assert.equal(row?.name, "New");
     assert.equal(row?.slug, "new");
   });
+
+  it("keeps hub and spoke verifier rows distinct for the same address", async () => {
+    const db = createMockVerifierDb();
+    await upsertVerifierFromStakingJoin(
+      db,
+      HUB,
+      VERIFIER_ADDR,
+      0,
+      1n,
+      100n,
+    );
+    await upsertVerifierFromStakingJoin(
+      db,
+      SPOKE,
+      VERIFIER_ADDR,
+      0,
+      2n,
+      200n,
+    );
+    assert.equal(db.rows.size, 2);
+    assert.equal(db.rows.get(normalizeVerifierId(HUB, VERIFIER_ADDR))?.stakeAmount, "1");
+    assert.equal(
+      db.rows.get(normalizeVerifierId(SPOKE, VERIFIER_ADDR))?.stakeAmount,
+      "2",
+    );
+  });
 });
 
 describe("upsertVerifierFromProPassMint", () => {
   it("uses verifier table symbol for find compatibility", async () => {
     const db = createMockVerifierDb();
-    await upsertVerifierFromProPassMint(db, HOLDER, 1, "A", "ar://a", "a");
-    const found = await db.find(verifier, { id: normalizeVerifierId(HOLDER) });
+    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "A", "ar://a", "a");
+    const found = await db.find(verifier, {
+      id: normalizeVerifierId(HUB, HOLDER),
+    });
     assert.ok(found);
     assert.equal(found.name, "A");
+    assert.equal(found.chainId, HUB);
   });
 });

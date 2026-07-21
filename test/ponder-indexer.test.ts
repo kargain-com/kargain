@@ -17,7 +17,15 @@ import {
   passportUriUpdatedTrustFields,
   verificationResetTrustFields,
 } from "../src/lib/ponder-g1-fields.ts";
+import {
+  applyCustodyEvent,
+  nextCustodyChain,
+  originChainIdOf,
+  resolveCustody,
+  unionRecordsByTokenId,
+} from "../src/lib/ponder-custody.ts";
 import { passportMetadataDenorm } from "../src/lib/ponder-passport-metadata.ts";
+import { normalizeVerifierId } from "../src/lib/ponder-verifier-lifecycle.ts";
 import {
   authorizationDeactivatedPatch,
   authorizationNotificationItems,
@@ -312,5 +320,169 @@ describe("passportMetadataDenorm", () => {
       locationLabel: "",
       coverPhotoUri: "ar://cover-tx",
     });
+  });
+});
+
+describe("#12 records UNION by global tokenId (hub+spoke)", () => {
+  const HUB = 84532;
+  const SPOKE = 11155111;
+  // Origin on hub: chainId << 128 | 1
+  const tokenId = ((BigInt(HUB) << 128n) | 1n).toString();
+
+  it("unions hub and spoke provenance rows sharing one global tokenId", () => {
+    const rows = [
+      {
+        id: "0xhub-1",
+        tokenId,
+        chainId: HUB,
+        timestamp: 200n,
+      },
+      {
+        id: "0xspoke-1",
+        tokenId,
+        chainId: SPOKE,
+        timestamp: 100n,
+      },
+      {
+        id: "0xother-1",
+        tokenId: "999",
+        chainId: HUB,
+        timestamp: 50n,
+      },
+      {
+        id: "0xhub-2",
+        tokenId,
+        chainId: HUB,
+        timestamp: 100n,
+      },
+    ];
+
+    const unioned = unionRecordsByTokenId(rows, tokenId);
+    assert.equal(unioned.length, 3);
+    assert.deepEqual(
+      unioned.map((r) => r.chainId),
+      [HUB, SPOKE, HUB],
+    );
+    assert.deepEqual(
+      unioned.map((r) => r.id),
+      ["0xhub-2", "0xspoke-1", "0xhub-1"],
+    );
+  });
+});
+
+describe("#13 custodyChain attribution", () => {
+  const HUB = 84532;
+  const SPOKE = 11155111;
+  const tokenId = (BigInt(HUB) << 128n) | 7n;
+
+  it("native mint sets custody to origin/home", () => {
+    assert.equal(originChainIdOf(tokenId), HUB);
+    const custody = nextCustodyChain(undefined, {
+      kind: "native-mint",
+      eventChainId: HUB,
+      tokenId,
+    });
+    assert.equal(custody, HUB);
+    const gated = resolveCustody(undefined, custody!, 100n);
+    assert.deepEqual(gated, { custodyChain: HUB, custodyUpdatedAt: 100n });
+  });
+
+  it("lock leave + spoke bridge-mint → custodyChain=spoke; return unlock → home", () => {
+    let state = {
+      chainId: HUB,
+      custodyChain: HUB,
+      custodyUpdatedAt: 1n,
+    };
+
+    // Outbound: destination mint sets custody to spoke (burn does not).
+    const afterBurn = applyCustodyEvent(state, { kind: "bridge-burn" }, 2n);
+    assert.equal(afterBurn.custodyChain, HUB);
+
+    state = applyCustodyEvent(
+      afterBurn,
+      { kind: "bridge-mint", eventChainId: SPOKE },
+      3n,
+    );
+    assert.equal(state.custodyChain, SPOKE);
+    assert.equal(state.chainId, HUB);
+    assert.equal(state.custodyUpdatedAt, 3n);
+
+    // Return: unlock on home restores custody.
+    state = applyCustodyEvent(
+      state,
+      { kind: "custody-unlock", eventChainId: HUB },
+      4n,
+    );
+    assert.equal(state.custodyChain, HUB);
+    assert.equal(state.custodyUpdatedAt, 4n);
+
+    // VerificationReset-on-unlock is idempotent with unlock.
+    state = applyCustodyEvent(
+      state,
+      {
+        kind: "verification-reset-home",
+        eventChainId: HUB,
+        originChainId: HUB,
+      },
+      4n,
+    );
+    assert.equal(state.custodyChain, HUB);
+  });
+});
+
+describe("#14 out-of-order custody (monotonic gate)", () => {
+  const HUB = 84532;
+  const SPOKE = 11155111;
+  const t2 = 200n;
+  const t4 = 400n;
+
+  it("rejects stale bridge-mint after fresher home unlock", () => {
+    let state = {
+      chainId: HUB,
+      custodyChain: HUB,
+      custodyUpdatedAt: 0n,
+    };
+
+    state = applyCustodyEvent(
+      state,
+      { kind: "bridge-mint", eventChainId: SPOKE },
+      t2,
+    );
+    assert.equal(state.custodyChain, SPOKE);
+    assert.equal(state.custodyUpdatedAt, t2);
+
+    state = applyCustodyEvent(
+      state,
+      { kind: "custody-unlock", eventChainId: HUB },
+      t4,
+    );
+    assert.equal(state.custodyChain, HUB);
+    assert.equal(state.custodyUpdatedAt, t4);
+
+    const stale = resolveCustody(state, SPOKE, t2);
+    assert.equal(stale, null);
+
+    const afterStale = applyCustodyEvent(
+      state,
+      { kind: "bridge-mint", eventChainId: SPOKE },
+      t2,
+    );
+    assert.equal(afterStale.custodyChain, HUB);
+    assert.equal(afterStale.custodyUpdatedAt, t4);
+  });
+});
+
+describe("verifier chain-scoped key", () => {
+  it("scopes the same address per commercial chain", () => {
+    const addr = "0xAbC0000000000000000000000000000000000001";
+    assert.equal(normalizeVerifierId(84532, addr), `84532-${addr.toLowerCase()}`);
+    assert.equal(
+      normalizeVerifierId(11155111, addr),
+      `11155111-${addr.toLowerCase()}`,
+    );
+    assert.notEqual(
+      normalizeVerifierId(84532, addr),
+      normalizeVerifierId(11155111, addr),
+    );
   });
 });

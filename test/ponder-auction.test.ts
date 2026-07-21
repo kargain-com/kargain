@@ -62,6 +62,7 @@ describe("auctionCreatedRow", () => {
   it("initializes CREATED phase with empty high bid", () => {
     const row = auctionCreatedRow({
       tokenId: "8453200000000000000000000000000000000000000000000000000000000001",
+      chainId: 84532,
       seller: "0xSeller",
       agent: "0x0000000000000000000000000000000000000000",
       asset: "0x0000000000000000000000000000000000000000",
@@ -73,6 +74,7 @@ describe("auctionCreatedRow", () => {
     });
 
     assert.equal(row.phase, AUCTION_PHASE.CREATED);
+    assert.equal(row.chainId, 84532);
     assert.equal(row.agent, "");
     assert.equal(row.asset, "");
     assert.equal(row.highestBid, 0n);

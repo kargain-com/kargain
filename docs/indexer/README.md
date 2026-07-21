@@ -7,22 +7,33 @@
 | [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md) | **Reference** | AuctionEscrow events, per-contract start block **44080895**, auction + agent-auth tables |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (June 2026):** [ponder.kargain.com](https://ponder.kargain.com) indexes generation v2 contracts from block **43399242** with v2 event handlers (including return flow and dispute deposit). **Reindex required** after deploying handler/schema changes.
+**Production (July 2026 Nuclear):** [ponder.kargain.com](https://ponder.kargain.com) indexes full commercial stacks on **84532** (hub `indexFromBlock` **44434865**) and **11155111** (Eth `indexFromBlock` **11319840`). **C3 dual-chain** adds `chainId` / `custodyChain` and chain-scoped verifier keys — **full reindex required** after deploy ([OPERATIONS.md](./OPERATIONS.md)).
 
 ## Contract addresses for indexer
 
-Do **not** copy address tables here. Resolution order:
+Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12):
 
-- Committed: `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`) — **VPS uses this after `git pull`**
-- Local manifest: `deployments/84532.json` (not in git — deploy machine only)
+- Hub 84532: `deployments/84532.json` → `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`); optional `PONDER_*_ADDRESS` env overrides
+- Eth 11155111: `deployments/11155111.json` only (no committed fallback)
 - Diagnostic: `pnpm ponder:config`
-- Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532)
+- Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) + Eth nuclear table
 
-**Start block:** `PONDER_START_BLOCK_84532=43399242` (`SEPOLIA_ACTIVE.indexFromBlock`). **AuctionEscrow** indexes from **`blocks.auctionEscrow` = 44080895** (proxy deploy) — see [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md).
+**Start blocks:** `PONDER_START_BLOCK_84532=44434865` · `PONDER_START_BLOCK_11155111=11319840`. Per-contract start blocks from each manifest’s `blocks.*`.
+
+## Dual-chain identity (C3 · July 2026)
+
+| Field | Meaning |
+|-------|---------|
+| `passport.chainId` | Immutable origin (`tokenId >> 128`) |
+| `passport.custodyChain` | Network where the usable instance lives |
+| listing / sale / auction / record / uri-history `chainId` | Network of the emitting event |
+| `verifier.id` | `` `${chainId}-${address.toLowerCase()}` `` |
+
+Browse: `GET /listings?custodyChain=84532` (optional). Passport detail returns `records[]` / `uriHistory[]` with per-row `chainId` (UNION by global `tokenId`). Verifier detail: prefer `GET /verifiers/:address?chainId=84532`.
 
 ## Auction API (July 2026)
 
-AuctionEscrow proxy: `SEPOLIA_ACTIVE.auctionEscrow` after `git pull`. Per-contract start block **44080895** — do not change global `PONDER_START_BLOCK_84532`.
+AuctionEscrow on each commercial chain from that chain’s manifest. Response rows include `chainId` (+ passport `custodyChain` when enriched).
 
 | Route | Purpose |
 |-------|---------|
@@ -33,24 +44,23 @@ AuctionEscrow proxy: `SEPOLIA_ACTIVE.auctionEscrow` after `git pull`. Per-contra
 | `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires active auction) |
 | `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner; same enrichment + `?awaiting=` as the agent route |
 
-**VPS (July 14, 2026):** full reindex after auction schema (b) **completed**. Iteration **(b2)** `auction_agent_authorization` needs another **full reindex** after deploy. `GET /auctions` returns `total: 0` until the first `AuctionCreated`; listings/verifiers remain populated. Global start block unchanged.
-
 ## Verifier lifecycle (bounded indexing)
 
-Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows; **mutation** and **deactivation** events (`ProfileUpdated`, `VerificationFeeUpdated`, `ProPassBurned`, `VerifierLeft`) patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error).
+Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error).
 
-## Listing API fields (v2)
+## Listing API fields (v2 + C3)
 
-Ponder stores `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. HTTP API also returns legacy `fiatCurrency` integer (0–10 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
+Ponder stores `chainId`, `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. Browse/detail also expose passport `custodyChain` / `originChainId`. HTTP API also returns legacy `fiatCurrency` integer (0–10 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
 
 **Buyer UI:** `agent` on `GET /listings` drives consignment attribution on browse cards and listing detail ([`design-spec.md`](../design-spec.md) §4.16). `agentFeeBps` and `ownerMinPrice1e8` are indexed for agent/owner flows only — not exposed to buyers.
 
-### `GET /listings` — FX query parameters
+### `GET /listings` — FX + custody query parameters
 
 Optional query params for cross-currency **price filter and sort** (stateless API layer — **redeploy only**, no schema reindex; see [OPERATIONS.md](./OPERATIONS.md) “Do not reindex”).
 
 | Param | Purpose |
 |-------|---------|
+| `custodyChain` | Filter browse to passports whose usable instance is on this chain id (C3) |
 | `priceCurrency` | Display currency for `priceMin` / `priceMax` bounds (USD, EUR, ETH, BTC, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY) |
 | `eurUsdRate`, `ethUsdRate`, `btcUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit; `btcUsd` from CoinGecko `exchange_rates.usd`) |
 | `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate`, `aedUsdRate`, `krwUsdRate`, `rubUsdRate`, `jpyUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |

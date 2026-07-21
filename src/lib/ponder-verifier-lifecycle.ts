@@ -4,12 +4,15 @@
  * Indexers observe a bounded event window (start block, reindex checkpoints).
  * Creation events upsert rows; mutation and deactivation patch only when a row
  * exists — absent row means desired state already holds (idempotent no-op).
+ *
+ * Verifier PK is chain-scoped: `${chainId}-${address.toLowerCase()}` (SPEC §I.12.12).
  */
 
 import { verifier } from "../../ponder.schema";
 
 export type VerifierRow = {
   id: string;
+  chainId: number;
   address: string;
   category: number;
   name: string;
@@ -26,6 +29,7 @@ export type VerifierRow = {
 export type VerifierPatch = Partial<
   Pick<
     VerifierRow,
+    | "chainId"
     | "address"
     | "category"
     | "name"
@@ -53,19 +57,22 @@ export type VerifierIndexerDb = {
   };
 };
 
-export function normalizeVerifierId(address: string): string {
-  return address.toLowerCase();
+/** Chain-scoped verifier PK (SPEC §I.12.12). */
+export function normalizeVerifierId(chainId: number, address: string): string {
+  return `${chainId}-${address.toLowerCase()}`;
 }
 
 export function verifierJoinedRow(
+  chainId: number,
   verifierAddress: string,
   asset: number,
   amount: bigint,
   timestamp: bigint,
 ): VerifierRow {
-  const id = normalizeVerifierId(verifierAddress);
+  const id = normalizeVerifierId(chainId, verifierAddress);
   return {
     id,
+    chainId,
     address: verifierAddress,
     category: 5,
     name: "",
@@ -81,12 +88,14 @@ export function verifierJoinedRow(
 }
 
 export function verifierJoinedConflictUpdate(
+  chainId: number,
   verifierAddress: string,
   asset: number,
   amount: bigint,
   timestamp: bigint,
 ): VerifierPatch {
   return {
+    chainId,
     address: verifierAddress,
     stakeAsset: asset,
     stakeAmount: amount.toString(),
@@ -108,15 +117,17 @@ export function verificationFeePatch(fee: bigint): VerifierPatch {
 }
 
 export function proPassMintedRow(
+  chainId: number,
   holder: string,
   category: number,
   name: string,
   metadataURI: string,
   slug: string,
 ): VerifierRow {
-  const id = normalizeVerifierId(holder);
+  const id = normalizeVerifierId(chainId, holder);
   return {
     id,
+    chainId,
     address: holder,
     category,
     name,
@@ -132,6 +143,7 @@ export function proPassMintedRow(
 }
 
 export function proPassMintedConflictUpdate(
+  chainId: number,
   holder: string,
   category: number,
   name: string,
@@ -139,6 +151,7 @@ export function proPassMintedConflictUpdate(
   slug: string,
 ): VerifierPatch {
   return {
+    chainId,
     address: holder,
     category,
     name,
@@ -174,33 +187,35 @@ export async function patchVerifierIfExists(
 
 export async function upsertVerifierFromStakingJoin(
   db: VerifierIndexerDb,
+  chainId: number,
   verifierAddress: string,
   asset: number,
   amount: bigint,
   timestamp: bigint,
 ): Promise<void> {
-  const row = verifierJoinedRow(verifierAddress, asset, amount, timestamp);
+  const row = verifierJoinedRow(chainId, verifierAddress, asset, amount, timestamp);
   await db
     .insert(verifier)
     .values(row)
     .onConflictDoUpdate(
-      verifierJoinedConflictUpdate(verifierAddress, asset, amount, timestamp),
+      verifierJoinedConflictUpdate(chainId, verifierAddress, asset, amount, timestamp),
     );
 }
 
 export async function upsertVerifierFromProPassMint(
   db: VerifierIndexerDb,
+  chainId: number,
   holder: string,
   category: number,
   name: string,
   metadataURI: string,
   slug: string,
 ): Promise<void> {
-  const row = proPassMintedRow(holder, category, name, metadataURI, slug);
+  const row = proPassMintedRow(chainId, holder, category, name, metadataURI, slug);
   await db
     .insert(verifier)
     .values(row)
     .onConflictDoUpdate(
-      proPassMintedConflictUpdate(holder, category, name, metadataURI, slug),
+      proPassMintedConflictUpdate(chainId, holder, category, name, metadataURI, slug),
     );
 }

@@ -47,6 +47,7 @@ export function settlementDisputeOutcomeLabel(outcome: number): string {
 
 export function auctionCreatedRow(params: {
   tokenId: string;
+  chainId: number;
   seller: string;
   agent: string;
   asset: string;
@@ -59,6 +60,7 @@ export function auctionCreatedRow(params: {
   return {
     id: params.tokenId,
     tokenId: params.tokenId,
+    chainId: params.chainId,
     seller: params.seller,
     agent: normalizeAuctionAgent(params.agent),
     asset: normalizeAuctionAsset(params.asset),

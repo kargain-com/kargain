@@ -42,6 +42,7 @@ import {
 } from "../../lib/kar-pro/kar-pro-slug-rules";
 import { buildNotificationFeed } from "./notifications-query";
 import { legacyFiatFromCurrencyCode } from "../../lib/marketplace/currency-code";
+import { normalizeVerifierId } from "../lib/ponder-verifier-lifecycle";
 
 const app = new Hono();
 
@@ -74,6 +75,14 @@ function parseOptionalBoolean(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
+/** Optional chain id query param (e.g. custodyChain / verifier chain scope). */
+function parseOptionalChainId(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
+}
+
 function parseOffset(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : 0;
   return Number.isFinite(n) && n >= 0 ? n : 0;
@@ -91,6 +100,8 @@ function jsonBody<T>(value: T): T {
 }
 
 type PassportDenorm = {
+  chainId: number;
+  custodyChain: number;
   status: string;
   verifier: string;
   vin: string;
@@ -126,6 +137,8 @@ async function loadPassportMap(
       .where(inArray(passport.id, chunk));
     for (const row of rows) {
       map.set(row.id, {
+        chainId: row.chainId,
+        custodyChain: row.custodyChain,
         status: row.status,
         verifier: row.verifier,
         vin: row.vin,
@@ -204,6 +217,7 @@ function enrichListing(
   listing: {
     id: string;
     tokenId: string;
+    chainId: number;
     seller: string;
     fiatPrice1e8: bigint;
     currencyCode: string;
@@ -221,6 +235,9 @@ function enrichListing(
   const passportStatus = p?.status ?? "UNVERIFIED";
   return {
     ...withLegacyFiatCurrency(listing),
+    chainId: listing.chainId,
+    custodyChain: p?.custodyChain ?? listing.chainId,
+    originChainId: p?.chainId ?? listing.chainId,
     make: p?.make ?? "",
     model: p?.model ?? "",
     year: p?.year ?? 0,
@@ -249,6 +266,8 @@ function enrichAuction(
   const p = passportMap.get(row.tokenId);
   return {
     ...row,
+    custodyChain: p?.custodyChain ?? row.chainId,
+    originChainId: p?.chainId ?? row.chainId,
     passportStatus: p?.status ?? "UNVERIFIED",
     verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
@@ -319,16 +338,24 @@ async function loadDefaultBrowsePage(
   limit: number,
   offset: number,
   verifiedFirst: boolean,
+  custodyChainFilter?: number,
 ) {
   const orderBy = verifiedFirst
     ? [STATUS_ORDER, desc(marketplaceListing.listedAt)]
     : [desc(marketplaceListing.listedAt)];
+
+  const conditions = [eq(marketplaceListing.active, true)];
+  if (custodyChainFilter !== undefined) {
+    conditions.push(eq(passport.custodyChain, custodyChainFilter));
+  }
+  const where = and(...conditions);
 
   const [rows, totalRow] = await Promise.all([
     db
       .select({
         id: marketplaceListing.id,
         tokenId: marketplaceListing.tokenId,
+        chainId: marketplaceListing.chainId,
         seller: marketplaceListing.seller,
         fiatPrice1e8: marketplaceListing.fiatPrice1e8,
         currencyCode: marketplaceListing.currencyCode,
@@ -339,6 +366,8 @@ async function loadDefaultBrowsePage(
         listedAt: marketplaceListing.listedAt,
         soldAt: marketplaceListing.soldAt,
         buyer: marketplaceListing.buyer,
+        originChainId: passport.chainId,
+        custodyChain: passport.custodyChain,
         status: passport.status,
         verifier: passport.verifier,
         vin: passport.vin,
@@ -360,20 +389,22 @@ async function loadDefaultBrowsePage(
       })
       .from(marketplaceListing)
       .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
-      .where(eq(marketplaceListing.active, true))
+      .where(where)
       .orderBy(...orderBy)
       .limit(limit)
       .offset(offset),
     db
       .select({ total: count() })
       .from(marketplaceListing)
-      .where(eq(marketplaceListing.active, true)),
+      .leftJoin(passport, eq(marketplaceListing.tokenId, passport.id))
+      .where(where),
   ]);
 
   const listings = rows.map((row) => ({
     ...withLegacyFiatCurrency({
       id: row.id,
       tokenId: row.tokenId,
+      chainId: row.chainId,
       seller: row.seller,
       fiatPrice1e8: row.fiatPrice1e8,
       currencyCode: row.currencyCode,
@@ -385,6 +416,8 @@ async function loadDefaultBrowsePage(
       soldAt: row.soldAt,
       buyer: row.buyer,
     }),
+    custodyChain: row.custodyChain ?? row.chainId,
+    originChainId: row.originChainId ?? row.chainId,
     passportStatus: row.status ?? "UNVERIFIED",
     verifier: row.verifier ?? "",
     vin: row.vin ?? "",
@@ -413,6 +446,7 @@ app.get("/listings", async (c) => {
   const limit = parseLimit(c.req.query("limit"));
   const seller = c.req.query("seller");
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
+  const custodyChainFilter = parseOptionalChainId(c.req.query("custodyChain"));
   const offset = (page - 1) * limit;
   const filters = parseListingFilterQuery({
     search: c.req.query("search"),
@@ -449,7 +483,12 @@ app.get("/listings", async (c) => {
   });
 
   if (isDefaultListingsBrowse(filters, seller)) {
-    const { listings, total } = await loadDefaultBrowsePage(limit, offset, verifiedFirst);
+    const { listings, total } = await loadDefaultBrowsePage(
+      limit,
+      offset,
+      verifiedFirst,
+      custodyChainFilter,
+    );
     return c.json(
       jsonBody({
         listings,
@@ -475,7 +514,10 @@ app.get("/listings", async (c) => {
   const tokenIds = [...new Set(allListings.map((l) => l.tokenId))];
   const passportMap = await loadPassportMap(tokenIds);
 
-  const enriched = allListings.map((listing) => enrichListing(listing, passportMap));
+  let enriched = allListings.map((listing) => enrichListing(listing, passportMap));
+  if (custodyChainFilter !== undefined) {
+    enriched = enriched.filter((row) => row.custodyChain === custodyChainFilter);
+  }
   const sorted = filterAndSortListings(enriched, filters, verifiedFirst);
   const total = sorted.length;
   const pageRows = sorted.slice(offset, offset + limit);
@@ -675,6 +717,8 @@ app.get("/listings/:tokenId", async (c) => {
   return c.json(
     jsonBody({
       ...withLegacyFiatCurrency(row),
+      custodyChain: p?.custodyChain ?? row.chainId,
+      originChainId: p?.chainId ?? row.chainId,
       passportStatus: p?.status ?? "UNVERIFIED",
       verifier: p?.verifier ?? "",
       vin: p?.vin ?? "",
@@ -1381,7 +1425,8 @@ app.get("/verifiers", async (c) => {
 
   const verifiers = rows.map((v) => ({
     ...v,
-    verificationCount: verificationCountByVerifier.get(getAddress(v.id)) ?? 0,
+    verificationCount:
+      verificationCountByVerifier.get(getAddress(v.address)) ?? 0,
   }));
 
   return c.json(jsonBody({ verifiers }));
@@ -1405,7 +1450,7 @@ async function buildVerifierDetailResponse(id: string) {
   if (!row[0]) return null;
 
   const v = row[0];
-  const checksumVerifier = getAddress(id);
+  const checksumVerifier = getAddress(v.address);
   const verificationRow = await db
     .select({ total: count() })
     .from(passport)
@@ -1434,6 +1479,7 @@ async function buildVerifierDetailResponse(id: string) {
 
   return jsonBody({
     address: v.address,
+    chainId: v.chainId,
     identity: {
       category: v.category,
       name: v.name,
@@ -1456,10 +1502,15 @@ async function buildVerifierDetailResponse(id: string) {
 
 app.get("/verifiers/by-slug/:slug", async (c) => {
   const slug = c.req.param("slug");
+  const chainIdFilter = parseOptionalChainId(c.req.query("chainId"));
+  const conditions = [eq(verifier.slug, slug), eq(verifier.active, true)];
+  if (chainIdFilter !== undefined) {
+    conditions.push(eq(verifier.chainId, chainIdFilter));
+  }
   const row = await db
     .select()
     .from(verifier)
-    .where(and(eq(verifier.slug, slug), eq(verifier.active, true)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!row[0]) {
@@ -1477,26 +1528,52 @@ app.get("/verifiers/by-slug/:slug", async (c) => {
 app.get("/verifiers/slug-available/:slug", async (c) => {
   const slug = c.req.param("slug");
   const ownerAddress = c.req.query("address")?.toLowerCase();
+  const chainIdFilter = parseOptionalChainId(c.req.query("chainId"));
 
   if (!isValidSlugParam(slug)) {
     return c.json({ available: false, slug });
   }
 
+  const conditions = [eq(verifier.slug, slug), eq(verifier.active, true)];
+  if (chainIdFilter !== undefined) {
+    conditions.push(eq(verifier.chainId, chainIdFilter));
+  }
+
   const rows = await db
     .select()
     .from(verifier)
-    .where(and(eq(verifier.slug, slug), eq(verifier.active, true)));
+    .where(and(...conditions));
 
   const takenByOther = rows.some((row) => {
     if (!ownerAddress) return true;
-    return row.id !== ownerAddress;
+    return row.address.toLowerCase() !== ownerAddress;
   });
 
   return c.json({ available: !takenByOther, slug });
 });
 
 app.get("/verifiers/:address", async (c) => {
-  const id = c.req.param("address").toLowerCase();
+  const address = parseAddressParam(c.req.param("address"));
+  if (!address) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+  const chainId = parseOptionalChainId(c.req.query("chainId"));
+  let id: string;
+  if (chainId !== undefined) {
+    id = normalizeVerifierId(chainId, address);
+  } else {
+    // Prefer ?chainId= (SPEC §I.12.12). Fallback: first active row for address.
+    const rows = await db
+      .select()
+      .from(verifier)
+      .where(eq(verifier.address, address))
+      .orderBy(desc(verifier.active), desc(verifier.joinedAt))
+      .limit(1);
+    if (!rows[0]) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    id = rows[0].id;
+  }
   const detail = await buildVerifierDetailResponse(id);
 
   if (!detail) {
