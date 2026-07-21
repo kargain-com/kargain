@@ -17,8 +17,8 @@
 
 | Generation | Section |
 |------------|---------|
-| v2 active (84532) | [Part I.9.1](#i91-active-deployment-base-sepolia-84532) |
-| v2 spoke (11155111) | [Part I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
+| Nuclear active (84532) | [Part I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| Nuclear full stack (11155111) | [Part I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | v1.x historical (84532) | [Part II.4](#ii4-historical-deployment-base-sepolia-84532) |
 
 ## Part 0 — Conventions
@@ -501,7 +501,7 @@ Confirmations: **5** both directions — explicit fallback (`confirmations.sourc
 
 **enforcedOptions floors:** type1 **100k** / type2 **250k** (pathway floor for typical URIs). Hub sender may add Executor lzReceive gas via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts` (long compose URIs); do not raise the pathway floor without a re-wire.
 
-Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 20, 2026).
+Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live Nuclear pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 21, 2026).
 ### 7.5 Bridge flow (step by step)
 
 1. **Preconditions:** Owner on hub; passport **not** marketplace-listed; passport **not** `DISPUTED`; LZ peers wired (testnet↔testnet only; star per §7.1 / §7.6).
@@ -567,60 +567,72 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
-| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (RC) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
-| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD, EUR, GBP, JPY | Deployed (spoke) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
+| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear Model X v1.3) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (full Model X v1.3) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Generation v2 cutover June 27, 2026; production Ponder indexes v2 from block **43399242** (June 2026).
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Nuclear cutover July 21, 2026 — production Ponder must reindex from hub `indexFromBlock` **44434865** (ops follow-up).
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
-> **Single source of truth** for active 84532 contract addresses and semver. Other docs link here.
+> **Single source of truth** for active 84532 contract addresses and semver. Other docs link here. Matches `deployments/84532.json` and `lib/web3/sepolia-addresses.ts` (`SEPOLIA_ACTIVE`).
 
-Deployed June 27, 2026 · semver **`-rc.1`** on testnet · `indexFromBlock`: **43399242** · manifest: `deployments/84532.json` (not in git) · git commit: `c88b5dc`
+Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **44434865** · manifest: `deployments/84532.json` (not in git)
 
 | Contract | VERSION | Address | Basescan |
 |----------|---------|---------|----------|
-| Timelock48h | `1.0.0-rc.1` | `0x9319e223ff31c954A940b14F04025B56A53ED384` | [code](https://sepolia.basescan.org/address/0x9319e223ff31c954A940b14F04025B56A53ED384#code) |
-| KarProPass (reused) | `1.0.0-rc.1` | `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` | [code](https://sepolia.basescan.org/address/0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1) |
-| KarProStaking | `1.1.0-rc.1` | `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` | [code](https://sepolia.basescan.org/address/0xb5d79551BB11F726D2A1A110BAc645C4345dA568#code) |
-| KarPassport | `1.2.0-rc.1` | `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` | [code](https://sepolia.basescan.org/address/0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594#code) |
-| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3` | [code](https://sepolia.basescan.org/address/0x58d5e740B29Ab549fBD4d0A147fcDedc32E0b6a3#code) |
-| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` | [code](https://sepolia.basescan.org/address/0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19#code) |
-| AuctionEscrow impl | `1.0.1-draft` | `0x7aCED69A61d77C208140107E2b46d3D7d7266a66` | [code](https://sepolia.basescan.org/address/0x7aCED69A61d77C208140107E2b46d3D7d7266a66#code) |
-| AuctionEscrow proxy | `1.0.1-draft` | `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` | [code](https://sepolia.basescan.org/address/0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce#code) |
-| ProxyONFT721Adapter | `1.1.0-rc.1` | `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` | [code](https://sepolia.basescan.org/address/0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0#code) |
+| Timelock48h | `1.0.0-rc.1` | `0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760` | [code](https://sepolia.basescan.org/address/0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760#code) |
+| KarProPass | `1.0.0-rc.1` | `0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25` | [code](https://sepolia.basescan.org/address/0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25#code) |
+| KarProStaking | `1.1.0-rc.1` | `0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f` | [code](https://sepolia.basescan.org/address/0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f#code) |
+| KarPassport | `1.3.0-rc.1` | `0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a` | [code](https://sepolia.basescan.org/address/0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a#code) |
+| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x0F98B21857386dF0c3B0323c94e63e140533495F` | [code](https://sepolia.basescan.org/address/0x0F98B21857386dF0c3B0323c94e63e140533495F#code) |
+| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x60336c550946AF79c8FCfaDfA65d76224B356323` | [code](https://sepolia.basescan.org/address/0x60336c550946AF79c8FCfaDfA65d76224B356323#code) |
+| AuctionEscrow impl | `1.0.1-draft` | `0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2` | [code](https://sepolia.basescan.org/address/0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2#code) |
+| AuctionEscrow proxy | `1.0.1-draft` | `0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04` | [code](https://sepolia.basescan.org/address/0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04#code) |
+| KarPassportBridgeGateway | `1.1.0-rc.1` | `0x2a4339656393da943730b7Ac728480f40909f14C` | [code](https://sepolia.basescan.org/address/0x2a4339656393da943730b7Ac728480f40909f14C#code) |
 | USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
 
-**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
+**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
-> **Superseded adapter:** Prior ProxyONFT721Adapter `1.0.0-rc.1` `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c` (block 43399505) — replaced July 20, 2026. Historical stack pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md).
+> **Superseded (pre-Nuclear hub, denylisted):** KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` · MarketplaceEscrow `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` · AuctionEscrow `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` · ProxyONFT721Adapter `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` · KarProStaking `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` · KarProPass `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` · earlier adapter `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c`. Historical pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
 
-**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · deploy record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) · AuctionEscrow additive: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md) · UUPS upgrade to `1.0.1-draft`: [ops/deploys/84532-auction-upgrade-1.0.1.md](../ops/deploys/84532-auction-upgrade-1.0.1.md) · Bridge hub↔spoke: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire:read-only` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
 
-**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-101-draft). Additive deploy record: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-101-draft).
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
-> **Single source of truth** for active spoke ONFT addresses and the wired hub↔spoke pathway. Other docs link here.
+> **Single source of truth** for the Nuclear full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `deployments/11155111.json`.
 
-Deployed July 20, 2026 · spoke ONFT semver **`1.0.0-rc.1`** · manifest: `deployments/11155111.json` (not in git) · hub peer adapter: [I.9.1](#i91-active-deployment-base-sepolia-84532)
+Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **11319840** · manifest: `deployments/11155111.json` (not in git) · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
 
 | Contract | VERSION | Address | Etherscan |
 |----------|---------|---------|-----------|
-| KarPassportONFT721 | `1.0.0-rc.1` | `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` | [code](https://sepolia.etherscan.io/address/0x5b7fD0ffF9B82255AD4d043a491e81948b76e703#code) |
+| Timelock48h | `1.0.0-rc.1` | `0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083` | [code](https://sepolia.etherscan.io/address/0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083#code) |
+| KarProPass | `1.0.0-rc.1` | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` | [code](https://sepolia.etherscan.io/address/0x8888594b12DF2e1EF406e91CFF72d52801BCaC24#code) |
+| KarProStaking | `1.1.0-rc.1` | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` | [code](https://sepolia.etherscan.io/address/0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F#code) |
+| KarPassport | `1.3.0-rc.1` | `0x6378469256907D7DC14BBfce0261ceDE22314507` | [code](https://sepolia.etherscan.io/address/0x6378469256907D7DC14BBfce0261ceDE22314507#code) |
+| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` | [code](https://sepolia.etherscan.io/address/0x7d37e7cbcc42308264B608429a82D03B7C3112F4#code) |
+| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` | [code](https://sepolia.etherscan.io/address/0x4FC74e0B7eE0A741707A553D43Efff68126D198B#code) |
+| AuctionEscrow impl | `1.0.1-draft` | `0xCf78b714DB70960bf1BB418C3370e4502AcFFC64` | [code](https://sepolia.etherscan.io/address/0xCf78b714DB70960bf1BB418C3370e4502AcFFC64#code) |
+| AuctionEscrow proxy | `1.0.1-draft` | `0x796Fb1476440C3D8A34a8EC2Fa56664864531499` | [code](https://sepolia.etherscan.io/address/0x796Fb1476440C3D8A34a8EC2Fa56664864531499#code) |
+| KarPassportBridgeGateway | `1.1.0-rc.1` | `0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB` | [code](https://sepolia.etherscan.io/address/0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB#code) |
+| USDC | — | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | [token](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
+| Native USD feed | — | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | [feed](https://sepolia.etherscan.io/address/0x694AA1769357215DE4FAC081bf1f309aDC325306) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.etherscan.io/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
 
-**Deploy block:** KarPassportONFT721 **11312959**.
+**Parameters:** same Nuclear policy as [I.9.1](#i91-active-deployment-base-sepolia-84532) (USD-only registry, `disputeDeposit` 0.01 ETH, `platformFeeBps` 10, `minStakeNative` 0.05 ETH, `upgradeAuthority` Timelock48h) · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
-**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; hub sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x3ef27aa72ed7b2d5aadf100d99d4dfd4fa1e2b1adc915523b0ddc8c9bf2d517e`
+> **Superseded thin ONFT (denylisted):** KarPassportONFT721 `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` (July 20 spoke) — retired by Nuclear full stack.
 
-**Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · runbook: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md) · security policy: [§7.6](#76-layerzero-security-configuration).
+**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · peers hub gateway `0x2a4339656393da943730b7Ac728480f40909f14C` ↔ eth gateway `0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB` · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x53f2ed09090b32e0578a32d5a97a9798fee07a8735a10e713134f0efcded1c71`
+
+**Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · `pnpm verify:sepolia:eth` · runbook: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md) · security policy: [§7.6](#76-layerzero-security-configuration).
 
 ---
 
@@ -891,6 +903,21 @@ If a bridge message is permanently undeliverable, a home-origin passport can be 
 **Governed guarantee:** cross-chain non-duplication depends on step 1 preceding step 2 (observers get the 48h Timelock delay). This is the standard ONFT recovery model.
 
 Procedure: [ops/recovery-bridge.md](../ops/recovery-bridge.md). Hardhat gate: gateway suite **#10** (blocks live C2 cutover until green).
+
+### 12.12 Cross-chain address identity
+
+Contract addresses are **not** unique across networks. The same CREATE address hex can appear on different chains when one deployer hits the same nonce (observed: Base Sepolia historical vs Ethereum Sepolia live Nuclear KarPassport `0x637846…4507` / MarketplaceEscrow `0x4FC74e…198B`).
+
+**Normative:**
+
+- Every off-chain identify / filter of protocol contracts **must** use `(chainId, address)` — never an address string alone.
+- Denylist, address resolvers, and indexer compound keys are **per-chain**.
+- Today's `SEPOLIA_HISTORICAL_DENYLIST` / `sepoliaKargainContractDenylist()` are **84532-only**; applying them chain-blind would treat live 11155111 contracts as abandoned.
+
+**Hard requirements for upcoming work:**
+
+- **C3 (indexer):** entity / API keys include `chainId` (no address-only identity across commercial chains).
+- **C4 (app):** messaging/profile denylist is per-chain (do not reuse the Base Sepolia denylist for other `chainId`s).
 
 ---
 

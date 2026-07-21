@@ -143,7 +143,15 @@ const SEPOLIA_KARGAIN_CONTRACTS: `0x${string}`[] = [
   ...SEPOLIA_HISTORICAL_DENYLIST,
 ];
 
-/** Kargain-owned contracts on Base Sepolia (active + historical) for profile/messaging denylist. Excludes timelock. */
+/**
+ * Kargain-owned contracts on **Base Sepolia** (active + historical) for profile/messaging denylist.
+ * Excludes timelock.
+ *
+ * WARNING — strictly `chainId === 84532` scoped. Callers MUST gate with `chainId === 84532`
+ * (see `allProtocolAddresses` in wallet-account). Do NOT apply chain-blind: identical address
+ * strings on 11155111 are live Nuclear spoke contracts (SPEC §I.12.12). Per-chain denylist
+ * for other commercial chains is a C4 hard requirement.
+ */
 export function sepoliaKargainContractDenylist(): readonly `0x${string}`[] {
   return SEPOLIA_KARGAIN_CONTRACTS;
 }
