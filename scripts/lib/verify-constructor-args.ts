@@ -85,10 +85,6 @@ export function karPassportOnftConstructorArgs(manifest: SpokeDeploymentManifest
   return [manifest.layerZeroEndpoint, manifest.deployer] as const;
 }
 
-/** @deprecated C2 — alias name for historical verify scripts / tests. */
-export const proxyOnftAdapterConstructorArgs =
-  karPassportBridgeGatewayConstructorArgs;
-
 export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
   const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
   const platformRecipient =
@@ -150,11 +146,10 @@ export const VERIFY_TARGETS = {
     addressKey: "marketplace" as const,
     buildArgs: marketplaceProxyConstructorArgs,
   },
-  /** Manifest key stays `proxyOnftAdapter` until C2 address cutover. */
-  proxyOnftAdapter: {
+  bridgeGateway: {
     label: `KarPassportBridgeGateway (${CONTRACT_VERSIONS.KarPassportBridgeGateway})`,
     contract: "contracts/KarPassportBridgeGateway.sol:KarPassportBridgeGateway",
-    addressKey: "proxyOnftAdapter" as const,
+    addressKey: "bridgeGateway" as const,
     buildArgs: karPassportBridgeGatewayConstructorArgs,
   },
   auctionEscrowImpl: {

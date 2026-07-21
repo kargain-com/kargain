@@ -605,10 +605,10 @@ async function main(): Promise<void> {
 
   try {
     const hubManifest = requireSepoliaDeployment();
-    if (!hubManifest.proxyOnftAdapter) {
-      throw new Error(`proxyOnftAdapter missing in ${SEPOLIA_DEPLOYMENT_PATH}`);
+    if (!hubManifest.bridgeGateway) {
+      throw new Error(`bridgeGateway missing in ${SEPOLIA_DEPLOYMENT_PATH}`);
     }
-    hubOApp = getAddress(hubManifest.proxyOnftAdapter);
+    hubOApp = getAddress(hubManifest.bridgeGateway);
   } catch (err) {
     if (flags.hub) {
       throw err instanceof Error
@@ -619,8 +619,8 @@ async function main(): Promise<void> {
 
   {
     const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
-    if (ethCommercial?.proxyOnftAdapter) {
-      spokeOApp = getAddress(ethCommercial.proxyOnftAdapter);
+    if (ethCommercial?.bridgeGateway) {
+      spokeOApp = getAddress(ethCommercial.bridgeGateway);
     } else {
       const legacySpoke = loadSpokeDeployment();
       if (legacySpoke?.karPassportOnft) {
@@ -646,7 +646,7 @@ async function main(): Promise<void> {
   }
   if (flags.spoke && !spokeOApp) {
     throw new Error(
-      `Eth OApp required — run nuclear deploy for 11155111 (commercial proxyOnftAdapter) or legacy pnpm deploy:spoke:sepolia`,
+      `Eth OApp required — run nuclear deploy for 11155111 (commercial bridgeGateway) or legacy pnpm deploy:spoke:sepolia`,
     );
   }
 

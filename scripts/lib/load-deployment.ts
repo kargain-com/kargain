@@ -29,13 +29,13 @@ export type DeploymentBlocks = {
   marketplaceImpl?: number;
   marketplace?: number;
   timelock?: number;
-  proxyOnftAdapter?: number;
+  bridgeGateway?: number;
   auctionEscrow?: number;
   auctionEscrowImpl?: number;
 };
 
-/** Prior hub adapter address retained when `pnpm deploy:adapter:sepolia` overwrites. */
-export type HistoricalProxyOnftAdapter = {
+/** Prior hub gateway address retained when gateway is redeployed. */
+export type HistoricalBridgeGateway = {
   address: `0x${string}`;
   block?: number;
   txHash?: string;
@@ -44,7 +44,7 @@ export type HistoricalProxyOnftAdapter = {
 };
 
 export type DeploymentHistorical = {
-  proxyOnftAdapter?: HistoricalProxyOnftAdapter[];
+  bridgeGateway?: HistoricalBridgeGateway[];
 };
 
 /** Hub↔spoke peer bookkeeping written by `pnpm bridge:wire` on successful full wire. */
@@ -71,8 +71,8 @@ export type DeploymentManifest = {
   deployer?: `0x${string}`;
   /** On-chain MarketplaceEscrow.upgradeAuthority (timelock contract or deployer EOA). */
   upgradeAuthority?: `0x${string}`;
-  /** v2: LayerZero hub adapter / nuclear commercial gateway */
-  proxyOnftAdapter?: `0x${string}`;
+  /** KarPassportBridgeGateway (nuclear commercial stack) */
+  bridgeGateway?: `0x${string}`;
   /** English reserve auction escrow (additive deploy) */
   auctionEscrow?: `0x${string}`;
   auctionEscrowImpl?: `0x${string}`;
@@ -80,7 +80,7 @@ export type DeploymentManifest = {
   tokenIdOffset?: string;
   deployedAt: string;
   unchanged?: string[];
-  /** Replaced addresses kept for ops (adapter redeploy). */
+  /** Replaced addresses kept for ops (gateway redeploy). */
   historical?: DeploymentHistorical;
   blocks: DeploymentBlocks;
   indexFromBlock: number;
@@ -139,11 +139,11 @@ function normalizeHistorical(
   historical: DeploymentHistorical | undefined,
 ): DeploymentHistorical | undefined {
   if (!historical) return undefined;
-  const adapters = historical.proxyOnftAdapter;
-  if (!adapters) return historical;
+  const gateways = historical.bridgeGateway;
+  if (!gateways) return historical;
   return {
     ...historical,
-    proxyOnftAdapter: adapters.map((entry) => ({
+    bridgeGateway: gateways.map((entry) => ({
       ...entry,
       address: getAddress(entry.address),
     })),
@@ -183,7 +183,7 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
     ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
     ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
-    ...(raw.proxyOnftAdapter ? { proxyOnftAdapter: getAddress(raw.proxyOnftAdapter) } : {}),
+    ...(raw.bridgeGateway ? { bridgeGateway: getAddress(raw.bridgeGateway) } : {}),
     ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
     ...(raw.historical ? { historical: normalizeHistorical(raw.historical) } : {}),
     ...(raw.peers !== undefined ? { peers: normalizeSpokePeers(raw.peers) } : {}),

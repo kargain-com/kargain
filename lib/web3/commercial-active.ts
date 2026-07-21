@@ -16,7 +16,7 @@ export type CommercialActiveBlocks = {
   marketplace?: number;
   auctionEscrowImpl?: number;
   auctionEscrow?: number;
-  proxyOnftAdapter?: number;
+  bridgeGateway?: number;
 };
 
 export type CommercialActiveStack = {
@@ -31,8 +31,8 @@ export type CommercialActiveStack = {
   /** Optional display/FX helper; may be unset on USD-only stacks. */
   eurFeed?: `0x${string}`;
   timelock: `0x${string}`;
-  /** KarPassportBridgeGateway (manifest key `proxyOnftAdapter`). */
-  proxyOnftAdapter: `0x${string}`;
+  /** KarPassportBridgeGateway. */
+  bridgeGateway: `0x${string}`;
   auctionEscrow: `0x${string}`;
   auctionEscrowImpl?: `0x${string}`;
   layerZeroEndpoint: `0x${string}`;
@@ -55,7 +55,7 @@ const BASE_SEPOLIA_84532 = {
   nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
   eurFeed: "0xb49f677943BC038e9857d61E7d053CaA2C1734C1",
   timelock: "0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760",
-  proxyOnftAdapter: "0x2a4339656393da943730b7Ac728480f40909f14C",
+  bridgeGateway: "0x2a4339656393da943730b7Ac728480f40909f14C",
   auctionEscrow: "0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04",
   auctionEscrowImpl: "0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
@@ -72,7 +72,7 @@ const BASE_SEPOLIA_84532 = {
     marketplace: 44_434_937,
     auctionEscrowImpl: 44_434_946,
     auctionEscrow: 44_434_977,
-    proxyOnftAdapter: 44_434_981,
+    bridgeGateway: 44_434_981,
   },
 } as const satisfies CommercialActiveStack;
 
@@ -87,7 +87,7 @@ const ETHEREUM_SEPOLIA_11155111 = {
   usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   nativeFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
   timelock: "0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083",
-  proxyOnftAdapter: "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB",
+  bridgeGateway: "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB",
   auctionEscrow: "0x796Fb1476440C3D8A34a8EC2Fa56664864531499",
   auctionEscrowImpl: "0xCf78b714DB70960bf1BB418C3370e4502AcFFC64",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
@@ -104,7 +104,7 @@ const ETHEREUM_SEPOLIA_11155111 = {
     marketplace: 11_319_857,
     auctionEscrowImpl: 11_319_860,
     auctionEscrow: 11_319_861,
-    proxyOnftAdapter: 11_319_862,
+    bridgeGateway: 11_319_862,
   },
 } as const satisfies CommercialActiveStack;
 

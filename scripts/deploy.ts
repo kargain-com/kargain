@@ -348,7 +348,7 @@ async function runLiveDeploy() {
       marketplace: Number(proxy.blockNumber),
       auctionEscrowImpl: Number(auctionImpl.blockNumber),
       auctionEscrow: Number(auctionProxy.blockNumber),
-      proxyOnftAdapter: Number(gateway.blockNumber),
+      bridgeGateway: Number(gateway.blockNumber),
     };
 
     const manifest: DeploymentManifest = {
@@ -364,7 +364,7 @@ async function runLiveDeploy() {
       usdc: externals.usdc,
       nativeFeed: externals.nativeUsdFeed,
       timelock: timelock.address,
-      proxyOnftAdapter: gateway.address,
+      bridgeGateway: gateway.address,
       layerZeroEndpoint: externals.layerZeroEndpoint,
       platformRecipient: params.platformRecipient,
       deployer: deployerAddress,
@@ -382,7 +382,7 @@ async function runLiveDeploy() {
         marketplace: proxy.txHash,
         auctionEscrowImpl: auctionImpl.txHash,
         auctionEscrow: auctionProxy.txHash,
-        proxyOnftAdapter: gateway.txHash,
+        bridgeGateway: gateway.txHash,
       },
       contractVersions: { ...CONTRACT_VERSIONS },
     };

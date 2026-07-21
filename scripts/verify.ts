@@ -31,7 +31,7 @@ const FULL_VERIFY_ORDER: HubVerifyTargetKey[] = [
   "karPassport",
   "marketplaceImpl",
   "marketplaceProxy",
-  "proxyOnftAdapter",
+  "bridgeGateway",
   "auctionEscrowImpl",
   "auctionEscrowProxy",
 ];
@@ -183,8 +183,8 @@ async function main() {
   if (manifest.auctionEscrow) {
     console.log(`AuctionEscrow proxy: ${manifest.auctionEscrow}`);
   }
-  if (manifest.proxyOnftAdapter) {
-    console.log(`Bridge gateway:      ${manifest.proxyOnftAdapter}`);
+  if (manifest.bridgeGateway) {
+    console.log(`Bridge gateway:      ${manifest.bridgeGateway}`);
   }
   if (force) console.log("Force mode: re-submitting even if explorer shows verified source.");
   if (strict) console.log("Strict mode: exit 1 on bytecode mismatch or unexpected failure.");

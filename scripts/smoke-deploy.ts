@@ -38,11 +38,11 @@ async function main() {
     }
 
     const timelock = manifest.timelock;
-    const adapter = manifest.proxyOnftAdapter;
+    const adapter = manifest.bridgeGateway;
     const usdc = getAddress(manifest.usdc ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e");
 
     if (!timelock || !adapter) {
-      console.error("Manifest missing timelock or proxyOnftAdapter");
+      console.error("Manifest missing timelock or bridgeGateway");
       process.exit(1);
     }
 

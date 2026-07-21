@@ -3,7 +3,7 @@ import {
   ETHEREUM_SEPOLIA_SPOKE,
   SEPOLIA_CHAIN_ID,
 } from "@/lib/web3/sepolia-addresses";
-import { proxyOnftAdapterAddress } from "@/lib/web3/deployment-addresses";
+import { bridgeGatewayAddress } from "@/lib/web3/deployment-addresses";
 
 /** Hub chain for bridge writes (wagmi). */
 export const BRIDGE_HUB_CHAIN_ID = SEPOLIA_CHAIN_ID;
@@ -24,7 +24,7 @@ const LZ_SCAN_TESTNET_TX = "https://testnet.layerzeroscan.com/tx";
 export function bridgeAdapterAddress(
   chainId: number = BRIDGE_HUB_CHAIN_ID,
 ): `0x${string}` | undefined {
-  return proxyOnftAdapterAddress(chainId);
+  return bridgeGatewayAddress(chainId);
 }
 
 export function bridgeSpokeOnftAddress(): `0x${string}` {

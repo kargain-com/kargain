@@ -9,7 +9,7 @@ import {
   karProStakingAddress,
   kargainContractDenylist,
   marketplaceAddress,
-  proxyOnftAdapterAddress,
+  bridgeGatewayAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -50,7 +50,7 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
     usdcAddress(cid),
     chainlinkNativeUsdFeed(cid),
     chainlinkEurUsdFeed(cid),
-    proxyOnftAdapterAddress(cid),
+    bridgeGatewayAddress(cid),
     auctionEscrowAddress(cid),
   ];
 

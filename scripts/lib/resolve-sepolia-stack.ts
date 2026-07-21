@@ -39,7 +39,7 @@ export type ResolvedCommercialStack = {
   usdc: `0x${string}`;
   nativeFeed: `0x${string}`;
   timelock?: `0x${string}`;
-  proxyOnftAdapter?: `0x${string}`;
+  bridgeGateway?: `0x${string}`;
   auctionEscrow?: `0x${string}`;
   indexFromBlock: number;
   blocks: DeploymentBlocks;
@@ -85,7 +85,7 @@ function stackFromCommitted(chainId: number): ResolvedCommercialStack {
     usdc: active.usdc,
     nativeFeed: active.nativeFeed,
     timelock: active.timelock,
-    proxyOnftAdapter: active.proxyOnftAdapter,
+    bridgeGateway: active.bridgeGateway,
     auctionEscrow: active.auctionEscrow,
     indexFromBlock: active.indexFromBlock,
     blocks: { ...active.blocks },
@@ -109,7 +109,7 @@ function stackFromManifest(
     usdc: manifest.usdc ?? committed.usdc,
     nativeFeed: manifest.nativeFeed ?? committed.nativeFeed,
     ...(manifest.timelock ? { timelock: manifest.timelock } : {}),
-    ...(manifest.proxyOnftAdapter ? { proxyOnftAdapter: manifest.proxyOnftAdapter } : {}),
+    ...(manifest.bridgeGateway ? { bridgeGateway: manifest.bridgeGateway } : {}),
     ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
     indexFromBlock: manifest.indexFromBlock,
     blocks: manifest.blocks,
@@ -278,14 +278,14 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
     `  karPassport:    ${stack.karPassport}`,
     `  marketplace:    ${stack.marketplace}`,
     `  auctionEscrow:  ${stack.auctionEscrow ?? "(none)"}`,
-    `  gateway:        ${stack.proxyOnftAdapter ?? "(none)"}`,
+    `  gateway:        ${stack.bridgeGateway ?? "(none)"}`,
     "",
     `Ethereum Sepolia (11155111) — source: ${eth.source}`,
     `  indexFromBlock: ${eth.indexFromBlock}`,
     `  karPassport:    ${eth.karPassport}`,
     `  marketplace:    ${eth.marketplace}`,
     `  auctionEscrow:  ${eth.auctionEscrow ?? "(none)"}`,
-    `  gateway:        ${eth.proxyOnftAdapter ?? "(none)"}`,
+    `  gateway:        ${eth.bridgeGateway ?? "(none)"}`,
     "",
     "Network (VPS — see .env.example):",
     `  PONDER_RPC_URL_84532=${process.env.PONDER_RPC_URL_84532 ?? SEPOLIA_PUBLIC_RPC}`,

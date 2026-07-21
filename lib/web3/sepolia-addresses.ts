@@ -15,7 +15,7 @@ export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
 
 /**
  * Active Nuclear stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
- * KarPassport `1.3.0-rc.1` + KarPassportBridgeGateway `1.1.0-rc.1` (manifest key `proxyOnftAdapter`).
+ * KarPassport `1.3.0-rc.1` + KarPassportBridgeGateway `1.1.0-rc.1`.
  */
 export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
 
@@ -64,12 +64,12 @@ export const ETHEREUM_SEPOLIA_SPOKE = {
   /** Nuclear Eth KarPassport — NFT ownership for bridge delivery polls. */
   karPassportOnft: ethActive.karPassport,
   /** Eth KarPassportBridgeGateway (OApp peer). */
-  bridgeGateway: ethActive.proxyOnftAdapter,
+  bridgeGateway: ethActive.bridgeGateway,
   layerZeroEndpoint: ethActive.layerZeroEndpoint,
   hubEid: 40245,
   spokeEid: 40161,
   blocks: {
     karPassportOnft: ethActive.blocks.karPassport!,
-    bridgeGateway: ethActive.blocks.proxyOnftAdapter!,
+    bridgeGateway: ethActive.blocks.bridgeGateway!,
   },
 } as const;

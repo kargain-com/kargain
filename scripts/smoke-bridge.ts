@@ -2,7 +2,7 @@
  * Live bridge E2E smoke — hub (84532 / EID 40245) ↔ eth (11155111 / EID 40161).
  *
  * Nuclear dual commercial stacks: both sides are KarPassport + gateway
- * (`proxyOnftAdapter`). Legacy thin-ONFT eth manifest still resolves for OApp.
+ * (`bridgeGateway`). Legacy thin-ONFT eth manifest still resolves for OApp.
  *
  * Usage:
  *   pnpm smoke:bridge
@@ -117,16 +117,16 @@ function parseFlags(argv: string[]): SmokeFlags {
 
 function resolveBridgeAddresses(): ResolvedBridge {
   const hubManifest = requireSepoliaDeployment();
-  if (!hubManifest.proxyOnftAdapter) {
-    fail(`proxyOnftAdapter missing in deployments/84532.json`);
+  if (!hubManifest.bridgeGateway) {
+    fail(`bridgeGateway missing in deployments/84532.json`);
   }
 
   const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
-  if (ethCommercial?.proxyOnftAdapter && ethCommercial.karPassport) {
+  if (ethCommercial?.bridgeGateway && ethCommercial.karPassport) {
     return {
-      hubGateway: getAddress(hubManifest.proxyOnftAdapter),
+      hubGateway: getAddress(hubManifest.bridgeGateway),
       hubPassport: getAddress(hubManifest.karPassport),
-      ethGateway: getAddress(ethCommercial.proxyOnftAdapter),
+      ethGateway: getAddress(ethCommercial.bridgeGateway),
       ethPassport: getAddress(ethCommercial.karPassport),
       ethCommercial: true,
     };
@@ -136,7 +136,7 @@ function resolveBridgeAddresses(): ResolvedBridge {
   if (legacySpoke?.karPassportOnft) {
     const onft = getAddress(legacySpoke.karPassportOnft);
     return {
-      hubGateway: getAddress(hubManifest.proxyOnftAdapter),
+      hubGateway: getAddress(hubManifest.bridgeGateway),
       hubPassport: getAddress(hubManifest.karPassport),
       ethGateway: onft,
       ethPassport: onft,
@@ -145,7 +145,7 @@ function resolveBridgeAddresses(): ResolvedBridge {
   }
 
   fail(
-    `Eth OApp missing in deployments/11155111.json — run nuclear deploy (commercial proxyOnftAdapter) or legacy pnpm deploy:spoke:sepolia`,
+    `Eth OApp missing in deployments/11155111.json — run nuclear deploy (commercial bridgeGateway) or legacy pnpm deploy:spoke:sepolia`,
   );
 }
 

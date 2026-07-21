@@ -37,7 +37,7 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   it("ETHEREUM_SEPOLIA_SPOKE points at Nuclear Eth KarPassport", () => {
     const eth = requireCommercialActive(ETH);
     assert.equal(ETHEREUM_SEPOLIA_SPOKE.karPassportOnft, eth.karPassport);
-    assert.equal(ETHEREUM_SEPOLIA_SPOKE.bridgeGateway, eth.proxyOnftAdapter);
+    assert.equal(ETHEREUM_SEPOLIA_SPOKE.bridgeGateway, eth.bridgeGateway);
     assert.notEqual(
       ETHEREUM_SEPOLIA_SPOKE.karPassportOnft,
       "0x5b7fD0ffF9B82255AD4d043a491e81948b76e703",
@@ -70,7 +70,7 @@ describe("resolveCommercialStack committed fallback", () => {
       assert.equal(eth.karPassport, "0x6378469256907D7DC14BBfce0261ceDE22314507");
       assert.equal(eth.marketplace, "0x4FC74e0B7eE0A741707A553D43Efff68126D198B");
       assert.equal(eth.indexFromBlock, 11_319_840);
-      assert.equal(eth.proxyOnftAdapter, "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB");
+      assert.equal(eth.bridgeGateway, "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB");
 
       const bundle = ponderAddressesFromStack(eth);
       assert.equal(bundle.karPassport, eth.karPassport);

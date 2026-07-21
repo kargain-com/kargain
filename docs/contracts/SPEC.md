@@ -654,7 +654,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 12. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
 13. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
 
-Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `proxyOnftAdapter` until address cutover).
+Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `bridgeGateway`).
 
 **Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `proFeeBps` 0 · `maxFeedStaleness` 3600 · auction `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · USD-only currency registry · same `platformRecipient` as prior 84532 deploy. Additive `pnpm deploy:auction` remains for legacy manifests that lack AuctionEscrow. Behavior: [I.11](#i11-auctionescrow-101-draft). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 

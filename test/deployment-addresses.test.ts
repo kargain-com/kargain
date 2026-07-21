@@ -49,7 +49,7 @@ describe("kargainContractDenylist per-chain", () => {
     assert.ok(list.includes(SPOKE.marketplace.toLowerCase()));
     assert.ok(list.includes(SPOKE.karProPass.toLowerCase()));
     assert.ok(list.includes(SPOKE.auctionEscrow.toLowerCase()));
-    assert.ok(list.includes(SPOKE.proxyOnftAdapter.toLowerCase()));
+    assert.ok(list.includes(SPOKE.bridgeGateway.toLowerCase()));
     assert.equal(list.includes(SEPOLIA_ACTIVE.karPassport.toLowerCase()), false);
   });
 
