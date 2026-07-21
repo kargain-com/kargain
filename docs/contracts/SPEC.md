@@ -626,24 +626,25 @@ Deployed July 20, 2026 · spoke ONFT semver **`1.0.0-rc.1`** · manifest: `deplo
 
 ### I.10. Deploy sequence
 
-Per new chain (matches `scripts/deploy.ts`; Base Sepolia reuses existing **KarProPass**):
+**Nuclear** commercial deploy (matches `scripts/deploy.ts`) for **84532** and **11155111** — identical protocol parameters; chain-specific externals only from `CHAINLINK_FEEDS` / `WETH_BY_CHAIN` / `LZ_ENDPOINT_V2_BY_CHAIN` (`scripts/lib/chainlink-feeds.ts`). Dry-run parity: `pnpm deploy:nuclear:dry-run`. Live: `pnpm deploy:sepolia` (Base) / `pnpm deploy:sepolia:eth` (Ethereum Sepolia).
 
 1. Deploy **Timelock48h** (proposer, executor, admin — typically deployer).
-2. Deploy **KarProPass** (skip if reusing existing pass, as on 84532).
-3. Deploy **KarProStaking** (pass address + owner).
+2. Deploy **KarProPass** (always fresh — no reuse on Nuclear redeploy).
+3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
-5. Deploy **KarPassport** (staking, owner, `disputeDeposit` — e.g. 0.01 ETH).
-6. Deploy **MarketplaceEscrow** implementation (passport, USDC, native USD feed, staking, platform recipient, fees, staleness).
+5. Deploy **KarPassport** `1.3.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**).
+6. Deploy **MarketplaceEscrow** implementation (passport, USDC, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
 7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
-8. **Register currencies** — `setCurrencyFeed` for each live feed from `CHAINLINK_FEEDS` (deployer as authority).
-9. **Register USDC** — `approvePaymentToken(usdc, address(0))` for USD-pegged 1:1 checkout.
-10. **`transferUpgradeAuthority(timelock)`**.
-11. Deploy **ProxyONFT721Adapter** (passport, marketplace proxy, LZ endpoint, delegate).
-12. **Configure LayerZero peers** — testnet EIDs to testnet only; mainnet to mainnet only.
+8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
+9. **`transferUpgradeAuthority(timelock)`** on MarketplaceEscrow.
+10. Deploy **AuctionEscrow** impl + proxy (`initialize(timelock)`); `wrappedNative` = `WETH_BY_CHAIN[chainId]`; `platformFeeBps` **10**.
+11. Deploy **KarPassportBridgeGateway** (passport, marketplace proxy, **auctionEscrow**, LZ endpoint, delegate).
+12. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
+13. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
 
-Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset`, `contractVersions`, `indexFromBlock`.
+Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `proxyOnftAdapter` until address cutover).
 
-**AuctionEscrow** is additive (`pnpm deploy:auction`) — not part of this sequence. Addresses: [I.9.1](#i91-active-deployment-base-sepolia-84532). Behavior: [I.11](#i11-auctionescrow-101-draft).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `proFeeBps` 0 · `maxFeedStaleness` 3600 · auction `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · USD-only currency registry · same `platformRecipient` as prior 84532 deploy. Additive `pnpm deploy:auction` remains for legacy manifests that lack AuctionEscrow. Behavior: [I.11](#i11-auctionescrow-101-draft). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 

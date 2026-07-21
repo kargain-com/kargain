@@ -14,6 +14,11 @@ export const DEPLOYMENT_PATH = join(process.cwd(), "deployments/31337.json");
 export const SEPOLIA_DEPLOYMENT_PATH = join(process.cwd(), "deployments/84532.json");
 export const SPOKE_DEPLOYMENT_PATH = join(process.cwd(), "deployments/11155111.json");
 
+/** Hub commercial manifests — Base Sepolia (84532) and Ethereum Sepolia (11155111). */
+export function commercialDeploymentPath(chainId: number): string {
+  return join(process.cwd(), `deployments/${chainId}.json`);
+}
+
 /** Active Base Sepolia fallbacks when no manifest / env. Re-export from lib/web3/sepolia-addresses.ts */
 export const SEPOLIA_FALLBACK = SEPOLIA_ACTIVE;
 
@@ -222,6 +227,21 @@ export function requireSepoliaDeployment(): DeploymentManifest {
   if (!deployment) {
     throw new Error(
       "Missing deployments/84532.json — run `pnpm deploy:sepolia` on Base Sepolia first",
+    );
+  }
+  return deployment;
+}
+
+export function loadCommercialDeployment(chainId: number): DeploymentManifest | null {
+  const raw = readJsonFile<DeploymentManifest>(commercialDeploymentPath(chainId));
+  return raw ? normalizeManifest(raw) : null;
+}
+
+export function requireCommercialDeployment(chainId: number): DeploymentManifest {
+  const deployment = loadCommercialDeployment(chainId);
+  if (!deployment) {
+    throw new Error(
+      `Missing deployments/${chainId}.json — run nuclear deploy on chain ${chainId} first`,
     );
   }
   return deployment;

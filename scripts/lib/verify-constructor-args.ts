@@ -1,7 +1,7 @@
 import { encodeFunctionData } from "viem";
 
 import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
-import { LZ_ENDPOINT_V2_BY_CHAIN } from "./chainlink-feeds.js";
+import { lzEndpointForChain, wethForChain } from "./chainlink-feeds.js";
 import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
@@ -9,14 +9,10 @@ import {
   type SpokeDeploymentManifest,
 } from "./load-deployment.js";
 
-/** Canonical Base Sepolia WETH — AuctionEscrow wrappedNative immutable. */
-export const BASE_SEPOLIA_WETH =
-  "0x4200000000000000000000000000000000000006" as const;
-
 /** Platform fee — 0.1% (10 bps). Matches marketplace deploy + auction-design §9. */
 export const AUCTION_PLATFORM_FEE_BPS = 10n;
 
-/** Must match `scripts/deploy.ts`. */
+/** Must match `scripts/deploy.ts` nuclear constants. */
 export const MARKETPLACE_FEE_BPS = 10n;
 export const MARKETPLACE_PRO_FEE_BPS = 0n;
 export const MARKETPLACE_MAX_FEED_STALENESS = 3600n;
@@ -74,7 +70,7 @@ export function karPassportBridgeGatewayConstructorArgs(
 ) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
   const lzEndpoint =
-    manifest.layerZeroEndpoint ?? LZ_ENDPOINT_V2_BY_CHAIN[84532];
+    manifest.layerZeroEndpoint ?? lzEndpointForChain(manifest.chainId);
   return [
     manifest.karPassport,
     manifest.marketplace,
@@ -101,7 +97,7 @@ export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
   return [
     manifest.karPassport,
     usdc,
-    BASE_SEPOLIA_WETH,
+    wethForChain(manifest.chainId),
     manifest.karProStaking,
     platformRecipient,
     AUCTION_PLATFORM_FEE_BPS,

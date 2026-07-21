@@ -1,21 +1,16 @@
 import hardhat from "hardhat";
 import { encodeFunctionData, getAddress, type Hash } from "viem";
 
-import {
-  AUCTION_PLATFORM_FEE_BPS,
-  BASE_SEPOLIA_WETH,
-} from "./lib/verify-constructor-args.js";
+import { isCommercialChainId, wethForChain } from "./lib/chainlink-feeds.js";
+import { AUCTION_PLATFORM_FEE_BPS } from "./lib/verify-constructor-args.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
 import {
-  requireSepoliaDeployment,
-  SEPOLIA_CHAIN_ID,
-  SEPOLIA_DEPLOYMENT_PATH,
+  commercialDeploymentPath,
+  requireCommercialDeployment,
   SEPOLIA_FALLBACK,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
 import { writeDeploymentManifest } from "./lib/write-deployment.js";
-
-const BASESCAN = "https://sepolia.basescan.org";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 120_000;
@@ -86,45 +81,48 @@ async function main() {
     process.exit(1);
   }
 
-  const existing = requireSepoliaDeployment();
-  if (existing.auctionEscrow) {
-    console.error(
-      `AuctionEscrow already deployed at ${existing.auctionEscrow} — aborting to avoid overwrite.`,
-    );
-    process.exit(1);
-  }
-
-  const timelock = getAddress(existing.timelock ?? SEPOLIA_FALLBACK.timelock);
-  const usdc = getAddress(existing.usdc ?? SEPOLIA_FALLBACK.usdc);
-  const platformRecipient = getAddress(
-    existing.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient,
-  );
-  const karPassport = getAddress(existing.karPassport);
-  const karProStaking = getAddress(existing.karProStaking);
-
   const connection = await hardhat.network.connect();
   const { viem } = connection;
 
   try {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
-    if (chainId !== SEPOLIA_CHAIN_ID) {
-      throw new Error(`Expected chain ${SEPOLIA_CHAIN_ID}, got ${chainId}`);
+    if (!isCommercialChainId(chainId)) {
+      throw new Error(`Expected commercial chain 84532|11155111, got ${chainId}`);
     }
+
+    const existing = requireCommercialDeployment(chainId);
+    if (existing.auctionEscrow) {
+      console.error(
+        `AuctionEscrow already deployed at ${existing.auctionEscrow} — aborting to avoid overwrite.`,
+      );
+      process.exit(1);
+    }
+
+    const timelock = getAddress(existing.timelock ?? SEPOLIA_FALLBACK.timelock);
+    const usdc = getAddress(existing.usdc ?? SEPOLIA_FALLBACK.usdc);
+    const platformRecipient = getAddress(
+      existing.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient,
+    );
+    const karPassport = getAddress(existing.karPassport);
+    const karProStaking = getAddress(existing.karProStaking);
+    const weth = wethForChain(chainId);
+    const manifestPath = commercialDeploymentPath(chainId);
 
     const [deployer] = await viem.getWalletClients();
     const deployerAddress = getAddress(deployer.account.address);
 
-    console.log("Kargain AuctionEscrow deploy — Base Sepolia (additive)");
+    console.log(`Kargain AuctionEscrow deploy — chain ${chainId} (additive)`);
     console.log(`Deployer: ${deployerAddress}`);
     console.log(`Chain:    ${chainId}`);
     console.log(`Timelock: ${timelock}`);
+    console.log(`WETH:     ${weth}`);
     console.log("");
 
     const impl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
       karPassport,
       usdc,
-      BASE_SEPOLIA_WETH,
+      weth,
       karProStaking,
       platformRecipient,
       AUCTION_PLATFORM_FEE_BPS,
@@ -171,20 +169,14 @@ async function main() {
       indexFromBlock: existing.indexFromBlock,
     };
 
-    writeDeploymentManifest(SEPOLIA_DEPLOYMENT_PATH, merged);
+    writeDeploymentManifest(manifestPath, merged);
 
     console.log("");
     console.log("AuctionEscrow deployment complete:");
     console.log(`  AuctionEscrow impl:  ${impl.address}`);
     console.log(`  AuctionEscrow proxy: ${proxy.address}`);
     console.log(`  upgradeAuthority:    ${upgradeAuthority}`);
-    console.log(`  Manifest:            ${SEPOLIA_DEPLOYMENT_PATH}`);
-    console.log("");
-    console.log(
-      "Next: add auctionEscrow + blocks.auctionEscrow to lib/web3/sepolia-addresses.ts (SEPOLIA_ACTIVE),",
-    );
-    console.log("then pnpm verify:sepolia --auction-only && pnpm smoke:sepolia");
-    console.log(`Basescan: ${BASESCAN}/address/${proxy.address}`);
+    console.log(`  Manifest:            ${manifestPath}`);
   } finally {
     await connection.close();
   }

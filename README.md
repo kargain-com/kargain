@@ -115,8 +115,10 @@ Details: [SPEC Appendix A — local E2E](docs/contracts/SPEC.md#appendix-a--loca
 pnpm hardhat test
 pnpm test:e2e
 node --import tsx --test test/*.test.ts
-pnpm deploy:sepolia          # generation v2 on Base Sepolia
-pnpm deploy:auction          # additive AuctionEscrow (after v2 manifest exists)
+pnpm deploy:sepolia          # nuclear stack on Base Sepolia (84532)
+pnpm deploy:sepolia:eth      # identical nuclear stack on Ethereum Sepolia (11155111)
+pnpm deploy:nuclear:dry-run  # print 84532 vs 11155111 parameter parity (no txs)
+pnpm deploy:auction          # additive AuctionEscrow (legacy manifests without auction)
 pnpm upgrade:auction         # Timelock UUPS upgrade (pass -- --deploy-impl | --schedule | --execute)
 pnpm smoke:sepolia
 pnpm verify:sepolia          # Basescan best-effort; use --auction-only after auction deploy / upgrade impl

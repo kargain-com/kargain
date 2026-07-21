@@ -1,39 +1,65 @@
-import hardhat from "hardhat";
-import { encodeFunctionData, getAddress, type Hash } from "viem";
-import { MarketplaceEscrowAbi } from "../lib/contracts/abis.generated.js";
+/**
+ * Nuclear full-stack deploy for commercial chains 84532 | 11155111.
+ * Sequence: Timelock → KarProPass → Staking → Passport → Marketplace →
+ * AuctionEscrow → KarPassportBridgeGateway → setBridgeGateway.
+ *
+ * `--dry-run` / `--compare`: print 84532 vs 11155111 parity table; no txs.
+ * Live deploy requires DEPLOYER_PRIVATE_KEY and `--network baseSepolia|ethereumSepolia`.
+ */
+
+import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "viem";
+
+import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../lib/contracts/abis.generated.js";
 import {
-  currencyCodeBytes32,
-  filterLiveFeeds,
-  getChainFeedConfig,
-  LZ_ENDPOINT_V2_BY_CHAIN,
+  isCommercialChainId,
+  verifyFeedBytecode,
 } from "./lib/chainlink-feeds.js";
 import {
-  SEPOLIA_CHAIN_ID,
-  SEPOLIA_DEPLOYMENT_PATH,
-  SEPOLIA_FALLBACK,
+  buildNuclearDeployPlan,
+  formatNuclearParityTable,
+} from "./lib/nuclear-deploy-plan.js";
+import {
+  commercialDeploymentPath,
   type DeploymentManifest,
 } from "./lib/load-deployment.js";
 import { computeIndexFromBlock, writeDeploymentManifest } from "./lib/write-deployment.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
 
-const BASESCAN = "https://sepolia.basescan.org";
-
-const PLATFORM_RECIPIENT = SEPOLIA_FALLBACK.platformRecipient;
-const FEE_BPS = 10n;
-const PRO_FEE_BPS = 0n;
-const MAX_FEED_STALENESS = 3600n;
-const DISPUTE_DEPOSIT = 10_000_000_000_000_000n; // 0.01 ether
-
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 120_000;
+const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as const;
 
-type ViemSuite = Awaited<ReturnType<typeof hardhat.network.connect>>["viem"];
+type ViemSuite = {
+  sendDeploymentTransaction: (
+    contractName: string,
+    constructorArgs?: readonly unknown[],
+  ) => Promise<{
+    contract: { address: `0x${string}` };
+    deploymentTransaction: { hash: Hash };
+  }>;
+  getPublicClient: () => Promise<PublicClient>;
+  getWalletClients: () => Promise<
+    Array<{ account: { address: `0x${string}` }; [key: string]: unknown }>
+  >;
+  getContractAt: (
+    name: string,
+    address: `0x${string}`,
+  ) => Promise<{
+    address: `0x${string}`;
+    write: Record<string, (...args: unknown[]) => Promise<Hash>>;
+    read: Record<string, (...args: unknown[]) => Promise<unknown>>;
+  }>;
+};
 
 type DeployResult = {
   address: `0x${string}`;
   txHash: Hash;
   blockNumber: bigint;
 };
+
+function argvHas(...flags: string[]): boolean {
+  return process.argv.some((arg) => flags.includes(arg));
+}
 
 async function waitForBytecode(viem: ViemSuite, address: `0x${string}`, label: string) {
   const publicClient = await viem.getPublicClient();
@@ -87,32 +113,64 @@ async function deployStep(
   throw lastError;
 }
 
-async function main() {
+async function assertExternalBytecode(
+  publicClient: PublicClient,
+  label: string,
+  address: `0x${string}`,
+) {
+  const ok = await verifyFeedBytecode(publicClient, address);
+  if (!ok) {
+    throw new Error(`${label} has no bytecode at ${address}`);
+  }
+}
+
+function printDryRunCompare() {
+  const base = buildNuclearDeployPlan(84532);
+  const eth = buildNuclearDeployPlan(11155111);
+  console.log("Nuclear deploy dry-run — parameter parity (no txs)\n");
+  console.log(formatNuclearParityTable(base, eth));
+  console.log("\nSteps (identical both chains):");
+  for (const [i, step] of base.steps.entries()) {
+    console.log(`  ${i + 1}. ${step}`);
+  }
+  console.log("\nExternals sourced from CHAINLINK_FEEDS / WETH_BY_CHAIN / LZ_ENDPOINT_V2_BY_CHAIN only.");
+}
+
+async function runLiveDeploy() {
   if (!process.env.DEPLOYER_PRIVATE_KEY) {
     console.error("DEPLOYER_PRIVATE_KEY not set in .env.local");
     process.exit(1);
   }
 
+  const hardhat = (await import("hardhat")).default;
   const connection = await hardhat.network.connect();
-  const { viem } = connection;
+  const viem = connection.viem as unknown as ViemSuite;
 
   try {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
-    if (chainId !== SEPOLIA_CHAIN_ID) {
-      throw new Error(`Expected chain ${SEPOLIA_CHAIN_ID}, got ${chainId}`);
+    if (!isCommercialChainId(chainId)) {
+      throw new Error(`Expected commercial chain 84532|11155111, got ${chainId}`);
     }
 
-    const feedConfig = getChainFeedConfig(chainId);
-    const liveCurrencies = await filterLiveFeeds(publicClient, feedConfig);
+    const plan = buildNuclearDeployPlan(chainId);
+    const { params, externals } = plan;
+
+    await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
+    await assertExternalBytecode(publicClient, "usdc", externals.usdc);
+    await assertExternalBytecode(publicClient, "weth", externals.weth);
+    await assertExternalBytecode(publicClient, "layerZeroEndpoint", externals.layerZeroEndpoint);
 
     const [deployer] = await viem.getWalletClients();
     const deployerAddress = getAddress(deployer.account.address);
-    const karProPassAddress = getAddress(SEPOLIA_FALLBACK.karProPass);
+    const manifestPath = commercialDeploymentPath(chainId);
 
-    console.log("Kargain deploy — Base Sepolia (generation v2 stack)");
+    console.log(`Kargain nuclear deploy — chain ${chainId} (generation v2)`);
     console.log(`Deployer: ${deployerAddress}`);
-    console.log(`Chain:    ${chainId}`);
+    console.log(`Registry: ${plan.registry}`);
+    console.log(`USDC:     ${externals.usdc}`);
+    console.log(`WETH:     ${externals.weth}`);
+    console.log(`LZ:       ${externals.layerZeroEndpoint}`);
     console.log("");
 
     const timelock = await deployStep(viem, "Timelock48h", "Timelock48h", [
@@ -121,29 +179,31 @@ async function main() {
       deployerAddress,
     ]);
 
-    const proPass = await viem.getContractAt("KarProPass", karProPassAddress);
+    const karProPass = await deployStep(viem, "KarProPass", "KarProPass", [deployerAddress]);
+
     const staking = await deployStep(viem, "KarProStaking", "KarProStaking", [
-      karProPassAddress,
+      karProPass.address,
       deployerAddress,
     ]);
+    const proPass = await viem.getContractAt("KarProPass", karProPass.address);
     await proPass.write.setStaking([staking.address], { account: deployer.account });
+    console.log("  setStaking → KarProStaking");
 
-    const tokenIdOffset = BigInt(chainId) << 128n;
     const karPassport = await deployStep(viem, "KarPassport", "KarPassport", [
       staking.address,
       deployerAddress,
-      DISPUTE_DEPOSIT,
+      params.disputeDeposit,
     ]);
 
     const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
       karPassport.address,
-      feedConfig.usdc,
-      feedConfig.nativeUsdFeed,
+      externals.usdc,
+      externals.nativeUsdFeed,
       staking.address,
-      PLATFORM_RECIPIENT,
-      FEE_BPS,
-      PRO_FEE_BPS,
-      MAX_FEED_STALENESS,
+      params.platformRecipient,
+      params.marketplaceFeeBps,
+      params.marketplaceProFeeBps,
+      params.maxFeedStaleness,
     ]);
 
     const initData = encodeFunctionData({
@@ -159,31 +219,60 @@ async function main() {
 
     const marketplace = await viem.getContractAt("MarketplaceEscrow", proxy.address);
 
-    for (const entry of liveCurrencies) {
-      if (entry.code === "USD" || entry.code === "NATIVE") continue;
-      const code = currencyCodeBytes32(entry.code);
-      await marketplace.write.setCurrencyFeed([code, entry.feed], { account: deployer.account });
-      console.log(`  Registered ${entry.code} feed: ${entry.feed}`);
-    }
-    await marketplace.write.approvePaymentToken([feedConfig.usdc, getAddress("0x0000000000000000000000000000000000000000")], {
+    // USD-only: skip setCurrencyFeed for non-USD feeds even when live in CHAINLINK_FEEDS.
+    await marketplace.write.approvePaymentToken([externals.usdc, ADDRESS_ZERO], {
       account: deployer.account,
     });
+    console.log(`  approvePaymentToken(usdc=${externals.usdc})`);
 
-    await marketplace.write.transferUpgradeAuthority([timelock.address], { account: deployer.account });
+    await marketplace.write.transferUpgradeAuthority([timelock.address], {
+      account: deployer.account,
+    });
+    console.log("  transferUpgradeAuthority → Timelock48h");
 
-    const zeroAddress = "0x0000000000000000000000000000000000000000" as const;
-    const onftAdapter = await deployStep(
+    const auctionImpl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
+      karPassport.address,
+      externals.usdc,
+      externals.weth,
+      staking.address,
+      params.platformRecipient,
+      params.auctionPlatformFeeBps,
+    ]);
+
+    const auctionInitData = encodeFunctionData({
+      abi: AuctionEscrowAbi,
+      functionName: "initialize",
+      args: [timelock.address],
+    });
+
+    const auctionProxy = await deployStep(viem, "AuctionEscrow proxy", "ERC1967Proxy", [
+      auctionImpl.address,
+      auctionInitData,
+    ]);
+
+    const gateway = await deployStep(
       viem,
       "KarPassportBridgeGateway",
       "KarPassportBridgeGateway",
       [
         karPassport.address,
         proxy.address,
-        zeroAddress,
-        LZ_ENDPOINT_V2_BY_CHAIN[84532],
+        auctionProxy.address,
+        externals.layerZeroEndpoint,
         deployerAddress,
       ],
     );
+
+    const passport = await viem.getContractAt("KarPassport", karPassport.address);
+    await passport.write.setBridgeGateway([gateway.address], { account: deployer.account });
+    console.log(`  setBridgeGateway → ${gateway.address}`);
+
+    const boundGateway = getAddress(
+      (await passport.read.bridgeGateway([])) as `0x${string}`,
+    );
+    if (boundGateway !== getAddress(gateway.address)) {
+      throw new Error(`bridgeGateway mismatch: ${boundGateway} vs ${gateway.address}`);
+    }
 
     const upgradeAuthority = getAddress(
       (await marketplace.read.upgradeAuthority([])) as `0x${string}`,
@@ -192,67 +281,95 @@ async function main() {
       throw new Error(`upgradeAuthority should be timelock, got ${upgradeAuthority}`);
     }
 
+    const auction = await viem.getContractAt("AuctionEscrow", auctionProxy.address);
+    const auctionUpgradeAuthority = getAddress(
+      (await auction.read.upgradeAuthority([])) as `0x${string}`,
+    );
+    if (auctionUpgradeAuthority !== getAddress(timelock.address)) {
+      throw new Error(
+        `AuctionEscrow upgradeAuthority should be timelock, got ${auctionUpgradeAuthority}`,
+      );
+    }
+
     const blocks = {
       timelock: Number(timelock.blockNumber),
+      karProPass: Number(karProPass.blockNumber),
       karProStaking: Number(staking.blockNumber),
       karPassport: Number(karPassport.blockNumber),
       marketplaceImpl: Number(marketplaceImpl.blockNumber),
       marketplace: Number(proxy.blockNumber),
-      proxyOnftAdapter: Number(onftAdapter.blockNumber),
+      auctionEscrowImpl: Number(auctionImpl.blockNumber),
+      auctionEscrow: Number(auctionProxy.blockNumber),
+      proxyOnftAdapter: Number(gateway.blockNumber),
     };
 
     const manifest: DeploymentManifest = {
-      chainId: SEPOLIA_CHAIN_ID,
+      chainId,
       generation: "v2",
       karPassport: karPassport.address,
-      karProPass: karProPassAddress,
+      karProPass: karProPass.address,
       karProStaking: staking.address,
       marketplace: proxy.address,
       marketplaceImpl: marketplaceImpl.address,
-      usdc: feedConfig.usdc,
-      nativeFeed: feedConfig.nativeUsdFeed,
+      auctionEscrow: auctionProxy.address,
+      auctionEscrowImpl: auctionImpl.address,
+      usdc: externals.usdc,
+      nativeFeed: externals.nativeUsdFeed,
       timelock: timelock.address,
-      proxyOnftAdapter: onftAdapter.address,
-      layerZeroEndpoint: LZ_ENDPOINT_V2_BY_CHAIN[84532],
-      platformRecipient: PLATFORM_RECIPIENT,
+      proxyOnftAdapter: gateway.address,
+      layerZeroEndpoint: externals.layerZeroEndpoint,
+      platformRecipient: params.platformRecipient,
       deployer: deployerAddress,
       upgradeAuthority,
-      tokenIdOffset: tokenIdOffset.toString(),
+      tokenIdOffset: plan.tokenIdOffset.toString(),
       deployedAt: new Date().toISOString(),
-      unchanged: ["karProPass"],
       blocks,
       indexFromBlock: computeIndexFromBlock(blocks),
       txHashes: {
         timelock: timelock.txHash,
+        karProPass: karProPass.txHash,
         karProStaking: staking.txHash,
         karPassport: karPassport.txHash,
         marketplaceImpl: marketplaceImpl.txHash,
         marketplace: proxy.txHash,
-        proxyOnftAdapter: onftAdapter.txHash,
+        auctionEscrowImpl: auctionImpl.txHash,
+        auctionEscrow: auctionProxy.txHash,
+        proxyOnftAdapter: gateway.txHash,
       },
       contractVersions: { ...CONTRACT_VERSIONS },
     };
 
-    writeDeploymentManifest(SEPOLIA_DEPLOYMENT_PATH, manifest);
+    writeDeploymentManifest(manifestPath, manifest);
 
     console.log("");
-    console.log("Deployment complete:");
-    console.log(`  Timelock48h:             ${timelock.address}`);
-    console.log(`  KarProPass:              ${karProPassAddress} (reused)`);
-    console.log(`  KarProStaking:           ${staking.address}`);
-    console.log(`  KarPassport:             ${karPassport.address}`);
-    console.log(`  MarketplaceEscrow proxy: ${proxy.address}`);
-    console.log(`  KarPassportBridgeGateway: ${onftAdapter.address}`);
-    console.log(`  upgradeAuthority:        ${upgradeAuthority}`);
-    console.log(`  tokenIdOffset:           ${tokenIdOffset}`);
-    console.log(`  Manifest:                ${SEPOLIA_DEPLOYMENT_PATH}`);
+    console.log("Nuclear deployment complete:");
+    console.log(`  Timelock48h:              ${timelock.address}`);
+    console.log(`  KarProPass:               ${karProPass.address}`);
+    console.log(`  KarProStaking:            ${staking.address}`);
+    console.log(`  KarPassport:              ${karPassport.address}`);
+    console.log(`  MarketplaceEscrow proxy:  ${proxy.address}`);
+    console.log(`  AuctionEscrow proxy:      ${auctionProxy.address}`);
+    console.log(`  KarPassportBridgeGateway: ${gateway.address}`);
+    console.log(`  bridgeGateway bound:      ${boundGateway}`);
+    console.log(`  upgradeAuthority:         ${upgradeAuthority}`);
+    console.log(`  tokenIdOffset:            ${plan.tokenIdOffset}`);
+    console.log(`  Manifest:                 ${manifestPath}`);
     console.log("");
-    console.log("Next: update lib/web3/sepolia-addresses.ts (SEPOLIA_ACTIVE) in the same PR, then pnpm ponder:config");
-    console.log("Next: pnpm bridge:wire (after spoke deploy + verify) to pin peers / ULN / enforcedOptions");
-    console.log(`Basescan: ${BASESCAN}/address/${proxy.address}`);
+    console.log(
+      "Next: update lib/web3/sepolia-addresses.ts (or ethereum twin) in the same PR, then pnpm ponder:config",
+    );
+    console.log("Next: pnpm bridge:wire after both commercial stacks are live");
   } finally {
     await connection.close();
   }
+}
+
+async function main() {
+  if (argvHas("--dry-run", "--compare")) {
+    printDryRunCompare();
+    return;
+  }
+  await runLiveDeploy();
 }
 
 main().catch((err: unknown) => {

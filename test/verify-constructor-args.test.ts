@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { WETH_BY_CHAIN } from "../scripts/lib/chainlink-feeds.ts";
 import {
   AUCTION_PLATFORM_FEE_BPS,
   auctionEscrowImplConstructorArgs,
@@ -16,7 +17,7 @@ import {
 } from "../scripts/lib/verify-constructor-args.ts";
 import type { DeploymentManifest } from "../scripts/lib/load-deployment.ts";
 
-const manifest: DeploymentManifest = {
+const baseManifest: DeploymentManifest = {
   chainId: 84532,
   generation: "v2",
   karPassport: "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
@@ -38,49 +39,60 @@ const manifest: DeploymentManifest = {
 
 describe("verify constructor args", () => {
   it("builds KarPassport constructor args from manifest", () => {
-    assert.deepEqual(karPassportConstructorArgs(manifest), [
-      manifest.karProStaking,
-      manifest.deployer,
+    assert.deepEqual(karPassportConstructorArgs(baseManifest), [
+      baseManifest.karProStaking,
+      baseManifest.deployer,
       DISPUTE_DEPOSIT,
     ]);
   });
 
   it("builds KarProStaking constructor args from manifest", () => {
-    assert.deepEqual(karProStakingConstructorArgs(manifest), [
-      manifest.karProPass,
-      manifest.deployer,
+    assert.deepEqual(karProStakingConstructorArgs(baseManifest), [
+      baseManifest.karProPass,
+      baseManifest.deployer,
     ]);
   });
 
   it("builds MarketplaceEscrow impl constructor args from manifest", () => {
-    const args = marketplaceImplConstructorArgs(manifest);
-    assert.equal(args[0], manifest.karPassport);
-    assert.equal(args[1], manifest.usdc);
-    assert.equal(args[3], manifest.karProStaking);
+    const args = marketplaceImplConstructorArgs(baseManifest);
+    assert.equal(args[0], baseManifest.karPassport);
+    assert.equal(args[1], baseManifest.usdc);
+    assert.equal(args[3], baseManifest.karProStaking);
     assert.equal(args[5], MARKETPLACE_FEE_BPS);
     assert.equal(args[6], MARKETPLACE_PRO_FEE_BPS);
     assert.equal(args[7], MARKETPLACE_MAX_FEED_STALENESS);
   });
 
   it("builds proxy constructor args with initialize calldata", () => {
-    const args = marketplaceProxyConstructorArgs(manifest);
-    assert.equal(args[0], manifest.marketplaceImpl);
+    const args = marketplaceProxyConstructorArgs(baseManifest);
+    assert.equal(args[0], baseManifest.marketplaceImpl);
     assert.match(String(args[1]), /^0x[a-fA-F0-9]+$/);
     assert.ok(String(args[1]).length > 10);
   });
 
-  it("builds AuctionEscrow impl constructor args from manifest", () => {
-    const args = auctionEscrowImplConstructorArgs(manifest);
-    assert.equal(args[0], manifest.karPassport);
-    assert.equal(args[1], manifest.usdc);
-    assert.equal(args[3], manifest.karProStaking);
-    assert.equal(args[4], manifest.platformRecipient);
+  it("builds AuctionEscrow impl args with WETH_BY_CHAIN[84532]", () => {
+    const args = auctionEscrowImplConstructorArgs(baseManifest);
+    assert.equal(args[0], baseManifest.karPassport);
+    assert.equal(args[1], baseManifest.usdc);
+    assert.equal(args[2].toLowerCase(), WETH_BY_CHAIN[84532].toLowerCase());
+    assert.equal(args[3], baseManifest.karProStaking);
+    assert.equal(args[4], baseManifest.platformRecipient);
     assert.equal(args[5], AUCTION_PLATFORM_FEE_BPS);
   });
 
+  it("builds AuctionEscrow impl args with WETH_BY_CHAIN[11155111]", () => {
+    const ethSepolia: DeploymentManifest = {
+      ...baseManifest,
+      chainId: 11155111,
+      usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    };
+    const args = auctionEscrowImplConstructorArgs(ethSepolia);
+    assert.equal(args[2].toLowerCase(), WETH_BY_CHAIN[11155111].toLowerCase());
+  });
+
   it("builds AuctionEscrow proxy constructor args with initialize calldata", () => {
-    const args = auctionEscrowProxyConstructorArgs(manifest);
-    assert.equal(args[0], manifest.auctionEscrowImpl);
+    const args = auctionEscrowProxyConstructorArgs(baseManifest);
+    assert.equal(args[0], baseManifest.auctionEscrowImpl);
     assert.match(String(args[1]), /^0x[a-fA-F0-9]+$/);
     assert.ok(String(args[1]).length > 10);
   });
