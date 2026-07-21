@@ -42,6 +42,16 @@ import {
   type ViemSuite,
   ZERO,
 } from "../scripts/lib/local-stack.js";
+import {
+  buildSendParam,
+  encodeLzReceiveExtraOptions,
+} from "../lib/web3/bridge/bridge-send.js";
+import {
+  ENFORCED_GAS_SEND_AND_COMPOSE,
+  LZ_RECEIVE_GAS_MARGIN_BPS,
+  LZ_RECEIVE_MEASURED_500_CHAR_GAS,
+  requiredLzReceiveGasForUri,
+} from "../lib/web3/bridge/lz-receive-gas.js";
 
 const EID_A = 1;
 const EID_B = 2;
@@ -693,6 +703,113 @@ describe("Bridge ONFT — EndpointV2Mock delivery", () => {
       assert.equal(await pair.spoke.read.tokenURI([tokenId]), uri);
       gasTable.push({ label, gasUsed });
     }
+  });
+
+  /**
+   * EndpointV2Mock applies Executor lzReceive gas from send-path `extraOptions`
+   * and swallows destination OOG in an empty try/catch — so this suite cannot
+   * assert fail-below-budget. Separately, long compose payloads do not deliver
+   * on the mock send path even at the 1M measurement stipend (upstream mock
+   * “composed calls with correct gas” TODO). This case therefore:
+   * (1) binds production `encodeLzReceiveExtraOptions(requiredGas)` bytes and
+   *     500-char policy invariants;
+   * (2) proves compose delivery via endpoint-impersonated `lzReceive` (same
+   *     wire path as the gas table);
+   * (3) proves send-path delivery under policy-sized options for a typical URI
+   *     (fits mock compose).
+   */
+  it("policy-sized extraOptions deliver typical and 500-char URIs", async () => {
+    const { viem } = connection;
+    const pair = await deployBridgePair(viem);
+    const typical = "ar://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    assert.ok(typical.length >= 45 && typical.length <= 55);
+    const long500 = `ar://${"b".repeat(500 - 5)}`;
+    assert.equal(long500.length, 500);
+
+    for (const [uri, tokenId] of [
+      [typical, 301n] as const,
+      [long500, 302n] as const,
+    ]) {
+      const gasResult = requiredLzReceiveGasForUri(uri);
+      assert.equal(gasResult.ok, true);
+      if (!gasResult.ok) return;
+
+      const options = encodeLzReceiveExtraOptions(gasResult.gas);
+      assert.equal(
+        options,
+        buildSendParam({
+          dstEid: EID_B,
+          recipient: pair.seller.account.address,
+          tokenId,
+          tokenUri: uri,
+        }).extraOptions,
+      );
+
+      const message = encodeOnftMessage({
+        to: pair.seller.account.address,
+        tokenId,
+        sender: pair.adapter.address,
+        composeBody: encodeUriCompose(uri),
+      });
+      await callLzReceive({
+        oapp: pair.spoke,
+        endpoint: pair.epB.address,
+        origin: {
+          srcEid: EID_A,
+          sender: addressToBytes32(pair.adapter.address),
+          nonce: tokenId,
+        },
+        guid: padHex(toHex(tokenId), { size: 32 }),
+        message,
+        publicClient: pair.publicClient,
+        viem: pair.viem,
+      });
+      assert.equal(
+        getAddress(await pair.spoke.read.ownerOf([tokenId])),
+        getAddress(pair.seller.account.address),
+      );
+      assert.equal(await pair.spoke.read.tokenURI([tokenId]), uri);
+
+      if (uri === long500) {
+        assert.ok(gasResult.gas > ENFORCED_GAS_SEND_AND_COMPOSE);
+        const min = Math.ceil(
+          (LZ_RECEIVE_MEASURED_500_CHAR_GAS * (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS)) /
+            10_000,
+        );
+        assert.ok(gasResult.gas >= min);
+      }
+    }
+
+    // Send-path: typical URI under production policy-sized extraOptions.
+    const sendUri = typical;
+    const sendGas = requiredLzReceiveGasForUri(sendUri);
+    assert.equal(sendGas.ok, true);
+    if (!sendGas.ok) return;
+    const sendTokenId = await mintPassport(
+      pair.passport,
+      pair.seller,
+      pair.seller.account.address,
+      sendUri,
+    );
+    await pair.passport.write.setApprovalForAll([pair.adapter.address, true], {
+      account: pair.seller.account,
+    });
+    const sendParamBuilt = buildSendParam({
+      dstEid: EID_B,
+      recipient: pair.seller.account.address,
+      tokenId: sendTokenId,
+      tokenUri: sendUri,
+    });
+    assert.equal(
+      sendParamBuilt.extraOptions,
+      encodeLzReceiveExtraOptions(sendGas.gas),
+    );
+    await bridgeSend(pair.adapter, sendParamBuilt, pair.seller.account);
+    assert.equal(
+      getAddress(await pair.spoke.read.ownerOf([sendTokenId])),
+      getAddress(pair.seller.account.address),
+    );
+    assert.equal(await pair.spoke.read.tokenURI([sendTokenId]), sendUri);
   });
 
   it("spoke→hub SEND unlock gas (destination-side)", async () => {
