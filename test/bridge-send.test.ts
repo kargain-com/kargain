@@ -1,0 +1,92 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { getAddress, padHex } from "viem";
+
+import {
+  BridgeUriTooLongError,
+  buildSendParam,
+  encodeLzReceiveExtraOptions,
+} from "../lib/web3/bridge/bridge-send";
+import {
+  ENFORCED_GAS_SEND_AND_COMPOSE,
+  LZ_RECEIVE_GAS_MARGIN_BPS,
+  LZ_RECEIVE_MEASURED_500_CHAR_GAS,
+  requiredLzReceiveGasForUri,
+} from "../lib/web3/bridge/lz-receive-gas";
+
+const RECIPIENT = getAddress("0x1111111111111111111111111111111111111111");
+const TYPICAL_AR =
+  "ar://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+describe("encodeLzReceiveExtraOptions", () => {
+  it("returns non-empty Executor options hex", () => {
+    const hex = encodeLzReceiveExtraOptions(ENFORCED_GAS_SEND_AND_COMPOSE);
+    assert.ok(hex.startsWith("0x"));
+    assert.ok(hex.length > 2);
+    assert.notEqual(hex, "0x");
+  });
+});
+
+describe("buildSendParam", () => {
+  it("typical URI → extraOptions for 250k floor", () => {
+    const param = buildSendParam({
+      dstEid: 40161,
+      recipient: RECIPIENT,
+      tokenId: 1n,
+      tokenUri: TYPICAL_AR,
+    });
+    assert.equal(param.dstEid, 40161);
+    assert.equal(param.to, padHex(RECIPIENT, { size: 32 }));
+    assert.equal(param.tokenId, 1n);
+    assert.equal(param.composeMsg, "0x");
+    assert.equal(param.onftCmd, "0x");
+    assert.equal(
+      param.extraOptions,
+      encodeLzReceiveExtraOptions(ENFORCED_GAS_SEND_AND_COMPOSE),
+    );
+    assert.notEqual(param.extraOptions, "0x");
+  });
+
+  it("500-char URI → extraOptions for policy gas ≥ measured+margin", () => {
+    const tokenUri = `ar://${"b".repeat(500 - 5)}`;
+    const gasResult = requiredLzReceiveGasForUri(tokenUri);
+    assert.equal(gasResult.ok, true);
+    if (!gasResult.ok) return;
+
+    const min = Math.ceil(
+      (LZ_RECEIVE_MEASURED_500_CHAR_GAS *
+        (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS)) /
+        10_000,
+    );
+    assert.ok(gasResult.gas >= min);
+
+    const param = buildSendParam({
+      dstEid: 40161,
+      recipient: RECIPIENT,
+      tokenId: 2n,
+      tokenUri,
+    });
+    assert.equal(
+      param.extraOptions,
+      encodeLzReceiveExtraOptions(gasResult.gas),
+    );
+  });
+
+  it("over-cap URI throws BridgeUriTooLongError", () => {
+    const tokenUri = "x".repeat(2_000);
+    assert.throws(
+      () =>
+        buildSendParam({
+          dstEid: 40161,
+          recipient: RECIPIENT,
+          tokenId: 3n,
+          tokenUri,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof BridgeUriTooLongError);
+        assert.equal(err.reason, "exceeds_cap");
+        return true;
+      },
+    );
+  });
+});

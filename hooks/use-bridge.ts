@@ -26,6 +26,7 @@ import {
   BRIDGE_DELIVERY_POLL_MS,
   BRIDGE_DELIVERY_TIMEOUT_MS,
   BRIDGE_HUB_CHAIN_ID,
+  BridgeUriTooLongError,
   bridgeAdapterAddress,
   bridgeDstEid,
   bridgeSpokeOnftAddress,
@@ -35,6 +36,7 @@ import {
   onftSentGuidFromLogs,
   quoteMessagingFee,
   sendArgs,
+  type BridgeSendParam,
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -49,6 +51,9 @@ export type BridgePhase =
   | "error";
 
 function mapBridgeError(err: unknown): string {
+  if (err instanceof BridgeUriTooLongError) {
+    return err.message;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes("PassportDisputed")) {
     return formatPassportBridgeBlockedMessage();
@@ -113,9 +118,43 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
   const error = localError ?? syncError;
   const busy = syncBusy || phase === "pending" || phase === "quoting";
 
+  const readHubTokenUri = useCallback(
+    async (tokenId: bigint): Promise<string> => {
+      if (!publicClient || !passport) {
+        throw new Error("Bridge is not configured on this chain.");
+      }
+      return (await publicClient.readContract({
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "tokenURI",
+        args: [tokenId],
+      })) as string;
+    },
+    [passport, publicClient],
+  );
+
+  const buildHubSendParam = useCallback(
+    async (
+      tokenId: bigint,
+      recipient: Address,
+    ): Promise<BridgeSendParam> => {
+      if (dstEid == null) {
+        throw new Error("Bridge is not configured on this chain.");
+      }
+      const tokenUri = await readHubTokenUri(tokenId);
+      return buildSendParam({
+        dstEid,
+        recipient,
+        tokenId,
+        tokenUri,
+      });
+    },
+    [dstEid, readHubTokenUri],
+  );
+
   const quote = useCallback(
     async (tokenId: bigint) => {
-      if (!publicClient || !adapter || !address || dstEid == null) {
+      if (!publicClient || !adapter || !passport || !address || dstEid == null) {
         setLocalError("Bridge is not configured on this chain.");
         setPhase("error");
         return null;
@@ -123,11 +162,7 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
       setLocalError(null);
       setPhase("quoting");
       try {
-        const sendParam = buildSendParam({
-          dstEid,
-          recipient: address,
-          tokenId,
-        });
+        const sendParam = await buildHubSendParam(tokenId, getAddress(address));
         const fee = await quoteMessagingFee({
           publicClient,
           adapter,
@@ -142,7 +177,7 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
         return null;
       }
     },
-    [address, adapter, dstEid, publicClient],
+    [address, adapter, buildHubSendParam, dstEid, passport, publicClient],
   );
 
   const bridge = useCallback(
@@ -159,13 +194,11 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
         }
 
         const recipient = getAddress(address);
-        const sendParam = buildSendParam({
-          dstEid,
-          recipient,
-          tokenId,
-        });
 
         try {
+          // One SendParam for quote + send (URI-length extraOptions must match fee).
+          const sendParam = await buildHubSendParam(tokenId, recipient);
+
           const approved = (await publicClient.readContract({
             address: passport,
             abi: KarPassportAbi,
@@ -256,6 +289,7 @@ export function useBridge(hubChainId: number = BRIDGE_HUB_CHAIN_ID) {
       address,
       adapter,
       awaitReceipt,
+      buildHubSendParam,
       dstEid,
       hubChainId,
       passport,

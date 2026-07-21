@@ -851,7 +851,7 @@ Hub→spoke bridge on the passport commerce rail (Base Sepolia → Ethereum Sepo
 |---------|----------|
 | Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx) |
 | Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; hub chain 84532; listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
-| Quote / fee | Mono `tabular-nums` (Instrument Layer) |
+| Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
 | Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = spoke RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
 | Spoke | Informational only (*Return to Base Sepolia to bridge…*) — no spoke write path in the app |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
@@ -1507,4 +1507,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.71 (July 2026 — passport bridge panel UI contract §4.19). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.72 (July 2026 — bridge fee reflects URI-length lzReceive gas §4.19). Update when tokens, app shell, or component contracts change.*

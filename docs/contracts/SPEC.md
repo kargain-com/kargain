@@ -497,6 +497,8 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 
 Confirmations: **5** both directions — explicit fallback (`confirmations.source: "explicit-fallback"`); the metadata API does not expose pathway defaults for this pair.
 
+**enforcedOptions floors:** type1 **100k** / type2 **250k** (pathway floor for typical URIs). Hub sender may add Executor lzReceive gas via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts` (long compose URIs); do not raise the pathway floor without a re-wire.
+
 Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 20, 2026).
 ### 7.5 Bridge flow (step by step)
 
@@ -614,7 +616,7 @@ Deployed July 20, 2026 · spoke ONFT semver **`1.0.0-rc.1`** · manifest: `deplo
 
 **Deploy block:** KarPassportONFT721 **11312959**.
 
-**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas · `pathwayConfigHash` `0x3ef27aa72ed7b2d5aadf100d99d4dfd4fa1e2b1adc915523b0ddc8c9bf2d517e`
+**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; hub sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x3ef27aa72ed7b2d5aadf100d99d4dfd4fa1e2b1adc915523b0ddc8c9bf2d517e`
 
 **Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · runbook: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md) · security policy: [§7.6](#76-layerzero-security-configuration).
 

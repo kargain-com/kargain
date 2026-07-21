@@ -13,6 +13,10 @@ import {
 } from "viem";
 
 import {
+  ENFORCED_GAS_SEND,
+  ENFORCED_GAS_SEND_AND_COMPOSE,
+} from "../../lib/web3/bridge/lz-receive-gas.js";
+import {
   EID_HUB,
   EID_SPOKE,
   REQUIRED_DVN_IDS,
@@ -36,9 +40,13 @@ export const MSG_TYPE_SEND = 1;
 /** ONFT SEND_AND_COMPOSE (hub→spoke with URI). */
 export const MSG_TYPE_SEND_AND_COMPOSE = 2;
 
-/** Gas from iteration-2 measurements + margin (typical URI 184973 → 250k; return 64249 → 100k). */
-export const ENFORCED_GAS_SEND = 100_000;
-export const ENFORCED_GAS_SEND_AND_COMPOSE = 250_000;
+/**
+ * Pathway enforcedOptions floors (owned by `lib/web3/bridge/lz-receive-gas.ts`).
+ * Typical Irys/`ar://` URIs fit under type2 250k; hub UI may raise lzReceive via
+ * sender `extraOptions` from URI-length policy — do not bump these floors lightly
+ * (changes `pathwayConfigHash` / requires re-wire).
+ */
+export { ENFORCED_GAS_SEND, ENFORCED_GAS_SEND_AND_COMPOSE };
 
 /** Pinned max message size for ExecutorConfig (fits compose + long URI). */
 export const EXECUTOR_MAX_MESSAGE_SIZE = 10_000;

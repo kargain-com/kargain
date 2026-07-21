@@ -12,9 +12,18 @@ export {
 export { onftSentGuidFromLogs } from "./bridge-guid";
 export { quoteMessagingFee, quoteNativeFee } from "./bridge-quote";
 export {
+  BridgeUriTooLongError,
   buildSendParam,
+  encodeLzReceiveExtraOptions,
   sendArgs,
   type BridgeMessagingFee,
   type BridgeSendParam,
 } from "./bridge-send";
+export {
+  ENFORCED_GAS_SEND,
+  ENFORCED_GAS_SEND_AND_COMPOSE,
+  requiredLzReceiveGasForByteLength,
+  requiredLzReceiveGasForUri,
+  type LzReceiveGasResult,
+} from "./lz-receive-gas";
 export { getSpokeReadClient } from "./spoke-read-client";
