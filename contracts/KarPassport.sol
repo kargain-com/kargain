@@ -23,10 +23,10 @@ interface IKarProStaking {
 
 /// @title KarPassport
 /// @notice ERC-721 vehicle passport with verification lifecycle, dispute deposits, and append-only records.
-/// @dev v2: chain-scoped tokenId encoding, Ownable admin, payable dispute bonds.
-/// @custom:version 1.2.0-rc.1
+/// @dev v1.3: gateway-bound bridge mint/burn/reset + custody-lock freeze (SPEC §I.12). Messaging-provider-agnostic.
+/// @custom:version 1.3.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
-    string public constant VERSION = "1.2.0-rc.1";
+    string public constant VERSION = "1.3.0-rc.1";
 
     enum Status {
         UNVERIFIED,
@@ -62,6 +62,11 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     mapping(uint256 => uint256) public disputeDeposits;
     mapping(uint256 => address) public disputeOpenedBy;
 
+    /// @notice One-time bound bridge gateway (set after deploy). Zero until `setBridgeGateway`.
+    address public bridgeGateway;
+    /// @notice Home-side custody lock while the passport is bridged away (gateway-only).
+    mapping(uint256 => bool) public custodyLocked;
+
     event PassportMinted(address indexed to, uint256 indexed tokenId, string uri);
     event PassportVerified(uint256 indexed tokenId, address indexed verifier);
     event PassportDisputed(uint256 indexed tokenId, address indexed disputer, string reason);
@@ -79,6 +84,9 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         string description,
         string evidenceCID
     );
+    event CustodyLockSet(uint256 indexed tokenId, bool locked);
+    event PassportBridgeMinted(address indexed to, uint256 indexed tokenId, string uri);
+    event PassportBridgeBurned(uint256 indexed tokenId);
 
     error NonexistentToken();
     error NotOwner();
@@ -94,6 +102,17 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     error NothingToRescue();
     error TransferFailed();
     error TokenIdSpaceExhausted();
+    error GatewayAlreadySet();
+    error NotBridgeGateway();
+    error NotForeignToken();
+    error NotHomeToken();
+    error TokenExists();
+    error PassportBridgedAway();
+
+    modifier onlyGateway() {
+        if (msg.sender != bridgeGateway) revert NotBridgeGateway();
+        _;
+    }
 
     /// @notice Deploys KarPassport with chain-scoped tokenId offset and default dispute deposit.
     /// @param karProStakingAddress_ KarProStaking contract for verifier checks.
@@ -117,6 +136,72 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @notice Local mint sequence within the chain namespace.
     function localIdOf(uint256 tokenId) public pure returns (uint256) {
         return tokenId & type(uint128).max;
+    }
+
+    /// @notice One-time bind of the bridge gateway (owner-only). Reverts if already set or zero.
+    /// @param gateway KarPassportBridgeGateway (or test mock) address.
+    function setBridgeGateway(address gateway) external onlyOwner {
+        if (bridgeGateway != address(0)) revert GatewayAlreadySet();
+        if (gateway == address(0)) revert EmptyField("gateway");
+        bridgeGateway = gateway;
+    }
+
+    /// @notice Gateway sets or clears home-side custody lock while the passport is bridged away.
+    /// @param tokenId Passport token id (must exist).
+    /// @param locked True while locked at home; false on unlock.
+    function setCustodyLock(uint256 tokenId, bool locked) external onlyGateway {
+        if (chainIdOf(tokenId) != block.chainid) revert NotHomeToken();
+        _requireExists(tokenId);
+        custodyLocked[tokenId] = locked;
+        emit CustodyLockSet(tokenId, locked);
+    }
+
+    /// @notice Gateway mints a foreign-origin representation on this chain. Does not touch `_nextTokenId`.
+    /// @param to Recipient of the representation.
+    /// @param tokenId Globally unique id (`chainIdOf` must differ from this chain).
+    /// @param uri Metadata URI carried with the bridge message.
+    function bridgeMint(address to, uint256 tokenId, string calldata uri) external onlyGateway {
+        if (chainIdOf(tokenId) == block.chainid) revert NotForeignToken();
+        if (_ownerOf(tokenId) != address(0)) revert TokenExists();
+        passportStatus[tokenId] = Status.UNVERIFIED;
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+        emit PassportBridgeMinted(to, tokenId, uri);
+    }
+
+    /// @notice Gateway burns a foreign-origin representation on this chain.
+    /// @param tokenId Representation token id (`chainIdOf` must differ from this chain).
+    /// @dev Leaves `records[tokenId]` intact (indexer already captured them).
+    function bridgeBurn(uint256 tokenId) external onlyGateway {
+        if (chainIdOf(tokenId) == block.chainid) revert NotForeignToken();
+        _requireExists(tokenId);
+        _burn(tokenId);
+        passportStatus[tokenId] = Status.UNVERIFIED;
+        passportVerifier[tokenId] = address(0);
+        passportVerifiedAt[tokenId] = 0;
+        emit PassportBridgeBurned(tokenId);
+    }
+
+    /// @notice Gateway home-side return credit: reset trust and optionally adopt returned URI.
+    /// @param tokenId Home-chain passport (must exist).
+    /// @param uri Returned metadata URI; empty or identical skips URI update.
+    function bridgeResetOnUnlock(uint256 tokenId, string calldata uri) external onlyGateway {
+        if (chainIdOf(tokenId) != block.chainid) revert NotHomeToken();
+        _requireExists(tokenId);
+        passportStatus[tokenId] = Status.UNVERIFIED;
+        passportVerifier[tokenId] = address(0);
+        passportVerifiedAt[tokenId] = 0;
+        emit VerificationReset(tokenId, bridgeGateway);
+
+        if (bytes(uri).length > 0) {
+            if (keccak256(bytes(uri)) != keccak256(bytes(tokenURI(tokenId)))) {
+                _setTokenURI(tokenId, uri);
+                emit PassportURIUpdated(tokenId, uri, bridgeGateway);
+            }
+        }
+
+        custodyLocked[tokenId] = false;
+        emit CustodyLockSet(tokenId, false);
     }
 
     /// @notice Owner updates the minimum dispute deposit for new disputes.
@@ -163,6 +248,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @notice Owner updates metadata URI. VERIFIED edits reset verification; DISPUTED edits revert.
     function setPassportURI(uint256 tokenId, string calldata newURI) external nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (msg.sender != ownerOf(tokenId)) revert NotOwner();
         if (bytes(newURI).length == 0) revert EmptyField("uri");
 
@@ -187,6 +273,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @notice KarProPass holder verifies a passport (not the token owner).
     function verifyPassport(uint256 tokenId) external nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (ownerOf(tokenId) == msg.sender) revert CannotSelfVerify();
         Status current = passportStatus[tokenId];
@@ -202,6 +289,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @param reason Human-readable dispute reason.
     function disputePassport(uint256 tokenId, string calldata reason) external payable nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         Status current = passportStatus[tokenId];
         if (current != Status.VERIFIED) revert InvalidStatus(current);
         if (bytes(reason).length == 0) revert EmptyField("reason");
@@ -221,6 +309,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @param tokenId Passport token id.
     function withdrawDispute(uint256 tokenId) external nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (passportStatus[tokenId] != Status.DISPUTED) revert NoActiveDispute();
         if (disputeOpenedBy[tokenId] != msg.sender) revert NotDisputeOpener();
 
@@ -243,6 +332,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @param outcome ConfirmDispute (verification wrong) or RejectDispute (verification stands).
     function resolveDispute(uint256 tokenId, DisputeOutcome outcome) external nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (passportStatus[tokenId] != Status.DISPUTED) revert InvalidStatus(Status.DISPUTED);
         if (disputeOpenedBy[tokenId] == msg.sender) revert CannotResolveSelfDispute();
@@ -281,6 +371,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         string calldata evidenceCID
     ) external nonReentrant {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (msg.sender != ownerOf(tokenId)) revert NotOwner();
         if (bytes(recordType).length == 0) revert EmptyField("recordType");
         if (bytes(description).length == 0) revert EmptyField("description");
@@ -293,6 +384,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         nonReentrant
     {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (bytes(description).length == 0) revert EmptyField("description");
         _appendRecord(tokenId, "discrepancy", description, evidenceCID, msg.sender);
     }
@@ -303,6 +395,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         nonReentrant
     {
         _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
         if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (bytes(description).length == 0) revert EmptyField("description");
         _appendRecord(tokenId, "attestation", description, evidenceCID, msg.sender);
@@ -341,6 +434,10 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
 
     function _requireExists(uint256 tokenId) internal view {
         if (_ownerOf(tokenId) == address(0)) revert NonexistentToken();
+    }
+
+    function _requireNotBridgedAway(uint256 tokenId) internal view {
+        if (custodyLocked[tokenId]) revert PassportBridgedAway();
     }
 
     function _appendRecord(
