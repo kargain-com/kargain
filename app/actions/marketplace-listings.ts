@@ -66,6 +66,7 @@ const PONDER_URL =
 type PonderListing = {
   id: string;
   tokenId: string;
+  chainId: number;
   seller: string;
   fiatPrice1e8: string | number;
   fiatCurrency: number;

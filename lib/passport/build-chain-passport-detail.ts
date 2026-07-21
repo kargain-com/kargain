@@ -21,9 +21,12 @@ export function buildChainPassportStub(
   tokenUri: string,
   status: PassportStatus,
   metadata: PassportMetadata | null,
+  chainId: number,
 ): PonderPassportDetail {
   return {
     id: tokenId,
+    chainId,
+    custodyChain: chainId,
     owner,
     status,
     verifier: "",
@@ -124,7 +127,14 @@ export async function fetchChainPassportDetail(
     : { ok: false as const };
 
   const metadata = metaResult.ok ? metaResult.metadata : null;
-  const passport = buildChainPassportStub(tokenId, owner, trimmedUri, status, metadata);
+  const passport = buildChainPassportStub(
+    tokenId,
+    owner,
+    trimmedUri,
+    status,
+    metadata,
+    chainId,
+  );
 
   if (!trimmedUri) {
     return { ok: true, passport, metadata: null, metadataError: true };

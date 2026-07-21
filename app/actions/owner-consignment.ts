@@ -11,7 +11,6 @@ import {
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
 import type { PonderAgentAuthorizationsResponse } from "@/lib/types/ponder";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -152,8 +151,9 @@ export async function getOwnerActiveAuctions(
   address: string,
   page = 1,
   limit = 20,
-  chainId: number = DEFAULT_CHAIN_ID,
+  _chainId?: number,
 ): Promise<AgentActiveAuctionsResult> {
+  void _chainId;
   const owner = parseOwnerAddress(address);
   if (!owner) {
     return { ok: true, rows: [], total: 0, page, limit };
@@ -179,9 +179,7 @@ export async function getOwnerActiveAuctions(
     }
 
     const data = (await res.json()) as PonderAuctionsResponse;
-    const rows = (data.auctions ?? []).map((row) =>
-      mapPonderAuctionRow(row, chainId),
-    );
+    const rows = (data.auctions ?? []).map((row) => mapPonderAuctionRow(row));
     return {
       ok: true,
       rows,

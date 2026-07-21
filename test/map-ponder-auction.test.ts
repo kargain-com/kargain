@@ -17,6 +17,7 @@ function raw(overrides: Partial<PonderAuctionRaw> = {}): PonderAuctionRaw {
   return {
     id: "1",
     tokenId: "1",
+    chainId: 84532,
     seller: "0x1111111111111111111111111111111111111111",
     agent: "",
     asset: "",
@@ -41,11 +42,17 @@ function raw(overrides: Partial<PonderAuctionRaw> = {}): PonderAuctionRaw {
 
 describe("mapPonderAuctionRow", () => {
   it("maps string bigints and labels empty asset as ETH", () => {
-    const row = mapPonderAuctionRow(raw(), 84532);
+    const row = mapPonderAuctionRow(raw());
     assert.equal(row.reserve, 10n ** 18n);
     assert.equal(row.assetLabel, "ETH");
     assert.equal(row.phase, "CREATED");
     assert.equal(row.active, true);
+    assert.equal(row.chainId, 84532);
+  });
+
+  it("uses row chainId for spoke", () => {
+    const row = mapPonderAuctionRow(raw({ chainId: 11155111 }));
+    assert.equal(row.chainId, 11155111);
   });
 
   it("labels non-empty asset as USDC", () => {

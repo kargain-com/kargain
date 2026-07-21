@@ -31,7 +31,11 @@ export async function generateMetadata({
   }
 
   const parsed = parsePassportTokenId(raw);
-  const chainId = parsed.isV2Prefixed ? parsed.chainId : parseChainParam(undefined);
+  const chainId = result.ok
+    ? result.passport.chainId
+    : parsed.isV2Prefixed
+      ? parsed.chainId
+      : parseChainParam(undefined);
   return { title: formatKarPassportTitle(raw, chainId) };
 }
 
@@ -72,7 +76,7 @@ async function MarketplaceListingInner({
 }) {
   const { tokenId: raw } = await params;
   const sp = await searchParams;
-  const chainId = parseChainParam(sp.chain);
+  const hintChainId = parseChainParam(sp.chain);
   try {
     if (!/^\d+$/.test(raw)) notFound();
     BigInt(raw);
@@ -80,10 +84,9 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const [result, listingRaw, auctionResult] = await Promise.all([
-    fetchPassportDetailCached(raw, chainId),
+  const [result, listingRaw] = await Promise.all([
+    fetchPassportDetailCached(raw, hintChainId),
     fetchListingDetail(raw),
-    getAuctionDetail(raw, chainId),
   ]);
 
   if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
@@ -105,7 +108,7 @@ async function MarketplaceListingInner({
             </p>
           </div>
           <Link
-            href={`/?chain=${chainId}`}
+            href={`/?chain=${hintChainId}`}
             className="font-sans text-sm link-underline"
           >
             ← Back to marketplace
@@ -124,7 +127,7 @@ async function MarketplaceListingInner({
             This passport may not exist yet or the indexer has not caught up.
           </p>
           <Link
-            href={`/?chain=${chainId}`}
+            href={`/?chain=${hintChainId}`}
             className="mt-6 inline-block font-sans text-sm link-underline"
           >
             ← Back to marketplace
@@ -137,6 +140,10 @@ async function MarketplaceListingInner({
   if (!result.ok) {
     notFound();
   }
+
+  const commerceChainId = result.passport.custodyChain;
+  const originChainId = result.passport.chainId;
+  const auctionResult = await getAuctionDetail(raw, commerceChainId);
 
   const listingActive = isPonderListingActive(listingRaw);
   const listing = listingRaw
@@ -162,7 +169,8 @@ async function MarketplaceListingInner({
     <div className="min-h-dvh bg-bg-primary">
       <PassportDetailView
         tokenId={raw}
-        chainId={chainId}
+        chainId={commerceChainId}
+        originChainId={originChainId}
         passport={result.passport}
         metadata={result.metadata}
         metadataError={result.metadataError}

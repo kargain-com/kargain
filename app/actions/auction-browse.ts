@@ -6,7 +6,6 @@ import {
   type AuctionRow,
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -53,11 +52,12 @@ export async function fetchActiveAuctionCount(): Promise<number> {
 export async function searchActiveAuctions(opts?: {
   page?: number;
   limit?: number;
+  /** Retained for callers; mapped rows use Ponder auction.chainId. */
   chainId?: number;
 }): Promise<AuctionBrowseResult> {
   const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 48;
-  const chainId = opts?.chainId ?? DEFAULT_CHAIN_ID;
+  void opts?.chainId;
 
   try {
     const url = new URL(`${PONDER_URL}/auctions`);
@@ -80,9 +80,7 @@ export async function searchActiveAuctions(opts?: {
     }
 
     const data = (await res.json()) as PonderAuctionsResponse;
-    const mapped = (data.auctions ?? []).map((row) =>
-      mapPonderAuctionRow(row, chainId),
-    );
+    const mapped = (data.auctions ?? []).map((row) => mapPonderAuctionRow(row));
     const rows = partitionActiveAuctions(mapped);
     const total = data.total ?? rows.length;
     const totalPages = Math.max(1, Math.ceil(total / (data.limit || limit)));

@@ -67,13 +67,22 @@ function parseUriHistory(raw: unknown): PonderUriHistoryEntry[] {
     .filter((e): e is PonderUriHistoryEntry => e != null);
 }
 
-function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
+function parseChainIdField(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
+/** Exported for unit tests — fail-closed without custodyChain. */
+export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
 
   const id = typeof obj.id === "string" ? obj.id : "";
   const owner = typeof obj.owner === "string" ? obj.owner : "";
   const statusRaw = typeof obj.status === "string" ? obj.status : "";
+  const chainId = parseChainIdField(obj.chainId);
+  const custodyChain = parseChainIdField(obj.custodyChain);
   const verifier = typeof obj.verifier === "string" ? obj.verifier : "";
   const verifiedAt = obj.verifiedAt != null ? String(obj.verifiedAt) : "0";
   const tokenUri = typeof obj.tokenUri === "string" ? obj.tokenUri : "";
@@ -107,7 +116,15 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const createdAt = obj.createdAt != null ? String(obj.createdAt) : "0";
   const updatedAt = obj.updatedAt != null ? String(obj.updatedAt) : "0";
 
-  if (!id || !owner || !isPassportStatus(statusRaw)) return null;
+  if (
+    !id ||
+    !owner ||
+    !isPassportStatus(statusRaw) ||
+    chainId == null ||
+    custodyChain == null
+  ) {
+    return null;
+  }
 
   const recordsRaw = Array.isArray(obj.records) ? obj.records : [];
   const records = recordsRaw
@@ -136,6 +153,8 @@ function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
 
   return {
     id,
+    chainId,
+    custodyChain,
     owner,
     status: statusRaw,
     verifier,
@@ -255,16 +274,18 @@ export async function fetchPassportDetail(
   const parsed = parsePonderPassport(raw);
   if (!parsed) return { ok: false, error: "PONDER_UNAVAILABLE" };
 
+  // Commerce / drift confirms target custody, not origin or ?chain= hint.
+  const rpcChainId = parsed.custodyChain;
   const ponderTokenUri = parsed.tokenUri.trim();
-  const chainTokenUri = await readTokenUriOnChain(tokenId, chainId);
+  const chainTokenUri = await readTokenUriOnChain(tokenId, rpcChainId);
   const uriDrift = hasTokenUriDrift(ponderTokenUri, chainTokenUri);
   const effectiveUri = effectiveTokenUri(ponderTokenUri, chainTokenUri);
 
   const [status, owner, metaResult] = await Promise.all([
-    confirmStatusOnChain(tokenId, chainId, parsed.status),
-    confirmOwnerOnChain(tokenId, chainId, parsed.owner),
+    confirmStatusOnChain(tokenId, rpcChainId, parsed.status),
+    confirmOwnerOnChain(tokenId, rpcChainId, parsed.owner),
     effectiveUri
-      ? fetchArweaveMetadata(effectiveUri, chainId)
+      ? fetchArweaveMetadata(effectiveUri, rpcChainId)
       : Promise.resolve({ ok: false as const }),
   ]);
 

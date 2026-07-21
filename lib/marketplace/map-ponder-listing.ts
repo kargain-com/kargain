@@ -3,11 +3,11 @@ import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { PassportStatus, PonderAgentListingRaw } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export type PonderListingInput = {
   id: string;
   tokenId: string;
+  chainId: number;
   seller: string;
   fiatPrice1e8: string | number;
   fiatCurrency?: number;
@@ -67,7 +67,7 @@ function buildTitle(listing: PonderListingInput): string {
     return `${listing.year} ${listing.make} ${listing.model}`;
   }
   if (listing.make && listing.model) return `${listing.make} ${listing.model}`;
-  return `Vehicle ${formatPassportShortLabel(listing.tokenId, DEFAULT_CHAIN_ID)}`;
+  return `Vehicle ${formatPassportShortLabel(listing.tokenId, listing.chainId)}`;
 }
 
 function coverPhotoUrl(coverPhotoUri: string | undefined): string | null {
@@ -78,7 +78,7 @@ function coverPhotoUrl(coverPhotoUri: string | undefined): string | null {
 export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceListingRow {
   const status = (listing.passportStatus ?? "UNVERIFIED") as PassportStatus;
   return {
-    chainId: DEFAULT_CHAIN_ID,
+    chainId: listing.chainId,
     tokenId: listing.tokenId,
     seller: listing.seller as `0x${string}`,
     fiatPrice1e8: String(listing.fiatPrice1e8),
@@ -120,9 +120,14 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
 export function mapAgentListingToRow(
   listing: PonderAgentListingRaw,
 ): MarketplaceListingRow {
+  const chainId = Number(listing.chainId);
+  if (!Number.isFinite(chainId) || chainId <= 0) {
+    throw new Error("Agent listing missing chainId");
+  }
   return mapPonderListingToRow({
     id: String(listing.id ?? listing.tokenId ?? ""),
     tokenId: String(listing.tokenId ?? listing.id ?? ""),
+    chainId,
     seller: String(listing.seller ?? ""),
     fiatPrice1e8: listing.fiatPrice1e8 ?? "0",
     fiatCurrency: listing.fiatCurrency,

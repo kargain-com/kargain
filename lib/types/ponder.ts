@@ -161,6 +161,10 @@ export type PonderUriHistoryEntry = {
 
 export type PonderPassportDetail = {
   id: string;
+  /** Origin / mint home chain (SPEC §I.12.8). */
+  chainId: number;
+  /** Where the token lives now — commerce RPCs use this. */
+  custodyChain: number;
   owner: string;
   status: PassportStatus;
   verifier: string;
@@ -258,6 +262,7 @@ export type PonderAgentAuthorizationsResponse = {
 export type PonderAgentListingRaw = {
   id?: string;
   tokenId?: string;
+  chainId?: number;
   seller?: string;
   fiatPrice1e8?: string | number;
   fiatCurrency?: number;

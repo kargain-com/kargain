@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { formatEther, getAddress } from "viem";
+import { formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,9 @@ import {
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  BRIDGE_HUB_CHAIN_ID,
-  BRIDGE_SPOKE_CHAIN_ID,
-} from "@/lib/web3/bridge";
+import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
   chainId: number;
@@ -45,6 +42,8 @@ export function PassportBridgePanel({
   const { address, isConnected } = useAccount();
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
+  const dstChainId = bridgeCounterpartChainId(chainId);
+  const dstName = dstChainId != null ? shortChainName(dstChainId) : null;
 
   const { data: onChainOwner, status: ownerStatus } = useReadContract({
     address: passport,
@@ -52,7 +51,7 @@ export function PassportBridgePanel({
     functionName: "ownerOf",
     args: [tid],
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(passport && chainId === BRIDGE_HUB_CHAIN_ID) },
+    query: { enabled: Boolean(passport) },
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(
@@ -66,19 +65,12 @@ export function PassportBridgePanel({
     ownerStatus === "success" &&
     isOnChainNftOwner(address, effectiveOwner);
 
-  const onSpokeChain = chainId === BRIDGE_SPOKE_CHAIN_ID;
-  const spokeOwner =
-    onSpokeChain &&
-    isConnected &&
-    address != null &&
-    getAddress(address) === getAddress(passportOwner);
   const surface = deriveBridgeSurface({
-    isOwner: onSpokeChain ? Boolean(spokeOwner) : Boolean(isOwner),
+    isOwner: Boolean(isOwner),
     chainId,
     listingState,
     auctionBlocks,
     passportStatus,
-    onSpokeChain,
   });
 
   const {
@@ -90,7 +82,10 @@ export function PassportBridgePanel({
     busy,
     error,
     configured,
-  } = useBridge(BRIDGE_HUB_CHAIN_ID);
+  } = useBridge(
+    chainId,
+    dstChainId ?? chainId,
+  );
 
   useEffect(() => {
     if (!surface.canBridge || !configured) return;
@@ -99,23 +94,10 @@ export function PassportBridgePanel({
 
   if (!surface.visible) return null;
 
-  if (surface.mode === "spoke_info") {
-    return (
-      <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
-        <h2 className="font-sans text-base font-medium text-text-primary">
-          Bridge
-        </h2>
-        <p className="font-sans text-sm text-text-secondary" role="status">
-          Return to Base Sepolia to bridge this passport.
-        </p>
-      </section>
-    );
-  }
-
   const disabledReason =
     surface.blockReason != null
       ? bridgeBlockReasonCopy(surface.blockReason)
-      : !configured
+      : !configured || dstChainId == null
         ? "Bridge is not configured on this chain."
         : null;
 
@@ -127,8 +109,12 @@ export function PassportBridgePanel({
         : phase === "pending"
           ? "Waiting for delivery…"
           : phase === "delivered"
-            ? "Delivered on Ethereum Sepolia"
-            : "Bridge to Ethereum Sepolia";
+            ? dstName
+              ? `Delivered on ${dstName}`
+              : "Delivered"
+            : dstName
+              ? `Move to ${dstName}`
+              : "Bridge";
 
   return (
     <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
@@ -136,8 +122,15 @@ export function PassportBridgePanel({
         Bridge
       </h2>
       <p className="font-sans text-sm text-text-secondary">
-        Move this passport to Ethereum Sepolia via LayerZero.
+        {dstName
+          ? `Move this passport to ${dstName} via LayerZero.`
+          : "Bridge is not available on this network."}
       </p>
+      {dstChainId != null && (
+        <p className="font-mono text-xs tabular-nums text-text-tertiary">
+          {chainId} → {dstChainId}
+        </p>
+      )}
 
       {feeWei != null && surface.canBridge && (
         <dl className="flex items-baseline justify-between gap-3">

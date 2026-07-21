@@ -1,7 +1,6 @@
 import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 /** Ponder `auction.phase` values (no ENDED — derived in UI). */
 export type PonderAuctionPhase =
@@ -27,6 +26,7 @@ export type AuctionUiState =
 export type PonderAuctionRaw = {
   id: string;
   tokenId: string;
+  chainId: number;
   seller: string;
   agent?: string;
   asset?: string;
@@ -254,10 +254,8 @@ function mapSettlement(raw: PonderSettlementRaw | null | undefined): AuctionSett
   };
 }
 
-export function mapPonderAuctionRow(
-  raw: PonderAuctionRaw,
-  chainId: number = DEFAULT_CHAIN_ID,
-): AuctionRow {
+export function mapPonderAuctionRow(raw: PonderAuctionRaw): AuctionRow {
+  const chainId = raw.chainId;
   const asset = raw.asset?.trim() ?? "";
   const agent = raw.agent?.trim() ? raw.agent.trim() : null;
   const highestBidder = raw.highestBidder?.trim() ? raw.highestBidder.trim() : null;

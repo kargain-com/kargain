@@ -22,14 +22,22 @@ function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput 
     listingState: "inactive",
     auctionBlocks: false,
     passportStatus: "VERIFIED",
-    onSpokeChain: false,
     ...overrides,
   };
 }
 
 describe("deriveBridgeSurface", () => {
-  it("allows bridge for owner on hub with inactive listing and no auction", () => {
+  it("allows bridge for owner on hub custody with inactive listing and no auction", () => {
     assert.deepEqual(deriveBridgeSurface(input()), {
+      visible: true,
+      mode: "action",
+      canBridge: true,
+      blockReason: null,
+    });
+  });
+
+  it("allows bridge for owner on spoke custody (return to hub)", () => {
+    assert.deepEqual(deriveBridgeSurface(input({ chainId: 11155111 })), {
       visible: true,
       mode: "action",
       canBridge: true,
@@ -48,21 +56,7 @@ describe("deriveBridgeSurface", () => {
     assert.deepEqual(deriveBridgeSurface(input({ isOwner: false })), HIDDEN);
   });
 
-  it("shows spoke info with no action", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(
-        input({ onSpokeChain: true, chainId: 11155111 }),
-      ),
-      {
-        visible: true,
-        mode: "spoke_info",
-        canBridge: false,
-        blockReason: null,
-      },
-    );
-  });
-
-  it("hides on non-hub non-spoke chain", () => {
+  it("hides on non-star chain", () => {
     assert.deepEqual(
       deriveBridgeSurface(input({ chainId: 31337 })),
       HIDDEN,
@@ -154,16 +148,12 @@ describe("deriveBridgeSurface", () => {
     );
   });
 
-  it("spoke info wins over hub gate checks", () => {
+  it("spoke custody still fail-closes listed", () => {
     assert.equal(
       deriveBridgeSurface(
-        input({
-          onSpokeChain: true,
-          listingState: "active",
-          passportStatus: "DISPUTED",
-        }),
-      ).mode,
-      "spoke_info",
+        input({ chainId: 11155111, listingState: "active" }),
+      ).blockReason,
+      "listed",
     );
   });
 });

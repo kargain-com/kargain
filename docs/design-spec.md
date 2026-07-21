@@ -845,21 +845,19 @@ Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-a
 
 ### 4.19 Passport bridge panel
 
-> **Superseded by the multichain commerce initiative ([SPEC §I.12](./contracts/SPEC.md#i12-multi-chain-architecture-normative)).** The panel and non-goals below describe **Bridge-1–7 milestone scope only** (hub→spoke transport, thin ONFT). The end-state has full commerce on every chain, symmetric return UI, and custody-chain-aware surfaces — see the C4 app plan in [multichain-implementation-plan-2026.md](./research/multichain-implementation-plan-2026.md).
-
-Hub→spoke bridge on the passport commerce rail (Base Sepolia → Ethereum Sepolia). On-chain truth: [SPEC §7](./contracts/SPEC.md) and [I.9.2](./contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) — this section is the UI contract only.
+Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke). On-chain truth: [SPEC §7](./contracts/SPEC.md) / [§I.12](./contracts/SPEC.md#i12-multi-chain-architecture-normative) — this section is the UI contract only.
 
 | Surface | Contract |
 |---------|----------|
-| Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx) |
-| Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; hub chain 84532; listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
+| Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx); commerce `chainId` = Ponder `passport.custodyChain` |
+| Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; star custody chain (84532 or 11155111); listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
+| Direction | `useBridge(custodyChain, counterpart)`; copy **Move to \<dst network\>**; mono `tabular-nums` chain ids (`src → dst`) |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
-| Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = spoke RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
-| Spoke | Informational only (*Return to Base Sepolia to bridge…*) — no spoke write path in the app |
+| Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
 | Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
 
-**Non-goals (Bridge-1–7 milestone scope only — all superseded by SPEC §I.12 / C3–C4):** spoke→hub return UI; Ponder indexing of 11155111; marketplace or commerce on spoke; “bridged away” profile ownership. Each becomes in-scope in the multichain commerce initiative.
+**Non-goals (profile C4.2c):** bridged-away ownership surfaces on `/profile` — separate iteration.
 
 ---
 
@@ -1509,4 +1507,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.72 (July 2026 — bridge fee reflects URI-length lzReceive gas §4.19). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.73 (July 2026 — §4.19 custody-aware bidirectional bridge). Update when tokens, app shell, or component contracts change.*

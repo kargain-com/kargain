@@ -1,5 +1,5 @@
 import type { PassportStatus } from "@/lib/types/ponder";
-import { SEPOLIA_CHAIN_ID } from "@/lib/web3/sepolia-addresses";
+import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 
 export type BridgeListingState =
   | "pending"
@@ -13,7 +13,7 @@ export type BridgeBlockReason =
   | "disputed"
   | "unresolved";
 
-export type BridgeSurfaceMode = "hidden" | "action" | "spoke_info";
+export type BridgeSurfaceMode = "hidden" | "action";
 
 export type BridgeSurfaceResult = {
   visible: boolean;
@@ -24,12 +24,12 @@ export type BridgeSurfaceResult = {
 
 export type BridgeSurfaceInput = {
   isOwner: boolean;
+  /** Custody chain — where the token lives now. */
   chainId: number;
   listingState: BridgeListingState;
   /** `undefined` means auction truth is unresolved — fail closed. */
   auctionBlocks: boolean | undefined;
   passportStatus: PassportStatus;
-  onSpokeChain: boolean;
 };
 
 const HIDDEN: BridgeSurfaceResult = {
@@ -41,7 +41,7 @@ const HIDDEN: BridgeSurfaceResult = {
 
 /**
  * Pure owner bridge-surface policy. Unknown listing/auction facts fail closed.
- * Spoke view is informational only (return to hub to bridge).
+ * Action is available on either star chain (hub or spoke) when custody is there.
  */
 export function deriveBridgeSurface(
   input: BridgeSurfaceInput,
@@ -50,16 +50,7 @@ export function deriveBridgeSurface(
     return { ...HIDDEN };
   }
 
-  if (input.onSpokeChain) {
-    return {
-      visible: true,
-      mode: "spoke_info",
-      canBridge: false,
-      blockReason: null,
-    };
-  }
-
-  if (input.chainId !== SEPOLIA_CHAIN_ID) {
+  if (bridgeCounterpartChainId(input.chainId) == null) {
     return { ...HIDDEN };
   }
 

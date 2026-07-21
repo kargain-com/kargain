@@ -32,7 +32,10 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   tokenId: string;
+  /** Custody chain — commerce RPCs and panels. */
   chainId: number;
+  /** Origin / mint home — titles and id labels. */
+  originChainId?: number;
   passport: PonderPassportDetail;
   metadata: PassportMetadata | null;
   metadataError?: boolean;
@@ -78,6 +81,7 @@ function sealSublabel(status: PonderPassportDetail["status"], verifier: string):
 export function PassportDetailView({
   tokenId,
   chainId,
+  originChainId,
   passport,
   metadata,
   metadataError,
@@ -85,7 +89,8 @@ export function PassportDetailView({
   listing = null,
   auction = null,
 }: Props) {
-  const title = buildTitle(metadata, tokenId, chainId);
+  const titleChainId = originChainId ?? passport.chainId ?? chainId;
+  const title = buildTitle(metadata, tokenId, titleChainId);
   const isDisputed = passport.status === "DISPUTED";
   const disputeBannerText = getDisputeBannerText({
     disputeReason: passport.disputeReason,
@@ -192,7 +197,7 @@ export function PassportDetailView({
             </div>
 
             <div className="mt-2">
-              <PassportIdLabel tokenId={tokenId} chainId={chainId} variant="eyebrow" />
+              <PassportIdLabel tokenId={tokenId} chainId={titleChainId} variant="eyebrow" />
             </div>
 
             {isDisputed && (

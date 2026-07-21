@@ -52,7 +52,7 @@ export async function getAuctionDetail(
     if (!raw?.tokenId) {
       return { ok: true, auction: null };
     }
-    return { ok: true, auction: mapPonderAuctionRow(raw, chainId) };
+    return { ok: true, auction: mapPonderAuctionRow(raw) };
   } catch {
     return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
