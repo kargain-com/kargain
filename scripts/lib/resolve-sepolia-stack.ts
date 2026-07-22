@@ -24,9 +24,6 @@ import {
 
 export type CommercialStackSource = "env" | "manifest" | "committed";
 
-/** @deprecated Use CommercialStackSource */
-export type SepoliaStackSource = CommercialStackSource;
-
 export type ResolvedCommercialStack = {
   source: CommercialStackSource;
   chainId: number;
@@ -44,9 +41,6 @@ export type ResolvedCommercialStack = {
   indexFromBlock: number;
   blocks: DeploymentBlocks;
 };
-
-/** @deprecated Use ResolvedCommercialStack */
-export type ResolvedSepoliaStack = ResolvedCommercialStack;
 
 const CORE_ENV_KEYS = [
   "PONDER_KAR_PASSPORT_ADDRESS",

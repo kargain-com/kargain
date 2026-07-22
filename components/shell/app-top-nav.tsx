@@ -33,10 +33,10 @@ export function AppTopNav() {
 
   const urlChain = sp.get("chain");
   const parsed = urlChain ? Number.parseInt(urlChain, 10) : NaN;
-  const expectedChainId = Number.isFinite(parsed) ? parsed : DEFAULT_CHAIN_ID;
-  const auctionsEnabled = Boolean(
-    auctionEscrowAddress(walletChainId || expectedChainId),
-  );
+  /** Only when URL sets `?chain=` — do not fall back to hub for wrong-network. */
+  const expectedChainId = Number.isFinite(parsed) ? parsed : undefined;
+  const auctionsChainId = walletChainId || expectedChainId || DEFAULT_CHAIN_ID;
+  const auctionsEnabled = Boolean(auctionEscrowAddress(auctionsChainId));
 
   return (
     <header className="sticky top-0 z-50 border-b border-border-default bg-bg-primary">
@@ -54,7 +54,7 @@ export function AppTopNav() {
           <CurrencySelector />
           {auctionsEnabled && (
             <Link
-              href={`/auctions?chain=${expectedChainId}`}
+              href={`/auctions?chain=${auctionsChainId}`}
               aria-label="Auctions"
               className={cn(
                 "inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border min-h-9",

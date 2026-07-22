@@ -56,7 +56,8 @@ import type {
   PonderAgentListingRaw,
 } from "@/lib/types/ponder";
 import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
@@ -1069,8 +1070,10 @@ function ActiveAuctionsSection({
   );
 }
 
-export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
+export function ConsignedVehiclesTab({ wallet, chainId: pageChainId }: Props) {
   const { chainId: connectedChainId } = useAccount();
+  const commercialChainId = resolveKarProTargetChainId(connectedChainId);
+  const chainId = commercialChainId ?? pageChainId;
   const wc = wagmiChainId(chainId);
   const market = marketplaceAddress(chainId);
   const wrongChain =
@@ -1091,7 +1094,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
     <div className="space-y-2">
       {wrongChain && (
         <p className="mb-4 rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary">
-          Switch to Base Sepolia to verify authorization status.
+          Switch to {shortChainName(chainId)} to verify authorization status.
         </p>
       )}
 

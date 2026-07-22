@@ -4,7 +4,7 @@ import { CreatePassportWizard } from "@/components/passport/create-passport-wiza
 
 export const metadata: Metadata = {
   title: "Create passport · Kargain",
-  description: "Mint a KarPassport NFT with vehicle details and photos on Base Sepolia.",
+  description: "Mint a KarPassport NFT with vehicle details and photos.",
 };
 
 export default function NewPassportPage() {

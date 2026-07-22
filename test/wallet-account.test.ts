@@ -7,6 +7,7 @@ import {
   classifyBytecode,
   explorerAddressUrl,
   isMessageablePeer,
+  isMessageablePeerOnCommercialChains,
   isProtocolAddress,
   isProtocolAddressOnCommercialChains,
   messagingWalletError,
@@ -132,6 +133,20 @@ describe("isMessageablePeer", () => {
       isMessageablePeer("0xcfe194fea9727bD04dA8F78c2362680986e02dF1", 84532),
       true,
     );
+  });
+});
+
+describe("isMessageablePeerOnCommercialChains", () => {
+  it("rejects hub marketplace", () => {
+    assert.equal(isMessageablePeerOnCommercialChains(HUB.marketplace), false);
+  });
+
+  it("rejects spoke KarPassport", () => {
+    assert.equal(isMessageablePeerOnCommercialChains(SPOKE.karPassport), false);
+  });
+
+  it("allows ordinary EOAs", () => {
+    assert.equal(isMessageablePeerOnCommercialChains(SEPOLIA_DEPLOYER), true);
   });
 });
 

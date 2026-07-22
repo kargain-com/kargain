@@ -13,15 +13,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  DEFAULT_CHAIN_ID,
+  chainSelectorSwitchTargets,
+  deriveChainSelectorWrong,
+} from "@/lib/web3/chain-selector-state";
+import {
   getViemChain,
   kargainChains,
+  shortChainName,
   wagmiChainId,
 } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type Props = {
   syncSearchParam?: boolean;
+  /** Set only when URL/page requires a specific chain — never hub DEFAULT fallback. */
   expectedChainId?: number;
   className?: string;
 };
@@ -47,18 +52,25 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     return Number.isFinite(n) ? n : null;
   }, [sp]);
 
-  const targetChainId = expectedChainId ?? DEFAULT_CHAIN_ID;
   const displayChainId = syncSearchParam ? (urlChain ?? walletChainId) : walletChainId;
-  const wrong = isConnected && walletChainId !== targetChainId;
+  const wrong = deriveChainSelectorWrong({
+    isConnected,
+    walletChainId,
+    expectedChainId,
+  });
   const activeChain = getViemChain(displayChainId);
   const chainName = wrong ? "Wrong network" : (activeChain?.name ?? `Chain ${displayChainId}`);
+  const switchTargets = chainSelectorSwitchTargets(expectedChainId);
 
-  const onSwitchToTarget = useCallback(() => {
-    if (!switchChainAsync) return;
-    void switchChainAsync({ chainId: wagmiChainId(targetChainId) }).catch(() => {
-      /* user rejected */
-    });
-  }, [switchChainAsync, targetChainId]);
+  const onSwitchTo = useCallback(
+    (id: number) => {
+      if (!switchChainAsync) return;
+      void switchChainAsync({ chainId: wagmiChainId(id) }).catch(() => {
+        /* user rejected */
+      });
+    },
+    [switchChainAsync],
+  );
 
   const onSelectChain = useCallback(
     async (id: number) => {
@@ -97,6 +109,10 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
   );
 
   if (wrong) {
+    const ariaTarget =
+      expectedChainId != null
+        ? shortChainName(expectedChainId)
+        : "a Kargain network";
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -104,15 +120,21 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
             type="button"
             disabled={isPending}
             className={triggerClass}
-            aria-label="Wrong network — switch to Base Sepolia"
+            aria-label={`Wrong network — switch to ${ariaTarget}`}
           >
             {trigger}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[180px] p-1">
-          <DropdownMenuItem className="font-mono text-xs" onSelect={onSwitchToTarget}>
-            Switch to Base Sepolia
-          </DropdownMenuItem>
+          {switchTargets.map((id) => (
+            <DropdownMenuItem
+              key={id}
+              className="font-mono text-xs"
+              onSelect={() => onSwitchTo(id)}
+            >
+              Switch to {shortChainName(id)}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     );

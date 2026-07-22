@@ -1,6 +1,6 @@
 /**
- * Base Sepolia (84532) surface + Eth Sepolia read-only bridge constants.
- * Committed stacks: lib/web3/commercial-active.ts (SPEC I.9.x).
+ * Base Sepolia (84532) surface + Ethereum Sepolia (11155111) Nuclear commercial constants.
+ * Committed stacks: lib/web3/commercial-active.ts (SPEC I.9.x). Eth is in the wagmi write-union.
  */
 
 import {
@@ -53,7 +53,7 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
  */
 export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
 
-/** Official Ethereum Sepolia public RPC — spoke ownerOf polls only. */
+/** Official Ethereum Sepolia public RPC — app reads/writes + bridge ownerOf delivery polls. */
 export const ETHEREUM_SEPOLIA_PUBLIC_RPC =
   "https://ethereum-sepolia-rpc.publicnode.com";
 

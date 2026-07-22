@@ -11,8 +11,14 @@ const COMMERCIAL_CHAIN_IDS = Object.keys(COMMERCIAL_ACTIVE)
   .map(Number)
   .sort((a, b) => a - b);
 
+type Props = {
+  title?: string;
+};
+
 /** Prompt when the wallet is connected on a non-commercial network. */
-export function KarProNetworkPrompt() {
+export function KarProNetworkPrompt({
+  title = "Switch to a Kargain network to become or manage KarPro.",
+}: Props = {}) {
   const { switchChainAsync, isPending } = useSwitchChain();
 
   return (
@@ -20,7 +26,7 @@ export function KarProNetworkPrompt() {
       <EmptyState
         variant="infrastructure"
         level="B"
-        title="Switch to a Kargain network to become or manage KarPro."
+        title={title}
       />
       <ul className="flex flex-col gap-2">
         {COMMERCIAL_CHAIN_IDS.map((id) => (

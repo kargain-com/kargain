@@ -145,7 +145,7 @@ function resolveBridgeAddresses(): ResolvedBridge {
   }
 
   fail(
-    `Eth OApp missing in deployments/11155111.json — run nuclear deploy (commercial bridgeGateway) or legacy pnpm deploy:spoke:sepolia`,
+    `Eth OApp missing in deployments/11155111.json — run nuclear deploy (commercial bridgeGateway)`,
   );
 }
 

@@ -278,16 +278,6 @@ export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
   return normalizeSpokeManifest(raw);
 }
 
-export function requireSpokeDeployment(): SpokeDeploymentManifest {
-  const deployment = loadSpokeDeployment();
-  if (!deployment) {
-    throw new Error(
-      "Missing thin-ONFT deployments/11155111.json — run nuclear deploy (commercial gateway) or legacy `pnpm deploy:spoke:sepolia`",
-    );
-  }
-  return deployment;
-}
-
 export function ponderLocalAddresses(): LocalStackAddresses {
   const fromEnv = {
     chainId: LOCAL_CHAIN_ID,

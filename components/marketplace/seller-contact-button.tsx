@@ -12,8 +12,7 @@ import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachab
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
 import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import { isMessageablePeer } from "@/lib/web3/wallet-account";
+import { isMessageablePeerOnCommercialChains } from "@/lib/web3/wallet-account";
 
 type Props = {
   peerAddress: `0x${string}`;
@@ -47,7 +46,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
     return null;
   }
 
-  if (!isMessageablePeer(peerAddress, DEFAULT_CHAIN_ID)) {
+  if (!isMessageablePeerOnCommercialChains(peerAddress)) {
     return (
       <p className="text-sm text-text-secondary" role="status">
         This seller cannot receive messages.

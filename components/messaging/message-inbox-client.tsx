@@ -22,8 +22,7 @@ import { getClientEthereumAddress } from "@/lib/messaging/adapters/xmtp-adapter"
 import { formatRelativeTime } from "@/lib/format/relative-time";
 import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
-import { isMessageablePeer } from "@/lib/web3/wallet-account";
+import { isMessageablePeerOnCommercialChains } from "@/lib/web3/wallet-account";
 
 function parsePeerAddress(raw: string): `0x${string}` | undefined {
   try {
@@ -163,7 +162,7 @@ export function MessageInboxClient() {
       return;
     }
 
-    if (!isMessageablePeer(peer, DEFAULT_CHAIN_ID)) {
+    if (!isMessageablePeerOnCommercialChains(peer)) {
       handledToRef.current = true;
       setToError("This address cannot receive messages.");
       return;

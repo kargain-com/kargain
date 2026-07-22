@@ -72,7 +72,7 @@ import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type EditPhotoItem =
   | { id: string; kind: "existing"; uri: string }
@@ -434,7 +434,7 @@ export function EditPassportWizard({
 
       {wrongChain && (
         <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
-          Switch to Base Sepolia to save.{" "}
+          Switch to {shortChainName(chainId)} to save.{" "}
           <button
             type="button"
             className="link-underline"
@@ -521,7 +521,9 @@ export function EditPassportWizard({
         )}
 
         {displayPhase === "confirming" && (
-          <p className="font-sans text-sm text-text-secondary">{editConfirmingOnChain()}</p>
+          <p className="font-sans text-sm text-text-secondary">
+            {editConfirmingOnChain(shortChainName(chainId))}
+          </p>
         )}
 
         <Button type="button" className="w-full" disabled={isBusy} onClick={onSubmit}>

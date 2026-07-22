@@ -6,7 +6,6 @@ import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
   type DeploymentManifest,
-  type SpokeDeploymentManifest,
 } from "./load-deployment.js";
 
 /** Platform fee — 0.1% (10 bps). Matches marketplace deploy + auction-design §9. */
@@ -78,11 +77,6 @@ export function karPassportBridgeGatewayConstructorArgs(
     lzEndpoint,
     deployer,
   ] as const;
-}
-
-/** @deprecated C2 — thin ONFT removed; spoke verify aborted until gateway deploy. */
-export function karPassportOnftConstructorArgs(manifest: SpokeDeploymentManifest) {
-  return [manifest.layerZeroEndpoint, manifest.deployer] as const;
 }
 
 export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {

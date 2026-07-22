@@ -5,6 +5,7 @@ import { formatUnits, stringToHex } from "viem";
 import {
   useAccount,
   useBalance,
+  useChainId,
   useReadContract,
   useSendTransaction,
   useWriteContract,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/verifier/verification-fee";
 import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -128,7 +130,10 @@ export function VerificationPaymentModal({
   feeWei,
   verifierName,
 }: VerificationPaymentModalProps) {
-  const chainId = DEFAULT_CHAIN_ID;
+  const walletChainId = useChainId();
+  const targetChainId = resolveKarProTargetChainId(walletChainId);
+  const chainId = targetChainId ?? DEFAULT_CHAIN_ID;
+  const commercialReady = targetChainId != null;
   const wc = wagmiChainId(chainId);
   const { address, isConnected } = useAccount();
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
@@ -148,7 +153,7 @@ export function VerificationPaymentModal({
     abi: KarProStakingAbi,
     functionName: "verificationFee",
     args: [verifierAddress],
-    query: { enabled: Boolean(open && staking) },
+    query: { enabled: Boolean(open && commercialReady && staking) },
   });
 
   const effectiveFeeWei = chainFeeWei ?? feeWei;
@@ -468,7 +473,7 @@ export function VerificationPaymentModal({
   }, [lightningInvoice]);
 
   const payDisabled = useMemo(() => {
-    if (!hasTokenId || isPending) return true;
+    if (!commercialReady || !hasTokenId || isPending) return true;
     if (paymentMethod === "ETH") {
       return insufficientEthBalance;
     }
@@ -477,6 +482,7 @@ export function VerificationPaymentModal({
     }
     return true;
   }, [
+    commercialReady,
     hasTokenId,
     insufficientEthBalance,
     insufficientUsdcBalance,
@@ -537,6 +543,11 @@ export function VerificationPaymentModal({
               </DialogDescription>
             </DialogHeader>
 
+            {!commercialReady ? (
+              <p className="font-sans text-sm text-text-secondary">
+                Switch to a Kargain network to pay the verification fee.
+              </p>
+            ) : (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="verification-passport-select">Passport</Label>
@@ -835,6 +846,7 @@ export function VerificationPaymentModal({
                 </>
               )}
             </div>
+            )}
           </>
         )}
       </DialogContent>

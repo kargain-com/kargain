@@ -24,7 +24,7 @@ export function editUploadStarting(): string {
   return "Starting upload…";
 }
 
-export function editConfirmingOnChain(chainName = "Base Sepolia"): string {
+export function editConfirmingOnChain(chainName: string): string {
   return `Confirming on ${chainName}…`;
 }
 

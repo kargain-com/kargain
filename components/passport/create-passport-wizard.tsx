@@ -7,10 +7,10 @@ import {
   useAccount,
   useChainId,
   useSignMessage,
-  useSwitchChain,
   useWriteContract,
 } from "wagmi";
 
+import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { PassportUploadPreflightBanner } from "@/components/passport/passport-upload-preflight-banner";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
@@ -21,6 +21,7 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import {
@@ -40,7 +41,7 @@ import {
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
@@ -64,13 +65,11 @@ export function CreatePassportWizard() {
   const { address, isConnected, connector } = useAccount();
   const walletChain = useChainId();
   const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
     useWriteContract();
 
-  const chainId = DEFAULT_CHAIN_ID;
-  const wc = wagmiChainId(chainId);
-  const wrongChain = isConnected && walletChain !== chainId;
+  const chainId = resolveKarProTargetChainId(walletChain);
+  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
   const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
     address,
     connector,
@@ -80,7 +79,7 @@ export function CreatePassportWizard() {
     phase: txPhase,
     error: txError,
     syncLagged,
-  } = useTxSync(chainId);
+  } = useTxSync(chainId ?? walletChain);
 
   const [step, setStep] = useState<Step>(1);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -130,6 +129,10 @@ export function CreatePassportWizard() {
     async (uri: string) => {
       if (!address) {
         setFormError("Connect your wallet to create a passport.");
+        return;
+      }
+      if (chainId == null || wc == null) {
+        setFormError("Switch to a Kargain network to mint.");
         return;
       }
 
@@ -213,8 +216,8 @@ export function CreatePassportWizard() {
       setFormError("Connect your wallet to create a passport.");
       return;
     }
-    if (wrongChain) {
-      setFormError("Switch to Base Sepolia to mint.");
+    if (chainId == null) {
+      setFormError("Switch to a Kargain network to mint.");
       return;
     }
     if (photos.length < 1) {
@@ -294,6 +297,17 @@ export function CreatePassportWizard() {
     );
   }
 
+  if (chainId == null) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-16">
+        <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
+        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+      </div>
+    );
+  }
+
+  const networkName = shortChainName(chainId);
+
   return (
     <div className="mx-auto max-w-xl space-y-8 px-4 py-10">
       <div className="space-y-2">
@@ -304,23 +318,9 @@ export function CreatePassportWizard() {
         <p className="font-sans text-fluid-sm font-normal leading-[1.5] text-text-secondary">
           {step === 1
             ? "Enter the essentials. You can enrich the passport over time."
-            : "Upload photos and mint your KarPassport on Base Sepolia."}
+            : `Upload photos and mint your KarPassport on ${networkName}.`}
         </p>
       </div>
-
-      {wrongChain && (
-        <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
-          Switch to Base Sepolia to mint.{" "}
-          <button
-            type="button"
-            className="link-underline"
-            onClick={() => void switchChainAsync?.({ chainId: wc })}
-          >
-            Switch network
-          </button>
-        </p>
-      )}
-
       {displayError && (
         <p className="font-sans text-sm whitespace-pre-line text-status-error" role="alert">
           {displayError}

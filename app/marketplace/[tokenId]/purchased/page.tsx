@@ -8,7 +8,8 @@ import {
   commerceConfirmedPanel,
   sansLinkUnderline,
 } from "@/lib/design/instrument-classes";
-import { DEFAULT_CHAIN_ID, getViemChain } from "@/lib/web3/supported-chains";
+import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import { getViemChain } from "@/lib/web3/supported-chains";
 
 function PurchasedFallback() {
   return (
@@ -23,7 +24,7 @@ export default function MarketplacePurchasedPage({
   searchParams,
 }: {
   params: Promise<{ tokenId: string }>;
-  searchParams: Promise<{ tx?: string }>;
+  searchParams: Promise<{ tx?: string; chain?: string | string[] }>;
 }) {
   return (
     <Suspense fallback={<PurchasedFallback />}>
@@ -37,10 +38,12 @@ async function MarketplacePurchasedInner({
   searchParams,
 }: {
   params: Promise<{ tokenId: string }>;
-  searchParams: Promise<{ tx?: string }>;
+  searchParams: Promise<{ tx?: string; chain?: string | string[] }>;
 }) {
   const { tokenId } = await params;
-  const { tx } = await searchParams;
+  const sp = await searchParams;
+  const chainId = parseChainParam(sp.chain);
+  const { tx } = sp;
   try {
     if (!/^\d+$/.test(tokenId)) notFound();
     BigInt(tokenId);
@@ -48,9 +51,11 @@ async function MarketplacePurchasedInner({
     notFound();
   }
 
+  const explorer = getViemChain(chainId)?.blockExplorers?.default;
   const scan = tx
-    ? `${getViemChain(DEFAULT_CHAIN_ID)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
+    ? `${explorer?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
     : null;
+  const explorerLabel = explorer?.name ?? "Block explorer";
 
   return (
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
@@ -77,13 +82,13 @@ async function MarketplacePurchasedInner({
               rel="noreferrer"
               className={sansLinkUnderline}
             >
-              BaseScan
+              {explorerLabel}
             </a>
           </p>
         )}
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-center">
           <Button asChild>
-            <Link href={`/marketplace/${tokenId}`}>View passport</Link>
+            <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>View passport</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link href="/">Back to marketplace</Link>

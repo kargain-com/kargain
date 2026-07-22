@@ -91,6 +91,11 @@ export function isMessageablePeer(address: string, chainId?: number): boolean {
   return !isProtocolAddress(address, chainId);
 }
 
+/** Messageable across the commercial write-union (not a protocol address on any commercial chain). */
+export function isMessageablePeerOnCommercialChains(address: string): boolean {
+  return !isProtocolAddressOnCommercialChains(address);
+}
+
 export async function readAccountKind(
   chainId: number,
   address: `0x${string}`,

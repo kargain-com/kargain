@@ -4,7 +4,7 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { isMessagesAccepting } from "@/lib/nostr/messages-enabled";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import {
-  isMessageablePeer,
+  isMessageablePeerOnCommercialChains,
   messagingWalletError,
   readAccountKind,
   readAccountKindFromProvider,
@@ -45,7 +45,7 @@ export async function resolvePeerReachability(
   nostrProfile: NostrProfileData | null | undefined,
   chainId: number = DEFAULT_CHAIN_ID,
 ): Promise<{ reachable: boolean; reason: PeerReachabilityReason }> {
-  if (!isMessageablePeer(peerAddress, chainId)) {
+  if (!isMessageablePeerOnCommercialChains(peerAddress)) {
     return { reachable: false, reason: "protocol" };
   }
 
@@ -86,7 +86,7 @@ export async function resolvePeerReachabilityFromProvider(
   provider: unknown,
   chainId: number = DEFAULT_CHAIN_ID,
 ): Promise<{ reachable: boolean; reason: PeerReachabilityReason }> {
-  if (!isMessageablePeer(peerAddress, chainId)) {
+  if (!isMessageablePeerOnCommercialChains(peerAddress)) {
     return { reachable: false, reason: "protocol" };
   }
 

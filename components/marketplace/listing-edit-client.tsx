@@ -40,7 +40,7 @@ import {
   karPassportAddress,
   marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 
 type Props = {
   tokenId: string;
@@ -362,9 +362,11 @@ export function ListingEditClient({
   if (wrongChain) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
+        <p className="text-sm text-text-secondary">
+          Switch to {shortChainName(chainId)}
+        </p>
         <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
-          Switch to Base Sepolia
+          Switch to {shortChainName(chainId)}
         </Button>
       </div>
     );

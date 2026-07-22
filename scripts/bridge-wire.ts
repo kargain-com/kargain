@@ -646,7 +646,7 @@ async function main(): Promise<void> {
   }
   if (flags.spoke && !spokeOApp) {
     throw new Error(
-      `Eth OApp required — run nuclear deploy for 11155111 (commercial bridgeGateway) or legacy pnpm deploy:spoke:sepolia`,
+      `Eth OApp required — run nuclear deploy for 11155111 (commercial bridgeGateway)`,
     );
   }
 

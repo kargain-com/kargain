@@ -28,7 +28,7 @@ import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
 import { marketplaceAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 const ETH_SCALE = 1_000_000_000_000_000_000n;
@@ -527,7 +527,9 @@ export function ListingBuyPanel({
       <div className="space-y-3">
         {priceBlock}
         <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="text-sm text-text-secondary">Switch to Base Sepolia</p>
+          <p className="text-sm text-text-secondary">
+            Switch to {shortChainName(chainId)}
+          </p>
           <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
             Switch network
           </Button>

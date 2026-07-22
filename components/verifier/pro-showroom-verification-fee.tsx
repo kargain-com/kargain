@@ -1,6 +1,6 @@
 "use client";
 
-import { useReadContract } from "wagmi";
+import { useChainId, useReadContract } from "wagmi";
 
 import {
   VerificationFeeDisplay,
@@ -9,6 +9,7 @@ import {
 import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
@@ -23,7 +24,9 @@ export function ProShowroomVerificationFee({
   verifierName,
   ponderFeeWei,
 }: ProShowroomVerificationFeeProps) {
-  const chainId = DEFAULT_CHAIN_ID;
+  const walletChainId = useChainId();
+  const targetChainId = resolveKarProTargetChainId(walletChainId);
+  const chainId = targetChainId ?? DEFAULT_CHAIN_ID;
   const staking = karProStakingAddress(chainId);
 
   const { data: chainFeeWei } = useReadContract({
@@ -31,7 +34,7 @@ export function ProShowroomVerificationFee({
     abi: KarProStakingAbi,
     functionName: "verificationFee",
     args: [address],
-    query: { enabled: Boolean(staking && address) },
+    query: { enabled: Boolean(targetChainId && staking && address) },
   });
 
   const effectiveFeeWei = chainFeeWei ?? ponderFeeWei;

@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { getAddress } from "viem";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useChainId } from "wagmi";
 import type { Connector } from "wagmi";
 
 import {
@@ -70,6 +70,7 @@ export function WalletLoginButton() {
   const [pendingConnectorUid, setPendingConnectorUid] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { address, isConnected } = useAccount();
+  const walletChainId = useChainId();
   const { disconnect } = useDisconnect();
   const { connect, connectors, isPending, error } = useConnect();
 
@@ -111,7 +112,8 @@ export function WalletLoginButton() {
     const hasEnsName = Boolean(!ensLoading && displayName && !displayName.startsWith("0x"));
 
     const explorer =
-      getViemChain(84532)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
+      getViemChain(walletChainId)?.blockExplorers?.default?.url ??
+      "https://sepolia.basescan.org";
     const explorerUrl = `${explorer}/address/${normalized}`;
 
     return (

@@ -6,17 +6,14 @@ import {
   mapAgentListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
+import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
   VerifierRow,
 } from "@/lib/types/ponder";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { getPublicClient } from "@/lib/web3/public-client";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -103,7 +100,6 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     return null;
   }
 
-  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
   const ponderFetch = { cache: "no-store" as const };
 
   let isActiveVerifier = false;
@@ -119,16 +115,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
 
   try {
     const [activeOnChain, verifierData, listingsRes, consignmentsRes] = await Promise.all([
-      staking
-        ? getPublicClient(DEFAULT_CHAIN_ID)
-            .readContract({
-              address: staking,
-              abi: KarProStakingAbi,
-              functionName: "isActiveVerifier",
-              args: [address],
-            })
-            .catch(() => false)
-        : Promise.resolve(false),
+      isActiveVerifierOnCommercialChains(address),
       fetchVerifierPublicData(address),
       fetch(`${PONDER_URL}/profile/${address}/listings`, ponderFetch),
       fetch(

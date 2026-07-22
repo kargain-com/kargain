@@ -12,7 +12,7 @@ export {
 } from "./bridge-config";
 export { getBridgeReadClient } from "./bridge-read-client";
 export { onftSentGuidFromLogs } from "./bridge-guid";
-export { quoteMessagingFee, quoteNativeFee } from "./bridge-quote";
+export { quoteMessagingFee } from "./bridge-quote";
 export {
   BridgeUriTooLongError,
   buildSendParam,

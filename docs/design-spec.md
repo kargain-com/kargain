@@ -230,7 +230,7 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **Verifiers:** Link to `/verifiers`. Secondary bordered button in the **right action cluster** (before Alerts): `ShieldCheckIcon` + **Verifiers** label on desktop (`md+`); compact bordered icon on mobile. Active on `/verifiers`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
 
-**Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-chain: red status dot. Desktop only (`hidden md:flex`).
+**Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-network only when the wallet is outside `kargainChains` or (when URL `?chain=` is set) mismatches that chain — never solely because hub `DEFAULT_CHAIN_ID` is unset in the URL. Switch labels use `shortChainName`. Desktop only (`hidden md:flex`).
 
 **Display currency:** [`CurrencySelector`](../components/shell/currency-selector.tsx) — first control in the right cluster (before Auctions / Verifiers). Desktop: Radix dropdown (`w-[308px]`, `p-3`); mobile: bottom sheet (`max-h-[90dvh]`) with fixed header + scrollable body. Both surfaces share client-side search filter (ISO code substring), **Fiat** / **Crypto** group eyebrows (`.eyebrow` / `narrativeEyebrow`), and a 2-column grid per group (`grid grid-cols-2 gap-0.5`); empty state when search matches nothing. Trigger shows active ISO code only (e.g. `USD`). Menu cells: fixed-width monospace symbol slot (`w-6`, `font-mono`, `text-right`, `text-text-secondary`) + ISO code (`gap-2`); selected row/cell → `text-accent-warm`. Mobile sheet cells use `min-h-11` touch rows in the same grid. AED uses an empty symbol slot (code shown once). ETH uses `Ξ` + `ETH`; BTC uses `₿` + `BTC`. KRW `₩`, RUB `₽`, JPY `¥` (CNY also `¥` — ISO code column disambiguates). Inline price displays ([`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx)) keep symbol+amount on one line — selector layout only.
 
@@ -1507,4 +1507,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.76 (July 2026 — §4.11 profile KarPro badge commercial-union). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.77 (July 2026 — §4.7 chain selector wrong-network = unsupported or URL mismatch). Update when tokens, app shell, or component contracts change.*
