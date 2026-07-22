@@ -81,7 +81,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; hub **44434865** + Eth **11319840** |
+| **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; hub **44434865** + Eth **11319840** (**VPS done July 22, 2026**) |
 | AuctionEscrow indexer (July 2026) | New `auction` tables — **reindex required**; Nuclear hub auction start from manifest `blocks.auctionEscrow` |
 | Auction agent authorizations (b2, July 2026) | `auction_agent_authorization` — **full reindex required** |
 | Delegation notifications (July 2026) | Authorization owner and lifecycle timestamps — **full reindex required** |

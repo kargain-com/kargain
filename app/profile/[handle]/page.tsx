@@ -13,10 +13,10 @@ import {
   mapProfilePassport,
 } from "@/lib/passport/map-profile-passport";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { commercialChainIds } from "@/lib/web3/chain-context";
 import {
   isProtocolAddressOnCommercialChains,
-  readAccountKind,
+  readAccountKindOnCommercialChains,
 } from "@/lib/web3/wallet-account";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -55,11 +55,13 @@ export default async function PublicProfilePage({
   const wallet = parseProfileWallet(raw);
   if (!wallet) notFound();
 
-  // account-kind / ProfilePage.chainId remain hub-default; Pro badge is commercial OR.
-  const chainId = DEFAULT_CHAIN_ID;
+  // Guest tab fallback = first commercial (not hub invent via DEFAULT export).
+  // Account kind = commercial OR-union. Passport/listing cards use per-row custody.
+  const chainId = commercialChainIds()[0];
+  if (chainId == null) notFound();
 
   if (isProtocolAddressOnCommercialChains(wallet)) notFound();
-  const accountKind = await readAccountKind(chainId, wallet);
+  const accountKind = await readAccountKindOnCommercialChains(wallet);
   if (accountKind === "contract") notFound();
 
   const [isActiveVerifier, profileData] = await Promise.all([

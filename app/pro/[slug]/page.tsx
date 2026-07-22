@@ -15,13 +15,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
-import { formatPassportTitle } from "@/lib/passport/passport-token-id";
+import { formatPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { proConsignmentsHref } from "@/lib/kar-pro/pro-consignments-href";
 import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const CONTAINER =
   "mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8";
@@ -62,18 +61,22 @@ function displayName(
 
 function AttestationRow({
   attestation,
-  chainId,
 }: {
   attestation: PonderVerifierAttestation;
-  chainId: number;
 }) {
+  const parsed = parsePassportTokenId(attestation.tokenId);
+  const chainId = parsed.isV2Prefixed ? parsed.chainId : undefined;
+  const passportHref =
+    chainId != null
+      ? `/marketplace/${attestation.tokenId}?chain=${chainId}`
+      : `/marketplace/${attestation.tokenId}`;
   const href = evidenceHref(attestation.evidenceCID);
   const date = formatChainDate(attestation.timestamp);
 
   return (
     <div className="flex flex-col gap-1">
       <Link
-        href={`/marketplace/${attestation.tokenId}?chain=${chainId}`}
+        href={passportHref}
         className={cn(monoLink, "text-sm hover:underline")}
       >
         <PassportIdLabel
@@ -209,7 +212,6 @@ export default async function ProShowroomPage({
   const verificationCount = verifier?.verificationCount ?? 0;
   const displayedPassports = data.verifiedPassports.slice(0, 12);
   const displayedAttestations = data.recentAttestations.slice(0, 5);
-  const chainId = DEFAULT_CHAIN_ID;
 
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
@@ -310,13 +312,13 @@ export default async function ProShowroomPage({
                       ? `${passport.year} ${passport.make} ${passport.model}`
                       : passport.make && passport.model
                         ? `${passport.make} ${passport.model}`
-                        : formatPassportTitle(passport.tokenId, chainId);
+                        : formatPassportTitle(passport.tokenId, passport.chainId);
                   const verifiedDate = formatChainDate(passport.verifiedAt);
 
                   return (
                     <Link
                       key={passport.tokenId}
-                      href={`/marketplace/${passport.tokenId}?chain=${chainId}`}
+                      href={`/marketplace/${passport.tokenId}?chain=${passport.custodyChain}`}
                       className="block rounded-md border border-border-default bg-bg-card p-6 transition-colors duration-200 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:p-8"
                     >
                       <div className="flex flex-col gap-3">
@@ -331,7 +333,7 @@ export default async function ProShowroomPage({
                         )}
                         <PassportIdLabel
                           tokenId={passport.tokenId}
-                          chainId={chainId}
+                          chainId={passport.chainId}
                           variant="mono"
                           className="text-text-tertiary"
                         />
@@ -408,7 +410,6 @@ export default async function ProShowroomPage({
                 <AttestationRow
                   key={`${attestation.tokenId}-${attestation.timestamp}`}
                   attestation={attestation}
-                  chainId={chainId}
                 />
               ))}
             </div>

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   initialPage?: AuctionBrowseResult;
-  chainId: number;
+  chainId: number | null;
 };
 
 export function AuctionBrowse({ initialPage, chainId }: Props) {
@@ -24,7 +24,8 @@ export function AuctionBrowse({ initialPage, chainId }: Props) {
 
   const { data, isPending } = useQuery({
     queryKey: ["auction-browse", chainId],
-    queryFn: () => searchActiveAuctions({ chainId, limit: 48 }),
+    queryFn: () =>
+      searchActiveAuctions({ chainId: chainId ?? undefined, limit: 48 }),
     initialData: initialPage,
     staleTime: 30_000,
   });

@@ -9,12 +9,9 @@ import {
   resolvePeerReachability,
   type PeerReachabilityReason,
 } from "@/lib/messaging/can-message-peer";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
-export function usePeerMessagingReachability(
-  peerAddress: Address | undefined,
-  chainId: number = DEFAULT_CHAIN_ID,
-): {
+/** Peer reachability via commercial-union account-kind probe (no hub default). */
+export function usePeerMessagingReachability(peerAddress: Address | undefined): {
   reachable: boolean;
   reason: PeerReachabilityReason;
   message: string | null;
@@ -38,7 +35,7 @@ export function usePeerMessagingReachability(
 
     void (async () => {
       try {
-        const result = await resolvePeerReachability(peerAddress, profile, chainId);
+        const result = await resolvePeerReachability(peerAddress, profile);
         if (cancelled) return;
         setReachable(result.reachable);
         setReason(result.reason);
@@ -54,7 +51,7 @@ export function usePeerMessagingReachability(
     return () => {
       cancelled = true;
     };
-  }, [chainId, peerAddress, profile]);
+  }, [peerAddress, profile]);
 
   return {
     reachable,

@@ -76,6 +76,11 @@ const eslintConfig = [
           message:
             "NIP-39 ethereum identity tag queries must go through lib/nostr/resolve-attested-profile.ts only (profile binding spoofing guard).",
         },
+        {
+          selector: "Identifier[name='DEFAULT_CHAIN_ID']",
+          message:
+            "Silent hub DEFAULT_CHAIN_ID is banned — use lib/web3/chain-context.ts roles (custody / wallet commercial / commercial union / fxRateChainId / storageEnvChainId).",
+        },
       ],
     },
   },

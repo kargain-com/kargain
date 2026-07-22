@@ -9,7 +9,6 @@ import {
   type PonderAuctionBidRaw,
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 const PONDER_URL =
   process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
@@ -36,7 +35,6 @@ type PonderBidsResponse = {
 
 export async function getAuctionDetail(
   tokenId: string,
-  chainId: number = DEFAULT_CHAIN_ID,
 ): Promise<AuctionDetailResult> {
   try {
     const res = await fetch(`${PONDER_URL}/auctions/${tokenId}`, {

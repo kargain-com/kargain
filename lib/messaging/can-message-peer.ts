@@ -2,12 +2,12 @@ import { getAddress } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { isMessagesAccepting } from "@/lib/nostr/messages-enabled";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import {
   isMessageablePeerOnCommercialChains,
   messagingWalletError,
   readAccountKind,
   readAccountKindFromProvider,
+  readAccountKindOnCommercialChains,
 } from "@/lib/web3/wallet-account";
 
 import { PROBE_DEADLINE_MS } from "./ports";
@@ -40,10 +40,18 @@ export async function checkXmtpReachable(address: `0x${string}`): Promise<boolea
   }
 }
 
+async function peerAccountKind(
+  peerAddress: `0x${string}`,
+  chainId?: number | null,
+) {
+  if (chainId != null) return readAccountKind(chainId, peerAddress);
+  return readAccountKindOnCommercialChains(peerAddress);
+}
+
 export async function resolvePeerReachability(
   peerAddress: `0x${string}`,
   nostrProfile: NostrProfileData | null | undefined,
-  chainId: number = DEFAULT_CHAIN_ID,
+  chainId?: number | null,
 ): Promise<{ reachable: boolean; reason: PeerReachabilityReason }> {
   if (!isMessageablePeerOnCommercialChains(peerAddress)) {
     return { reachable: false, reason: "protocol" };
@@ -53,7 +61,7 @@ export async function resolvePeerReachability(
     return { reachable: false, reason: "disabled" };
   }
 
-  const kind = await readAccountKind(chainId, peerAddress);
+  const kind = await peerAccountKind(peerAddress, chainId);
   if (messagingWalletError(kind)) {
     return { reachable: false, reason: "contract" };
   }
@@ -84,7 +92,6 @@ export async function resolvePeerReachabilityFromProvider(
   peerAddress: `0x${string}`,
   nostrProfile: NostrProfileData | null | undefined,
   provider: unknown,
-  chainId: number = DEFAULT_CHAIN_ID,
 ): Promise<{ reachable: boolean; reason: PeerReachabilityReason }> {
   if (!isMessageablePeerOnCommercialChains(peerAddress)) {
     return { reachable: false, reason: "protocol" };

@@ -17,7 +17,8 @@ import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscript
 import { attestedPubkeysForAddresses } from "@/lib/nostr/resolve-attested-profile";
 import type { CommonsReviewKind } from "@/lib/vincent-commons/review";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { commercialChainIds } from "@/lib/web3/chain-context";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
 
@@ -97,24 +98,51 @@ export function useCommonsReviews(
     staleTime: ATTESTED_PUBKEYS_STALE_MS,
   });
 
-  // Gate 2 — isActiveVerifier(attester) batch chain read (wagmi-cached).
-  const staking = karProStakingAddress(DEFAULT_CHAIN_ID);
-  const { data: verifierReads, isPending: verifierPending } = useReadContracts({
-    contracts: staking
-      ? attesters.map((attester) => ({
+  // Gate 2 — isActiveVerifier OR across commercial chains (wagmi-cached).
+  const verifierContracts = useMemo(() => {
+    const contracts: Array<{
+      address: `0x${string}`;
+      abi: typeof KarProStakingAbi;
+      functionName: "isActiveVerifier";
+      args: readonly [`0x${string}`];
+      chainId: ReturnType<typeof wagmiChainId>;
+    }> = [];
+    for (const cid of commercialChainIds()) {
+      const staking = karProStakingAddress(cid);
+      if (!staking) continue;
+      for (const attester of attesters) {
+        contracts.push({
           address: staking,
           abi: KarProStakingAbi,
-          functionName: "isActiveVerifier" as const,
+          functionName: "isActiveVerifier",
           args: [attester] as const,
-        }))
-      : [],
-    query: { enabled: Boolean(staking) && attesters.length > 0 },
+          chainId: wagmiChainId(cid),
+        });
+      }
+    }
+    return contracts;
+  }, [attesters]);
+
+  const { data: verifierReads, isPending: verifierPending } = useReadContracts({
+    contracts: verifierContracts,
+    query: { enabled: verifierContracts.length > 0 },
   });
 
   const activeVerifierByAttester = useMemo(() => {
     const map = new Map<string, boolean>();
-    attesters.forEach((attester, index) => {
-      map.set(attester, verifierReads?.[index]?.result === true);
+    const commercialCount = commercialChainIds().filter((cid) =>
+      Boolean(karProStakingAddress(cid)),
+    ).length;
+    attesters.forEach((attester, attesterIndex) => {
+      let active = false;
+      for (let c = 0; c < commercialCount; c++) {
+        const readIndex = c * attesters.length + attesterIndex;
+        if (verifierReads?.[readIndex]?.result === true) {
+          active = true;
+          break;
+        }
+      }
+      map.set(attester, active);
     });
     return map;
   }, [attesters, verifierReads]);
@@ -169,7 +197,7 @@ export function useCommonsReviews(
   const gatesLoading =
     entries.length > 0 &&
     attesters.length > 0 &&
-    (pubkeysPending || (Boolean(staking) && verifierPending));
+    (pubkeysPending || (verifierContracts.length > 0 && verifierPending));
 
   return {
     verifiedByClaim,

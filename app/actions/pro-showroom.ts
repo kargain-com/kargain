@@ -25,6 +25,10 @@ export type ProShowroomPassport = {
   model: string;
   year: number;
   verifiedAt: string;
+  /** Origin / mint home. */
+  chainId: number;
+  /** Where the token lives — detail links use this. */
+  custodyChain: number;
 };
 
 export type ProShowroomData = {
@@ -139,6 +143,8 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
       model: p.model,
       year: p.year,
       verifiedAt: p.verifiedAt,
+      chainId: p.chainId,
+      custodyChain: p.custodyChain,
     }));
 
     recentAttestations = verifierData.attestations;

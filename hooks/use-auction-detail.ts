@@ -53,7 +53,7 @@ export function useAuctionDetail({
   const ponderQuery = useQuery({
     queryKey: ["auction-detail", chainId, tokenId],
     queryFn: async () => {
-      const result = await getAuctionDetail(tokenId, chainId);
+      const result = await getAuctionDetail(tokenId);
       if (!result.ok) throw new Error(result.error);
       return result.auction;
     },

@@ -226,11 +226,23 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **"Create passport":** Secondary border style — `border border-border-hover bg-transparent`. Desktop only (`hidden md:inline-flex`); mobile uses bottom-nav center FAB.
 
-**Auctions:** Link to `/auctions` when `auctionEscrowAddress(chainId)` is set. Secondary bordered button before Verifiers: `GavelIcon` + **Auctions** label on desktop (`md+`); compact bordered icon on mobile. Active on `/auctions`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
+**Auctions:** Link to `/auctions` when [`resolveAuctionsNavChainId`](../lib/web3/chain-context.ts) returns a commercial chain with escrow — connected: wallet commercial only; guest: first commercial with escrow. Hidden when null (never invent hub). Secondary bordered button before Verifiers: `GavelIcon` + **Auctions** label on desktop (`md+`); compact bordered icon on mobile. Active on `/auctions`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
 
 **Verifiers:** Link to `/verifiers`. Secondary bordered button in the **right action cluster** (before Alerts): `ShieldCheckIcon` + **Verifiers** label on desktop (`md+`); compact bordered icon on mobile. Active on `/verifiers`: `border-accent-warm`, `text-accent-warm`, `bg-bg-surface`. Hover: accent border and text.
 
-**Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-network only when the wallet is outside `kargainChains` or (when URL `?chain=` is set) mismatches that chain — never solely because hub `DEFAULT_CHAIN_ID` is unset in the URL. Switch labels use `shortChainName`. Desktop only (`hidden md:flex`).
+**Chain roles (fail-closed):** Canonical resolvers live in [`chain-context.ts`](../lib/web3/chain-context.ts). Missing or non-commercial → `null` + prompt/disable/hide — **never** invent a hub default.
+
+| Role | Source | Use |
+|------|--------|-----|
+| **custody** | Ponder `custodyChain` | list / buy / auction / edit / bridge |
+| **wallet commercial** | connected wallet when in `COMMERCIAL_ACTIVE` | KarPro stake/fee, mint, verification pay |
+| **commercial union** | OR over `COMMERCIAL_ACTIVE` | Pro badge, messaging peer gates, Commons `isActiveVerifier` |
+| **urlExpected** | URL `?chain=` only when present + write-union | wrong-network prompt |
+| **origin** | `chainIdOf(tokenId)` / Ponder `chainId` | titles, id labels |
+| **fxReference** | `fxRateChainId()` pin | Chainlink display FX |
+| **storageEnv** | `storageEnvChainId()` pin | Irys / Arweave gateway class |
+
+**Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-network only when the wallet is outside `kargainChains` or (when URL `?chain=` is set) mismatches that chain — never because a hub default is unset. Switch labels use `shortChainName`. Desktop only (`hidden md:flex`).
 
 **Display currency:** [`CurrencySelector`](../components/shell/currency-selector.tsx) — first control in the right cluster (before Auctions / Verifiers). Desktop: Radix dropdown (`w-[308px]`, `p-3`); mobile: bottom sheet (`max-h-[90dvh]`) with fixed header + scrollable body. Both surfaces share client-side search filter (ISO code substring), **Fiat** / **Crypto** group eyebrows (`.eyebrow` / `narrativeEyebrow`), and a 2-column grid per group (`grid grid-cols-2 gap-0.5`); empty state when search matches nothing. Trigger shows active ISO code only (e.g. `USD`). Menu cells: fixed-width monospace symbol slot (`w-6`, `font-mono`, `text-right`, `text-text-secondary`) + ISO code (`gap-2`); selected row/cell → `text-accent-warm`. Mobile sheet cells use `min-h-11` touch rows in the same grid. AED uses an empty symbol slot (code shown once). ETH uses `Ξ` + `ETH`; BTC uses `₿` + `BTC`. KRW `₩`, RUB `₽`, JPY `¥` (CNY also `¥` — ISO code column disambiguates). Inline price displays ([`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx)) keep symbol+amount on one line — selector layout only.
 
@@ -308,7 +320,7 @@ Implementation: [`market-browse.tsx`](../components/marketplace/market-browse.ts
 
 **State:** URL-synced via [`use-market-filters.ts`](../hooks/use-market-filters.ts). Facets from `GET /listings/facets` (Ponder).
 
-**Display currency:** Global preference via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). Options: **USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC** (13) — canonical list in [`currency-code.ts`](../lib/marketplace/currency-code.ts) (`DISPLAY_CURRENCIES`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts) (Chainlink primary for ETH/EUR; CoinGecko `simple/price` for ETH/EUR gap-fill + `exchange_rates` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY + `btcUsd` from `exchange_rates.usd`; rate registry in [`fx-rate-registry.ts`](../lib/marketplace/fx-rate-registry.ts)) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx). Feeds always read on `DEFAULT_CHAIN_ID` (84532), not wallet chain. Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip). **84532 listing creation remains USD-only** — this selector only changes how a *viewer* sees prices ([`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts) unchanged).
+**Display currency:** Global preference via [`currency-selector.tsx`](../components/shell/currency-selector.tsx) in top nav; stored in `localStorage` (`kargain_display_currency`). Options: **USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC** (13) — canonical list in [`currency-code.ts`](../lib/marketplace/currency-code.ts) (`DISPLAY_CURRENCIES`). [`display-currency-context.tsx`](../lib/marketplace/display-currency-context.tsx) + [`use-market-rates.ts`](../lib/marketplace/use-market-rates.ts) (Chainlink primary for ETH/EUR; CoinGecko `simple/price` for ETH/EUR gap-fill + `exchange_rates` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY + `btcUsd` from `exchange_rates.usd`; rate registry in [`fx-rate-registry.ts`](../lib/marketplace/fx-rate-registry.ts)) drive [`convertPrice()`](../lib/marketplace/display-currency-context.tsx) on listing cards via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx). Feeds always read on `fxRateChainId()` (FX reference pin, not wallet/commerce default). Browse shows **all** active listings regardless of listing fiat currency (no currency filter chip). **84532 listing creation remains USD-only** — this selector only changes how a *viewer* sees prices ([`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts) unchanged).
 
 **FX display rules:** Same-currency always renders. Cross-currency and crypto (ETH/BTC) display show `—` when required rates are null. ETH display for **USD listings** needs only `ethUsd`; EUR listings in ETH need `ethUsd` + `eurUsd`. BTC display needs `btcUsd`. CoinGecko fills gaps after Chainlink settles — does **not** affect on-chain buy quotes.
 
@@ -1507,4 +1519,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.77 (July 2026 — §4.7 chain selector wrong-network = unsupported or URL mismatch). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.78 (July 2026 — §4.7 chain roles + fail-closed; no silent hub DEFAULT). Update when tokens, app shell, or component contracts change.*

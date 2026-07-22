@@ -2,7 +2,6 @@ import { getAddress } from "viem";
 
 import { commercialActive } from "./commercial-active";
 import { SEPOLIA_HISTORICAL_DENYLIST } from "./sepolia-addresses";
-import { DEFAULT_CHAIN_ID } from "./supported-chains";
 
 /** Base Sepolia (84532) */
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
@@ -56,58 +55,57 @@ function parseJsonMap(raw: string | undefined): Record<string, string> {
   }
 }
 
-function resolveAddress(key: AddressKey, chainId?: number): `0x${string}` | undefined {
-  const cid = chainId ?? DEFAULT_CHAIN_ID;
-  const chainKey = String(cid);
+function resolveAddress(key: AddressKey, chainId: number): `0x${string}` | undefined {
+  const chainKey = String(chainId);
 
   const byChain = parseJsonMap(process.env[ENV_BY_CHAIN[key] as keyof NodeJS.ProcessEnv] as string);
   const fromMap = byChain[chainKey];
   if (fromMap) return getAddress(fromMap as `0x${string}`);
 
+  // Single-env overrides apply only to local Hardhat — never as a silent hub alias.
   const single = process.env[ENV_SINGLE[key] as keyof NodeJS.ProcessEnv] as string | undefined;
-  if (single && cid === DEFAULT_CHAIN_ID) return getAddress(single as `0x${string}`);
+  if (single && chainId === LOCALHOST_CHAIN_ID) return getAddress(single as `0x${string}`);
 
-  const active = commercialActive(cid);
+  const active = commercialActive(chainId);
   if (active) return active[key];
 
   return undefined;
 }
 
-export function karPassportAddress(chainId?: number): `0x${string}` | undefined {
+export function karPassportAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("karPassport", chainId);
 }
 
-export function marketplaceAddress(chainId?: number): `0x${string}` | undefined {
+export function marketplaceAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("marketplace", chainId);
 }
 
-export function karProPassAddress(chainId?: number): `0x${string}` | undefined {
+export function karProPassAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("karProPass", chainId);
 }
 
-export function karProStakingAddress(chainId?: number): `0x${string}` | undefined {
+export function karProStakingAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("karProStaking", chainId);
 }
 
-export function usdcAddress(chainId?: number): `0x${string}` | undefined {
+export function usdcAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("usdc", chainId);
 }
 
-export function kargainTimelockAddress(chainId?: number): `0x${string}` | undefined {
+export function kargainTimelockAddress(chainId: number): `0x${string}` | undefined {
   return resolveOptionalAddress("timelock", chainId);
 }
 
-export function bridgeGatewayAddress(chainId?: number): `0x${string}` | undefined {
+export function bridgeGatewayAddress(chainId: number): `0x${string}` | undefined {
   return resolveOptionalAddress("bridgeGateway", chainId);
 }
 
-export function auctionEscrowAddress(chainId?: number): `0x${string}` | undefined {
+export function auctionEscrowAddress(chainId: number): `0x${string}` | undefined {
   return resolveOptionalAddress("auctionEscrow", chainId);
 }
 
-function resolveOptionalAddress(key: OptionalV2Key, chainId?: number): `0x${string}` | undefined {
-  const cid = chainId ?? DEFAULT_CHAIN_ID;
-  const chainKey = String(cid);
+function resolveOptionalAddress(key: OptionalV2Key, chainId: number): `0x${string}` | undefined {
+  const chainKey = String(chainId);
 
   const byChain = parseJsonMap(
     process.env[ENV_BY_CHAIN[key] as keyof NodeJS.ProcessEnv] as string,
@@ -116,19 +114,19 @@ function resolveOptionalAddress(key: OptionalV2Key, chainId?: number): `0x${stri
   if (fromMap) return getAddress(fromMap as `0x${string}`);
 
   const single = process.env[ENV_SINGLE[key] as keyof NodeJS.ProcessEnv] as string | undefined;
-  if (single && cid === DEFAULT_CHAIN_ID) return getAddress(single as `0x${string}`);
+  if (single && chainId === LOCALHOST_CHAIN_ID) return getAddress(single as `0x${string}`);
 
-  const active = commercialActive(cid);
+  const active = commercialActive(chainId);
   if (active) return active[key];
 
   return undefined;
 }
 
-export function chainlinkNativeUsdFeed(chainId?: number): `0x${string}` | undefined {
+export function chainlinkNativeUsdFeed(chainId: number): `0x${string}` | undefined {
   return resolveAddress("nativeFeed", chainId);
 }
 
-export function chainlinkEurUsdFeed(chainId?: number): `0x${string}` | undefined {
+export function chainlinkEurUsdFeed(chainId: number): `0x${string}` | undefined {
   return resolveAddress("eurFeed", chainId);
 }
 

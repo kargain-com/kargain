@@ -7,7 +7,8 @@ import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
 } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { fxRateChainId } from "@/lib/web3/chain-context";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -44,11 +45,11 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
   isLoading: boolean;
 } {
   const enabled = options?.enabled ?? true;
-  // Always read feeds on the marketplace chain — not the wallet's active chain.
-  // Wallet on Ethereum mainnet (or other networks) has no feed addresses configured.
-  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
-  const nativeFeed = chainlinkNativeUsdFeed(DEFAULT_CHAIN_ID);
-  const eurFeed = chainlinkEurUsdFeed(DEFAULT_CHAIN_ID);
+  // Always read feeds on the FX reference pin — not the wallet's active chain.
+  const fxChain = fxRateChainId();
+  const chainId = wagmiChainId(fxChain);
+  const nativeFeed = chainlinkNativeUsdFeed(fxChain);
+  const eurFeed = chainlinkEurUsdFeed(fxChain);
 
   const contracts = useMemo(() => {
     const reads: Array<{

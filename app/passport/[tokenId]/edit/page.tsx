@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import { EditPassportWizard } from "@/components/passport/edit-passport-wizard";
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import {
   karPassportAddress,
   marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { getPublicClient } from "@/lib/web3/public-client";
 
 export default async function EditPassportPage({
@@ -19,17 +20,22 @@ export default async function EditPassportPage({
 }) {
   const { tokenId } = await params;
   const sp = await searchParams;
-  const chainId = parseChainParam(sp.chain);
 
   if (!/^\d+$/.test(tokenId)) notFound();
 
-  const result = await fetchPassportDetail(tokenId, chainId);
+  const fromUrl = parseOptionalChainParam(sp.chain);
+  const parsed = parsePassportTokenId(tokenId);
+  const hint =
+    fromUrl ?? (parsed.isV2Prefixed ? parsed.chainId : null);
+
+  const result = await fetchPassportDetail(tokenId, hint);
   if (!result.ok) notFound();
 
   const { passport, metadata } = result;
   if (passport.status === "DISPUTED") notFound();
   if (!metadata) notFound();
 
+  const chainId = passport.custodyChain;
   const passportAddr = karPassportAddress(chainId);
   const market = marketplaceAddress(chainId);
 

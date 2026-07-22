@@ -14,7 +14,7 @@ import {
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
-import { DEFAULT_CHAIN_ID, getViemChain } from "@/lib/web3/supported-chains";
+import { getViemChain } from "@/lib/web3/supported-chains";
 
 export type WalletAccountKind = "eoa" | "eip7702" | "contract";
 
@@ -41,22 +41,20 @@ function normalizeAddress(address: string): `0x${string}` | null {
 }
 
 /** On-chain protocol contracts — not timelock (env-only when TimelockController exists). */
-export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
-  const cid = chainId ?? DEFAULT_CHAIN_ID;
+export function allProtocolAddresses(chainId: number): `0x${string}`[] {
   const candidates = [
-    karPassportAddress(cid),
-    marketplaceAddress(cid),
-    karProPassAddress(cid),
-    karProStakingAddress(cid),
-    usdcAddress(cid),
-    chainlinkNativeUsdFeed(cid),
-    chainlinkEurUsdFeed(cid),
-    bridgeGatewayAddress(cid),
-    auctionEscrowAddress(cid),
+    karPassportAddress(chainId),
+    marketplaceAddress(chainId),
+    karProPassAddress(chainId),
+    karProStakingAddress(chainId),
+    usdcAddress(chainId),
+    chainlinkNativeUsdFeed(chainId),
+    chainlinkEurUsdFeed(chainId),
+    bridgeGatewayAddress(chainId),
+    auctionEscrowAddress(chainId),
   ];
 
-  candidates.push(...kargainContractDenylist(cid));
-
+  candidates.push(...kargainContractDenylist(chainId));
 
   const seen = new Set<string>();
   const out: `0x${string}`[] = [];
@@ -70,7 +68,7 @@ export function allProtocolAddresses(chainId?: number): `0x${string}`[] {
   return out;
 }
 
-export function isProtocolAddress(address: string, chainId?: number): boolean {
+export function isProtocolAddress(address: string, chainId: number): boolean {
   const normalized = normalizeAddress(address);
   if (!normalized) return false;
   const lower = normalized.toLowerCase();
@@ -87,7 +85,7 @@ export function isProtocolAddressOnCommercialChains(address: string): boolean {
   );
 }
 
-export function isMessageablePeer(address: string, chainId?: number): boolean {
+export function isMessageablePeer(address: string, chainId: number): boolean {
   return !isProtocolAddress(address, chainId);
 }
 
@@ -106,6 +104,22 @@ export async function readAccountKind(
   } catch {
     return "eoa";
   }
+}
+
+/**
+ * Account kind across commercial chains — contract if any chain reports contract.
+ * Used when no single wallet commercial chain is available (messaging identity).
+ */
+export async function readAccountKindOnCommercialChains(
+  address: `0x${string}`,
+): Promise<WalletAccountKind> {
+  const chainIds = Object.keys(COMMERCIAL_ACTIVE).map(Number);
+  const kinds = await Promise.all(
+    chainIds.map((id) => readAccountKind(id, address)),
+  );
+  if (kinds.some((k) => k === "contract")) return "contract";
+  if (kinds.some((k) => k === "eip7702")) return "eip7702";
+  return "eoa";
 }
 
 export async function readAccountKindFromProvider(

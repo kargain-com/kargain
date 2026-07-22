@@ -9,7 +9,18 @@ import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize"
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { formatKarPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
+
+/** RPC hint for Ponder-miss: URL chain, else origin from v2 tokenId — never invent hub. */
+function rpcHintForToken(
+  tokenId: string,
+  urlChain: string | string[] | undefined | null,
+): number | null {
+  const fromUrl = parseOptionalChainParam(urlChain);
+  if (fromUrl != null) return fromUrl;
+  const parsed = parsePassportTokenId(tokenId);
+  return parsed.isV2Prefixed ? parsed.chainId : null;
+}
 
 export async function generateMetadata({
   params,
@@ -19,7 +30,8 @@ export async function generateMetadata({
   const { tokenId: raw } = await params;
   if (!/^\d+$/.test(raw)) return { title: "Listing" };
 
-  const result = await fetchPassportDetailCached(raw, parseChainParam(undefined));
+  const hint = rpcHintForToken(raw, undefined);
+  const result = await fetchPassportDetailCached(raw, hint);
   if (result.ok && result.metadata?.name) {
     return { title: result.metadata.name };
   }
@@ -35,7 +47,7 @@ export async function generateMetadata({
     ? result.passport.chainId
     : parsed.isV2Prefixed
       ? parsed.chainId
-      : parseChainParam(undefined);
+      : undefined;
   return { title: formatKarPassportTitle(raw, chainId) };
 }
 
@@ -76,7 +88,8 @@ async function MarketplaceListingInner({
 }) {
   const { tokenId: raw } = await params;
   const sp = await searchParams;
-  const hintChainId = parseChainParam(sp.chain);
+  const hintChainId = rpcHintForToken(raw, sp.chain);
+  const marketplaceHref = hintChainId != null ? `/?chain=${hintChainId}` : "/";
   try {
     if (!/^\d+$/.test(raw)) notFound();
     BigInt(raw);
@@ -108,7 +121,7 @@ async function MarketplaceListingInner({
             </p>
           </div>
           <Link
-            href={`/?chain=${hintChainId}`}
+            href={marketplaceHref}
             className="font-sans text-sm link-underline"
           >
             ← Back to marketplace
@@ -127,7 +140,7 @@ async function MarketplaceListingInner({
             This passport may not exist yet or the indexer has not caught up.
           </p>
           <Link
-            href={`/?chain=${hintChainId}`}
+            href={marketplaceHref}
             className="mt-6 inline-block font-sans text-sm link-underline"
           >
             ← Back to marketplace
@@ -143,7 +156,7 @@ async function MarketplaceListingInner({
 
   const commerceChainId = result.passport.custodyChain;
   const originChainId = result.passport.chainId;
-  const auctionResult = await getAuctionDetail(raw, commerceChainId);
+  const auctionResult = await getAuctionDetail(raw);
 
   const listingActive = isPonderListingActive(listingRaw);
   const listing = listingRaw

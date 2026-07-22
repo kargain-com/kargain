@@ -1,8 +1,11 @@
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
+import { storageEnvChainId } from "@/lib/web3/chain-context";
 
 /** Map `ar://` URIs to HTTP gateway URLs for rendering. */
-export function resolveUri(uri: string, chainId: number = DEFAULT_CHAIN_ID): string {
+export function resolveUri(
+  uri: string,
+  chainId: number = storageEnvChainId(),
+): string {
   const u = uri.trim();
   if (!u) return u;
   if (u.startsWith("ar://")) {

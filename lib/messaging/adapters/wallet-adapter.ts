@@ -3,9 +3,9 @@ import type { Address, WalletClient } from "viem";
 import {
   canInitializeMessaging,
   readAccountKind,
+  readAccountKindOnCommercialChains,
   type WalletAccountKind,
 } from "@/lib/web3/wallet-account";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 import type { Clock, MessagingWalletKind, WalletPort } from "../ports";
 
 const WALLET_CLIENT_WAIT_MS = 3_000;
@@ -18,12 +18,12 @@ function mapWalletKind(kind: WalletAccountKind): MessagingWalletKind {
 export type CreateWalletAdapterInput = {
   getAddress: () => Address | null;
   getWalletClient: () => WalletClient | undefined;
-  chainId?: number;
+  /** Wallet commercial chain when known; otherwise commercial-union probe. */
+  getChainId?: () => number | null | undefined;
   clock: Clock;
 };
 
 export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort {
-  const chainId = input.chainId ?? DEFAULT_CHAIN_ID;
   let cachedKind: MessagingWalletKind | null = null;
   let kindAddress: string | null = null;
   let kindProbed = false;
@@ -32,7 +32,12 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
   async function refreshKind(address: Address): Promise<MessagingWalletKind> {
     const key = address.toLowerCase();
     if (kindAddress === key && cachedKind) return cachedKind;
-    const kind = mapWalletKind(await readAccountKind(chainId, address));
+    const chainId = input.getChainId?.() ?? null;
+    const kind = mapWalletKind(
+      chainId != null
+        ? await readAccountKind(chainId, address)
+        : await readAccountKindOnCommercialChains(address),
+    );
     kindAddress = key;
     cachedKind = kind;
     kindProbed = true;

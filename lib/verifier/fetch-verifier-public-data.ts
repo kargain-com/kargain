@@ -2,7 +2,6 @@ import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-type
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 import { mapVerifierDetailToProfile } from "./map-verifier-profile";
 
@@ -58,8 +57,11 @@ function parsePositiveChainId(value: unknown): number | null {
   return n;
 }
 
-function mapVerifierPassportRow(p: Record<string, unknown>): VerifierPublicPassportRow {
-  const chainId = parsePositiveChainId(p.chainId) ?? DEFAULT_CHAIN_ID;
+function mapVerifierPassportRow(
+  p: Record<string, unknown>,
+): VerifierPublicPassportRow | null {
+  const chainId = parsePositiveChainId(p.chainId);
+  if (chainId == null) return null;
   const custodyChain = parsePositiveChainId(p.custodyChain) ?? chainId;
   return {
     tokenId: String(p.id ?? ""),
@@ -96,7 +98,9 @@ export async function fetchVerifierPublicData(
       total?: number;
     };
     verifiedPassportTotal = Number(data.total ?? 0);
-    verifiedPassports = (data.passports ?? []).map(mapVerifierPassportRow);
+    verifiedPassports = (data.passports ?? [])
+      .map(mapVerifierPassportRow)
+      .filter((row): row is VerifierPublicPassportRow => row != null);
   }
 
   let attestations: PonderVerifierAttestation[] = [];

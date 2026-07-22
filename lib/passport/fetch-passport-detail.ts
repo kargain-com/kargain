@@ -247,7 +247,8 @@ async function confirmOwnerOnChain(
 
 export async function fetchPassportDetail(
   tokenId: string,
-  chainId: number,
+  /** Optional RPC hint for Ponder-miss only — never invent hub when absent. */
+  chainId?: number | null,
 ): Promise<PassportDetailResult> {
   let raw: unknown;
   try {
@@ -255,6 +256,7 @@ export async function fetchPassportDetail(
       cache: "no-store",
     });
     if (res.status === 404) {
+      if (chainId == null) return { ok: false, error: "NOT_FOUND" };
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
       if (!chainResult.ok) return { ok: false, error: "NOT_FOUND" };
       return {

@@ -8,7 +8,8 @@ import {
   commerceConfirmedPanel,
   sansLinkUnderline,
 } from "@/lib/design/instrument-classes";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
 function PurchasedFallback() {
@@ -33,6 +34,16 @@ export default function MarketplacePurchasedPage({
   );
 }
 
+function resolvePageChainId(
+  tokenId: string,
+  urlChain: string | string[] | undefined,
+): number | null {
+  const fromUrl = parseOptionalChainParam(urlChain);
+  if (fromUrl != null) return fromUrl;
+  const parsed = parsePassportTokenId(tokenId);
+  return parsed.isV2Prefixed ? parsed.chainId : null;
+}
+
 async function MarketplacePurchasedInner({
   params,
   searchParams,
@@ -42,7 +53,7 @@ async function MarketplacePurchasedInner({
 }) {
   const { tokenId } = await params;
   const sp = await searchParams;
-  const chainId = parseChainParam(sp.chain);
+  const chainId = resolvePageChainId(tokenId, sp.chain);
   const { tx } = sp;
   try {
     if (!/^\d+$/.test(tokenId)) notFound();
@@ -51,11 +62,15 @@ async function MarketplacePurchasedInner({
     notFound();
   }
 
-  const explorer = getViemChain(chainId)?.blockExplorers?.default;
+  const explorer = chainId != null ? getViemChain(chainId)?.blockExplorers?.default : undefined;
   const scan = tx
     ? `${explorer?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
     : null;
   const explorerLabel = explorer?.name ?? "Block explorer";
+  const passportHref =
+    chainId != null
+      ? `/marketplace/${tokenId}?chain=${chainId}`
+      : `/marketplace/${tokenId}`;
 
   return (
     <div className="min-h-dvh bg-bg-primary px-4 py-16 text-text-primary">
@@ -88,7 +103,7 @@ async function MarketplacePurchasedInner({
         )}
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-center">
           <Button asChild>
-            <Link href={`/marketplace/${tokenId}?chain=${chainId}`}>View passport</Link>
+            <Link href={passportHref}>View passport</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link href="/">Back to marketplace</Link>

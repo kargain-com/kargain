@@ -1,7 +1,6 @@
 import { getAddress } from "viem";
 
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 import type { XmtpDm, XmtpSdkClient } from "./adapters/xmtp-adapter";
 import { openDmWithPeer } from "./adapters/xmtp-adapter";
@@ -31,18 +30,15 @@ export type ContactPeerInput = {
   peerAddress: `0x${string}`;
   nostrProfile?: NostrProfileData | null;
   provider?: unknown;
-  chainId?: number;
 };
 
 export async function contactPeer(input: ContactPeerInput): Promise<XmtpDm> {
-  const chainId = input.chainId ?? DEFAULT_CHAIN_ID;
   const peer = getAddress(input.peerAddress);
 
   const reachability = await resolvePeerReachabilityFromProvider(
     peer,
     input.nostrProfile,
     input.provider,
-    chainId,
   );
   if (!reachability.reachable) {
     const copy = peerReachabilityMessage(reachability.reason);

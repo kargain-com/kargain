@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { Address, WalletClient } from "viem";
-import { useAccount, useWalletClient } from "wagmi";
+import { useAccount, useChainId, useWalletClient } from "wagmi";
 
 import { createInMemoryMessagingCache, createMessagingCachePort } from "@/lib/messaging/adapters/cache-adapter";
 import { createNostrPolicyAdapter } from "@/lib/messaging/adapters/nostr-adapter";
@@ -11,11 +11,13 @@ import { createXmtpAdapter, type XmtpSdkClient } from "@/lib/messaging/adapters/
 import type { MessagingSession, SessionCommand, SessionSnapshot } from "@/lib/messaging/ports";
 import { createMessagingSession } from "@/lib/messaging/session-store";
 import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type SessionRefs = {
   address: Address;
   walletClient: WalletClient | undefined;
+  commercialChainId: number | null;
 };
 
 type SessionEntry = {
@@ -47,20 +49,25 @@ const browserClock = {
     }),
 };
 
-function sessionKey(chainId: number, address: string): string {
-  return `${chainId}:${address.toLowerCase()}`;
+/** XMTP identity is address-scoped — session key must not pin a hub chain. */
+function sessionKey(address: string): string {
+  return address.toLowerCase();
 }
 
-function getOrCreateEntry(chainId: number, address: Address): SessionEntry {
-  const key = sessionKey(chainId, address);
+function getOrCreateEntry(address: Address): SessionEntry {
+  const key = sessionKey(address);
   const existing = sessions.get(key);
   if (existing) return existing;
 
-  const refs: SessionRefs = { address, walletClient: undefined };
+  const refs: SessionRefs = {
+    address,
+    walletClient: undefined,
+    commercialChainId: null,
+  };
   const wallet = createWalletAdapter({
     getAddress: () => refs.address,
     getWalletClient: () => refs.walletClient,
-    chainId,
+    getChainId: () => refs.commercialChainId,
     clock: browserClock,
   });
   const xmtp = createXmtpAdapter({
@@ -87,8 +94,8 @@ function getOrCreateEntry(chainId: number, address: Address): SessionEntry {
   return entry;
 }
 
-function disposeEntry(chainId: number, address: string): void {
-  const key = sessionKey(chainId, address);
+function disposeEntry(address: string): void {
+  const key = sessionKey(address);
   const entry = sessions.get(key);
   if (!entry) return;
   entry.session.dispose();
@@ -102,11 +109,13 @@ export function useMessagingSession(): {
   session: MessagingSession | null;
 } {
   const { address, isConnected } = useAccount();
-  const chainId = wagmiChainId(DEFAULT_CHAIN_ID);
-  const { data: walletClient } = useWalletClient({ chainId });
+  const walletChainId = useChainId();
+  const commercialChainId = resolveWalletCommercialChainId(walletChainId);
+  const { data: walletClient } = useWalletClient(
+    commercialChainId != null ? { chainId: wagmiChainId(commercialChainId) } : {},
+  );
 
-  const activeKey =
-    address && isConnected ? sessionKey(chainId, address) : null;
+  const activeKey = address && isConnected ? sessionKey(address) : null;
   const entry = activeKey ? (sessions.get(activeKey) ?? null) : null;
 
   const prevAddressRef = useRef<string | null>(null);
@@ -114,19 +123,20 @@ export function useMessagingSession(): {
   useEffect(() => {
     const prev = prevAddressRef.current;
     if (prev && (!address || !isConnected || prev !== address)) {
-      disposeEntry(chainId, prev);
+      disposeEntry(prev);
     }
     prevAddressRef.current = address && isConnected ? address : null;
-  }, [address, chainId, isConnected]);
+  }, [address, isConnected]);
 
   useEffect(() => {
     if (!address || !isConnected) return;
-    const current = getOrCreateEntry(chainId, address);
+    const current = getOrCreateEntry(address);
     current.refs.address = address;
     current.refs.walletClient = walletClient;
+    current.refs.commercialChainId = commercialChainId;
     current.session.syncWalletAddress();
     current.session.start();
-  }, [address, chainId, isConnected, walletClient]);
+  }, [address, commercialChainId, isConnected, walletClient]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {

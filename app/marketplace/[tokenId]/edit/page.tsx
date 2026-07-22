@@ -3,7 +3,8 @@ import { Suspense } from "react";
 
 import { ListingEditClient } from "@/components/marketplace/listing-edit-client";
 import { fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 
 function EditFallback() {
   return (
@@ -36,7 +37,6 @@ async function MarketplaceListingEditInner({
 }) {
   const { tokenId } = await params;
   const sp = await searchParams;
-  const chainId = parseChainParam(sp.chain);
   try {
     if (!/^\d+$/.test(tokenId)) notFound();
     BigInt(tokenId);
@@ -44,7 +44,16 @@ async function MarketplaceListingEditInner({
     notFound();
   }
 
-  const passportResult = await fetchPassportDetailCached(tokenId, chainId);
+  const fromUrl = parseOptionalChainParam(sp.chain);
+  const parsed = parsePassportTokenId(tokenId);
+  const hint =
+    fromUrl ?? (parsed.isV2Prefixed ? parsed.chainId : null);
+
+  const passportResult = await fetchPassportDetailCached(tokenId, hint);
+  const chainId = passportResult.ok
+    ? passportResult.passport.custodyChain
+    : hint;
+  if (chainId == null) notFound();
 
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">

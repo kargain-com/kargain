@@ -45,7 +45,7 @@ import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 const ERC20_ABI = [
@@ -131,21 +131,22 @@ export function VerificationPaymentModal({
   verifierName,
 }: VerificationPaymentModalProps) {
   const walletChainId = useChainId();
-  const targetChainId = resolveKarProTargetChainId(walletChainId);
-  const chainId = targetChainId ?? DEFAULT_CHAIN_ID;
-  const commercialReady = targetChainId != null;
-  const wc = wagmiChainId(chainId);
+  const chainId = resolveKarProTargetChainId(walletChainId);
+  const commercialReady = chainId != null;
+  const wc = wagmiChainId(chainId ?? walletChainId);
   const { address, isConnected } = useAccount();
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useWriteContract();
-  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(
+    chainId ?? walletChainId,
+  );
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
     enabled: open,
   });
 
-  const usdc = usdcAddress(chainId);
-  const staking = karProStakingAddress(chainId);
+  const usdc = chainId != null ? usdcAddress(chainId) : undefined;
+  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
   const { data: chainFeeWei } = useReadContract({

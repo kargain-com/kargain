@@ -3,9 +3,6 @@ import { baseSepolia, hardhat, sepolia } from "viem/chains";
 
 const enableLocalChain = process.env.NEXT_PUBLIC_ENABLE_LOCAL_CHAIN === "1";
 
-/** Default chain when unspecified. */
-export const DEFAULT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532");
-
 export const kargainChains: readonly [Chain, ...Chain[]] = enableLocalChain
   ? [hardhat, baseSepolia, sepolia]
   : [baseSepolia, sepolia];

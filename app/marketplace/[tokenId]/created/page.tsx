@@ -5,8 +5,11 @@ import { Suspense } from "react";
 import { PassportCreatedClient } from "@/components/passport/passport-created-client";
 import { Button } from "@/components/ui/button";
 import { sansLinkUnderline } from "@/lib/design/instrument-classes";
-import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
-import { parseChainParam } from "@/lib/web3/parse-chain-param";
+import {
+  formatPassportShortLabel,
+  parsePassportTokenId,
+} from "@/lib/passport/passport-token-id";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
 function CreatedFallback() {
@@ -34,6 +37,16 @@ export default function MarketplaceCreatedPage({
   );
 }
 
+function resolvePageChainId(
+  tokenId: string,
+  urlChain: string | string[] | undefined,
+): number | null {
+  const fromUrl = parseOptionalChainParam(urlChain);
+  if (fromUrl != null) return fromUrl;
+  const parsed = parsePassportTokenId(tokenId);
+  return parsed.isV2Prefixed ? parsed.chainId : null;
+}
+
 async function MarketplaceCreatedInner({
   params,
   searchParams,
@@ -43,7 +56,7 @@ async function MarketplaceCreatedInner({
 }) {
   const { tokenId } = await params;
   const sp = await searchParams;
-  const chainId = parseChainParam(sp.chain);
+  const chainId = resolvePageChainId(tokenId, sp.chain);
   const { tx } = sp;
 
   try {
@@ -52,6 +65,8 @@ async function MarketplaceCreatedInner({
   } catch {
     notFound();
   }
+
+  if (chainId == null) notFound();
 
   const scan = tx
     ? `${getViemChain(chainId)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
@@ -76,7 +91,7 @@ async function MarketplaceCreatedInner({
               rel="noreferrer"
               className={sansLinkUnderline}
             >
-              BaseScan
+              Block explorer
             </a>
           </p>
         )}

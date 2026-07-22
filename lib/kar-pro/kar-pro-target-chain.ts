@@ -1,15 +1,14 @@
-import { isCommercialChainId } from "@/lib/web3/commercial-active";
+import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
 
 /**
  * KarPro hub target = connected wallet chain when commercial.
  * Non-commercial / missing → null (UI prompts switch; no hub fallback).
+ * Implementation: {@link resolveWalletCommercialChainId}.
  */
 export function resolveKarProTargetChainId(
   walletChainId: number | undefined,
 ): number | null {
-  if (walletChainId == null || !Number.isFinite(walletChainId)) return null;
-  if (!isCommercialChainId(walletChainId)) return null;
-  return walletChainId;
+  return resolveWalletCommercialChainId(walletChainId);
 }
 
 /** Nav “Become KarPro” — show when connected and not active on the target chain. */

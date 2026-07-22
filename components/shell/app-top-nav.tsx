@@ -20,8 +20,8 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
 import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
+import { resolveAuctionsNavChainId } from "@/lib/web3/chain-context";
 import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
-import { DEFAULT_CHAIN_ID } from "@/lib/web3/supported-chains";
 
 export function AppTopNav() {
   const path = usePathname();
@@ -35,8 +35,12 @@ export function AppTopNav() {
   const parsed = urlChain ? Number.parseInt(urlChain, 10) : NaN;
   /** Only when URL sets `?chain=` — do not fall back to hub for wrong-network. */
   const expectedChainId = Number.isFinite(parsed) ? parsed : undefined;
-  const auctionsChainId = walletChainId || expectedChainId || DEFAULT_CHAIN_ID;
-  const auctionsEnabled = Boolean(auctionEscrowAddress(auctionsChainId));
+  const auctionsChainId = resolveAuctionsNavChainId({
+    walletChainId,
+    isConnected,
+    hasAuctionEscrow: (id) => Boolean(auctionEscrowAddress(id)),
+  });
+  const auctionsEnabled = auctionsChainId != null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border-default bg-bg-primary">
