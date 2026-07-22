@@ -4,10 +4,13 @@
  * Nuclear dual commercial stacks: both sides are KarPassport + gateway
  * (`bridgeGateway`). Legacy thin-ONFT eth manifest still resolves for OApp.
  *
- * Usage:
- *   pnpm smoke:bridge
+ * Usage (testnet only; --token-id required — no auto-mint):
  *   pnpm smoke:bridge --token-id <id>
- *   pnpm smoke:bridge --skip-return
+ *   pnpm smoke:bridge --token-id <id> --skip-return
+ *
+ * Pre-mint a home passport with valid metadata before smoke. Home KarPassport
+ * has no user burn; ops must not create leftover commercial NFTs.
+ * Mainnet live smoke is refused (SPEC §7.6 Phase 2).
  *
  * Delivery gate: dest-chain RPC ownership (not LZ Scan). GUID from ONFTSent
  * receipt log; Scan status is best-effort for the summary table only.
@@ -40,6 +43,11 @@ import {
 } from "./lib/layerzero-pathway.js";
 import { EID_HUB, EID_SPOKE } from "./lib/layerzero-metadata.js";
 import { onftSentGuidFromLogs } from "./lib/onft-sent.js";
+import {
+  SmokeBridgePolicyError,
+  assertSmokeBridgeAllowed,
+} from "./lib/smoke-bridge-policy.js";
+import { BRIDGE_HUB_CHAIN_ID } from "../lib/web3/bridge/bridge-config.js";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
@@ -47,7 +55,6 @@ loadEnv();
 const DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 const DELIVERY_POLL_MS = 8_000;
 const SCAN_TESTNET_BASE = "https://scan-testnet.layerzero-api.com/v1";
-const NUCLEAR_SMOKE_URI = "ar://nuclear-smoke";
 
 type MessagingFee = { nativeFee: bigint; lzTokenFee: bigint };
 
@@ -336,55 +343,28 @@ async function ensureApprovalForAll(
   console.log(`  approved gateway ${gateway} on ${passport}`);
 }
 
-async function mintSmokePassport(
-  hub: DeployerClients,
-  hubPassport: Address,
-  to: Address,
-): Promise<bigint> {
-  const tokenId = (await hub.public.readContract({
-    address: hubPassport,
-    abi: KarPassportAbi,
-    functionName: "nextTokenId",
-  })) as bigint;
-  await writeContractLocal(hub, {
-    address: hubPassport,
-    abi: KarPassportAbi,
-    functionName: "mintPassport",
-    args: [to, NUCLEAR_SMOKE_URI],
-  });
-  console.log(`  minted passport tokenId=${tokenId} uri=${NUCLEAR_SMOKE_URI}`);
-  return tokenId;
-}
-
 /**
- * Resolve a deployer-owned hub passport: use --token-id when owned;
- * otherwise mint (also when --token-id omitted or token missing / not owned).
+ * Resolve a deployer-owned hub passport. Requires `--token-id` (policy-gated);
+ * does not mint.
  */
 async function resolveTokenId(params: {
   hub: DeployerClients;
   hubPassport: Address;
   hubGateway: Address;
   accountAddress: Address;
-  requested: bigint | null;
+  tokenId: bigint;
 }): Promise<bigint> {
-  const { hub, hubPassport, hubGateway, accountAddress, requested } = params;
+  const { hub, hubPassport, hubGateway, accountAddress, tokenId } = params;
 
-  if (requested != null) {
-    try {
-      const owner = await readOwnerOf(hub, hubPassport, requested, true);
-      if (owner === accountAddress) {
-        await ensureApprovalForAll(hub, hubPassport, hubGateway, accountAddress);
-        return requested;
-      }
-      console.log(
-        `  token ${requested} owned by ${owner} ≠ deployer; minting new passport`,
-      );
-    } catch {
-      console.log(`  token ${requested} missing on hub; minting new passport`);
-    }
+  let owner: Address;
+  try {
+    owner = await readOwnerOf(hub, hubPassport, tokenId, true);
+  } catch {
+    fail(`token ${tokenId} missing on hub passport ${hubPassport}`);
   }
-
-  const tokenId = await mintSmokePassport(hub, hubPassport, accountAddress);
+  if (owner !== accountAddress) {
+    fail(`token ${tokenId} owned by ${owner} ≠ deployer ${accountAddress}`);
+  }
   await ensureApprovalForAll(hub, hubPassport, hubGateway, accountAddress);
   return tokenId;
 }
@@ -394,15 +374,28 @@ async function main(): Promise<void> {
   const steps: StepResult[] = [];
   const legs: LegSummary[] = [];
 
+  try {
+    assertSmokeBridgeAllowed({
+      hubChainId: BRIDGE_HUB_CHAIN_ID,
+      tokenId: flags.tokenId,
+    });
+  } catch (err) {
+    const msg =
+      err instanceof SmokeBridgePolicyError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    fail(msg);
+  }
+
   const bridge = resolveBridgeAddresses();
   const hub = createHubDeployerClients();
   const spoke = createSpokeDeployerClients();
   const accountAddress = getAddress(hub.account.address);
 
   console.log("Kargain bridge smoke");
-  console.log(
-    `  tokenId:   ${flags.tokenId != null ? flags.tokenId.toString() : "(mint if needed)"}`,
-  );
+  console.log(`  tokenId:   ${flags.tokenId!.toString()}`);
   console.log(`  recipient: ${accountAddress} (deployer)`);
   console.log(`  hub gw:    ${bridge.hubGateway}`);
   console.log(`  hub nft:   ${bridge.hubPassport}`);
@@ -430,7 +423,7 @@ async function main(): Promise<void> {
     hubPassport: bridge.hubPassport,
     hubGateway: bridge.hubGateway,
     accountAddress,
-    requested: flags.tokenId,
+    tokenId: flags.tokenId!,
   });
   console.log(`  using tokenId=${tokenId}`);
   console.log("");

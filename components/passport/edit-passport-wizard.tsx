@@ -41,14 +41,15 @@ import {
   type PhotoDisplayContext,
 } from "@/lib/passport/format-metadata-diff-display";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
-import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 import {
+  initialEditFormState,
   metadataToFormInput,
   normalizeVin,
   validateCreateFormInput,
   type PassportCreateFormErrors,
   type PassportEditFormInput,
   type PassportFormFieldKey,
+  type PassportMetadata,
 } from "@/lib/passport/metadata-schema";
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 import {
@@ -86,7 +87,8 @@ type Props = {
   tokenId: string;
   chainId: number;
   status: PassportStatus;
-  initialMetadata: PassportMetadata;
+  /** Null when Arweave metadata is unavailable — empty form, ownership-first save. */
+  initialMetadata: PassportMetadata | null;
   existingPhotoUris: string[];
 };
 
@@ -115,13 +117,14 @@ export function EditPassportWizard({
     connector,
   );
 
-  const [baselineMetadata, setBaselineMetadata] = useState(initialMetadata);
+  const initial = initialEditFormState(initialMetadata);
+  const [baselineMetadata, setBaselineMetadata] = useState(initial.baseline);
   const [passportStatus, setPassportStatus] = useState(status);
-  const [form, setForm] = useState<PassportEditFormInput>(() =>
-    metadataToFormInput(initialMetadata),
-  );
+  const [form, setForm] = useState<PassportEditFormInput>(() => initial.form);
   const [photos, setPhotos] = useState<EditPhotoItem[]>(() =>
-    initialEditPhotos(existingPhotoUris),
+    initialEditPhotos(
+      existingPhotoUris.length > 0 ? existingPhotoUris : initial.photoUris,
+    ),
   );
   const [errors, setErrors] = useState<PassportCreateFormErrors>({});
   const [formError, setFormError] = useState<string | null>(null);

@@ -18,6 +18,8 @@ import type {
 export {
   emptyOptionalFormFields,
   emptyPassportFormInput,
+  emptyPassportMetadataBaseline,
+  initialEditFormState,
   metadataToFormInput,
   type PassportCreateFormErrors,
   type PassportCreateFormInput,

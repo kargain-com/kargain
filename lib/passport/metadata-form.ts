@@ -68,6 +68,41 @@ export function emptyPassportFormInput(): PassportCreateFormInput {
   };
 }
 
+/** Empty baseline when Arweave metadata is unavailable (ownership-first edit). */
+export function emptyPassportMetadataBaseline(): PassportMetadata {
+  return {
+    version: "1.1",
+    vin: "",
+    make: "",
+    model: "",
+    year: null,
+    mileageKm: null,
+    photos: [],
+  };
+}
+
+/**
+ * Init edit wizard form + baseline from loaded metadata or empty when URI is broken.
+ */
+export function initialEditFormState(metadata: PassportMetadata | null): {
+  form: PassportCreateFormInput;
+  baseline: PassportMetadata;
+  photoUris: string[];
+} {
+  if (metadata == null) {
+    return {
+      form: emptyPassportFormInput(),
+      baseline: emptyPassportMetadataBaseline(),
+      photoUris: [],
+    };
+  }
+  return {
+    form: metadataToFormInput(metadata),
+    baseline: metadata,
+    photoUris: metadata.photos,
+  };
+}
+
 export function metadataToFormInput(metadata: PassportMetadata): PassportCreateFormInput {
   return {
     vin: metadata.vin,

@@ -33,7 +33,6 @@ export default async function EditPassportPage({
 
   const { passport, metadata } = result;
   if (passport.status === "DISPUTED") notFound();
-  if (!metadata) notFound();
 
   const chainId = passport.custodyChain;
   const passportAddr = karPassportAddress(chainId);
@@ -63,7 +62,7 @@ export default async function EditPassportPage({
         chainId={chainId}
         status={passport.status}
         initialMetadata={metadata}
-        existingPhotoUris={metadata.photos}
+        existingPhotoUris={metadata?.photos ?? []}
       />
     </div>
   );

@@ -20,6 +20,7 @@ It does **not** authorize mainnet EIDs, peers, wire transactions, or production 
 - No testnet↔mainnet peers
 - No 1-of-1 DVN configurations
 - No EOA-held OApp config or gateway recovery authority on mainnet
+- No ops/smoke `mintPassport` or live `pnpm smoke:bridge` on mainnet commercial KarPassport (infra proof = `bridge:wire:read-only`)
 
 ---
 
@@ -65,6 +66,15 @@ From [layerzero-risk-2026.md](../../research/layerzero-risk-2026.md) / SPEC §7.
 - [ ] (d1) LayerZero **default migration** to 5/5 (or documented floor) complete
 - [ ] (d2) **Timelock on library upgrades** in place (ecosystem / provider policy)
 - [ ] (d3) **6+ months** without new LayerZero security incidents (maintainer judgment + dated note)
+
+### (e) No ops smoke-mint — standing ban
+
+From SPEC §7.6 (e):
+
+- [ ] Mainnet cutover checklist excludes live `smoke:bridge` and any ops `mintPassport` on commercial KarPassport
+- [ ] Infra proof on mainnet = `bridge:wire:read-only` (and equivalent) only
+- [ ] No placeholder metadata URIs (`ar://nuclear-smoke` class) on commercial stacks
+- [ ] Confirmed: home passport has no user burn — leftover home NFTs are permanent
 
 ### Monitoring — open
 
