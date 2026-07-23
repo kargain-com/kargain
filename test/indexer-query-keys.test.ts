@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   INDEXER_QUERY_KEY_PREFIXES,
+  NON_INDEXER_QUERY_KEY_PREFIXES,
   invalidateIndexerQueries,
   type IndexerQueryClient,
 } from "../lib/web3/indexer-query-keys.ts";
@@ -10,6 +11,7 @@ import {
 /** Commerce / portfolio keys that must stay in the sync contract. */
 const REQUIRED_COMMERCE_PREFIXES = [
   "marketplace-listings",
+  "listing-facets",
   "watchlist-listings",
   "watchlist-batch",
   "auction-browse",
@@ -29,6 +31,7 @@ const REQUIRED_COMMERCE_PREFIXES = [
   "ponder-notifications",
   "owned-passport-token-ids",
   "kar-pro-verifier",
+  "kar-pro-slug-availability",
 ] as const;
 
 describe("INDEXER_QUERY_KEY_PREFIXES", () => {
@@ -45,6 +48,13 @@ describe("INDEXER_QUERY_KEY_PREFIXES", () => {
       [...INDEXER_QUERY_KEY_PREFIXES].sort(),
       [...REQUIRED_COMMERCE_PREFIXES].sort(),
     );
+  });
+
+  it("does not overlap NON_INDEXER_QUERY_KEY_PREFIXES", () => {
+    const indexer = new Set(INDEXER_QUERY_KEY_PREFIXES);
+    for (const prefix of NON_INDEXER_QUERY_KEY_PREFIXES) {
+      assert.equal(indexer.has(prefix), false, `overlap: ${prefix}`);
+    }
   });
 });
 

@@ -4,10 +4,14 @@
  * invalidated together with wagmi chain reads — otherwise browse/portfolio UI
  * can stay on a pre-tx cache while detail surfaces already show chain truth.
  *
- * When adding a new Ponder-backed `queryKey`, append its first segment here.
+ * When adding a client `queryKey: ["prefix", …]` under hooks/ or components/:
+ * 1. If it reads mutable Ponder state → append `prefix` here.
+ * 2. Otherwise → append to `NON_INDEXER_QUERY_KEY_PREFIXES`.
+ * Coverage: `test/indexer-query-key-coverage.test.ts`.
  */
 export const INDEXER_QUERY_KEY_PREFIXES = [
   "marketplace-listings",
+  "listing-facets",
   "watchlist-listings",
   "watchlist-batch",
   "auction-browse",
@@ -27,6 +31,25 @@ export const INDEXER_QUERY_KEY_PREFIXES = [
   "ponder-notifications",
   "owned-passport-token-ids",
   "kar-pro-verifier",
+  "kar-pro-slug-availability",
+] as const;
+
+/**
+ * First segments of React Query keys that are intentionally *not* Ponder
+ * protocol-state caches (Nostr, FX, content-addressed metadata, Vincent).
+ * Coverage tests require every scanned `queryKey` prefix to live in
+ * INDEXER_QUERY_KEY_PREFIXES or here.
+ */
+export const NON_INDEXER_QUERY_KEY_PREFIXES = [
+  "readContract",
+  "readContracts",
+  "nostr-profile",
+  "coingecko-fx-rates",
+  "kar-pro-slug",
+  "vincent-commons-queue",
+  "vincent-registry-publishers",
+  "commons-confirmation-attested-pubkeys",
+  "commons-review-attested-pubkeys",
 ] as const;
 
 export type IndexerQueryKeyPrefix = (typeof INDEXER_QUERY_KEY_PREFIXES)[number];
