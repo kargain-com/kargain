@@ -1,14 +1,12 @@
 "use server";
 
 import { getAddress } from "viem";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import type {
   PonderAgentAuthorizationsResponse,
   PonderAgentListingsResponse,
 } from "@/lib/types/ponder";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
 const EMPTY_AUTHORIZATIONS: PonderAgentAuthorizationsResponse = {
   authorizations: [],
@@ -42,7 +40,7 @@ export async function getAgentAuthorizations(
   if (!agent) return { ...EMPTY_AUTHORIZATIONS, page, limit };
 
   try {
-    const url = new URL(`${PONDER_URL}/agents/${agent}/authorizations`);
+    const url = new URL(`${ponderBaseUrl()}/agents/${agent}/authorizations`);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
     if (hasActiveListing === false) {
@@ -50,7 +48,7 @@ export async function getAgentAuthorizations(
     } else if (hasActiveListing === true) {
       url.searchParams.set("hasActiveListing", "true");
     }
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { ...EMPTY_AUTHORIZATIONS, page, limit, ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -70,12 +68,12 @@ export async function getAgentListings(
   if (!agent) return { ...EMPTY_LISTINGS, page, limit };
 
   try {
-    const url = new URL(`${PONDER_URL}/agents/${agent}/listings`);
+    const url = new URL(`${ponderBaseUrl()}/agents/${agent}/listings`);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
     if (active === true) url.searchParams.set("active", "true");
     else if (active === false) url.searchParams.set("active", "false");
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { ...EMPTY_LISTINGS, page, limit, ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -97,10 +95,10 @@ export async function getAgentConsignmentCount(
   if (!agent) return { count: null };
 
   try {
-    const url = new URL(`${PONDER_URL}/agents/${agent}/authorizations`);
+    const url = new URL(`${ponderBaseUrl()}/agents/${agent}/authorizations`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "1");
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return { count: null, ponderError: "PONDER_UNAVAILABLE" };
     const data = (await res.json()) as PonderAgentAuthorizationsResponse;
     return { count: data.total };

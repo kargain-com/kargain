@@ -1,9 +1,7 @@
 "use server";
 
 import type { IndexerBlockNumberResult } from "@/lib/web3/tx-sync";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -37,9 +35,7 @@ export async function getIndexerBlockNumber(
   chainId: number,
 ): Promise<IndexerBlockNumberResult> {
   try {
-    const response = await fetch(`${PONDER_URL}/status`, {
-      cache: "no-store",
-    });
+    const response = await ponderFetch(`${ponderBaseUrl()}/status`);
     if (!response.ok) return { ok: false };
 
     const blockNumber = blockNumberForChain(await response.json(), chainId);

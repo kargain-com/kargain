@@ -1,7 +1,6 @@
 "use server";
 
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type VerifierDirectoryEntry = {
   address: `0x${string}`;
@@ -66,9 +65,7 @@ function parseVerifierEntry(
 }
 
 async function fetchPonderVerifiers(): Promise<ParsedVerifierDirectoryEntry[]> {
-  const res = await fetch(`${PONDER_URL}/verifiers`, {
-    next: { revalidate: 30 },
-  });
+  const res = await ponderFetch(`${ponderBaseUrl()}/verifiers`);
   if (!res.ok) return [];
   const data = (await res.json()) as PonderVerifiersRawResponse;
   return (data.verifiers ?? [])

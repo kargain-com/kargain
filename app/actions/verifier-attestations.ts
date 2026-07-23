@@ -1,9 +1,7 @@
 "use server";
 
 import type { PonderVerifierAttestationsResponse } from "@/lib/types/ponder";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 const EMPTY_RESPONSE: PonderVerifierAttestationsResponse = {
   attestations: [],
@@ -18,10 +16,10 @@ export async function getVerifierAttestations(
   limit = 20,
 ): Promise<PonderVerifierAttestationsResponse> {
   try {
-    const url = new URL(`${PONDER_URL}/verifiers/${address}/attestations`);
+    const url = new URL(`${ponderBaseUrl()}/verifiers/${address}/attestations`);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("offset", String(offset));
-    const res = await fetch(url.toString(), { next: { revalidate: 30 } });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return { ...EMPTY_RESPONSE, limit, offset };
     return (await res.json()) as PonderVerifierAttestationsResponse;
   } catch {

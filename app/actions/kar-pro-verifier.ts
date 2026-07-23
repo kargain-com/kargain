@@ -10,8 +10,7 @@ import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-type
  */
 export async function fetchKarProVerifierProfile(
   address: string,
-  options?: { fresh?: boolean },
 ): Promise<KarProVerifierProfile | null> {
-  const data = await fetchVerifierPublicData(address, options);
+  const data = await fetchVerifierPublicData(address);
   return data.profile;
 }

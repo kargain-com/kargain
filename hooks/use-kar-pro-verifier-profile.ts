@@ -36,7 +36,7 @@ export function useKarProVerifierProfile(
   const ponderQuery = useQuery({
     queryKey: ["kar-pro-verifier", address, chainId],
     queryFn: async () => {
-      const profile = await fetchKarProVerifierProfile(address!, { fresh: true });
+      const profile = await fetchKarProVerifierProfile(address!);
       setNullFetchCount((prev) => (profile ? 0 : prev + 1));
       return profile;
     },

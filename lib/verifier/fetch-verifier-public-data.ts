@@ -2,15 +2,13 @@ import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-type
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import { mapVerifierDetailToProfile } from "./map-verifier-profile";
 
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
-
 export function buildVerifierPassportsQueryUrl(
   address: string,
-  baseUrl: string = PONDER_URL,
+  baseUrl: string = ponderBaseUrl(),
 ): string {
   const url = new URL(`${baseUrl}/passports`);
   url.searchParams.set("verifier", address);
@@ -21,7 +19,7 @@ export function buildVerifierPassportsQueryUrl(
 
 export function buildVerifierAttestationsQueryUrl(
   address: string,
-  baseUrl: string = PONDER_URL,
+  baseUrl: string = ponderBaseUrl(),
   limit = 100,
 ): string {
   const url = new URL(`${baseUrl}/verifiers/${address}/attestations`);
@@ -44,12 +42,6 @@ export type VerifierPublicData = {
   attestations: PonderVerifierAttestation[];
   attestationTotal: number;
 };
-
-type FetchOptions = { fresh?: boolean };
-
-function ponderFetchInit(options?: FetchOptions): RequestInit {
-  return options?.fresh ? { cache: "no-store" } : { next: { revalidate: 30 } };
-}
 
 function parsePositiveChainId(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
@@ -77,17 +69,14 @@ function mapVerifierPassportRow(
 
 export async function fetchVerifierPublicData(
   address: string,
-  options?: FetchOptions,
 ): Promise<VerifierPublicData> {
-  const fetchInit = ponderFetchInit(options);
-
   const passportsUrl = buildVerifierPassportsQueryUrl(address);
   const attestationsUrl = buildVerifierAttestationsQueryUrl(address);
 
   const [detail, passportsRes, attestationsRes] = await Promise.all([
-    fetchVerifierDetail(address, options),
-    fetch(passportsUrl, fetchInit),
-    fetch(attestationsUrl, fetchInit),
+    fetchVerifierDetail(address),
+    ponderFetch(passportsUrl),
+    ponderFetch(attestationsUrl),
   ]);
 
   let verifiedPassports: VerifierPublicPassportRow[] = [];

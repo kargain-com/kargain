@@ -6,10 +6,7 @@ import {
   slugAvailabilityFromPonderPayload,
   type SlugAvailabilityResult,
 } from "@/lib/kar-pro/slug-availability";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL?.trim().replace(/\/+$/, "") ||
-  "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 /**
  * Check slug uniqueness against Ponder. Soft-fails to `{ reason: "error" }`
@@ -29,10 +26,7 @@ export async function checkSlugAvailability(
   }
 
   try {
-    const res = await fetch(
-      `${PONDER_URL}${buildSlugAvailablePath(trimmed, ownerAddress)}`,
-      { cache: "no-store" },
-    );
+    const res = await ponderFetch(`${ponderBaseUrl()}${buildSlugAvailablePath(trimmed, ownerAddress)}`);
     if (!res.ok) {
       return { available: false, reason: "error" };
     }

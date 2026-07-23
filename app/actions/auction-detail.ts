@@ -9,9 +9,7 @@ import {
   type PonderAuctionBidRaw,
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type AuctionDetailResult =
   | { ok: true; auction: AuctionRow | null; ponderError?: string }
@@ -37,9 +35,7 @@ export async function getAuctionDetail(
   tokenId: string,
 ): Promise<AuctionDetailResult> {
   try {
-    const res = await fetch(`${PONDER_URL}/auctions/${tokenId}`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/auctions/${tokenId}`);
     if (res.status === 404) {
       return { ok: true, auction: null };
     }
@@ -69,13 +65,11 @@ export async function getAuctionBids(
   const limit = opts?.limit ?? 50;
 
   try {
-    const url = new URL(`${PONDER_URL}/auctions/${tokenId}/bids`);
+    const url = new URL(`${ponderBaseUrl()}/auctions/${tokenId}/bids`);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ok: true,

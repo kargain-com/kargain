@@ -1,6 +1,7 @@
 "use server";
 
 import { getAddress } from "viem";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import {
   mapAgentListingToRow,
@@ -14,9 +15,6 @@ import type {
   PonderVerifierAttestation,
   VerifierRow,
 } from "@/lib/types/ponder";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
 export type ProShowroomPassport = {
   tokenId: string;
@@ -92,10 +90,7 @@ function mapVerifierRow(
 export async function getProShowroomData(slug: string): Promise<ProShowroomData | null> {
   let address: `0x${string}`;
   try {
-    const verifierBySlug = await fetch(
-      `${PONDER_URL}/verifiers/by-slug/${encodeURIComponent(slug)}`,
-      { cache: "no-store" },
-    );
+    const verifierBySlug = await ponderFetch(`${ponderBaseUrl()}/verifiers/by-slug/${encodeURIComponent(slug)}`);
     if (!verifierBySlug.ok) return null;
     const data = (await verifierBySlug.json()) as { address?: string };
     if (!data.address) return null;
@@ -103,8 +98,6 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   } catch {
     return null;
   }
-
-  const ponderFetch = { cache: "no-store" as const };
 
   let isActiveVerifier = false;
   let verifier: VerifierRow | null = null;
@@ -121,10 +114,9 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     const [activeOnChain, verifierData, listingsRes, consignmentsRes] = await Promise.all([
       isActiveVerifierOnCommercialChains(address),
       fetchVerifierPublicData(address),
-      fetch(`${PONDER_URL}/profile/${address}/listings`, ponderFetch),
-      fetch(
-        `${PONDER_URL}/agents/${address}/listings?active=true&limit=100`,
-        ponderFetch,
+      ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
+      ponderFetch(
+        `${ponderBaseUrl()}/agents/${address}/listings?active=true&limit=100`,
       ),
     ]);
 

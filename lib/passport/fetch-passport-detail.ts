@@ -18,10 +18,8 @@ import type {
   PonderUriHistoryEntry,
 } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 import { getPublicClient } from "@/lib/web3/public-client";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
 export type PassportDetailResult =
   | {
@@ -252,9 +250,7 @@ export async function fetchPassportDetail(
 ): Promise<PassportDetailResult> {
   let raw: unknown;
   try {
-    const res = await fetch(`${PONDER_URL}/passports/${tokenId}`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/passports/${tokenId}`);
     if (res.status === 404) {
       if (chainId == null) return { ok: false, error: "NOT_FOUND" };
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
@@ -330,9 +326,7 @@ export const fetchPassportDetailCached = cache(fetchPassportDetail);
 
 export async function fetchListingDetail(tokenId: string) {
   try {
-    const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/listings/${tokenId}`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -340,15 +334,9 @@ export async function fetchListingDetail(tokenId: string) {
   }
 }
 
-export async function fetchVerifierDetail(
-  address: string,
-  options?: { fresh?: boolean },
-) {
+export async function fetchVerifierDetail(address: string) {
   try {
-    const res = await fetch(
-      `${PONDER_URL}/verifiers/${address}`,
-      options?.fresh ? { cache: "no-store" } : { next: { revalidate: 30 } },
-    );
+    const res = await ponderFetch(`${ponderBaseUrl()}/verifiers/${address}`);
     if (!res.ok) return null;
     return res.json();
   } catch {

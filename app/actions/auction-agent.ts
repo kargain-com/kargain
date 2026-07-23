@@ -7,9 +7,7 @@ import {
   type AuctionRow,
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type PonderAuctionAuthorizationRaw = {
   tokenId: string;
@@ -74,7 +72,7 @@ export async function getAgentAuctionAuthorizations(
 
   try {
     const url = new URL(
-      `${PONDER_URL}/agents/${agent}/auction-authorizations`,
+      `${ponderBaseUrl()}/agents/${agent}/auction-authorizations`,
     );
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
@@ -83,7 +81,7 @@ export async function getAgentAuctionAuthorizations(
     } else if (awaiting === false) {
       url.searchParams.set("awaiting", "false");
     }
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ...EMPTY_AUTHS,
@@ -123,13 +121,13 @@ export async function getAgentActiveAuctions(
   }
 
   try {
-    const url = new URL(`${PONDER_URL}/auctions`);
+    const url = new URL(`${ponderBaseUrl()}/auctions`);
     url.searchParams.set("agent", agent);
     url.searchParams.set("active", "true");
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ok: true,

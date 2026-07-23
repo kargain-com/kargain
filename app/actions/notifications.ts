@@ -1,6 +1,7 @@
 "use server";
 
 import type { PonderFeedItem } from "@/lib/notifications/types";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type NotificationsFeedResult = {
   items: PonderFeedItem[];
@@ -29,8 +30,6 @@ export type ListingBatchResult = {
   ponderError?: string;
 };
 
-const PONDER_URL = process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
-
 type PonderNotificationsResponse = {
   items: PonderFeedItem[];
 };
@@ -49,9 +48,7 @@ type PonderProfilePassportsResponse = {
 
 export async function fetchOwnedPassportTokenIds(address: string): Promise<string[]> {
   try {
-    const res = await fetch(`${PONDER_URL}/profile/${encodeURIComponent(address)}/passports`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/profile/${encodeURIComponent(address)}/passports`);
     if (!res.ok) return [];
 
     const data = (await res.json()) as PonderProfilePassportsResponse;
@@ -68,11 +65,11 @@ export async function fetchNotificationFeed(
   since: number,
 ): Promise<NotificationsFeedResult> {
   try {
-    const url = new URL(`${PONDER_URL}/notifications/${encodeURIComponent(address)}`);
+    const url = new URL(`${ponderBaseUrl()}/notifications/${encodeURIComponent(address)}`);
     url.searchParams.set("since", String(since));
     url.searchParams.set("limit", "50");
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { items: [], ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -87,9 +84,9 @@ export async function fetchNotificationFeed(
 export async function fetchPassportBatch(tokenIds: string[]): Promise<PassportBatchResult> {
   if (tokenIds.length === 0) return { passports: [] };
   try {
-    const url = new URL(`${PONDER_URL}/passports/batch`);
+    const url = new URL(`${ponderBaseUrl()}/passports/batch`);
     url.searchParams.set("ids", tokenIds.join(","));
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { passports: [], ponderError: "PONDER_UNAVAILABLE" };
     }
@@ -103,9 +100,9 @@ export async function fetchPassportBatch(tokenIds: string[]): Promise<PassportBa
 export async function fetchListingBatch(tokenIds: string[]): Promise<ListingBatchResult> {
   if (tokenIds.length === 0) return { listings: [] };
   try {
-    const url = new URL(`${PONDER_URL}/listings/batch`);
+    const url = new URL(`${ponderBaseUrl()}/listings/batch`);
     url.searchParams.set("ids", tokenIds.join(","));
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { listings: [], ponderError: "PONDER_UNAVAILABLE" };
     }

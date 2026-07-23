@@ -1,6 +1,7 @@
 "use server";
 
 import { getAddress } from "viem";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import type {
   AgentActiveAuctionsResult,
@@ -11,9 +12,6 @@ import {
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
 import type { PonderAgentAuthorizationsResponse } from "@/lib/types/ponder";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
 const EMPTY_AUTHORIZATIONS: PonderAgentAuthorizationsResponse = {
   authorizations: [],
@@ -54,7 +52,7 @@ export async function getOwnerAuthorizations(
   if (!owner) return { ...EMPTY_AUTHORIZATIONS, page, limit };
 
   try {
-    const url = new URL(`${PONDER_URL}/owners/${owner}/authorizations`);
+    const url = new URL(`${ponderBaseUrl()}/owners/${owner}/authorizations`);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
     if (hasActiveListing === false) {
@@ -62,7 +60,7 @@ export async function getOwnerAuthorizations(
     } else if (hasActiveListing === true) {
       url.searchParams.set("hasActiveListing", "true");
     }
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ...EMPTY_AUTHORIZATIONS,
@@ -93,7 +91,7 @@ export async function getOwnerAuctionAuthorizations(
 
   try {
     const url = new URL(
-      `${PONDER_URL}/owners/${owner}/auction-authorizations`,
+      `${ponderBaseUrl()}/owners/${owner}/auction-authorizations`,
     );
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
@@ -102,7 +100,7 @@ export async function getOwnerAuctionAuthorizations(
     } else if (awaiting === false) {
       url.searchParams.set("awaiting", "false");
     }
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ...EMPTY_AUCTION_AUTHS,
@@ -134,10 +132,10 @@ export async function getOwnerDelegatedCount(
   if (!owner) return { count: null };
 
   try {
-    const url = new URL(`${PONDER_URL}/owners/${owner}/authorizations`);
+    const url = new URL(`${ponderBaseUrl()}/owners/${owner}/authorizations`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "1");
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return { count: null, ponderError: "PONDER_UNAVAILABLE" };
     const data = (await res.json()) as PonderAgentAuthorizationsResponse;
     return { count: data.total };
@@ -160,13 +158,13 @@ export async function getOwnerActiveAuctions(
   }
 
   try {
-    const url = new URL(`${PONDER_URL}/auctions`);
+    const url = new URL(`${ponderBaseUrl()}/auctions`);
     url.searchParams.set("seller", owner);
     url.searchParams.set("active", "true");
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ok: true,

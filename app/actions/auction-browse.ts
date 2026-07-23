@@ -6,9 +6,7 @@ import {
   type AuctionRow,
   type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
-
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type AuctionBrowseResult = {
   ok: true;
@@ -29,14 +27,12 @@ type PonderAuctionsResponse = {
 /** Lightweight active-auction total for homepage stats — no row mapping. */
 export async function fetchActiveAuctionCount(): Promise<number> {
   try {
-    const url = new URL(`${PONDER_URL}/auctions`);
+    const url = new URL(`${ponderBaseUrl()}/auctions`);
     url.searchParams.set("active", "true");
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "1");
 
-    const res = await fetch(url.toString(), {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return 0;
 
     const data = (await res.json()) as Pick<PonderAuctionsResponse, "total">;
@@ -60,14 +56,12 @@ export async function searchActiveAuctions(opts?: {
   void opts?.chainId;
 
   try {
-    const url = new URL(`${PONDER_URL}/auctions`);
+    const url = new URL(`${ponderBaseUrl()}/auctions`);
     url.searchParams.set("active", "true");
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
-    const res = await fetch(url.toString(), {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return {
         ok: true,

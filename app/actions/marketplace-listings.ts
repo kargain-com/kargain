@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
@@ -60,8 +61,6 @@ export type MarketplaceListingsResult = {
   ponderError?: string;
 };
 
-const PONDER_URL =
-  process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 
 type PonderListing = {
   id: string;
@@ -96,7 +95,7 @@ type PonderListingsResponse = {
 };
 
 function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
-  const url = new URL(`${PONDER_URL}/listings`);
+  const url = new URL(`${ponderBaseUrl()}/listings`);
   url.searchParams.set("page", String(p.page));
   url.searchParams.set("limit", String(p.limit));
   url.searchParams.set("verifiedFirst", "true");
@@ -139,9 +138,7 @@ export async function searchMarketplaceListings(
 ): Promise<MarketplaceListingsResult> {
   const p = filterSchema.parse(input);
   try {
-    const res = await fetch(buildPonderListingsUrl(p).toString(), {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(buildPonderListingsUrl(p).toString());
     if (!res.ok) {
       return {
         ok: true,
@@ -183,9 +180,7 @@ export async function searchMarketplaceFromUrlQuery(
 
 export async function getPassportFromPonder(tokenId: string) {
   try {
-    const res = await fetch(`${PONDER_URL}/passports/${tokenId}`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/passports/${tokenId}`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -196,12 +191,8 @@ export async function getPassportFromPonder(tokenId: string) {
 export async function getProfileData(address: string) {
   try {
     const [passportsRes, listingsRes] = await Promise.all([
-      fetch(`${PONDER_URL}/profile/${address}/passports`, {
-        cache: "no-store",
-      }),
-      fetch(`${PONDER_URL}/profile/${address}/listings`, {
-        cache: "no-store",
-      }),
+      ponderFetch(`${ponderBaseUrl()}/profile/${address}/passports`),
+      ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
     ]);
     return {
       passports: passportsRes.ok
@@ -228,11 +219,11 @@ export async function getPassportsByVerifier(
   address: string,
 ): Promise<VerifierPassportRow[]> {
   try {
-    const url = new URL(`${PONDER_URL}/passports`);
+    const url = new URL(`${ponderBaseUrl()}/passports`);
     url.searchParams.set("verifier", address);
     url.searchParams.set("status", "VERIFIED");
     url.searchParams.set("limit", "100");
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return [];
     const data = (await res.json()) as { passports: Array<Record<string, unknown>> };
     return (data.passports ?? []).map((p) => ({
@@ -249,9 +240,7 @@ export async function getPassportsByVerifier(
 
 export async function fetchMarketplaceStats() {
   try {
-    const res = await fetch(`${PONDER_URL}/listings/stats`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/listings/stats`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -261,9 +250,7 @@ export async function fetchMarketplaceStats() {
 
 export async function fetchListingFacets() {
   try {
-    const res = await fetch(`${PONDER_URL}/listings/facets`, {
-      cache: "no-store",
-    });
+    const res = await ponderFetch(`${ponderBaseUrl()}/listings/facets`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -275,9 +262,7 @@ export async function loadFavoriteListingCards(tokenIds: string[]) {
   const rows = await Promise.all(
     tokenIds.map(async (tokenId) => {
       try {
-        const res = await fetch(`${PONDER_URL}/listings/${tokenId}`, {
-          cache: "no-store",
-        });
+        const res = await ponderFetch(`${ponderBaseUrl()}/listings/${tokenId}`);
         if (!res.ok) return null;
         const listing = (await res.json()) as PonderListing;
         if (!listing.active) return null;

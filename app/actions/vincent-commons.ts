@@ -4,14 +4,14 @@ import {
   fetchVerifiedObservations,
   type CommonsObservationsResult,
 } from "@/lib/vincent-commons/observations-source";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
-const PONDER_URL = process.env.PONDER_SQL_API_URL ?? "http://localhost:42069";
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 50;
 const METADATA_CONCURRENCY = 8;
 
 async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await ponderFetch(url);
   if (!res.ok) {
     throw new Error(`GET ${url} failed: HTTP ${res.status}`);
   }
@@ -31,7 +31,7 @@ async function fetchJson(url: string): Promise<unknown> {
  */
 export async function getCommonsObservations(): Promise<CommonsObservationsResult> {
   return fetchVerifiedObservations({
-    ponderUrl: PONDER_URL,
+    ponderUrl: ponderBaseUrl(),
     fetchJson,
     pageLimit: PAGE_LIMIT,
     maxPages: MAX_PAGES,
