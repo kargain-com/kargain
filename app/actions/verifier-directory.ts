@@ -1,5 +1,7 @@
 "use server";
 
+import { readActiveVerifiersOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
+import { filterVerifierDirectoryEntries } from "@/lib/verifier/effective-verifier";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type VerifierDirectoryEntry = {
@@ -73,10 +75,25 @@ async function fetchPonderVerifiers(): Promise<ParsedVerifierDirectoryEntry[]> {
     .filter((v): v is ParsedVerifierDirectoryEntry => v != null);
 }
 
+/**
+ * Ponder discovery list filtered by commercial-union chain `isActiveVerifier`
+ * when the batch succeeds; Ponder-only fallback when every chain read fails.
+ */
+async function fetchEffectiveVerifiers(): Promise<ParsedVerifierDirectoryEntry[]> {
+  const rows = await fetchPonderVerifiers();
+  const batch = await readActiveVerifiersOnCommercialChains(
+    rows.map((row) => row.address),
+  );
+  if (batch.status === "failure") {
+    return filterVerifierDirectoryEntries(rows, "failure", new Map());
+  }
+  return filterVerifierDirectoryEntries(rows, "success", batch.activeByAddress);
+}
+
 /** Lightweight count for homepage stats — no Nostr relay round-trips. */
 export async function fetchActiveVerifierCount(): Promise<number> {
   try {
-    const verifiers = await fetchPonderVerifiers();
+    const verifiers = await fetchEffectiveVerifiers();
     return verifiers.length;
   } catch {
     return 0;
@@ -85,7 +102,7 @@ export async function fetchActiveVerifierCount(): Promise<number> {
 
 export async function getVerifierDirectory(): Promise<VerifierDirectoryResult> {
   try {
-    const verifiers = await fetchPonderVerifiers();
+    const verifiers = await fetchEffectiveVerifiers();
     return { verifiers };
   } catch {
     return { verifiers: [] };
