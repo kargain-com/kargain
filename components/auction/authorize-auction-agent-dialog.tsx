@@ -67,7 +67,8 @@ type Props = {
   tokenId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAuthorized: () => void;
+  /** Optional local UI after authorize/revoke (dialog already closes + refetches auth). */
+  onAuthorized?: () => void;
   /** When true, show revoke instead of authorize flow. */
   hasActiveAuction?: boolean;
 };
@@ -316,7 +317,7 @@ export function AuthorizeAuctionAgentDialog({
     );
     if (succeeded) {
       await refetchAuth();
-      onAuthorized();
+      onAuthorized?.();
       handleOpenChange(false);
     }
   }, [
@@ -376,7 +377,7 @@ export function AuthorizeAuctionAgentDialog({
       }),
     );
     if (succeeded) {
-      onAuthorized();
+      onAuthorized?.();
       handleOpenChange(false);
     }
   }, [

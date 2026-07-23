@@ -35,7 +35,6 @@ type Props = {
   listingActive: boolean;
   isOwner: boolean;
   isActiveVerifier: boolean;
-  onSuccess?: () => void;
 };
 
 const THREE_DAYS = 3 * 24 * 60 * 60;
@@ -48,7 +47,6 @@ export function CreateAuctionPanel({
   listingActive,
   isOwner,
   isActiveVerifier,
-  onSuccess,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
@@ -160,7 +158,7 @@ export function CreateAuctionPanel({
       return;
     }
 
-    const succeeded = await runTx(async () => {
+    await runTx(async () => {
       await ensureApproval();
       const asset = assetKind === "ETH" ? zeroAddress : usdc!;
       return writeContractAsync({
@@ -171,7 +169,6 @@ export function CreateAuctionPanel({
         chainId: wagmiChainId(chainId),
       });
     });
-    if (succeeded) onSuccess?.();
   }
 
   return (

@@ -72,7 +72,6 @@ type Props = {
   extensionWindow?: bigint;
   /** Transient extension line (synced with readout flash). */
   extensionFlash?: string | null;
-  onSuccess?: () => void;
 };
 
 export function AuctionBidPanel({
@@ -84,7 +83,6 @@ export function AuctionBidPanel({
   paused,
   extensionWindow = 300n,
   extensionFlash = null,
-  onSuccess,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
@@ -256,7 +254,6 @@ export function AuctionBidPanel({
         );
         if (succeeded) {
           setAmountStr("");
-          onSuccess?.();
         }
       } catch (err) {
         setTxError(mapBidError(err));

@@ -239,10 +239,6 @@ export function useAuctionDetail({
     chainPending: chain.isPending,
     ponderPending: ponderQuery.isPending,
     ponderError: ponderQuery.error,
-    invalidateAfterTx: () => {
-      chain.invalidateAfterTx();
-      void ponderQuery.refetch();
-    },
     refetch: () => {
       void chain.refetch();
       void ponderQuery.refetch();

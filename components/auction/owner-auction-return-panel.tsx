@@ -18,7 +18,6 @@ type Props = {
   returnRequestedAt: bigint;
   /** Auction still pre-start (`startedAt == 0`). */
   preStart: boolean;
-  onChanged: () => void;
 };
 
 /**
@@ -30,7 +29,6 @@ export function OwnerAuctionReturnPanel({
   tokenId,
   returnRequestedAt,
   preStart,
-  onChanged,
 }: Props) {
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
@@ -47,7 +45,7 @@ export function OwnerAuctionReturnPanel({
 
   const runRequestReturn = useCallback(async () => {
     if (!escrow || !noRequestYet || !preStart) return;
-    const succeeded = await runTx(() =>
+    await runTx(() =>
       writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
@@ -55,22 +53,11 @@ export function OwnerAuctionReturnPanel({
         args: [tid],
       }),
     );
-    if (succeeded) {
-      onChanged();
-    }
-  }, [
-    escrow,
-    noRequestYet,
-    preStart,
-    writeContractAsync,
-    tid,
-    runTx,
-    onChanged,
-  ]);
+  }, [escrow, noRequestYet, preStart, writeContractAsync, tid, runTx]);
 
   const runForceReturn = useCallback(async () => {
     if (!escrow || !cooldownElapsed || !preStart) return;
-    const succeeded = await runTx(() =>
+    await runTx(() =>
       writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
@@ -78,18 +65,7 @@ export function OwnerAuctionReturnPanel({
         args: [tid],
       }),
     );
-    if (succeeded) {
-      onChanged();
-    }
-  }, [
-    escrow,
-    cooldownElapsed,
-    preStart,
-    writeContractAsync,
-    tid,
-    runTx,
-    onChanged,
-  ]);
+  }, [escrow, cooldownElapsed, preStart, writeContractAsync, tid, runTx]);
 
   if (!escrow || !preStart) return null;
 

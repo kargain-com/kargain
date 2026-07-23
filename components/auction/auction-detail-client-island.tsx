@@ -189,7 +189,6 @@ export function AuctionDetailClientIsland({
               paused={detail.paused}
               extensionWindow={detail.extensionWindow}
               extensionFlash={liveSignals.extensionFlash}
-              onSuccess={() => detail.invalidateAfterTx()}
             />
           )}
 
@@ -198,7 +197,6 @@ export function AuctionDetailClientIsland({
               chainId={chainId}
               tokenId={tokenId}
               auction={auction}
-              onSuccess={() => detail.invalidateAfterTx()}
             />
           )}
 
@@ -208,7 +206,6 @@ export function AuctionDetailClientIsland({
               tokenId={tokenId}
               returnRequestedAt={returnAt}
               preStart={preStart}
-              onChanged={() => detail.invalidateAfterTx()}
             />
           )}
 
@@ -218,7 +215,6 @@ export function AuctionDetailClientIsland({
               tokenId={tokenId}
               auction={auction}
               passportStatus={passportStatus}
-              onSuccess={() => detail.invalidateAfterTx()}
             />
           )}
 
@@ -235,7 +231,6 @@ export function AuctionDetailClientIsland({
               settlementHold={detail.settlementHold}
               disputeResolutionTimeout={detail.disputeResolutionTimeout}
               auctionUiState={uiState as "SETTLED" | "S8" | "S9"}
-              onSuccess={() => detail.invalidateAfterTx()}
             />
           )}
 
@@ -247,11 +242,7 @@ export function AuctionDetailClientIsland({
       )}
 
       {showAgentCreate && (
-        <AgentCreateAuctionPanel
-          chainId={chainId}
-          tokenId={tokenId}
-          onSuccess={() => detail.invalidateAfterTx()}
-        />
+        <AgentCreateAuctionPanel chainId={chainId} tokenId={tokenId} />
       )}
 
     </div>

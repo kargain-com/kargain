@@ -13,7 +13,6 @@ type Props = {
   chainId: number;
   tokenId: string;
   auction: AuctionRow;
-  onSuccess?: () => void;
 };
 
 /**
@@ -24,7 +23,6 @@ export function AuctionCancelPanel({
   chainId,
   tokenId,
   auction,
-  onSuccess,
 }: Props) {
   const { address } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
@@ -47,7 +45,7 @@ export function AuctionCancelPanel({
 
   const runCancel = async () => {
     if (!escrow) return;
-    const succeeded = await runTx(() =>
+    await runTx(() =>
       writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
@@ -55,9 +53,6 @@ export function AuctionCancelPanel({
         args: [BigInt(tokenId)],
       }),
     );
-    if (succeeded) {
-      onSuccess?.();
-    }
   };
 
   return (

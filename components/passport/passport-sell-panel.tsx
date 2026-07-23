@@ -55,7 +55,6 @@ type Props = {
   auctionBlocks: boolean | undefined;
   hasActiveAuction: boolean;
   now: number;
-  onAuctionChanged: () => void;
 };
 
 export function PassportSellPanel({
@@ -67,7 +66,6 @@ export function PassportSellPanel({
   auctionBlocks,
   hasActiveAuction,
   now,
-  onAuctionChanged,
 }: Props) {
   const { address, isConnected } = useAccount();
   const [marketplaceDialogOpen, setMarketplaceDialogOpen] = useState(false);
@@ -118,7 +116,6 @@ export function PassportSellPanel({
   const {
     data: auctionAuthRaw,
     isSuccess: auctionAuthSuccess,
-    refetch: refetchAuctionAuth,
   } = useReadContract({
     address: auctionEscrow,
     abi: AuctionEscrowAbi,
@@ -133,7 +130,6 @@ export function PassportSellPanel({
   const {
     data: activeVerifier,
     isSuccess: activeVerifierSuccess,
-    refetch: refetchActiveVerifier,
   } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
@@ -209,11 +205,6 @@ export function PassportSellPanel({
   const refetchMarketplace = () => {
     void refetchMarketplaceReads();
   };
-  const refetchAuction = () => {
-    void refetchAuctionAuth();
-    void refetchActiveVerifier();
-    onAuctionChanged();
-  };
   const showAuctionRow =
     flags.showAuctionCreate ||
     flags.showAuctionAuthorize ||
@@ -288,7 +279,6 @@ export function PassportSellPanel({
                 listingActive={false}
                 isOwner
                 isActiveVerifier
-                onSuccess={refetchAuction}
               />
             ) : (
               flags.showAuctionAuthorize && (
@@ -323,7 +313,6 @@ export function PassportSellPanel({
           open={auctionDialogOpen}
           onOpenChange={setAuctionDialogOpen}
           hasActiveAuction={hasActiveAuction}
-          onAuthorized={refetchAuction}
         />
       )}
     </section>

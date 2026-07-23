@@ -17,7 +17,6 @@ type Props = {
   tokenId: string;
   auction: AuctionRow;
   passportStatus: PassportStatus;
-  onSuccess?: () => void;
 };
 
 export function AuctionFinalizePanel({
@@ -25,7 +24,6 @@ export function AuctionFinalizePanel({
   tokenId,
   auction,
   passportStatus,
-  onSuccess,
 }: Props) {
   const { isConnected } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
@@ -41,7 +39,7 @@ export function AuctionFinalizePanel({
 
   async function onFinalize() {
     if (!escrow) return;
-    const succeeded = await runTx(() =>
+    await runTx(() =>
       writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
@@ -50,9 +48,6 @@ export function AuctionFinalizePanel({
         chainId: wagmiChainId(chainId),
       }),
     );
-    if (succeeded) {
-      onSuccess?.();
-    }
   }
 
   if (!isConnected) {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useReadContracts } from "wagmi";
 
 import {
@@ -16,9 +15,6 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 30_000;
 const CONFIG_STALE_MS = 300_000;
-
-export const auctionChainQueryKey = (chainId: number, tokenId: string) =>
-  ["auction-chain", chainId, tokenId] as const;
 
 type UseAuctionChainReadsArgs = {
   chainId: number;
@@ -155,15 +151,6 @@ export function useAuctionChainReads({
       ? BigInt(data[8].result as number | bigint)
       : undefined;
 
-  const queryClient = useQueryClient();
-
-  const invalidateAfterTx = () => {
-    void refetch();
-    void queryClient.invalidateQueries({
-      queryKey: auctionChainQueryKey(chainId, tokenId),
-    });
-  };
-
   return {
     escrow,
     auction,
@@ -179,6 +166,5 @@ export function useAuctionChainReads({
     isPending: readsEnabled && isPending,
     isFetching,
     refetch,
-    invalidateAfterTx,
   };
 }

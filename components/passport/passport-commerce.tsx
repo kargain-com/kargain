@@ -159,7 +159,6 @@ export function PassportCommerce({
             auctionBlocks={auctionBlocksSellSurface}
             hasActiveAuction={Boolean(detail.auction?.active)}
             now={detail.now}
-            onAuctionChanged={detail.invalidateAfterTx}
           />
         </>
       )}

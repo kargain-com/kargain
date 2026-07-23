@@ -55,7 +55,6 @@ type Props = {
   disputeResolutionTimeout: bigint;
   /** Auction island UI state — S8/S9 terminal readouts. */
   auctionUiState: "SETTLED" | "S8" | "S9";
-  onSuccess?: () => void;
 };
 
 function formatHoldDate(sec: bigint): { label: string; dateTime: string } {
@@ -88,20 +87,13 @@ export function AuctionSettlementPanel({
   settlementHold,
   disputeResolutionTimeout,
   auctionUiState,
-  onSuccess,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
-  const {
-    runTx: runSyncedTx,
-    awaitReceipt,
-    runFlow,
-    busy,
-    error,
-    syncLagged,
-  } = useTxSync(chainId);
+  const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
+    useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
   const escrow = auctionEscrowAddress(chainId);
@@ -183,20 +175,9 @@ export function AuctionSettlementPanel({
     }
   }
 
-  async function runTx(
-    write: () => Promise<`0x${string}`>,
-  ): Promise<boolean> {
-    setTxError(null);
-    if (!escrow) return false;
-    const succeeded = await runSyncedTx(write);
-    if (succeeded) {
-      onSuccess?.();
-    }
-    return succeeded !== false;
-  }
-
   async function onConfirmReceipt() {
     if (!escrow) return;
+    setTxError(null);
     await runTx(() =>
       writeContractAsync({
         address: escrow,
@@ -213,6 +194,7 @@ export function AuctionSettlementPanel({
       setTxError("Dispute bond is still loading. Try again shortly.");
       return;
     }
+    setTxError(null);
     await runTx(() =>
       writeContractAsync({
         address: escrow,
@@ -227,6 +209,7 @@ export function AuctionSettlementPanel({
 
   async function onReleaseFunds() {
     if (!escrow) return;
+    setTxError(null);
     await runTx(() =>
       writeContractAsync({
         address: escrow,
@@ -240,6 +223,7 @@ export function AuctionSettlementPanel({
 
   async function onResolve(outcome: 0 | 1) {
     if (!escrow) return;
+    setTxError(null);
     await runTx(() =>
       writeContractAsync({
         address: escrow,
@@ -286,6 +270,7 @@ export function AuctionSettlementPanel({
 
   async function onClaimAbandoned() {
     if (!escrow) return;
+    setTxError(null);
     await runTx(() =>
       writeContractAsync({
         address: escrow,

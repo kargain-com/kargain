@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   chainId: number;
   tokenId: string;
-  /** Called after successful create. */
+  /** Local UI only (e.g. collapse). Sync is owned by `useTxSync`. */
   onSuccess?: () => void;
 };
 
@@ -200,9 +200,7 @@ export function AgentCreateAuctionPanel({
         chainId: wagmiChainId(chainId),
       }),
     );
-    if (succeeded) {
-      onSuccess?.();
-    }
+    if (succeeded) onSuccess?.();
   }
 
   return (
