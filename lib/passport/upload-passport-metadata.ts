@@ -7,6 +7,7 @@ import {
   type IrysTag,
   type IrysUploader,
 } from "@/lib/storage/irys-client";
+import { withRetry } from "@/lib/storage/upload-with-retry";
 
 export type { IrysTag };
 
@@ -24,22 +25,6 @@ const METADATA_TAGS: IrysTag[] = [
   { name: "type", value: "passport-metadata" },
   { name: "version", value: "1.1" },
 ];
-
-const DEFAULT_ATTEMPTS = 3;
-
-async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === attempts - 1) break;
-      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("Upload failed.");
-}
 
 export function formatPassportUploadError(err: unknown): string {
   if (err instanceof Error) {

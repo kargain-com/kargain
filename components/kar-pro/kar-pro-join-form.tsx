@@ -12,11 +12,9 @@ import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import {
-  categoryIndexToLabel,
-  uploadKarProMetadata,
-} from "@/lib/kar-pro/kar-pro-metadata";
+import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
+import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";

@@ -11,10 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProPassAbi } from "@/lib/contracts/abis.generated";
-import {
-  parseKarProMetadataJson,
-  uploadKarProMetadata,
-} from "@/lib/kar-pro/kar-pro-metadata";
+import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
+import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";

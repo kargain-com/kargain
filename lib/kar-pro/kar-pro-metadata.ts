@@ -4,7 +4,6 @@ import {
   placeSelectionToWire,
   type PlaceSelection,
 } from "@/lib/geo/place-selection";
-import { uploadJson } from "@/lib/storage/irys-client";
 import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 
 export type KarProCategoryEnum =
@@ -116,36 +115,4 @@ export function parseKarProMetadataJson(json: string): KarProMetadata | null {
   } catch {
     return null;
   }
-}
-
-const KAR_PRO_METADATA_TAGS = [
-  { name: "app", value: "kargain" },
-  { name: "type", value: "kar-pro-metadata" },
-  { name: "version", value: "1.0" },
-];
-
-const DEFAULT_ATTEMPTS = 3;
-
-async function withRetry<T>(fn: () => Promise<T>, attempts = DEFAULT_ATTEMPTS): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === attempts - 1) break;
-      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("Upload failed.");
-}
-
-export async function uploadKarProMetadata(
-  fields: KarProProfileFields,
-  provider: unknown,
-): Promise<string> {
-  const body = buildKarProMetadataJson(fields);
-  const metadata = parseKarProMetadataJson(body);
-  if (!metadata) throw new Error("Invalid metadata.");
-  return withRetry(() => uploadJson(metadata, KAR_PRO_METADATA_TAGS, provider));
 }
