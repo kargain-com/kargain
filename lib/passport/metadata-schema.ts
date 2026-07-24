@@ -7,20 +7,9 @@ import {
   MIN_YEAR,
   PII_FIELD_KEYS,
 } from "@/lib/passport/metadata-constants";
-import type {
-  PassportCreateFormErrors,
-  PassportCreateFormInput,
-  PassportEditFormInput,
-  PassportFormFieldKey,
-  PassportOptionalFormFields,
-} from "@/lib/passport/metadata-form";
-
-export {
-  emptyOptionalFormFields,
-  emptyPassportFormInput,
-  emptyPassportMetadataBaseline,
-  initialEditFormState,
-  metadataToFormInput,
+import {
+  hasAnyLocationFormInput,
+  locationSelectionFromForm,
   type PassportCreateFormErrors,
   type PassportCreateFormInput,
   type PassportEditFormInput,
@@ -28,10 +17,32 @@ export {
   type PassportOptionalFormFields,
 } from "@/lib/passport/metadata-form";
 
+export {
+  emptyOptionalFormFields,
+  emptyPassportFormInput,
+  emptyPassportMetadataBaseline,
+  hasAnyLocationFormInput,
+  initialEditFormState,
+  locationFieldsFromSelection,
+  locationSelectionFromForm,
+  metadataToFormInput,
+  type PassportCreateFormErrors,
+  type PassportCreateFormInput,
+  type PassportEditFormInput,
+  type PassportFormFieldKey,
+  type PassportLocationSelection,
+  type PassportOptionalFormFields,
+} from "@/lib/passport/metadata-form";
+
 export const metadataVersionSchema = z.enum(["1.0", "1.1"]);
 
 export const passportLocationSchema = z.object({
   label: z.string().optional(),
+  countryCode: z.string().optional(),
+  placeId: z.string().optional(),
+  city: z.string().optional(),
+  region: z.string().optional(),
+  /** Legacy read-only (old Arweave JSON); never emitted by buildMetadataWire. */
   lat: z.number().finite().optional(),
   lng: z.number().finite().optional(),
 });
@@ -84,21 +95,17 @@ function validateOptionalNumbers(form: PassportCreateFormInput): PassportCreateF
     }
   }
 
-  if (form.locationLat.trim()) {
-    const lat = Number.parseFloat(form.locationLat);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-      errors.locationLat = "Latitude must be between -90 and 90.";
-    }
-  }
-
-  if (form.locationLng.trim()) {
-    const lng = Number.parseFloat(form.locationLng);
-    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-      errors.locationLng = "Longitude must be between -180 and 180.";
-    }
-  }
-
   return errors;
+}
+
+function validateLocationSelection(
+  form: PassportCreateFormInput,
+): PassportCreateFormErrors {
+  if (!hasAnyLocationFormInput(form)) return {};
+  if (locationSelectionFromForm(form)) return {};
+  return {
+    locationLabel: "Select a city from the list.",
+  };
 }
 
 export function validateCreateFormInput(
@@ -136,6 +143,7 @@ export function validateCreateFormInput(
   }
 
   Object.assign(errors, validateOptionalNumbers(form));
+  Object.assign(errors, validateLocationSelection(form));
 
   return errors;
 }

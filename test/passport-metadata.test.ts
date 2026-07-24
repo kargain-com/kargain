@@ -9,6 +9,10 @@ import {
   passportMetadataSchema,
 } from "../lib/passport/metadata-schema.ts";
 import {
+  emptyPassportFormInput,
+  validateCreateFormInput,
+} from "../lib/passport/metadata-schema.ts";
+import {
   diffPassportMetadata,
   hasAnchorChanges,
   pickMetadataDiffUris,
@@ -33,9 +37,11 @@ const baseForm = {
   power: "",
   evBatteryKwh: "",
   colour: "Blue",
-  locationLabel: "London",
-  locationLat: "",
-  locationLng: "",
+  locationLabel: "London, United Kingdom",
+  locationPlaceId: "photon:osm:N12345",
+  locationCountryCode: "GB",
+  locationCity: "London",
+  locationRegion: "England",
   engine: "",
   features: "Sunroof",
   condition: "Good",
@@ -95,7 +101,49 @@ describe("parseMetadataJson", () => {
     assert.equal(parsed.modelVariant, "Long Range");
     assert.equal(parsed.power, "283 kW");
     assert.equal(parsed.location?.label, "Berlin");
+    assert.equal(parsed.location?.lat, 52.52);
+    assert.equal(parsed.location?.lng, 13.405);
     assert.deepEqual(parsed.photos, ["ar://a", "ar://b"]);
+  });
+
+  it("parses placeId and countryCode location", () => {
+    const parsed = parseMetadataJson({
+      version: "1.1",
+      vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: 2021,
+      mileageKm: 1000,
+      photos: ["ar://a"],
+      location: {
+        label: "Berlin, Germany",
+        placeId: "photon:osm:N240109189",
+        countryCode: "de",
+        city: "Berlin",
+        region: "Berlin",
+      },
+    });
+    assert.ok(parsed);
+    assert.equal(parsed.location?.placeId, "photon:osm:N240109189");
+    assert.equal(parsed.location?.countryCode, "DE");
+    assert.equal(parsed.location?.city, "Berlin");
+    assert.equal(parsed.location?.region, "Berlin");
+    assert.equal(parsed.location?.lat, undefined);
+  });
+
+  it("parses legacy label-only location", () => {
+    const parsed = parseMetadataJson({
+      version: "1.1",
+      vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: 2021,
+      mileageKm: 1000,
+      photos: ["ar://a"],
+      location: { label: "Paris" },
+    });
+    assert.ok(parsed);
+    assert.deepEqual(parsed.location, { label: "Paris" });
   });
 });
 
@@ -124,10 +172,67 @@ describe("buildMetadataWire", () => {
     assert.equal(wire.bodyType, "Sedan");
     assert.equal(wire.transmission, "Manual");
     assert.equal(wire.colour, "Blue");
-    assert.deepEqual(wire.location, { label: "London" });
+    assert.deepEqual(wire.location, {
+      label: "London, United Kingdom",
+      countryCode: "GB",
+      placeId: "photon:osm:N12345",
+      city: "London",
+      region: "England",
+    });
+    assert.equal("lat" in (wire.location as object), false);
+    assert.equal("lng" in (wire.location as object), false);
     assert.deepEqual(wire.features, ["Sunroof"]);
     assert.equal(wire.condition, "Good");
     assert.equal("mileage_km" in wire, false);
+  });
+
+  it("omits location when place selection is incomplete", () => {
+    const wire = buildMetadataWire(
+      { ...baseForm, locationPlaceId: "", locationCountryCode: "", locationLabel: "London" },
+      ["ar://photo-1"],
+    );
+    assert.equal(wire.location, undefined);
+  });
+
+  it("round-trips place fields through parse", () => {
+    const wire = buildMetadataWire(baseForm, ["ar://photo-1"], {
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    const parsed = parseMetadataJson(wire);
+    assert.ok(parsed);
+    assert.equal(parsed.location?.placeId, "photon:osm:N12345");
+    assert.equal(parsed.location?.countryCode, "GB");
+    assert.equal(parsed.location?.label, "London, United Kingdom");
+  });
+});
+
+describe("validateCreateFormInput location", () => {
+  it("rejects label without placeId", () => {
+    const errors = validateCreateFormInput({
+      ...emptyPassportFormInput(),
+      vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: "2021",
+      locationLabel: "Berlin",
+    });
+    assert.equal(errors.locationLabel, "Select a city from the list.");
+  });
+
+  it("accepts full place selection", () => {
+    const errors = validateCreateFormInput({
+      ...emptyPassportFormInput(),
+      vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: "2021",
+      locationLabel: "Berlin, Germany",
+      locationPlaceId: "photon:osm:N1",
+      locationCountryCode: "DE",
+      locationCity: "Berlin",
+    });
+    assert.equal(errors.locationLabel, undefined);
   });
 });
 

@@ -11,16 +11,13 @@ type SpecRow = {
 function formatLocation(metadata: PassportMetadata): string | null {
   const { location } = metadata;
   if (!location) return null;
-  const parts: string[] = [];
-  if (location.label) parts.push(location.label);
-  if (location.lat != null && location.lng != null) {
-    parts.push(`${location.lat}, ${location.lng}`);
-  } else if (location.lat != null) {
-    parts.push(String(location.lat));
-  } else if (location.lng != null) {
-    parts.push(String(location.lng));
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
+  if (location.label?.trim()) return location.label.trim();
+  const city = location.city?.trim();
+  const country = location.countryCode?.trim();
+  if (city && country) return `${city}, ${country}`;
+  if (city) return city;
+  if (country) return country;
+  return null;
 }
 
 function buildRows(metadata: PassportMetadata): SpecRow[] {

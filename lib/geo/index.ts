@@ -29,3 +29,12 @@ export {
   type CreatePhotonPlaceDirectoryOptions,
   type PhotonFetch,
 } from "@/lib/geo/adapters/photon";
+
+export {
+  suggestPlaces,
+  reversePlace,
+  buildGeoSuggestPath,
+  buildGeoReversePath,
+  type GeoClientSuggestQuery,
+  type GeoClientReverseQuery,
+} from "@/lib/geo/client";

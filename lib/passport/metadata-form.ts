@@ -1,5 +1,14 @@
 import type { PassportMetadata } from "@/lib/passport/metadata-schema";
 
+/** Selected city for passport form / wire (no lat/lng). */
+export type PassportLocationSelection = {
+  placeId: string;
+  countryCode: string;
+  label: string;
+  city: string;
+  region?: string;
+};
+
 /** All optional v1.1 metadata fields collected in create/edit wizards. */
 export type PassportOptionalFormFields = {
   type: string;
@@ -12,8 +21,10 @@ export type PassportOptionalFormFields = {
   evBatteryKwh: string;
   colour: string;
   locationLabel: string;
-  locationLat: string;
-  locationLng: string;
+  locationPlaceId: string;
+  locationCountryCode: string;
+  locationCity: string;
+  locationRegion: string;
   engine: string;
   features: string;
   condition: string;
@@ -48,8 +59,10 @@ export function emptyOptionalFormFields(): PassportOptionalFormFields {
     evBatteryKwh: "",
     colour: "",
     locationLabel: "",
-    locationLat: "",
-    locationLng: "",
+    locationPlaceId: "",
+    locationCountryCode: "",
+    locationCity: "",
+    locationRegion: "",
     engine: "",
     features: "",
     condition: "",
@@ -104,6 +117,7 @@ export function initialEditFormState(metadata: PassportMetadata | null): {
 }
 
 export function metadataToFormInput(metadata: PassportMetadata): PassportCreateFormInput {
+  const loc = metadata.location;
   return {
     vin: metadata.vin,
     make: metadata.make,
@@ -124,13 +138,104 @@ export function metadataToFormInput(metadata: PassportMetadata): PassportCreateF
     evBatteryKwh:
       metadata.evBatteryKwh != null ? String(metadata.evBatteryKwh) : "",
     colour: metadata.colour ?? "",
-    locationLabel: metadata.location?.label ?? "",
-    locationLat:
-      metadata.location?.lat != null ? String(metadata.location.lat) : "",
-    locationLng:
-      metadata.location?.lng != null ? String(metadata.location.lng) : "",
+    ...(() => {
+      const placeId = loc?.placeId?.trim() ?? "";
+      const countryCode = loc?.countryCode?.trim().toUpperCase() ?? "";
+      const label = loc?.label?.trim() ?? "";
+      if (!placeId || countryCode.length !== 2 || !label) {
+        return {
+          locationLabel: "",
+          locationPlaceId: "",
+          locationCountryCode: "",
+          locationCity: "",
+          locationRegion: "",
+        };
+      }
+      return {
+        locationLabel: label,
+        locationPlaceId: placeId,
+        locationCountryCode: countryCode,
+        locationCity: loc?.city?.trim() ?? "",
+        locationRegion: loc?.region?.trim() ?? "",
+      };
+    })(),
     engine: metadata.engine ?? "",
     features: metadata.features?.join(", ") ?? "",
     condition: metadata.condition ?? "",
   };
+}
+
+/** Form → selection only when placeId is set (selection-only invariant). */
+export function locationSelectionFromForm(
+  form: Pick<
+    PassportOptionalFormFields,
+    | "locationPlaceId"
+    | "locationCountryCode"
+    | "locationLabel"
+    | "locationCity"
+    | "locationRegion"
+  >,
+): PassportLocationSelection | null {
+  const placeId = form.locationPlaceId.trim();
+  if (!placeId) return null;
+  const countryCode = form.locationCountryCode.trim().toUpperCase();
+  const label = form.locationLabel.trim();
+  const city = form.locationCity.trim() || label;
+  if (countryCode.length !== 2 || !label) return null;
+  const region = form.locationRegion.trim();
+  return {
+    placeId,
+    countryCode,
+    label,
+    city,
+    ...(region ? { region } : {}),
+  };
+}
+
+export function locationFieldsFromSelection(
+  selection: PassportLocationSelection | null,
+): Pick<
+  PassportOptionalFormFields,
+  | "locationLabel"
+  | "locationPlaceId"
+  | "locationCountryCode"
+  | "locationCity"
+  | "locationRegion"
+> {
+  if (!selection) {
+    return {
+      locationLabel: "",
+      locationPlaceId: "",
+      locationCountryCode: "",
+      locationCity: "",
+      locationRegion: "",
+    };
+  }
+  return {
+    locationLabel: selection.label,
+    locationPlaceId: selection.placeId,
+    locationCountryCode: selection.countryCode,
+    locationCity: selection.city,
+    locationRegion: selection.region ?? "",
+  };
+}
+
+/** True when any location form field is non-empty. */
+export function hasAnyLocationFormInput(
+  form: Pick<
+    PassportOptionalFormFields,
+    | "locationLabel"
+    | "locationPlaceId"
+    | "locationCountryCode"
+    | "locationCity"
+    | "locationRegion"
+  >,
+): boolean {
+  return (
+    form.locationLabel.trim() !== "" ||
+    form.locationPlaceId.trim() !== "" ||
+    form.locationCountryCode.trim() !== "" ||
+    form.locationCity.trim() !== "" ||
+    form.locationRegion.trim() !== ""
+  );
 }

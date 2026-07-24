@@ -1,5 +1,6 @@
 "use client";
 
+import { PlacePicker } from "@/components/geo/place-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,10 +23,13 @@ import {
   TRANSMISSION_OPTIONS,
   VEHICLE_TYPE_OPTIONS,
 } from "@/lib/passport/metadata-form-options";
-import type {
-  PassportCreateFormErrors,
-  PassportCreateFormInput,
-  PassportFormFieldKey,
+import {
+  locationFieldsFromSelection,
+  locationSelectionFromForm,
+  type PassportCreateFormErrors,
+  type PassportCreateFormInput,
+  type PassportFormFieldKey,
+  type PassportLocationSelection,
 } from "@/lib/passport/metadata-schema";
 import type { VinDecodedFieldKey } from "@/lib/passport/vin-decode";
 import type { VinInsightOrigin } from "@/lib/passport/vin-insight";
@@ -38,6 +42,18 @@ type Props = {
   showCore?: boolean;
   showOptional?: boolean;
 };
+
+function applyLocationSelection(
+  selection: PassportLocationSelection | null,
+  onFieldChange: (key: PassportFormFieldKey, value: string) => void,
+) {
+  const fields = locationFieldsFromSelection(selection);
+  onFieldChange("locationLabel", fields.locationLabel);
+  onFieldChange("locationPlaceId", fields.locationPlaceId);
+  onFieldChange("locationCountryCode", fields.locationCountryCode);
+  onFieldChange("locationCity", fields.locationCity);
+  onFieldChange("locationRegion", fields.locationRegion);
+}
 
 function formatOriginCountry(country: string): string {
   if (!country) return "";
@@ -410,14 +426,15 @@ export function PassportMetadataFields({
               />
             </div>
 
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="locationLabel">Location</Label>
-              <Input
+            <div className="sm:col-span-2">
+              <PlacePicker
                 id="locationLabel"
-                value={form.locationLabel}
-                onChange={(e) => onFieldChange("locationLabel", e.target.value)}
-                placeholder="City, region, country — e.g. Berlin, Germany"
+                value={locationSelectionFromForm(form)}
+                onChange={(selection) =>
+                  applyLocationSelection(selection, onFieldChange)
+                }
                 disabled={disabled}
+                error={errors.locationLabel}
               />
             </div>
           </div>

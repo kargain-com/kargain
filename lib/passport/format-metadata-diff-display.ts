@@ -113,13 +113,21 @@ function parseScalarRaw(field: string, raw: string): string {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const loc = parsed as { label?: string; lat?: number; lng?: number };
-        const parts: string[] = [];
-        if (loc.label) parts.push(loc.label);
-        if (loc.lat != null && loc.lng != null) {
-          parts.push(`${loc.lat}, ${loc.lng}`);
+        const loc = parsed as {
+          label?: string;
+          city?: string;
+          countryCode?: string;
+        };
+        if (typeof loc.label === "string" && loc.label.trim()) {
+          return loc.label.trim();
         }
-        return parts.join(" · ") || raw;
+        const city = typeof loc.city === "string" ? loc.city.trim() : "";
+        const country =
+          typeof loc.countryCode === "string" ? loc.countryCode.trim() : "";
+        if (city && country) return `${city} · ${country}`;
+        if (city) return city;
+        if (country) return country;
+        return raw;
       }
     } catch {
       return raw;

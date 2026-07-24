@@ -36,11 +36,25 @@ function readLocation(obj: Record<string, unknown>): PassportLocation | undefine
   const raw = obj.location;
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const loc = raw as Record<string, unknown>;
-  const label = readString(loc, "label");
+  const label = readString(loc, "label") || undefined;
+  const placeId = readString(loc, "placeId") || undefined;
+  const countryRaw = readString(loc, "countryCode");
+  const countryCode =
+    countryRaw.length === 2 ? countryRaw.toUpperCase() : undefined;
+  const city = readString(loc, "city") || undefined;
+  const region = readString(loc, "region") || undefined;
   const lat = typeof loc.lat === "number" && Number.isFinite(loc.lat) ? loc.lat : undefined;
   const lng = typeof loc.lng === "number" && Number.isFinite(loc.lng) ? loc.lng : undefined;
-  if (!label && lat == null && lng == null) return undefined;
-  return { label: label || undefined, lat, lng };
+  if (!label && !placeId && lat == null && lng == null) return undefined;
+  return {
+    ...(label ? { label } : {}),
+    ...(placeId ? { placeId } : {}),
+    ...(countryCode ? { countryCode } : {}),
+    ...(city ? { city } : {}),
+    ...(region ? { region } : {}),
+    ...(lat != null ? { lat } : {}),
+    ...(lng != null ? { lng } : {}),
+  };
 }
 
 function readVersion(obj: Record<string, unknown>): "1.0" | "1.1" {

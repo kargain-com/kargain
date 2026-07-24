@@ -53,19 +53,20 @@ function appendOptionalMetadataFields(
   const features = parseFeatures(input.features);
   if (features.length > 0) wire.features = features;
 
+  const placeId = input.locationPlaceId.trim();
+  const countryCode = input.locationCountryCode.trim().toUpperCase();
   const label = input.locationLabel.trim();
-  const latRaw = input.locationLat.trim();
-  const lngRaw = input.locationLng.trim();
-  const lat = latRaw ? Number.parseFloat(latRaw) : undefined;
-  const lng = lngRaw ? Number.parseFloat(lngRaw) : undefined;
-  const hasLat = lat != null && Number.isFinite(lat);
-  const hasLng = lng != null && Number.isFinite(lng);
+  const city = input.locationCity.trim();
+  const region = input.locationRegion.trim();
 
-  if (label || hasLat || hasLng) {
-    const location: Record<string, unknown> = {};
-    if (label) location.label = label;
-    if (hasLat) location.lat = lat;
-    if (hasLng) location.lng = lng;
+  if (placeId && countryCode.length === 2 && label) {
+    const location: Record<string, unknown> = {
+      label,
+      countryCode,
+      placeId,
+    };
+    if (city) location.city = city;
+    if (region) location.region = region;
     wire.location = location;
   }
 }

@@ -1109,7 +1109,9 @@ Owner may `setPassportURI`, then request re-verification.
 
 ### Optional v1.1 fields
 
-Omit empty keys from JSON. Supported optional fields: `description`, `modelVariant`, `type`, `vehicleType`, `fuelType`, `bodyType`, `transmission`, `power`, `evBatteryKwh`, `colour`, `location` (`{ label?, lat?, lng? }`), `engine`, `features` (string[]), `condition`.
+Omit empty keys from JSON. Supported optional fields: `description`, `modelVariant`, `type`, `vehicleType`, `fuelType`, `bodyType`, `transmission`, `power`, `evBatteryKwh`, `colour`, `location`, `engine`, `features` (string[]), `condition`.
+
+**`location` (city-level Place):** new uploads emit `{ label, countryCode, placeId, city?, region? }` only — **city and country**, never street address. `placeId` is the gazetteer identity (`photon:osm:…` via PlaceDirectory). `label` is a display snapshot; ranking/search should key on `placeId` / `countryCode`. Selection is via the PlacePicker (suggest + optional reverse from GPS); the browser never writes raw lat/lng. Legacy Arweave objects may still contain `{ label }` or `{ label, lat, lng }` — parsers accept them for display; edit/save requires a re-selected Place (or cleared location) and omits lat/lng on the new URI.
 
 ### Legacy v1.0 read compatibility
 
