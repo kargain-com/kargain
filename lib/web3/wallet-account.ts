@@ -188,7 +188,7 @@ export function passportStorageUploadHint(input: {
     totalBytes > LARGE_UPLOAD_BYTES_THRESHOLD
   ) {
     return (
-      "This upload is large. Your wallet may ask for a separate Base Sepolia ETH deposit to Irys " +
+      "This upload is large. Your wallet may ask for a separate testnet ETH deposit to Irys " +
       "before photos upload. That is storage cost, not mint gas."
     );
   }

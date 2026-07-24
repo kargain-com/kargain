@@ -31,7 +31,7 @@ describe("passportStorageUploadHint", () => {
       totalBytes: 6_000_000,
     });
     assert.ok(hint);
-    assert.match(hint!, /separate Base Sepolia ETH deposit/i);
+    assert.match(hint!, /separate testnet ETH deposit/i);
   });
 
   it("returns null for small EOA upload", () => {

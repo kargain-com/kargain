@@ -50,7 +50,7 @@ export const INDEXER_SYNC_DETAIL_HINT =
 export function uploadProgressSubtitle(context: PassportFlowContext): string {
   const cap = "Each photo is optimized to WebP (up to 100 KB) before upload.";
   const storage =
-    "Storage may require a separate Base Sepolia ETH deposit to Irys from your wallet — that is not mint gas.";
+    "Storage may require a separate testnet ETH deposit to Irys from your wallet — that is not mint gas.";
   if (context === "edit") {
     return `Only new photos are uploaded. ${cap} ${storage}`;
   }

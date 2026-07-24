@@ -57,7 +57,7 @@ export function formatPassportUploadError(err: unknown): string {
       );
     }
     if (err.message.includes("failed to post funding tx")) {
-      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on Base Sepolia.";
+      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on a supported testnet.";
     }
     return err.message;
   }
