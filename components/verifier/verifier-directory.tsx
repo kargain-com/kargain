@@ -5,10 +5,16 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
 import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
+import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { categoryLabel, shellControlHover } from "@/lib/design/instrument-classes";
+import {
+  isCompletePlaceSelection,
+  parsePlaceSelection,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";
 import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
@@ -43,6 +49,23 @@ type Props = {
 function displayName(name: string, address: `0x${string}`): string {
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed : navShortAddress(address);
+}
+
+function toPickerValue(selection: PlaceSelection | null): PlacePickerValue | null {
+  if (!selection) return null;
+  return {
+    placeId: selection.placeId,
+    countryCode: selection.countryCode,
+    label: selection.label,
+    city: selection.city,
+    ...(selection.region ? { region: selection.region } : {}),
+  };
+}
+
+function fromPickerValue(value: PlacePickerValue | null): PlaceSelection | null {
+  if (!value) return null;
+  const parsed = parsePlaceSelection(value);
+  return parsed != null && isCompletePlaceSelection(parsed) ? parsed : null;
 }
 
 type VerifierCardProps = {
@@ -94,6 +117,11 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
           <p className={categoryLabel}>
             {categoryIndexToLabel(verifier.category)}
           </p>
+          {verifier.locationLabel.trim() !== "" && (
+            <p className="font-mono text-xs text-text-secondary">
+              {verifier.locationLabel.trim()}
+            </p>
+          )}
         </div>
       </div>
 
@@ -165,6 +193,7 @@ export function VerifierDirectory({
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<VerifierDirectorySortKey>("verifications");
   const [lightningOnly, setLightningOnly] = useState(false);
+  const [preferredPlace, setPreferredPlace] = useState<PlaceSelection | null>(null);
 
   const isPicker = layout === "picker";
   const deferredQuery = useDeferredValue(search.trim());
@@ -180,6 +209,13 @@ export function VerifierDirectory({
     [verifiers, activeOnly],
   );
 
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter(null);
+    setLightningOnly(false);
+    setPreferredPlace(null);
+  };
+
   const filteredVerifiers = useMemo(
     () =>
       filterVerifiers(verifiers, {
@@ -189,12 +225,26 @@ export function VerifierDirectory({
         activeOnly,
         lightningOnly,
         profiles,
+        preferredPlaceId: preferredPlace?.placeId ?? "",
+        preferredCountryCode: preferredPlace?.countryCode ?? "",
       }),
-    [verifiers, deferredQuery, categoryFilter, sortKey, activeOnly, lightningOnly, profiles],
+    [
+      verifiers,
+      deferredQuery,
+      categoryFilter,
+      sortKey,
+      activeOnly,
+      lightningOnly,
+      profiles,
+      preferredPlace,
+    ],
   );
 
   const hasActiveFilters =
-    search.trim() !== "" || categoryFilter !== null || lightningOnly;
+    search.trim() !== "" ||
+    categoryFilter !== null ||
+    lightningOnly ||
+    preferredPlace != null;
 
   if (verifiers.length === 0) {
     return (
@@ -270,6 +320,15 @@ export function VerifierDirectory({
       </div>
 
       {!isPicker && (
+        <PlacePicker
+          id="verifier-directory-place"
+          label="Prefer near"
+          value={toPickerValue(preferredPlace)}
+          onChange={(next) => setPreferredPlace(fromPickerValue(next))}
+        />
+      )}
+
+      {!isPicker && (
         <div role="group" aria-label="Payment method filters" className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -290,11 +349,7 @@ export function VerifierDirectory({
         <div className="flex justify-end">
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setCategoryFilter(null);
-              setLightningOnly(false);
-            }}
+            onClick={clearFilters}
             className="inline-flex items-center gap-1.5 font-sans text-xs text-text-secondary transition-colors duration-200 hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
           >
             <CloseIcon size={14} aria-hidden />
@@ -313,11 +368,7 @@ export function VerifierDirectory({
       title="No verifiers match your filters."
       action={{
         label: "Clear filters",
-        onClick: () => {
-          setSearch("");
-          setCategoryFilter(null);
-          setLightningOnly(false);
-        },
+        onClick: clearFilters,
       }}
     />
   );

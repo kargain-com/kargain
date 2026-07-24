@@ -21,6 +21,9 @@ function entry(
     verificationCount: 10,
     verificationFee: "1000000000000000000",
     joinedAt: 1_700_000_000,
+    locationLabel: "",
+    locationPlaceId: "",
+    locationCountryCode: "",
     ...overrides,
   };
 }
@@ -252,6 +255,131 @@ describe("filterVerifiers", () => {
     });
 
     assert.equal(result.length, 2);
+  });
+
+  it("ranks same placeId before same country before others", () => {
+    const sameCity = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      verificationCount: 1,
+      locationPlaceId: "osm:R123",
+      locationCountryCode: "DE",
+      locationLabel: "Berlin, Germany",
+    });
+    const sameCountry = entry({
+      address: "0x2222222222222222222222222222222222222222",
+      verificationCount: 99,
+      locationPlaceId: "osm:R999",
+      locationCountryCode: "DE",
+      locationLabel: "Munich, Germany",
+    });
+    const other = entry({
+      address: "0x3333333333333333333333333333333333333333",
+      verificationCount: 50,
+      locationPlaceId: "osm:R1",
+      locationCountryCode: "FR",
+      locationLabel: "Paris, France",
+    });
+    const emptyPlace = entry({
+      address: "0x4444444444444444444444444444444444444444",
+      verificationCount: 80,
+    });
+
+    const result = filterVerifiers([other, emptyPlace, sameCountry, sameCity], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      preferredPlaceId: "osm:R123",
+      preferredCountryCode: "DE",
+    });
+
+    assert.deepEqual(
+      result.map((v) => v.address),
+      [
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+        "0x4444444444444444444444444444444444444444",
+        "0x3333333333333333333333333333333333333333",
+      ],
+    );
+  });
+
+  it("preserves secondary sort within the same place tier", () => {
+    const fewer = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      verificationCount: 5,
+      locationPlaceId: "osm:R123",
+      locationCountryCode: "DE",
+    });
+    const more = entry({
+      address: "0x2222222222222222222222222222222222222222",
+      verificationCount: 20,
+      locationPlaceId: "osm:R123",
+      locationCountryCode: "DE",
+    });
+
+    const result = filterVerifiers([fewer, more], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      preferredPlaceId: "osm:R123",
+      preferredCountryCode: "DE",
+    });
+
+    assert.equal(result[0]?.address, "0x2222222222222222222222222222222222222222");
+  });
+
+  it("ignores place tiers when preferred placeId is blank", () => {
+    const low = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      verificationCount: 1,
+      locationPlaceId: "osm:R123",
+      locationCountryCode: "DE",
+    });
+    const high = entry({
+      address: "0x2222222222222222222222222222222222222222",
+      verificationCount: 50,
+      locationCountryCode: "FR",
+    });
+
+    const result = filterVerifiers([low, high], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      preferredPlaceId: "",
+      preferredCountryCode: "DE",
+    });
+
+    assert.equal(result[0]?.address, "0x2222222222222222222222222222222222222222");
+  });
+
+  it("empty indexed placeId never wins the same-city tier", () => {
+    const incomplete = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      verificationCount: 99,
+      locationPlaceId: "",
+      locationCountryCode: "DE",
+    });
+    const match = entry({
+      address: "0x2222222222222222222222222222222222222222",
+      verificationCount: 1,
+      locationPlaceId: "osm:R123",
+      locationCountryCode: "DE",
+    });
+
+    const result = filterVerifiers([incomplete, match], {
+      query: "",
+      categoryIndex: null,
+      sortKey: "verifications",
+      activeOnly: false,
+      preferredPlaceId: "osm:R123",
+      preferredCountryCode: "DE",
+    });
+
+    assert.equal(result[0]?.address, "0x2222222222222222222222222222222222222222");
+    assert.equal(result[1]?.address, "0x1111111111111111111111111111111111111111");
   });
 });
 

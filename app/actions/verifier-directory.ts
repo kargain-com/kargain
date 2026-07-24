@@ -14,6 +14,9 @@ export type VerifierDirectoryEntry = {
   verificationCount: number;
   verificationFee: string;
   joinedAt: number;
+  locationLabel: string;
+  locationPlaceId: string;
+  locationCountryCode: string;
 };
 
 export type VerifierDirectoryResult = {
@@ -34,6 +37,9 @@ type PonderVerifiersRawResponse = {
     verificationCount: number;
     verificationFee?: string | number;
     joinedAt?: string | number;
+    locationLabel?: string;
+    locationPlaceId?: string;
+    locationCountryCode?: string;
   }>;
 };
 
@@ -63,6 +69,9 @@ function parseVerifierEntry(
     verificationCount: Number(row.verificationCount ?? 0),
     verificationFee: parseVerificationFeeWire(row.verificationFee),
     joinedAt: Number(row.joinedAt ?? 0),
+    locationLabel: String(row.locationLabel ?? "").trim(),
+    locationPlaceId: String(row.locationPlaceId ?? "").trim(),
+    locationCountryCode: String(row.locationCountryCode ?? "").trim().toUpperCase(),
   };
 }
 

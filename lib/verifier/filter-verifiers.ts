@@ -13,6 +13,9 @@ export type FilterVerifiersOptions = {
   activeOnly: boolean;
   lightningOnly?: boolean;
   profiles?: Map<string, NostrProfileData | null>;
+  /** Preferred Place from directory PlacePicker — blank placeId disables geo tiers. */
+  preferredPlaceId?: string;
+  preferredCountryCode?: string;
 };
 
 function normalizeHex(value: string): string {
@@ -57,25 +60,60 @@ function compareLowestFee(a: VerifierDirectoryEntry, b: VerifierDirectoryEntry):
   return a.address.localeCompare(b.address);
 }
 
+function compareSecondarySort(
+  a: VerifierDirectoryEntry,
+  b: VerifierDirectoryEntry,
+  sortKey: VerifierDirectorySortKey,
+): number {
+  if (sortKey === "verifications") {
+    return b.verificationCount - a.verificationCount;
+  }
+
+  if (sortKey === "newest") {
+    if (a.joinedAt === 0 && b.joinedAt === 0) return 0;
+    if (a.joinedAt === 0) return 1;
+    if (b.joinedAt === 0) return -1;
+    return b.joinedAt - a.joinedAt;
+  }
+
+  return compareLowestFee(a, b);
+}
+
+/** 0 = same placeId, 1 = same country, 2 = other. Lower ranks first. */
+export function verifierPlaceRankTier(
+  entry: VerifierDirectoryEntry,
+  preferredPlaceId: string,
+  preferredCountryCode: string,
+): number {
+  const prefId = preferredPlaceId.trim();
+  if (!prefId) return 0;
+
+  const entryId = entry.locationPlaceId.trim();
+  if (entryId && entryId === prefId) return 0;
+
+  const prefCc = preferredCountryCode.trim().toUpperCase();
+  const entryCc = entry.locationCountryCode.trim().toUpperCase();
+  if (prefCc.length === 2 && entryCc && entryCc === prefCc) return 1;
+
+  return 2;
+}
+
 function sortVerifiers(
   entries: VerifierDirectoryEntry[],
   sortKey: VerifierDirectorySortKey,
+  preferredPlaceId: string,
+  preferredCountryCode: string,
 ): VerifierDirectoryEntry[] {
   const sorted = [...entries];
+  const prefId = preferredPlaceId.trim();
 
   sorted.sort((a, b) => {
-    if (sortKey === "verifications") {
-      return b.verificationCount - a.verificationCount;
+    if (prefId) {
+      const tierA = verifierPlaceRankTier(a, preferredPlaceId, preferredCountryCode);
+      const tierB = verifierPlaceRankTier(b, preferredPlaceId, preferredCountryCode);
+      if (tierA !== tierB) return tierA - tierB;
     }
-
-    if (sortKey === "newest") {
-      if (a.joinedAt === 0 && b.joinedAt === 0) return 0;
-      if (a.joinedAt === 0) return 1;
-      if (b.joinedAt === 0) return -1;
-      return b.joinedAt - a.joinedAt;
-    }
-
-    return compareLowestFee(a, b);
+    return compareSecondarySort(a, b, sortKey);
   });
 
   return sorted;
@@ -106,7 +144,12 @@ export function filterVerifiers(
     });
   }
 
-  return sortVerifiers(result, options.sortKey);
+  return sortVerifiers(
+    result,
+    options.sortKey,
+    options.preferredPlaceId ?? "",
+    options.preferredCountryCode ?? "",
+  );
 }
 
 function formatVerifierCount(count: number): string {

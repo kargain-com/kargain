@@ -48,7 +48,7 @@ AuctionEscrow on each commercial chain from that chain’s manifest. Response ro
 
 ## Verifier lifecycle (bounded indexing)
 
-Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error).
+Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error). KarPro Arweave metadata denorms `slug` plus Place fields (`locationLabel`, `locationPlaceId`, `locationCountryCode`) on mint/profile update (empty when incomplete or missing).
 
 ## Listing API fields (v2 + C3)
 
@@ -120,8 +120,8 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /owners/:address/authorizations` | Active authorizations granted by owner (`page`, `limit`; `hasActiveListing`; optional filter) |
 | `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner (`page`, `limit`; `?awaiting=`; passport enrichment) |
 | `GET /notifications/:address` | Notification feed, including active marketplace delegation and reserve-auction authorization grants |
-| `GET /verifiers` | Verifier directory (`verificationFee` wei string on each row) |
-| `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string) |
+| `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
+| `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |
 | `GET /verifiers/:address/attestations` | Verifier attestations |
 

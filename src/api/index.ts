@@ -1498,6 +1498,9 @@ async function buildVerifierDetailResponse(id: string) {
       name: v.name,
       slug: v.slug,
       metadataURI: v.metadataURI,
+      locationLabel: v.locationLabel,
+      locationPlaceId: v.locationPlaceId,
+      locationCountryCode: v.locationCountryCode,
     },
     stake: {
       asset: v.stakeAsset,

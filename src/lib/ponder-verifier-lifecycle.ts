@@ -9,6 +9,19 @@
  */
 
 import { verifier } from "../../ponder.schema";
+import type { IndexedKarProMetadata } from "./ponder-kar-pro-metadata";
+import { EMPTY_INDEXED_KAR_PRO_METADATA } from "./ponder-kar-pro-metadata";
+
+export type VerifierPlaceDenorm = Pick<
+  IndexedKarProMetadata,
+  "locationLabel" | "locationPlaceId" | "locationCountryCode"
+>;
+
+export const EMPTY_VERIFIER_PLACE: VerifierPlaceDenorm = {
+  locationLabel: "",
+  locationPlaceId: "",
+  locationCountryCode: "",
+};
 
 export type VerifierRow = {
   id: string;
@@ -18,6 +31,9 @@ export type VerifierRow = {
   name: string;
   slug: string;
   metadataURI: string;
+  locationLabel: string;
+  locationPlaceId: string;
+  locationCountryCode: string;
   stakeAsset: number;
   stakeAmount: string;
   verificationFee: bigint;
@@ -35,6 +51,9 @@ export type VerifierPatch = Partial<
     | "name"
     | "slug"
     | "metadataURI"
+    | "locationLabel"
+    | "locationPlaceId"
+    | "locationCountryCode"
     | "stakeAsset"
     | "stakeAmount"
     | "verificationFee"
@@ -62,6 +81,14 @@ export function normalizeVerifierId(chainId: number, address: string): string {
   return `${chainId}-${address.toLowerCase()}`;
 }
 
+function placeFromIndexed(indexed: IndexedKarProMetadata): VerifierPlaceDenorm {
+  return {
+    locationLabel: indexed.locationLabel,
+    locationPlaceId: indexed.locationPlaceId,
+    locationCountryCode: indexed.locationCountryCode,
+  };
+}
+
 export function verifierJoinedRow(
   chainId: number,
   verifierAddress: string,
@@ -78,6 +105,7 @@ export function verifierJoinedRow(
     name: "",
     slug: "",
     metadataURI: "",
+    ...EMPTY_VERIFIER_PLACE,
     stakeAsset: asset,
     stakeAmount: amount.toString(),
     verificationFee: 0n,
@@ -123,6 +151,7 @@ export function proPassMintedRow(
   name: string,
   metadataURI: string,
   slug: string,
+  place: VerifierPlaceDenorm = EMPTY_VERIFIER_PLACE,
 ): VerifierRow {
   const id = normalizeVerifierId(chainId, holder);
   return {
@@ -133,6 +162,7 @@ export function proPassMintedRow(
     name,
     slug,
     metadataURI,
+    ...place,
     stakeAsset: 0,
     stakeAmount: "0",
     verificationFee: 0n,
@@ -149,6 +179,7 @@ export function proPassMintedConflictUpdate(
   name: string,
   metadataURI: string,
   slug: string,
+  place: VerifierPlaceDenorm = EMPTY_VERIFIER_PLACE,
 ): VerifierPatch {
   return {
     chainId,
@@ -157,6 +188,7 @@ export function proPassMintedConflictUpdate(
     name,
     slug,
     metadataURI,
+    ...place,
     active: true,
   };
 }
@@ -166,8 +198,9 @@ export function proPassProfilePatch(
   name: string,
   metadataURI: string,
   slug: string,
+  place: VerifierPlaceDenorm = EMPTY_VERIFIER_PLACE,
 ): VerifierPatch {
-  return { category, name, slug, metadataURI };
+  return { category, name, slug, metadataURI, ...place };
 }
 
 export function proPassBurnedPatch(): VerifierPatch {
@@ -209,13 +242,30 @@ export async function upsertVerifierFromProPassMint(
   category: number,
   name: string,
   metadataURI: string,
-  slug: string,
+  indexed: IndexedKarProMetadata = EMPTY_INDEXED_KAR_PRO_METADATA,
 ): Promise<void> {
-  const row = proPassMintedRow(chainId, holder, category, name, metadataURI, slug);
+  const place = placeFromIndexed(indexed);
+  const row = proPassMintedRow(
+    chainId,
+    holder,
+    category,
+    name,
+    metadataURI,
+    indexed.slug,
+    place,
+  );
   await db
     .insert(verifier)
     .values(row)
     .onConflictDoUpdate(
-      proPassMintedConflictUpdate(chainId, holder, category, name, metadataURI, slug),
+      proPassMintedConflictUpdate(
+        chainId,
+        holder,
+        category,
+        name,
+        metadataURI,
+        indexed.slug,
+        place,
+      ),
     );
 }

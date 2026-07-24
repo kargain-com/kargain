@@ -86,6 +86,7 @@ describe("ponder verifier lifecycle builders", () => {
     assert.equal(row.category, 2);
     assert.equal(row.name, "Acme Verify");
     assert.equal(row.slug, "acme");
+    assert.equal(row.locationPlaceId, "");
     assert.equal(row.active, true);
   });
 
@@ -101,7 +102,26 @@ describe("ponder verifier lifecycle builders", () => {
       name: "New Name",
       metadataURI: "ar://new",
       slug: "new-slug",
+      locationLabel: "",
+      locationPlaceId: "",
+      locationCountryCode: "",
     });
+    assert.deepEqual(
+      proPassProfilePatch(3, "New Name", "ar://new", "new-slug", {
+        locationLabel: "Berlin, Germany",
+        locationPlaceId: "osm:R123",
+        locationCountryCode: "DE",
+      }),
+      {
+        category: 3,
+        name: "New Name",
+        metadataURI: "ar://new",
+        slug: "new-slug",
+        locationLabel: "Berlin, Germany",
+        locationPlaceId: "osm:R123",
+        locationCountryCode: "DE",
+      },
+    );
     assert.deepEqual(proPassBurnedPatch(), { active: false });
   });
 });
@@ -147,7 +167,7 @@ describe("patchVerifierIfExists", () => {
       1,
       "Shop",
       "ar://shop",
-      "shop",
+      { slug: "shop", locationLabel: "", locationPlaceId: "", locationCountryCode: "" },
     );
     assert.equal(db.rows.get(id)?.active, true);
 
@@ -184,17 +204,29 @@ describe("patchVerifierIfExists", () => {
     const db = createMockVerifierDb();
     const id = normalizeVerifierId(HUB, HOLDER);
 
-    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "Old", "ar://old", "old");
+    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "Old", "ar://old", {
+      slug: "old",
+      locationLabel: "",
+      locationPlaceId: "",
+      locationCountryCode: "",
+    });
     await patchVerifierIfExists(
       db,
       id,
-      proPassProfilePatch(2, "New", "ar://new", "new"),
+      proPassProfilePatch(2, "New", "ar://new", "new", {
+        locationLabel: "Paris, France",
+        locationPlaceId: "osm:R1",
+        locationCountryCode: "FR",
+      }),
     );
 
     const row = db.rows.get(id);
     assert.equal(row?.category, 2);
     assert.equal(row?.name, "New");
     assert.equal(row?.slug, "new");
+    assert.equal(row?.locationPlaceId, "osm:R1");
+    assert.equal(row?.locationCountryCode, "FR");
+    assert.equal(row?.locationLabel, "Paris, France");
   });
 
   it("keeps hub and spoke verifier rows distinct for the same address", async () => {
@@ -227,7 +259,12 @@ describe("patchVerifierIfExists", () => {
 describe("upsertVerifierFromProPassMint", () => {
   it("uses verifier table symbol for find compatibility", async () => {
     const db = createMockVerifierDb();
-    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "A", "ar://a", "a");
+    await upsertVerifierFromProPassMint(db, HUB, HOLDER, 1, "A", "ar://a", {
+      slug: "a",
+      locationLabel: "",
+      locationPlaceId: "",
+      locationCountryCode: "",
+    });
     const found = await db.find(verifier, {
       id: normalizeVerifierId(HUB, HOLDER),
     });

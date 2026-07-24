@@ -172,6 +172,10 @@ export const verifier = onchainTable("verifier", (t) => ({
   name: t.text().notNull().default(""),
   slug: t.text().notNull().default(""),
   metadataURI: t.text().notNull().default(""),
+  /** Denorm from KarPro Arweave Place selection (Geo Phase E). */
+  locationLabel: t.text().notNull().default(""),
+  locationPlaceId: t.text().notNull().default(""),
+  locationCountryCode: t.text().notNull().default(""),
   stakeAsset: t.integer().notNull().default(0),
   stakeAmount: t.text().notNull().default("0"),
   verificationFee: t.bigint().notNull().default(0n),

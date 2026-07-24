@@ -87,6 +87,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Delegation notifications (July 2026) | Authorization owner and lifecycle timestamps — **full reindex required** |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Place location columns (Geo Phase C, July 2026) | `locationPlaceId` + `locationCountryCode` on `passport` — **full reindex required** so historical URI metadata backfills; older label-only rows keep empty placeId until owner re-saves |
+| Verifier place columns (Geo Phase E, July 2026) | `locationLabel` + `locationPlaceId` + `locationCountryCode` on `verifier` from KarPro Arweave — **full reindex required**; empty until replay / verifier re-saves profile |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |

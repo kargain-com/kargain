@@ -459,7 +459,7 @@ ponder.on("KarProStaking:VerificationFeeUpdated", async ({ event, context }) => 
 });
 
 ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
-  const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
+  const indexed = await indexKarProMetadataFromUri(event.args.metadataURI);
   await upsertVerifierFromProPassMint(
     context.db,
     indexingChainId(context),
@@ -467,12 +467,12 @@ ponder.on("KarProPass:ProPassMinted", async ({ event, context }) => {
     Number(event.args.category),
     event.args.name,
     event.args.metadataURI,
-    slug,
+    indexed,
   );
 });
 
 ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
-  const { slug } = await indexKarProMetadataFromUri(event.args.metadataURI);
+  const indexed = await indexKarProMetadataFromUri(event.args.metadataURI);
   await patchVerifierIfExists(
     context.db,
     normalizeVerifierId(indexingChainId(context), event.args.holder),
@@ -480,7 +480,12 @@ ponder.on("KarProPass:ProfileUpdated", async ({ event, context }) => {
       Number(event.args.category),
       event.args.name,
       event.args.metadataURI,
-      slug,
+      indexed.slug,
+      {
+        locationLabel: indexed.locationLabel,
+        locationPlaceId: indexed.locationPlaceId,
+        locationCountryCode: indexed.locationCountryCode,
+      },
     ),
   );
 });
