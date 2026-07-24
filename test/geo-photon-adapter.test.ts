@@ -75,7 +75,26 @@ describe("createPhotonPlaceDirectory", () => {
     assert.equal(places[0]!.placeId, "photon:osm:N240109189");
     assert.ok(calls[0]?.includes("https://photon.test/api?"));
     assert.ok(calls[0]?.includes("q=Berlin"));
-    assert.ok(calls[0]?.includes("layer=city"));
+    const url = new URL(calls[0]!);
+    assert.deepEqual(url.searchParams.getAll("layer"), ["city", "locality"]);
+  });
+
+  it("maps Photon HTTP 400 (invalid layer) to GeoError upstream", async () => {
+    const directory = createPhotonPlaceDirectory({
+      baseUrl: "https://photon.test",
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            layer: [{ message: "Unknown layer type." }],
+          }),
+          { status: 400 },
+        ),
+    });
+    await assert.rejects(
+      () => directory.suggest({ q: "Rome" }),
+      (err: unknown) =>
+        err instanceof GeoError && err.code === "upstream",
+    );
   });
 
   it("returns empty array for blank query without fetching", async () => {

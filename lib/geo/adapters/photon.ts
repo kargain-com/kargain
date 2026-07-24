@@ -10,8 +10,12 @@ const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_SUGGEST_LIMIT = 8;
 const MAX_SUGGEST_LIMIT = 8;
 
-/** City-level layers requested on forward search. */
-const SUGGEST_LAYERS = ["city", "town", "village", "municipality"] as const;
+/**
+ * City-level layers on forward search.
+ * Photon allowlist only: house, street, locality, district, city, county, state, country, other.
+ * OSM town/village map to `locality` (not requestable as town/village/municipality).
+ */
+const SUGGEST_LAYERS = ["city", "locality"] as const;
 
 export type PhotonFetch = (
   input: string | URL,
