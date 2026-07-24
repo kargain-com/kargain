@@ -1,13 +1,12 @@
 "use client";
 
-import { ExportIcon } from "@/components/ui/icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PhotoDropZone } from "@/components/passport/photo-drop-zone";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { isHeicFile } from "@/lib/passport/compress-passport-image";
 import { passportImageOptimizeErrorMessage } from "@/lib/passport/passport-flow-messages";
 import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo-files";
-import { cn } from "@/lib/utils";
 
 type PhotoUploadZoneProps = {
   photos: File[];
@@ -33,8 +32,6 @@ export function PhotoUploadZone({
   error,
   disabled,
 }: PhotoUploadZoneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -81,71 +78,23 @@ export function PhotoUploadZone({
         })
         .finally(() => {
           setIsOptimizing(false);
-          if (inputRef.current) inputRef.current.value = "";
         });
     },
     [maxPhotos, onAdd, photos.length],
   );
-
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!zoneDisabled && canAddMore) setDragOver(true);
-  };
-
-  const onDragLeave = () => {
-    setDragOver(false);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (zoneDisabled || !canAddMore) return;
-    if (e.dataTransfer.files.length > 0) {
-      handleFiles(e.dataTransfer.files);
-    }
-  };
 
   const displayError = error ?? dropError;
 
   return (
     <div>
       {canAddMore && (
-        <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept="image/*,.heic,.heif"
-            id="passport-photos"
-            className="sr-only"
-            disabled={zoneDisabled}
-            onChange={(e) => {
-              if (e.target.files) handleFiles(e.target.files);
-            }}
-          />
-          <label
-            htmlFor="passport-photos"
-            className={cn(
-              "block cursor-pointer rounded-md border-2 border-dashed p-8 text-center transition-colors duration-200",
-              dragOver
-                ? "border-accent-warm bg-bg-card"
-                : "border-border-default bg-bg-surface hover:border-border-hover",
-              zoneDisabled && "cursor-not-allowed opacity-50",
-            )}
-          >
-            <ExportIcon
-              size={32}
-              className="mx-auto mb-3 text-text-tertiary"
-              aria-hidden
-            />
-            <p className="font-sans text-sm text-text-secondary">
-              {isOptimizing ? "Optimizing photos…" : "Drag photos here or click to upload"}
-            </p>
-            <p className="mt-1 font-mono text-xs text-text-tertiary">
-              JPEG, PNG, WebP, HEIC · optimized to WebP (up to 100 KB each) · up to {maxPhotos} photos
-            </p>
-          </label>
-        </div>
+        <PhotoDropZone
+          onFiles={handleFiles}
+          maxPhotos={maxPhotos}
+          disabled={disabled}
+          isOptimizing={isOptimizing}
+          inputId="passport-photos"
+        />
       )}
 
       {photos.length > 0 && (

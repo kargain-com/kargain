@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useAccount,
   useChainId,
@@ -18,9 +18,9 @@ import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexe
 import { PassportUploadPreflightBanner } from "@/components/passport/passport-upload-preflight-banner";
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
+import { PhotoDropZone } from "@/components/passport/photo-drop-zone";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
@@ -135,7 +135,6 @@ export function EditPassportWizard({
   const [isOptimizingPhotos, setIsOptimizingPhotos] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [hadVerificationReset, setHadVerificationReset] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const previewSrcs = useMemo(
     () =>
@@ -180,10 +179,11 @@ export function EditPassportWizard({
     [photos],
   );
 
-  const onPhotosSelected = (files: FileList | null) => {
-    if (!files?.length) return;
+  const onPhotosSelected = (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
     clearSuccessState();
-    const incoming = Array.from(files).filter(
+    const incoming = list.filter(
       (f) => f.type.startsWith("image/") || isHeicFile(f),
     );
     const remaining = MAX_PHOTOS - photos.length;
@@ -214,7 +214,6 @@ export function EditPassportWizard({
       })
       .finally(() => {
         setIsOptimizingPhotos(false);
-        if (photoInputRef.current) photoInputRef.current.value = "";
       });
   };
 
@@ -467,8 +466,13 @@ export function EditPassportWizard({
           onFieldChange={updateField}
         />
 
-        <div className="space-y-2 border-t border-border-default pt-6">
-          <Label>Photos</Label>
+        <div className="space-y-4 border-t border-border-default pt-6">
+          <div>
+            <p className="font-sans text-sm font-medium text-text-primary">Photos</p>
+            <p className="mt-1 font-sans text-xs text-text-secondary">
+              First photo is the cover.
+            </p>
+          </div>
           <PassportUploadPreflightBanner
             accountKind={accountKind}
             photos={newPhotosForPreflight}
@@ -476,9 +480,9 @@ export function EditPassportWizard({
             context="edit"
           />
           {photos.length > 0 && (
-            <>
+            <div className="space-y-2">
               <p className="font-mono text-xs text-text-tertiary">
-                First photo is the cover. Use arrows to reorder.
+                Use arrows to reorder.
               </p>
               <PhotoThumbGrid
                 items={photos.map((item, index) => ({
@@ -490,23 +494,20 @@ export function EditPassportWizard({
                 onRemove={removePhoto}
                 onReorder={reorderPhoto}
               />
-            </>
+            </div>
           )}
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/*,.heic,.heif"
-            multiple
-            className="sr-only"
-            onChange={(e) => onPhotosSelected(e.target.files)}
-            disabled={isBusy}
-          />
-          <Button type="button" variant="secondary" disabled={isBusy || photos.length >= MAX_PHOTOS} onClick={() => photoInputRef.current?.click()}>
-            Add photos
-          </Button>
-          {isOptimizingPhotos && (
-            <p className="font-sans text-xs text-text-tertiary" role="status">
-              Optimizing photos…
+          {photos.length < MAX_PHOTOS && (
+            <PhotoDropZone
+              onFiles={onPhotosSelected}
+              maxPhotos={MAX_PHOTOS}
+              disabled={isBusy}
+              isOptimizing={isOptimizingPhotos}
+              inputId="passport-edit-photos"
+            />
+          )}
+          {photos.length >= MAX_PHOTOS && (
+            <p className="font-mono text-xs text-text-secondary">
+              {MAX_PHOTOS}/{MAX_PHOTOS} photos added
             </p>
           )}
           {errors.photos && <p className="text-xs text-status-error">{errors.photos}</p>}
