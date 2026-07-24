@@ -86,6 +86,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Auction agent authorizations (b2, July 2026) | `auction_agent_authorization` — **full reindex required** |
 | Delegation notifications (July 2026) | Authorization owner and lifecycle timestamps — **full reindex required** |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
+| Place location columns (Geo Phase C, July 2026) | `locationPlaceId` + `locationCountryCode` on `passport` — **full reindex required** so historical URI metadata backfills; older label-only rows keep empty placeId until owner re-saves |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |

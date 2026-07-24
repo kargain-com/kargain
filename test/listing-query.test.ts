@@ -203,20 +203,34 @@ describe("matchesListingFilters", () => {
     assert.equal(matchesListingFilters(baseRow, { mileageMin: 0 }), true);
   });
 
-  it("filters by condition, vehicleType, location, and colour", () => {
+  it("filters by condition, vehicleType, placeId, and colour", () => {
     const row = {
       ...baseRow,
       condition: "Good",
       vehicleType: "Car",
       locationLabel: "Berlin, Germany",
+      locationPlaceId: "photon:osm:N240109189",
       colour: "Blue",
     };
     assert.equal(matchesListingFilters(row, { conditions: ["Good"] }), true);
     assert.equal(matchesListingFilters(row, { conditions: ["Excellent"] }), false);
     assert.equal(matchesListingFilters(row, { vehicleTypes: ["Car"] }), true);
     assert.equal(matchesListingFilters(row, { vehicleTypes: ["Truck"] }), false);
-    assert.equal(matchesListingFilters(row, { location: "berlin" }), true);
-    assert.equal(matchesListingFilters(row, { location: "Paris" }), false);
+    assert.equal(
+      matchesListingFilters(row, { placeId: "photon:osm:N240109189" }),
+      true,
+    );
+    assert.equal(
+      matchesListingFilters(row, { placeId: "photon:osm:N999" }),
+      false,
+    );
+    assert.equal(
+      matchesListingFilters(
+        { ...row, locationPlaceId: "" },
+        { placeId: "photon:osm:N240109189" },
+      ),
+      false,
+    );
     assert.equal(matchesListingFilters(row, { colour: "blue" }), true);
     assert.equal(matchesListingFilters(row, { colour: "Red" }), false);
   });
@@ -330,6 +344,17 @@ describe("normalizeListingFiatCurrency", () => {
 describe("isDefaultListingsBrowse", () => {
   it("is true for unfiltered newest browse", () => {
     assert.equal(isDefaultListingsBrowse({ sort: "newest", status: "all" }), true);
+  });
+
+  it("is false when placeId filter is set", () => {
+    assert.equal(
+      isDefaultListingsBrowse({
+        sort: "newest",
+        status: "all",
+        placeId: "photon:osm:N1",
+      }),
+      false,
+    );
   });
 
   it("is false when filters or seller are set", () => {

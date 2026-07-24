@@ -26,7 +26,7 @@ export type ListingFilterQuery = {
   transmissions?: string[];
   conditions?: string[];
   vehicleTypes?: string[];
-  location?: string;
+  placeId?: string;
   colour?: string;
   status?: "all" | "VERIFIED" | "UNVERIFIED" | "DISPUTED";
   priceMin?: string;
@@ -61,6 +61,7 @@ export type PassportFilterFields = {
   vehicleType?: string;
   colour?: string;
   locationLabel?: string;
+  locationPlaceId?: string;
 };
 
 export type ListingFilterFields = {
@@ -175,7 +176,7 @@ export function isDefaultListingsBrowse(
   if (filters.transmissions && filters.transmissions.length > 0) return false;
   if (filters.conditions && filters.conditions.length > 0) return false;
   if (filters.vehicleTypes && filters.vehicleTypes.length > 0) return false;
-  if (filters.location || filters.colour) return false;
+  if (filters.placeId || filters.colour) return false;
   if (filters.status && filters.status !== "all") return false;
   if (filters.sort && filters.sort !== "newest") return false;
   return true;
@@ -208,7 +209,7 @@ export function parseListingFilterQuery(
     transmissions: splitCsvFilter(query.transmission),
     conditions: splitCsvFilter(query.condition),
     vehicleTypes: splitCsvFilter(query.vehicleType),
-    location: query.location?.trim() || undefined,
+    placeId: query.placeId?.trim() || undefined,
     colour: query.colour?.trim() || undefined,
     status,
     priceMin: query.priceMin?.trim() || undefined,
@@ -277,7 +278,9 @@ export function matchesListingFilters(
   if (!includesCsvMatch(filters.transmissions ?? [], row.transmission)) return false;
   if (!includesCsvMatch(filters.conditions ?? [], row.condition ?? "")) return false;
   if (!includesCsvMatch(filters.vehicleTypes ?? [], row.vehicleType ?? "")) return false;
-  if (!substringMatch(filters.location, row.locationLabel)) return false;
+  if (filters.placeId) {
+    if (!row.locationPlaceId || row.locationPlaceId !== filters.placeId) return false;
+  }
   if (!substringMatch(filters.colour, row.colour)) return false;
 
   if (filters.search) {

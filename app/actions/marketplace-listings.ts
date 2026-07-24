@@ -44,7 +44,7 @@ const filterSchema = z.object({
   transmission: z.string().optional(),
   condition: z.string().optional(),
   vehicleType: z.string().optional(),
-  location: z.string().optional(),
+  placeId: z.string().optional(),
   colour: z.string().optional(),
   status: z.enum(["all", "UNVERIFIED", "VERIFIED", "DISPUTED"]).default("all"),
   sort: z.enum(["newest", "price_asc", "price_desc", "mileage_asc"]).default("newest"),
@@ -126,7 +126,7 @@ function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   if (p.transmission) url.searchParams.set("transmission", p.transmission);
   if (p.condition) url.searchParams.set("condition", p.condition);
   if (p.vehicleType) url.searchParams.set("vehicleType", p.vehicleType);
-  if (p.location) url.searchParams.set("location", p.location);
+  if (p.placeId) url.searchParams.set("placeId", p.placeId);
   if (p.colour) url.searchParams.set("colour", p.colour);
   if (p.status !== "all") url.searchParams.set("status", p.status);
   if (p.sort !== "newest") url.searchParams.set("sort", p.sort);

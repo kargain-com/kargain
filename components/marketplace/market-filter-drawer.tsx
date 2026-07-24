@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { PlacePicker } from "@/components/geo/place-picker";
 import { FilterCombobox } from "@/components/marketplace/filter-combobox";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   type MarketFilterState,
   type VerificationFilter,
 } from "@/lib/marketplace/filter-params";
+import type { PassportLocationSelection } from "@/lib/passport/metadata-form";
 import {
   rateRequiredForPriceCurrency,
   ratesReadyForPriceCurrency,
@@ -398,13 +400,34 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
           </DrawerSection>
 
           <DrawerSection title="Location">
-            <input
+            <PlacePicker
               id="drawer-location"
-              type="text"
-              value={draft.location}
-              onChange={(e) => patchDraft({ location: e.target.value })}
-              placeholder="City, region, or country"
-              className="w-full min-h-11 rounded-sm border border-border-default bg-bg-card px-4 py-3 font-sans text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-warm focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
+              label=""
+              value={
+                draft.placeId
+                  ? ({
+                      placeId: draft.placeId,
+                      label: draft.placeLabel || draft.placeId,
+                      countryCode: draft.placeCountryCode,
+                      city: draft.placeLabel || draft.placeId,
+                    } satisfies PassportLocationSelection)
+                  : null
+              }
+              onChange={(selection: PassportLocationSelection | null) => {
+                if (!selection) {
+                  patchDraft({
+                    placeId: "",
+                    placeLabel: "",
+                    placeCountryCode: "",
+                  });
+                  return;
+                }
+                patchDraft({
+                  placeId: selection.placeId,
+                  placeLabel: selection.label,
+                  placeCountryCode: selection.countryCode,
+                });
+              }}
             />
           </DrawerSection>
 

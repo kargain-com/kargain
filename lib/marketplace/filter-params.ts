@@ -29,7 +29,9 @@ export type MarketFilterState = {
   transmissions: string[];
   conditions: string[];
   vehicleTypes: string[];
-  location: string;
+  placeId: string;
+  placeLabel: string;
+  placeCountryCode: string;
   colour: string;
   status: VerificationFilter;
   sort: MarketSort;
@@ -52,7 +54,9 @@ export const DEFAULT_MARKET_FILTERS: MarketFilterState = {
   transmissions: [],
   conditions: [],
   vehicleTypes: [],
-  location: "",
+  placeId: "",
+  placeLabel: "",
+  placeCountryCode: "",
   colour: "",
   status: "all",
   sort: "newest",
@@ -104,7 +108,9 @@ export function filtersFromSearchParams(sp: URLSearchParams): MarketFilterState 
     transmissions: splitCsv(sp.get("transmission")),
     conditions: splitCsv(sp.get("condition")),
     vehicleTypes: splitCsv(sp.get("vehicleType")),
-    location: sp.get("location") ?? "",
+    placeId: sp.get("placeId") ?? "",
+    placeLabel: sp.get("placeLabel") ?? "",
+    placeCountryCode: sp.get("placeCountry") ?? "",
     colour: sp.get("colour") ?? "",
     status,
     sort,
@@ -131,7 +137,11 @@ export function filtersToSearchParams(filters: MarketFilterState): URLSearchPara
   if (filters.transmissions.length) sp.set("transmission", filters.transmissions.join(","));
   if (filters.conditions.length) sp.set("condition", filters.conditions.join(","));
   if (filters.vehicleTypes.length) sp.set("vehicleType", filters.vehicleTypes.join(","));
-  if (filters.location) sp.set("location", filters.location);
+  if (filters.placeId) {
+    sp.set("placeId", filters.placeId);
+    if (filters.placeLabel) sp.set("placeLabel", filters.placeLabel);
+    if (filters.placeCountryCode) sp.set("placeCountry", filters.placeCountryCode);
+  }
   if (filters.colour) sp.set("colour", filters.colour);
   if (filters.status !== "all") sp.set("status", filters.status);
   if (filters.sort !== "newest") sp.set("sort", filters.sort);
@@ -151,7 +161,7 @@ export function countActiveFilters(filters: MarketFilterState): number {
   if (filters.transmissions.length) n++;
   if (filters.conditions.length) n++;
   if (filters.vehicleTypes.length) n++;
-  if (filters.location) n++;
+  if (filters.placeId) n++;
   if (filters.colour) n++;
   if (filters.status !== "all") n++;
   return n;
@@ -167,7 +177,7 @@ export function countDrawerActiveFilters(filters: MarketFilterState): number {
   if (filters.transmissions.length) n++;
   if (filters.conditions.length) n++;
   if (filters.vehicleTypes.length) n++;
-  if (filters.location) n++;
+  if (filters.placeId) n++;
   if (filters.colour) n++;
   return n;
 }
@@ -321,7 +331,7 @@ export function marketFiltersToApiInput(
     transmission: filters.transmissions.length ? filters.transmissions.join(",") : undefined,
     condition: filters.conditions.length ? filters.conditions.join(",") : undefined,
     vehicleType: filters.vehicleTypes.length ? filters.vehicleTypes.join(",") : undefined,
-    location: filters.location.trim() || undefined,
+    placeId: filters.placeId.trim() || undefined,
     colour: filters.colour.trim() || undefined,
     status: filters.status,
     sort: filters.sort,
@@ -342,7 +352,7 @@ export type FilterChipKey =
   | "transmissions"
   | "conditions"
   | "vehicleTypes"
-  | "location"
+  | "placeId"
   | "colour";
 
 export type FilterChip = {
@@ -392,7 +402,12 @@ export function getFilterChips(filters: MarketFilterState): FilterChip[] {
   if (filters.vehicleTypes.length) {
     chips.push({ key: "vehicleTypes", label: formatMultiValueChipLabel(filters.vehicleTypes) });
   }
-  if (filters.location) chips.push({ key: "location", label: filters.location });
+  if (filters.placeId) {
+    chips.push({
+      key: "placeId",
+      label: filters.placeLabel.trim() || filters.placeId,
+    });
+  }
   if (filters.colour) chips.push({ key: "colour", label: filters.colour });
 
   return chips;
@@ -425,8 +440,14 @@ export function clearFilterChip(
       return { ...filters, conditions: [], page: 1 };
     case "vehicleTypes":
       return { ...filters, vehicleTypes: [], page: 1 };
-    case "location":
-      return { ...filters, location: "", page: 1 };
+    case "placeId":
+      return {
+        ...filters,
+        placeId: "",
+        placeLabel: "",
+        placeCountryCode: "",
+        page: 1,
+      };
     case "colour":
       return { ...filters, colour: "", page: 1 };
     default:

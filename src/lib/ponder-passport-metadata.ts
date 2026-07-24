@@ -18,6 +18,8 @@ export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
     vehicleType: indexed.vehicleType,
     colour: indexed.colour,
     locationLabel: indexed.locationLabel,
+    locationPlaceId: indexed.locationPlaceId,
+    locationCountryCode: indexed.locationCountryCode,
     coverPhotoUri: indexed.coverPhotoUri,
   };
 }

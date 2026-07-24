@@ -52,7 +52,7 @@ Ponder observes a **bounded event window** (start block, reindex checkpoints). K
 
 ## Listing API fields (v2 + C3)
 
-Ponder stores `chainId`, `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. Browse/detail also expose passport `custodyChain` / `originChainId`. HTTP API also returns legacy `fiatCurrency` integer (0–10 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
+Ponder stores `chainId`, `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. Browse/detail also expose passport `custodyChain` / `originChainId`. Listing enrichment includes passport `locationLabel`, `locationPlaceId`, and `locationCountryCode` (denormalized from Arweave metadata; empty place fields until URI has a Place selection). HTTP API also returns legacy `fiatCurrency` integer (0–10 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
 
 **Buyer UI:** `agent` on `GET /listings` drives consignment attribution on browse cards and listing detail ([`design-spec.md`](../design-spec.md) §4.16). `agentFeeBps` and `ownerMinPrice1e8` are indexed for agent/owner flows only — not exposed to buyers.
 
@@ -63,6 +63,7 @@ Optional query params for cross-currency **price filter and sort** (stateless AP
 | Param | Purpose |
 |-------|---------|
 | `custodyChain` | Filter browse to passports whose usable instance is on this chain id (C3) |
+| `placeId` | Exact gazetteer place id (`photon:osm:…`) from passport metadata — city PlacePicker filter (Geo Phase C); not free-text |
 | `priceCurrency` | Display currency for `priceMin` / `priceMax` bounds (USD, EUR, ETH, BTC, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY) |
 | `eurUsdRate`, `ethUsdRate`, `btcUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit; `btcUsd` from CoinGecko `exchange_rates.usd`) |
 | `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate`, `aedUsdRate`, `krwUsdRate`, `rubUsdRate`, `jpyUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |

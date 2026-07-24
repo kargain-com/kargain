@@ -24,7 +24,7 @@
     "test:vincent": "node --import tsx --test test/vincent-integration.test.ts",
     "test:vincent:live": "VINCENT_LIVE=1 node --import tsx --test test/vincent-integration.test.ts",
     "test:vincent-commons": "node --import tsx --test test/vincent-commons.test.ts test/vincent-commons-review.test.ts test/vincent-commons-wmi.test.ts test/vincent-commons-registry.test.ts test/vincent-commons-assemble.test.ts test/vincent-commons-confirmation.test.ts test/vincent-commons-acceptance.test.ts",
-    "test:listing": "node --import tsx --test test/listing-query.test.ts",
+    "test:listing": "node --import tsx --test test/listing-query.test.ts test/filter-params.test.ts",
     "test:ponder": "node --import tsx --test test/ponder-indexer.test.ts test/ponder-auction.test.ts",
     "test:trust": "node --import tsx --test test/trust-signals.test.ts",
     "test:records": "node --import tsx --test test/record-types.test.ts",

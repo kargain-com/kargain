@@ -36,6 +36,8 @@ export const passport = onchainTable("passport", (t) => ({
   vehicleType: t.text().notNull().default(""),
   colour: t.text().notNull().default(""),
   locationLabel: t.text().notNull().default(""),
+  locationPlaceId: t.text().notNull().default(""),
+  locationCountryCode: t.text().notNull().default(""),
   disputeDeposit: t.bigint(),
   createdAt: t.bigint().notNull(),
   updatedAt: t.bigint().notNull(),

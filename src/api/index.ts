@@ -116,6 +116,8 @@ type PassportDenorm = {
   vehicleType: string;
   colour: string;
   locationLabel: string;
+  locationPlaceId: string;
+  locationCountryCode: string;
   tokenUri: string;
   coverPhotoUri: string;
   duplicateVin: boolean;
@@ -153,6 +155,8 @@ async function loadPassportMap(
         vehicleType: row.vehicleType,
         colour: row.colour,
         locationLabel: row.locationLabel,
+        locationPlaceId: row.locationPlaceId,
+        locationCountryCode: row.locationCountryCode,
         tokenUri: row.tokenUri,
         coverPhotoUri: row.coverPhotoUri,
         duplicateVin: row.duplicateVin,
@@ -210,6 +214,7 @@ async function loadActiveListingFacetRows(): Promise<EnrichedListingForFilter[]>
     vehicleType: row.vehicleType ?? "",
     colour: "",
     locationLabel: "",
+    locationPlaceId: "",
   }));
 }
 
@@ -249,6 +254,8 @@ function enrichListing(
     vehicleType: p?.vehicleType ?? "",
     colour: p?.colour ?? "",
     locationLabel: p?.locationLabel ?? "",
+    locationPlaceId: p?.locationPlaceId ?? "",
+    locationCountryCode: p?.locationCountryCode ?? "",
     passportStatus,
     verifier: p?.verifier ?? "",
     vin: p?.vin ?? "",
@@ -317,6 +324,8 @@ function enrichAuctionAuthorization(
     vehicleType: p?.vehicleType ?? "",
     colour: p?.colour ?? "",
     locationLabel: p?.locationLabel ?? "",
+    locationPlaceId: p?.locationPlaceId ?? "",
+    locationCountryCode: p?.locationCountryCode ?? "",
     tokenUri: p?.tokenUri ?? "",
     coverPhotoUri: p?.coverPhotoUri ?? "",
     duplicateVin: p?.duplicateVin ?? false,
@@ -382,6 +391,8 @@ async function loadDefaultBrowsePage(
         vehicleType: passport.vehicleType,
         colour: passport.colour,
         locationLabel: passport.locationLabel,
+        locationPlaceId: passport.locationPlaceId,
+        locationCountryCode: passport.locationCountryCode,
         tokenUri: passport.tokenUri,
         coverPhotoUri: passport.coverPhotoUri,
         duplicateVin: passport.duplicateVin,
@@ -432,6 +443,8 @@ async function loadDefaultBrowsePage(
     vehicleType: row.vehicleType ?? "",
     colour: row.colour ?? "",
     locationLabel: row.locationLabel ?? "",
+    locationPlaceId: row.locationPlaceId ?? "",
+    locationCountryCode: row.locationCountryCode ?? "",
     tokenUri: row.tokenUri ?? "",
     coverPhotoUri: row.coverPhotoUri ?? "",
     duplicateVin: row.duplicateVin ?? false,
@@ -461,7 +474,7 @@ app.get("/listings", async (c) => {
     transmission: c.req.query("transmission"),
     condition: c.req.query("condition"),
     vehicleType: c.req.query("vehicleType"),
-    location: c.req.query("location"),
+    placeId: c.req.query("placeId"),
     colour: c.req.query("colour"),
     status: c.req.query("status"),
     priceMin: c.req.query("priceMin"),

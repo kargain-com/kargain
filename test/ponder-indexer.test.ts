@@ -302,7 +302,9 @@ describe("passportMetadataDenorm", () => {
       condition: "",
       vehicleType: "",
       colour: "",
-      locationLabel: "",
+      locationLabel: "Berlin, Germany",
+      locationPlaceId: "photon:osm:N240109189",
+      locationCountryCode: "DE",
       coverPhotoUri: "ar://cover-tx",
     };
     assert.deepEqual(passportMetadataDenorm(indexed), {
@@ -317,9 +319,35 @@ describe("passportMetadataDenorm", () => {
       condition: "",
       vehicleType: "",
       colour: "",
-      locationLabel: "",
+      locationLabel: "Berlin, Germany",
+      locationPlaceId: "photon:osm:N240109189",
+      locationCountryCode: "DE",
       coverPhotoUri: "ar://cover-tx",
     });
+  });
+
+  it("maps empty place fields when metadata has no location", () => {
+    const indexed: IndexedPassportMetadata = {
+      vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: 2021,
+      mileageKm: 0,
+      fuelType: "",
+      bodyType: "",
+      transmission: "",
+      condition: "",
+      vehicleType: "",
+      colour: "",
+      locationLabel: "",
+      locationPlaceId: "",
+      locationCountryCode: "",
+      coverPhotoUri: "",
+    };
+    const denorm = passportMetadataDenorm(indexed);
+    assert.equal(denorm.locationPlaceId, "");
+    assert.equal(denorm.locationCountryCode, "");
+    assert.equal(denorm.locationLabel, "");
   });
 });
 

@@ -203,7 +203,7 @@ export function PlacePicker({
   return (
     <div ref={rootRef} className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <Label htmlFor={inputId}>{label}</Label>
+        {label ? <Label htmlFor={inputId}>{label}</Label> : <span />}
         <Button
           type="button"
           variant="ghost"
