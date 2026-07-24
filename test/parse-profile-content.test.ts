@@ -54,6 +54,40 @@ describe("parseProfileContent messagesEnabled", () => {
   });
 });
 
+describe("parseProfileContent location", () => {
+  it("parses complete place object", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({
+        location: {
+          placeId: "osm:R123",
+          countryCode: "de",
+          label: "Berlin, Germany",
+          city: "Berlin",
+        },
+      }),
+    );
+    assert.deepEqual(profile?.location, {
+      placeId: "osm:R123",
+      countryCode: "DE",
+      label: "Berlin, Germany",
+      city: "Berlin",
+    });
+  });
+
+  it("omits free-text location string", () => {
+    const profile = parseProfileContent(JSON.stringify({ location: "Berlin" }));
+    assert.equal(profile?.location, undefined);
+  });
+
+  it("omits incomplete location object", () => {
+    const profile = parseProfileContent(
+      JSON.stringify({ location: { label: "Berlin" } }),
+    );
+    assert.equal(profile?.location, undefined);
+  });
+});
+
+
 describe("parseProfileContent verifierPaymentMethods", () => {
   it("parses valid methods and dedupes", () => {
     const profile = parseProfileContent(

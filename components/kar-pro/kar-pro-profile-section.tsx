@@ -32,24 +32,25 @@ type KarProProfileSectionProps = {
 
 async function fetchMetadataFields(
   metadataURI: string | undefined,
-): Promise<Pick<KarProProfileFieldValues, "slug" | "description" | "website">> {
+): Promise<Pick<KarProProfileFieldValues, "slug" | "description" | "website" | "location">> {
   if (!metadataURI?.startsWith("ar://")) {
-    return { slug: "", description: "", website: "" };
+    return { slug: "", description: "", website: "", location: null };
   }
   try {
     const url = arUriToHttp(metadataURI);
-    if (!url) return { slug: "", description: "", website: "" };
+    if (!url) return { slug: "", description: "", website: "", location: null };
     const res = await fetch(url);
-    if (!res.ok) return { slug: "", description: "", website: "" };
+    if (!res.ok) return { slug: "", description: "", website: "", location: null };
     const text = await res.text();
     const parsed = parseKarProMetadataJson(text);
     return {
       slug: parsed?.slug ?? "",
       description: parsed?.description ?? "",
       website: parsed?.website ?? "",
+      location: parsed?.location ?? null,
     };
   } catch {
-    return { slug: "", description: "", website: "" };
+    return { slug: "", description: "", website: "", location: null };
   }
 }
 
@@ -74,6 +75,7 @@ export function KarProProfileSection({
     slug: slugProp ?? "",
     description: "",
     website: "",
+    location: null,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function KarProProfileSection({
           slug: extra.slug || slugProp || "",
           description: extra.description,
           website: extra.website,
+          location: extra.location,
         });
       }
     })();
@@ -116,6 +119,7 @@ export function KarProProfileSection({
           slug: fields.slug.trim(),
           description: fields.description.trim() || undefined,
           website: fields.website.trim() || undefined,
+          location: fields.location,
         },
         provider,
       );

@@ -42,6 +42,7 @@ export function KarProJoinForm({
     slug: "",
     description: "",
     website: "",
+    location: null,
   });
   const [slugAvailability, setSlugAvailability] = useState<SlugAvailabilityStatus>("idle");
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("idle");
@@ -96,6 +97,7 @@ export function KarProJoinForm({
           slug: fields.slug.trim(),
           description: fields.description.trim() || undefined,
           website: fields.website.trim() || undefined,
+          location: fields.location,
         },
         provider,
       );

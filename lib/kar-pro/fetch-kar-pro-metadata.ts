@@ -1,3 +1,4 @@
+import type { PlaceSelection } from "@/lib/geo/place-selection";
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 
@@ -5,6 +6,7 @@ export type KarProProfileMetadata = {
   slug?: string;
   description?: string;
   website?: string;
+  location?: PlaceSelection;
 };
 
 function metadataUriToHttp(uri: string): string | null {
@@ -34,6 +36,7 @@ export async function fetchKarProMetadata(
     if (parsed.slug) result.slug = parsed.slug;
     if (parsed.description) result.description = parsed.description;
     if (parsed.website) result.website = parsed.website;
+    if (parsed.location) result.location = parsed.location;
     return result;
   } catch {
     return null;

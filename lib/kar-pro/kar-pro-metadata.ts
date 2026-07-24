@@ -1,3 +1,9 @@
+import {
+  isCompletePlaceSelection,
+  parsePlaceSelection,
+  placeSelectionToWire,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";
 import { uploadJson } from "@/lib/storage/irys-client";
 import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 
@@ -16,6 +22,8 @@ export type KarProMetadata = {
   category: KarProCategoryEnum;
   description?: string;
   website?: string;
+  /** City Place selection — never lat/lng. */
+  location?: PlaceSelection;
 };
 
 export type KarProProfileFields = {
@@ -24,6 +32,7 @@ export type KarProProfileFields = {
   slug: string;
   description?: string;
   website?: string;
+  location?: PlaceSelection | null;
 };
 
 export const KAR_PRO_CATEGORY_OPTIONS = [
@@ -67,6 +76,9 @@ export function buildKarProMetadataJson(fields: KarProProfileFields): string {
   if (description) metadata.description = description;
   const website = fields.website?.trim();
   if (website) metadata.website = website;
+  if (fields.location != null && isCompletePlaceSelection(fields.location)) {
+    metadata.location = parsePlaceSelection(placeSelectionToWire(fields.location)) ?? undefined;
+  }
   return JSON.stringify(metadata);
 }
 
@@ -98,6 +110,8 @@ export function parseKarProMetadataJson(json: string): KarProMetadata | null {
     if (typeof record.website === "string" && record.website.trim()) {
       metadata.website = record.website.trim();
     }
+    const location = parsePlaceSelection(record.location);
+    if (location) metadata.location = location;
     return metadata;
   } catch {
     return null;

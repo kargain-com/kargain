@@ -38,3 +38,11 @@ export {
   type GeoClientSuggestQuery,
   type GeoClientReverseQuery,
 } from "@/lib/geo/client";
+
+export {
+  isCompletePlaceSelection,
+  parsePlaceSelection,
+  placeSelectionToWire,
+  placeSelectionLabel,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";

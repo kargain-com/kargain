@@ -184,3 +184,48 @@ describe("mergeKind0Content verifierPaymentMethods", () => {
     assert.deepEqual(merged.verifierPaymentMethods, ["usdc"]);
   });
 });
+
+describe("mergeKind0Content location", () => {
+  const place = {
+    placeId: "osm:R123",
+    countryCode: "DE",
+    label: "Berlin, Germany",
+    city: "Berlin",
+  };
+
+  it("writes wire object for complete place", () => {
+    const merged = mergeKind0Content({}, { location: place });
+    assert.deepEqual(merged.location, {
+      placeId: "osm:R123",
+      countryCode: "DE",
+      label: "Berlin, Germany",
+      city: "Berlin",
+    });
+  });
+
+  it("clears location when patch is null", () => {
+    const merged = mergeKind0Content(
+      { location: place, name: "Ada" },
+      { location: null },
+    );
+    assert.equal(merged.location, undefined);
+    assert.equal(merged.name, "Ada");
+  });
+
+  it("preserves location when omitted from patch", () => {
+    const merged = mergeKind0Content(
+      { location: place, name: "Old" },
+      { name: "New" },
+    );
+    assert.deepEqual(merged.location, place);
+    assert.equal(merged.name, "New");
+  });
+
+  it("does not invent lat/lng keys", () => {
+    const merged = mergeKind0Content({}, { location: place });
+    const loc = merged.location as Record<string, unknown>;
+    assert.equal("lat" in loc, false);
+    assert.equal("lng" in loc, false);
+  });
+});
+

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useReadContract, useWalletClient } from "wagmi";
 
+import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { IdentityRelinkCard } from "@/components/profile/identity-relink-card";
 import { MessagingSettingsSection } from "@/components/profile/messaging-settings-section";
@@ -22,6 +23,13 @@ import {
   VerificationPaymentChips,
 } from "@/components/verifier/verification-fee-display";
 import { categoryLabel, monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
+import {
+  isCompletePlaceSelection,
+  parsePlaceSelection,
+  placeSelectionLabel,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";
+import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
 import { paymentMethodChipIds } from "@/lib/verifier/payment-methods";
@@ -40,6 +48,23 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 const ABOUT_MAX = 280;
 
 type SaveStatus = "idle" | "success" | "error";
+
+function toPickerValue(selection: PlaceSelection | null): PlacePickerValue | null {
+  if (!selection) return null;
+  return {
+    placeId: selection.placeId,
+    countryCode: selection.countryCode,
+    label: selection.label,
+    city: selection.city,
+    ...(selection.region ? { region: selection.region } : {}),
+  };
+}
+
+function fromPickerValue(value: PlacePickerValue | null): PlaceSelection | null {
+  if (!value) return null;
+  const parsed = parsePlaceSelection(value);
+  return parsed != null && isCompletePlaceSelection(parsed) ? parsed : null;
+}
 
 function SectionEyebrow({ children }: { children: string }) {
   return (
@@ -84,6 +109,11 @@ export function ProfileEditClient() {
   const [website, setWebsite] = useState("");
   const [lud16, setLud16] = useState("");
   const [lud16Touched, setLud16Touched] = useState(false);
+  const [location, setLocation] = useState<PlaceSelection | null>(null);
+  const [karProLocationFetch, setKarProLocationFetch] = useState<{
+    uri: string;
+    label: string | null;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
@@ -110,6 +140,14 @@ export function ProfileEditClient() {
   });
   const { stakeLabel } = useMinStakeNative(chainId ?? undefined);
 
+  const verifierStatusPending = verifierStatusEnabled && verifierReadPending;
+  const verifierActive = isActiveVerifier === true;
+  const verifierResolvedNonVerifier = !verifierStatusPending && !verifierActive;
+  const karProMetadataURI =
+    verifierActive && verifierProfile?.metadataURI
+      ? verifierProfile.metadataURI
+      : null;
+
   useEffect(() => {
     if (!profile) return;
     if (!touchedRef.current.has("picture")) setPicture(profile.picture ?? "");
@@ -117,8 +155,30 @@ export function ProfileEditClient() {
     if (!touchedRef.current.has("about")) setAbout(profile.about ?? "");
     if (!touchedRef.current.has("website")) setWebsite(profile.website ?? "");
     if (!touchedRef.current.has("lud16")) setLud16(profile.lud16 ?? "");
+    if (!touchedRef.current.has("location")) {
+      setLocation(profile.location ?? null);
+    }
   }, [profile]);
 
+  useEffect(() => {
+    if (!karProMetadataURI) return;
+    let cancelled = false;
+    void fetchKarProMetadata(karProMetadataURI).then((meta) => {
+      if (cancelled) return;
+      setKarProLocationFetch({
+        uri: karProMetadataURI,
+        label: placeSelectionLabel(meta?.location ?? null),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [karProMetadataURI]);
+
+  const karProLocationLabel =
+    karProMetadataURI != null && karProLocationFetch?.uri === karProMetadataURI
+      ? karProLocationFetch.label
+      : null;
   useEffect(() => {
     if (saveStatus === "idle") return;
     const delay = saveStatus === "success" ? 3000 : 4000;
@@ -131,9 +191,6 @@ export function ProfileEditClient() {
     setDirty(true);
   }, []);
 
-  const verifierStatusPending = verifierStatusEnabled && verifierReadPending;
-  const verifierActive = isActiveVerifier === true;
-  const verifierResolvedNonVerifier = !verifierStatusPending && !verifierActive;
   const lud16Invalid = verifierResolvedNonVerifier && isLightningAddressInvalid(lud16);
   const profileSaveBlocked = identityMismatch !== false;
 
@@ -148,7 +205,8 @@ export function ProfileEditClient() {
     try {
       const patch = buildProfileEditPatch(
         touchedRef.current,
-        { name, about, picture, website, lud16 },
+        { name, about, picture, website, lud16, location },
+        verifierResolvedNonVerifier,
         verifierResolvedNonVerifier,
       );
       const ok = await publishNostrProfile(
@@ -168,7 +226,21 @@ export function ProfileEditClient() {
     } finally {
       setSaving(false);
     }
-  }, [walletClient, address, saving, name, about, picture, website, lud16, lud16Invalid, verifierResolvedNonVerifier, refetch, profile]);
+  }, [
+    walletClient,
+    address,
+    saving,
+    name,
+    about,
+    picture,
+    website,
+    lud16,
+    location,
+    lud16Invalid,
+    verifierResolvedNonVerifier,
+    refetch,
+    profile,
+  ]);
 
   if (!isConnected) {
     return (
@@ -300,6 +372,32 @@ export function ProfileEditClient() {
                 setLud16(value);
               }}
               onBlur={() => setLud16Touched(true)}
+            />
+          )}
+
+          {verifierActive ? (
+            <div className="flex flex-col gap-1.5">
+              <Label>Location</Label>
+              <p className="font-mono text-sm text-text-secondary">
+                {karProLocationLabel ??
+                  placeSelectionLabel(profile?.location ?? null) ??
+                  "—"}
+              </p>
+              <p className="font-sans text-sm text-text-secondary">
+                <Link href={karProSectionHref("profile")} className={sansLink}>
+                  Managed in KarPro settings
+                </Link>
+              </p>
+            </div>
+          ) : (
+            <PlacePicker
+              id="profile-location"
+              value={toPickerValue(location)}
+              disabled={saving || verifierStatusPending}
+              onChange={(next) => {
+                markTouched("location");
+                setLocation(fromPickerValue(next));
+              }}
             />
           )}
 

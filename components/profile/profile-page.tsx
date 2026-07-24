@@ -39,6 +39,10 @@ import {
   sansLinkUnderline,
   serialLabel,
 } from "@/lib/design/instrument-classes";
+import {
+  placeSelectionLabel,
+} from "@/lib/geo/place-selection";
+import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
@@ -186,16 +190,27 @@ function formatWebsiteLabel(raw: string): string {
   }
 }
 
-function ProfileBio({ about, website }: { about: string; website: string }) {
+function ProfileBio({
+  about,
+  website,
+  locationLabel,
+}: {
+  about: string;
+  website: string;
+  locationLabel: string | null;
+}) {
   const href = website ? normalizeWebsiteHref(website) : null;
   const label = website ? formatWebsiteLabel(website) : "";
 
-  if (!about && !href) return null;
+  if (!about && !href && !locationLabel) return null;
 
   return (
     <div className="-mt-2 flex flex-col gap-2 sm:pl-[8.5rem]">
       {about && (
         <p className="font-sans text-sm leading-relaxed text-text-secondary">{about}</p>
+      )}
+      {locationLabel && (
+        <p className="font-mono text-sm text-text-secondary">{locationLabel}</p>
       )}
       {href && (
         <a
@@ -483,6 +498,38 @@ export function ProfilePage({
 
   const about = profile?.about?.trim() ?? "";
   const website = profile?.website?.trim() ?? "";
+  const nostrLocationLabel = placeSelectionLabel(profile?.location ?? null);
+  const karProMetadataURI =
+    isActiveVerifier && verifierProfile?.metadataURI
+      ? verifierProfile.metadataURI
+      : null;
+  const [karProLocationFetch, setKarProLocationFetch] = useState<{
+    uri: string;
+    label: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!karProMetadataURI) return;
+    let cancelled = false;
+    void fetchKarProMetadata(karProMetadataURI).then((meta) => {
+      if (cancelled) return;
+      setKarProLocationFetch({
+        uri: karProMetadataURI,
+        label: placeSelectionLabel(meta?.location ?? null),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [karProMetadataURI]);
+
+  const karProLocationLabel =
+    karProMetadataURI != null && karProLocationFetch?.uri === karProMetadataURI
+      ? karProLocationFetch.label
+      : null;
+  const locationLabel = isActiveVerifier
+    ? (karProLocationLabel ?? nostrLocationLabel)
+    : nostrLocationLabel;
   const subjectName = verifierProfile?.name?.trim() || navShortAddress(wallet);
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-text-primary">
@@ -496,7 +543,7 @@ export function ProfilePage({
           showEditButton={isOwner}
         />
 
-        <ProfileBio about={about} website={website} />
+        <ProfileBio about={about} website={website} locationLabel={locationLabel} />
 
         {isOwner && <AccountSetupBanner />}
 

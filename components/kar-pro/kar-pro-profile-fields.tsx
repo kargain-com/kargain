@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/icons";
 import { useEffect, useRef } from "react";
 
+import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +16,11 @@ import {
   useSlugAvailability,
   type SlugAvailabilityStatus,
 } from "@/hooks/use-slug-availability";
+import {
+  isCompletePlaceSelection,
+  parsePlaceSelection,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";
 import { KAR_PRO_CATEGORY_OPTIONS } from "@/lib/kar-pro/kar-pro-metadata";
 import { slugify } from "@/lib/kar-pro/kar-pro-slug-rules";
 
@@ -24,9 +30,26 @@ export type KarProProfileFieldValues = {
   slug: string;
   description: string;
   website: string;
+  location: PlaceSelection | null;
 };
 
 export type { SlugAvailabilityStatus };
+
+function toPickerValue(selection: PlaceSelection | null): PlacePickerValue | null {
+  if (!selection) return null;
+  return {
+    placeId: selection.placeId,
+    countryCode: selection.countryCode,
+    label: selection.label,
+    city: selection.city,
+    ...(selection.region ? { region: selection.region } : {}),
+  };
+}
+
+function fromPickerValue(value: PlacePickerValue | null): PlaceSelection | null {
+  if (!value) return null;
+  return parsePlaceSelection(value);
+}
 
 type KarProProfileFieldsProps = {
   idPrefix?: string;
@@ -229,6 +252,21 @@ export function KarProProfileFields({
           placeholder="https://"
         />
       </div>
+
+      <PlacePicker
+        id={`${idPrefix}-location`}
+        label="Location"
+        value={toPickerValue(values.location)}
+        disabled={disabled}
+        onChange={(next) => {
+          const parsed = fromPickerValue(next);
+          onChange({
+            ...values,
+            location:
+              parsed != null && isCompletePlaceSelection(parsed) ? parsed : null,
+          });
+        }}
+      />
     </div>
   );
 }

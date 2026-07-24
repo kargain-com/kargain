@@ -6,9 +6,14 @@ import {
   parseProfileAttestationField,
   type ProfileAttestationV1,
 } from "@/lib/nostr/profile-attestation";
+import {
+  parsePlaceSelection,
+  type PlaceSelection,
+} from "@/lib/geo/place-selection";
 
 export type { PaymentMethodId };
 export type { ProfileAttestationV1 };
+export type { PlaceSelection };
 
 export type NostrProfileData = {
   name?: string;
@@ -23,6 +28,8 @@ export type NostrProfileData = {
   verifierPaymentMethods?: PaymentMethodId[];
   /** Wallet-signed binding of nostr pubkey to ethereum address (NS-1). */
   attestation?: ProfileAttestationV1;
+  /** City Place selection (Kargain structured object — not NIP free-text). */
+  location?: PlaceSelection | null;
 };
 
 export function parseProfileContent(content: string): NostrProfileData | null {
@@ -48,6 +55,9 @@ export function parseProfileContent(content: string): NostrProfileData | null {
 
     const attestation = parseProfileAttestationField(obj.attestation);
     if (attestation) result.attestation = attestation;
+
+    const location = parsePlaceSelection(obj.location);
+    if (location) result.location = location;
 
     return result;
   } catch {

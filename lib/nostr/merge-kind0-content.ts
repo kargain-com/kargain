@@ -10,6 +10,10 @@ import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import { normalizeVerifierPaymentMethods } from "@/lib/nostr/payment-method-id";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import type { AttestedProfileQueryPool } from "@/lib/nostr/resolve-attested-profile";
+import {
+  isCompletePlaceSelection,
+  placeSelectionToWire,
+} from "@/lib/geo/place-selection";
 
 export const KARGAIN_MANAGED_KIND0_KEYS = [
   "name",
@@ -19,6 +23,7 @@ export const KARGAIN_MANAGED_KIND0_KEYS = [
   "messagesEnabled",
   "lud16",
   "verifierPaymentMethods",
+  "location",
   // attestation is intentionally omitted — set only via publish param, preserved by spread
 ] as const;
 
@@ -95,6 +100,15 @@ export function mergeKind0Content(
       merged.verifierPaymentMethods = methods;
     } else {
       delete merged.verifierPaymentMethods;
+    }
+  }
+
+  if ("location" in patch) {
+    const loc = patch.location;
+    if (loc != null && isCompletePlaceSelection(loc)) {
+      merged.location = placeSelectionToWire(loc);
+    } else {
+      delete merged.location;
     }
   }
 
