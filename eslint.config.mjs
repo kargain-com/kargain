@@ -81,7 +81,28 @@ const eslintConfig = [
           message:
             "Silent hub DEFAULT_CHAIN_ID is banned — use lib/web3/chain-context.ts roles (custody / wallet commercial / commercial union / fxRateChainId / storageEnvChainId).",
         },
+        {
+          selector: "Literal[value=/photon\\.komoot\\.io/]",
+          message:
+            "Photon host may only appear in lib/geo/photon-config.ts or lib/geo/adapters/** — use PlaceDirectory /api/geo proxy.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/photon\\.komoot\\.io/]",
+          message:
+            "Photon host may only appear in lib/geo/photon-config.ts or lib/geo/adapters/** — use PlaceDirectory /api/geo proxy.",
+        },
       ],
+    },
+  },
+  {
+    // Public Photon default URL + sole HTTP adapter (geo choke-point).
+    files: [
+      "lib/geo/photon-config.ts",
+      "lib/geo/adapters/**",
+      "test/geo-*.test.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": "off",
     },
   },
   {
