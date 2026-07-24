@@ -1,6 +1,5 @@
 import {
   getIrysUploader,
-  isIrysDevnet,
   prepareUserPaidUpload,
   uploadFilesWithUploader,
   uploadJson,
@@ -48,9 +47,7 @@ export function formatPassportUploadError(err: unknown): string {
       return "Wallet signature cancelled.";
     }
     if (err.message.includes("402 error")) {
-      return isIrysDevnet()
-        ? "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again."
-        : "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again.";
+      return "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again.";
     }
     if (err.message.includes("not sent to any of this bundler")) {
       return (
@@ -60,7 +57,7 @@ export function formatPassportUploadError(err: unknown): string {
       );
     }
     if (err.message.includes("failed to post funding tx")) {
-      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on Base Sepolia.";
+      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on a supported testnet.";
     }
     return err.message;
   }
