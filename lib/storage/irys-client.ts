@@ -1,11 +1,14 @@
 import { WebUploader } from "@irys/web-upload";
 import type BaseWebIrys from "@irys/web-upload/base";
-import { WebBaseEth } from "@irys/web-upload-ethereum";
+import { WebBaseEth, WebEthereum } from "@irys/web-upload-ethereum";
 import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
 import { BrowserProvider } from "ethers";
 
 import { estimateIrysUploadBytes } from "@/lib/storage/irys-upload-estimate";
-import { rpcUrlForChain } from "@/lib/web3/supported-chains";
+import {
+  planIrysUpload,
+  type IrysPaymentToken,
+} from "@/lib/storage/irys-upload-plan";
 
 export const IRYS_GATEWAY = "https://arweave.net";
 
@@ -19,13 +22,8 @@ type Eip1193Provider = {
   request: (args: { method: string; params?: readonly unknown[] }) => Promise<unknown>;
 };
 
-const BASE_CHAIN_IDS = new Set([8453, 84532]);
-
 /** HTTP timeout for Irys bundler requests (large photo batches can be slow). */
 const UPLOAD_TIMEOUT_MS = 120_000;
-
-const DEVNET_NODE_URL = "https://devnet.irys.xyz";
-const MAINNET_NODE_URL = "https://node2.irys.xyz";
 
 /** Gas fee multiplier passed to Irys fund() for congested testnets. */
 const FUND_FEE_MULTIPLIER = 1.2;
@@ -34,6 +32,21 @@ const FUND_POLL_INTERVAL_MS = 2_000;
 const FUND_POLL_TIMEOUT_MS = 60_000;
 
 type IrysBalance = Awaited<ReturnType<IrysUploader["getBalance"]>>;
+
+type IrysTokenConstructable = typeof WebBaseEth | typeof WebEthereum;
+
+function irysTokenConstructable(token: IrysPaymentToken): IrysTokenConstructable {
+  switch (token) {
+    case "base-eth":
+      return WebBaseEth;
+    case "ethereum":
+      return WebEthereum;
+    default: {
+      const _exhaustive: never = token;
+      throw new Error(`Unknown Irys payment token: ${_exhaustive}`);
+    }
+  }
+}
 
 async function waitForFundingConfirmation(
   uploader: IrysUploader,
@@ -51,7 +64,11 @@ async function waitForFundingConfirmation(
   );
 }
 
-let cachedUploader: { provider: unknown; uploader: IrysUploader } | null = null;
+let cachedUploader: {
+  provider: unknown;
+  chainId: number;
+  uploader: IrysUploader;
+} | null = null;
 
 function assertBrowser(): void {
   if (typeof window === "undefined") {
@@ -77,18 +94,6 @@ async function readChainId(provider: Eip1193Provider): Promise<number> {
     return result;
   }
   throw new Error("Unable to read wallet chain ID");
-}
-
-function irysNodeUrl(chainId: number): string {
-  // Base mainnet and Ethereum mainnet use node2.irys.xyz
-  // All testnets use devnet.irys.xyz
-  const MAINNET_CHAIN_IDS = new Set([1, 8453]);
-  return MAINNET_CHAIN_IDS.has(chainId) ? MAINNET_NODE_URL : DEVNET_NODE_URL;
-}
-
-function isDevnet(chainId: number): boolean {
-  const MAINNET_CHAIN_IDS = new Set([1, 8453]);
-  return !MAINNET_CHAIN_IDS.has(chainId);
 }
 
 function mergeTags(contentType: string, tags?: IrysTag[]): IrysTag[] {
@@ -127,44 +132,39 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
   assertBrowser();
   const providerKey = provider ?? window.ethereum;
 
-  if (cachedUploader && cachedUploader.provider === providerKey) {
-    return cachedUploader.uploader;
-  }
-
   try {
     const eip1193 = resolveProvider(providerKey);
     const chainId = await readChainId(eip1193);
 
-    if (!BASE_CHAIN_IDS.has(chainId)) {
-      throw new Error(`Unsupported chain for Irys uploads: ${chainId}`);
+    if (
+      cachedUploader &&
+      cachedUploader.provider === providerKey &&
+      cachedUploader.chainId === chainId
+    ) {
+      return cachedUploader.uploader;
     }
 
+    const plan = planIrysUpload(chainId);
     const ethersProvider = new BrowserProvider(eip1193);
-    const url = irysNodeUrl(chainId);
+    const Token = irysTokenConstructable(plan.paymentToken);
 
-    let builder = WebUploader(WebBaseEth)
+    let builder = WebUploader(Token)
       .withAdapter(EthersV6Adapter(ethersProvider))
-      .bundlerUrl(url)
-      .withRpc(rpcUrlForChain(chainId))
+      .bundlerUrl(plan.bundlerUrl)
+      .withRpc(plan.rpcUrl)
       .timeout(UPLOAD_TIMEOUT_MS);
 
-    if (isDevnet(chainId)) {
+    if (plan.devnet) {
       builder = builder.devnet();
     }
 
     const uploader = await builder;
-    cachedUploader = { provider: providerKey, uploader };
+    cachedUploader = { provider: providerKey, chainId, uploader };
     return uploader;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to connect Irys uploader: ${message}`);
   }
-}
-
-export function isIrysDevnet(): boolean {
-  // Check configured default chain — Base Sepolia (84532) uses devnet
-  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532");
-  return isDevnet(chainId);
 }
 
 /** Drop cached uploader after a failed upload so the next attempt reconnects cleanly. */
