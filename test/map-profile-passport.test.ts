@@ -8,11 +8,15 @@ import {
 } from "../lib/passport/map-profile-passport.ts";
 
 describe("mapProfilePassport", () => {
-  it("parses origin and custodyChain", () => {
+  it("parses origin, custody, and denorm display fields", () => {
     const row = mapProfilePassport({
       id: "42",
       status: "VERIFIED",
       vin: "1HGBH41JXMN109186",
+      make: "Honda",
+      model: "Civic",
+      year: 2020,
+      coverPhotoUri: "ar://covertxid",
       chainId: 84532,
       custodyChain: 11155111,
     });
@@ -22,6 +26,29 @@ describe("mapProfilePassport", () => {
     assert.equal(row.custodyChain, 11155111);
     assert.equal(row.status, "VERIFIED");
     assert.equal(row.vin, "1HGBH41JXMN109186");
+    assert.equal(row.make, "Honda");
+    assert.equal(row.model, "Civic");
+    assert.equal(row.year, 2020);
+    assert.ok(row.imageUrl);
+    assert.match(row.imageUrl, /covertxid/);
+  });
+
+  it("nulls empty cover and trims empty vin", () => {
+    const row = mapProfilePassport({
+      id: "1",
+      status: "UNVERIFIED",
+      vin: "  ",
+      make: "",
+      model: "",
+      year: 0,
+      coverPhotoUri: "",
+      chainId: 84532,
+      custodyChain: 84532,
+    });
+    assert.ok(row);
+    assert.equal(row.vin, null);
+    assert.equal(row.imageUrl, null);
+    assert.equal(row.year, 0);
   });
 
   it("preserves home custody when equal to origin", () => {
@@ -64,7 +91,7 @@ describe("mapProfilePassport", () => {
 });
 
 describe("mapProfileListing", () => {
-  it("uses custodyChain for active listings", () => {
+  it("maps denorm fields including year vin cover", () => {
     const row = mapProfileListing({
       tokenId: "7",
       active: true,
@@ -74,11 +101,17 @@ describe("mapProfileListing", () => {
       originChainId: 84532,
       make: "Honda",
       model: "Civic",
+      year: 2019,
+      vin: "1HGBH41JXMN109186",
+      coverPhotoUri: "https://example.com/a.jpg",
     });
     assert.ok(row);
     assert.equal(row.custodyChain, 11155111);
     assert.equal(row.originChainId, 84532);
     assert.equal(row.make, "Honda");
+    assert.equal(row.year, 2019);
+    assert.equal(row.vin, "1HGBH41JXMN109186");
+    assert.equal(row.imageUrl, "https://example.com/a.jpg");
   });
 
   it("falls back to listing chainId when custody missing", () => {
@@ -90,6 +123,7 @@ describe("mapProfileListing", () => {
     });
     assert.ok(row);
     assert.equal(row.custodyChain, 11155111);
+    assert.equal(row.imageUrl, null);
   });
 
   it("drops inactive listings", () => {

@@ -2,6 +2,7 @@ import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-type
 import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
+import { resolveUri } from "@/lib/storage/resolve-uri";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import { mapVerifierDetailToProfile } from "./map-verifier-profile";
@@ -33,6 +34,9 @@ export type VerifierPublicPassportRow = VerifierPassportRow & {
   chainId: number;
   /** Where the token lives — detail links use this. */
   custodyChain: number;
+  /** Resolved cover HTTP URL, or null when absent. */
+  imageUrl: string | null;
+  vin: string | null;
 };
 
 export type VerifierPublicData = {
@@ -49,21 +53,30 @@ function parsePositiveChainId(value: unknown): number | null {
   return n;
 }
 
+function coverImageUrl(coverPhotoUri: unknown): string | null {
+  if (typeof coverPhotoUri !== "string" || !coverPhotoUri.trim()) return null;
+  return resolveUri(coverPhotoUri);
+}
+
 function mapVerifierPassportRow(
   p: Record<string, unknown>,
 ): VerifierPublicPassportRow | null {
   const chainId = parsePositiveChainId(p.chainId);
   if (chainId == null) return null;
   const custodyChain = parsePositiveChainId(p.custodyChain) ?? chainId;
+  const yearRaw = typeof p.year === "number" ? p.year : Number(p.year ?? 0);
+  const vinRaw = typeof p.vin === "string" ? p.vin.trim() : "";
   return {
     tokenId: String(p.id ?? ""),
     status: (p.status as PassportStatus) ?? "UNVERIFIED",
     make: typeof p.make === "string" ? p.make : "",
     model: typeof p.model === "string" ? p.model : "",
-    year: typeof p.year === "number" ? p.year : Number(p.year ?? 0),
+    year: Number.isFinite(yearRaw) && yearRaw > 0 ? Math.trunc(yearRaw) : 0,
     verifiedAt: p.verifiedAt != null ? String(p.verifiedAt) : "0",
     chainId,
     custodyChain,
+    imageUrl: coverImageUrl(p.coverPhotoUri),
+    vin: vinRaw || null,
   };
 }
 

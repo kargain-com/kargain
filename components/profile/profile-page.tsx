@@ -25,6 +25,7 @@ import { ProfileActionBanner } from "@/components/profile/profile-action-banner"
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { DelegatedVehiclesTab } from "@/components/profile/delegated-vehicles-tab";
+import { ProfilePassportCard } from "@/components/profile/profile-passport-card";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
@@ -43,6 +44,7 @@ import {
   placeSelectionLabel,
 } from "@/lib/geo/place-selection";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
+import { LISTING_CARD_GRID_NARROW } from "@/lib/marketplace/listing-card-grid";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { mergeProfilePassportWithTransit } from "@/lib/passport/bridge-transit";
 import {
@@ -52,16 +54,16 @@ import {
   subscribeBridgeTransit,
 } from "@/lib/passport/bridge-transit-store";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
-import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
+import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/format/relative-time";
-import {
-  isProfilePassportBridgedAway,
-  type ProfileListingRow,
-  type ProfilePassportRow,
+import type {
+  ProfileListingRow,
+  ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
-import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
+import { buildVehicleLabel } from "@/lib/passport/vehicle-label";
 import { shortChainName } from "@/lib/web3/supported-chains";
+import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = ProfilePassportRow;
 
@@ -234,75 +236,6 @@ function ProfileBio({
   );
 }
 
-function PassportProfileCard({
-  tokenId,
-  status,
-  chainId,
-  custodyChain,
-  vin,
-  make,
-  model,
-  year,
-  transitBadge,
-  hrefChainId,
-}: {
-  tokenId: string;
-  status: PassportStatus;
-  /** Origin chain for id label. */
-  chainId: number;
-  /** Custody chain for detail link + bridged-away badge. */
-  custodyChain: number;
-  vin?: string | null;
-  make?: string;
-  model?: string;
-  year?: number;
-  /** Own-profile bridge transit overlay. */
-  transitBadge?: string | null;
-  hrefChainId?: number;
-}) {
-  const bridgedAway =
-    !transitBadge && isProfilePassportBridgedAway(chainId, custodyChain);
-  const custodyLabel = shortChainName(custodyChain);
-  const linkChain = hrefChainId ?? custodyChain;
-
-  return (
-    <Link
-      href={`/marketplace/${tokenId}?chain=${linkChain}`}
-      className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm transition-colors duration-150 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-    >
-      <PassportIdLabel
-        tokenId={tokenId}
-        chainId={chainId}
-        prefix="none"
-        variant="mono"
-        className="text-text-primary"
-      />
-      <span className="ml-2">
-        <PassportStatusBadge status={status} />
-      </span>
-      {transitBadge ? (
-        <span className="ml-2 font-mono text-xs tabular-nums text-text-tertiary">
-          {transitBadge}
-        </span>
-      ) : bridgedAway ? (
-        <span
-          className="ml-2 font-mono text-xs tabular-nums text-text-tertiary"
-          title={`Custody on chain ${custodyChain}`}
-        >
-          on {custodyLabel}
-        </span>
-      ) : null}
-      {vin && <span className="ml-2 text-xs text-text-secondary">{vin}</span>}
-      {make && model && (
-        <p className="mt-1 font-sans text-sm text-text-primary">
-          {year != null && year > 0 ? `${year} ` : ""}
-          {make} {model}
-        </p>
-      )}
-    </Link>
-  );
-}
-
 function AttestationRow({
   attestation,
   chainId,
@@ -350,16 +283,6 @@ function AttestationRow({
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-function formatVehicleLabel(year: number, make: string, model: string): string {
-  const parts: string[] = [];
-  if (year > 0) parts.push(String(year));
-  const makeTrimmed = make.trim();
-  const modelTrimmed = model.trim();
-  if (makeTrimmed) parts.push(makeTrimmed);
-  if (modelTrimmed) parts.push(modelTrimmed);
-  return parts.join(" ");
-}
-
 function isNonemptyDisputer(address: string): boolean {
   const trimmed = address.trim();
   return trimmed.length > 0 && trimmed.toLowerCase() !== ZERO_ADDRESS;
@@ -372,7 +295,7 @@ function DisputeCard({
   dispute: DisputedPassportRow;
   chainId: number;
 }) {
-  const vehicleLabel = formatVehicleLabel(dispute.year, dispute.make, dispute.model);
+  const vehicleLabel = buildVehicleLabel(dispute.year, dispute.make, dispute.model);
   const reason = dispute.disputeReason.trim();
   const openedLabel =
     Number.isFinite(dispute.disputeOpenedAt) && dispute.disputeOpenedAt > 0
@@ -678,17 +601,21 @@ export function ProfilePage({
                   }
                 />
               ) : (
-                <ul className="grid gap-3 sm:grid-cols-2">
+                <ul className={LISTING_CARD_GRID_NARROW}>
                   {passports.map((p) => {
                     const transit = passportTransitOverlays.get(p.tokenId);
                     return (
-                      <li key={`${p.tokenId}-${p.custodyChain}`}>
-                        <PassportProfileCard
+                      <li key={`${p.tokenId}-${p.custodyChain}`} className="min-h-0">
+                        <ProfilePassportCard
                           tokenId={p.tokenId}
                           status={p.status}
                           chainId={p.chainId}
                           custodyChain={p.custodyChain}
+                          make={p.make}
+                          model={p.model}
+                          year={p.year}
                           vin={p.vin}
+                          imageUrl={p.imageUrl}
                           transitBadge={transit?.badge}
                           hrefChainId={transit?.hrefChainId}
                         />
@@ -716,16 +643,19 @@ export function ProfilePage({
                   }
                 />
               ) : (
-                <ul className="grid gap-3 sm:grid-cols-2">
+                <ul className={LISTING_CARD_GRID_NARROW}>
                   {listings.map((l) => (
-                    <li key={`${l.tokenId}-${l.custodyChain}`}>
-                      <PassportProfileCard
+                    <li key={`${l.tokenId}-${l.custodyChain}`} className="min-h-0">
+                      <ProfilePassportCard
                         tokenId={l.tokenId}
                         status={l.passportStatus}
                         chainId={l.originChainId ?? l.custodyChain}
                         custodyChain={l.custodyChain}
                         make={l.make}
                         model={l.model}
+                        year={l.year}
+                        vin={l.vin}
+                        imageUrl={l.imageUrl}
                       />
                     </li>
                   ))}
@@ -760,10 +690,10 @@ export function ProfilePage({
                   />
                 </div>
               ) : (
-                <ul className="grid gap-3 sm:grid-cols-2">
+                <ul className={LISTING_CARD_GRID_NARROW}>
                   {verifiedPassports.map((p) => (
-                    <li key={`${p.tokenId}-${p.custodyChain}`}>
-                      <PassportProfileCard
+                    <li key={`${p.tokenId}-${p.custodyChain}`} className="min-h-0">
+                      <ProfilePassportCard
                         tokenId={p.tokenId}
                         status={p.status}
                         chainId={p.chainId}
@@ -771,6 +701,8 @@ export function ProfilePage({
                         make={p.make}
                         model={p.model}
                         year={p.year}
+                        vin={p.vin}
+                        imageUrl={p.imageUrl}
                       />
                     </li>
                   ))}
