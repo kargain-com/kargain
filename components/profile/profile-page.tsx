@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/icons";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import type {
@@ -44,6 +44,13 @@ import {
 } from "@/lib/geo/place-selection";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import { mergeProfilePassportWithTransit } from "@/lib/passport/bridge-transit";
+import {
+  getBridgeTransit,
+  getBridgeTransitSnapshot,
+  hydrateBridgeTransitFromSession,
+  subscribeBridgeTransit,
+} from "@/lib/passport/bridge-transit-store";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
@@ -236,6 +243,8 @@ function PassportProfileCard({
   make,
   model,
   year,
+  transitBadge,
+  hrefChainId,
 }: {
   tokenId: string;
   status: PassportStatus;
@@ -247,13 +256,18 @@ function PassportProfileCard({
   make?: string;
   model?: string;
   year?: number;
+  /** Own-profile bridge transit overlay. */
+  transitBadge?: string | null;
+  hrefChainId?: number;
 }) {
-  const bridgedAway = isProfilePassportBridgedAway(chainId, custodyChain);
+  const bridgedAway =
+    !transitBadge && isProfilePassportBridgedAway(chainId, custodyChain);
   const custodyLabel = shortChainName(custodyChain);
+  const linkChain = hrefChainId ?? custodyChain;
 
   return (
     <Link
-      href={`/marketplace/${tokenId}?chain=${custodyChain}`}
+      href={`/marketplace/${tokenId}?chain=${linkChain}`}
       className="block rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm transition-colors duration-150 hover:border-border-hover focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
     >
       <PassportIdLabel
@@ -266,14 +280,18 @@ function PassportProfileCard({
       <span className="ml-2">
         <PassportStatusBadge status={status} />
       </span>
-      {bridgedAway && (
+      {transitBadge ? (
+        <span className="ml-2 font-mono text-xs tabular-nums text-text-tertiary">
+          {transitBadge}
+        </span>
+      ) : bridgedAway ? (
         <span
           className="ml-2 font-mono text-xs tabular-nums text-text-tertiary"
           title={`Custody on chain ${custodyChain}`}
         >
           on {custodyLabel}
         </span>
-      )}
+      ) : null}
       {vin && <span className="ml-2 text-xs text-text-secondary">{vin}</span>}
       {make && model && (
         <p className="mt-1 font-sans text-sm text-text-primary">
@@ -434,9 +452,44 @@ export function ProfilePage({
   delegatedCount = null,
 }: ProfilePageProps) {
   const searchParams = useSearchParams();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
+
+  const transitStoreVersion = useSyncExternalStore(
+    subscribeBridgeTransit,
+    getBridgeTransitSnapshot,
+    getBridgeTransitSnapshot,
+  );
+
+  useEffect(() => {
+    if (!isOwner || !address) return;
+    for (const p of passports) {
+      hydrateBridgeTransitFromSession(address, p.tokenId);
+    }
+  }, [address, isOwner, passports]);
+
+  const passportTransitOverlays = useMemo(() => {
+    if (!isOwner || !address) return new Map<string, { badge: string; hrefChainId: number }>();
+    const map = new Map<string, { badge: string; hrefChainId: number }>();
+    for (const p of passports) {
+      const transit = getBridgeTransit(address, p.tokenId);
+      const overlay = mergeProfilePassportWithTransit({
+        tokenId: p.tokenId,
+        originChainId: p.chainId,
+        custodyChain: p.custodyChain,
+        transit,
+        dstName: transit ? shortChainName(transit.dstChainId) : "",
+      });
+      if (overlay.inTransit && overlay.badge) {
+        map.set(p.tokenId, {
+          badge: overlay.badge,
+          hrefChainId: overlay.hrefChainId,
+        });
+      }
+    }
+    return map;
+  }, [address, isOwner, passports, transitStoreVersion]);
 
   const showVerifierHistory =
     isActiveVerifier ||
@@ -626,17 +679,22 @@ export function ProfilePage({
                 />
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2">
-                  {passports.map((p) => (
-                    <li key={`${p.tokenId}-${p.custodyChain}`}>
-                      <PassportProfileCard
-                        tokenId={p.tokenId}
-                        status={p.status}
-                        chainId={p.chainId}
-                        custodyChain={p.custodyChain}
-                        vin={p.vin}
-                      />
-                    </li>
-                  ))}
+                  {passports.map((p) => {
+                    const transit = passportTransitOverlays.get(p.tokenId);
+                    return (
+                      <li key={`${p.tokenId}-${p.custodyChain}`}>
+                        <PassportProfileCard
+                          tokenId={p.tokenId}
+                          status={p.status}
+                          chainId={p.chainId}
+                          custodyChain={p.custodyChain}
+                          vin={p.vin}
+                          transitBadge={transit?.badge}
+                          hrefChainId={transit?.hrefChainId}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>

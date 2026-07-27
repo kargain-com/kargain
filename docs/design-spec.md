@@ -870,6 +870,7 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 | Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx); commerce `chainId` = Ponder `passport.custodyChain` |
 | Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; star custody chain (84532 or 11155111); listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
 | Direction | `useBridge(custodyChain, counterpart)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
+| Transit | First-class in-flight lifecycle ([`bridge-transit.ts`](../lib/passport/bridge-transit.ts) + store + [`use-bridge-transit.ts`](../hooks/use-bridge-transit.ts)): persist intent on src receipt; keep panel visible after burn/lock (`transitActive` on [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts)); stepper Sent → In transit → Arrived; dst `ownerOf` poll remains delivery gate; `router.replace(?chain=dst)` on delivery; clear when Ponder `custodyChain === dst`. Own profile passport cards show **In transit to** / **Returning to** badge and keep the row |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
 | Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
@@ -1523,4 +1524,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.86 (July 2026 — §4.19 Move vs Return; §10.3 verification-reset banner). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.87 (July 2026 — §4.19 Bridge Transit lifecycle). Update when tokens, app shell, or component contracts change.*

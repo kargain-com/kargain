@@ -30,6 +30,11 @@ export type BridgeSurfaceInput = {
   /** `undefined` means auction truth is unresolved — fail closed. */
   auctionBlocks: boolean | undefined;
   passportStatus: PassportStatus;
+  /**
+   * Active bridge transit for this token (src burn/lock — wallet may no longer
+   * own the NFT). Keeps the panel visible with canBridge false.
+   */
+  transitActive?: boolean;
 };
 
 const HIDDEN: BridgeSurfaceResult = {
@@ -43,14 +48,28 @@ const HIDDEN: BridgeSurfaceResult = {
  * Pure owner bridge-surface policy. Unknown listing/auction facts fail closed.
  * Action is available on either star chain (hub or spoke) when custody is there.
  */
+const TRANSIT_VISIBLE: BridgeSurfaceResult = {
+  visible: true,
+  mode: "action",
+  canBridge: false,
+  blockReason: null,
+};
+
 export function deriveBridgeSurface(
   input: BridgeSurfaceInput,
 ): BridgeSurfaceResult {
   if (!input.isOwner) {
+    // In-flight: NFT may be burned/locked — keep transit chrome visible.
+    if (input.transitActive) {
+      return { ...TRANSIT_VISIBLE };
+    }
     return { ...HIDDEN };
   }
 
   if (bridgeCounterpartChainId(input.chainId) == null) {
+    if (input.transitActive) {
+      return { ...TRANSIT_VISIBLE };
+    }
     return { ...HIDDEN };
   }
 
@@ -93,6 +112,10 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "auction",
     };
+  }
+
+  if (input.transitActive) {
+    return { ...TRANSIT_VISIBLE };
   }
 
   return {

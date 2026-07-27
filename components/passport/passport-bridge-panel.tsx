@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
+import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
   bridgeActionCopy,
@@ -24,6 +26,7 @@ import type { PassportStatus } from "@/lib/types/ponder";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { cn } from "@/lib/utils";
 
 type Props = {
   chainId: number;
@@ -42,6 +45,8 @@ export function PassportBridgePanel({
   listingState,
   auctionBlocks,
 }: Props) {
+  const router = useRouter();
+  const handedOffRef = useRef(false);
   const { address, isConnected } = useAccount();
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
@@ -56,13 +61,19 @@ export function PassportBridgePanel({
     ? bridgeActionCopy(directionMode, dstName)
     : null;
 
+  const { record, ui, scanUrl: transitScanUrl, transitActive } =
+    useBridgeTransit({
+      tokenId,
+      ponderCustodyChain: chainId,
+    });
+
   const { data: onChainOwner, status: ownerStatus } = useReadContract({
     address: passport,
     abi: KarPassportAbi,
     functionName: "ownerOf",
     args: [tid],
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(passport) },
+    query: { enabled: Boolean(passport) && !transitActive },
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(
@@ -82,6 +93,7 @@ export function PassportBridgePanel({
     listingState,
     auctionBlocks,
     passportStatus,
+    transitActive,
   });
 
   const {
@@ -89,7 +101,7 @@ export function PassportBridgePanel({
     bridge,
     phase,
     feeWei,
-    scanUrl,
+    scanUrl: liveScanUrl,
     busy,
     error,
     configured,
@@ -98,10 +110,27 @@ export function PassportBridgePanel({
     dstChainId ?? chainId,
   );
 
+  const scanUrl = liveScanUrl ?? transitScanUrl;
+
   useEffect(() => {
-    if (!surface.canBridge || !configured) return;
+    if (!surface.canBridge || !configured || transitActive) return;
     void quote(tid);
-  }, [surface.canBridge, configured, quote, tid]);
+  }, [surface.canBridge, configured, quote, tid, transitActive]);
+
+  // Handoff to destination URL once on-chain delivery is confirmed.
+  useEffect(() => {
+    if (handedOffRef.current) return;
+    const dst =
+      record?.dstChainId ??
+      (phase === "delivered" ? dstChainId : null);
+    const ready =
+      phase === "delivered" ||
+      record?.phase === "indexer_catchup" ||
+      record?.phase === "delivered_on_chain";
+    if (!ready || dst == null) return;
+    handedOffRef.current = true;
+    router.replace(`/marketplace/${tokenId}?chain=${dst}`);
+  }, [dstChainId, phase, record?.dstChainId, record?.phase, router, tokenId]);
 
   if (!surface.visible) return null;
 
@@ -112,34 +141,63 @@ export function PassportBridgePanel({
         ? "Bridge is not configured on this chain."
         : null;
 
+  const inTransitUi = transitActive && ui != null;
+  const displayDstName =
+    record != null ? shortChainName(record.dstChainId) : dstName;
+
   const buttonLabel =
     phase === "approving"
       ? "Approving…"
       : phase === "quoting" || phase === "sending"
         ? "Bridging…"
-        : phase === "pending"
+        : phase === "pending" || record?.phase === "in_flight"
           ? "Waiting for delivery…"
-          : phase === "delivered"
-            ? dstName
-              ? `Delivered on ${dstName}`
+          : phase === "delivered" ||
+              record?.phase === "indexer_catchup" ||
+              record?.phase === "delivered_on_chain"
+            ? displayDstName
+              ? `Delivered on ${displayDstName}`
               : "Delivered"
             : (actionCopy?.idleButton ?? "Bridge");
 
   return (
     <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
       <h2 className="font-sans text-base font-medium text-text-primary">
-        {actionCopy?.title ?? "Bridge"}
+        {inTransitUi ? ui.title : (actionCopy?.title ?? "Bridge")}
       </h2>
       <p className="font-sans text-sm text-text-secondary">
-        {actionCopy?.description ?? "Bridge is not available on this network."}
+        {inTransitUi
+          ? ui.description
+          : (actionCopy?.description ??
+            "Bridge is not available on this network.")}
       </p>
-      {dstChainId != null && (
+
+      {inTransitUi && (
+        <ol className="space-y-1.5" aria-label="Bridge progress">
+          {ui.stepLabels.map((label, index) => (
+            <li
+              key={label}
+              className={cn(
+                "font-mono text-xs tabular-nums",
+                index <= ui.stepIndex
+                  ? "text-text-primary"
+                  : "text-text-tertiary",
+              )}
+            >
+              {index <= ui.stepIndex ? "●" : "○"} {label}
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {(record != null ? true : dstChainId != null) && (
         <p className="font-mono text-xs tabular-nums text-text-tertiary">
-          {chainId} → {dstChainId}
+          {record?.srcChainId ?? chainId} →{" "}
+          {record?.dstChainId ?? dstChainId}
         </p>
       )}
 
-      {feeWei != null && surface.canBridge && (
+      {feeWei != null && surface.canBridge && !transitActive && (
         <dl className="flex items-baseline justify-between gap-3">
           <dt className="font-sans text-sm text-text-secondary">
             Estimated fee
@@ -150,24 +208,39 @@ export function PassportBridgePanel({
         </dl>
       )}
 
-      {disabledReason && (
+      {disabledReason && !transitActive && (
         <p className="font-sans text-sm text-text-secondary" role="status">
           {disabledReason}
         </p>
       )}
 
-      {phase === "pending" && scanUrl && (
-        <p className="font-sans text-sm text-text-secondary" role="status">
-          Bridging in progress.{" "}
-          <InstrumentLink href={scanUrl} variant="monoSm" external>
-            View on LayerZero Scan
-          </InstrumentLink>
-        </p>
-      )}
+      {(phase === "pending" ||
+        record?.phase === "in_flight" ||
+        record?.phase === "source_confirmed") &&
+        scanUrl && (
+          <p className="font-sans text-sm text-text-secondary" role="status">
+            Bridging in progress.{" "}
+            <InstrumentLink href={scanUrl} variant="monoSm" external>
+              View on LayerZero Scan
+            </InstrumentLink>
+          </p>
+        )}
 
-      {phase === "delivered" && scanUrl && (
-        <p className="font-sans text-sm text-text-secondary" role="status">
-          Delivered.{" "}
+      {(phase === "delivered" ||
+        record?.phase === "indexer_catchup" ||
+        record?.phase === "delivered_on_chain") &&
+        scanUrl && (
+          <p className="font-sans text-sm text-text-secondary" role="status">
+            Delivered.{" "}
+            <InstrumentLink href={scanUrl} variant="monoSm" external>
+              View on LayerZero Scan
+            </InstrumentLink>
+          </p>
+        )}
+
+      {record?.phase === "timed_out" && scanUrl && (
+        <p className="font-sans text-sm text-status-error" role="alert">
+          Delivery not confirmed in time.{" "}
           <InstrumentLink href={scanUrl} variant="monoSm" external>
             View on LayerZero Scan
           </InstrumentLink>
@@ -185,6 +258,7 @@ export function PassportBridgePanel({
         variant="secondary"
         className="w-full"
         disabled={
+          transitActive ||
           !surface.canBridge ||
           Boolean(disabledReason) ||
           busy ||

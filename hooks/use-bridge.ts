@@ -22,6 +22,12 @@ import {
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
 import {
+  deriveBridgeDirectionMode,
+  type BridgeDirectionMode,
+} from "@/lib/passport/bridge-surface";
+import { upsertBridgeTransit } from "@/lib/passport/bridge-transit-store";
+import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
+import {
   BRIDGE_DELIVERY_POLL_MS,
   BRIDGE_DELIVERY_TIMEOUT_MS,
   BRIDGE_HUB_CHAIN_ID,
@@ -263,11 +269,40 @@ export function useBridge(
           setGuid(sentGuid);
           setScanUrl(layerZeroScanTxUrl(sentGuid));
 
+          const originChainId = parsePassportTokenId(tokenId).chainId;
+          const mode: BridgeDirectionMode = deriveBridgeDirectionMode({
+            custodyChainId: srcChainId,
+            originChainId,
+          });
+          const tokenIdStr = tokenId.toString();
+          const sentAt = Date.now();
+          upsertBridgeTransit(address, {
+            tokenId: tokenIdStr,
+            srcChainId,
+            dstChainId,
+            recipient,
+            guid: sentGuid,
+            sentAt,
+            mode,
+            phase: "source_confirmed",
+          });
+
           abortRef.current?.abort();
           const controller = new AbortController();
           abortRef.current = controller;
 
           setPhase("pending");
+          upsertBridgeTransit(address, {
+            tokenId: tokenIdStr,
+            srcChainId,
+            dstChainId,
+            recipient,
+            guid: sentGuid,
+            sentAt,
+            mode,
+            phase: "in_flight",
+          });
+
           const delivered = await pollDstOwner(
             tokenId,
             recipient,
@@ -281,6 +316,16 @@ export function useBridge(
           }
 
           if (!delivered) {
+            upsertBridgeTransit(address, {
+              tokenId: tokenIdStr,
+              srcChainId,
+              dstChainId,
+              recipient,
+              guid: sentGuid,
+              sentAt,
+              mode,
+              phase: "timed_out",
+            });
             setLocalError(
               `Bridge sent, but delivery was not confirmed on ${shortChainName(dstChainId)} within 10 minutes. Check LayerZero Scan.`,
             );
@@ -288,6 +333,16 @@ export function useBridge(
             return false;
           }
 
+          upsertBridgeTransit(address, {
+            tokenId: tokenIdStr,
+            srcChainId,
+            dstChainId,
+            recipient,
+            guid: sentGuid,
+            sentAt,
+            mode,
+            phase: "indexer_catchup",
+          });
           setPhase("delivered");
           return true;
         } catch (err) {

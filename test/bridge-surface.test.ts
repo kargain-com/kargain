@@ -158,6 +158,27 @@ describe("deriveBridgeSurface", () => {
       "listed",
     );
   });
+
+  it("keeps visible when transitActive even if not owner", () => {
+    assert.deepEqual(
+      deriveBridgeSurface(input({ isOwner: false, transitActive: true })),
+      {
+        visible: true,
+        mode: "action",
+        canBridge: false,
+        blockReason: null,
+      },
+    );
+  });
+
+  it("disables canBridge when owner but transitActive", () => {
+    assert.deepEqual(deriveBridgeSurface(input({ transitActive: true })), {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: null,
+    });
+  });
 });
 
 describe("bridgeBlockReasonCopy", () => {
