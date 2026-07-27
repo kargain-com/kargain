@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  bridgeActionCopy,
   bridgeBlockReasonCopy,
+  deriveBridgeDirectionMode,
   deriveBridgeSurface,
   type BridgeSurfaceInput,
   type BridgeSurfaceResult,
@@ -176,5 +178,59 @@ describe("bridgeBlockReasonCopy", () => {
       bridgeBlockReasonCopy("unresolved"),
       "Waiting for listing and auction status…",
     );
+  });
+});
+
+describe("deriveBridgeDirectionMode", () => {
+  it("move when custody equals origin (leave home)", () => {
+    assert.equal(
+      deriveBridgeDirectionMode({
+        custodyChainId: 84532,
+        originChainId: 84532,
+      }),
+      "move",
+    );
+  });
+
+  it("return when custody differs from origin (home is destination)", () => {
+    assert.equal(
+      deriveBridgeDirectionMode({
+        custodyChainId: 84532,
+        originChainId: 11155111,
+      }),
+      "return",
+    );
+    assert.equal(
+      deriveBridgeDirectionMode({
+        custodyChainId: 11155111,
+        originChainId: 84532,
+      }),
+      "return",
+    );
+  });
+
+  it("fails soft to move for legacy / unknown origin", () => {
+    assert.equal(
+      deriveBridgeDirectionMode({ custodyChainId: 84532, originChainId: 0 }),
+      "move",
+    );
+  });
+});
+
+describe("bridgeActionCopy", () => {
+  it("move copy", () => {
+    assert.deepEqual(bridgeActionCopy("move", "Ethereum Sepolia"), {
+      title: "Bridge",
+      description: "Move this passport to Ethereum Sepolia via LayerZero.",
+      idleButton: "Move to Ethereum Sepolia",
+    });
+  });
+
+  it("return copy", () => {
+    assert.deepEqual(bridgeActionCopy("return", "Ethereum Sepolia"), {
+      title: "Bridge",
+      description: "Return this passport to Ethereum Sepolia via LayerZero.",
+      idleButton: "Return to Ethereum Sepolia",
+    });
   });
 });

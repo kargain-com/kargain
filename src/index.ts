@@ -27,6 +27,7 @@ import {
   voidReasonLabel,
 } from "./lib/ponder-auction";
 import {
+  bridgeMintArrivalTrustFields,
   disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
   disputeWithdrawnTrustFields,
@@ -214,12 +215,8 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
           }
         : {}),
       owner: event.args.to,
-      status: "UNVERIFIED",
-      verifier: "",
-      verifiedAt: 0n,
       tokenUri: uri,
-      ...verificationResetTrustFields(existing.verificationResetCount, ts),
-      lastMetadataChangeAt: trust.lastMetadataChangeAt,
+      ...bridgeMintArrivalTrustFields(ts),
     });
   } else {
     const initial =
@@ -245,7 +242,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
     previousUri: existing?.tokenUri ?? "",
     newUri: uri,
     author: event.args.to,
-    verificationReset: true,
+    verificationReset: false,
     timestamp: ts,
     historyId: `${event.transaction.hash}-${event.log.logIndex}`,
   });

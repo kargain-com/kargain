@@ -34,12 +34,11 @@ export function PassportTrustBanner({
         </div>
         <div className="flex flex-col gap-1">
           <p className="font-sans text-sm font-medium text-text-primary">
-            Metadata updated after verification
+            Verification was reset
           </p>
           <p className="font-sans text-sm text-text-secondary">
-            This passport&apos;s metadata was changed {formatResetCount(verificationResetCount)}{" "}
-            after it was verified, resetting verification each time. Review the URI history for
-            details.
+            Verification was cleared {formatResetCount(verificationResetCount)} on this
+            passport. Review the metadata history for details.
           </p>
         </div>
       </div>

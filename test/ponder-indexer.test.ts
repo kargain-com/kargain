@@ -7,6 +7,7 @@ import {
   isDisputeWithdrawnRecord,
 } from "../lib/passport/index-passport-metadata.ts";
 import {
+  bridgeMintArrivalTrustFields,
   disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
   disputeWithdrawnTrustFields,
@@ -278,6 +279,37 @@ describe("ponder G1 trust fields", () => {
     const fields = verificationResetTrustFields(1, 400n);
     assert.equal(fields.verificationResetCount, 2);
     assert.equal(fields.lastVerificationResetAt, 400n);
+  });
+
+  it("bridge mint arrival clears usable trust without reset accounting", () => {
+    const arrival = bridgeMintArrivalTrustFields(200n);
+    assert.equal(arrival.status, "UNVERIFIED");
+    assert.equal(arrival.verifier, "");
+    assert.equal(arrival.verifiedAt, 0n);
+    assert.equal(arrival.lastMetadataChangeAt, 200n);
+    assert.equal(arrival.updatedAt, 200n);
+    assert.equal("verificationResetCount" in arrival, false);
+    assert.equal("lastVerificationResetAt" in arrival, false);
+  });
+
+  it("round trip: bridge mint then VerificationReset increments count once", () => {
+    // Prior VERIFIED row projected UNVERIFIED on destination arrival — reset count stays 0.
+    const afterBridge = bridgeMintArrivalTrustFields(200n);
+    assert.equal(afterBridge.status, "UNVERIFIED");
+    const priorResetCount = 0;
+    // Home unlock emits VerificationReset — sole owner of reset accounting.
+    const afterUnlock = verificationResetTrustFields(priorResetCount, 300n);
+    assert.equal(afterUnlock.verificationResetCount, 1);
+    assert.equal(afterUnlock.lastVerificationResetAt, 300n);
+  });
+
+  it("URI-edit VerificationReset still increments from existing count", () => {
+    // Owner setPassportURI from VERIFIED: reset count was already 0 → 1.
+    const afterEdit = verificationResetTrustFields(0, 400n);
+    assert.equal(afterEdit.verificationResetCount, 1);
+    // A later unlock after a prior edit would go 1 → 2.
+    const afterUnlock = verificationResetTrustFields(1, 500n);
+    assert.equal(afterUnlock.verificationResetCount, 2);
   });
 
   it("updates lastMetadataChangeAt on URI update", () => {

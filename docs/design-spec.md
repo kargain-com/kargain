@@ -869,7 +869,7 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 |---------|----------|
 | Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx); commerce `chainId` = Ponder `passport.custodyChain` |
 | Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; star custody chain (84532 or 11155111); listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
-| Direction | `useBridge(custodyChain, counterpart)`; copy **Move to \<dst network\>**; mono `tabular-nums` chain ids (`src → dst`) |
+| Direction | `useBridge(custodyChain, counterpart)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
 | Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
@@ -1063,7 +1063,7 @@ Chip: `border-status-error/40`, `bg-status-error/10`, `text-status-error`. Panel
 
 | Signal | Trigger |
 |--------|---------|
-| Metadata updated after verification (reset count) | Indexer `verificationResetCount` — already shipped on `status-warning` in [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) |
+| Verification was reset (reset count) | Indexer `verificationResetCount` (on-chain `VerificationReset` only — not bridge mint) — [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) |
 | On-chain vs indexer status drift (passport detail only) | Client `compareListingStatus` / chain RPC vs Ponder — [`passport-chain-status-banner.tsx`](../components/passport/passport-chain-status-banner.tsx) |
 | Verifier inactive | On-chain `isActiveVerifier` false |
 | Re-inspection recommended | Client `recommendsReInspection` — **spec target**: currently neutral `border-border-default`; moves to `status-warning` in a follow-up code pass |
@@ -1523,4 +1523,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.85 (July 2026 — §4.10 shared PhotoDropZone for mint + edit). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.86 (July 2026 — §4.19 Move vs Return; §10.3 verification-reset banner). Update when tokens, app shell, or component contracts change.*

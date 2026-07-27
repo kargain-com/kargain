@@ -117,3 +117,35 @@ export function bridgeBlockReasonCopy(
       return "Waiting for listing and auction status…";
   }
 }
+
+export type BridgeDirectionMode = "move" | "return";
+
+/**
+ * Leave-home vs return-home from custody vs origin (`chainIdOf(tokenId)`).
+ * Legacy / unknown origin (≤ 0) fails soft to move copy.
+ */
+export function deriveBridgeDirectionMode(input: {
+  custodyChainId: number;
+  originChainId: number;
+}): BridgeDirectionMode {
+  if (input.originChainId <= 0) return "move";
+  return input.custodyChainId === input.originChainId ? "move" : "return";
+}
+
+export function bridgeActionCopy(
+  mode: BridgeDirectionMode,
+  dstName: string,
+): { title: string; description: string; idleButton: string } {
+  if (mode === "return") {
+    return {
+      title: "Bridge",
+      description: `Return this passport to ${dstName} via LayerZero.`,
+      idleButton: `Return to ${dstName}`,
+    };
+  }
+  return {
+    title: "Bridge",
+    description: `Move this passport to ${dstName} via LayerZero.`,
+    idleButton: `Move to ${dstName}`,
+  };
+}

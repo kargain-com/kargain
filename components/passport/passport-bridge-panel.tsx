@@ -9,7 +9,9 @@ import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
+  bridgeActionCopy,
   bridgeBlockReasonCopy,
+  deriveBridgeDirectionMode,
   deriveBridgeSurface,
   type BridgeListingState,
 } from "@/lib/passport/bridge-surface";
@@ -17,6 +19,7 @@ import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -44,6 +47,14 @@ export function PassportBridgePanel({
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);
   const dstName = dstChainId != null ? shortChainName(dstChainId) : null;
+  const originChainId = parsePassportTokenId(tokenId).chainId;
+  const directionMode = deriveBridgeDirectionMode({
+    custodyChainId: chainId,
+    originChainId,
+  });
+  const actionCopy = dstName
+    ? bridgeActionCopy(directionMode, dstName)
+    : null;
 
   const { data: onChainOwner, status: ownerStatus } = useReadContract({
     address: passport,
@@ -112,19 +123,15 @@ export function PassportBridgePanel({
             ? dstName
               ? `Delivered on ${dstName}`
               : "Delivered"
-            : dstName
-              ? `Move to ${dstName}`
-              : "Bridge";
+            : (actionCopy?.idleButton ?? "Bridge");
 
   return (
     <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
       <h2 className="font-sans text-base font-medium text-text-primary">
-        Bridge
+        {actionCopy?.title ?? "Bridge"}
       </h2>
       <p className="font-sans text-sm text-text-secondary">
-        {dstName
-          ? `Move this passport to ${dstName} via LayerZero.`
-          : "Bridge is not available on this network."}
+        {actionCopy?.description ?? "Bridge is not available on this network."}
       </p>
       {dstChainId != null && (
         <p className="font-mono text-xs tabular-nums text-text-tertiary">

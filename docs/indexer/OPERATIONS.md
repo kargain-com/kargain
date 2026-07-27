@@ -21,7 +21,7 @@ Nuclear full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One 
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
 | Docker | `docker compose build ponder` after code pull + post-build prune |
 
-**C3 schema (July 2026):** `chainId` on listing/sale/auction/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`.
+**C3 schema (July 2026):** `chainId` on listing/sale/auction/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`. **`PassportBridgeMinted` does not project `VerificationReset` accounting** (`verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` come only from on-chain `VerificationReset`).
 
 **Omnichain ordering:** `ponder.config.ts` sets `ordering: "omnichain"`. Cross-chain consistency for owner/status/uri waits on both networks (**consistency > liveness**). Custody is additionally fail-closed via the monotonic `custodyUpdatedAt` gate if one chain lags and delivers a stale bridge-mint after a fresher unlock.
 
@@ -88,6 +88,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Place location columns (Geo Phase C, July 2026) | `locationPlaceId` + `locationCountryCode` on `passport` — **full reindex required** so historical URI metadata backfills; older label-only rows keep empty placeId until owner re-saves |
 | Verifier place columns (Geo Phase E, July 2026) | `locationLabel` + `locationPlaceId` + `locationCountryCode` on `verifier` from KarPro Arweave — **full reindex required**; empty until replay / verifier re-saves profile |
+| Bridge mint trust accounting (July 2026) | `PassportBridgeMinted` must not write `verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` (only on-chain `VerificationReset`) — **full reindex required** to repair historical false positives |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |

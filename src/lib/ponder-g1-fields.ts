@@ -55,6 +55,21 @@ export function disputeResolvedTrustFields(uphold: boolean, timestamp: bigint) {
   };
 }
 
+/**
+ * Destination representation arrival (PassportBridgeMinted).
+ * Usable-instance trust is UNVERIFIED; does **not** project VerificationReset
+ * accounting (count / lastVerificationResetAt) — that event is unlock / URI-edit only.
+ */
+export function bridgeMintArrivalTrustFields(timestamp: bigint) {
+  return {
+    status: "UNVERIFIED" as const,
+    verifier: "",
+    verifiedAt: 0n,
+    lastMetadataChangeAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function verificationResetTrustFields(existingCount: number, timestamp: bigint) {
   return {
     status: "UNVERIFIED" as const,
