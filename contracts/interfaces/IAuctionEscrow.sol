@@ -9,12 +9,6 @@ interface IAuctionEscrow {
         ConfirmFailure
     }
 
-    /// @notice Reason an auction was voided.
-    enum VoidReason {
-        UnverifiedPassport,
-        DisputeGraceExpired
-    }
-
     /// @notice Active or ended auction state for a passport token id.
     struct Auction {
         address seller;
@@ -68,7 +62,6 @@ interface IAuctionEscrow {
     event ReturnRequested(uint256 indexed tokenId, address indexed owner);
     event ForceReturn(uint256 indexed tokenId, address indexed owner);
     event AuctionSettled(uint256 indexed tokenId, address indexed buyer, uint128 gross, uint40 releaseAt);
-    event AuctionVoided(uint256 indexed tokenId, VoidReason reason);
     event ReceiptConfirmed(uint256 indexed tokenId, address indexed buyer);
     event FundsReleased(
         uint256 indexed tokenId,
@@ -100,7 +93,6 @@ interface IAuctionEscrow {
     event SettlementHoldSet(uint40 previous, uint40 next);
     event SettlementDisputeBondSet(uint128 previous, uint128 next);
     event DisputeResolutionTimeoutSet(uint40 previous, uint40 next);
-    event DisputeGracePeriodSet(uint40 previous, uint40 next);
     event Paused(bool paused);
     event UpgradeAuthorityTransferred(address indexed previous, address indexed next);
 
@@ -119,7 +111,6 @@ interface IAuctionEscrow {
     error AuctionNotStarted();
     error AuctionNotEnded();
     error AuctionEnded();
-    error AuctionSettleable();
     error BidTooLow();
     error BidFromSeller();
     error BidFromAgent();
@@ -199,11 +190,8 @@ interface IAuctionEscrow {
     /// @notice Owner force-returns NFT after cooldown on agent auction.
     function forceReturn(uint256 tokenId) external;
 
-    /// @notice Permissionless settle after auction end with VERIFIED passport.
+    /// @notice Permissionless settle after auction end (passport status ignored; transferFrom to buyer).
     function settle(uint256 tokenId) external;
-
-    /// @notice Permissionless void for UNVERIFIED passport or dispute grace expiry.
-    function voidAuction(uint256 tokenId) external;
 
     // ── Settlement hold ─────────────────────────────────────────────────────
 
@@ -235,6 +223,5 @@ interface IAuctionEscrow {
     function setSettlementHold(uint40 value) external;
     function setSettlementDisputeBond(uint128 value) external;
     function setDisputeResolutionTimeout(uint40 value) external;
-    function setDisputeGracePeriod(uint40 value) external;
     function transferUpgradeAuthority(address newAuthority) external;
 }

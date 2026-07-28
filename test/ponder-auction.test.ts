@@ -9,7 +9,6 @@ import {
   normalizeAuctionAgent,
   normalizeAuctionAsset,
   settlementDisputeOutcomeLabel,
-  voidReasonLabel,
 } from "../src/lib/ponder-auction.ts";
 
 describe("bidRowId", () => {
@@ -41,13 +40,6 @@ describe("normalizeAuctionAgent", () => {
       normalizeAuctionAgent("0x0000000000000000000000000000000000000000"),
       "",
     );
-  });
-});
-
-describe("voidReasonLabel", () => {
-  it("maps known enum values", () => {
-    assert.equal(voidReasonLabel(0), "UnverifiedPassport");
-    assert.equal(voidReasonLabel(1), "DisputeGraceExpired");
   });
 });
 

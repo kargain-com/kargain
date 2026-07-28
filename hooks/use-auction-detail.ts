@@ -160,7 +160,6 @@ export function useAuctionDetail({
         active: onChain.active,
         phase: onChain.startedAt === 0n ? "CREATED" : "BIDDING",
         returnRequestedAt: mergedReturnAt,
-        voidReason: "",
         createdAt: 0n,
         updatedAt: 0n,
         passportStatus: status,

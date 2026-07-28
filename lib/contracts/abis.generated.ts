@@ -4612,11 +4612,6 @@ export const AuctionEscrowAbi = [
   },
   {
     "inputs": [],
-    "name": "AuctionSettleable",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "BadConfig",
     "type": "error"
   },
@@ -5078,25 +5073,6 @@ export const AuctionEscrowAbi = [
         "type": "uint256"
       },
       {
-        "indexed": false,
-        "internalType": "enum IAuctionEscrow.VoidReason",
-        "name": "reason",
-        "type": "uint8"
-      }
-    ],
-    "name": "AuctionVoided",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      },
-      {
         "indexed": true,
         "internalType": "address",
         "name": "bidder",
@@ -5147,25 +5123,6 @@ export const AuctionEscrowAbi = [
       }
     ],
     "name": "BidRefunded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint40",
-        "name": "previous",
-        "type": "uint40"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint40",
-        "name": "next",
-        "type": "uint40"
-      }
-    ],
-    "name": "DisputeGracePeriodSet",
     "type": "event"
   },
   {
@@ -5827,19 +5784,6 @@ export const AuctionEscrowAbi = [
   },
   {
     "inputs": [],
-    "name": "disputeGracePeriod",
-    "outputs": [
-      {
-        "internalType": "uint40",
-        "name": "",
-        "type": "uint40"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "disputeResolutionTimeout",
     "outputs": [
       {
@@ -6214,19 +6158,6 @@ export const AuctionEscrowAbi = [
         "type": "uint40"
       }
     ],
-    "name": "setDisputeGracePeriod",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint40",
-        "name": "value",
-        "type": "uint40"
-      }
-    ],
     "name": "setDisputeResolutionTimeout",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -6417,19 +6348,6 @@ export const AuctionEscrowAbi = [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      }
-    ],
-    "name": "voidAuction",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

@@ -24,7 +24,6 @@ import {
   auctionCreatedRow,
   bidRowId,
   settlementDisputeOutcomeLabel,
-  voidReasonLabel,
 } from "./lib/ponder-auction";
 import {
   bridgeMintArrivalTrustFields,
@@ -811,7 +810,6 @@ ponder.on("AuctionEscrow:AuctionCreated", async ({ event, context }) => {
       active: true,
       phase: AUCTION_PHASE.CREATED,
       returnRequestedAt: null,
-      voidReason: "",
       createdAt: event.block.timestamp,
       updatedAt: event.block.timestamp,
     });
@@ -973,20 +971,6 @@ ponder.on("AuctionEscrow:AuctionSettled", async ({ event, context }) => {
       clearedAt: null,
       updatedAt: ts,
     });
-});
-
-ponder.on("AuctionEscrow:AuctionVoided", async ({ event, context }) => {
-  const tokenId = event.args.tokenId.toString();
-  const ts = event.block.timestamp;
-  await context.db
-    .update(auction, { id: tokenId })
-    .set({
-      active: false,
-      phase: AUCTION_PHASE.VOIDED,
-      voidReason: voidReasonLabel(Number(event.args.reason)),
-      updatedAt: ts,
-    });
-  await deactivateAuctionAgentAuth(context, tokenId, ts);
 });
 
 ponder.on("AuctionEscrow:ReceiptConfirmed", async ({ event, context }) => {

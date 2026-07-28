@@ -98,10 +98,6 @@ const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
   ],
   ["NotBuyer", "Only the winning buyer can do this."],
   [
-    "AuctionSettleable",
-    "This auction ended normally — finalize it instead of voiding.",
-  ],
-  [
     "ListedInMarketplace",
     "Delist this vehicle before bridging.",
   ],
@@ -114,13 +110,6 @@ export function formatBidTooLowMessage(
 ): string {
   const pct = Math.round(minIncrementBps / 100);
   return `Bid at least ${minNextBidLabel} — the minimum step is ${pct}% above the current bid.`;
-}
-
-/** Substitute passport status into PassportNotVerified / PassportDisputed copy. */
-export function formatPassportBidBlockedMessage(
-  status: "unverified" | "disputed",
-): string {
-  return `Bidding requires a verified passport. This vehicle is currently ${status}.`;
 }
 
 /** Bridge-context override for PassportDisputed (global map is auction-oriented). */

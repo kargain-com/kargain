@@ -21,7 +21,6 @@ import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
 import {
   formatBidTooLowMessage,
-  formatPassportBidBlockedMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
 import {
@@ -155,7 +154,6 @@ export function AuctionBidPanel({
     if (isUsdcAuction && !usdc) return "USDC is not configured on this chain.";
     if (paused) return "Auctions are temporarily paused. Existing refunds and payouts are unaffected.";
     if (ended) return "This auction has ended. The page will update shortly.";
-    if (disputed) return null; // S4 panel shown separately
     if (isSeller || isAgent) return "Sellers and agents cannot bid on their own auction.";
     if (wrongChain) return "Switch to the correct network to bid.";
     if (!live) return "Bidding is not open.";
@@ -172,7 +170,6 @@ export function AuctionBidPanel({
   const bidDisabled =
     !isConnected ||
     Boolean(disabledReason) ||
-    disputed ||
     busy ||
     isWriting ||
     insufficientBalance;
@@ -181,12 +178,6 @@ export function AuctionBidPanel({
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("BidTooLow")) {
       return formatBidTooLowMessage(minLabel, minIncrementBps);
-    }
-    if (msg.includes("PassportNotVerified")) {
-      return formatPassportBidBlockedMessage("unverified");
-    }
-    if (msg.includes("PassportDisputed")) {
-      return formatPassportBidBlockedMessage("disputed");
     }
     return txErrorMessage(err);
   };
@@ -281,14 +272,10 @@ export function AuctionBidPanel({
       )}
 
       {disputed && (
-        <div
-          className="rounded-md border border-status-error/40 bg-bg-primary p-3 text-sm text-status-error"
-          role="status"
-        >
-          Bidding is paused while this passport is disputed. If the dispute is
-          rejected the auction resumes; if confirmed, the auction is voided and
-          every bid is refunded.
-        </div>
+        <p className="font-sans text-sm text-status-error" role="status">
+          This passport is disputed. Bidding continues; after finalize, delivery
+          issues use the settlement hold.
+        </p>
       )}
 
       {uiState === "S1" && (

@@ -40,7 +40,6 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `BIDDING` | `AuctionStarted` / `BidPlaced` |
 | `SETTLED` | `AuctionSettled` |
 | `RELEASED` | `FundsReleased` |
-| `VOIDED` | `AuctionVoided` |
 | `CANCELLED` | `AuctionCancelled` |
 | `RETURNED` | `ForceReturn` (overrides cancel on owner force-return) |
 
@@ -60,7 +59,6 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `ReturnRequested` | `auction.returnRequestedAt` |
 | `ForceReturn` | `auction` + deactivate `auction_agent_authorization` |
 | `AuctionSettled` | `auction` + `auction_settlement` (auth **stays** active until payout/return) |
-| `AuctionVoided` | `auction` + deactivate `auction_agent_authorization` |
 | `ReceiptConfirmed` | `auction_settlement` |
 | `FundsReleased` | `auction` + `auction_settlement` + deactivate `auction_agent_authorization` |
 | `SettlementDisputeOpened` / `Resolved` | `auction_settlement` |
@@ -71,7 +69,7 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 
 ### Silent auth clear (`_clearAuctionStorage`)
 
-On-chain `_clearAuctionStorage` deletes `auctionAgentAuthorizations[tokenId]` **without** emitting `AuctionAgentRevoked`. The indexer mirrors that by setting `auction_agent_authorization.active = false` on terminal events that call it: `AuctionCancelled`, `ForceReturn`, `AuctionVoided`, `FundsReleased`, `PassportReturnedAndRefunded`. Updates are no-ops when no auth row exists. `AuctionSettled` does **not** clear storage — auth remains until `_payout` / `returnPassportAndRefund`.
+On-chain `_clearAuctionStorage` deletes `auctionAgentAuthorizations[tokenId]` **without** emitting `AuctionAgentRevoked`. The indexer mirrors that by setting `auction_agent_authorization.active = false` on terminal events that call it: `AuctionCancelled`, `ForceReturn`, `FundsReleased`, `PassportReturnedAndRefunded`. Updates are no-ops when no auth row exists. `AuctionSettled` does **not** clear storage — auth remains until `_payout` / `returnPassportAndRefund`. (`voidAuction` / `VOIDED` removed in AuctionEscrow `2.0.0-draft` infallible-settle; schema drop of `voidReason` requires full reindex — covered by Nuclear #2.)
 
 **Not indexed:** admin config events (`MinDurationSet`, `Paused`, …).
 

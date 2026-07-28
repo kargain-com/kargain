@@ -214,7 +214,6 @@ export function AuctionDetailClientIsland({
               chainId={chainId}
               tokenId={tokenId}
               auction={auction}
-              passportStatus={passportStatus}
             />
           )}
 

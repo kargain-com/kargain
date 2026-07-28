@@ -284,7 +284,7 @@ export function AuctionSettlementPanel({
 
   const actionBusy = busy || isWriting;
 
-  // —— S9 voided / cancelled / returned ——
+  // —— S9 cancelled / returned ——
   if (auctionUiState === "S9") {
     return (
       <div
@@ -292,7 +292,7 @@ export function AuctionSettlementPanel({
         role="status"
       >
         <p className="font-sans text-sm text-text-secondary">
-          {auctionTerminalMessage(auction.phase, auction.voidReason)}
+          {auctionTerminalMessage(auction.phase)}
         </p>
       </div>
     );

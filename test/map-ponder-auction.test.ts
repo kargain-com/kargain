@@ -32,7 +32,6 @@ function raw(overrides: Partial<PonderAuctionRaw> = {}): PonderAuctionRaw {
     active: true,
     phase: "CREATED",
     returnRequestedAt: null,
-    voidReason: "",
     createdAt: "1000",
     updatedAt: "1000",
     passportStatus: "VERIFIED",
@@ -172,7 +171,7 @@ describe("deriveAuctionUiState (U15)", () => {
     );
     assert.equal(
       deriveAuctionUiState({
-        phase: "VOIDED",
+        phase: "CANCELLED",
         active: false,
         endsAtChain: 1n,
         startedAt: 1n,

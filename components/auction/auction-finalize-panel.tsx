@@ -8,7 +8,6 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import type { PassportStatus } from "@/lib/types/ponder";
 import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -16,22 +15,15 @@ type Props = {
   chainId: number;
   tokenId: string;
   auction: AuctionRow;
-  passportStatus: PassportStatus;
 };
 
-export function AuctionFinalizePanel({
-  chainId,
-  tokenId,
-  auction,
-  passportStatus,
-}: Props) {
+export function AuctionFinalizePanel({ chainId, tokenId, auction }: Props) {
   const { isConnected } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";
 
   const escrow = auctionEscrowAddress(chainId);
-  const useVoid = passportStatus === "UNVERIFIED";
   const finalBid =
     auction.highestBid > 0n
       ? formatAuctionAmount(auction.highestBid, auction.assetLabel)
@@ -43,7 +35,7 @@ export function AuctionFinalizePanel({
       writeContractAsync({
         address: escrow,
         abi: AuctionEscrowAbi,
-        functionName: useVoid ? "voidAuction" : "settle",
+        functionName: "settle",
         args: [BigInt(tokenId)],
         chainId: wagmiChainId(chainId),
       }),
@@ -73,17 +65,10 @@ export function AuctionFinalizePanel({
           Final bid {finalBid}
         </p>
       )}
-      {useVoid ? (
-        <p className="font-sans text-sm text-text-secondary">
-          This passport is unverified. Finalize with void to refund every bid
-          and return the vehicle to the seller.
-        </p>
-      ) : (
-        <p className="font-sans text-sm text-text-secondary">
-          Anyone can finalize — this transfers the vehicle and starts the payout
-          hold.
-        </p>
-      )}
+      <p className="font-sans text-sm text-text-secondary">
+        Anyone can finalize — this transfers the vehicle and starts the payout
+        hold.
+      </p>
       {error && (
         <p className="font-sans text-sm text-status-error" role="alert">
           {error}
@@ -102,9 +87,7 @@ export function AuctionFinalizePanel({
       >
         {phase === "indexing" || busy || isPending
           ? "Confirming…"
-          : useVoid
-            ? "Void auction"
-            : "Finalize auction"}
+          : "Finalize auction"}
       </Button>
     </div>
   );

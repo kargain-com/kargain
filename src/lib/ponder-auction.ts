@@ -3,7 +3,6 @@ export type AuctionPhase =
   | "CREATED"
   | "BIDDING"
   | "SETTLED"
-  | "VOIDED"
   | "CANCELLED"
   | "RETURNED"
   | "RELEASED";
@@ -12,7 +11,6 @@ export const AUCTION_PHASE = {
   CREATED: "CREATED",
   BIDDING: "BIDDING",
   SETTLED: "SETTLED",
-  VOIDED: "VOIDED",
   CANCELLED: "CANCELLED",
   RETURNED: "RETURNED",
   RELEASED: "RELEASED",
@@ -31,12 +29,6 @@ export function normalizeAuctionAsset(asset: string): string {
 
 export function normalizeAuctionAgent(agent: string): string {
   return agent.toLowerCase() === ZERO_ADDRESS ? "" : agent;
-}
-
-export function voidReasonLabel(reason: number): string {
-  if (reason === 0) return "UnverifiedPassport";
-  if (reason === 1) return "DisputeGraceExpired";
-  return `Unknown(${reason})`;
 }
 
 export function settlementDisputeOutcomeLabel(outcome: number): string {
@@ -75,7 +67,6 @@ export function auctionCreatedRow(params: {
     active: true,
     phase: AUCTION_PHASE.CREATED,
     returnRequestedAt: null,
-    voidReason: "",
     createdAt: params.timestamp,
     updatedAt: params.timestamp,
   };

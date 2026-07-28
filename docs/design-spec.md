@@ -709,7 +709,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` — top nav on all breakpoints (`GavelIcon` icon-only below `md`).
 
-**г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize / void, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.**
+**г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.** AuctionEscrow `2.0.0-draft`: passport status decoupled after first bid; `settle` uses `transferFrom` (infallible on receiver); no void/S9 `VOIDED` surface.
 
 #### Unified owner sell group
 
@@ -733,7 +733,7 @@ Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[
 
 | Role | Sees | Can do |
 |------|------|--------|
-| Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2); hold readout | Bid (ETH or USDC); Finalize when ended; permissionless `releaseFunds` when hold/dispute timed out |
+| Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2); hold readout; DISPUTED advisory (S4) | Bid (ETH or USDC) including while DISPUTED; Finalize when ended; permissionless `releaseFunds` when hold/dispute timed out |
 | Leading bidder | Same + *You are the highest bidder* (neutral, not accent) | Wait / bid again if outbid |
 | Winning buyer (hold) | Hold amount · release countdown | Confirm receipt · Open dispute (native bond, U8) · after ConfirmFailure: return passport for refund |
 | KarPro direct seller | Own-lot create panel; settlement informational | `createAuction` when VERIFIED, not listed, active verifier, no open hold (U9); Cancel before first bid; cannot bid; abandoned-refund claim |
@@ -750,15 +750,15 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S1** | Awaiting first bid (`startedAt=0`) | Bid (min = reserve); seller/agent: Cancel |
 | **S2** | S1 + `returnRequestedAt` set | Same — bidding stays open; elevated advisory to **all** viewers |
 | **S3** | Live bidding | Bid panel; no cancel |
-| **S4** | Live + passport `DISPUTED` | Bid **disabled**; `status-error` copy |
-| **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle`; if passport `UNVERIFIED` → `voidAuction` |
+| **S4** | Live + passport `DISPUTED` | Bid **enabled**; quiet `status-error` advisory (trust chroma only — not a block) |
+| **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle` (always; passport status ignored) |
 | **S6 / HOLD** | `SETTLED`, before `releaseAt`, no dispute | Buyer: Confirm receipt · Open dispute; others: informational payout date |
 | **HOLD_RELEASABLE** | `now ≥ releaseAt`, no dispute | Permissionless **Release payment** → `releaseFunds` |
 | **S7 / DISPUTED** | Settlement dispute open | *Payout frozen*; auto-release date; minimal verifier resolve |
 | **DISPUTE_TIMED_OUT** | `now ≥ disputedAt + disputeResolutionTimeout` | Permissionless **Release payment** (auto-ReleaseToSeller path) |
 | **REFUND_PENDING** | ConfirmFailure | Buyer: approve passport → `returnPassportAndRefund`; seller: `claimAbandonedRefund` after `settlementHold` |
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
-| **S9** | `VOIDED`\|`CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
+| **S9** | `CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
 **Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides the entire owner sell group; chain listing truth hides all new sale-start choices while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). Auction creation/authorization also stays hidden while `holds.releaseAt ≠ 0` (U9). An unlisted KarPro sees **List for sale** and the direct create panel together inside **Sell this vehicle** (sale-form choice). Seller (listed) sees the status-aware neutral hint from the catalog above under Delist on the edit page when auction escrow is deployed. If Ponder status is unavailable, the page keeps the existing delist-before-auction hint and adds no error surface.
 
@@ -809,7 +809,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Cancel guard | You can cancel only before the first qualifying bid. |
 | Authorize min help | Your minimum is in the auction currency ([ETH]/[USDC]), not a display price. You receive at least this amount after all fees. |
 | Agent net preview | At reserve [X]: you receive [fee], owner receives [net]. Your commission is fixed for the whole auction. |
-| S4 | Bidding is paused while this passport is disputed. If the dispute is rejected the auction resumes; if confirmed, the auction is voided and every bid is refunded. |
+| S4 | This passport is disputed. Bidding continues; after finalize, delivery issues use the settlement hold. |
 | S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a 7-day protection hold. |
 | Hold — buyer | [2.40 ETH] is held for your protection until [date]. Confirm receipt to release payment early, or open a dispute if the vehicle was not delivered as sold. |
 | Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
@@ -817,7 +817,6 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Released (S8) | Sale complete. [gross] split: seller [net] · agent [fee] · platform [fee]. |
 | Cancelled (S9) | The auction was cancelled before any qualifying bid. The vehicle returned to the owner. |
 | Returned (S9) | The owner recalled this vehicle before any qualifying bid. |
-| Voided (S9) | Auction voided — [reason]. All bids were refunded automatically. |
 | Post-sale checklist | Vehicle re-registration happens off-chain. Keep the passport records updated after handover. |
 | Settlement window (U9) | This vehicle’s previous sale is still in its settlement window. You can start a new auction after [date]. |
 | Create intro | Auctions are open to professional sellers with verified vehicles. The reserve is public and bidding starts at or above it. |
@@ -829,7 +828,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 - Bids, reserves, prices, leading strip, mins/nets/fees: `font-mono tabular-nums` + `text-text-primary` — **never** accent-warm.
 - Accent-warm only trust seals (`PassportStatusBadge` VERIFIED).
-- DISPUTED mid-auction / settlement *Payout frozen*: `text-status-error` panel.
+- DISPUTED mid-auction advisory / settlement *Payout frozen*: `text-status-error` (no accent-warm).
 - S2 return advisory / U9 settlement window: elevated advisory pattern (not `status-error` unless DISPUTED).
 - S8 released split: `commerceConfirmedPanel` / neutral mono (IL-5).
 - Extension flash / outbid toast: neutral `text-text-secondary` + `border-border-default` — **not** accent-warm (not trust states).
@@ -1524,4 +1523,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.88 (July 2026 — §4.11 profile passport inventory tiles). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.90 (July 2026 — §4.18 AuctionEscrow 2.0.0-draft infallible settle, no VOIDED). Update when tokens, app shell, or component contracts change.*

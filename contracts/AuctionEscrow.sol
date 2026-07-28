@@ -36,9 +36,9 @@ interface IWETH {
 /// @title AuctionEscrow
 /// @notice English reserve auction escrow with settlement hold and dispute resolution.
 /// @dev UUPS upgradeable; timelock is upgrade authority. Separate from MarketplaceEscrow.
-/// @custom:version 1.0.1-draft
+/// @custom:version 2.0.0-draft
 contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "1.0.1-draft";
+    string public constant VERSION = "2.0.0-draft";
 
     using SafeERC20 for IERC20;
 
@@ -52,7 +52,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     uint16 internal constant _MIN_INCREMENT_BPS = 100;
     uint16 internal constant _MAX_INCREMENT_BPS = 1000;
 
-    uint8 internal constant _STATUS_UNVERIFIED = 0;
     uint8 internal constant _STATUS_VERIFIED = 1;
     uint8 internal constant _STATUS_DISPUTED = 2;
 
@@ -73,7 +72,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     uint40 public settlementHold;
     uint128 public settlementDisputeBond;
     uint40 public disputeResolutionTimeout;
-    uint40 public disputeGracePeriod;
 
     mapping(uint256 tokenId => Auction) public auctions;
     mapping(uint256 tokenId => SettlementHold) public holds;
@@ -120,7 +118,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         settlementHold = 7 days;
         settlementDisputeBond = 0.01 ether;
         disputeResolutionTimeout = 30 days;
-        disputeGracePeriod = 30 days;
     }
 
     /// @inheritdoc IAuctionEscrow
@@ -223,7 +220,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         Auction storage a = auctions[tokenId];
         if (!a.active) revert NoAuction();
         if (a.startedAt > 0 && block.timestamp >= a.endsAt) revert AuctionEnded();
-        _requirePassportVerified(tokenId);
         if (msg.sender == a.seller) revert BidFromSeller();
         if (msg.sender == a.agent) revert BidFromAgent();
 
@@ -300,19 +296,21 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     }
 
     /// @inheritdoc IAuctionEscrow
+    /// @dev NFT transfer uses `transferFrom` (not `safeTransferFrom`): the buyer self-selected
+    ///      by placing a fully escrowed bid, so the ERC-721 receiver hook protects nobody here
+    ///      while enabling a hostage window against the seller if settle could revert.
     function settle(uint256 tokenId) external nonReentrant {
         Auction storage a = auctions[tokenId];
         if (!a.active) revert NoAuction();
         if (a.startedAt == 0) revert AuctionNotStarted();
         if (block.timestamp < a.endsAt) revert AuctionNotEnded();
-        _requirePassportVerified(tokenId);
 
         address buyer = a.highestBidder;
         uint128 gross = a.highestBid;
 
         a.active = false;
 
-        karPassport.safeTransferFrom(address(this), buyer, tokenId);
+        karPassport.transferFrom(address(this), buyer, tokenId);
 
         holds[tokenId] = SettlementHold({
             buyer: buyer,
@@ -324,42 +322,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         });
 
         emit AuctionSettled(tokenId, buyer, gross, holds[tokenId].releaseAt);
-    }
-
-    /// @inheritdoc IAuctionEscrow
-    function voidAuction(uint256 tokenId) external nonReentrant {
-        Auction storage a = auctions[tokenId];
-        if (!a.active) revert NoAuction();
-        if (a.startedAt == 0) revert AuctionNotStarted();
-
-        uint8 status = IKarPassportAuction(address(karPassport)).passportStatus(tokenId);
-        VoidReason reason;
-
-        if (status == _STATUS_UNVERIFIED) {
-            reason = VoidReason.UnverifiedPassport;
-        } else if (block.timestamp >= a.endsAt + disputeGracePeriod && status != _STATUS_VERIFIED) {
-            reason = VoidReason.DisputeGraceExpired;
-        } else if (status == _STATUS_DISPUTED) {
-            revert PassportDisputed();
-        } else {
-            revert AuctionSettleable();
-        }
-
-        address bidder = a.highestBidder;
-        uint128 bidAmount = a.highestBid;
-        address asset = a.asset;
-        address seller = a.seller;
-
-        a.active = false;
-        _clearAuctionStorage(tokenId);
-
-        karPassport.safeTransferFrom(address(this), seller, tokenId);
-
-        if (bidder != address(0) && bidAmount > 0) {
-            _refundBidder(tokenId, bidder, bidAmount, asset);
-        }
-
-        emit AuctionVoided(tokenId, reason);
     }
 
     /// @inheritdoc IAuctionEscrow
@@ -546,15 +508,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         uint40 previous = disputeResolutionTimeout;
         disputeResolutionTimeout = value;
         emit DisputeResolutionTimeoutSet(previous, value);
-    }
-
-    /// @inheritdoc IAuctionEscrow
-    function setDisputeGracePeriod(uint40 value) external {
-        _onlyUpgradeAuthority();
-        if (value == 0) revert BadConfig();
-        uint40 previous = disputeGracePeriod;
-        disputeGracePeriod = value;
-        emit DisputeGracePeriodSet(previous, value);
     }
 
     /// @inheritdoc IAuctionEscrow

@@ -7,7 +7,6 @@ export type PonderAuctionPhase =
   | "CREATED"
   | "BIDDING"
   | "SETTLED"
-  | "VOIDED"
   | "CANCELLED"
   | "RETURNED"
   | "RELEASED";
@@ -41,7 +40,6 @@ export type PonderAuctionRaw = {
   active: boolean;
   phase: string;
   returnRequestedAt?: string | number | null;
-  voidReason?: string;
   createdAt: string | number;
   updatedAt?: string | number;
   passportStatus?: string;
@@ -110,7 +108,6 @@ export type AuctionRow = {
   active: boolean;
   phase: PonderAuctionPhase;
   returnRequestedAt: bigint | null;
-  voidReason: string;
   createdAt: bigint;
   updatedAt: bigint;
   passportStatus: PassportStatus;
@@ -177,7 +174,6 @@ function normalizePhase(phase: string): PonderAuctionPhase {
     p === "CREATED" ||
     p === "BIDDING" ||
     p === "SETTLED" ||
-    p === "VOIDED" ||
     p === "CANCELLED" ||
     p === "RETURNED" ||
     p === "RELEASED"
@@ -201,7 +197,7 @@ export function auctionPhaseLabel(phase: PonderAuctionPhase | AuctionUiState): s
     case "S3":
       return "Bidding";
     case "S4":
-      return "Bidding paused";
+      return "Bidding open";
     case "S5":
       return "Auction ended";
     case "SETTLED":
@@ -209,7 +205,6 @@ export function auctionPhaseLabel(phase: PonderAuctionPhase | AuctionUiState): s
     case "RELEASED":
     case "S8":
       return "Released";
-    case "VOIDED":
     case "CANCELLED":
     case "RETURNED":
     case "S9":
@@ -277,7 +272,6 @@ export function mapPonderAuctionRow(raw: PonderAuctionRaw): AuctionRow {
     active: Boolean(raw.active),
     phase: normalizePhase(raw.phase),
     returnRequestedAt: toNullableBigInt(raw.returnRequestedAt),
-    voidReason: String(raw.voidReason ?? ""),
     createdAt: toBigInt(raw.createdAt),
     updatedAt: toBigInt(raw.updatedAt ?? raw.createdAt),
     passportStatus: (raw.passportStatus ?? "UNVERIFIED") as PassportStatus,
@@ -360,7 +354,7 @@ export function deriveAuctionUiState(input: DeriveAuctionUiStateInput): AuctionU
   const status = String(input.passportStatus).toUpperCase();
 
   if (phase === "RELEASED") return "S8";
-  if (phase === "VOIDED" || phase === "CANCELLED" || phase === "RETURNED") return "S9";
+  if (phase === "CANCELLED" || phase === "RETURNED") return "S9";
   if (phase === "SETTLED") return "SETTLED";
 
   if (!input.active && phase !== "BIDDING" && phase !== "CREATED") {

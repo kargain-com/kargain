@@ -48,7 +48,7 @@
 | KarProPass | `1.0.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `1.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` |
 | MarketplaceEscrow | `2.0.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
-| AuctionEscrow | `1.0.1-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
+| AuctionEscrow | `2.0.0-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
 | KarPassportBridgeGateway | `1.1.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X) |
 
@@ -603,7 +603,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 
 **Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire:read-only` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
 
-**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-101-draft).
+**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-200-draft).
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
@@ -656,13 +656,13 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `bridgeGateway`).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `proFeeBps` 0 · `maxFeedStaleness` 3600 · auction `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · USD-only currency registry · same `platformRecipient` as prior 84532 deploy. Additive `pnpm deploy:auction` remains for legacy manifests that lack AuctionEscrow. Behavior: [I.11](#i11-auctionescrow-101-draft). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `proFeeBps` 0 · `maxFeedStaleness` 3600 · auction `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · USD-only currency registry · same `platformRecipient` as prior 84532 deploy. Additive `pnpm deploy:auction` remains for legacy manifests that lack AuctionEscrow. Behavior: [I.11](#i11-auctionescrow-200-draft). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 
-### I.11. AuctionEscrow (`1.0.1-draft`)
+### I.11. AuctionEscrow (`2.0.0-draft`)
 
-UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgradeAuthority`** = Timelock48h (same v2 handoff convention as MarketplaceEscrow). One auction per `tokenId` (`auctions[tokenId]`). **Addresses:** [I.9.1](#i91-active-deployment-base-sepolia-84532). **UI:** [design-spec.md](../design-spec.md) §4.18. **Indexer:** [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md). Design rationale: [auction-design.md](../research/auction-design.md) §1–§10.
+UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgradeAuthority`** = Timelock48h (same v2 handoff convention as MarketplaceEscrow). One auction per `tokenId` (`auctions[tokenId]`). **Addresses:** [I.9.1](#i91-active-deployment-base-sepolia-84532) (live proxies remain `1.0.1-draft` until Nuclear #2 full-stack redeploy). **UI:** [design-spec.md](../design-spec.md) §4.18. **Indexer:** [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md). Design rationale: [auction-design.md](../research/auction-design.md) §1–§10.
 
 ### 11.1 Role gates and Phase A scope
 
@@ -670,7 +670,7 @@ UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgrade
 |------|------|
 | Direct seller | Token owner **and** `isActiveVerifier(msg.sender)` to `createAuction` |
 | Agent create | Auth’d agent **and** `isActiveVerifier(agent)` for `createAuctionOnBehalf`; private owners use the agent funnel |
-| Passport | `passportStatus == VERIFIED` required for create, bid, and settle; `DISPUTED` blocks bidding (`PassportDisputed`) |
+| Passport | `passportStatus == VERIFIED` required to **open** a lot (`createAuction`); after the first qualifying bid, passport status does **not** gate `bid` or `settle` |
 | Bid ban | Seller and agent cannot bid (`BidFromSeller` / `BidFromAgent`) |
 | Assets | Native (`asset = address(0)`) or USDC only — **no oracles** on any path |
 
@@ -678,7 +678,7 @@ UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgrade
 
 | Param | Role |
 |-------|------|
-| `karPassport_` | NFT custody + `passportStatus` reads |
+| `karPassport_` | NFT custody + `passportStatus` reads (create gate only) |
 | `usdc_` | Only ERC-20 bid asset in Phase A |
 | `wrappedNative_` | WETH fallback for native refund/payout griefing immunity (Base: `0x4200…0006`) |
 | `karProStaking_` | `isActiveVerifier` for seller/agent admission and dispute resolvers |
@@ -694,10 +694,9 @@ Constructor / `initialize` reject zero addresses via **`ZeroAddress`**. Proxy `i
 | `extensionWindow` | 300 s (5 min) | 60–3600 s | Applied at next bid only — never rewrites running auctions retroactively |
 | `minIncrementBps` | 300 (3%) | 100–1000 | |
 | `minDuration` / `maxDuration` | 3 d / 7 d | `min ≤ max` | |
-| `settlementHold` | 7 d | `> 0` | |
+| `settlementHold` | 7 d | `> 0` | Always 7 days — no branching on passport status |
 | `settlementDisputeBond` | 0.01 ETH | `> 0` | **Native-fixed**, including for USDC auctions (aligned with KarPassport `disputeDeposit`) |
 | `disputeResolutionTimeout` | 30 d | `> 0` | Unresolved settlement dispute → auto-`ReleaseToSeller` via `releaseFunds`; bond → `platformRecipient` |
-| `disputeGracePeriod` | 30 d | `> 0` | Void path when passport stuck non-VERIFIED after end |
 
 No total-extension cap in Phase A (`BadConfig` on setter bound violations). Config changes never mutate in-flight auction terms.
 
@@ -765,7 +764,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 ### 11.7 Settlement hold and dispute lifecycle
 
-1. Permissionless **`settle`**: `now ≥ endsAt`, bid exists, passport VERIFIED → NFT to highest bidder; funds into `SettlementHold(releaseAt = now + settlementHold)`.
+1. Permissionless **`settle`**: `now ≥ endsAt`, bid exists → NFT to highest bidder via **`transferFrom`** (not `safeTransferFrom` — receiver hook deliberately omitted so a contract bidder cannot hostage the lot); funds into `SettlementHold(releaseAt = now + settlementHold)`. Passport status is **not** checked (post-delivery problems use the settlement hold). Settle **cannot fail on the buyer-receiver hook**; there is **no** time-based void/backstop.
 2. Buyer **`confirmReceipt`** before `releaseAt` (no open dispute) → immediate payout.
 3. Permissionless **`releaseFunds`**: after `releaseAt` with no dispute, **or** after `disputedAt + disputeResolutionTimeout` with no resolution (auto-`ReleaseToSeller`; bond → platform).
 4. Buyer **`openSettlementDispute`**: before `releaseAt`; `msg.value ≥ settlementDisputeBond` (native always); freezes release.
@@ -775,19 +774,18 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 **H-1 guard:** `createAuction`, `authorizeAuctionAgent`, and `createAuctionOnBehalf` revert **`SettlementPending`** while `holds[tokenId].releaseAt != 0`. Hold is deleted on every terminal payout/refund path so the token is auctionable again after settlement clears.
 
-**Pause:** blocks `createAuction*`, `authorizeAuctionAgent`, and `bid`; **never** settle / void / release / refund paths.
+**Pause:** blocks `createAuction*`, `authorizeAuctionAgent`, and `bid`; **never** settle / release / refund paths.
 
 ### 11.8 Liveness invariants
 
 | Stuck state | Exit |
 |-------------|------|
-| Nobody calls settle | Permissionless `settle` |
-| Passport DISPUTED at `endsAt` | Settle deferred; passport resolve → settle, or ConfirmDispute → `voidAuction` |
-| DISPUTED stuck | `voidAuction` after `endsAt + disputeGracePeriod` |
+| Nobody calls settle | Permissionless `settle` (`transferFrom` — infallible on the receiver hook) |
+| Passport DISPUTED / UNVERIFIED after first bid | Bidding and settle continue; delivery issues → settlement hold |
 | Buyer silent through hold | Permissionless `releaseFunds` |
 | Settlement dispute never resolved | Auto-`ReleaseToSeller` via `releaseFunds`; bond → platform |
 | ConfirmFailure, buyer never returns NFT | `claimAbandonedRefund` after timeout |
-| Pause | Never blocks settle / void / release / refund |
+| Pause | Never blocks settle / release / refund |
 
 ### 11.9 AuctionEscrow — function reference
 
@@ -797,11 +795,10 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 | `authorizeAuctionAgent(tokenId, agent, expiry, asset, ownerMinAsset)` | Owner | Approval required; no active auction; pause + `SettlementPending` gated |
 | `revokeAuctionAgent(tokenId)` | Owner | No active auction |
 | `createAuctionOnBehalf(tokenId, asset, reserve, duration, agentFeeBps)` | Agent + active verifier | Auth snapshot; net ≥ `ownerMinAsset`; pause + `SettlementPending` gated |
-| `bid(tokenId, amount)` payable | Not seller/agent | VERIFIED only; first bid ≥ reserve starts clock; then min increment; extension window; prior bid refunded |
+| `bid(tokenId, amount)` payable | Not seller/agent | No passport-status gate; first bid ≥ reserve starts clock; then min increment; extension window; prior bid refunded |
 | `cancelAuction` / `agentCancelAuction` | Seller / agent | Only `startedAt == 0`; NFT → seller |
 | `requestReturn` / `forceReturn` | Owner | Pre-start only; force after cooldown |
-| `settle(tokenId)` | **Permissionless** | End + bid + VERIFIED → NFT to buyer, funds to hold |
-| `voidAuction(tokenId)` | **Permissionless** | UNVERIFIED anytime after start, or grace after end if not VERIFIED; refund highest + NFT → seller |
+| `settle(tokenId)` | **Permissionless** | End + bid → NFT to buyer via `transferFrom`, funds to hold (passport status ignored; no void backstop) |
 | `confirmReceipt(tokenId)` | Buyer | Before `releaseAt`, no dispute → payout |
 | `releaseFunds(tokenId)` | **Permissionless** | Auto-release or dispute-timeout `ReleaseToSeller` |
 | `openSettlementDispute(tokenId)` payable | Buyer | Native bond; freezes hold |
@@ -816,11 +813,10 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 |-------|------|
 | `NotSeller` / `NotAgent` / `NotOwner` / `NotBuyer` | Role guards |
 | `NotActiveVerifier` | Seller/agent/resolver admission |
-| `PassportNotVerified` / `PassportDisputed` | Status gates |
+| `PassportNotVerified` / `PassportDisputed` | Create-time status gates only |
 | `AuctionExists` / `NoAuction` | Mapping occupancy |
 | `AuctionAlreadyStarted` | Cancel/return after first bid (Solidity: cannot share name with `event AuctionStarted`) |
 | `AuctionNotStarted` / `AuctionNotEnded` / `AuctionEnded` | Lifecycle timing |
-| `AuctionSettleable` | `voidAuction` when auction has ended and passport is VERIFIED — call `settle` instead |
 | `SettlementPending` | Create/authorize while hold unresolved (H-1) |
 | `BidTooLow` / `BidFromSeller` / `BidFromAgent` | Bid rules |
 | `WrongAsset` / `WrongValue` / `UnsupportedAsset` | Asset/payment mismatch |
@@ -837,7 +833,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 ### 11.11 AuctionEscrow — event reference
 
-`AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `AuctionVoided` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · config / `Paused` / `UpgradeAuthorityTransferred`.
+`AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · config / `Paused` / `UpgradeAuthorityTransferred`.
 
 Indexer tables and HTTP routes: [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md).
 

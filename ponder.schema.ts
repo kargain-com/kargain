@@ -204,7 +204,6 @@ export const auction = onchainTable(
     active: t.boolean().notNull().default(true),
     phase: t.text().notNull().default("CREATED"),
     returnRequestedAt: t.bigint(),
-    voidReason: t.text().notNull().default(""),
     createdAt: t.bigint().notNull(),
     updatedAt: t.bigint().notNull(),
   }),
