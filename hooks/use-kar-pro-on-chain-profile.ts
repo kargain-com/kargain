@@ -61,7 +61,7 @@ export function useKarProOnChainProfile(
       : undefined;
   const stakeData =
     stakeRead?.status === "success"
-      ? (stakeRead.result as readonly [number, bigint, bigint, boolean])
+      ? (stakeRead.result as readonly [`0x${string}`, bigint, bigint, boolean])
       : undefined;
 
   const passHolder = passData?.[0];

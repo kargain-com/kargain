@@ -66,6 +66,10 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   TokenHasNoCode: "That address has no contract code and cannot be used as a token.",
   TokenNonConforming:
     "That token does not follow the ERC-20 transfer return convention and cannot be used.",
+  TokenDecimalsUnavailable:
+    "That token does not expose a decimals() value and cannot be used as a payment token.",
+  ZeroFeedStaleness: "Oracle freshness window must be greater than zero.",
+  InvalidCategory: "That verifier category is not valid.",
   AlreadyVerifier: "This wallet is already an active verifier.",
   BelowMinStake: "Stake amount is below the current minimum.",
   BelowMinStakeFloor: "Minimum stake cannot go below the protocol floor.",

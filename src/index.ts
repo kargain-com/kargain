@@ -432,7 +432,7 @@ ponder.on("KarProStaking:VerifierJoined", async ({ event, context }) => {
     context.db,
     indexingChainId(context),
     event.args.verifier,
-    Number(event.args.asset),
+    event.args.asset,
     event.args.amount,
     event.block.timestamp,
   );

@@ -28,19 +28,16 @@ interface IKarProPass {
 /// @title KarProStaking
 /// @notice Single entry point to become a verifier: stake ETH or an optional ERC-20, receive a KarProPass.
 /// @dev Stakes are fully refundable on leave; failed refunds become withdrawable claims. Owner cannot withdraw user funds.
-/// @custom:version 1.3.0-rc.1
+///      Each stake records its own asset address (`address(0)` = native) — leave refunds that asset, never the current
+///      `stakeToken` setting. Storage layout ships only via Nuclear #2 redeploy.
+/// @custom:version 2.0.0-rc.1
 contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
-    string public constant VERSION = "1.3.0-rc.1";
+    string public constant VERSION = "2.0.0-rc.1";
 
     using SafeERC20 for IERC20;
 
-    enum StakeAsset {
-        NATIVE,
-        TOKEN
-    }
-
     struct Stake {
-        StakeAsset asset;
+        address asset;
         uint256 amount;
         uint256 stakedAt;
         bool active;
@@ -62,8 +59,9 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
     error NotVerifier();
     error TokenNotEnabled();
     error BelowMinStakeFloor();
+    error ZeroAddress();
 
-    event VerifierJoined(address indexed verifier, uint8 asset, uint256 amount);
+    event VerifierJoined(address indexed verifier, address asset, uint256 amount);
     event VerifierLeft(address indexed verifier, uint256 returned);
     event MinStakeNativeUpdated(uint256 newMin);
     event StakeTokenSet(address token, uint256 minAmount);
@@ -73,6 +71,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
     /// @param proPass_ KarProPass contract address.
     /// @param initialOwner Owner for parameter updates.
     constructor(address proPass_, address initialOwner) Ownable(initialOwner) {
+        if (proPass_ == address(0)) revert ZeroAddress();
         proPass = IKarProPass(proPass_);
         minStakeNative = 0.05 ether;
     }
@@ -90,7 +89,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         if (stakes[msg.sender].active) revert AlreadyVerifier();
 
         stakes[msg.sender] = Stake({
-            asset: StakeAsset.NATIVE,
+            asset: address(0),
             amount: msg.value,
             stakedAt: block.timestamp,
             active: true
@@ -98,7 +97,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
         proPass.mint(msg.sender, category, name, metadataURI);
 
-        emit VerifierJoined(msg.sender, 0, msg.value);
+        emit VerifierJoined(msg.sender, address(0), msg.value);
     }
 
     /// @notice Stake the configured ERC-20 token to become a verifier and mint a KarProPass.
@@ -112,14 +111,15 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         if (stakeToken == address(0)) revert TokenNotEnabled();
         if (stakes[msg.sender].active) revert AlreadyVerifier();
 
-        IERC20 token = IERC20(stakeToken);
+        address tokenAddr = stakeToken;
+        IERC20 token = IERC20(tokenAddr);
         uint256 balanceBefore = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), minStakeToken);
         uint256 received = token.balanceOf(address(this)) - balanceBefore;
         if (received < minStakeToken) revert BelowMinStake();
 
         stakes[msg.sender] = Stake({
-            asset: StakeAsset.TOKEN,
+            asset: tokenAddr,
             amount: received,
             stakedAt: block.timestamp,
             active: true
@@ -127,11 +127,12 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
         proPass.mint(msg.sender, category, name, metadataURI);
 
-        emit VerifierJoined(msg.sender, 1, received);
+        emit VerifierJoined(msg.sender, tokenAddr, received);
     }
 
     /// @notice Leave verifier status: burn KarProPass and return the locked stake amount.
     /// @dev burn is wrapped in try/catch so the stake is always refundable even if KarProPass burn authorization changed.
+    ///      Refund uses the stake's recorded asset, not the current `stakeToken` configuration.
     function leave() external nonReentrant {
         Stake memory s = stakes[msg.sender];
         if (!s.active) revert NotVerifier();
@@ -141,10 +142,10 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
         try proPass.burn(msg.sender) {} catch {}
 
-        if (s.asset == StakeAsset.NATIVE) {
+        if (s.asset == address(0)) {
             _payNative(msg.sender, s.amount);
         } else {
-            _payErc20(stakeToken, msg.sender, s.amount);
+            _payErc20(s.asset, msg.sender, s.amount);
         }
 
         emit VerifierLeft(msg.sender, s.amount);

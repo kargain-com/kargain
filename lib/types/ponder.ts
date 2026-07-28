@@ -70,7 +70,7 @@ export type VerifierRow = {
   name: string;
   slug: string;
   metadataURI: string;
-  stakeAsset?: number;
+  stakeAsset?: string;
   stakeAmount?: string;
   active: boolean;
   joinedAt?: string;

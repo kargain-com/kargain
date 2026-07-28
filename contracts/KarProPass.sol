@@ -17,9 +17,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title KarProPass
 /// @notice Immutable soulbound Kar Pro credential — one token per address, minted/burned only by KarProStaking.
-/// @custom:version 1.0.0-rc.1
+/// @custom:version 1.1.0-rc.1
 contract KarProPass is ERC721, Ownable {
-    string public constant VERSION = "1.0.0-rc.1";
+    string public constant VERSION = "1.1.0-rc.1";
 
     enum Category {
         MECHANIC,
@@ -43,10 +43,12 @@ contract KarProPass is ERC721, Ownable {
     error Soulbound();
     error NotHolder();
     error ZeroAddress();
+    error InvalidCategory();
 
     event ProPassMinted(address indexed holder, uint8 category, string name, string metadataURI);
     event ProPassBurned(address indexed holder);
     event ProfileUpdated(address indexed holder, uint8 category, string name, string metadataURI);
+    event StakingSet(address indexed staking);
 
     /// @notice Deploys the soulbound Kar Pro pass collection.
     /// @param initialOwner Owner allowed to set the staking contract address.
@@ -59,6 +61,7 @@ contract KarProPass is ERC721, Ownable {
     function setStaking(address s) external onlyOwner {
         if (s == address(0)) revert ZeroAddress();
         staking = s;
+        emit StakingSet(s);
     }
 
     /// @notice Mints a KarProPass for a verifier (callable only by KarProStaking).
@@ -69,6 +72,7 @@ contract KarProPass is ERC721, Ownable {
     function mint(address to, uint8 category, string calldata name, string calldata metadataURI) external {
         if (msg.sender != staking) revert OnlyStaking();
         if (balanceOf(to) > 0) revert AlreadyHoldsPass();
+        if (category > uint8(Category.OTHER)) revert InvalidCategory();
 
         uint256 tokenId = uint256(uint160(to));
         holderCategory[tokenId] = Category(category);
@@ -103,6 +107,7 @@ contract KarProPass is ERC721, Ownable {
     function updateProfile(uint8 category, string calldata name, string calldata metadataURI) external {
         uint256 tokenId = uint256(uint160(msg.sender));
         if (_ownerOf(tokenId) != msg.sender) revert NotHolder();
+        if (category > uint8(Category.OTHER)) revert InvalidCategory();
 
         holderCategory[tokenId] = Category(category);
         holderName[tokenId] = name;

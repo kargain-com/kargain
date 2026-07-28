@@ -15,6 +15,10 @@ const EIP170_MAX = 24_576;
 const PRODUCTION_CONTRACTS = [
   { name: "KarPassport", artifactPath: "artifacts/contracts/KarPassport.sol/KarPassport.json" },
   {
+    name: "KarProPass",
+    artifactPath: "artifacts/contracts/KarProPass.sol/KarProPass.json",
+  },
+  {
     name: "MarketplaceEscrow",
     artifactPath: "artifacts/contracts/MarketplaceEscrow.sol/MarketplaceEscrow.json",
   },

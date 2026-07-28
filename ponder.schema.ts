@@ -176,7 +176,7 @@ export const verifier = onchainTable("verifier", (t) => ({
   locationLabel: t.text().notNull().default(""),
   locationPlaceId: t.text().notNull().default(""),
   locationCountryCode: t.text().notNull().default(""),
-  stakeAsset: t.integer().notNull().default(0),
+  stakeAsset: t.text().notNull().default("0x0000000000000000000000000000000000000000"),
   stakeAmount: t.text().notNull().default("0"),
   verificationFee: t.bigint().notNull().default(0n),
   active: t.boolean().notNull().default(false),

@@ -28,11 +28,13 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.5.1-rc.1`, MarketplaceEscrow `2.1.0-rc.2` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.6.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
-**Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility. Only **MarketplaceEscrow** has semver major **2**; KarPassport source is **`1.5.1-rc.1`** (error-name truth + claim payout); live I.9 still `1.3.0-rc.1` until Nuclear #2.
+**Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility.
+
+**Amend-in-place until on-chain:** Source `VERSION` strings are the **Nuclear #2 ship numbers**. Until a given contract's ship version exists on a commercial chain, further pre-deploy changes **amend that VERSION in place** (do not accumulate unused `-rc.N` / `-draft` history). Live I.9 addresses may still show older Nuclear cutover versions until Nuclear #2 full-stack redeploy.
 
 ---
 
@@ -44,13 +46,13 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.5.1-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits, claim payouts, bridge mint/burn/lock hooks |
-| KarProPass | `1.0.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
-| KarProStaking | `1.3.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
-| MarketplaceEscrow | `2.1.0-rc.2` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
-| AuctionEscrow | `2.0.1-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
+| KarPassport | `1.6.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits, claim payouts, bridge mint/burn/lock hooks |
+| KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
+| KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
+| MarketplaceEscrow | `2.2.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
+| AuctionEscrow | `2.0.0-rc.1` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
-| KarPassportBridgeGateway | `1.1.2-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); live I.9 still `1.1.0-rc.1` until redeploy |
+| KarPassportBridgeGateway | `1.2.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X) |
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
 
@@ -196,20 +198,21 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 
 ---
 
-### I.3. KarProPass v1.0.0
+### I.3. KarProPass (`1.1.0-rc.1`)
 
 Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 - `tokenId = uint256(uint160(holderAddress))`.
 - Only `KarProStaking` may `mint` / `burn`.
 - `updateProfile` is the canonical holder path for category, name, metadata URI.
-- `setStaking`: **`ZeroAddress` guard** — cannot point staking to zero.
+- `setStaking`: **`ZeroAddress` guard** — cannot point staking to zero; emits **`StakingSet`**.
+- Category args are range-checked (`InvalidCategory` when `category > Category.OTHER`).
 
 ### KarProPass — function reference
 
 | Function | Access | Behavior |
 |----------|--------|----------|
-| `setStaking` | owner | Wire staking contract (non-zero) |
+| `setStaking` | owner | Wire staking contract (non-zero); emits `StakingSet` |
 | `mint` | staking only | Mint soulbound pass to holder |
 | `burn` | staking only | Burn pass; clear profile storage |
 | `updateProfile` | holder | Update on-chain profile fields |
@@ -227,26 +230,29 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 | `Soulbound` | Transfer or approval attempted |
 | `NotHolder` | `updateProfile` without pass |
 | `ZeroAddress` | `setStaking(0)` |
+| `InvalidCategory` | Category enum cast out of range |
 
 ---
 
-### I.4. KarProStaking v1.1.0
+### I.4. KarProStaking (`2.0.0-rc.1`)
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record).
 - **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass.
-- **`leave()`** — full stake refund; **no slashing**; `proPass.burn` wrapped in try/catch so stake always returns.
+- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Leave refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Auction `asset`.
+- **`leave()`** — full stake refund of recorded asset; **no slashing**; `proPass.burn` wrapped in try/catch so stake always returns.
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
 - **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). The Kargain `/kar-pro` UI composes service margin (nav display currency) plus an estimated `verifyPassport` gas cost at save time and writes the sum as a single wei value via `setVerificationFee`. Accepted off-chain payment methods are signaled in Nostr kind 0 as optional `verifierPaymentMethods` (`eth`, `usdc`, `lightning`; absent = all three). Workflow: verifier sets fee → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
+- Constructor requires non-zero `proPass` (`ZeroAddress`). Stake storage layout ships only via Nuclear #2 redeploy.
 
 ### KarProStaking — function reference
 
 | Function | Access | Behavior |
 |----------|--------|----------|
-| `becomeVerifierNative` | anyone + ETH | Stake native; mint pass |
-| `becomeVerifierToken` | anyone | Stake configured ERC-20; mint pass |
-| `leave` | active verifier | Deactivate; refund stake; attempt burn |
+| `becomeVerifierNative` | anyone + ETH | Stake native (`asset = 0`); mint pass |
+| `becomeVerifierToken` | anyone | Stake configured ERC-20 (`asset = stakeToken` at join); mint pass |
+| `leave` | active verifier | Deactivate; refund **recorded** asset; attempt burn |
 | `setMinStakeNative` | owner | New minimum (≥ floor) for **new** joiners |
-| `setStakeToken` | owner | Enable/update ERC-20 stake token + min |
+| `setStakeToken` | owner | Enable/update ERC-20 stake token + min (does not rewrite existing stakes) |
 | `isActiveVerifier` | view | Active stake check |
 | `setVerificationFee` | active verifier | Set public fee signal (wei) |
 
@@ -263,12 +269,12 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 | `TokenHasNoCode` | `setStakeToken` address has no code |
 | `TokenNonConforming` | `setStakeToken` token fails ERC-20 transfer return probe |
 | `BelowMinStakeFloor` | Owner sets min below 0.001 ETH |
-
+| `ZeroAddress` | Constructor `proPass_ == 0` |
 ---
 
-### I.5. MarketplaceEscrow (`2.1.0-rc.2`)
+### I.5. MarketplaceEscrow (`2.2.0-rc.1`)
 
-UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness`. ERC-20 payment tokens enter only via **`approvePaymentToken`** (admission there). Source VERSION `2.1.0-rc.2` (error-name truth + dead USDC ctor removed); live I.9.1 / I.9.2 proxies remain `2.0.0-rc.1` until Nuclear #2 full-stack redeploy.
+UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness` (**must be > 0** — `ZeroFeedStaleness`). ERC-20 payment tokens enter only via **`approvePaymentToken`** (conformance + **`decimals()`** admission there; precision is stored on `PaymentTokenConfig`). Source VERSION `2.2.0-rc.1` (recorded token decimals + unified pricing + feed freshness always on). Storage layout change vs prior proxies — **Nuclear #2 full-stack redeploy only** (no in-place UUPS of prior `PaymentTokenConfig`). Live I.9.1 / I.9.2 proxies remain older until that redeploy.
 
 ### 5.1 Currency system
 
@@ -278,9 +284,11 @@ UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy han
 | Native-priced listing | `CURRENCY_NATIVE` = `bytes32("NATIVE")` | None — price **is** payment amount (× 1e10 scale) |
 | Other (EUR, GBP, …) | ISO-style `bytes32` padded | Live Chainlink feed registered via `setCurrencyFeed` |
 
-**Feed validation** (`setCurrencyFeed`): non-zero feed must have bytecode, `decimals() == 8`, latest `answer > 0`.
+**Feed validation** (`setCurrencyFeed` / payment-token feed): non-zero feed must have bytecode, `decimals() == 8`, latest `answer > 0`, and **`updatedAt` within `maxFeedStaleness`** (`StalePrice` at admission, not only at buy/quote).
 
-**Policy:** No hardcoded exchange rates in contract logic — only Chainlink (or USD 1:1 for stables via `feed = address(0)` on payment tokens).
+**Payment token pricing (unified):** `amount = usd1e8 * 10^decimals / priceUsd1e8`, where `priceUsd1e8 = 1e8` when `feed == address(0)` (USD-pegged), else the Chainlink answer. Token `decimals` are read and stored at `approvePaymentToken`; a token without `decimals()` is not admitted (`TokenDecimalsUnavailable`).
+
+**Policy:** No hardcoded exchange rates in contract logic — only Chainlink (or USD 1:1 for stables via `feed = address(0)` on payment tokens). No assumed 6- vs 18-decimal branch.
 
 **Initial currencies per chain** (from `scripts/lib/chainlink-feeds.ts`; deploy registers only feeds with live bytecode):
 
@@ -420,7 +428,9 @@ Public mappings: `listings`, `agentAuthorizations`, `returnRequestedAt`, `settle
 | `TransferFailed` | `withdrawClaim` transfer failed (settlement credits a claim on push failure) |
 | `TokenHasNoCode` | `approvePaymentToken` address has no code |
 | `TokenNonConforming` | `approvePaymentToken` fails ERC-20 transfer return probe |
-| `StalePrice` | Oracle older than `maxFeedStaleness` |
+| `TokenDecimalsUnavailable` | `approvePaymentToken` token does not expose `decimals()` |
+| `ZeroFeedStaleness` | Constructor `maxFeedStaleness_ == 0` |
+| `StalePrice` | Oracle older than `maxFeedStaleness` (buy/quote **or** feed admission) |
 | `BadOracleAnswer` | Non-positive feed answer |
 | `ZeroAddress` | Zero address where a configured address is required |
 | `NotUpgradeAuthority` | Admin op from wrong caller |
@@ -652,7 +662,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 2. Deploy **KarProPass** (always fresh — no reuse on Nuclear redeploy).
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
-5. Deploy **KarPassport** `1.5.1-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**).
+5. Deploy **KarPassport** `1.6.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**).
 6. Deploy **MarketplaceEscrow** implementation (passport, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
 7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
 8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
@@ -668,7 +678,7 @@ Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`ch
 
 ---
 
-### I.11. AuctionEscrow (`2.0.1-draft`)
+### I.11. AuctionEscrow (`2.0.0-rc.1`)
 
 UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgradeAuthority`** = Timelock48h (same v2 handoff convention as MarketplaceEscrow). One auction per `tokenId` (`auctions[tokenId]`). **Addresses:** [I.9.1](#i91-active-deployment-base-sepolia-84532) (live proxies remain `1.0.1-draft` until Nuclear #2 full-stack redeploy). **UI:** [design-spec.md](../design-spec.md) §4.18. **Indexer:** [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md). Design rationale: [auction-design.md](../research/auction-design.md) §1–§10.
 
@@ -1170,8 +1180,6 @@ Run metadata unit tests: `pnpm test:metadata` · records: `pnpm test:records`
 
 # Part V — Version policy
 
-
-
 Verbatim from contract headers:
 
 ```
@@ -1186,6 +1194,8 @@ Verbatim from contract headers:
 //   Upgradeable contracts (MarketplaceEscrow):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 ```
+
+**Nuclear #2 amend-in-place:** Until a ship `VERSION` exists on a commercial chain, source VERSION strings are amended in place rather than accumulating unused pre-release increments. Storage-layout changes on UUPS contracts in this window ship only via full-stack Nuclear redeploy (not in-place upgrade of prior layouts).
 
 ---
 

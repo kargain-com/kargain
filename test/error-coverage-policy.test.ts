@@ -166,7 +166,12 @@ export function buildErrorCoverageReport(): {
         path.join(CONTRACTS_DIR, "lib/Erc20Admission.sol"),
         "utf8",
       );
-      errors = [...new Set([...errors, ...parseErrorNames(admissionSource)])].sort();
+      // TokenDecimalsUnavailable is only reachable via MarketplaceEscrow.approvePaymentToken.
+      const admissionErrors = parseErrorNames(admissionSource).filter(
+        (name) =>
+          name !== "TokenDecimalsUnavailable" || entry.contract === "MarketplaceEscrow",
+      );
+      errors = [...new Set([...errors, ...admissionErrors])].sort();
     }
 
     const exercised = new Set<string>();

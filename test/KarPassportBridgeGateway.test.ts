@@ -1009,7 +1009,32 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
   });
 
-  it("VERSION is 1.1.2-rc.1", async () => {
-    assert.equal(await pair.hub.gateway.read.VERSION(), "1.1.2-rc.1");
+  it("VERSION is 1.2.0-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.2.0-rc.1");
+  });
+
+  it("ctor reverts ZeroAddress on required immutable deps", async () => {
+    const hub = pair.hub;
+    const { stack, endpoint } = hub;
+    await assert.rejects(
+      hub.viem.deployContract("KarPassportBridgeGateway", [
+        ZERO,
+        stack.marketplace.address,
+        ZERO,
+        endpoint.address,
+        stack.admin.account.address,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
+    await assert.rejects(
+      hub.viem.deployContract("KarPassportBridgeGateway", [
+        stack.passport.address,
+        ZERO,
+        ZERO,
+        endpoint.address,
+        stack.admin.account.address,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
   });
 });

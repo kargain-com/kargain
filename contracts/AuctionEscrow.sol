@@ -34,9 +34,9 @@ interface IKarProStakingAuction {
 /// @notice English reserve auction escrow with settlement hold and dispute resolution.
 /// @dev UUPS upgradeable; timelock is upgrade authority. Separate from MarketplaceEscrow.
 ///      Native/ERC-20 payouts use ClaimablePayouts (push then claim-on-failure).
-/// @custom:version 2.0.1-draft
+/// @custom:version 2.0.0-rc.1
 contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ClaimablePayouts, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "2.0.1-draft";
+    string public constant VERSION = "2.0.0-rc.1";
 
     using SafeERC20 for IERC20;
 

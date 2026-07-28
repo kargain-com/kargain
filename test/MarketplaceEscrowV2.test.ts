@@ -616,10 +616,10 @@ describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
     await connection.close();
   });
 
-  it("VERSION is 2.1.0-rc.2", async () => {
+  it("VERSION is 2.2.0-rc.1", async () => {
     const { viem } = connection;
     const { marketplace } = await deployEscrowStack(viem);
-    assert.equal(await marketplace.read.VERSION(), "2.1.0-rc.2");
+    assert.equal(await marketplace.read.VERSION(), "2.2.0-rc.1");
   });
 
   it("list on already-listed token reverts AlreadyListed", async () => {
@@ -1057,4 +1057,148 @@ describe("MarketplaceEscrow — error coverage matrix", () => {
     void stranger;
   });
 
+  it("ZeroFeedStaleness — marketplace ctor rejects maxFeedStaleness 0", async () => {
+    const { viem } = connection;
+    const { passport, staking, admin } = await deployEscrowStack(viem);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    await assert.rejects(
+      viem.deployContract("MarketplaceEscrow", [
+        passport.address,
+        nativeFeed.address,
+        staking.address,
+        admin.account.address,
+        250n,
+        100n,
+        0n,
+      ]),
+      revertsWith("ZeroFeedStaleness"),
+    );
+  });
+
+  it("TokenDecimalsUnavailable — approvePaymentToken rejects token without decimals()", async () => {
+    const { viem } = connection;
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    const noDec = await viem.deployContract("NoDecimalsErc20", []);
+    await assert.rejects(
+      marketplace.write.approvePaymentToken([noDec.address, ZERO], { account: admin.account }),
+      revertsWith("TokenDecimalsUnavailable"),
+    );
+  });
+
+  it("StalePrice — approvePaymentToken rejects stale feed at admission", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    const feed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    const token18 = await viem.deployContract("MockERC20Decimals", ["Eighteen", "E18", 18]);
+    await increaseTime(publicClient, 3600n + 1n);
+    await assert.rejects(
+      marketplace.write.approvePaymentToken([token18.address, feed.address], {
+        account: admin.account,
+      }),
+      revertsWith("StalePrice"),
+    );
+  });
+
+  it("StalePrice — setCurrencyFeed rejects stale feed at admission", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    const feed = await viem.deployContract("ChainlinkV3TestFeed", [8, 110n * 10n ** 8n]);
+    await increaseTime(publicClient, 3600n + 1n);
+    await assert.rejects(
+      marketplace.write.setCurrencyFeed([CURRENCY_EUR, feed.address], { account: admin.account }),
+      revertsWith("StalePrice"),
+    );
+  });
+});
+
+describe("MarketplaceEscrow — payment token decimals", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("quotes and settles an 18-decimal pegged stable (feed=0)", async () => {
+    const { viem } = connection;
+    const { admin, seller, buyer, passport, marketplace, feeBps } = await deployEscrowStack(viem);
+    const token18 = await viem.deployContract("MockERC20Decimals", ["Stable18", "S18", 18]);
+    await marketplace.write.approvePaymentToken([token18.address, ZERO], { account: admin.account });
+
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://18");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    const usd1e8 = 100n * 10n ** 8n;
+    await marketplace.write.list([tokenId, usd1e8, CURRENCY_USD], { account: seller.account });
+
+    const gross = await marketplace.read.quoteBuyWithToken([tokenId, token18.address]);
+    assert.equal(gross, 100n * 10n ** 18n);
+
+    await token18.write.mint([buyer.account.address, gross]);
+    await token18.write.approve([marketplace.address, gross], { account: buyer.account });
+    const sellerBefore = await token18.read.balanceOf([seller.account.address]);
+    await marketplace.write.buyWithToken([tokenId, token18.address], { account: buyer.account });
+    const fee = (gross * feeBps) / 10_000n;
+    const sellerAfter = await token18.read.balanceOf([seller.account.address]);
+    assert.equal(sellerAfter - sellerBefore, gross - fee);
+  });
+
+  it("quotes an 8-decimal pegged stable (feed=0)", async () => {
+    const { viem } = connection;
+    const { admin, seller, passport, marketplace } = await deployEscrowStack(viem);
+    const token8 = await viem.deployContract("MockERC20Decimals", ["Stable8", "S8", 8]);
+    await marketplace.write.approvePaymentToken([token8.address, ZERO], { account: admin.account });
+
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://8");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+
+    const gross = await marketplace.read.quoteBuyWithToken([tokenId, token8.address]);
+    assert.equal(gross, 100n * 10n ** 8n);
+  });
+
+  it("agent settle with ownerMin uses recorded 18-dec precision", async () => {
+    const { viem } = connection;
+    const {
+      admin,
+      seller,
+      buyer,
+      verifier,
+      passport,
+      marketplace,
+      feeBps,
+    } = await deployEscrowStack(viem);
+    const token18 = await viem.deployContract("MockERC20Decimals", ["Stable18", "S18", 18]);
+    await marketplace.write.approvePaymentToken([token18.address, ZERO], { account: admin.account });
+
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://omin18");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    // list-time 1e8 check: 1000 - 10% - 2.5% = 875 >= 500
+    const ownerMin = 500n * 10n ** 8n;
+    await marketplace.write.authorizeAgent(
+      [tokenId, verifier.account.address, expiry, ownerMin],
+      { account: seller.account },
+    );
+    await marketplace.write.listOnBehalf(
+      [tokenId, 1000n * 10n ** 8n, CURRENCY_USD, 1000, "0x"],
+      { account: verifier.account },
+    );
+
+    const gross = await marketplace.read.quoteBuyWithToken([tokenId, token18.address]);
+    assert.equal(gross, 1000n * 10n ** 18n);
+    await token18.write.mint([buyer.account.address, gross]);
+    await token18.write.approve([marketplace.address, gross], { account: buyer.account });
+
+    const sellerBefore = await token18.read.balanceOf([seller.account.address]);
+    await marketplace.write.buyWithToken([tokenId, token18.address], { account: buyer.account });
+    const agentFee = (gross * 1000n) / 10_000n;
+    const platformFee = (gross * feeBps) / 10_000n;
+    const sellerAfter = await token18.read.balanceOf([seller.account.address]);
+    assert.equal(sellerAfter - sellerBefore, gross - agentFee - platformFee);
+  });
 });

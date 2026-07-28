@@ -34,7 +34,8 @@ export type VerifierRow = {
   locationLabel: string;
   locationPlaceId: string;
   locationCountryCode: string;
-  stakeAsset: number;
+  /** Stake asset address; `0x000…0` = native ETH (ClaimablePayouts / Auction convention). */
+  stakeAsset: string;
   stakeAmount: string;
   verificationFee: bigint;
   active: boolean;
@@ -89,10 +90,15 @@ function placeFromIndexed(indexed: IndexedKarProMetadata): VerifierPlaceDenorm {
   };
 }
 
+/** Normalize stake asset from VerifierJoined (address(0) = native). */
+export function normalizeStakeAsset(asset: string): string {
+  return asset.toLowerCase();
+}
+
 export function verifierJoinedRow(
   chainId: number,
   verifierAddress: string,
-  asset: number,
+  asset: string,
   amount: bigint,
   timestamp: bigint,
 ): VerifierRow {
@@ -106,7 +112,7 @@ export function verifierJoinedRow(
     slug: "",
     metadataURI: "",
     ...EMPTY_VERIFIER_PLACE,
-    stakeAsset: asset,
+    stakeAsset: normalizeStakeAsset(asset),
     stakeAmount: amount.toString(),
     verificationFee: 0n,
     active: true,
@@ -118,14 +124,14 @@ export function verifierJoinedRow(
 export function verifierJoinedConflictUpdate(
   chainId: number,
   verifierAddress: string,
-  asset: number,
+  asset: string,
   amount: bigint,
   timestamp: bigint,
 ): VerifierPatch {
   return {
     chainId,
     address: verifierAddress,
-    stakeAsset: asset,
+    stakeAsset: normalizeStakeAsset(asset),
     stakeAmount: amount.toString(),
     active: true,
     joinedAt: timestamp,
@@ -163,7 +169,7 @@ export function proPassMintedRow(
     slug,
     metadataURI,
     ...place,
-    stakeAsset: 0,
+    stakeAsset: "0x0000000000000000000000000000000000000000",
     stakeAmount: "0",
     verificationFee: 0n,
     active: true,
@@ -222,7 +228,7 @@ export async function upsertVerifierFromStakingJoin(
   db: VerifierIndexerDb,
   chainId: number,
   verifierAddress: string,
-  asset: number,
+  asset: string,
   amount: bigint,
   timestamp: bigint,
 ): Promise<void> {

@@ -26,9 +26,9 @@ interface IKarProStaking {
 /// @title KarPassport
 /// @notice ERC-721 vehicle passport with verification lifecycle, dispute deposits, and append-only records.
 /// @dev v1.4: claim-on-failure payouts for dispute deposits and rescue; gateway-bound bridge (SPEC §I.12).
-/// @custom:version 1.5.1-rc.1
+/// @custom:version 1.6.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyGuard {
-    string public constant VERSION = "1.5.1-rc.1";
+    string public constant VERSION = "1.6.0-rc.1";
 
     enum Status {
         UNVERIFIED,
@@ -89,6 +89,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     event CustodyLockSet(uint256 indexed tokenId, bool locked);
     event PassportBridgeMinted(address indexed to, uint256 indexed tokenId, string uri);
     event PassportBridgeBurned(uint256 indexed tokenId);
+    event BridgeGatewaySet(address indexed gateway);
 
     error NonexistentToken();
     error NotOwner();
@@ -124,6 +125,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         ERC721("KarPassport", "KPPT")
         Ownable(initialOwner)
     {
+        if (karProStakingAddress_ == address(0)) revert ZeroAddress();
         karProStakingAddress = karProStakingAddress_;
         tokenIdOffset = uint256(block.chainid) << 128;
         _nextTokenId = tokenIdOffset;
@@ -146,6 +148,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         if (bridgeGateway != address(0)) revert GatewayAlreadySet();
         if (gateway == address(0)) revert ZeroAddress();
         bridgeGateway = gateway;
+        emit BridgeGatewaySet(gateway);
     }
 
     /// @notice Gateway sets or clears home-side custody lock while the passport is bridged away.

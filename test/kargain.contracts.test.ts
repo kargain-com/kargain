@@ -141,6 +141,25 @@ describe("KarProPass", () => {
       revertsWith("ZeroAddress"),
     );
   });
+
+  it("setStaking emits StakingSet", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, stranger, proPass } = await deployVerifierStack(viem);
+    const hash = await proPass.write.setStaking([stranger.account.address], {
+      account: admin.account,
+    });
+    const logs = await receiptLogs(publicClient, hash, proPass.abi);
+    const ev = logs.find((l) => l.eventName === "StakingSet");
+    assert.ok(ev);
+    assert.equal(getAddress(ev!.args.staking as `0x${string}`), getAddress(stranger.account.address));
+  });
+
+  it("VERSION is 1.1.0-rc.1", async () => {
+    const { viem } = connection;
+    const { proPass } = await deployVerifierStack(viem);
+    assert.equal(await proPass.read.VERSION(), "1.1.0-rc.1");
+  });
 });
 
 // ─── KarProStaking — becomeVerifierNative ─────────────────────────────────────
@@ -410,10 +429,83 @@ describe("KarProStaking — leave", () => {
     assert.equal(await staking.read.pendingClaims([verifier.account.address, token.address]), 0n);
   });
 
-  it("VERSION is 1.3.0-rc.1", async () => {
+  it("leave after setStakeToken refunds the original stake asset", async () => {
+    const { viem } = connection;
+    const { admin, verifier, stranger, staking } = await deployVerifierStack(viem);
+    const tokenA = await viem.deployContract("MockERC20Decimals", ["TokenA", "TA", 18]);
+    const tokenB = await viem.deployContract("MockERC20Decimals", ["TokenB", "TB", 18]);
+    const tokenMin = 1_000_000_000_000_000_000n;
+    await staking.write.setStakeToken([tokenA.address, tokenMin], { account: admin.account });
+    await tokenA.write.mint([verifier.account.address, tokenMin]);
+    await tokenA.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken([0, "A", "ar://a"], { account: verifier.account });
+
+    const stake = await staking.read.stakes([verifier.account.address]);
+    assert.equal(getAddress(stake[0] as `0x${string}`), getAddress(tokenA.address));
+
+    await staking.write.setStakeToken([tokenB.address, tokenMin], { account: admin.account });
+    await tokenB.write.mint([stranger.account.address, tokenMin]);
+    await tokenB.write.approve([staking.address, tokenMin], { account: stranger.account });
+    await staking.write.becomeVerifierToken([0, "B", "ar://b"], { account: stranger.account });
+
+    const aBefore = (await tokenA.read.balanceOf([verifier.account.address])) as bigint;
+    const bBeforeVerifier = (await tokenB.read.balanceOf([verifier.account.address])) as bigint;
+    const bHeldBefore = (await tokenB.read.balanceOf([staking.address])) as bigint;
+
+    await staking.write.leave([], { account: verifier.account });
+
+    const aAfter = (await tokenA.read.balanceOf([verifier.account.address])) as bigint;
+    const bAfterVerifier = (await tokenB.read.balanceOf([verifier.account.address])) as bigint;
+    const bHeldAfter = (await tokenB.read.balanceOf([staking.address])) as bigint;
+    assert.equal(aAfter - aBefore, tokenMin);
+    assert.equal(bAfterVerifier, bBeforeVerifier);
+    assert.equal(bHeldAfter, bHeldBefore);
+  });
+
+  it("per-asset solvency holds when stake token changes while a claim is outstanding", async () => {
+    const { viem } = connection;
+    const { admin, verifier, stranger, staking } = await deployVerifierStack(viem);
+    const tokenA = await viem.deployContract("SelectiveFailErc20", []);
+    const tokenB = await viem.deployContract("MockERC20Decimals", ["TokenB", "TB", 18]);
+    const tokenMin = 1_000_000n;
+    await staking.write.setStakeToken([tokenA.address, tokenMin], { account: admin.account });
+    await tokenA.write.mint([verifier.account.address, tokenMin]);
+    await tokenA.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken([0, "A", "ar://a"], { account: verifier.account });
+
+    await staking.write.setStakeToken([tokenB.address, tokenMin], { account: admin.account });
+    await tokenB.write.mint([stranger.account.address, tokenMin]);
+    await tokenB.write.approve([staking.address, tokenMin], { account: stranger.account });
+    await staking.write.becomeVerifierToken([0, "B", "ar://b"], { account: stranger.account });
+
+    await tokenA.write.setFailTo([verifier.account.address]);
+    await staking.write.leave([], { account: verifier.account });
+
+    const heldA = (await tokenA.read.balanceOf([staking.address])) as bigint;
+    const pendingA = (await staking.read.totalPendingErc20([tokenA.address])) as bigint;
+    assert.ok(heldA >= pendingA);
+    assert.equal(pendingA, tokenMin);
+
+    const heldB = (await tokenB.read.balanceOf([staking.address])) as bigint;
+    const pendingB = (await staking.read.totalPendingErc20([tokenB.address])) as bigint;
+    assert.ok(heldB >= pendingB);
+    assert.equal(heldB, tokenMin);
+    assert.equal(pendingB, 0n);
+  });
+
+  it("ctor reverts ZeroAddress when proPass is zero", async () => {
+    const { viem } = connection;
+    const { admin } = await deployVerifierStack(viem);
+    await assert.rejects(
+      viem.deployContract("KarProStaking", [ZERO, admin.account.address]),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("VERSION is 2.0.0-rc.1", async () => {
     const { viem } = connection;
     const { staking } = await deployVerifierStack(viem);
-    assert.equal(await staking.read.VERSION(), "1.3.0-rc.1");
+    assert.equal(await staking.read.VERSION(), "2.0.0-rc.1");
   });
 
   it("withdrawClaim with no balance reverts NoClaim", async () => {
@@ -589,7 +681,7 @@ describe("KarProStaking — security", () => {
     );
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
     const stake = await staking.read.stakes([verifier.account.address]);
-    assert.equal(stake[0], 1); // TOKEN
+    assert.equal(getAddress(stake[0] as `0x${string}`), getAddress(usdc.address));
     assert.equal(stake[1], tokenMin);
     void admin;
   });
@@ -1646,6 +1738,16 @@ describe("KarProPass — error coverage matrix", () => {
     await assert.rejects(
       proPass.write.burn([stranger.account.address], { account: admin.account }),
       revertsWith("DoesNotHoldPass"),
+    );
+  });
+
+  it("mint with out-of-range category reverts InvalidCategory", async () => {
+    const { viem } = connection;
+    const { admin, owner, proPass } = await deployVerifierStack(viem);
+    await proPass.write.setStaking([admin.account.address], { account: admin.account });
+    await assert.rejects(
+      proPass.write.mint([owner.account.address, 6, "X", "ar://x"], { account: admin.account }),
+      revertsWith("InvalidCategory"),
     );
   });
 });

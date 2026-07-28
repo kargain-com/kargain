@@ -270,6 +270,11 @@ export const KarPassportAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "ZeroAddress",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -336,6 +341,19 @@ export const KarPassportAbi = [
       }
     ],
     "name": "BatchMetadataUpdate",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "gateway",
+        "type": "address"
+      }
+    ],
+    "name": "BridgeGatewaySet",
     "type": "event"
   },
   {
@@ -1880,6 +1898,11 @@ export const KarProPassAbi = [
   },
   {
     "inputs": [],
+    "name": "InvalidCategory",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotHolder",
     "type": "error"
   },
@@ -2062,6 +2085,19 @@ export const KarProPassAbi = [
       }
     ],
     "name": "ProfileUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "staking",
+        "type": "address"
+      }
+    ],
+    "name": "StakingSet",
     "type": "event"
   },
   {
@@ -2698,6 +2734,11 @@ export const KarProStakingAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "ZeroAddress",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -2828,9 +2869,9 @@ export const KarProStakingAbi = [
       },
       {
         "indexed": false,
-        "internalType": "uint8",
+        "internalType": "address",
         "name": "asset",
-        "type": "uint8"
+        "type": "address"
       },
       {
         "indexed": false,
@@ -3110,9 +3151,9 @@ export const KarProStakingAbi = [
     "name": "stakes",
     "outputs": [
       {
-        "internalType": "enum KarProStaking.StakeAsset",
+        "internalType": "address",
         "name": "asset",
-        "type": "uint8"
+        "type": "address"
       },
       {
         "internalType": "uint256",
@@ -3222,11 +3263,6 @@ export const MarketplaceEscrowAbi = [
       },
       {
         "internalType": "address",
-        "name": "usdc_",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
         "name": "nativeUsdFeed_",
         "type": "address"
       },
@@ -3268,11 +3304,6 @@ export const MarketplaceEscrowAbi = [
       }
     ],
     "name": "AddressEmptyCode",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "AgentAuthorizationActive",
     "type": "error"
   },
   {
@@ -3348,12 +3379,22 @@ export const MarketplaceEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "EscrowNotApproved",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "FailedCall",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "FeeTooHigh",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidCurrencyCode",
     "type": "error"
   },
   {
@@ -3374,11 +3415,6 @@ export const MarketplaceEscrowAbi = [
   {
     "inputs": [],
     "name": "ListingHasAgent",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "MarketplaceNotApproved",
     "type": "error"
   },
   {
@@ -3469,6 +3505,11 @@ export const MarketplaceEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "TokenDecimalsUnavailable",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TokenHasNoCode",
     "type": "error"
   },
@@ -3500,7 +3541,17 @@ export const MarketplaceEscrowAbi = [
   },
   {
     "inputs": [],
-    "name": "ZeroTimelock",
+    "name": "WrongValue",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroFeedStaleness",
     "type": "error"
   },
   {
@@ -4509,6 +4560,11 @@ export const MarketplaceEscrowAbi = [
         "type": "address"
       },
       {
+        "internalType": "uint8",
+        "name": "decimals",
+        "type": "uint8"
+      },
+      {
         "internalType": "bool",
         "name": "enabled",
         "type": "bool"
@@ -4893,19 +4949,6 @@ export const MarketplaceEscrowAbi = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "usdc",
-    "outputs": [
-      {
-        "internalType": "contract IERC20",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "address",
@@ -4965,11 +5008,6 @@ export const AuctionEscrowAbi = [
       }
     ],
     "name": "AddressEmptyCode",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "AgentAuthorizationActive",
     "type": "error"
   },
   {
@@ -7105,7 +7143,7 @@ export const KarPassportBridgeGatewayAbi = [
   },
   {
     "inputs": [],
-    "name": "ZeroRecipient",
+    "name": "ZeroAddress",
     "type": "error"
   },
   {

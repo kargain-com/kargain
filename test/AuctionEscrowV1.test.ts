@@ -1067,7 +1067,7 @@ describe("AuctionEscrow v1 — settlement dispute", () => {
   });
 });
 
-describe("AuctionEscrow v2 — 2.0.1-draft error names", () => {
+describe("AuctionEscrow v2 — 2.0.0-rc.1 error names", () => {
   let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
 
   beforeEach(async () => {
@@ -1089,10 +1089,10 @@ describe("AuctionEscrow v2 — 2.0.1-draft error names", () => {
     return { tokenId, reserve, buyer: stack.stranger };
   }
 
-  it("VERSION is 2.0.1-draft", async () => {
+  it("VERSION is 2.0.0-rc.1", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
-    assert.equal(await stack.auction.read.VERSION(), "2.0.1-draft");
+    assert.equal(await stack.auction.read.VERSION(), "2.0.0-rc.1");
   });
 
   it("non-buyer confirmReceipt reverts NotBuyer", async () => {

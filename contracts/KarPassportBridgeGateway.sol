@@ -36,9 +36,9 @@ interface IERC721MetadataURI {
 /// @title KarPassportBridgeGateway
 /// @notice Symmetric lock-and-mint / burn-and-unlock OApp for KarPassport v1.3 (SPEC §I.12).
 /// @dev LayerZero imports are confined to this gateway (§7.6 provider isolation).
-/// @custom:version 1.1.2-rc.1
+/// @custom:version 1.2.0-rc.1
 contract KarPassportBridgeGateway is ONFT721Adapter {
-    string public constant VERSION = "1.1.2-rc.1";
+    string public constant VERSION = "1.2.0-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
@@ -73,6 +73,10 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
         address lzEndpoint,
         address delegate
     ) ONFT721Adapter(karPassport, lzEndpoint, delegate) {
+        if (karPassport == address(0)) revert ZeroAddress();
+        if (marketplace_ == address(0)) revert ZeroAddress();
+        if (lzEndpoint == address(0)) revert ZeroAddress();
+        if (delegate == address(0)) revert ZeroAddress();
         marketplace = IMarketplaceEscrow(marketplace_);
         auctionEscrow = auctionEscrow_;
     }

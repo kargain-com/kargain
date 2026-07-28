@@ -89,15 +89,29 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
 
   it("Authority: setBridgeGateway binds once", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const stack = await deployPassportStack(viem);
     const gateway = await viem.deployContract("MockBridgeGateway", [stack.passport.address]);
     assert.equal(await stack.passport.read.bridgeGateway(), ZERO);
-    await stack.passport.write.setBridgeGateway([gateway.address], {
+    const hash = await stack.passport.write.setBridgeGateway([gateway.address], {
       account: stack.admin.account,
     });
+    const logs = await receiptLogs(publicClient, hash, stack.passport.abi);
+    const ev = logs.find((l) => l.eventName === "BridgeGatewaySet");
+    assert.ok(ev);
+    assert.equal(getAddress(ev!.args.gateway as `0x${string}`), getAddress(gateway.address));
     assert.equal(
       getAddress(await stack.passport.read.bridgeGateway()),
       getAddress(gateway.address),
+    );
+  });
+
+  it("ctor reverts ZeroAddress when karProStaking is zero", async () => {
+    const { viem } = connection;
+    const { admin } = await deployPassportStack(viem);
+    await assert.rejects(
+      viem.deployContract("KarPassport", [ZERO, admin.account.address, DISPUTE_DEPOSIT]),
+      revertsWith("ZeroAddress"),
     );
   });
 
@@ -134,10 +148,10 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("VERSION is 1.5.1-rc.1", async () => {
+  it("VERSION is 1.6.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.5.1-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.6.0-rc.1");
   });
 });
 

@@ -66,14 +66,14 @@ describe("ponder verifier lifecycle builders", () => {
     const row = verifierJoinedRow(
       HUB,
       VERIFIER_ADDR,
-      0,
+      "0x0000000000000000000000000000000000000000",
       50_000_000_000_000_000n,
       100n,
     );
     assert.equal(row.id, `${HUB}-${VERIFIER_ADDR.toLowerCase()}`);
     assert.equal(row.chainId, HUB);
     assert.equal(row.address, VERIFIER_ADDR);
-    assert.equal(row.stakeAsset, 0);
+    assert.equal(row.stakeAsset, "0x0000000000000000000000000000000000000000");
     assert.equal(row.stakeAmount, "50000000000000000");
     assert.equal(row.active, true);
     assert.equal(row.joinedAt, 100n);
@@ -185,7 +185,7 @@ describe("patchVerifierIfExists", () => {
       db,
       HUB,
       VERIFIER_ADDR,
-      0,
+      "0x0000000000000000000000000000000000000000",
       50_000_000_000_000_000n,
       100n,
     );
@@ -235,7 +235,7 @@ describe("patchVerifierIfExists", () => {
       db,
       HUB,
       VERIFIER_ADDR,
-      0,
+      "0x0000000000000000000000000000000000000000",
       1n,
       100n,
     );
@@ -243,7 +243,7 @@ describe("patchVerifierIfExists", () => {
       db,
       SPOKE,
       VERIFIER_ADDR,
-      0,
+      "0x0000000000000000000000000000000000000000",
       2n,
       200n,
     );

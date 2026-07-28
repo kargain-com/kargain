@@ -33,9 +33,9 @@ interface IKarProStaking {
 /// @notice KarPassport escrow with dynamic fiat currencies, agent consignment, and multi-token checkout.
 /// @dev UUPS upgradeable; timelock is upgrade authority. v2 fresh proxy deployment.
 ///      Settlement legs use ClaimablePayouts — recipients that cannot accept funds get a withdrawable claim.
-/// @custom:version 2.1.0-rc.2
+/// @custom:version 2.2.0-rc.1
 contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayouts, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "2.1.0-rc.2";
+    string public constant VERSION = "2.2.0-rc.1";
 
     using SafeERC20 for IERC20;
 
@@ -77,6 +77,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
 
     struct PaymentTokenConfig {
         address feed;
+        uint8 decimals;
         bool enabled;
     }
 
@@ -163,10 +164,12 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
     error DirectEthNotAccepted();
     error CannotRaiseMinPrice();
     error ListingHasAgent();
+    error ZeroFeedStaleness();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @dev platformRecipient_ is immutable. Recipients that cannot accept funds accrue a withdrawable claim.
     ///      ERC-20 payment tokens enter only via `approvePaymentToken` (admission there).
+    ///      Storage layout changes here ship only via Nuclear #2 full-stack redeploy (no in-place UUPS of prior layouts).
     constructor(
         address karPassport_,
         address nativeUsdFeed_,
@@ -181,6 +184,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
         if (nativeUsdFeed_ == address(0)) revert ZeroAddress();
         if (platformRecipient_ == address(0)) revert ZeroAddress();
         if (feeBps_ > _MAX_FEE_BPS || proFeeBps_ > _MAX_FEE_BPS) revert FeeTooHigh();
+        if (maxFeedStaleness_ == 0) revert ZeroFeedStaleness();
 
         karPassport = IERC721(karPassport_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
@@ -239,10 +243,11 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
         _onlyUpgradeAuthority();
         if (token == address(0)) revert ZeroAddress();
         Erc20Admission.requireConforming(token);
+        uint8 tokenDecimals = Erc20Admission.requireDecimals(token);
         if (feed != address(0)) {
             _validateFeed(feed);
         }
-        paymentTokens[token] = PaymentTokenConfig({feed: feed, enabled: true});
+        paymentTokens[token] = PaymentTokenConfig({feed: feed, decimals: tokenDecimals, enabled: true});
         emit PaymentTokenApproved(token, feed);
     }
 
@@ -512,13 +517,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
         if (!cfg.enabled) revert PaymentTokenNotSupported();
 
         uint256 usd1e8 = _listingToUsd1e8(l.fiatPrice1e8, l.currencyCode);
-        if (cfg.feed == address(0)) {
-            return (usd1e8 * 1e6) / _FIAT_SCALE;
-        }
-        (, int256 px,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
-        _checkFeedFresh(upd);
-        if (px <= 0) revert BadOracleAnswer();
-        return (usd1e8 * 1e18) / uint256(px);
+        return _usdToTokenAmount(usd1e8, cfg);
     }
 
     /// @inheritdoc IERC721Receiver
@@ -542,8 +541,9 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
         if (feed.code.length == 0) revert InvalidFeed();
         AggregatorV3Interface agg = AggregatorV3Interface(feed);
         if (agg.decimals() != 8) revert InvalidFeedDecimals();
-        (, int256 answer,,,) = agg.latestRoundData();
+        (, int256 answer,, uint256 updatedAt,) = agg.latestRoundData();
         if (answer <= 0) revert BadOracleAnswer();
+        _checkFeedFresh(updatedAt);
     }
 
     function _requireCurrencySupported(bytes32 currencyCode) internal view {
@@ -580,9 +580,22 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
     }
 
     function _checkFeedFresh(uint256 updatedAt) internal view {
-        if (maxFeedStaleness > 0 && block.timestamp - updatedAt > maxFeedStaleness) {
+        if (block.timestamp - updatedAt > maxFeedStaleness) {
             revert StalePrice();
         }
+    }
+
+    /// @dev Unified ERC-20 pricing: `amount = usd1e8 * 10^decimals / priceUsd1e8`.
+    ///      Pegged stables (`feed == 0`) use `priceUsd1e8 = _FIAT_SCALE` (1 USD).
+    function _usdToTokenAmount(uint256 usd1e8, PaymentTokenConfig memory cfg) internal view returns (uint256) {
+        uint256 scale = 10 ** uint256(cfg.decimals);
+        if (cfg.feed == address(0)) {
+            return (usd1e8 * scale) / _FIAT_SCALE;
+        }
+        (, int256 px,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
+        _checkFeedFresh(upd);
+        if (px <= 0) revert BadOracleAnswer();
+        return (usd1e8 * scale) / uint256(px);
     }
 
     function _checkSellerNet(uint128 price, uint16 agentFeeBps, uint256 platformBps, uint128 ownerMin)
@@ -654,14 +667,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayo
             return (usdMin * 1e18) / uint256(px);
         }
         uint256 usdMinErc20 = _listingToUsd1e8(l.ownerMinPrice1e8, l.currencyCode);
-        PaymentTokenConfig memory cfg = paymentTokens[payToken];
-        if (cfg.feed == address(0)) {
-            return (usdMinErc20 * 1e6) / _FIAT_SCALE;
-        }
-        (, int256 tokenPx,, uint256 tokenUpd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
-        _checkFeedFresh(tokenUpd);
-        if (tokenPx <= 0) revert BadOracleAnswer();
-        return (usdMinErc20 * 1e18) / uint256(tokenPx);
+        return _usdToTokenAmount(usdMinErc20, paymentTokens[payToken]);
     }
 
     function _settleNative(uint256 tokenId, address buyer, uint256 gross) internal {
