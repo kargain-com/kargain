@@ -184,6 +184,8 @@ export type PonderPassportDetail = {
   verificationResetCount: number;
   hadDispute: boolean;
   lastDisputeResolvedAt: string;
+  /** confirm | reject | expire | withdraw | "" */
+  lastDisputeTerminal: string;
   disputeOpenedAt: string;
   fuelType: string;
   bodyType: string;

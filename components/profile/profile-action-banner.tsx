@@ -74,7 +74,8 @@ export function ProfileActionBanner({
       <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
         <WarningIcon size={20} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
-          {openDisputeCount} {passportLabel} awaiting your resolution
+          {openDisputeCount} {passportLabel} with open challenges on your
+          verifications. You cannot resolve them — an independent KarPro must.
         </p>
         <Button
           type="button"
@@ -83,7 +84,7 @@ export function ProfileActionBanner({
           className="shrink-0"
           onClick={() => onTabChange("disputes")}
         >
-          View disputes
+          View challenges
         </Button>
       </div>
     );

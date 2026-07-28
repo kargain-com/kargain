@@ -90,6 +90,7 @@ describe("buildChainPassportStub", () => {
     assert.equal(passport.lastVerificationResetAt, "0");
     assert.equal(passport.lastMetadataChangeAt, "0");
     assert.equal(passport.lastDisputeResolvedAt, "0");
+    assert.equal(passport.lastDisputeTerminal, "");
     assert.equal(passport.disputeOpenedAt, "0");
     assert.equal(passport.createdAt, "0");
     assert.equal(passport.updatedAt, "0");

@@ -35,6 +35,7 @@ import {
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import type { PassportStatus } from "@/lib/types/ponder";
 import {
   auctionEscrowAddress,
   karPassportAddress,
@@ -55,7 +56,29 @@ type Props = {
   disputeResolutionTimeout: bigint;
   /** Auction island UI state — S8/S9 terminal readouts. */
   auctionUiState: "SETTLED" | "S8" | "S9";
+  /** Passport trust status — may change after the bid during HOLD. */
+  passportStatus: PassportStatus;
 };
+
+function PassportHoldTrustReadout({ status }: { status: PassportStatus }) {
+  if (status === "DISPUTED") {
+    return (
+      <p className="font-sans text-sm text-status-error" role="status">
+        Passport status changed to disputed after your bid. Settlement actions
+        below remain yours within this hold window.
+      </p>
+    );
+  }
+  if (status === "UNVERIFIED") {
+    return (
+      <p className="font-sans text-sm text-text-secondary" role="status">
+        Passport verification is no longer active since your bid. Settlement
+        actions below remain yours within this hold window.
+      </p>
+    );
+  }
+  return null;
+}
 
 function formatHoldDate(sec: bigint): { label: string; dateTime: string } {
   const date = new Date(Number(sec) * 1000);
@@ -87,6 +110,7 @@ export function AuctionSettlementPanel({
   settlementHold,
   disputeResolutionTimeout,
   auctionUiState,
+  passportStatus,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
@@ -570,6 +594,7 @@ export function AuctionSettlementPanel({
   if (settlementState === "HOLD") {
     return (
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+        <PassportHoldTrustReadout status={passportStatus} />
         {isBuyer ? (
           <>
             <p className="font-sans text-sm text-text-primary">

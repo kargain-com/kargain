@@ -48,6 +48,7 @@ const ponderPassport: PonderPassportDetail = {
   verificationResetCount: 0,
   hadDispute: false,
   lastDisputeResolvedAt: "0",
+  lastDisputeTerminal: "",
   disputeOpenedAt: "0",
   fuelType: "Petrol",
   bodyType: "Coupe",

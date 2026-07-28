@@ -4,6 +4,7 @@ export type NotificationType =
   | "passport.verified"
   | "passport.dispute_opened"
   | "passport.dispute_resolved"
+  | "passport.dispute_expired"
   | "passport.record_appended"
   | "passport.attestation_received"
   | "listing.sold"

@@ -26,6 +26,7 @@ type Props = {
   passportOwner: `0x${string}`;
   verificationResetCount: number;
   hadDispute: boolean;
+  lastDisputeTerminal?: string;
   duplicateVin: boolean;
   showG2Banner: boolean;
   className?: string;
@@ -50,6 +51,7 @@ export function PassportInstrumentReadouts({
   passportOwner,
   verificationResetCount,
   hadDispute,
+  lastDisputeTerminal = "",
   duplicateVin,
   showG2Banner,
   className,
@@ -137,6 +139,7 @@ export function PassportInstrumentReadouts({
           verificationResetCount={verificationResetCount}
           hadDispute={hadDispute}
           status={status}
+          lastDisputeTerminal={lastDisputeTerminal}
         />
       )}
 

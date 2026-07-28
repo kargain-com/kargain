@@ -106,6 +106,8 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const hadDispute = obj.hadDispute === true;
   const lastDisputeResolvedAt =
     obj.lastDisputeResolvedAt != null ? String(obj.lastDisputeResolvedAt) : "0";
+  const lastDisputeTerminal =
+    typeof obj.lastDisputeTerminal === "string" ? obj.lastDisputeTerminal : "";
   const disputeOpenedAt =
     obj.disputeOpenedAt != null ? String(obj.disputeOpenedAt) : "0";
   const fuelType = typeof obj.fuelType === "string" ? obj.fuelType : "";
@@ -174,6 +176,7 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
       : 0,
     hadDispute,
     lastDisputeResolvedAt,
+    lastDisputeTerminal,
     disputeOpenedAt,
     fuelType,
     bodyType,

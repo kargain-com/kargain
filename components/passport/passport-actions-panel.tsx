@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useNow } from "@/hooks/use-now";
 import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
@@ -28,6 +29,7 @@ import {
   KarPassportAbi,
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
+import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
 import {
@@ -35,6 +37,11 @@ import {
   isPassportHolder,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import {
+  deriveDisputeSurface,
+  disputeExclusionCopy,
+  PASSPORT_DISPUTE_WINDOW_SECONDS,
+} from "@/lib/passport/dispute-surface";
 import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
@@ -58,7 +65,9 @@ type Props = {
   passportOwner: `0x${string}`;
   status: PassportStatus;
   lastDisputer: string;
-  disputeWithdrawnAt: string;
+  /** Recorded verifier while disputed (passport.verifier). */
+  recordedVerifier: string;
+  disputeOpenedAt: string;
   duplicateVin: boolean;
   listingActive?: boolean;
   listingSeller?: `0x${string}`;
@@ -78,7 +87,8 @@ export function PassportActionsPanel({
   passportOwner,
   status,
   lastDisputer,
-  disputeWithdrawnAt,
+  recordedVerifier,
+  disputeOpenedAt,
   duplicateVin,
   listingActive,
   listingSeller,
@@ -140,6 +150,26 @@ export function PassportActionsPanel({
         : [],
   });
 
+  const { data: disputeReads } = useReadContracts({
+    contracts: passport
+      ? [
+          {
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "DISPUTE_WINDOW",
+            chainId: wc,
+          },
+          {
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "disputeOpenedAt",
+            args: [tid],
+            chainId: wc,
+          },
+        ]
+      : [],
+  });
+
   const { data: disputeDepositRaw, isLoading: disputeDepositLoading } = useReadContract({
     address: passport ?? undefined,
     abi: KarPassportAbi,
@@ -153,7 +183,14 @@ export function PassportActionsPanel({
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
-  const isActiveVerifier = reads?.[0]?.result === true;
+  const verifierRead = reads?.[0];
+  const isActiveVerifier: boolean | undefined =
+    verifierRead?.status === "success"
+      ? verifierRead.result === true
+      : address
+        ? undefined
+        : false;
+
   const isOwner = isOnChainNftOwner(address, effectiveOwner);
   const holder = isPassportHolder({
     address,
@@ -162,12 +199,36 @@ export function PassportActionsPanel({
     listingActive,
     listingSeller,
   });
-  const isLastDisputer =
-    Boolean(address) &&
-    lastDisputer &&
-    address!.toLowerCase() === lastDisputer.toLowerCase();
-  const disputeWithdrawn =
-    disputeWithdrawnAt !== "0" && Number.parseInt(disputeWithdrawnAt, 10) > 0;
+
+  const chainWindowSec =
+    disputeReads?.[0]?.status === "success" && disputeReads[0].result != null
+      ? Number(disputeReads[0].result)
+      : PASSPORT_DISPUTE_WINDOW_SECONDS;
+  const chainOpenedAt =
+    disputeReads?.[1]?.status === "success" && disputeReads[1].result != null
+      ? Number(disputeReads[1].result)
+      : 0;
+  const indexerOpenedAt = Number.parseInt(disputeOpenedAt, 10);
+  const effectiveOpenedAt =
+    chainOpenedAt > 0
+      ? chainOpenedAt
+      : Number.isFinite(indexerOpenedAt) && indexerOpenedAt > 0
+        ? indexerOpenedAt
+        : 0;
+
+  const nowSec = useNow(status === "DISPUTED" ? 1_000 : 60_000);
+  const disputeSurface = deriveDisputeSurface({
+    status,
+    disputeOpenedAt: effectiveOpenedAt,
+    disputeWindowSec: chainWindowSec,
+    nowSec,
+    wallet: address,
+    isActiveVerifier,
+    owner: passportOwner,
+    recordedVerifier,
+    opener: lastDisputer,
+  });
+  const exclusionCopy = disputeExclusionCopy(disputeSurface.exclusionReason);
 
   useEffect(() => {
     if (!recordAddedSuccess) return;
@@ -441,12 +502,6 @@ export function PassportActionsPanel({
         </p>
       )}
 
-      {disputeWithdrawn && status === "DISPUTED" && (
-        <p className="rounded-md border border-border-default bg-bg-primary/80 p-3 text-sm text-text-secondary">
-          Dispute withdrawn (signal only — status remains DISPUTED until verifier resolves).
-        </p>
-      )}
-
       {isOwner && status !== "DISPUTED" && !listingActive && (
         <Button asChild variant="secondary" className="w-full">
           <Link href={`/passport/${tokenId}/edit?chain=${chainId}`}>Edit metadata</Link>
@@ -459,7 +514,7 @@ export function PassportActionsPanel({
         </p>
       )}
 
-      {isActiveVerifier && !isOwner && status === "UNVERIFIED" && (
+      {isActiveVerifier === true && !isOwner && status === "UNVERIFIED" && (
         <div className="space-y-3">
           <MetadataDiffPanel
             chainId={chainId}
@@ -492,7 +547,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isConnected && status === "VERIFIED" && (
+      {isConnected && disputeSurface.canOpen && (
         <div className="space-y-2">
           <Label htmlFor="dispute-reason">Dispute reason</Label>
           <Textarea
@@ -505,8 +560,10 @@ export function PassportActionsPanel({
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
           ) : disputeDeposit != null ? (
             <p className="text-xs text-text-secondary">
-              Opening a dispute requires a refundable deposit of {formatEther(disputeDeposit)}{" "}
-              ETH.
+              Opening locks a {formatEther(disputeDeposit)} ETH deposit for 14 days. Withdraw
+              before the window ends returns it to you. Confirm returns it to the opener. Reject or
+              expiry sends it to the platform. If a return cannot be delivered, it waits under
+              Claims.
             </p>
           ) : null}
           <Button
@@ -523,7 +580,7 @@ export function PassportActionsPanel({
               void run(
                 () =>
                   writeContractAsync({
-                    address: passport,
+                    address: passport!,
                     abi: KarPassportAbi,
                     functionName: "disputePassport",
                     args: [tid, disputeReason.trim()],
@@ -539,75 +596,104 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isActiveVerifier && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-text-secondary">
-            You cannot resolve a dispute you opened yourself.
-          </p>
-          {!isLastDisputer && (
-            <>
-              <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
-                <p className="text-xs text-text-secondary">
-                  The verification was incorrect. Status becomes unverified. The dispute opener’s
-                  deposit is released — if it cannot be delivered, it waits as a claim.
-                </p>
-                <Button
-                  type="button"
-                  disabled={actionsBusy}
-                  onClick={() =>
-                    void run(
-                      () =>
-                        writeContractAsync({
-                          address: passport,
-                          abi: KarPassportAbi,
-                          functionName: "resolveDispute",
-                          args: [tid, 0],
-                          chainId: wc,
-                        }),
-                      "Dispute confirmed. Passport is now unverified.",
-                    )
-                  }
-                >
-                  Confirm dispute
-                </Button>
-              </div>
-              <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
-                <p className="text-xs text-text-secondary">
-                  The verification stands. Status stays verified. The deposit is released to you as
-                  compensation — if it cannot be delivered, it waits as a claim.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={actionsBusy}
-                  onClick={() =>
-                    void run(
-                      () =>
-                        writeContractAsync({
-                          address: passport,
-                          abi: KarPassportAbi,
-                          functionName: "resolveDispute",
-                          args: [tid, 1],
-                          chainId: wc,
-                        }),
-                      "Dispute rejected. Verification stands.",
-                    )
-                  }
-                >
-                  Reject dispute
-                </Button>
-              </div>
-            </>
+      {status === "DISPUTED" && (
+        <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-3">
+          {disputeSurface.windowPhase === "active" && (
+            <p className="text-sm text-text-secondary">
+              Dispute window ends{" "}
+              <time
+                className="font-mono tabular-nums text-text-primary"
+                dateTime={new Date(disputeSurface.windowEndsAt * 1000).toISOString()}
+              >
+                {new Date(disputeSurface.windowEndsAt * 1000).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </time>
+              {" · "}
+              <span className="font-mono tabular-nums">
+                {formatReturnCountdown(BigInt(disputeSurface.windowRemainingSec))}
+              </span>{" "}
+              left. If no independent KarPro decides by then, verification lapses and the deposit
+              goes to the platform.
+            </p>
+          )}
+          {disputeSurface.windowPhase === "elapsed" && (
+            <p className="text-sm text-text-secondary">
+              The dispute window has ended. Anyone may conclude the dispute so verification
+              lapses, or an independent KarPro may still confirm or reject on the merits. The
+              deposit goes to the platform on expiry or reject; confirm returns it to the opener.
+            </p>
+          )}
+          {exclusionCopy && (
+            <p className="text-sm text-text-secondary">{exclusionCopy}</p>
           )}
         </div>
       )}
 
-      {status === "DISPUTED" && isLastDisputer && (
+      {status === "DISPUTED" && disputeSurface.canResolve && (
+        <div className="flex flex-col gap-2">
+          <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
+            <p className="text-xs text-text-secondary">
+              The verification was incorrect. Status becomes unverified. The opener’s deposit
+              returns to them — if it cannot be delivered, it waits as a claim for them.
+            </p>
+            <Button
+              type="button"
+              disabled={actionsBusy}
+              onClick={() =>
+                void run(
+                  () =>
+                    writeContractAsync({
+                      address: passport!,
+                      abi: KarPassportAbi,
+                      functionName: "resolveDispute",
+                      args: [tid, 0],
+                      chainId: wc,
+                    }),
+                  "Dispute confirmed. Passport is now unverified.",
+                )
+              }
+            >
+              Confirm dispute
+            </Button>
+          </div>
+          <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
+            <p className="text-xs text-text-secondary">
+              The verification stands. Status stays verified. The deposit goes to the platform —
+              never to the resolver.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actionsBusy}
+              onClick={() =>
+                void run(
+                  () =>
+                    writeContractAsync({
+                      address: passport!,
+                      abi: KarPassportAbi,
+                      functionName: "resolveDispute",
+                      args: [tid, 1],
+                      chainId: wc,
+                    }),
+                  "Dispute rejected. Verification stands.",
+                )
+              }
+            >
+              Reject dispute
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status === "DISPUTED" && disputeSurface.canWithdraw && (
         <div className="space-y-2">
           {disputeDeposit != null && (
             <p className="text-xs text-text-secondary">
-              This restores VERIFIED status and releases your {formatEther(disputeDeposit)} ETH
-              deposit. If it cannot be delivered, it waits under Claims. Only you can do this.
+              This restores VERIFIED status and returns your {formatEther(disputeDeposit)} ETH
+              deposit. If it cannot be delivered, it waits under Claims. Only you can do this, and
+              only before the window ends.
             </p>
           )}
           <Button
@@ -619,7 +705,7 @@ export function PassportActionsPanel({
               void run(
                 () =>
                   writeContractAsync({
-                    address: passport,
+                    address: passport!,
                     abi: KarPassportAbi,
                     functionName: "withdrawDispute",
                     args: [tid],
@@ -631,6 +717,36 @@ export function PassportActionsPanel({
             }
           >
             Withdraw my dispute
+          </Button>
+        </div>
+      )}
+
+      {status === "DISPUTED" && disputeSurface.canExpire && (
+        <div className="space-y-2">
+          <p className="text-xs text-text-secondary">
+            Conclude without a merits judgment. Verification lapses (not a penalty to the owner) —
+            a fresh inspection restores it. The deposit goes to the platform.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={actionsBusy}
+            onClick={() =>
+              void run(
+                () =>
+                  writeContractAsync({
+                    address: passport!,
+                    abi: KarPassportAbi,
+                    functionName: "expireDispute",
+                    args: [tid],
+                    chainId: wc,
+                  }),
+                "Dispute concluded. Verification lapsed — a fresh inspection restores it.",
+              )
+            }
+          >
+            Conclude dispute
           </Button>
         </div>
       )}
@@ -755,7 +871,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isActiveVerifier && !isOwner && (
+      {isActiveVerifier === true && !isOwner && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Label htmlFor="attestation-text">Verifier attestation</Label>
           <p className="text-xs text-text-secondary">

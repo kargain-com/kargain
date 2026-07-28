@@ -43,7 +43,7 @@ export const DEFAULT_RECORD_LABELS: RecordDisplayLabels = {
   disputeClarification: "Owner clarification",
   discrepancyReport: "Discrepancy report",
   disputeOpened: "Dispute opened",
-  disputeWithdrawn: "Dispute withdrawn (signal)",
+  disputeWithdrawn: "Dispute withdrawn",
   ownerInitiated: "Owner-initiated",
   unknownType: "On-chain record",
 };

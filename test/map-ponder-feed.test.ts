@@ -89,4 +89,24 @@ describe("mapPonderFeedItems delegation grants", () => {
     assert.equal(item.priority, "high");
     assert.equal(item.read, false);
   });
+
+  it("maps passport.dispute_expired with lapse copy", () => {
+    const [item] = mapPonderFeedItems(
+      [
+        {
+          id: "passport.dispute_expired:9:400",
+          type: "passport.dispute_expired",
+          tokenId: "9",
+          timestamp: "400",
+        },
+      ],
+      100,
+    );
+
+    assert.equal(item.type, "passport.dispute_expired");
+    assert.match(item.body, /lapsed/i);
+    assert.match(item.body, /fresh inspection/i);
+    assert.equal(item.priority, "high");
+    assert.equal(item.href, "/marketplace/9");
+  });
 });

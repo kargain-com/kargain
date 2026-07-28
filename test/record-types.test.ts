@@ -113,7 +113,7 @@ describe("getRecordDisplay", () => {
       ctx,
     );
 
-    assert.equal(display.label, "Dispute withdrawn (signal)");
+    assert.equal(display.label, "Dispute withdrawn");
     assert.equal(display.severity, "info");
   });
 

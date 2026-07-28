@@ -1,5 +1,6 @@
 import { CircleInformationIcon, WarningIcon } from "@/components/ui/icons";
 
+import { disputeTrustCopyKind } from "@/lib/passport/dispute-trust-copy";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +8,7 @@ type Props = {
   verificationResetCount: number;
   hadDispute: boolean;
   status: PassportStatus;
+  lastDisputeTerminal?: string;
   className?: string;
 };
 
@@ -18,6 +20,7 @@ export function PassportTrustBanner({
   verificationResetCount,
   hadDispute,
   status,
+  lastDisputeTerminal = "",
   className,
 }: Props) {
   if (verificationResetCount > 0) {
@@ -45,7 +48,64 @@ export function PassportTrustBanner({
     );
   }
 
-  if (hadDispute) {
+  const kind = disputeTrustCopyKind({
+    status,
+    hadDispute,
+    lastDisputeTerminal,
+  });
+
+  if (kind === "lapsed") {
+    return (
+      <div
+        className={cn(
+          "flex gap-3 rounded-md border border-border-default bg-bg-card p-4",
+          className,
+        )}
+        role="status"
+      >
+        <div className="shrink-0 text-text-secondary mt-0.5">
+          <CircleInformationIcon size={20} aria-hidden />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="font-sans text-sm font-medium text-text-primary">
+            Verification lapsed
+          </p>
+          <p className="font-sans text-sm text-text-secondary">
+            The dispute window ended without a professional judgment. This is not a penalty —
+            the assertion lost its backing. A fresh inspection by a KarPro restores
+            verification.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "upheld") {
+    return (
+      <div
+        className={cn(
+          "flex gap-3 rounded-md border border-border-default bg-bg-card p-4",
+          className,
+        )}
+        role="status"
+      >
+        <div className="shrink-0 text-text-secondary mt-0.5">
+          <CircleInformationIcon size={20} aria-hidden />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="font-sans text-sm font-medium text-text-primary">
+            Dispute upheld
+          </p>
+          <p className="font-sans text-sm text-text-secondary">
+            An independent KarPro confirmed the challenge and cleared verification. A fresh
+            inspection restores it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "previously_disputed") {
     return (
       <div
         className={cn(
@@ -60,7 +120,7 @@ export function PassportTrustBanner({
         <div className="flex flex-col gap-1">
           <p className="font-sans text-sm font-medium text-text-primary">Previously disputed</p>
           <p className="font-sans text-sm text-text-secondary">
-            This passport was disputed and resolved. Review the record timeline for details.
+            This passport was disputed and closed. Review the record timeline for details.
           </p>
         </div>
       </div>

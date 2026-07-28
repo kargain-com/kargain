@@ -29,6 +29,7 @@ import {
 } from "./lib/ponder-auction";
 import {
   bridgeMintArrivalTrustFields,
+  disputeExpiredTrustFields,
   disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
   disputeWithdrawnTrustFields,
@@ -319,14 +320,20 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
   const uphold = disputeOutcomeUpholdsVerification(Number(event.args.outcome));
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
-    .set(disputeResolvedTrustFields(uphold, event.block.timestamp));
+    .set(
+      disputeResolvedTrustFields(
+        uphold,
+        event.block.timestamp,
+        uphold ? "reject" : "confirm",
+      ),
+    );
 });
 
 ponder.on("KarPassport:DisputeExpired", async ({ event, context }) => {
-  // Expiry lapses verification (UNVERIFIED) — same trust fields as ConfirmDispute.
+  // Expiry lapses verification (UNVERIFIED) — not a merits Confirm.
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
-    .set(disputeResolvedTrustFields(false, event.block.timestamp));
+    .set(disputeExpiredTrustFields(event.block.timestamp));
 });
 
 ponder.on("KarPassport:DisputeWithdrawn", async ({ event, context }) => {

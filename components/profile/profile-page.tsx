@@ -32,7 +32,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { useNow } from "@/hooks/use-now";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
+import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
+import { PASSPORT_DISPUTE_WINDOW_SECONDS } from "@/lib/passport/dispute-surface";
 import {
   ctaLink,
   monoLink,
@@ -303,11 +306,18 @@ function DisputeCard({
   dispute: DisputedPassportRow;
   chainId: number;
 }) {
+  const nowSec = useNow(1_000);
   const vehicleLabel = buildVehicleLabel(dispute.year, dispute.make, dispute.model);
   const reason = dispute.disputeReason.trim();
+  const openedAt = dispute.disputeOpenedAt;
+  const windowEndsAt =
+    openedAt > 0 ? openedAt + PASSPORT_DISPUTE_WINDOW_SECONDS : 0;
+  const remaining =
+    windowEndsAt > 0 && nowSec < windowEndsAt ? windowEndsAt - nowSec : 0;
+  const windowElapsed = windowEndsAt > 0 && nowSec >= windowEndsAt;
   const openedLabel =
-    Number.isFinite(dispute.disputeOpenedAt) && dispute.disputeOpenedAt > 0
-      ? formatRelativeTime(new Date(dispute.disputeOpenedAt * 1000))
+    Number.isFinite(openedAt) && openedAt > 0
+      ? formatRelativeTime(new Date(openedAt * 1000))
       : "";
   const showDisputer = isNonemptyDisputer(dispute.lastDisputer);
 
@@ -341,10 +351,32 @@ function DisputeCard({
         </p>
       )}
 
+      <p className="font-sans text-sm text-text-secondary">
+        You verified this passport, so you cannot resolve this challenge. An
+        independent KarPro must decide, or the window ends in a lapse.
+      </p>
+
+      {windowEndsAt > 0 && (
+        <p className="font-sans text-xs text-text-secondary">
+          {windowElapsed ? (
+            <>Window ended — verification will lapse when the dispute is concluded.</>
+          ) : (
+            <>
+              Window ends in{" "}
+              <span className="font-mono tabular-nums">
+                {formatReturnCountdown(BigInt(remaining))}
+              </span>
+            </>
+          )}
+        </p>
+      )}
+
       {(openedLabel || showDisputer) && (
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {openedLabel && (
-            <span className="font-mono text-xs text-text-tertiary tabular-nums">{openedLabel}</span>
+            <span className="font-mono text-xs text-text-tertiary tabular-nums">
+              {openedLabel}
+            </span>
           )}
           {showDisputer && (
             <span className="font-mono text-xs text-text-secondary tabular-nums">
@@ -359,7 +391,7 @@ function DisputeCard({
           href={`/marketplace/${dispute.tokenId}?chain=${chainId}`}
           className="ml-auto inline-flex items-center gap-1 font-sans text-sm text-text-secondary transition-colors hover:text-text-primary"
         >
-          Resolve
+          View passport
           <ArrowRightIcon size={14} aria-hidden />
         </Link>
       </div>
@@ -729,7 +761,7 @@ export function ProfilePage({
               id="profile-panel-disputes"
               aria-labelledby="profile-tab-disputes"
             >
-              <p className={cn(serialLabel, "mb-4")}>Open disputes</p>
+              <p className={cn(serialLabel, "mb-4")}>Challenges on your verifications</p>
               {disputedPassports.length === 0 ? (
                 <EmptyState
                   variant="content"

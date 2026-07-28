@@ -8,6 +8,7 @@ import {
 } from "../lib/passport/index-passport-metadata.ts";
 import {
   bridgeMintArrivalTrustFields,
+  disputeExpiredTrustFields,
   disputeOutcomeUpholdsVerification,
   disputeResolvedTrustFields,
   disputeWithdrawnTrustFields,
@@ -240,6 +241,7 @@ describe("ponder G1 trust fields", () => {
     assert.equal(fields.disputeOpenedAt, 0n);
     assert.equal(fields.disputeWithdrawnAt, 100n);
     assert.equal(fields.disputeDeposit, null);
+    assert.equal(fields.lastDisputeTerminal, "withdraw");
   });
 
   it("sets lastMetadataChangeAt on mint", () => {
@@ -261,9 +263,19 @@ describe("ponder G1 trust fields", () => {
     const reject = disputeResolvedTrustFields(false, 300n);
     assert.equal(reject.disputeOpenedAt, 0n);
     assert.equal(reject.disputeDeposit, null);
+    assert.equal(reject.lastDisputeTerminal, "confirm");
     const uphold = disputeResolvedTrustFields(true, 300n);
     assert.equal(uphold.disputeOpenedAt, 0n);
     assert.equal(uphold.disputeDeposit, null);
+    assert.equal(uphold.lastDisputeTerminal, "reject");
+  });
+
+  it("marks expire terminal as UNVERIFIED lapse", () => {
+    const fields = disputeExpiredTrustFields(400n);
+    assert.equal(fields.status, "UNVERIFIED");
+    assert.equal(fields.lastDisputeTerminal, "expire");
+    assert.equal(fields.verifier, "");
+    assert.equal(fields.disputeOpenedAt, 0n);
   });
 
   it("keeps hadDispute sticky after resolve", () => {

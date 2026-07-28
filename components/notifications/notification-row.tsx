@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   BookmarkIcon,
   CircleCheckIcon,
+  CircleInformationIcon,
   CreditCardIcon,
   DocumentIcon,
   HeartIcon,
@@ -25,6 +26,7 @@ const ICON_BY_TYPE: Record<NotificationType, IconComponent> = {
   "passport.verified": ShieldCheckIcon,
   "passport.dispute_opened": ShieldWarningIcon,
   "passport.dispute_resolved": ShieldIcon,
+  "passport.dispute_expired": CircleInformationIcon,
   "passport.record_appended": DocumentIcon,
   "passport.attestation_received": CircleCheckIcon,
   "listing.sold": CreditCardIcon,

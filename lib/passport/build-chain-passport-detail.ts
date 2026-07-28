@@ -46,6 +46,7 @@ export function buildChainPassportStub(
     verificationResetCount: 0,
     hadDispute: false,
     lastDisputeResolvedAt: "0",
+    lastDisputeTerminal: "",
     disputeOpenedAt: "0",
     fuelType: metadata?.fuelType ?? "",
     bodyType: metadata?.bodyType ?? "",

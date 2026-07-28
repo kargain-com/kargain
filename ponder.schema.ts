@@ -28,6 +28,8 @@ export const passport = onchainTable("passport", (t) => ({
   verificationResetCount: t.integer().notNull().default(0),
   hadDispute: t.boolean().notNull().default(false),
   lastDisputeResolvedAt: t.bigint().notNull().default(0n),
+  /** Last closed dispute path: confirm | reject | expire | withdraw | "". */
+  lastDisputeTerminal: t.text().notNull().default(""),
   disputeOpenedAt: t.bigint().notNull().default(0n),
   fuelType: t.text().notNull().default(""),
   bodyType: t.text().notNull().default(""),

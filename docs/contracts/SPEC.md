@@ -97,19 +97,19 @@ UNVERIFIED ──verifyPassport──► VERIFIED
      │                              │ disputePassport (+ deposit)
      │                              ▼
      │                          DISPUTED
-     │                              │
-     │         withdrawDispute (opener only)
-     │                              │
-     │                              ▼
-     │                          VERIFIED
-     │                              │
+     │                         /    |    \
+     │        withdrawDispute  /     |     \  expireDispute (anyone, after window)
+     │        (opener, <14d)  /      |      \
+     │                       ▼       |       ▼
+     │                   VERIFIED    |   UNVERIFIED (lapse)
+     │                               |
      │              resolveDispute(ConfirmDispute) ──► UNVERIFIED
      │              resolveDispute(RejectDispute)  ──► VERIFIED
      │
      └── setPassportURI from VERIFIED ── VerificationReset ──► UNVERIFIED
 ```
 
-**Exit from DISPUTED:** `withdrawDispute` (opener) **or** `resolveDispute` (active verifier, not opener). Owner cannot `setPassportURI` while DISPUTED.
+**Exit from DISPUTED:** `withdrawDispute` (opener, before window) **or** `resolveDispute` (independent active verifier — not opener, owner, or recorded verifier) **or** `expireDispute` (anyone, after window). Owner cannot `setPassportURI` while DISPUTED.
 
 ### tokenId encoding
 
@@ -1125,27 +1125,25 @@ Indexer env: [indexer/OPERATIONS.md](../indexer/OPERATIONS.md) · `pnpm ponder:c
 
 ### II.6. Dispute model
 
-### On-chain
+Normative on-chain rules: **Part I** dispute deposit system (14-day window, party exclusion, Confirm → opener / Reject|Expire → `platformRecipient`, permissionless `expireDispute`).
 
-- `disputePassport` — heavy (VERIFIED → DISPUTED). Permissionless including self-dispute.
-- `reportDiscrepancy` — light (record only, status unchanged).
-- **Any active verifier** resolves DISPUTED via `resolveDispute(uphold)` (not limited to the verifier who originally verified the passport).
+### On-chain (summary)
 
-### D6 — Dispute withdraw (A+ convention, no extra contract fn)
-
-Disputer withdraws **signal only**; status stays DISPUTED until verifier resolves.
-
-1. Disputer calls `reportDiscrepancy(tokenId, "[dispute-withdrawn] <note>", evidenceCID)`.
-2. On-chain `recordType` remains `"discrepancy"`.
+- `disputePassport` — VERIFIED → DISPUTED; locks deposit.
+- `withdrawDispute` — opener only, before window; → VERIFIED + full refund.
+- `resolveDispute` — independent active verifier only (not opener, owner, or recorded verifier).
+- `expireDispute` — anyone after window; → UNVERIFIED (lapse, no merits); bond → platform.
+- `reportDiscrepancy` — light record only; does **not** withdraw a dispute or change status.
 
 ### Owner during DISPUTED
 
 - `appendRecord` for clarifications when owner holds NFT.
 - **Not possible while listed** (escrow = owner).
+- Owner cannot resolve; hire an independent KarPro.
 
-### After `resolve(false)` → UNVERIFIED
+### After Confirm or expire → UNVERIFIED
 
-Owner may `setPassportURI`, then request re-verification.
+Owner may request a fresh inspection (`verifyPassport` by an active verifier). Expire is a lapse of backing, not a penalty finding.
 
 ### II.7. Marketplace (unchanged in Phase 1)
 

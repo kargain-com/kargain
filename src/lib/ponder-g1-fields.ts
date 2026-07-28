@@ -27,21 +27,35 @@ export function disputeOutcomeUpholdsVerification(outcome: number): boolean {
   return outcome === 1;
 }
 
+export type DisputeTerminalTag =
+  | "confirm"
+  | "reject"
+  | "expire"
+  | "withdraw";
+
 export function disputeWithdrawnTrustFields(timestamp: bigint) {
   return {
     status: "VERIFIED" as const,
     disputeWithdrawnAt: timestamp,
     disputeOpenedAt: 0n,
     disputeDeposit: null,
+    lastDisputeTerminal: "withdraw" as const,
     updatedAt: timestamp,
   };
 }
 
-export function disputeResolvedTrustFields(uphold: boolean, timestamp: bigint) {
+export function disputeResolvedTrustFields(
+  uphold: boolean,
+  timestamp: bigint,
+  terminal: Extract<DisputeTerminalTag, "confirm" | "reject"> = uphold
+    ? "reject"
+    : "confirm",
+) {
   const resolved = {
     lastDisputeResolvedAt: timestamp,
     disputeOpenedAt: 0n,
     disputeDeposit: null,
+    lastDisputeTerminal: terminal,
     updatedAt: timestamp,
   };
   if (uphold) {
@@ -52,6 +66,20 @@ export function disputeResolvedTrustFields(uphold: boolean, timestamp: bigint) {
     verifier: "",
     verifiedAt: 0n,
     ...resolved,
+  };
+}
+
+/** Expire lapses verification without a merits decision. */
+export function disputeExpiredTrustFields(timestamp: bigint) {
+  return {
+    status: "UNVERIFIED" as const,
+    verifier: "",
+    verifiedAt: 0n,
+    lastDisputeResolvedAt: timestamp,
+    disputeOpenedAt: 0n,
+    disputeDeposit: null,
+    lastDisputeTerminal: "expire" as const,
+    updatedAt: timestamp,
   };
 }
 

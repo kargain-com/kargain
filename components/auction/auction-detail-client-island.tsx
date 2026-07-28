@@ -230,6 +230,7 @@ export function AuctionDetailClientIsland({
               settlementHold={detail.settlementHold}
               disputeResolutionTimeout={detail.disputeResolutionTimeout}
               auctionUiState={uiState as "SETTLED" | "S8" | "S9"}
+              passportStatus={passportStatus}
             />
           )}
 

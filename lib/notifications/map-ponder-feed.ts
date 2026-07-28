@@ -12,6 +12,10 @@ const PONDER_TYPE_CONFIG: Record<
   "passport.verified": { body: "Your passport was verified", priority: "high" },
   "passport.dispute_opened": { body: "A dispute was opened on your passport", priority: "high" },
   "passport.dispute_resolved": { body: "The dispute on your passport was resolved", priority: "normal" },
+  "passport.dispute_expired": {
+    body: "Verification lapsed — the dispute window ended without a professional judgment. A fresh inspection restores it.",
+    priority: "high",
+  },
   "passport.record_appended": { body: "A new record was added to your passport", priority: "normal" },
   "passport.attestation_received": { body: "You received an attestation", priority: "high" },
   "listing.sold": { body: "Your listing was sold", priority: "high" },

@@ -58,12 +58,26 @@ export async function buildNotificationFeed(
       });
     }
     if (p.lastDisputeResolvedAt > since && p.lastDisputeResolvedAt > 0n) {
-      items.push({
-        id: feedId("passport.dispute_resolved", p.id, p.lastDisputeResolvedAt),
-        type: "passport.dispute_resolved",
-        tokenId: p.id,
-        timestamp: String(p.lastDisputeResolvedAt),
-      });
+      const terminal = p.lastDisputeTerminal ?? "";
+      if (terminal === "expire") {
+        items.push({
+          id: feedId("passport.dispute_expired", p.id, p.lastDisputeResolvedAt),
+          type: "passport.dispute_expired",
+          tokenId: p.id,
+          timestamp: String(p.lastDisputeResolvedAt),
+        });
+      } else if (terminal === "confirm" || terminal === "reject" || terminal === "") {
+        // "" = pre-terminal-tag rows until reindex; treat as resolved.
+        items.push({
+          id: feedId("passport.dispute_resolved", p.id, p.lastDisputeResolvedAt),
+          type: "passport.dispute_resolved",
+          tokenId: p.id,
+          timestamp: String(p.lastDisputeResolvedAt),
+          meta: terminal ? { terminal } : undefined,
+        });
+      }
+      // withdraw stamps lastDisputeResolvedAt? No — withdraw uses disputeWithdrawnAt only.
+      // confirm/reject/expire set lastDisputeResolvedAt.
     }
   }
 

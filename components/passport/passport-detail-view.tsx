@@ -16,6 +16,7 @@ import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
+import { PassportTrustBanner } from "@/components/passport/passport-trust-banner";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import {
   elevatedAdvisoryPanel,
@@ -146,6 +147,9 @@ export function PassportDetailView({
         passportOwner={passport.owner}
         lastDisputer={passport.lastDisputer}
         disputeReason={passport.disputeReason}
+        lastDisputeTerminal={passport.lastDisputeTerminal}
+        lastDisputeResolvedAt={passport.lastDisputeResolvedAt}
+        disputeWithdrawnAt={passport.disputeWithdrawnAt}
       />
       <PassportUriHistory entries={passport.uriHistory} chainId={chainId} />
     </div>
@@ -158,7 +162,8 @@ export function PassportDetailView({
       passportOwner={passport.owner as `0x${string}`}
       status={passport.status}
       lastDisputer={passport.lastDisputer}
-      disputeWithdrawnAt={passport.disputeWithdrawnAt}
+      recordedVerifier={passport.verifier}
+      disputeOpenedAt={passport.disputeOpenedAt}
       duplicateVin={passport.duplicateVin}
       listingActive={listing?.active}
       listingSeller={listing?.seller}
@@ -225,6 +230,14 @@ export function PassportDetailView({
                 ponderStatus={passport.status}
                 chainId={chainId}
               />
+              {passport.status !== "DISPUTED" && (
+                <PassportTrustBanner
+                  verificationResetCount={passport.verificationResetCount}
+                  hadDispute={passport.hadDispute}
+                  status={passport.status}
+                  lastDisputeTerminal={passport.lastDisputeTerminal}
+                />
+              )}
               {showG2Banner && (
                 <div
                   className="rounded-md border border-accent-warm/40 bg-bg-primary/80 p-4"
