@@ -1,7 +1,7 @@
 import { encodeFunctionData } from "viem";
 
 import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../../lib/contracts/abis.generated.js";
-import { lzEndpointForChain, wethForChain } from "./chainlink-feeds.js";
+import { lzEndpointForChain } from "./chainlink-feeds.js";
 import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
@@ -33,14 +33,12 @@ export function timelockConstructorArgs(manifest: DeploymentManifest) {
 }
 
 export function marketplaceImplConstructorArgs(manifest: DeploymentManifest) {
-  const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
   const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
   const platformRecipient =
     manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
 
   return [
     manifest.karPassport,
-    usdc,
     nativeFeed,
     manifest.karProStaking,
     platformRecipient,
@@ -87,7 +85,6 @@ export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
   return [
     manifest.karPassport,
     usdc,
-    wethForChain(manifest.chainId),
     manifest.karProStaking,
     platformRecipient,
     AUCTION_PLATFORM_FEE_BPS,

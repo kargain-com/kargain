@@ -174,6 +174,11 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "NoClaim",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NonexistentToken",
     "type": "error"
   },
@@ -331,6 +336,56 @@ export const KarPassportAbi = [
       }
     ],
     "name": "BatchMetadataUpdate",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimRecorded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimWithdrawn",
     "type": "event"
   },
   {
@@ -1231,6 +1286,30 @@ export const KarPassportAbi = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "pendingClaims",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "tokenId",
         "type": "uint256"
@@ -1569,6 +1648,38 @@ export const KarPassportAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "totalPendingErc20",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingNative",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "from",
         "type": "address"
       },
@@ -1610,6 +1721,19 @@ export const KarPassportAbi = [
       }
     ],
     "name": "verifyPassport",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "withdrawClaim",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -2507,6 +2631,11 @@ export const KarProStakingAbi = [
   },
   {
     "inputs": [],
+    "name": "NoClaim",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotVerifier",
     "type": "error"
   },
@@ -2550,6 +2679,16 @@ export const KarProStakingAbi = [
   },
   {
     "inputs": [],
+    "name": "TokenHasNoCode",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenNonConforming",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TokenNotEnabled",
     "type": "error"
   },
@@ -2557,6 +2696,56 @@ export const KarProStakingAbi = [
     "inputs": [],
     "name": "TransferFailed",
     "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimRecorded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimWithdrawn",
+    "type": "event"
   },
   {
     "anonymous": false,
@@ -2810,6 +2999,30 @@ export const KarProStakingAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "pendingClaims",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "proPass",
     "outputs": [
@@ -2924,6 +3137,38 @@ export const KarProStakingAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "totalPendingErc20",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingNative",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "newOwner",
         "type": "address"
       }
@@ -2950,6 +3195,19 @@ export const KarProStakingAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "withdrawClaim",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ] as const;
@@ -3125,6 +3383,16 @@ export const MarketplaceEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "NoAgent",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NoClaim",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotActive",
     "type": "error"
   },
@@ -3146,6 +3414,11 @@ export const MarketplaceEscrowAbi = [
   {
     "inputs": [],
     "name": "NotSeller",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotSellerOrAgent",
     "type": "error"
   },
   {
@@ -3192,6 +3465,16 @@ export const MarketplaceEscrowAbi = [
   {
     "inputs": [],
     "name": "StalePrice",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenHasNoCode",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenNonConforming",
     "type": "error"
   },
   {
@@ -3293,6 +3576,56 @@ export const MarketplaceEscrowAbi = [
       }
     ],
     "name": "AgentRevoked",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimRecorded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimWithdrawn",
     "type": "event"
   },
   {
@@ -4185,6 +4518,30 @@ export const MarketplaceEscrowAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "pendingClaims",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "platformFeeBps",
     "outputs": [
@@ -4422,6 +4779,38 @@ export const MarketplaceEscrowAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "totalPendingErc20",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingNative",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "newAuthority",
         "type": "address"
       }
@@ -4517,6 +4906,19 @@ export const MarketplaceEscrowAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "withdrawClaim",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "stateMutability": "payable",
     "type": "receive"
   }
@@ -4533,11 +4935,6 @@ export const AuctionEscrowAbi = [
       {
         "internalType": "address",
         "name": "usdc_",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "wrappedNative_",
         "type": "address"
       },
       {
@@ -4598,6 +4995,11 @@ export const AuctionEscrowAbi = [
   {
     "inputs": [],
     "name": "AuctionExists",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "AuctionHasAgent",
     "type": "error"
   },
   {
@@ -4718,7 +5120,17 @@ export const AuctionEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "NoAgent",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoAuction",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NoClaim",
     "type": "error"
   },
   {
@@ -4788,6 +5200,11 @@ export const AuctionEscrowAbi = [
   },
   {
     "inputs": [],
+    "name": "RefundPending",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ReturnAlreadyRequested",
     "type": "error"
   },
@@ -4815,6 +5232,16 @@ export const AuctionEscrowAbi = [
   {
     "inputs": [],
     "name": "SettlementPending",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenHasNoCode",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenNonConforming",
     "type": "error"
   },
   {
@@ -5114,15 +5541,59 @@ export const AuctionEscrowAbi = [
         "internalType": "uint128",
         "name": "amount",
         "type": "uint128"
-      },
-      {
-        "indexed": false,
-        "internalType": "bool",
-        "name": "wrappedFallback",
-        "type": "bool"
       }
     ],
     "name": "BidRefunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimRecorded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ClaimWithdrawn",
     "type": "event"
   },
   {
@@ -6023,6 +6494,30 @@ export const AuctionEscrowAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "pendingClaims",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "platformFeeBps",
     "outputs": [
@@ -6297,6 +6792,38 @@ export const AuctionEscrowAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "totalPendingErc20",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingNative",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "newAuthority",
         "type": "address"
       }
@@ -6351,16 +6878,16 @@ export const AuctionEscrowAbi = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "wrappedNative",
-    "outputs": [
+    "inputs": [
       {
-        "internalType": "contract IWETH",
-        "name": "",
+        "internalType": "address",
+        "name": "asset",
         "type": "address"
       }
     ],
-    "stateMutability": "view",
+    "name": "withdrawClaim",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -6400,11 +6927,6 @@ export const KarPassportBridgeGatewayAbi = [
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
-  },
-  {
-    "inputs": [],
-    "name": "ComposeMsgTooShort",
-    "type": "error"
   },
   {
     "inputs": [],

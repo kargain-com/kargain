@@ -39,6 +39,76 @@ describe("txErrorMessage", () => {
     );
   });
 
+  it("maps NotSeller", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotSeller()")),
+      "Only the seller of this sale can do this.",
+    );
+  });
+
+  it("maps NotSellerOrAgent", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotSellerOrAgent()")),
+      "Only the seller or listing agent can confirm this payment.",
+    );
+  });
+
+  it("maps NotAgent", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotAgent()")),
+      "Only the authorized agent can do this.",
+    );
+  });
+
+  it("maps NoAgent", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NoAgent()")),
+      "This sale has no agent. Use the direct seller action instead.",
+    );
+  });
+
+  it("maps ListingHasAgent", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error ListingHasAgent()")),
+      "This sale has an agent. Use the agent cancel or delist path instead.",
+    );
+  });
+
+  it("maps AuctionHasAgent", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error AuctionHasAgent()")),
+      "This auction has an agent. Use the agent cancel path instead.",
+    );
+  });
+
+  it("maps NoClaim", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NoClaim()")),
+      "There is no pending claim to withdraw for this asset.",
+    );
+  });
+
+  it("NotSellerOrAgent is not confused with NotSeller", () => {
+    assert.equal(
+      txErrorMessage(new Error("Custom error: NotSellerOrAgent()")),
+      "Only the seller or listing agent can confirm this payment.",
+    );
+  });
+
+  it("maps RefundPending", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error RefundPending()")),
+      "A failed-sale refund is pending for this vehicle.",
+    );
+  });
+
+  it("maps RefundNotPending", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error RefundNotPending()")),
+      "No failed-sale refund is pending for this vehicle.",
+    );
+  });
+
   it("maps NotActive", () => {
     assert.equal(
       txErrorMessage(new Error("reverted with custom error NotActive()")),
@@ -46,10 +116,10 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps AgentAuthorizationActive", () => {
+  it("maps EscrowNotApproved", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error AgentAuthorizationActive()")),
-      "End or delist the active sale before revoking access.",
+      txErrorMessage(new Error("reverted with custom error EscrowNotApproved()")),
+      "Approve the escrow on your passport first.",
     );
   });
 

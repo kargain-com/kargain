@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import hardhat from "hardhat";
-import { getAddress, type PublicClient } from "viem";
+import { encodeFunctionData, getAddress, type PublicClient } from "viem";
 
 import {
   deployAuctionEscrow,
@@ -26,7 +26,13 @@ const EXTENSION_WINDOW = 300n;
 function revertsWith(errorName: string) {
   return (err: unknown) => {
     if (!(err instanceof Error)) return false;
-    return err.message.includes(errorName);
+    if (err.message.includes(errorName)) return true;
+    // ClaimablePayouts errors bubbled through helper contracts without ABI decode.
+    if (errorName === "TransferFailed" && err.message.includes("0x90b8ec18")) return true;
+    if (errorName === "NoClaim" && err.message.includes("0x9b0e91e1")) return true;
+    if (errorName === "TokenHasNoCode" && err.message.includes("0x72a73200")) return true;
+    if (errorName === "TokenNonConforming" && err.message.includes("0xda440b93")) return true;
+    return false;
   };
 }
 
@@ -44,7 +50,7 @@ async function deployAuctionStack(viem: ViemSuite) {
   const base = await deployPassportStack(viem);
   const usdc = await viem.deployContract("MockUSDC", []);
   const timelock = await deployTimelock(viem, base.admin.account.address);
-  const { weth, impl, proxy, auction, feeBps } = await deployAuctionEscrow(
+  const { impl, proxy, auction, feeBps } = await deployAuctionEscrow(
     viem,
     {
       passport: base.passport,
@@ -53,7 +59,10 @@ async function deployAuctionStack(viem: ViemSuite) {
       timelock,
       admin: base.admin,
     },
-    { feeBps: 250n, upgradeAuthority: base.admin.account.address },
+    {
+      feeBps: 250n,
+      upgradeAuthority: base.admin.account.address,
+    },
   );
   const publicClient = await viem.getPublicClient();
   return {
@@ -62,7 +71,6 @@ async function deployAuctionStack(viem: ViemSuite) {
     buyer: base.verifier,
     stranger: base.stranger,
     usdc,
-    weth,
     auction,
     impl,
     proxy,
@@ -491,7 +499,7 @@ describe("AuctionEscrow v1 — recall matrix", () => {
   });
 });
 
-describe("AuctionEscrow v1 — refund fallback", () => {
+describe("AuctionEscrow v1 — claim payout", () => {
   let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
 
   beforeEach(async () => {
@@ -502,11 +510,11 @@ describe("AuctionEscrow v1 — refund fallback", () => {
     await connection.close();
   });
 
-  it("outbid refund to RevertingBidder lands as WETH", async () => {
+  it("outbid refund to RevertingBidder credits claim; withdraw after accept", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
     const { tokenId, reserve } = await prepareDirectAuction(stack);
-    const { auction, weth, stranger } = stack;
+    const { auction, stranger } = stack;
 
     const reverting = await viem.deployContract("RevertingBidder", [auction.address]);
     const bid1 = reserve;
@@ -515,16 +523,21 @@ describe("AuctionEscrow v1 — refund fallback", () => {
     const bid2 = bid1 + increment;
     await auction.write.bid([tokenId, bid2], { account: stranger.account, value: bid2 });
 
-    const wethBal = (await weth.read.balanceOf([reverting.address])) as bigint;
-    assert.equal(wethBal, bid1);
+    assert.equal(await auction.read.pendingClaims([reverting.address, NATIVE]), bid1);
+    assert.equal(await auction.read.totalPendingNative(), bid1);
+
+    await reverting.write.setAcceptEth([true]);
+    await reverting.write.withdrawClaim([NATIVE]);
+    assert.equal(await auction.read.pendingClaims([reverting.address, NATIVE]), 0n);
+    assert.equal(await auction.read.totalPendingNative(), 0n);
   });
 
-  it("payout to RevertingRecipient lands seller net as WETH", async () => {
+  it("payout to RevertingRecipient credits seller net claim", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await deployAuctionStack(viem);
     const recipient = await viem.deployContract("RevertingRecipient", []);
-    const { verifier, passport, auction, weth, stranger, feeBps } = stack;
+    const { verifier, passport, auction, stranger, feeBps } = stack;
     await joinVerifierIfNeeded(stack.staking, verifier);
     const tokenId = await mintPassport(passport, stack.seller, recipient.address, "ar://rev-seller");
     await verifyPassport(passport, verifier, tokenId);
@@ -544,8 +557,32 @@ describe("AuctionEscrow v1 — refund fallback", () => {
     const platformFee = (reserve * feeBps) / 10_000n;
     const agentFee = (reserve * 500n) / 10_000n;
     const net = reserve - platformFee - agentFee;
-    const wethBal = (await weth.read.balanceOf([recipient.address])) as bigint;
-    assert.equal(wethBal, net);
+    assert.equal(await auction.read.pendingClaims([recipient.address, NATIVE]), net);
+  });
+
+  it("withdrawClaim while recipient still rejects reverts TransferFailed", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    const { auction, stranger } = stack;
+
+    const reverting = await viem.deployContract("RevertingBidder", [auction.address]);
+    await reverting.write.bidNative([tokenId], { value: reserve });
+    const increment = (reserve * 300n) / 10_000n + 1n;
+    await auction.write.bid([tokenId, reserve + increment], {
+      account: stranger.account,
+      value: reserve + increment,
+    });
+    await assert.rejects(reverting.write.withdrawClaim([NATIVE]), revertsWith("TransferFailed"));
+  });
+
+  it("withdrawClaim with no balance reverts NoClaim", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    await assert.rejects(
+      stack.auction.write.withdrawClaim([NATIVE], { account: stack.stranger.account }),
+      revertsWith("NoClaim"),
+    );
   });
 });
 
@@ -1030,7 +1067,7 @@ describe("AuctionEscrow v1 — settlement dispute", () => {
   });
 });
 
-describe("AuctionEscrow v2 — 2.0.0-draft error names", () => {
+describe("AuctionEscrow v2 — 2.0.1-draft error names", () => {
   let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
 
   beforeEach(async () => {
@@ -1052,10 +1089,10 @@ describe("AuctionEscrow v2 — 2.0.0-draft error names", () => {
     return { tokenId, reserve, buyer: stack.stranger };
   }
 
-  it("VERSION is 2.0.0-draft", async () => {
+  it("VERSION is 2.0.1-draft", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
-    assert.equal(await stack.auction.read.VERSION(), "2.0.0-draft");
+    assert.equal(await stack.auction.read.VERSION(), "2.0.1-draft");
   });
 
   it("non-buyer confirmReceipt reverts NotBuyer", async () => {
@@ -1308,7 +1345,7 @@ describe("AuctionEscrow — guard order and hold semantics", () => {
     );
   });
 
-  it("owner revokeAuctionAgent during live agent auction reverts AgentAuthorizationActive not NotOwner", async () => {
+  it("owner revokeAuctionAgent during live agent auction reverts AuctionExists not NotOwner", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
     const { seller, verifier, passport, auction } = stack;
@@ -1327,7 +1364,7 @@ describe("AuctionEscrow — guard order and hold semantics", () => {
     );
     await assert.rejects(
       auction.write.revokeAuctionAgent([tokenId], { account: seller.account }),
-      revertsWith("AgentAuthorizationActive"),
+      revertsWith("AuctionExists"),
     );
   });
 
@@ -1407,6 +1444,772 @@ describe("AuctionEscrow — guard order and hold semantics", () => {
     await assert.rejects(
       auction.write.claimAbandonedRefund([tokenId], { account: seller.account }),
       revertsWith("HoldActive"),
+    );
+  });
+});
+
+describe("AuctionEscrow — Phase A access gates", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  async function settleDirectToHold(stack: AuctionStack) {
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await stack.auction.write.settle([tokenId]);
+    return { tokenId, reserve, buyer: stack.stranger };
+  }
+
+  async function settleAgentToHold(stack: AuctionStack) {
+    const { seller, verifier, stranger, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://gate-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    const reserve = 10n ** 18n;
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await auction.write.createAuctionOnBehalf(
+      [tokenId, NATIVE, reserve, THREE_DAYS, 500],
+      { account: verifier.account },
+    );
+    await auction.write.bid([tokenId, reserve], { account: stranger.account, value: reserve });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await auction.write.settle([tokenId]);
+    return { tokenId, reserve, buyer: stranger, agent: verifier };
+  }
+
+  it("createAuction by non-verifier owner reverts NotActiveVerifier; succeeds after stake", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction, staking } = stack;
+    await joinVerifierIfNeeded(staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://gate-create");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    const reserve = 10n ** 18n;
+
+    assert.equal(await staking.read.isActiveVerifier([seller.account.address]), false);
+    await assert.rejects(
+      auction.write.createAuction([tokenId, NATIVE, reserve, THREE_DAYS], {
+        account: seller.account,
+      }),
+      revertsWith("NotActiveVerifier"),
+    );
+
+    await joinVerifier(staking, seller);
+    await auction.write.createAuction([tokenId, NATIVE, reserve, THREE_DAYS], {
+      account: seller.account,
+    });
+    assert.equal(await auction.read.isAuctionActive([tokenId]), true);
+  });
+
+  it("createAuctionOnBehalf by authorized non-verifier reverts NotActiveVerifier; succeeds after stake", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, stranger, passport, auction, staking } = stack;
+    await joinVerifierIfNeeded(staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://gate-behalf");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    const reserve = 10n ** 18n;
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, stranger.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+
+    assert.equal(await staking.read.isActiveVerifier([stranger.account.address]), false);
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, reserve, THREE_DAYS, 500], {
+        account: stranger.account,
+      }),
+      revertsWith("NotActiveVerifier"),
+    );
+
+    await joinVerifier(staking, stranger);
+    await auction.write.createAuctionOnBehalf([tokenId, NATIVE, reserve, THREE_DAYS, 500], {
+      account: stranger.account,
+    });
+    assert.equal(await auction.read.isAuctionActive([tokenId]), true);
+  });
+
+  it("resolveSettlementDispute by non-verifier reverts NotActiveVerifier; succeeds for staked non-party", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleDirectToHold(stack);
+    const { auction, admin, verifier, staking } = stack;
+
+    await auction.write.openSettlementDispute([tokenId], {
+      account: buyer.account,
+      value: DISPUTE_DEPOSIT,
+    });
+
+    assert.equal(await staking.read.isActiveVerifier([admin.account.address]), false);
+    await assert.rejects(
+      auction.write.resolveSettlementDispute([tokenId, 0], { account: admin.account }),
+      revertsWith("NotActiveVerifier"),
+    );
+
+    await auction.write.resolveSettlementDispute([tokenId, 0], { account: verifier.account });
+    const hold = (await auction.read.holds([tokenId])) as readonly unknown[];
+    assert.equal(BigInt(hold[2] as bigint | number), 0n, "hold cleared after ReleaseToSeller");
+    assert.equal(await auction.read.isAuctionActive([tokenId]), false);
+  });
+
+  it("resolveSettlementDispute by buyer/seller/agent reverts CannotResolveOwnDeal; independent verifier gets bond", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const stack = await deployAuctionStack(viem);
+    const { auction, seller, verifier, admin, staking } = stack;
+
+    {
+      const { tokenId, buyer } = await settleDirectToHold(stack);
+      await auction.write.openSettlementDispute([tokenId], {
+        account: buyer.account,
+        value: DISPUTE_DEPOSIT,
+      });
+      await joinVerifierIfNeeded(staking, buyer);
+      await assert.rejects(
+        auction.write.resolveSettlementDispute([tokenId, 0], { account: buyer.account }),
+        revertsWith("CannotResolveOwnDeal"),
+      );
+      await assert.rejects(
+        auction.write.resolveSettlementDispute([tokenId, 0], { account: seller.account }),
+        revertsWith("CannotResolveOwnDeal"),
+      );
+      await auction.write.resolveSettlementDispute([tokenId, 1], { account: verifier.account });
+    }
+
+    {
+      const { tokenId, buyer, agent } = await settleAgentToHold(stack);
+      await auction.write.openSettlementDispute([tokenId], {
+        account: buyer.account,
+        value: DISPUTE_DEPOSIT,
+      });
+      await assert.rejects(
+        auction.write.resolveSettlementDispute([tokenId, 0], { account: agent.account }),
+        revertsWith("CannotResolveOwnDeal"),
+      );
+
+      await joinVerifierIfNeeded(staking, admin);
+      const resolverBefore = await publicClient.getBalance({ address: admin.account.address });
+      await auction.write.resolveSettlementDispute([tokenId, 0], { account: admin.account });
+      const resolverAfter = await publicClient.getBalance({ address: admin.account.address });
+      assert.ok(
+        resolverAfter > resolverBefore,
+        "ReleaseToSeller must route dispute bond to the independent resolver",
+      );
+    }
+  });
+});
+
+describe("AuctionEscrow — error coverage matrix", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  async function settleToHold(stack: AuctionStack) {
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await stack.auction.write.settle([tokenId]);
+    return { tokenId, reserve, buyer: stack.stranger };
+  }
+
+  async function prepareAgentAuction(stack: AuctionStack) {
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://err-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await auction.write.createAuctionOnBehalf(
+      [tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 500],
+      { account: verifier.account },
+    );
+    return tokenId;
+  }
+
+  async function settleToRefundPending(stack: AuctionStack) {
+    const { tokenId, buyer } = await settleToHold(stack);
+    await stack.auction.write.openSettlementDispute([tokenId], {
+      account: buyer.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await stack.auction.write.resolveSettlementDispute([tokenId, 1], {
+      account: stack.verifier.account,
+    });
+    return { tokenId, buyer };
+  }
+
+  it("constructor zero passport reverts ZeroAddress", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    await assert.rejects(
+      viem.deployContract("AuctionEscrow", [
+        ZERO,
+        stack.usdc.address,
+        stack.staking.address,
+        stack.admin.account.address,
+        250n,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("initialize zero authority reverts ZeroAddress", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const impl = await viem.deployContract("AuctionEscrow", [
+      stack.passport.address,
+      stack.usdc.address,
+      stack.staking.address,
+      stack.admin.account.address,
+      250n,
+    ]);
+    const initData = encodeFunctionData({
+      abi: impl.abi,
+      functionName: "initialize",
+      args: [ZERO],
+    });
+    await assert.rejects(
+      viem.deployContract("ERC1967Proxy", [impl.address, initData]),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("constructor feeBps above max reverts FeeTooHigh", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    await assert.rejects(
+      viem.deployContract("AuctionEscrow", [
+        stack.passport.address,
+        stack.usdc.address,
+        stack.staking.address,
+        stack.admin.account.address,
+        1001n,
+      ]),
+      revertsWith("FeeTooHigh"),
+    );
+  });
+
+  it("receive bare ETH reverts DirectEthNotAccepted", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    await assert.rejects(
+      stack.stranger.sendTransaction({ to: stack.auction.address, value: 1n }),
+      revertsWith("DirectEthNotAccepted"),
+    );
+  });
+
+  it("createAuction unsupported asset reverts UnsupportedAsset", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, seller);
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://unsupported");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await assert.rejects(
+      auction.write.createAuction(
+        [tokenId, "0x1111111111111111111111111111111111111111", 10n ** 18n, THREE_DAYS],
+        {
+          account: seller.account,
+        },
+      ),
+      revertsWith("UnsupportedAsset"),
+    );
+  });
+
+  it("createAuctionOnBehalf wrong asset reverts WrongAsset", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction, usdc } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://wrong-asset");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, usdc.address, 1_000_000n, THREE_DAYS, 500], {
+        account: verifier.account,
+      }),
+      revertsWith("WrongAsset"),
+    );
+  });
+
+  it("native bid with mismatched value reverts WrongValue", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.bid([tokenId, reserve], {
+        account: stack.stranger.account,
+        value: reserve - 1n,
+      }),
+      revertsWith("WrongValue"),
+    );
+  });
+
+  it("USDC bid with eth value reverts WrongValue", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const reserve = 1_000_000n;
+    const { tokenId } = await prepareDirectAuction(stack, { asset: stack.usdc.address, reserve });
+    await stack.usdc.write.mint([stack.stranger.account.address, reserve], {
+      account: stack.admin.account,
+    });
+    await stack.usdc.write.approve([stack.auction.address, reserve], {
+      account: stack.stranger.account,
+    });
+    await assert.rejects(
+      stack.auction.write.bid([tokenId, reserve], {
+        account: stack.stranger.account,
+        value: 1n,
+      }),
+      revertsWith("WrongValue"),
+    );
+  });
+
+  it("createAuction zero reserve reverts BadReserve", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, seller);
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-reserve");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await assert.rejects(
+      auction.write.createAuction([tokenId, NATIVE, 0n, THREE_DAYS], { account: seller.account }),
+      revertsWith("BadReserve"),
+    );
+  });
+
+  it("createAuction duration below min reverts BadDuration", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, seller);
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-duration");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await assert.rejects(
+      auction.write.createAuction([tokenId, NATIVE, 10n ** 18n, THREE_DAYS - 1n], {
+        account: seller.account,
+      }),
+      revertsWith("BadDuration"),
+    );
+  });
+
+  it("authorizeAuctionAgent without approval reverts EscrowNotApproved", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://no-approve");
+    await assert.rejects(
+      auction.write.authorizeAuctionAgent(
+        [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+        { account: seller.account },
+      ),
+      revertsWith("EscrowNotApproved"),
+    );
+  });
+
+  it("authorizeAuctionAgent zero agent reverts ZeroAddress", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, passport, auction } = stack;
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://zero-agent");
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await assert.rejects(
+      auction.write.authorizeAuctionAgent([tokenId, ZERO, 0n, NATIVE, 0n], {
+        account: seller.account,
+      }),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("createAuctionOnBehalf without auth reverts AgentNotAuthorized", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://no-auth");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 500], {
+        account: verifier.account,
+      }),
+      revertsWith("AgentNotAuthorized"),
+    );
+  });
+
+  it("createAuctionOnBehalf fee above max reverts AgentFeeTooHigh", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://fee-high");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 3001], {
+        account: verifier.account,
+      }),
+      revertsWith("AgentFeeTooHigh"),
+    );
+  });
+
+  it("confirmReceipt without hold reverts NoHold", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.confirmReceipt([tokenId], { account: stack.stranger.account }),
+      revertsWith("NoHold"),
+    );
+  });
+
+  it("resolveSettlementDispute without dispute reverts NoDispute", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await settleToHold(stack);
+    await assert.rejects(
+      stack.auction.write.resolveSettlementDispute([tokenId, 0], {
+        account: stack.verifier.account,
+      }),
+      revertsWith("NoDispute"),
+    );
+  });
+
+  it("confirmReceipt while disputed reverts DisputeActive", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    await stack.auction.write.openSettlementDispute([tokenId], {
+      account: buyer.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await assert.rejects(
+      stack.auction.write.confirmReceipt([tokenId], { account: buyer.account }),
+      revertsWith("DisputeActive"),
+    );
+  });
+
+  it("settle before first bid reverts AuctionNotStarted", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await prepareDirectAuction(stack);
+    await assert.rejects(stack.auction.write.settle([tokenId]), revertsWith("AuctionNotStarted"));
+  });
+
+  it("settle before endsAt reverts AuctionNotEnded", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await assert.rejects(stack.auction.write.settle([tokenId]), revertsWith("AuctionNotEnded"));
+  });
+
+  it("bid after endsAt reverts AuctionEnded", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    const next = reserve + (reserve * 300n) / 10_000n + 1n;
+    await assert.rejects(
+      stack.auction.write.bid([tokenId, next], {
+        account: stack.admin.account,
+        value: next,
+      }),
+      revertsWith("AuctionEnded"),
+    );
+  });
+
+  it("bid with no auction reverts NoAuction", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await mintPassport(
+      stack.passport,
+      stack.seller,
+      stack.seller.account.address,
+      "ar://no-auction",
+    );
+    await assert.rejects(
+      stack.auction.write.bid([tokenId, 10n ** 18n], {
+        account: stack.stranger.account,
+        value: 10n ** 18n,
+      }),
+      revertsWith("NoAuction"),
+    );
+  });
+
+  it("RefundPending — refund pending blocks confirmReceipt, releaseFunds, resolveSettlementDispute", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToRefundPending(stack);
+    const { auction, verifier } = stack;
+
+    await assert.rejects(
+      auction.write.confirmReceipt([tokenId], { account: buyer.account }),
+      revertsWith("RefundPending"),
+    );
+    await assert.rejects(auction.write.releaseFunds([tokenId]), revertsWith("RefundPending"));
+    // openSettlementDispute after ConfirmFailure hits DisputeActive (dead RefundPending guard removed).
+    await assert.rejects(
+      auction.write.resolveSettlementDispute([tokenId, 0], { account: verifier.account }),
+      revertsWith("RefundPending"),
+    );
+  });
+
+  it("RefundNotPending — refund not pending blocks returnPassportAndRefund and claimAbandonedRefund", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    await assert.rejects(
+      stack.auction.write.returnPassportAndRefund([tokenId], { account: buyer.account }),
+      revertsWith("RefundNotPending"),
+    );
+    await assert.rejects(
+      stack.auction.write.claimAbandonedRefund([tokenId], { account: stack.seller.account }),
+      revertsWith("RefundNotPending"),
+    );
+  });
+
+  it("AuctionHasAgent — cancelAuction when auction has agent", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await assert.rejects(
+      stack.auction.write.cancelAuction([tokenId], { account: stack.seller.account }),
+      revertsWith("AuctionHasAgent"),
+    );
+  });
+
+  it("NotAgent — agentCancelAuction by non-agent", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await assert.rejects(
+      stack.auction.write.agentCancelAuction([tokenId], { account: stack.seller.account }),
+      revertsWith("NotAgent"),
+    );
+  });
+
+  it("NoAgent — requestReturn on direct auction", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.requestReturn([tokenId], { account: stack.seller.account }),
+      revertsWith("NoAgent"),
+    );
+  });
+
+  it("NotSeller — cancelAuction by non-seller", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.cancelAuction([tokenId], { account: stack.stranger.account }),
+      revertsWith("NotSeller"),
+    );
+  });
+
+  it("NotSeller — requestReturn by non-seller", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await assert.rejects(
+      stack.auction.write.requestReturn([tokenId], { account: stack.stranger.account }),
+      revertsWith("NotSeller"),
+    );
+  });
+
+  it("NotSeller — forceReturn by non-seller", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await stack.auction.write.requestReturn([tokenId], { account: stack.seller.account });
+    await assert.rejects(
+      stack.auction.write.forceReturn([tokenId], { account: stack.stranger.account }),
+      revertsWith("NotSeller"),
+    );
+  });
+
+  it("NotSeller — claimAbandonedRefund by non-seller", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await settleToRefundPending(stack);
+    await increaseTime(stack.publicClient!, SEVEN_DAYS + 1n);
+    await assert.rejects(
+      stack.auction.write.claimAbandonedRefund([tokenId], { account: stack.stranger.account }),
+      revertsWith("NotSeller"),
+    );
+  });
+
+  it("requestReturn twice reverts ReturnAlreadyRequested", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await stack.auction.write.requestReturn([tokenId], { account: stack.seller.account });
+    await assert.rejects(
+      stack.auction.write.requestReturn([tokenId], { account: stack.seller.account }),
+      revertsWith("ReturnAlreadyRequested"),
+    );
+  });
+
+  it("forceReturn without request reverts ReturnNotRequested", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const tokenId = await prepareAgentAuction(stack);
+    await assert.rejects(
+      stack.auction.write.forceReturn([tokenId], { account: stack.seller.account }),
+      revertsWith("ReturnNotRequested"),
+    );
+  });
+
+  it("double withdrawClaim after credit reverts NoClaim", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    const { auction, stranger } = stack;
+
+    const reverting = await viem.deployContract("RevertingBidder", [auction.address]);
+    await reverting.write.bidNative([tokenId], { value: reserve });
+    const increment = (reserve * 300n) / 10_000n + 1n;
+    await auction.write.bid([tokenId, reserve + increment], {
+      account: stranger.account,
+      value: reserve + increment,
+    });
+    await reverting.write.setAcceptEth([true]);
+    await reverting.write.withdrawClaim([NATIVE]);
+    await assert.rejects(reverting.write.withdrawClaim([NATIVE]), revertsWith("NoClaim"));
+  });
+
+  it("gas-burning outbid recipient credits claim; withdraw after accept", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    const { auction, stranger } = stack;
+    const publicClient = await viem.getPublicClient();
+
+    const burner = await viem.deployContract("GasBurningBidder", [auction.address]);
+    await burner.write.bidNative([tokenId], { value: reserve });
+    const increment = (reserve * 300n) / 10_000n + 1n;
+    const bid2 = reserve + increment;
+    await auction.write.bid([tokenId, bid2], { account: stranger.account, value: bid2 });
+
+    assert.equal(await auction.read.pendingClaims([burner.address, NATIVE]), reserve);
+    const balance = await publicClient.getBalance({ address: auction.address });
+    const pending = (await auction.read.totalPendingNative()) as bigint;
+    assert.ok(balance >= pending);
+
+    await burner.write.setAcceptEth([true]);
+    await burner.write.withdrawClaim([NATIVE]);
+    assert.equal(await auction.read.pendingClaims([burner.address, NATIVE]), 0n);
+    await assert.rejects(burner.write.withdrawClaim([NATIVE]), revertsWith("NoClaim"));
+  });
+
+  it("stranger cannot withdraw another account's claim", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    const { auction, stranger } = stack;
+    const reverting = await viem.deployContract("RevertingBidder", [auction.address]);
+    await reverting.write.bidNative([tokenId], { value: reserve });
+    const increment = (reserve * 300n) / 10_000n + 1n;
+    await auction.write.bid([tokenId, reserve + increment], {
+      account: stranger.account,
+      value: reserve + increment,
+    });
+    await assert.rejects(
+      auction.write.withdrawClaim([NATIVE], { account: stranger.account }),
+      revertsWith("NoClaim"),
+    );
+    assert.equal(await auction.read.pendingClaims([reverting.address, NATIVE]), reserve);
+  });
+
+  it("ctor rejects no-code USDC", async () => {
+    const { viem } = connection;
+    const base = await deployPassportStack(viem);
+    const timelock = await deployTimelock(viem, base.admin.account.address);
+    await assert.rejects(
+      deployAuctionEscrow(
+        viem,
+        {
+          passport: base.passport,
+          staking: base.staking,
+          usdc: { address: base.stranger.account.address } as DeployedContract,
+          timelock,
+          admin: base.admin,
+        },
+        { feeBps: 250n, upgradeAuthority: base.admin.account.address },
+      ),
+      revertsWith("TokenHasNoCode"),
+    );
+  });
+
+  it("ctor rejects non-conforming USDC", async () => {
+    const { viem } = connection;
+    const base = await deployPassportStack(viem);
+    const bad = await viem.deployContract("NonConformingErc20", []);
+    const timelock = await deployTimelock(viem, base.admin.account.address);
+    await assert.rejects(
+      deployAuctionEscrow(
+        viem,
+        {
+          passport: base.passport,
+          staking: base.staking,
+          usdc: bad,
+          timelock,
+          admin: base.admin,
+        },
+        { feeBps: 250n, upgradeAuthority: base.admin.account.address },
+      ),
+      revertsWith("TokenNonConforming"),
     );
   });
 });

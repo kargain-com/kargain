@@ -178,7 +178,7 @@ function printDryRunCompare() {
   for (const [i, step] of base.steps.entries()) {
     console.log(`  ${i + 1}. ${step}`);
   }
-  console.log("\nExternals sourced from CHAINLINK_FEEDS / WETH_BY_CHAIN / LZ_ENDPOINT_V2_BY_CHAIN only.");
+  console.log("\nExternals sourced from CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN only.");
 }
 
 async function runLiveDeploy() {
@@ -203,7 +203,6 @@ async function runLiveDeploy() {
 
     await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
     await assertExternalBytecode(publicClient, "usdc", externals.usdc);
-    await assertExternalBytecode(publicClient, "weth", externals.weth);
     await assertExternalBytecode(publicClient, "layerZeroEndpoint", externals.layerZeroEndpoint);
 
     const [deployer] = await viem.getWalletClients();
@@ -214,7 +213,6 @@ async function runLiveDeploy() {
     console.log(`Deployer: ${deployerAddress}`);
     console.log(`Registry: ${plan.registry}`);
     console.log(`USDC:     ${externals.usdc}`);
-    console.log(`WETH:     ${externals.weth}`);
     console.log(`LZ:       ${externals.layerZeroEndpoint}`);
     console.log("");
 
@@ -243,7 +241,6 @@ async function runLiveDeploy() {
 
     const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
       karPassport.address,
-      externals.usdc,
       externals.nativeUsdFeed,
       staking.address,
       params.platformRecipient,
@@ -281,7 +278,6 @@ async function runLiveDeploy() {
     const auctionImpl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
       karPassport.address,
       externals.usdc,
-      externals.weth,
       staking.address,
       params.platformRecipient,
       params.auctionPlatformFeeBps,

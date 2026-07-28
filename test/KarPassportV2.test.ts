@@ -16,7 +16,12 @@ const TOKEN_ID_BASE = 31337n << 128n;
 function revertsWith(errorName: string) {
   return (err: unknown) => {
     if (!(err instanceof Error)) return false;
-    return err.message.includes(errorName);
+    if (err.message.includes(errorName)) return true;
+    if (errorName === "TransferFailed" && err.message.includes("0x90b8ec18")) return true;
+    if (errorName === "NoClaim" && err.message.includes("0x9b0e91e1")) return true;
+    if (errorName === "TokenHasNoCode" && err.message.includes("0x72a73200")) return true;
+    if (errorName === "TokenNonConforming" && err.message.includes("0xda440b93")) return true;
+    return false;
   };
 }
 
@@ -295,5 +300,106 @@ describe("KarPassport v2 — setVerificationFee on staking", () => {
       staking.write.setVerificationFee([1n], { account: stranger.account }),
       revertsWith("NotVerifier"),
     );
+  });
+});
+
+describe("KarPassport — claim payout coverage", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("rescueExcessEth to reverting recipient credits claim", async () => {
+    const { viem } = connection;
+    const { admin, passport } = await deployPassportStack(viem);
+    const reverting = await viem.deployContract("RevertingRecipient", []);
+    const funder = await viem.deployContract("SelfDestructSender", []);
+    await funder.write.destroyAndSend([passport.address], { value: 10n ** 16n });
+    const amount = 10n ** 15n;
+    await passport.write.rescueExcessEth([reverting.address, amount], {
+      account: admin.account,
+    });
+    assert.equal(await passport.read.pendingClaims([reverting.address, ZERO]), amount);
+    assert.equal(await passport.read.totalPendingNative(), amount);
+  });
+
+  it("rescueExcessEth cannot drain pending claims", async () => {
+    const { viem } = connection;
+    const { admin, passport } = await deployPassportStack(viem);
+    const reverting = await viem.deployContract("RevertingRecipient", []);
+    const funder = await viem.deployContract("SelfDestructSender", []);
+    await funder.write.destroyAndSend([passport.address], { value: 10n ** 16n });
+    const amount = 10n ** 15n;
+    await passport.write.rescueExcessEth([reverting.address, amount], {
+      account: admin.account,
+    });
+    const publicClient = await viem.getPublicClient();
+    const balance = await publicClient.getBalance({ address: passport.address });
+    const locked =
+      ((await passport.read.totalLockedDeposits()) as bigint) +
+      ((await passport.read.totalPendingNative()) as bigint);
+    const free = balance - locked;
+    await assert.rejects(
+      passport.write.rescueExcessEth([admin.account.address, free + 1n], {
+        account: admin.account,
+      }),
+      revertsWith("NothingToRescue"),
+    );
+  });
+
+  it("withdrawClaim with no balance reverts NoClaim", async () => {
+    const { viem } = connection;
+    const { stranger, passport } = await deployPassportStack(viem);
+    await assert.rejects(
+      passport.write.withdrawClaim([ZERO], { account: stranger.account }),
+      revertsWith("NoClaim"),
+    );
+  });
+
+  it("withdrawClaim while recipient still rejects reverts TransferFailed", async () => {
+    const { viem } = connection;
+    const { admin, passport } = await deployPassportStack(viem);
+    const reverting = await viem.deployContract("RevertingRecipient", []);
+    const funder = await viem.deployContract("SelfDestructSender", []);
+    await funder.write.destroyAndSend([passport.address], { value: 10n ** 16n });
+    await passport.write.rescueExcessEth([reverting.address, 10n ** 15n], {
+      account: admin.account,
+    });
+    await assert.rejects(
+      reverting.write.withdrawClaim([passport.address, ZERO]),
+      revertsWith("TransferFailed"),
+    );
+  });
+
+  it("gas-burning rescue recipient credits claim; withdraw after accept", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { admin, passport } = await deployPassportStack(viem);
+    const burner = await viem.deployContract("GasBurningRecipient", []);
+    const funder = await viem.deployContract("SelfDestructSender", []);
+    await funder.write.destroyAndSend([passport.address], { value: 10n ** 16n });
+    const amount = 10n ** 15n;
+    await passport.write.rescueExcessEth([burner.address, amount], { account: admin.account });
+    assert.equal(await passport.read.pendingClaims([burner.address, ZERO]), amount);
+    const balance = await publicClient.getBalance({ address: passport.address });
+    assert.ok(balance >= ((await passport.read.totalPendingNative()) as bigint));
+    await burner.write.setAcceptEth([true]);
+    await burner.write.withdrawClaim([passport.address, ZERO]);
+    assert.equal(await passport.read.pendingClaims([burner.address, ZERO]), 0n);
+    await assert.rejects(
+      burner.write.withdrawClaim([passport.address, ZERO]),
+      revertsWith("NoClaim"),
+    );
+  });
+
+  it("VERSION is 1.5.1-rc.1", async () => {
+    const { viem } = connection;
+    const { passport } = await deployPassportStack(viem);
+    assert.equal(await passport.read.VERSION(), "1.5.1-rc.1");
   });
 });

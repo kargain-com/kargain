@@ -54,7 +54,7 @@ Diagnostic: `pnpm ponder:config` — shows `auctionEscrow` address and `blocks.a
 | `AuctionCreated` | `auction` upsert |
 | `AuctionStarted` | `auction` (phase, high bid, ends) |
 | `BidPlaced` | `auction` + `auction_bid` insert |
-| `BidRefunded` | `auction_bid.refunded` |
+| `BidRefunded` | `auction_bid.refunded` (no `wrappedFallback` — WETH path removed; Nuclear #2 reindex) |
 | `AuctionCancelled` | `auction` + deactivate `auction_agent_authorization` |
 | `ReturnRequested` | `auction.returnRequestedAt` |
 | `ForceReturn` | `auction` + deactivate `auction_agent_authorization` |

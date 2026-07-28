@@ -1,6 +1,6 @@
 /**
  * Pure nuclear deploy plan — identical protocol params on 84532 and 11155111.
- * External addresses only from CHAINLINK_FEEDS / WETH_BY_CHAIN / LZ_ENDPOINT_V2_BY_CHAIN.
+ * External addresses only from CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN.
  */
 
 import { getAddress } from "viem";
@@ -10,9 +10,7 @@ import {
   getChainFeedConfig,
   isCommercialChainId,
   lzEndpointForChain,
-  wethForChain,
   type CommercialChainId,
-  WETH_BY_CHAIN,
   LZ_ENDPOINT_V2_BY_CHAIN,
 } from "./chainlink-feeds.js";
 import {
@@ -65,7 +63,6 @@ export type NuclearDeployPlan = {
   externals: {
     usdc: `0x${string}`;
     nativeUsdFeed: `0x${string}`;
-    weth: `0x${string}`;
     layerZeroEndpoint: `0x${string}`;
   };
 };
@@ -97,7 +94,6 @@ export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
     externals: {
       usdc: getAddress(feedConfig.usdc),
       nativeUsdFeed: getAddress(feedConfig.nativeUsdFeed),
-      weth: wethForChain(chainId),
       layerZeroEndpoint: lzEndpointForChain(chainId),
     },
   };
@@ -133,7 +129,6 @@ export function externalsMatchTables(plan: NuclearDeployPlan): boolean {
   return (
     externals.usdc.toLowerCase() === feeds.usdc.toLowerCase() &&
     externals.nativeUsdFeed.toLowerCase() === feeds.nativeUsdFeed.toLowerCase() &&
-    externals.weth.toLowerCase() === WETH_BY_CHAIN[chainId].toLowerCase() &&
     externals.layerZeroEndpoint.toLowerCase() ===
       LZ_ENDPOINT_V2_BY_CHAIN[chainId].toLowerCase()
   );
@@ -171,7 +166,6 @@ export function formatNuclearParityTable(
     ["tokenIdOffset", base.tokenIdOffset.toString(), eth.tokenIdOffset.toString()],
     ["usdc", base.externals.usdc, eth.externals.usdc],
     ["nativeUsdFeed", base.externals.nativeUsdFeed, eth.externals.nativeUsdFeed],
-    ["weth", base.externals.weth, eth.externals.weth],
     ["layerZeroEndpoint", base.externals.layerZeroEndpoint, eth.externals.layerZeroEndpoint],
   ];
 

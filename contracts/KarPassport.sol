@@ -17,16 +17,18 @@ import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import {ClaimablePayouts} from "./lib/ClaimablePayouts.sol";
+
 interface IKarProStaking {
     function isActiveVerifier(address a) external view returns (bool);
 }
 
 /// @title KarPassport
 /// @notice ERC-721 vehicle passport with verification lifecycle, dispute deposits, and append-only records.
-/// @dev v1.3: gateway-bound bridge mint/burn/reset + custody-lock freeze (SPEC §I.12). Messaging-provider-agnostic.
-/// @custom:version 1.3.0-rc.1
-contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
-    string public constant VERSION = "1.3.0-rc.1";
+/// @dev v1.4: claim-on-failure payouts for dispute deposits and rescue; gateway-bound bridge (SPEC §I.12).
+/// @custom:version 1.5.1-rc.1
+contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyGuard {
+    string public constant VERSION = "1.5.1-rc.1";
 
     enum Status {
         UNVERIFIED,
@@ -94,13 +96,13 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     error CannotSelfVerify();
     error InvalidStatus(Status current);
     error EmptyField(string fieldName);
+    error ZeroAddress();
     error SameURI();
     error InsufficientDeposit();
     error NotDisputeOpener();
     error NoActiveDispute();
     error CannotResolveSelfDispute();
     error NothingToRescue();
-    error TransferFailed();
     error TokenIdSpaceExhausted();
     error GatewayAlreadySet();
     error NotBridgeGateway();
@@ -142,7 +144,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
     /// @param gateway KarPassportBridgeGateway (or test mock) address.
     function setBridgeGateway(address gateway) external onlyOwner {
         if (bridgeGateway != address(0)) revert GatewayAlreadySet();
-        if (gateway == address(0)) revert EmptyField("gateway");
+        if (gateway == address(0)) revert ZeroAddress();
         bridgeGateway = gateway;
     }
 
@@ -214,17 +216,21 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         emit DisputeDepositUpdated(previous, amount);
     }
 
-    /// @notice Withdraw ETH not locked in active dispute deposits.
+    /// @notice Withdraw ETH not locked in active dispute deposits or outstanding claims.
     /// @param to Recipient of excess ETH.
     /// @param amount Amount to withdraw (must not exceed free balance).
     function rescueExcessEth(address to, uint256 amount) external onlyOwner nonReentrant {
-        if (to == address(0)) revert EmptyField("to");
-        uint256 locked = totalLockedDeposits;
+        if (to == address(0)) revert ZeroAddress();
+        uint256 locked = totalLockedDeposits + totalPendingNative();
         uint256 balance = address(this).balance;
         if (amount == 0 || amount > balance - locked) revert NothingToRescue();
-        (bool ok,) = payable(to).call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        _payNative(to, amount);
         emit EthRescued(to, amount);
+    }
+
+    /// @notice Withdraw a pending native (`asset == address(0)`) claim credited after a failed push.
+    function withdrawClaim(address asset) external nonReentrant {
+        _withdrawClaim(asset);
     }
 
     /// @notice Permissionless mint of a new KarPassport NFT.
@@ -321,8 +327,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
 
         _appendRecord(tokenId, "dispute_withdrawn", "Dispute withdrawn by opener", "", msg.sender);
 
-        (bool ok,) = payable(msg.sender).call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        _payNative(msg.sender, amount);
 
         emit DisputeWithdrawn(tokenId, msg.sender, amount);
     }
@@ -334,7 +339,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         _requireExists(tokenId);
         _requireNotBridgedAway(tokenId);
         if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
-        if (passportStatus[tokenId] != Status.DISPUTED) revert InvalidStatus(Status.DISPUTED);
+        if (passportStatus[tokenId] != Status.DISPUTED) revert NoActiveDispute();
         if (disputeOpenedBy[tokenId] == msg.sender) revert CannotResolveSelfDispute();
 
         address opener = disputeOpenedBy[tokenId];
@@ -356,8 +361,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ReentrancyGuard {
         }
 
         if (amount > 0) {
-            (bool ok,) = payable(payee).call{value: amount}("");
-            if (!ok) revert TransferFailed();
+            _payNative(payee, amount);
         }
 
         emit DisputeResolved(tokenId, msg.sender, outcome);

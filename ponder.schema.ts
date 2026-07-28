@@ -223,7 +223,6 @@ export const auctionBid = onchainTable(
     amount: t.bigint().notNull(),
     endsAt: t.bigint().notNull(),
     refunded: t.boolean().notNull().default(false),
-    wrappedFallback: t.boolean().notNull().default(false),
     timestamp: t.bigint().notNull(),
   }),
   (table) => ({

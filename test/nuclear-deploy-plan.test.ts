@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 import {
   CHAINLINK_FEEDS,
   LZ_ENDPOINT_V2_BY_CHAIN,
-  WETH_BY_CHAIN,
 } from "../scripts/lib/chainlink-feeds.ts";
 import {
   assertNuclearParamParity,
@@ -54,7 +53,7 @@ describe("nuclear deploy plan", () => {
     assert.equal(eth.tokenIdOffset, BigInt(11155111) << 128n);
   });
 
-  it("externals match CHAINLINK_FEEDS / WETH_BY_CHAIN / LZ_ENDPOINT_V2_BY_CHAIN only", () => {
+  it("externals match CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN only", () => {
     assert.ok(externalsMatchTables(base));
     assert.ok(externalsMatchTables(eth));
 
@@ -63,7 +62,6 @@ describe("nuclear deploy plan", () => {
       base.externals.nativeUsdFeed.toLowerCase(),
       CHAINLINK_FEEDS[84532].nativeUsdFeed.toLowerCase(),
     );
-    assert.equal(base.externals.weth.toLowerCase(), WETH_BY_CHAIN[84532].toLowerCase());
     assert.equal(
       base.externals.layerZeroEndpoint.toLowerCase(),
       LZ_ENDPOINT_V2_BY_CHAIN[84532].toLowerCase(),
@@ -74,14 +72,12 @@ describe("nuclear deploy plan", () => {
       eth.externals.nativeUsdFeed.toLowerCase(),
       CHAINLINK_FEEDS[11155111].nativeUsdFeed.toLowerCase(),
     );
-    assert.equal(eth.externals.weth.toLowerCase(), WETH_BY_CHAIN[11155111].toLowerCase());
     assert.equal(
       eth.externals.layerZeroEndpoint.toLowerCase(),
       LZ_ENDPOINT_V2_BY_CHAIN[11155111].toLowerCase(),
     );
 
     assert.notEqual(base.externals.usdc.toLowerCase(), eth.externals.usdc.toLowerCase());
-    assert.notEqual(base.externals.weth.toLowerCase(), eth.externals.weth.toLowerCase());
   });
 
   it("parity table reports identical shared parameters", () => {

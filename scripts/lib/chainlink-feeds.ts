@@ -57,23 +57,10 @@ export const LZ_ENDPOINT_V2_BY_CHAIN: Record<84532 | 11155111, `0x${string}`> = 
   11155111: "0x6EDCE65403992e310A62460808c4b910D972f10f",
 };
 
-/** Canonical WETH9 — AuctionEscrow wrappedNative immutable (per commercial chain). */
-export const WETH_BY_CHAIN: Record<84532 | 11155111, `0x${string}`> = {
-  84532: "0x4200000000000000000000000000000000000006",
-  11155111: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
-};
-
-export type CommercialChainId = keyof typeof WETH_BY_CHAIN;
+export type CommercialChainId = keyof typeof LZ_ENDPOINT_V2_BY_CHAIN;
 
 export function isCommercialChainId(chainId: number): chainId is CommercialChainId {
   return chainId === 84532 || chainId === 11155111;
-}
-
-export function wethForChain(chainId: number): `0x${string}` {
-  if (!isCommercialChainId(chainId)) {
-    throw new Error(`No WETH map for chainId ${chainId}`);
-  }
-  return getAddress(WETH_BY_CHAIN[chainId]);
 }
 
 export function lzEndpointForChain(chainId: number): `0x${string}` {

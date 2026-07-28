@@ -36,9 +36,9 @@ interface IERC721MetadataURI {
 /// @title KarPassportBridgeGateway
 /// @notice Symmetric lock-and-mint / burn-and-unlock OApp for KarPassport v1.3 (SPEC §I.12).
 /// @dev LayerZero imports are confined to this gateway (§7.6 provider isolation).
-/// @custom:version 1.1.0-rc.1
+/// @custom:version 1.1.2-rc.1
 contract KarPassportBridgeGateway is ONFT721Adapter {
-    string public constant VERSION = "1.1.0-rc.1";
+    string public constant VERSION = "1.1.2-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
@@ -53,10 +53,9 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     error PassportDisputed();
     error InSettlementHold();
     error NotRepresentationOwner();
-    error ComposeMsgTooShort();
     error NotHomeToken();
     error NotLocked();
-    error ZeroRecipient();
+    error ZeroAddress();
 
     /// @notice Timelock restored a stranded locked home token after Endpoint kill (SPEC §I.12.11).
     event RecoveredLockedHome(uint256 indexed tokenId, address indexed to);
@@ -86,7 +85,7 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     /// @dev `onlyOwner` — production owner is Timelock48h (same as OApp delegate). Cannot mint: only
     ///      releases a home token this gateway already holds. Kill-then-restore is the runbook.
     function recoverLockedHome(uint256 tokenId, address to) external onlyOwner {
-        if (to == address(0)) revert ZeroRecipient();
+        if (to == address(0)) revert ZeroAddress();
         if (!_isHome(tokenId)) revert NotHomeToken();
         if (IERC721(address(innerToken)).ownerOf(tokenId) != address(this)) revert NotLocked();
 
@@ -193,9 +192,8 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
         if (inspector != address(0)) IOAppMsgInspector(inspector).inspect(message, options);
     }
 
-    /// @dev Defensive tail slice; callers only invoke when `data.length > offset`.
+    /// @dev Tail slice; callers only invoke when `data.length > offset`.
     function _memoryTail(bytes memory data, uint256 offset) internal pure returns (bytes memory tail) {
-        if (data.length < offset) revert ComposeMsgTooShort();
         tail = new bytes(data.length - offset);
         for (uint256 i = 0; i < tail.length; i++) {
             tail[i] = data[offset + i];

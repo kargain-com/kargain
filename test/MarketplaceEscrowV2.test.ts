@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import hardhat from "hardhat";
-import { getAddress, stringToHex, toHex } from "viem";
+import { encodeFunctionData, getAddress, stringToHex, toHex } from "viem";
 
 import {
   CURRENCY_USD,
@@ -9,17 +9,27 @@ import {
   deployMarketplaceViaProxy,
   deployPassportStack,
   deployTimelock,
+  increaseTime,
   joinVerifier,
   mintPassport,
   NATIVE_USD_8D,
   receiptLogs,
+  ZERO,
 } from "../scripts/lib/local-stack.js";
 const CURRENCY_EUR = stringToHex("EUR", { size: 32 });
+const CURRENCY_NATIVE = stringToHex("NATIVE", { size: 32 });
+const MAX_FEE_BPS = 1000n;
+const MAX_AGENT_FEE_BPS = 3000;
 
 function revertsWith(errorName: string) {
   return (err: unknown) => {
     if (!(err instanceof Error)) return false;
-    return err.message.includes(errorName);
+    if (err.message.includes(errorName)) return true;
+    if (errorName === "TransferFailed" && err.message.includes("0x90b8ec18")) return true;
+    if (errorName === "NoClaim" && err.message.includes("0x9b0e91e1")) return true;
+    if (errorName === "TokenHasNoCode" && err.message.includes("0x72a73200")) return true;
+    if (errorName === "TokenNonConforming" && err.message.includes("0xda440b93")) return true;
+    return false;
   };
 }
 
@@ -98,7 +108,7 @@ describe("MarketplaceEscrow v2 — agent model", () => {
       marketplace.write.authorizeAgent([tokenId, verifier.account.address, expiry, 0n], {
         account: seller.account,
       }),
-      revertsWith("MarketplaceNotApproved"),
+      revertsWith("EscrowNotApproved"),
     );
   });
 
@@ -301,14 +311,12 @@ describe("MarketplaceEscrow v2 — audit fixes", () => {
     assert.equal(await marketplace.read.returnRequestedAt([tokenId]), requestedAt);
   });
 
-  it("reverting platformRecipient blocks buyWithNative", async () => {
+  it("reverting platformRecipient credits claim; sale completes", async () => {
     const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
     const stack = await deployPassportStack(viem);
     const usdc = await viem.deployContract("MockUSDC", []);
     const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
     const timelock = await deployTimelock(viem, stack.admin.account.address);
-    // Known limitation: immutable platformRecipient that reverts on ETH blocks all native sales.
     const { marketplace } = await deployMarketplaceViaProxy(viem, {
       karPassport: stack.passport.address,
       usdc: usdc.address,
@@ -328,33 +336,146 @@ describe("MarketplaceEscrow v2 — audit fixes", () => {
       account: seller.account,
     });
     await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([tokenId]);
-    await assert.rejects(
-      marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross }),
-      revertsWith("TransferFailed"),
+    const gross = (await marketplace.read.quoteBuyWithNative([tokenId])) as bigint;
+    await marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross });
+    assert.equal(await marketplace.read.isListed([tokenId]), false);
+    const platformFee = (gross * 250n) / 10_000n;
+    assert.equal(await marketplace.read.pendingClaims([usdc.address, ZERO]), platformFee);
+    assert.equal(
+      getAddress(await stack.passport.read.ownerOf([tokenId])),
+      getAddress(buyer.account.address),
     );
-    assert.equal(await marketplace.read.isListed([tokenId]), true);
-    void publicClient;
   });
 
-  it("reverting seller blocks settlement; NFT stays in escrow", async () => {
+  it("reverting seller credits claim; NFT transfers to buyer", async () => {
     const { viem } = connection;
-    const { seller, buyer, passport, marketplace } = await deployEscrowStack(viem);
+    const { seller, buyer, passport, marketplace, feeBps } = await deployEscrowStack(viem);
     const helper = await viem.deployContract("SelfDestructSender", []);
     const tokenId = await mintPassport(passport, seller, helper.address, "ar://reject-seller");
     const price = 100n * 10n ** 8n;
     await helper.write.approveAndList(
       [passport.address, marketplace.address, tokenId, price, CURRENCY_USD],
     );
-    const gross = await marketplace.read.quoteBuyWithNative([tokenId]);
-    await assert.rejects(
-      marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross }),
-      revertsWith("TransferFailed"),
-    );
-    assert.equal(await marketplace.read.isListed([tokenId]), true);
+    const gross = (await marketplace.read.quoteBuyWithNative([tokenId])) as bigint;
+    await marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross });
+    assert.equal(await marketplace.read.isListed([tokenId]), false);
+    const platformFee = (gross * feeBps) / 10_000n;
+    const net = gross - platformFee;
+    assert.equal(await marketplace.read.pendingClaims([helper.address, ZERO]), net);
     assert.equal(
       getAddress(await passport.read.ownerOf([tokenId])),
-      getAddress(marketplace.address),
+      getAddress(buyer.account.address),
+    );
+  });
+
+  it("withdrawClaim with no balance reverts NoClaim", async () => {
+    const { viem } = connection;
+    const { marketplace, stranger } = await deployEscrowStack(viem);
+    await assert.rejects(
+      marketplace.write.withdrawClaim([ZERO], { account: stranger.account }),
+      revertsWith("NoClaim"),
+    );
+  });
+
+  it("withdrawClaim while recipient still rejects reverts TransferFailed", async () => {
+    const { viem } = connection;
+    const stack = await deployPassportStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    const timelock = await deployTimelock(viem, stack.admin.account.address);
+    const recipient = await viem.deployContract("RevertingRecipient", []);
+    const { marketplace } = await deployMarketplaceViaProxy(viem, {
+      karPassport: stack.passport.address,
+      usdc: usdc.address,
+      nativeFeed: nativeFeed.address,
+      karProStaking: stack.staking.address,
+      platformRecipient: recipient.address,
+      feeBps: 250n,
+      proFeeBps: 100n,
+      maxStale: 3600n,
+      timelock: timelock.address,
+      genesisAuthority: stack.admin.account.address,
+    });
+    const seller = stack.owner;
+    const buyer = stack.verifier;
+    const tokenId = await mintPassport(stack.passport, seller, seller.account.address, "ar://tf");
+    await stack.passport.write.setApprovalForAll([marketplace.address, true], {
+      account: seller.account,
+    });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    const gross = (await marketplace.read.quoteBuyWithNative([tokenId])) as bigint;
+    await marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross });
+    assert.ok(((await marketplace.read.pendingClaims([recipient.address, ZERO])) as bigint) > 0n);
+    await assert.rejects(
+      recipient.write.withdrawClaim([marketplace.address, ZERO]),
+      revertsWith("TransferFailed"),
+    );
+  });
+
+  it("gas-burning platformRecipient credits claim; sale completes; withdraw works", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const stack = await deployPassportStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    const timelock = await deployTimelock(viem, stack.admin.account.address);
+    const burner = await viem.deployContract("GasBurningRecipient", []);
+    const { marketplace } = await deployMarketplaceViaProxy(viem, {
+      karPassport: stack.passport.address,
+      usdc: usdc.address,
+      nativeFeed: nativeFeed.address,
+      karProStaking: stack.staking.address,
+      platformRecipient: burner.address,
+      feeBps: 250n,
+      proFeeBps: 100n,
+      maxStale: 3600n,
+      timelock: timelock.address,
+      genesisAuthority: stack.admin.account.address,
+    });
+    const seller = stack.owner;
+    const buyer = stack.verifier;
+    const tokenId = await mintPassport(stack.passport, seller, seller.account.address, "ar://gas");
+    await stack.passport.write.setApprovalForAll([marketplace.address, true], {
+      account: seller.account,
+    });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    const gross = (await marketplace.read.quoteBuyWithNative([tokenId])) as bigint;
+    await marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross });
+    const platformFee = (gross * 250n) / 10_000n;
+    assert.equal(await marketplace.read.pendingClaims([burner.address, ZERO]), platformFee);
+    const balance = await publicClient.getBalance({ address: marketplace.address });
+    assert.ok(balance >= ((await marketplace.read.totalPendingNative()) as bigint));
+    await burner.write.setAcceptEth([true]);
+    await burner.write.withdrawClaim([marketplace.address, ZERO]);
+    assert.equal(await marketplace.read.pendingClaims([burner.address, ZERO]), 0n);
+  });
+
+  it("approvePaymentToken rejects no-code and non-conforming tokens", async () => {
+    const { viem } = connection;
+    const { admin, stranger, marketplace } = await deployEscrowStack(viem);
+    await assert.rejects(
+      marketplace.write.approvePaymentToken([stranger.account.address, ZERO], {
+        account: admin.account,
+      }),
+      revertsWith("TokenHasNoCode"),
+    );
+    const bad = await viem.deployContract("NonConformingErc20", []);
+    await assert.rejects(
+      marketplace.write.approvePaymentToken([bad.address, ZERO], { account: admin.account }),
+      revertsWith("TokenNonConforming"),
+    );
+  });
+
+  it("approvePaymentToken rejects zero token", async () => {
+    const { viem } = connection;
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    await assert.rejects(
+      marketplace.write.approvePaymentToken([ZERO, ZERO], { account: admin.account }),
+      revertsWith("ZeroAddress"),
     );
   });
 
@@ -495,10 +616,10 @@ describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
     await connection.close();
   });
 
-  it("VERSION is 2.1.0-rc.1", async () => {
+  it("VERSION is 2.1.0-rc.2", async () => {
     const { viem } = connection;
     const { marketplace } = await deployEscrowStack(viem);
-    assert.equal(await marketplace.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await marketplace.read.VERSION(), "2.1.0-rc.2");
   });
 
   it("list on already-listed token reverts AlreadyListed", async () => {
@@ -528,7 +649,7 @@ describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
     );
   });
 
-  it("owner revokeAgent while listed reverts AgentAuthorizationActive not NotOwner", async () => {
+  it("owner revokeAgent while listed reverts AlreadyListed not NotOwner", async () => {
     const { viem } = connection;
     const { seller, verifier, passport, marketplace } = await deployEscrowStack(viem);
     const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://rev-listed");
@@ -543,7 +664,7 @@ describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
     );
     await assert.rejects(
       marketplace.write.revokeAgent([tokenId], { account: seller.account }),
-      revertsWith("AgentAuthorizationActive"),
+      revertsWith("AlreadyListed"),
     );
   });
 
@@ -570,4 +691,370 @@ describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
       revertsWith("NotOwner"),
     );
   });
+});
+
+describe("MarketplaceEscrow — error coverage matrix", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  async function agentListed(
+    viem: Awaited<ReturnType<typeof hardhat.network.connect>>["viem"],
+    opts: { agentFeeBps?: number; ownerMin?: bigint; price?: bigint } = {},
+  ) {
+    const stack = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(
+      stack.passport,
+      stack.seller,
+      stack.seller.account.address,
+      "ar://err-matrix",
+    );
+    await stack.passport.write.setApprovalForAll([stack.marketplace.address, true], {
+      account: stack.seller.account,
+    });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    const ownerMin = opts.ownerMin ?? 0n;
+    await stack.marketplace.write.authorizeAgent(
+      [tokenId, stack.verifier.account.address, expiry, ownerMin],
+      { account: stack.seller.account },
+    );
+    const price = opts.price ?? 1000n * 10n ** 8n;
+    const agentFeeBps = opts.agentFeeBps ?? 100;
+    await stack.marketplace.write.listOnBehalf(
+      [tokenId, price, CURRENCY_USD, agentFeeBps, "0x"],
+      { account: stack.verifier.account },
+    );
+    return { ...stack, tokenId };
+  }
+
+  it("ZeroAddress — constructor rejects zero karPassport", async () => {
+    const { viem } = connection;
+    const stack = await deployPassportStack(viem);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    await assert.rejects(
+      viem.deployContract("MarketplaceEscrow", [
+        ZERO,
+        nativeFeed.address,
+        stack.staking.address,
+        stack.admin.account.address,
+        250n,
+        100n,
+        3600n,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("ZeroAddress — initialize rejects zero timelock", async () => {
+    const { viem } = connection;
+    const stack = await deployPassportStack(viem);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    const implementation = await viem.deployContract("MarketplaceEscrow", [
+      stack.passport.address,
+      nativeFeed.address,
+      stack.staking.address,
+      stack.admin.account.address,
+      250n,
+      100n,
+      3600n,
+    ]);
+    const initData = encodeFunctionData({
+      abi: implementation.abi,
+      functionName: "initialize",
+      args: [ZERO],
+    });
+    await assert.rejects(
+      viem.deployContract("ERC1967Proxy", [implementation.address, initData]),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("FeeTooHigh — constructor rejects feeBps over cap", async () => {
+    const { viem } = connection;
+    const stack = await deployPassportStack(viem);
+    const nativeFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    await assert.rejects(
+      viem.deployContract("MarketplaceEscrow", [
+        stack.passport.address,
+        nativeFeed.address,
+        stack.staking.address,
+        stack.admin.account.address,
+        MAX_FEE_BPS + 1n,
+        100n,
+        3600n,
+      ]),
+      revertsWith("FeeTooHigh"),
+    );
+  });
+
+  it("NotUpgradeAuthority — non-authority setPaused", async () => {
+    const { viem } = connection;
+    const { seller, marketplace } = await deployEscrowStack(viem);
+    await assert.rejects(
+      marketplace.write.setPaused([true], { account: seller.account }),
+      revertsWith("NotUpgradeAuthority"),
+    );
+  });
+
+  it("PaymentTokenNotSupported — buyWithToken unapproved ERC-20", async () => {
+    const { viem } = connection;
+    const { seller, buyer, passport, marketplace } = await deployEscrowStack(viem);
+    const other = await viem.deployContract("MockUSDC", []);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-token");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      marketplace.write.buyWithToken([tokenId, other.address], { account: buyer.account }),
+      revertsWith("PaymentTokenNotSupported"),
+    );
+  });
+
+  it("BadPrice — list with zero price", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://zero-price");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.list([tokenId, 0n, CURRENCY_USD], { account: seller.account }),
+      revertsWith("BadPrice"),
+    );
+  });
+
+  it("AgentFeeTooHigh — listOnBehalf fee over cap", async () => {
+    const { viem } = connection;
+    const { seller, verifier, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://fee-cap");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    await marketplace.write.authorizeAgent([tokenId, verifier.account.address, expiry, 0n], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      marketplace.write.listOnBehalf(
+        [tokenId, 1000n * 10n ** 8n, CURRENCY_USD, MAX_AGENT_FEE_BPS + 1, "0x"],
+        { account: verifier.account },
+      ),
+      revertsWith("AgentFeeTooHigh"),
+    );
+  });
+
+  it("CannotRaiseMinPrice — seller raises owner min on agent listing", async () => {
+    const { viem } = connection;
+    const min = 500n * 10n ** 8n;
+    const { seller, marketplace, tokenId } = await agentListed(viem, {
+      ownerMin: min,
+      price: 1000n * 10n ** 8n,
+      agentFeeBps: 100,
+    });
+    await assert.rejects(
+      marketplace.write.updateOwnerMinPrice([tokenId, min + 1n], { account: seller.account }),
+      revertsWith("CannotRaiseMinPrice"),
+    );
+  });
+
+  it("ListingHasAgent — seller delist when agent set", async () => {
+    const { viem } = connection;
+    const { seller, marketplace, tokenId } = await agentListed(viem);
+    await assert.rejects(
+      marketplace.write.delist([tokenId], { account: seller.account }),
+      revertsWith("ListingHasAgent"),
+    );
+  });
+
+  it("ReturnCooldownPending — forceReturn before cooldown ends", async () => {
+    const { viem } = connection;
+    const { seller, marketplace, tokenId } = await agentListed(viem);
+    await marketplace.write.requestReturn([tokenId], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.forceReturn([tokenId], { account: seller.account }),
+      revertsWith("ReturnCooldownPending"),
+    );
+  });
+
+  it("NotAgent — caller is not the agent (updateListing)", async () => {
+    const { viem } = connection;
+    const { stranger, marketplace, tokenId } = await agentListed(viem);
+    await assert.rejects(
+      marketplace.write.updateListing([tokenId, 1000n * 10n ** 8n, 100], {
+        account: stranger.account,
+      }),
+      revertsWith("NotAgent"),
+    );
+  });
+
+  it("NotAgent — caller is not the agent (agentDelist)", async () => {
+    const { viem } = connection;
+    const { stranger, marketplace, tokenId } = await agentListed(viem);
+    await assert.rejects(
+      marketplace.write.agentDelist([tokenId], { account: stranger.account }),
+      revertsWith("NotAgent"),
+    );
+  });
+
+  it("NoAgent — listing has no agent (updateOwnerMinPrice)", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://direct-min");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      marketplace.write.updateOwnerMinPrice([tokenId, 50n * 10n ** 8n], {
+        account: seller.account,
+      }),
+      revertsWith("NoAgent"),
+    );
+  });
+
+  it("NoAgent — listing has no agent (requestReturn)", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://direct-ret");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      marketplace.write.requestReturn([tokenId], { account: seller.account }),
+      revertsWith("NoAgent"),
+    );
+  });
+
+  it("NotSellerOrAgent — confirmExternalPayment by stranger", async () => {
+    const { viem } = connection;
+    const { seller, buyer, stranger, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://ext-auth");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await marketplace.write.setSettlementNote([tokenId, "0x01"], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.confirmExternalPayment([tokenId, buyer.account.address], {
+        account: stranger.account,
+      }),
+      revertsWith("NotSellerOrAgent"),
+    );
+  });
+
+  it("InvalidFeed — setCurrencyFeed EOA with no code", async () => {
+    const { viem } = connection;
+    const { admin, stranger, marketplace } = await deployEscrowStack(viem);
+    await assert.rejects(
+      marketplace.write.setCurrencyFeed([CURRENCY_EUR, stranger.account.address], {
+        account: admin.account,
+      }),
+      revertsWith("InvalidFeed"),
+    );
+  });
+
+  it("InvalidFeedDecimals — setCurrencyFeed MockV3Aggregator non-8 decimals", async () => {
+    const { viem } = connection;
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    const badDecimals = await viem.deployContract("MockV3Aggregator", [18, 110n * 10n ** 8n]);
+    await assert.rejects(
+      marketplace.write.setCurrencyFeed([CURRENCY_EUR, badDecimals.address], {
+        account: admin.account,
+      }),
+      revertsWith("InvalidFeedDecimals"),
+    );
+  });
+
+  it("BadOracleAnswer — setCurrencyFeed ChainlinkV3TestFeed non-positive answer", async () => {
+    const { viem } = connection;
+    const { admin, marketplace } = await deployEscrowStack(viem);
+    const badAnswer = await viem.deployContract("ChainlinkV3TestFeed", [8, 0n]);
+    await assert.rejects(
+      marketplace.write.setCurrencyFeed([CURRENCY_EUR, badAnswer.address], {
+        account: admin.account,
+      }),
+      revertsWith("BadOracleAnswer"),
+    );
+  });
+
+  it("StalePrice — quoteBuyWithNative after maxFeedStaleness", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://stale");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await increaseTime(publicClient, 3600n + 1n);
+    await assert.rejects(marketplace.read.quoteBuyWithNative([tokenId]), revertsWith("StalePrice"));
+  });
+
+  it("BadOracleAnswer — quoteBuyWithNative after native feed setAnswer(0)", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace, nativeFeed } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-oracle");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      account: seller.account,
+    });
+    await nativeFeed.write.setAnswer([0n]);
+    await assert.rejects(
+      marketplace.read.quoteBuyWithNative([tokenId]),
+      revertsWith("BadOracleAnswer"),
+    );
+  });
+  it("WrongValue — buyWithNative wrong msg.value", async () => {
+    const { viem } = connection;
+    const { seller, buyer, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://wrong-value");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const gross = await marketplace.read.quoteBuyWithNative([tokenId]);
+    await assert.rejects(
+      marketplace.write.buyWithNative([tokenId], { account: buyer.account, value: gross + 1n }),
+      revertsWith("WrongValue"),
+    );
+  });
+
+  it("ZeroAddress — confirmExternalPayment zero buyer", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://zero-buyer");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const note = toHex(new TextEncoder().encode("pay offline"));
+    await marketplace.write.setSettlementNote([tokenId, note], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.confirmExternalPayment([tokenId, ZERO], { account: seller.account }),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("ZeroAddress — authorizeAgent zero agent", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://zero-agent");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.authorizeAgent([tokenId, ZERO, 0n, 0n], { account: seller.account }),
+      revertsWith("ZeroAddress"),
+    );
+  });
+
+  it("InvalidCurrencyCode — setCurrencyFeed rejects NATIVE", async () => {
+    const { viem } = connection;
+    const { admin, stranger, marketplace } = await deployEscrowStack(viem);
+    const eurFeed = await viem.deployContract("ChainlinkV3TestFeed", [8, NATIVE_USD_8D]);
+    await assert.rejects(
+      marketplace.write.setCurrencyFeed([CURRENCY_NATIVE, eurFeed.address], { account: admin.account }),
+      revertsWith("InvalidCurrencyCode"),
+    );
+    void stranger;
+  });
+
 });

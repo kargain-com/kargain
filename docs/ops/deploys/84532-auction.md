@@ -71,7 +71,7 @@ pnpm smoke:sepolia
 | `q` | `AuctionEscrow.upgradeAuthority == timelock` | `0x9319e223ff31c954A940b14F04025B56A53ED384` |
 | `r` | `AuctionEscrow.isAuctionActive(0)` | `false` |
 
-**Constructor immutables (impl):** `karPassport`, `usdc`, Base Sepolia WETH `0x4200…0006`, `karProStaking`, `platformRecipient`, `platformFeeBps` = **10** (0.1%).
+**Constructor immutables (impl):** `karPassport`, `usdc`, `karProStaking`, `platformRecipient`, `platformFeeBps` = **10** (0.1%). Source post-claim-payout has **no** `wrappedNative` — historical live impl still had WETH until Nuclear #2.
 
 **Initializer:** `initialize(timelock)` — no deployer-genesis phase; `upgradeAuthority` set directly to timelock.
 

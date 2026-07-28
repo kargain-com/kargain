@@ -101,12 +101,12 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("Authority: setBridgeGateway reverts EmptyField on zero", async () => {
+  it("Authority: setBridgeGateway reverts ZeroAddress on zero", async () => {
     const { viem } = connection;
     const { admin, passport } = await deployPassportStack(viem);
     await assert.rejects(
       passport.write.setBridgeGateway([ZERO], { account: admin.account }),
-      revertsWith("EmptyField"),
+      revertsWith("ZeroAddress"),
     );
   });
 
@@ -134,10 +134,10 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("VERSION is 1.3.0-rc.1", async () => {
+  it("VERSION is 1.5.1-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.3.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.5.1-rc.1");
   });
 });
 

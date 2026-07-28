@@ -917,7 +917,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       hub.gateway.write.recoverLockedHome([tokenId, zeroAddress], {
         account: admin.account,
       }),
-      revertsWith("ZeroRecipient"),
+      revertsWith("ZeroAddress"),
     );
 
     // Happy path
@@ -1009,7 +1009,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
   });
 
-  it("VERSION is 1.1.0-rc.1", async () => {
-    assert.equal(await pair.hub.gateway.read.VERSION(), "1.1.0-rc.1");
+  it("VERSION is 1.1.2-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.1.2-rc.1");
   });
 });

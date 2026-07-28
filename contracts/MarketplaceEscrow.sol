@@ -22,6 +22,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 import {IMarketplaceEscrow} from "./interfaces/IMarketplaceEscrow.sol";
+import {ClaimablePayouts} from "./lib/ClaimablePayouts.sol";
+import {Erc20Admission} from "./lib/Erc20Admission.sol";
 
 interface IKarProStaking {
     function isActiveVerifier(address a) external view returns (bool);
@@ -30,9 +32,10 @@ interface IKarProStaking {
 /// @title MarketplaceEscrow
 /// @notice KarPassport escrow with dynamic fiat currencies, agent consignment, and multi-token checkout.
 /// @dev UUPS upgradeable; timelock is upgrade authority. v2 fresh proxy deployment.
-/// @custom:version 2.1.0-rc.1
-contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "2.1.0-rc.1";
+///      Settlement legs use ClaimablePayouts — recipients that cannot accept funds get a withdrawable claim.
+/// @custom:version 2.1.0-rc.2
+contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ClaimablePayouts, ReentrancyGuard, Initializable, UUPSUpgradeable {
+    string public constant VERSION = "2.1.0-rc.2";
 
     using SafeERC20 for IERC20;
 
@@ -45,7 +48,6 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     uint256 internal constant _RETURN_COOLDOWN = 7 days;
 
     IERC721 public immutable karPassport;
-    IERC20 public immutable usdc;
     AggregatorV3Interface public immutable nativeUsdFeed;
     address public immutable karProStaking;
     address public immutable platformRecipient;
@@ -85,6 +87,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     mapping(bytes32 currencyCode => address feed) public currencyFeeds;
     mapping(address token => PaymentTokenConfig) public paymentTokens;
 
+    /// @dev UUPS storage reserve (pre-claim convention). ClaimablePayouts owns its own `__gap`.
     uint256[48] private __gap;
 
     event Listed(
@@ -130,25 +133,27 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     event UpgradeAuthorityTransferred(address indexed previous, address indexed next);
 
     error NotSeller();
+    error NotSellerOrAgent();
     error NotAgent();
+    error NoAgent();
     error NotOwner();
     error NotActive();
     error AlreadyListed();
     error BadPrice();
+    error WrongValue();
     error FeeTooHigh();
     error AgentFeeTooHigh();
-    error TransferFailed();
     error StalePrice();
     error BadOracleAnswer();
-    error ZeroTimelock();
+    error ZeroAddress();
     error NotUpgradeAuthority();
     error CurrencyNotAvailableOnChain();
+    error InvalidCurrencyCode();
     error InvalidFeed();
     error InvalidFeedDecimals();
     error BelowOwnerMinPrice();
     error AgentNotAuthorized();
-    error AgentAuthorizationActive();
-    error MarketplaceNotApproved();
+    error EscrowNotApproved();
     error ReturnNotRequested();
     error ReturnAlreadyRequested();
     error ReturnCooldownPending();
@@ -160,12 +165,10 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     error ListingHasAgent();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    /// @dev IMPORTANT: platformRecipient_ is immutable. Deploy with an EOA
-    ///      or a contract guaranteed to accept ETH and ERC-20 transfers.
-    ///      A reverting recipient permanently blocks all on-chain sales.
+    /// @dev platformRecipient_ is immutable. Recipients that cannot accept funds accrue a withdrawable claim.
+    ///      ERC-20 payment tokens enter only via `approvePaymentToken` (admission there).
     constructor(
         address karPassport_,
-        address usdc_,
         address nativeUsdFeed_,
         address karProStaking_,
         address platformRecipient_,
@@ -174,14 +177,12 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         uint256 maxFeedStaleness_
     ) {
         _disableInitializers();
-        if (karPassport_ == address(0)) revert ZeroTimelock();
-        if (usdc_ == address(0)) revert ZeroTimelock();
-        if (nativeUsdFeed_ == address(0)) revert ZeroTimelock();
-        if (platformRecipient_ == address(0)) revert ZeroTimelock();
+        if (karPassport_ == address(0)) revert ZeroAddress();
+        if (nativeUsdFeed_ == address(0)) revert ZeroAddress();
+        if (platformRecipient_ == address(0)) revert ZeroAddress();
         if (feeBps_ > _MAX_FEE_BPS || proFeeBps_ > _MAX_FEE_BPS) revert FeeTooHigh();
 
         karPassport = IERC721(karPassport_);
-        usdc = IERC20(usdc_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
         karProStaking = karProStaking_;
         platformRecipient = platformRecipient_;
@@ -193,7 +194,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @notice Proxy initializer; stores timelock (or deployer for genesis) as upgrade authority.
     /// @param timelockAddress_ Timelock or deployer EOA for genesis configuration.
     function initialize(address timelockAddress_) external initializer {
-        if (timelockAddress_ == address(0)) revert ZeroTimelock();
+        if (timelockAddress_ == address(0)) revert ZeroAddress();
         upgradeAuthority = timelockAddress_;
     }
 
@@ -206,7 +207,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @param newAuthority New upgrade authority (typically Timelock48h).
     function transferUpgradeAuthority(address newAuthority) external {
         if (msg.sender != upgradeAuthority) revert NotUpgradeAuthority();
-        if (newAuthority == address(0)) revert ZeroTimelock();
+        if (newAuthority == address(0)) revert ZeroAddress();
         address previous = upgradeAuthority;
         upgradeAuthority = newAuthority;
         emit UpgradeAuthorityTransferred(previous, newAuthority);
@@ -217,7 +218,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @param feed Chainlink aggregator proxy address.
     function setCurrencyFeed(bytes32 currencyCode, address feed) external {
         _onlyUpgradeAuthority();
-        if (currencyCode == bytes32(0) || currencyCode == CURRENCY_NATIVE) revert CurrencyNotAvailableOnChain();
+        if (currencyCode == bytes32(0) || currencyCode == CURRENCY_NATIVE) revert InvalidCurrencyCode();
         _validateFeed(feed);
         currencyFeeds[currencyCode] = feed;
         emit CurrencyFeedSet(currencyCode, feed);
@@ -236,7 +237,8 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @param feed Optional Chainlink feed for non-USD-pegged tokens.
     function approvePaymentToken(address token, address feed) external {
         _onlyUpgradeAuthority();
-        if (token == address(0)) revert PaymentTokenNotSupported();
+        if (token == address(0)) revert ZeroAddress();
+        Erc20Admission.requireConforming(token);
         if (feed != address(0)) {
             _validateFeed(feed);
         }
@@ -250,6 +252,11 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         _onlyUpgradeAuthority();
         delete paymentTokens[token];
         emit PaymentTokenRevoked(token);
+    }
+
+    /// @notice Withdraw a pending native (`asset == address(0)`) or ERC-20 claim credited after a failed push.
+    function withdrawClaim(address asset) external nonReentrant {
+        _withdrawClaim(asset);
     }
 
     /// @notice Pause or unpause marketplace operations (via timelock).
@@ -272,13 +279,13 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         if (paused) revert ContractPaused();
         if (listings[tokenId].active) revert AlreadyListed();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
-        if (agent == address(0)) revert AgentNotAuthorized();
+        if (agent == address(0)) revert ZeroAddress();
 
         if (
             karPassport.getApproved(tokenId) != address(this)
                 && !karPassport.isApprovedForAll(msg.sender, address(this))
         ) {
-            revert MarketplaceNotApproved();
+            revert EscrowNotApproved();
         }
 
         agentAuthorizations[tokenId] =
@@ -289,7 +296,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @notice Seller revokes agent authorization when not actively listed.
     /// @param tokenId Passport token id.
     function revokeAgent(uint256 tokenId) external nonReentrant {
-        if (listings[tokenId].active) revert AgentAuthorizationActive();
+        if (listings[tokenId].active) revert AlreadyListed();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         delete agentAuthorizations[tokenId];
         emit AgentRevoked(tokenId, msg.sender);
@@ -360,7 +367,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         Listing storage l = listings[tokenId];
         if (!l.active) revert NotActive();
         if (l.seller != msg.sender) revert NotSeller();
-        if (l.agent == address(0)) revert NotAgent();
+        if (l.agent == address(0)) revert NoAgent();
         if (newMin > l.ownerMinPrice1e8) revert CannotRaiseMinPrice();
         _checkSellerNet(l.fiatPrice1e8, l.agentFeeBps, platformFeeBps, newMin);
         l.ownerMinPrice1e8 = newMin;
@@ -374,7 +381,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         Listing storage l = listings[tokenId];
         if (!l.active) revert NotActive();
         if (l.seller != msg.sender) revert NotSeller();
-        if (l.agent == address(0)) revert NotAgent();
+        if (l.agent == address(0)) revert NoAgent();
         if (returnRequestedAt[tokenId] != 0) revert ReturnAlreadyRequested();
         returnRequestedAt[tokenId] = block.timestamp;
         emit ReturnRequested(tokenId, msg.sender);
@@ -415,7 +422,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     function buyWithNative(uint256 tokenId) external payable nonReentrant {
         if (paused) revert ContractPaused();
         uint256 gross = quoteBuyWithNative(tokenId);
-        if (msg.value != gross) revert BadPrice();
+        if (msg.value != gross) revert WrongValue();
         _settleNative(tokenId, msg.sender, gross);
     }
 
@@ -426,7 +433,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         if (paused) revert ContractPaused();
         if (tokenAddress == address(0)) {
             uint256 grossNative = quoteBuyWithNative(tokenId);
-            if (msg.value != grossNative) revert BadPrice();
+            if (msg.value != grossNative) revert WrongValue();
             _settleNative(tokenId, msg.sender, grossNative);
             return;
         }
@@ -459,10 +466,10 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         if (paused) revert ContractPaused();
         Listing storage l = listings[tokenId];
         if (!l.active) revert NotActive();
-        if (msg.sender != l.seller && msg.sender != l.agent) revert NotSeller();
+        if (msg.sender != l.seller && msg.sender != l.agent) revert NotSellerOrAgent();
         bytes memory note = settlementNotes[tokenId];
         if (note.length == 0) revert EmptySettlementNote();
-        if (buyer == address(0)) revert BadPrice();
+        if (buyer == address(0)) revert ZeroAddress();
 
         l.active = false;
         delete settlementNotes[tokenId];
@@ -676,15 +683,12 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         l.active = false;
 
         if (platformFee > 0) {
-            (bool feeOk,) = payable(platformRecipient).call{value: platformFee}("");
-            if (!feeOk) revert TransferFailed();
+            _payNative(platformRecipient, platformFee);
         }
         if (agentFee > 0) {
-            (bool agentOk,) = payable(agent).call{value: agentFee}("");
-            if (!agentOk) revert TransferFailed();
+            _payNative(agent, agentFee);
         }
-        (bool sellerOk,) = payable(seller).call{value: net}("");
-        if (!sellerOk) revert TransferFailed();
+        _payNative(seller, net);
 
         karPassport.safeTransferFrom(address(this), buyer, tokenId);
         emit Sale(tokenId, buyer, seller, gross, platformFee, agentFee, net, address(0), agent);
@@ -711,9 +715,9 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
 
         IERC20 token = IERC20(tokenAddress);
         token.safeTransferFrom(buyer, address(this), gross);
-        if (platformFee > 0) token.safeTransfer(platformRecipient, platformFee);
-        if (agentFee > 0) token.safeTransfer(agent, agentFee);
-        token.safeTransfer(seller, net);
+        if (platformFee > 0) _payErc20(tokenAddress, platformRecipient, platformFee);
+        if (agentFee > 0) _payErc20(tokenAddress, agent, agentFee);
+        _payErc20(tokenAddress, seller, net);
 
         karPassport.safeTransferFrom(address(this), buyer, tokenId);
         emit Sale(tokenId, buyer, seller, gross, platformFee, agentFee, net, tokenAddress, agent);

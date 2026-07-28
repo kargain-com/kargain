@@ -65,7 +65,6 @@ export type PonderAuctionBidRaw = {
   amount: string | number;
   endsAt?: string | number;
   refunded?: boolean;
-  wrappedFallback?: boolean;
   timestamp: string | number;
 };
 
@@ -129,7 +128,6 @@ export type AuctionBid = {
   amount: bigint;
   endsAt: bigint;
   refunded: boolean;
-  wrappedFallback: boolean;
   timestamp: bigint;
 };
 
@@ -295,7 +293,6 @@ export function mapPonderAuctionBid(raw: PonderAuctionBidRaw): AuctionBid {
     amount: toBigInt(raw.amount),
     endsAt: toBigInt(raw.endsAt),
     refunded: Boolean(raw.refunded),
-    wrappedFallback: Boolean(raw.wrappedFallback),
     timestamp: toBigInt(raw.timestamp),
   };
 }

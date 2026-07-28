@@ -17,6 +17,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import {ClaimablePayouts} from "./lib/ClaimablePayouts.sol";
+import {Erc20Admission} from "./lib/Erc20Admission.sol";
+
 interface IKarProPass {
     function mint(address to, uint8 category, string calldata name, string calldata metadataURI) external;
     function burn(address holder) external;
@@ -24,10 +27,10 @@ interface IKarProPass {
 
 /// @title KarProStaking
 /// @notice Single entry point to become a verifier: stake ETH or an optional ERC-20, receive a KarProPass.
-/// @dev Stakes are fully refundable on leave; owner cannot withdraw user funds.
-/// @custom:version 1.1.0-rc.1
-contract KarProStaking is ReentrancyGuard, Ownable {
-    string public constant VERSION = "1.1.0-rc.1";
+/// @dev Stakes are fully refundable on leave; failed refunds become withdrawable claims. Owner cannot withdraw user funds.
+/// @custom:version 1.3.0-rc.1
+contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
+    string public constant VERSION = "1.3.0-rc.1";
 
     using SafeERC20 for IERC20;
 
@@ -58,7 +61,6 @@ contract KarProStaking is ReentrancyGuard, Ownable {
     error AlreadyVerifier();
     error NotVerifier();
     error TokenNotEnabled();
-    error TransferFailed();
     error BelowMinStakeFloor();
 
     event VerifierJoined(address indexed verifier, uint8 asset, uint256 amount);
@@ -140,13 +142,17 @@ contract KarProStaking is ReentrancyGuard, Ownable {
         try proPass.burn(msg.sender) {} catch {}
 
         if (s.asset == StakeAsset.NATIVE) {
-            (bool ok,) = payable(msg.sender).call{value: s.amount}("");
-            if (!ok) revert TransferFailed();
+            _payNative(msg.sender, s.amount);
         } else {
-            IERC20(stakeToken).safeTransfer(msg.sender, s.amount);
+            _payErc20(stakeToken, msg.sender, s.amount);
         }
 
         emit VerifierLeft(msg.sender, s.amount);
+    }
+
+    /// @notice Withdraw a pending native (`asset == address(0)`) or ERC-20 stake claim after a failed leave payout.
+    function withdrawClaim(address asset) external nonReentrant {
+        _withdrawClaim(asset);
     }
 
     /// @notice Updates the minimum native stake for new verifiers only.
@@ -160,9 +166,10 @@ contract KarProStaking is ReentrancyGuard, Ownable {
     }
 
     /// @notice Enables or updates optional ERC-20 staking.
-    /// @param token ERC-20 token address (use zero to disable is not supported — pass a token and min).
+    /// @param token Conforming ERC-20 token address (zero is rejected).
     /// @param minAmount Minimum token amount required to join.
     function setStakeToken(address token, uint256 minAmount) external onlyOwner {
+        Erc20Admission.requireConforming(token);
         stakeToken = token;
         minStakeToken = minAmount;
         emit StakeTokenSet(token, minAmount);

@@ -101,7 +101,6 @@ export async function deployMarketplaceViaProxy(
 ) {
   const implementation = await viem.deployContract("MarketplaceEscrow", [
     params.karPassport,
-    params.usdc,
     params.nativeFeed,
     params.karProStaking,
     params.platformRecipient,
@@ -192,15 +191,16 @@ export async function deployEscrowStack(viem: ViemSuite) {
 export async function deployAuctionEscrow(
   viem: ViemSuite,
   base: AuctionEscrowBase,
-  opts: { feeBps?: bigint; upgradeAuthority?: `0x${string}` } = {},
+  opts: {
+    feeBps?: bigint;
+    upgradeAuthority?: `0x${string}`;
+  } = {},
 ) {
   const feeBps = opts.feeBps ?? AUCTION_LOCAL_FEE_BPS;
   const upgradeAuthority = opts.upgradeAuthority ?? getAddress(base.timelock.address);
-  const weth = await viem.deployContract("MockWETH", []);
   const impl = await viem.deployContract("AuctionEscrow", [
     base.passport.address,
     base.usdc.address,
-    weth.address,
     base.staking.address,
     base.admin.account.address,
     feeBps,
@@ -212,7 +212,7 @@ export async function deployAuctionEscrow(
   });
   const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
   const auction = await viem.getContractAt("AuctionEscrow", proxy.address);
-  return { weth, impl, proxy, auction, feeBps };
+  return { impl, proxy, auction, feeBps };
 }
 
 /** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */

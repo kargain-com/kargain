@@ -850,7 +850,6 @@ ponder.on("AuctionEscrow:BidPlaced", async ({ event, context }) => {
     amount: event.args.amount,
     endsAt: BigInt(event.args.endsAt),
     refunded: false,
-    wrappedFallback: false,
     timestamp: event.block.timestamp,
   });
 });
@@ -877,7 +876,6 @@ ponder.on("AuctionEscrow:BidRefunded", async ({ event, context }) => {
       .update(auctionBid, { id: row.id })
       .set({
         refunded: true,
-        wrappedFallback: event.args.wrappedFallback,
       });
   }
 });

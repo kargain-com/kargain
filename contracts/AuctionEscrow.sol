@@ -19,6 +19,8 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IAuctionEscrow} from "./interfaces/IAuctionEscrow.sol";
+import {ClaimablePayouts} from "./lib/ClaimablePayouts.sol";
+import {Erc20Admission} from "./lib/Erc20Admission.sol";
 
 interface IKarPassportAuction {
     function passportStatus(uint256 tokenId) external view returns (uint8);
@@ -28,25 +30,19 @@ interface IKarProStakingAuction {
     function isActiveVerifier(address account) external view returns (bool);
 }
 
-interface IWETH {
-    function deposit() external payable;
-    function transfer(address to, uint256 amount) external returns (bool);
-}
-
 /// @title AuctionEscrow
 /// @notice English reserve auction escrow with settlement hold and dispute resolution.
 /// @dev UUPS upgradeable; timelock is upgrade authority. Separate from MarketplaceEscrow.
-/// @custom:version 2.0.0-draft
-contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "2.0.0-draft";
+///      Native/ERC-20 payouts use ClaimablePayouts (push then claim-on-failure).
+/// @custom:version 2.0.1-draft
+contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ClaimablePayouts, ReentrancyGuard, Initializable, UUPSUpgradeable {
+    string public constant VERSION = "2.0.1-draft";
 
     using SafeERC20 for IERC20;
 
     uint256 internal constant _MAX_FEE_BPS = 1000;
     uint256 internal constant _MAX_AGENT_FEE_BPS = 3000;
     uint256 internal constant _RETURN_COOLDOWN = 7 days;
-    uint256 internal constant _ETH_TRANSFER_GAS = 30_000;
-
     uint40 internal constant _MIN_EXTENSION_WINDOW = 60;
     uint40 internal constant _MAX_EXTENSION_WINDOW = 3600;
     uint16 internal constant _MIN_INCREMENT_BPS = 100;
@@ -57,7 +53,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
 
     IERC721 public immutable karPassport;
     IERC20 public immutable usdc;
-    IWETH public immutable wrappedNative;
     address public immutable karProStaking;
     address public immutable platformRecipient;
     uint16 public immutable platformFeeBps;
@@ -78,13 +73,13 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     mapping(uint256 tokenId => AuctionAgentAuth) public auctionAgentAuthorizations;
     mapping(uint256 tokenId => uint256) public returnRequestedAt;
 
+    /// @dev UUPS storage reserve (pre-claim convention). ClaimablePayouts owns its own `__gap`.
     uint256[48] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
         address karPassport_,
         address usdc_,
-        address wrappedNative_,
         address karProStaking_,
         address platformRecipient_,
         uint256 feeBps_
@@ -92,14 +87,13 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         _disableInitializers();
         if (karPassport_ == address(0)) revert ZeroAddress();
         if (usdc_ == address(0)) revert ZeroAddress();
-        if (wrappedNative_ == address(0)) revert ZeroAddress();
+        Erc20Admission.requireConforming(usdc_);
         if (karProStaking_ == address(0)) revert ZeroAddress();
         if (platformRecipient_ == address(0)) revert ZeroAddress();
         if (feeBps_ > _MAX_FEE_BPS) revert FeeTooHigh();
 
         karPassport = IERC721(karPassport_);
         usdc = IERC20(usdc_);
-        wrappedNative = IWETH(wrappedNative_);
         karProStaking = karProStaking_;
         platformRecipient = platformRecipient_;
         platformFeeBps = uint16(feeBps_);
@@ -156,7 +150,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         if (holds[tokenId].releaseAt != 0) revert SettlementPending();
         if (auctions[tokenId].active) revert AuctionExists();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
-        if (agent == address(0)) revert AgentNotAuthorized();
+        if (agent == address(0)) revert ZeroAddress();
         _validateAsset(asset);
 
         if (
@@ -178,7 +172,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
 
     /// @inheritdoc IAuctionEscrow
     function revokeAuctionAgent(uint256 tokenId) external nonReentrant {
-        if (auctions[tokenId].active) revert AgentAuthorizationActive();
+        if (auctions[tokenId].active) revert AuctionExists();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         delete auctionAgentAuthorizations[tokenId];
         emit AuctionAgentRevoked(tokenId, msg.sender);
@@ -256,7 +250,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         Auction storage a = auctions[tokenId];
         if (!a.active) revert NoAuction();
         if (a.seller != msg.sender) revert NotSeller();
-        if (a.agent != address(0)) revert NotAgent();
+        if (a.agent != address(0)) revert AuctionHasAgent();
         if (a.startedAt > 0) revert AuctionAlreadyStarted();
         _cancelAuction(tokenId, msg.sender);
     }
@@ -274,8 +268,8 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     function requestReturn(uint256 tokenId) external nonReentrant {
         Auction storage a = auctions[tokenId];
         if (!a.active) revert NoAuction();
-        if (a.seller != msg.sender) revert NotOwner();
-        if (a.agent == address(0)) revert NotAgent();
+        if (a.seller != msg.sender) revert NotSeller();
+        if (a.agent == address(0)) revert NoAgent();
         if (a.startedAt > 0) revert AuctionAlreadyStarted();
         if (returnRequestedAt[tokenId] != 0) revert ReturnAlreadyRequested();
         returnRequestedAt[tokenId] = block.timestamp;
@@ -286,7 +280,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     function forceReturn(uint256 tokenId) external nonReentrant {
         Auction storage a = auctions[tokenId];
         if (!a.active) revert NoAuction();
-        if (a.seller != msg.sender) revert NotOwner();
+        if (a.seller != msg.sender) revert NotSeller();
         if (a.startedAt > 0) revert AuctionAlreadyStarted();
         uint256 requestedAt = returnRequestedAt[tokenId];
         if (requestedAt == 0) revert ReturnNotRequested();
@@ -328,7 +322,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     function confirmReceipt(uint256 tokenId) external nonReentrant {
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
-        if (h.refundPendingAt > 0) revert RefundNotPending();
+        if (h.refundPendingAt > 0) revert RefundPending();
         if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
         if (block.timestamp >= h.releaseAt) revert HoldReleased();
@@ -341,7 +335,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     function releaseFunds(uint256 tokenId) external nonReentrant {
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
-        if (h.refundPendingAt > 0) revert RefundNotPending();
+        if (h.refundPendingAt > 0) revert RefundPending();
 
         address bondRecipient = address(0);
         bool autoRelease = true;
@@ -362,7 +356,6 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         if (h.releaseAt == 0) revert NoHold();
         if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
-        if (h.refundPendingAt > 0) revert RefundNotPending();
         if (block.timestamp >= h.releaseAt) revert HoldReleased();
         if (msg.value < settlementDisputeBond) revert BondTooLow();
 
@@ -379,7 +372,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         SettlementHold storage h = holds[tokenId];
         if (h.releaseAt == 0) revert NoHold();
         if (h.disputedAt == 0) revert NoDispute();
-        if (h.refundPendingAt > 0) revert RefundNotPending();
+        if (h.refundPendingAt > 0) revert RefundPending();
         if (!IKarProStakingAuction(karProStaking).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
 
         Auction storage a = auctions[tokenId];
@@ -416,10 +409,10 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         karPassport.safeTransferFrom(buyer, seller, tokenId);
 
         if (asset == address(0)) {
-            _safeTransferETHWithFallback(buyer, uint256(gross) + uint256(bond));
+            _payNative(buyer, uint256(gross) + uint256(bond));
         } else {
-            usdc.safeTransfer(buyer, gross);
-            if (bond > 0) _safeTransferETHWithFallback(buyer, bond);
+            _payErc20(address(usdc), buyer, gross);
+            if (bond > 0) _payNative(buyer, bond);
         }
 
         emit PassportReturnedAndRefunded(tokenId);
@@ -438,6 +431,11 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         uint128 bond = h.bond;
         _payout(tokenId, false, platformRecipient, bond);
         emit AbandonedRefundClaimed(tokenId);
+    }
+
+    /// @inheritdoc IAuctionEscrow
+    function withdrawClaim(address asset) external nonReentrant {
+        _withdrawClaim(asset);
     }
 
     /// @inheritdoc IAuctionEscrow
@@ -599,22 +597,11 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
 
     function _refundBidder(uint256 tokenId, address bidder, uint128 amount, address asset) internal {
         if (asset == address(0)) {
-            bool wrapped = _safeTransferETHWithFallback(bidder, amount);
-            emit BidRefunded(tokenId, bidder, amount, wrapped);
+            _payNative(bidder, amount);
         } else {
-            usdc.safeTransfer(bidder, amount);
-            emit BidRefunded(tokenId, bidder, amount, false);
+            _payErc20(address(usdc), bidder, amount);
         }
-    }
-
-    /// @dev Nouns-style native transfer with WETH fallback on receive failure.
-    function _safeTransferETHWithFallback(address to, uint256 amount) internal returns (bool wrapped) {
-        (bool ok,) = payable(to).call{gas: _ETH_TRANSFER_GAS, value: amount}("");
-        if (ok) return false;
-
-        wrappedNative.deposit{value: amount}();
-        if (!wrappedNative.transfer(to, amount)) revert TransferFailed();
-        return true;
+        emit BidRefunded(tokenId, bidder, amount);
     }
 
     function _cancelAuction(uint256 tokenId, address by) internal {
@@ -653,18 +640,18 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         _clearAuctionStorage(tokenId);
 
         if (asset == address(0)) {
-            if (platformFee > 0) _safeTransferETHWithFallback(platformRecipient, platformFee);
-            if (agentFee > 0) _safeTransferETHWithFallback(agent, agentFee);
-            if (net > 0) _safeTransferETHWithFallback(seller, net);
+            if (platformFee > 0) _payNative(platformRecipient, platformFee);
+            if (agentFee > 0) _payNative(agent, agentFee);
+            if (net > 0) _payNative(seller, net);
             if (bondAmount > 0 && bondRecipient != address(0)) {
-                _safeTransferETHWithFallback(bondRecipient, bondAmount);
+                _payNative(bondRecipient, bondAmount);
             }
         } else {
-            if (platformFee > 0) usdc.safeTransfer(platformRecipient, platformFee);
-            if (agentFee > 0) usdc.safeTransfer(agent, agentFee);
-            if (net > 0) usdc.safeTransfer(seller, net);
+            if (platformFee > 0) _payErc20(address(usdc), platformRecipient, platformFee);
+            if (agentFee > 0) _payErc20(address(usdc), agent, agentFee);
+            if (net > 0) _payErc20(address(usdc), seller, net);
             if (bondAmount > 0 && bondRecipient != address(0)) {
-                _safeTransferETHWithFallback(bondRecipient, bondAmount);
+                _payNative(bondRecipient, bondAmount);
             }
         }
 

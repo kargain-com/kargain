@@ -57,7 +57,7 @@ interface IAuctionEscrow {
     );
     event AuctionStarted(uint256 indexed tokenId, address indexed firstBidder, uint128 amount, uint40 endsAt);
     event BidPlaced(uint256 indexed tokenId, address indexed bidder, uint128 amount, uint40 endsAt);
-    event BidRefunded(uint256 indexed tokenId, address indexed bidder, uint128 amount, bool wrappedFallback);
+    event BidRefunded(uint256 indexed tokenId, address indexed bidder, uint128 amount);
     event AuctionCancelled(uint256 indexed tokenId, address indexed by);
     event ReturnRequested(uint256 indexed tokenId, address indexed owner);
     event ForceReturn(uint256 indexed tokenId, address indexed owner);
@@ -100,6 +100,8 @@ interface IAuctionEscrow {
 
     error NotSeller();
     error NotAgent();
+    error NoAgent();
+    error AuctionHasAgent();
     error NotOwner();
     error NotBuyer();
     error NotActiveVerifier();
@@ -121,7 +123,6 @@ interface IAuctionEscrow {
     error BadReserve();
     error BelowOwnerMinAsset();
     error AgentNotAuthorized();
-    error AgentAuthorizationActive();
     error EscrowNotApproved();
     error ReturnNotRequested();
     error ReturnAlreadyRequested();
@@ -134,8 +135,8 @@ interface IAuctionEscrow {
     error NoDispute();
     error BondTooLow();
     error CannotResolveOwnDeal();
+    error RefundPending();
     error RefundNotPending();
-    error TransferFailed();
     error ContractPaused();
     error NotUpgradeAuthority();
     error FeeTooHigh();
@@ -212,6 +213,9 @@ interface IAuctionEscrow {
 
     /// @notice Seller claims payout when buyer abandoned refund after ConfirmFailure.
     function claimAbandonedRefund(uint256 tokenId) external;
+
+    /// @notice Withdraw a pending native (`asset == address(0)`) or ERC-20 claim credited after a failed push.
+    function withdrawClaim(address asset) external;
 
     // ── Admin ───────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import hardhat from "hardhat";
 import { encodeFunctionData, getAddress, type Hash } from "viem";
 
-import { isCommercialChainId, wethForChain } from "./lib/chainlink-feeds.js";
+import { isCommercialChainId } from "./lib/chainlink-feeds.js";
 import { AUCTION_PLATFORM_FEE_BPS } from "./lib/verify-constructor-args.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
 import {
@@ -106,7 +106,6 @@ async function main() {
     );
     const karPassport = getAddress(existing.karPassport);
     const karProStaking = getAddress(existing.karProStaking);
-    const weth = wethForChain(chainId);
     const manifestPath = commercialDeploymentPath(chainId);
 
     const [deployer] = await viem.getWalletClients();
@@ -116,13 +115,11 @@ async function main() {
     console.log(`Deployer: ${deployerAddress}`);
     console.log(`Chain:    ${chainId}`);
     console.log(`Timelock: ${timelock}`);
-    console.log(`WETH:     ${weth}`);
     console.log("");
 
     const impl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
       karPassport,
       usdc,
-      weth,
       karProStaking,
       platformRecipient,
       AUCTION_PLATFORM_FEE_BPS,

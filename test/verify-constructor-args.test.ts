@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { WETH_BY_CHAIN } from "../scripts/lib/chainlink-feeds.ts";
 import {
   AUCTION_PLATFORM_FEE_BPS,
   auctionEscrowImplConstructorArgs,
@@ -56,11 +55,12 @@ describe("verify constructor args", () => {
   it("builds MarketplaceEscrow impl constructor args from manifest", () => {
     const args = marketplaceImplConstructorArgs(baseManifest);
     assert.equal(args[0], baseManifest.karPassport);
-    assert.equal(args[1], baseManifest.usdc);
-    assert.equal(args[3], baseManifest.karProStaking);
-    assert.equal(args[5], MARKETPLACE_FEE_BPS);
-    assert.equal(args[6], MARKETPLACE_PRO_FEE_BPS);
-    assert.equal(args[7], MARKETPLACE_MAX_FEED_STALENESS);
+    assert.equal(args[1], baseManifest.nativeFeed);
+    assert.equal(args[2], baseManifest.karProStaking);
+    assert.equal(args[4], MARKETPLACE_FEE_BPS);
+    assert.equal(args[5], MARKETPLACE_PRO_FEE_BPS);
+    assert.equal(args[6], MARKETPLACE_MAX_FEED_STALENESS);
+    assert.equal(args.length, 7);
   });
 
   it("builds proxy constructor args with initialize calldata", () => {
@@ -70,24 +70,26 @@ describe("verify constructor args", () => {
     assert.ok(String(args[1]).length > 10);
   });
 
-  it("builds AuctionEscrow impl args with WETH_BY_CHAIN[84532]", () => {
+  it("builds AuctionEscrow impl args without WETH (84532)", () => {
     const args = auctionEscrowImplConstructorArgs(baseManifest);
     assert.equal(args[0], baseManifest.karPassport);
     assert.equal(args[1], baseManifest.usdc);
-    assert.equal(args[2].toLowerCase(), WETH_BY_CHAIN[84532].toLowerCase());
-    assert.equal(args[3], baseManifest.karProStaking);
-    assert.equal(args[4], baseManifest.platformRecipient);
-    assert.equal(args[5], AUCTION_PLATFORM_FEE_BPS);
+    assert.equal(args[2], baseManifest.karProStaking);
+    assert.equal(args[3], baseManifest.platformRecipient);
+    assert.equal(args[4], AUCTION_PLATFORM_FEE_BPS);
+    assert.equal(args.length, 5);
   });
 
-  it("builds AuctionEscrow impl args with WETH_BY_CHAIN[11155111]", () => {
+  it("builds AuctionEscrow impl args without WETH (11155111)", () => {
     const ethSepolia: DeploymentManifest = {
       ...baseManifest,
       chainId: 11155111,
       usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     };
     const args = auctionEscrowImplConstructorArgs(ethSepolia);
-    assert.equal(args[2].toLowerCase(), WETH_BY_CHAIN[11155111].toLowerCase());
+    assert.equal(args[1], ethSepolia.usdc);
+    assert.equal(args[2], ethSepolia.karProStaking);
+    assert.equal(args.length, 5);
   });
 
   it("builds AuctionEscrow proxy constructor args with initialize calldata", () => {

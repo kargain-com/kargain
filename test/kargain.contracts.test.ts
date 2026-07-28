@@ -24,7 +24,12 @@ const ZERO_ADDR = ZERO;
 function revertsWith(errorName: string) {
   return (err: unknown) => {
     if (!(err instanceof Error)) return false;
-    return err.message.includes(errorName);
+    if (err.message.includes(errorName)) return true;
+    if (errorName === "TransferFailed" && err.message.includes("0x90b8ec18")) return true;
+    if (errorName === "NoClaim" && err.message.includes("0x9b0e91e1")) return true;
+    if (errorName === "TokenHasNoCode" && err.message.includes("0x72a73200")) return true;
+    if (errorName === "TokenNonConforming" && err.message.includes("0xda440b93")) return true;
+    return false;
   };
 }
 
@@ -322,6 +327,103 @@ describe("KarProStaking — leave", () => {
     assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
     assert.equal(await staking.read.minStakeNative(), higherMin);
   });
+
+  it("leave to RevertingRecipient credits claim; stake cleared", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { staking, proPass } = await deployVerifierStack(viem);
+    const recipient = await viem.deployContract("RevertingRecipient", []);
+    await recipient.write.joinNative([staking.address, 0, "Locked", "ar://locked"], {
+      value: MIN_STAKE,
+    });
+    assert.equal(await staking.read.isActiveVerifier([recipient.address]), true);
+    assert.equal(await proPass.read.balanceOf([recipient.address]), 1n);
+    const stakingBefore = await publicClient.getBalance({ address: staking.address });
+    await recipient.write.leaveStaking([staking.address]);
+    assert.equal(await staking.read.isActiveVerifier([recipient.address]), false);
+    assert.equal(await staking.read.pendingClaims([recipient.address, ZERO]), MIN_STAKE);
+    assert.equal(await publicClient.getBalance({ address: staking.address }), stakingBefore);
+    await assert.rejects(
+      recipient.write.withdrawClaim([staking.address, ZERO]),
+      revertsWith("TransferFailed"),
+    );
+    await recipient.write.setAcceptEth([true]);
+    await recipient.write.withdrawClaim([staking.address, ZERO]);
+    assert.equal(await staking.read.pendingClaims([recipient.address, ZERO]), 0n);
+  });
+
+  it("leave to GasBurningRecipient credits claim; solvency holds", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { staking } = await deployVerifierStack(viem);
+    const burner = await viem.deployContract("GasBurningRecipient", []);
+    await burner.write.joinNative([staking.address, 0, "Burn", "ar://burn"], {
+      value: MIN_STAKE,
+    });
+    await burner.write.leaveStaking([staking.address]);
+    assert.equal(await staking.read.pendingClaims([burner.address, ZERO]), MIN_STAKE);
+    const balance = await publicClient.getBalance({ address: staking.address });
+    assert.ok(balance >= ((await staking.read.totalPendingNative()) as bigint));
+    await burner.write.setAcceptEth([true]);
+    await burner.write.withdrawClaim([staking.address, ZERO]);
+    assert.equal(await staking.read.pendingClaims([burner.address, ZERO]), 0n);
+  });
+
+  it("setStakeToken rejects no-code and non-conforming tokens", async () => {
+    const { viem } = connection;
+    const { admin, stranger, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.setStakeToken([stranger.account.address, 1n], { account: admin.account }),
+      revertsWith("TokenHasNoCode"),
+    );
+    const bad = await viem.deployContract("NonConformingErc20", []);
+    await assert.rejects(
+      staking.write.setStakeToken([bad.address, 1n], { account: admin.account }),
+      revertsWith("TokenNonConforming"),
+    );
+    const returnsFalse = await viem.deployContract("NonConformingErc20ReturnsFalse", []);
+    await assert.rejects(
+      staking.write.setStakeToken([returnsFalse.address, 1n], { account: admin.account }),
+      revertsWith("TokenNonConforming"),
+    );
+  });
+
+  it("ERC-20 leave payout failure credits claim; holdings cover totalPendingErc20", async () => {
+    const { viem } = connection;
+    const { admin, verifier, staking } = await deployVerifierStack(viem);
+    const token = await viem.deployContract("SelectiveFailErc20", []);
+    const tokenMin = 1_000_000n;
+    await staking.write.setStakeToken([token.address, tokenMin], { account: admin.account });
+    await token.write.mint([verifier.account.address, tokenMin]);
+    await token.write.approve([staking.address, tokenMin], { account: verifier.account });
+    await staking.write.becomeVerifierToken([0, "Tok", "ar://tok"], {
+      account: verifier.account,
+    });
+    await token.write.setFailTo([verifier.account.address]);
+    await staking.write.leave([], { account: verifier.account });
+    assert.equal(await staking.read.pendingClaims([verifier.account.address, token.address]), tokenMin);
+    const held = (await token.read.balanceOf([staking.address])) as bigint;
+    const pending = (await staking.read.totalPendingErc20([token.address])) as bigint;
+    assert.ok(held >= pending);
+    await token.write.setFailTo([ZERO]);
+    await staking.write.withdrawClaim([token.address], { account: verifier.account });
+    assert.equal(await staking.read.pendingClaims([verifier.account.address, token.address]), 0n);
+  });
+
+  it("VERSION is 1.3.0-rc.1", async () => {
+    const { viem } = connection;
+    const { staking } = await deployVerifierStack(viem);
+    assert.equal(await staking.read.VERSION(), "1.3.0-rc.1");
+  });
+
+  it("withdrawClaim with no balance reverts NoClaim", async () => {
+    const { viem } = connection;
+    const { stranger, staking } = await deployVerifierStack(viem);
+    await assert.rejects(
+      staking.write.withdrawClaim([ZERO], { account: stranger.account }),
+      revertsWith("NoClaim"),
+    );
+  });
 });
 
 // ─── KarProStaking — params ───────────────────────────────────────────────────
@@ -443,6 +545,8 @@ describe("KarProStaking — security", () => {
     const forbidden = /withdraw|rescue|sweep|recover|drain/i;
     for (const item of staking.abi) {
       if (item.type === "function" && item.name && forbidden.test(item.name)) {
+        // User claim withdraw is not an owner drain path.
+        if (item.name === "withdrawClaim") continue;
         assert.fail(`Unexpected drain-like function: ${item.name}`);
       }
     }
@@ -995,7 +1099,7 @@ describe("KarPassport — dispute and resolve", () => {
     const { verifier, passport, staking } = await setupVerified(viem);
     await assert.rejects(
       passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: verifier.account }),
-      revertsWith("InvalidStatus"),
+      revertsWith("NoActiveDispute"),
     );
     void staking;
   });
@@ -1440,7 +1544,6 @@ describe("MarketplaceEscrow", () => {
     const { seller, marketplace } = await deployEscrowStack(viem);
     const implementationV2 = await viem.deployContract("MarketplaceEscrow", [
       (await marketplace.read.karPassport([])) as `0x${string}`,
-      (await marketplace.read.usdc([])) as `0x${string}`,
       (await marketplace.read.nativeUsdFeed([])) as `0x${string}`,
       (await marketplace.read.karProStaking([])) as `0x${string}`,
       (await marketplace.read.platformRecipient([])) as `0x${string}`,
@@ -1452,6 +1555,97 @@ describe("MarketplaceEscrow", () => {
       marketplace.write.upgradeToAndCall([implementationV2.address, "0x"], {
         account: seller.account,
       }),
+    );
+  });
+});
+
+describe("KarPassport — error coverage matrix", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("withdrawDispute when not DISPUTED reverts NoActiveDispute", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ar://cov"], {
+      account: owner.account,
+    });
+    await assert.rejects(
+      passport.write.withdrawDispute([TOKEN_ID_BASE], { account: owner.account }),
+      revertsWith("NoActiveDispute"),
+    );
+  });
+
+  it("withdrawDispute by non-opener reverts NotDisputeOpener", async () => {
+    const { viem } = connection;
+    const { owner, stranger, verifier, passport, staking } = await deployPassportStack(viem);
+    await passport.write.mintPassport([owner.account.address, "ar://cov"], {
+      account: owner.account,
+    });
+    await joinVerifier(staking, verifier);
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+      account: owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await assert.rejects(
+      passport.write.withdrawDispute([TOKEN_ID_BASE], { account: stranger.account }),
+      revertsWith("NotDisputeOpener"),
+    );
+  });
+
+  it("setPassportURI on unknown token reverts NonexistentToken", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    const missing = TOKEN_ID_BASE + 99n;
+    await assert.rejects(
+      passport.write.setPassportURI([missing, "ar://x"], { account: owner.account }),
+      revertsWith("NonexistentToken"),
+    );
+  });
+});
+
+describe("KarProPass — error coverage matrix", () => {
+  let connection: NetworkConnection;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("second mint to same holder reverts AlreadyHoldsPass", async () => {
+    const { viem } = connection;
+    const { admin, owner, proPass } = await deployVerifierStack(viem);
+    await proPass.write.setStaking([admin.account.address], { account: admin.account });
+    await proPass.write.mint(
+      [owner.account.address, Category.INSPECTOR, "A", "ar://a"],
+      { account: admin.account },
+    );
+    await assert.rejects(
+      proPass.write.mint(
+        [owner.account.address, Category.DEALER, "B", "ar://b"],
+        { account: admin.account },
+      ),
+      revertsWith("AlreadyHoldsPass"),
+    );
+  });
+
+  it("burn when holder has no pass reverts DoesNotHoldPass", async () => {
+    const { viem } = connection;
+    const { admin, stranger, proPass } = await deployVerifierStack(viem);
+    await proPass.write.setStaking([admin.account.address], { account: admin.account });
+    await assert.rejects(
+      proPass.write.burn([stranger.account.address], { account: admin.account }),
+      revertsWith("DoesNotHoldPass"),
     );
   });
 });
