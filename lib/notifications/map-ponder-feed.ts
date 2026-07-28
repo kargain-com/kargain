@@ -1,6 +1,10 @@
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { passportGroupKey, ponderNotifId } from "@/lib/notifications/id";
 import type { NotificationItem, NotificationType, PonderFeedItem } from "@/lib/notifications/types";
+import {
+  claimReasonExplanation,
+  isClaimReasonCode,
+} from "@/lib/claims/reason";
 
 const PONDER_TYPE_CONFIG: Record<
   string,
@@ -20,6 +24,10 @@ const PONDER_TYPE_CONFIG: Record<
     body: "You were authorized to run a reserve auction",
     priority: "high",
   },
+  "claim.recorded": {
+    body: "Funds are waiting for you to withdraw",
+    priority: "high",
+  },
   "verifier.dispute_on_verified": {
     body: "A dispute was opened on a passport you verified",
     priority: "normal",
@@ -30,7 +38,19 @@ function isHexAddress(value: string): value is `0x${string}` {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
 }
 
-function mapSingleItem(item: PonderFeedItem, lastSeenAtPonder: number): NotificationItem | null {
+function claimBody(item: PonderFeedItem): string {
+  const code = item.meta?.reasonCode;
+  if (typeof code === "string" && isClaimReasonCode(code)) {
+    return claimReasonExplanation(code);
+  }
+  return PONDER_TYPE_CONFIG["claim.recorded"]!.body;
+}
+
+function mapSingleItem(
+  item: PonderFeedItem,
+  lastSeenAtPonder: number,
+  viewerAddress?: string,
+): NotificationItem | null {
   const config = PONDER_TYPE_CONFIG[item.type];
   if (!config) return null;
 
@@ -39,6 +59,31 @@ function mapSingleItem(item: PonderFeedItem, lastSeenAtPonder: number): Notifica
 
   const type = item.type as NotificationType;
   const actor = item.actor && isHexAddress(item.actor) ? { address: item.actor } : undefined;
+
+  if (type === "claim.recorded") {
+    const hrefAddress =
+      viewerAddress && isHexAddress(viewerAddress)
+        ? viewerAddress
+        : typeof item.meta?.account === "string" && isHexAddress(item.meta.account)
+          ? item.meta.account
+          : null;
+    return {
+      id: item.id || ponderNotifId(item.type, item.tokenId, item.timestamp),
+      type,
+      source: "ponder",
+      timestamp,
+      read: timestamp <= lastSeenAtPonder,
+      href: hrefAddress ? `/profile/${hrefAddress}?tab=claims` : "/notifications",
+      subject: {
+        kind: "claim",
+        title: "Pending claim",
+      },
+      actor,
+      body: claimBody(item),
+      groupKey: `claim:${item.id}`,
+      priority: config.priority,
+    };
+  }
 
   return {
     id: item.id || ponderNotifId(item.type, item.tokenId, item.timestamp),
@@ -62,8 +107,9 @@ function mapSingleItem(item: PonderFeedItem, lastSeenAtPonder: number): Notifica
 export function mapPonderFeedItems(
   items: PonderFeedItem[],
   lastSeenAtPonder: number,
+  viewerAddress?: string,
 ): NotificationItem[] {
   return items
-    .map((item) => mapSingleItem(item, lastSeenAtPonder))
+    .map((item) => mapSingleItem(item, lastSeenAtPonder, viewerAddress))
     .filter((item): item is NotificationItem => item != null);
 }

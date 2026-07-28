@@ -11,7 +11,7 @@ import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const VALUE_PROPS = [
-  { label: "Fully refundable stake", stakeStat: true as const },
+  { label: "Refundable stake", stakeStat: true as const },
   { value: "No lock", label: "Leave anytime" },
   { value: "On-chain", label: "Permanent reputation" },
 ] as const;

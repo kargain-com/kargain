@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
   elevatedAdvisoryPanel,
@@ -175,11 +176,25 @@ export function PassportActionsPanel({
   }, [recordAddedSuccess]);
 
   const run = useCallback(
-    async (fn: () => Promise<`0x${string}`>, success: string) => {
+    async (
+      fn: () => Promise<`0x${string}`>,
+      success: string,
+      claimSuccess?: string,
+    ) => {
       if (!passport) return;
-      if (await runTx(fn)) setMessage(success);
+      const result = await runTx(fn);
+      if (!result) return;
+      if (
+        claimSuccess &&
+        address &&
+        receiptHasClaimForAccount(result.receipt, address)
+      ) {
+        setMessage(claimSuccess);
+      } else {
+        setMessage(success);
+      }
     },
-    [passport, runTx],
+    [address, passport, runTx],
   );
 
   const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
@@ -533,8 +548,8 @@ export function PassportActionsPanel({
             <>
               <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
                 <p className="text-xs text-text-secondary">
-                  The verification was incorrect. Status becomes unverified. The dispute opener
-                  receives the deposit back.
+                  The verification was incorrect. Status becomes unverified. The dispute opener’s
+                  deposit is released — if it cannot be delivered, it waits as a claim.
                 </p>
                 <Button
                   type="button"
@@ -558,8 +573,8 @@ export function PassportActionsPanel({
               </div>
               <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
                 <p className="text-xs text-text-secondary">
-                  The verification stands. Status stays verified. You receive the deposit as
-                  compensation for reviewing.
+                  The verification stands. Status stays verified. The deposit is released to you as
+                  compensation — if it cannot be delivered, it waits as a claim.
                 </p>
                 <Button
                   type="button"
@@ -591,8 +606,8 @@ export function PassportActionsPanel({
         <div className="space-y-2">
           {disputeDeposit != null && (
             <p className="text-xs text-text-secondary">
-              This restores VERIFIED status and refunds your {formatEther(disputeDeposit)} ETH
-              deposit in full. Only you can do this.
+              This restores VERIFIED status and releases your {formatEther(disputeDeposit)} ETH
+              deposit. If it cannot be delivered, it waits under Claims. Only you can do this.
             </p>
           )}
           <Button
@@ -610,7 +625,8 @@ export function PassportActionsPanel({
                     args: [tid],
                     chainId: wc,
                   }),
-                "Dispute withdrawn. Your deposit has been refunded.",
+                "Dispute withdrawn. Your deposit was released.",
+                "Dispute withdrawn. Your deposit could not be delivered and is waiting under Claims.",
               )
             }
           >

@@ -25,7 +25,7 @@ export function usePonderNotifications(): {
     refetchIntervalInBackground: false,
   });
 
-  const items = mapPonderFeedItems(data?.items ?? [], state.lastSeenAt.ponder);
+  const items = mapPonderFeedItems(data?.items ?? [], state.lastSeenAt.ponder, address);
 
   return {
     items,

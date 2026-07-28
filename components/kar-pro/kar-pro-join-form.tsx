@@ -182,7 +182,7 @@ export function KarProJoinForm({
         </p>
         <ul className="list-disc space-y-1 pl-5 font-sans text-fluid-sm text-text-secondary">
           <li>No lock period</li>
-          <li>Fully refundable — call leave() anytime</li>
+          <li>Refundable after leave — 14-day unbond, then claim</li>
           <li>Your verification history stays on-chain permanently</li>
         </ul>
       </div>

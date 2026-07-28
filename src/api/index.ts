@@ -9,6 +9,7 @@ import {
   passport,
   passportRecord,
   passportUriHistory,
+  pendingClaim,
   verifier,
 } from "ponder:schema";
 import {
@@ -17,6 +18,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   inArray,
   notInArray,
   replaceBigInts,
@@ -843,6 +845,47 @@ app.get("/notifications/:address", async (c) => {
     jsonBody({
       items,
       since: String(since),
+      limit,
+    }),
+  );
+});
+
+/** Outstanding ClaimablePayouts balances for an account across commercial chains. */
+app.get("/accounts/:address/claims", async (c) => {
+  const address = parseAddressParam(c.req.param("address"));
+  if (!address) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+  const chainId = parseOptionalChainId(c.req.query("chainId"));
+  const page = parsePage(c.req.query("page"));
+  const limit = parseLimit(c.req.query("limit"));
+  const offset = (page - 1) * limit;
+
+  const conditions = [
+    eq(pendingClaim.account, address),
+    gt(pendingClaim.amount, 0n),
+  ];
+  if (chainId !== undefined) {
+    conditions.push(eq(pendingClaim.chainId, chainId));
+  }
+  const where = and(...conditions);
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(pendingClaim)
+      .where(where)
+      .orderBy(desc(pendingClaim.updatedAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ value: count() }).from(pendingClaim).where(where),
+  ]);
+
+  return c.json(
+    jsonBody({
+      claims: rows,
+      total: totalRow[0]?.value ?? 0,
+      page,
       limit,
     }),
   );

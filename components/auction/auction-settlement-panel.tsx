@@ -324,8 +324,8 @@ export function AuctionSettlementPanel({
           <span className="font-mono tabular-nums">{platformFee}</span>.
         </p>
         <p className="font-sans text-sm text-text-secondary">
-          Vehicle re-registration happens off-chain. Keep the passport records
-          updated after handover.
+          Payouts that could not reach a wallet wait under Claims. Vehicle re-registration happens
+          off-chain — keep passport records updated after handover.
         </p>
       </div>
     );

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import { monoLinkSm } from "@/lib/design/instrument-classes";
+import { monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -33,6 +35,7 @@ export function KarProMembershipSection({
   const wc = wagmiChainId(chainId);
 
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
   const staking = karProStakingAddress(chainId);
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
@@ -83,6 +86,7 @@ export function KarProMembershipSection({
   const onClaimStake = async () => {
     if (!staking) return;
 
+    setClaimMessage(null);
     const succeeded = await runTx(
       () =>
         writeContractAsync({
@@ -100,6 +104,13 @@ export function KarProMembershipSection({
     );
     if (succeeded) {
       void refetchStake();
+      if (receiptHasClaimForAccount(succeeded.receipt, address)) {
+        setClaimMessage(
+          "Your stake could not be delivered and is waiting under Claims.",
+        );
+      } else {
+        setClaimMessage("Stake released to your wallet.");
+      }
     }
   };
 
@@ -117,7 +128,7 @@ export function KarProMembershipSection({
             ? unlockReady
               ? "Unbonding complete · Claim your stake"
               : "Unbonding · Stake unlocks after 14 days"
-            : "Fully refundable · 14-day unbond after leave · No slash"}
+            : "Refundable after leave · 14-day unbond · No slash"}
         </p>
         {staking && (
           <p className="font-sans text-fluid-sm text-text-secondary">
@@ -152,6 +163,16 @@ export function KarProMembershipSection({
                   ? "Claim stake"
                   : "Claim available after unbond"}
             </Button>
+            {claimMessage ? (
+              <p className="font-sans text-sm text-text-secondary" role="status">
+                {claimMessage}{" "}
+                {claimMessage.includes("Claims") ? (
+                  <Link href={`/profile/${address}?tab=claims`} className={sansLink}>
+                    View claims
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
           </>
         ) : (
           <>

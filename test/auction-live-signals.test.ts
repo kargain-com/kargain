@@ -126,10 +126,10 @@ describe("outbidSessionKey / toast message", () => {
     );
   });
 
-  it("toast message embeds amount label", () => {
+  it("toast message embeds amount label without wallet guarantee", () => {
     assert.equal(
       formatOutbidToastMessage("1.2 ETH"),
-      "You were outbid. Your 1.2 ETH was returned to your wallet automatically.",
+      "You were outbid. Your 1.2 ETH was released. If it did not arrive in your wallet, check Claims.",
     );
   });
 });

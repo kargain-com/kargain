@@ -103,7 +103,7 @@ export function KarProOverviewSection({
       </div>
 
       <p className="font-sans text-fluid-sm text-text-secondary">
-        Fully refundable · No slash · Leave anytime
+        Fully refundable after leave · No slash · Leave anytime
       </p>
 
       <p className="font-sans text-fluid-sm text-text-secondary">

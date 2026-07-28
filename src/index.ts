@@ -6,12 +6,14 @@ import {
   auctionAgentAuthorization,
   auctionBid,
   auctionSettlement,
+  claimCredit,
   currencyFeed,
   marketplaceListing,
   marketplaceSale,
   passport,
   passportRecord,
   passportUriHistory,
+  pendingClaim,
 } from "ponder:schema";
 
 import { getAddress } from "viem";
@@ -61,6 +63,13 @@ import {
   verificationFeePatch,
   verifierLeftPatch,
 } from "./lib/ponder-verifier-lifecycle";
+import {
+  claimRecordedCreditRow,
+  pendingClaimAfterCredit,
+  pendingClaimAfterWithdraw,
+} from "./lib/ponder-claims";
+import type { ClaimableContractRole } from "../lib/web3/claimable-contracts";
+import { pendingClaimId } from "../lib/claims/ids";
 
 const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as const;
@@ -1063,4 +1072,134 @@ ponder.on("AuctionEscrow:AbandonedRefundClaimed", async ({ event, context }) => 
       clearedAt: ts,
       updatedAt: ts,
     });
+});
+
+type ClaimHandlerContext = Parameters<Parameters<typeof ponder.on>[1]>[0]["context"];
+type ClaimHandlerEvent = {
+  args: { account: `0x${string}`; asset: `0x${string}`; amount: bigint };
+  log: { address: `0x${string}`; logIndex: number };
+  block: { timestamp: bigint };
+  transaction: { hash: `0x${string}`; input?: `0x${string}` };
+};
+
+async function handleClaimRecorded(
+  event: ClaimHandlerEvent,
+  context: ClaimHandlerContext,
+  role: ClaimableContractRole,
+) {
+  const chainId = indexingChainId(context);
+  const credit = claimRecordedCreditRow({
+    chainId,
+    contract: event.log.address,
+    account: event.args.account,
+    asset: event.args.asset,
+    amount: event.args.amount,
+    role,
+    txInput: event.transaction.input,
+    txHash: event.transaction.hash,
+    logIndex: event.log.logIndex,
+    timestamp: event.block.timestamp,
+  });
+
+  await context.db
+    .insert(claimCredit)
+    .values(credit)
+    .onConflictDoUpdate({
+      amount: credit.amount,
+      reasonCode: credit.reasonCode,
+      timestamp: credit.timestamp,
+    });
+
+  const balanceId = pendingClaimId({
+    chainId: credit.chainId,
+    contract: credit.contract,
+    account: credit.account,
+    asset: credit.asset,
+  });
+  const prior = await context.db.find(pendingClaim, { id: balanceId });
+  const next = pendingClaimAfterCredit({
+    existing: prior
+      ? {
+          id: prior.id,
+          chainId: prior.chainId,
+          contract: prior.contract,
+          account: prior.account,
+          asset: prior.asset,
+          amount: prior.amount,
+          reasonCode: prior.reasonCode,
+          updatedAt: prior.updatedAt,
+          firstCreditedAt: prior.firstCreditedAt,
+        }
+      : null,
+    credit,
+  });
+
+  await context.db
+    .insert(pendingClaim)
+    .values(next)
+    .onConflictDoUpdate({
+      amount: next.amount,
+      reasonCode: next.reasonCode,
+      updatedAt: next.updatedAt,
+    });
+}
+
+async function handleClaimWithdrawn(
+  event: ClaimHandlerEvent,
+  context: ClaimHandlerContext,
+) {
+  const chainId = indexingChainId(context);
+  const contract = getAddress(event.log.address);
+  const account = getAddress(event.args.account);
+  const asset =
+    !event.args.asset || /^0x0+$/i.test(event.args.asset)
+      ? ZERO_ADDRESS
+      : getAddress(event.args.asset);
+  const balanceId = pendingClaimId({ chainId, contract, account, asset });
+  const prior = await context.db.find(pendingClaim, { id: balanceId });
+  if (!prior) return;
+  const next = pendingClaimAfterWithdraw({
+    existing: {
+      id: prior.id,
+      chainId: prior.chainId,
+      contract: prior.contract,
+      account: prior.account,
+      asset: prior.asset,
+      amount: prior.amount,
+      reasonCode: prior.reasonCode,
+      updatedAt: prior.updatedAt,
+      firstCreditedAt: prior.firstCreditedAt,
+    },
+    timestamp: event.block.timestamp,
+  });
+  await context.db.update(pendingClaim, { id: balanceId }).set({
+    amount: next.amount,
+    updatedAt: next.updatedAt,
+  });
+}
+
+ponder.on("AuctionEscrow:ClaimRecorded", async ({ event, context }) => {
+  await handleClaimRecorded(event as ClaimHandlerEvent, context, "auction");
+});
+ponder.on("MarketplaceEscrow:ClaimRecorded", async ({ event, context }) => {
+  await handleClaimRecorded(event as ClaimHandlerEvent, context, "marketplace");
+});
+ponder.on("KarPassport:ClaimRecorded", async ({ event, context }) => {
+  await handleClaimRecorded(event as ClaimHandlerEvent, context, "passport");
+});
+ponder.on("KarProStaking:ClaimRecorded", async ({ event, context }) => {
+  await handleClaimRecorded(event as ClaimHandlerEvent, context, "staking");
+});
+
+ponder.on("AuctionEscrow:ClaimWithdrawn", async ({ event, context }) => {
+  await handleClaimWithdrawn(event as ClaimHandlerEvent, context);
+});
+ponder.on("MarketplaceEscrow:ClaimWithdrawn", async ({ event, context }) => {
+  await handleClaimWithdrawn(event as ClaimHandlerEvent, context);
+});
+ponder.on("KarPassport:ClaimWithdrawn", async ({ event, context }) => {
+  await handleClaimWithdrawn(event as ClaimHandlerEvent, context);
+});
+ponder.on("KarProStaking:ClaimWithdrawn", async ({ event, context }) => {
+  await handleClaimWithdrawn(event as ClaimHandlerEvent, context);
 });

@@ -2,6 +2,7 @@ import { db } from "ponder:api";
 import {
   agentAuthorization,
   auctionAgentAuthorization,
+  claimCredit,
   marketplaceListing,
   passport,
   passportRecord,
@@ -11,6 +12,7 @@ import { getAddress } from "viem";
 
 import type { PonderFeedItem } from "../../lib/notifications/types";
 import { authorizationNotificationItems } from "../lib/ponder-agent-authorization";
+import { claimRecordedNotificationItems } from "../lib/ponder-claims";
 
 export type PonderDb = typeof db;
 
@@ -152,6 +154,32 @@ export async function buildNotificationFeed(
     ...authorizationNotificationItems(
       auctionAuthorizations,
       "auction_agent.authorized",
+      checksumAddress,
+      since,
+    ),
+  );
+
+  const claimCredits = await ponderDb
+    .select()
+    .from(claimCredit)
+    .where(
+      and(eq(claimCredit.account, checksumAddress), gt(claimCredit.timestamp, since)),
+    )
+    .orderBy(desc(claimCredit.timestamp))
+    .limit(limit);
+
+  items.push(
+    ...claimRecordedNotificationItems(
+      claimCredits.map((r) => ({
+        id: r.id,
+        chainId: r.chainId,
+        contract: r.contract,
+        account: r.account,
+        asset: r.asset,
+        amount: r.amount,
+        reasonCode: r.reasonCode,
+        timestamp: r.timestamp,
+      })),
       checksumAddress,
       since,
     ),

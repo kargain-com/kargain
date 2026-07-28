@@ -10,6 +10,7 @@
 | **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — VPS **full reindex** from hub **44434865** + Eth **11319840** ([OPERATIONS.md](./OPERATIONS.md)) |
 | Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; **VPS full reindex** required to repair historical false positives ([OPERATIONS.md](./OPERATIONS.md)) |
 | Trust layer `DisputeExpired` (July 2026) | ✅ Handler shipped — same UNVERIFIED trust fields as Confirm; **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
+| ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **AuctionEscrow** indexing is documented in [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md). This document remains as reference for the v2 mapping and FX display work (§6).
 

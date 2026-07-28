@@ -456,6 +456,7 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
+| Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, reason explanation, `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab |
 | Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable`; toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`) |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until `messagingReadyForChecklist(snapshot)` |
@@ -497,6 +498,7 @@ Implementation: [`notifications-shell.tsx`](../components/notifications/notifica
 | Heading | Compact `text-fluid-h2` above tabs |
 | Tabs | Alerts (default) · Watchlist (`?tab=watchlist`) |
 | Mark read | Per-row on interaction; **Mark all read** when `unreadCount > 0` — no auto mark-read on page open |
+| Claim recorded | High-priority `claim.recorded` — body explains why funds wait; href `/profile/{address}?tab=claims` |
 
 Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.tsx).
 
@@ -799,7 +801,9 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 | Surface | String |
 |---------|--------|
-| Bid footer | Your full bid is held by the auction contract until you are outbid or you win. Outbid funds return automatically. |
+| Bid footer | Your full bid is held by the auction contract until you are outbid or you win. Outbid funds are released — if they do not arrive, check Claims. |
+| Outbid toast | You were outbid. Your [amount] was released. If it did not arrive in your wallet, check Claims. |
+| S8 sale complete | Sale complete + fee split; note that undeliverable payouts wait under Claims |
 | Live help | Bids in the last [N] minutes extend the auction by [N] minutes. (`N` from `extensionWindow`) |
 | Extension flash | Extended by [N] minutes |
 | Outbid toast | You were outbid. Your [amount] was returned to your wallet automatically. |
@@ -1523,4 +1527,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.90 (July 2026 — §4.18 AuctionEscrow 2.0.0-draft infallible settle, no VOIDED). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.91 (July 2026 — ClaimablePayouts product surface: claims tab, global banner, notifications, honest payout copy). Update when tokens, app shell, or component contracts change.*

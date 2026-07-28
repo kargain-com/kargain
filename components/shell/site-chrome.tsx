@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 
+import { ClaimsPendingBanner } from "@/components/claims/claims-pending-banner";
 import { AppTopNav } from "@/components/shell/app-top-nav";
 import { MobileBottomNav } from "@/components/shell/mobile-bottom-nav";
 import { SiteFooter } from "@/components/shell/site-footer";
@@ -16,6 +17,9 @@ export function SiteChrome({ children }: { children: ReactNode }) {
     <>
       <Suspense fallback={<NavFallback />}>
         <AppTopNav />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ClaimsPendingBanner />
       </Suspense>
       <Suspense
         fallback={

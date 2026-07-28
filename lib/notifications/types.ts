@@ -9,6 +9,7 @@ export type NotificationType =
   | "listing.sold"
   | "agent.authorized"
   | "auction_agent.authorized"
+  | "claim.recorded"
   | "verifier.dispute_on_verified"
   | "watchlist.status_changed"
   | "watchlist.listing_deactivated"
@@ -26,7 +27,7 @@ export type NotificationItem = {
   read: boolean;
   href: string;
   subject: {
-    kind: "passport" | "listing" | "comment";
+    kind: "passport" | "listing" | "comment" | "claim";
     tokenId?: string;
     eventId?: string;
     title: string;

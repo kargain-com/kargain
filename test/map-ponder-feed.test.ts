@@ -60,4 +60,30 @@ describe("mapPonderFeedItems delegation grants", () => {
     assert.deepEqual(item.actor, { address: OWNER });
     assert.equal(item.read, true);
   });
+
+  it("maps claim.recorded to profile claims tab with reason body", () => {
+    const [item] = mapPonderFeedItems(
+      [
+        {
+          id: "claim.recorded:0xabc-1",
+          type: "claim.recorded",
+          tokenId: "0",
+          timestamp: "300",
+          meta: {
+            account: OWNER,
+            reasonCode: "staking.stake_refund",
+          },
+        },
+      ],
+      100,
+      OWNER,
+    );
+
+    assert.equal(item.type, "claim.recorded");
+    assert.equal(item.subject.kind, "claim");
+    assert.equal(item.href, `/profile/${OWNER}?tab=claims`);
+    assert.match(item.body, /KarPro stake refund/i);
+    assert.equal(item.priority, "high");
+    assert.equal(item.read, false);
+  });
 });

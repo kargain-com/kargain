@@ -352,7 +352,7 @@ export function AuctionBidPanel({
       <div className="space-y-2 border-t border-border-default pt-3">
         <p className="font-sans text-xs text-text-secondary">
           Your full bid is held by the auction contract until you are outbid or
-          you win. Outbid funds return automatically.
+          you win. Outbid funds are released — if they do not arrive, check Claims.
         </p>
         <div className="min-h-[2.5rem]" aria-live="polite" aria-atomic="true">
           {extensionFlash ? (

@@ -32,6 +32,7 @@ const REQUIRED_COMMERCE_PREFIXES = [
   "owned-passport-token-ids",
   "kar-pro-verifier",
   "kar-pro-slug-availability",
+  "pending-claims",
 ] as const;
 
 describe("INDEXER_QUERY_KEY_PREFIXES", () => {

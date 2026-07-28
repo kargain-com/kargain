@@ -250,3 +250,40 @@ export const auctionSettlement = onchainTable("auction_settlement", (t) => ({
   createdAt: t.bigint().notNull(),
   updatedAt: t.bigint().notNull(),
 }));
+
+/** Outstanding ClaimablePayouts balance — PK = chainId-contract-account-asset. */
+export const pendingClaim = onchainTable(
+  "pending_claim",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    contract: t.text().notNull(),
+    account: t.text().notNull(),
+    asset: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    reasonCode: t.text().notNull(),
+    updatedAt: t.bigint().notNull(),
+    firstCreditedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    accountIdx: index().on(table.account),
+  }),
+);
+
+/** Append-only ClaimRecorded credits for notifications + reason history. */
+export const claimCredit = onchainTable(
+  "claim_credit",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    contract: t.text().notNull(),
+    account: t.text().notNull(),
+    asset: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    reasonCode: t.text().notNull(),
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    accountIdx: index().on(table.account),
+  }),
+);

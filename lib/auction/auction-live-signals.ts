@@ -33,7 +33,7 @@ export function detectEndsAtExtension(
 }
 
 export function formatOutbidToastMessage(amountLabel: string): string {
-  return `You were outbid. Your ${amountLabel} was returned to your wallet automatically.`;
+  return `You were outbid. Your ${amountLabel} was released. If it did not arrive in your wallet, check Claims.`;
 }
 
 /** sessionStorage key — once per lost lead for this auction start + bid amount. */

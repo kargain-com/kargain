@@ -811,7 +811,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 ### 11.6 Funds movement
 
-**Single payout primitive** (`ClaimablePayouts`, shared with Marketplace / KarPassport / KarProStaking): attempt the transfer; on failure credit `pendingClaims[account][asset]` (`asset == address(0)` for ETH). The entitled party withdraws via permissionless `withdrawClaim(asset)` (CEI; reverts `TransferFailed` if still unable to accept; `NoClaim` if empty). Outstanding native claims are reserved from any free-balance accounting (KarPassport `rescueExcessEth`).
+**Single payout primitive** (`ClaimablePayouts`, shared with Marketplace / KarPassport / KarProStaking): attempt the transfer; on failure credit `pendingClaims[account][asset]` (`asset == address(0)` for ETH) and emit **`ClaimRecorded`**. The entitled party withdraws via permissionless `withdrawClaim(asset)` (CEI; emits **`ClaimWithdrawn`**; reverts `TransferFailed` if still unable to accept; `NoClaim` if empty). Outstanding native claims are reserved from any free-balance accounting (KarPassport `rescueExcessEth`). Product surface: indexer `pending_claim` / `claim_credit`, profile Claims tab, notifications (`claim.recorded`) — full reindex with Nuclear #2.
 
 - **Native push:** always `call{gas: 30_000}` (`NATIVE_PUSH_GAS`) — one bound for every contract. A recipient that burns the stipend returns failure → claim (payer tx still completes). Smart accounts that need more gas on push receive a claim and withdraw later with unbounded gas.
 - **Native withdraw:** intentionally unbounded (caller is the recipient; revert is correct).
@@ -906,7 +906,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 
 ### 11.11 AuctionEscrow — event reference
 
-`AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · config / `Paused` / `UpgradeAuthorityTransferred`.
+`AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · `ClaimRecorded` · `ClaimWithdrawn` · config / `Paused` / `UpgradeAuthorityTransferred`.
 
 Indexer tables and HTTP routes: [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md).
 

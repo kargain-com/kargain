@@ -23,6 +23,7 @@ import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
+import { ProfileClaimsTab } from "@/components/claims/profile-claims-tab";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { DelegatedVehiclesTab } from "@/components/profile/delegated-vehicles-tab";
 import { ProfilePassportCard } from "@/components/profile/profile-passport-card";
@@ -31,6 +32,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { usePendingClaims } from "@/hooks/use-pending-claims";
 import {
   ctaLink,
   monoLink,
@@ -77,7 +79,8 @@ type TabId =
   | "verified"
   | "disputes"
   | "consigned"
-  | "attestations";
+  | "attestations"
+  | "claims";
 
 export type ProfilePageProps = {
   wallet: Address;
@@ -117,6 +120,7 @@ function buildTabList(
     attestations: number;
     disputes: number;
     consigned: number;
+    claims: number;
   },
 ): { id: TabId; label: ReactNode }[] {
   const tabs: { id: TabId; label: ReactNode }[] = [
@@ -124,6 +128,10 @@ function buildTabList(
     { id: "listings", label: countLabel("Listings", counts.listings) },
   ];
   if (isOwner) {
+    tabs.push({
+      id: "claims",
+      label: countLabel("Claims", counts.claims),
+    });
     tabs.push({
       id: "delegated",
       label: countLabel("Delegated vehicles", counts.delegated),
@@ -420,6 +428,8 @@ export function ProfilePage({
     attestations.length > 0 ||
     (verifierProfile?.verificationCount ?? 0) > 0;
 
+  const { total: claimsTotal } = usePendingClaims();
+
   const tabs = useMemo(
     () =>
       buildTabList(isOwner, isActiveVerifier, showVerifierHistory, {
@@ -430,6 +440,7 @@ export function ProfilePage({
         attestations: attestations.length,
         disputes: disputedPassports.length,
         consigned: consignedCount ?? 0,
+        claims: isOwner ? claimsTotal : 0,
       }),
     [
       isOwner,
@@ -442,6 +453,7 @@ export function ProfilePage({
       attestations.length,
       disputedPassports.length,
       consignedCount,
+      claimsTotal,
     ],
   );
 
@@ -733,6 +745,16 @@ export function ProfilePage({
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === "claims" && isOwner && (
+            <section
+              role="tabpanel"
+              id="profile-panel-claims"
+              aria-labelledby="profile-tab-claims"
+            >
+              <ProfileClaimsTab />
             </section>
           )}
 

@@ -1,0 +1,66 @@
+"use server";
+
+import { getAddress } from "viem";
+
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+
+export type PendingClaimApiRow = {
+  id: string;
+  chainId: number;
+  contract: string;
+  account: string;
+  asset: string;
+  amount: string;
+  reasonCode: string;
+  updatedAt: string;
+  firstCreditedAt: string;
+};
+
+export type PendingClaimsResponse = {
+  claims: PendingClaimApiRow[];
+  total: number;
+  page: number;
+  limit: number;
+  ponderError?: string;
+};
+
+const EMPTY: PendingClaimsResponse = {
+  claims: [],
+  total: 0,
+  page: 1,
+  limit: 50,
+};
+
+function parseAccount(address: string): `0x${string}` | null {
+  try {
+    return getAddress(address);
+  } catch {
+    return null;
+  }
+}
+
+export async function getPendingClaims(
+  address: string,
+  page = 1,
+  limit = 50,
+  chainId?: number,
+): Promise<PendingClaimsResponse> {
+  const account = parseAccount(address);
+  if (!account) return { ...EMPTY, page, limit };
+
+  try {
+    const url = new URL(`${ponderBaseUrl()}/accounts/${account}/claims`);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(limit));
+    if (chainId != null && Number.isFinite(chainId)) {
+      url.searchParams.set("chainId", String(chainId));
+    }
+    const res = await ponderFetch(url.toString());
+    if (!res.ok) {
+      return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
+    }
+    return (await res.json()) as PendingClaimsResponse;
+  } catch {
+    return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
+  }
+}

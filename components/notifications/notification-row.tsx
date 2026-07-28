@@ -30,6 +30,7 @@ const ICON_BY_TYPE: Record<NotificationType, IconComponent> = {
   "listing.sold": CreditCardIcon,
   "agent.authorized": UserCheckIcon,
   "auction_agent.authorized": UserCheckIcon,
+  "claim.recorded": CreditCardIcon,
   "verifier.dispute_on_verified": WarningIcon,
   "watchlist.status_changed": BookmarkIcon,
   "watchlist.listing_deactivated": BookmarkIcon,
