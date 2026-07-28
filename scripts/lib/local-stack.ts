@@ -144,6 +144,7 @@ export async function deployPassportStack(viem: ViemSuite) {
     base.staking.address,
     base.admin.account.address,
     DISPUTE_DEPOSIT,
+    base.admin.account.address,
   ]);
   return { ...base, passport };
 }

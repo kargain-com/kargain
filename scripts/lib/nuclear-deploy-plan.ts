@@ -41,6 +41,8 @@ export const NUCLEAR_DEPLOY_STEPS = [
   "AuctionEscrowProxy",
   "KarPassportBridgeGateway",
   "setBridgeGateway",
+  "transferPassportOwnership",
+  "transferStakingOwnership",
 ] as const;
 
 export type NuclearDeployStep = (typeof NUCLEAR_DEPLOY_STEPS)[number];

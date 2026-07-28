@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
@@ -12,6 +12,7 @@ import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 
 type KarProMembershipSectionProps = {
   chainId: number;
@@ -37,6 +38,23 @@ export function KarProMembershipSection({
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
   const loading = txPhase !== "idle";
 
+  const { data: stakeRow, refetch: refetchStake } = useReadContract({
+    address: staking,
+    abi: KarProStakingAbi,
+    functionName: "stakes",
+    args: [address],
+    chainId: wc,
+    query: { enabled: Boolean(staking && address) },
+  });
+
+  const stakeActive = stakeRow?.[3] === true;
+  const unlockAt = stakeRow?.[4] ?? 0n;
+  const unbonding = !stakeActive && unlockAt > 0n;
+  const unlockReady =
+    unbonding && typeof stakeRow !== "undefined"
+      ? BigInt(Math.floor(Date.now() / 1000)) >= unlockAt
+      : false;
+
   const onLeave = async () => {
     if (!staking) return;
 
@@ -52,14 +70,36 @@ export function KarProMembershipSection({
         mapError: (err) =>
           err instanceof Error && err.message.includes("User rejected")
             ? "Transaction cancelled."
-            : err instanceof Error
-              ? err.message
-              : "Leave failed. Try again.",
+            : txErrorMessage(err),
       },
     );
     if (succeeded) {
       setLeaveConfirm(false);
+      void refetchStake();
       onLeft?.();
+    }
+  };
+
+  const onClaimStake = async () => {
+    if (!staking) return;
+
+    const succeeded = await runTx(
+      () =>
+        writeContractAsync({
+          address: staking,
+          abi: KarProStakingAbi,
+          functionName: "claimStake",
+          chainId: wc,
+        }),
+      {
+        mapError: (err) =>
+          err instanceof Error && err.message.includes("User rejected")
+            ? "Transaction cancelled."
+            : txErrorMessage(err),
+      },
+    );
+    if (succeeded) {
+      void refetchStake();
     }
   };
 
@@ -73,7 +113,11 @@ export function KarProMembershipSection({
           {formatKarProPassTitle(resolvedPassId, chainId, { showChain: true })}
         </p>
         <p className="font-sans text-fluid-sm text-text-secondary">
-          Fully refundable · No slash · Leave anytime
+          {unbonding
+            ? unlockReady
+              ? "Unbonding complete · Claim your stake"
+              : "Unbonding · Stake unlocks after 14 days"
+            : "Fully refundable · 14-day unbond after leave · No slash"}
         </p>
         {staking && (
           <p className="font-sans text-fluid-sm text-text-secondary">
@@ -90,49 +134,73 @@ export function KarProMembershipSection({
       </div>
 
       <div className="mt-6 space-y-3 border-t border-border-default pt-6">
-        <p className="font-sans text-fluid-sm text-text-secondary">
-          Leave KarPro — your stake ({stakeLabel} ETH) will be returned. Your verification history
-          remains on-chain permanently.
-        </p>
-
-        {leaveConfirm ? (
-          <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-            <p className="font-sans text-sm text-text-primary">
-              This will burn your{" "}
-              {formatKarProPassTitle(resolvedPassId, chainId, { showChain: true })}. Continue?
+        {unbonding ? (
+          <>
+            <p className="font-sans text-fluid-sm text-text-secondary">
+              Your KarPro role ended when you left. After the unbonding period, claim your stake
+              ({stakeLabel} ETH). Verification history remains on-chain permanently.
             </p>
-            <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={loading || !unlockReady}
+              onClick={() => void onClaimStake()}
+            >
+              {txPhase === "indexing"
+                ? "Confirming…"
+                : unlockReady
+                  ? "Claim stake"
+                  : "Claim available after unbond"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="font-sans text-fluid-sm text-text-secondary">
+              Leave KarPro — your role ends immediately and your stake ({stakeLabel} ETH) unlocks
+              after 14 days. Your verification history remains on-chain permanently.
+            </p>
+
+            {leaveConfirm ? (
+              <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
+                <p className="font-sans text-sm text-text-primary">
+                  This will burn your{" "}
+                  {formatKarProPassTitle(resolvedPassId, chainId, { showChain: true })} and start a
+                  14-day unbond. Continue?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-status-error hover:bg-bg-surface hover:text-status-error"
+                    disabled={loading}
+                    onClick={() => void onLeave()}
+                  >
+                    {txPhase === "indexing" ? "Confirming…" : "Confirm leave"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={loading}
+                    onClick={() => {
+                      setLeaveConfirm(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
               <Button
                 type="button"
                 variant="ghost"
                 className="text-status-error hover:bg-bg-surface hover:text-status-error"
-                disabled={loading}
-                onClick={() => void onLeave()}
+                disabled={loading || !stakeActive}
+                onClick={() => setLeaveConfirm(true)}
               >
-                {txPhase === "indexing" ? "Confirming…" : "Confirm leave"}
+                Leave KarPro
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={loading}
-                onClick={() => {
-                  setLeaveConfirm(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-status-error hover:bg-bg-surface hover:text-status-error"
-            disabled={loading}
-            onClick={() => setLeaveConfirm(true)}
-          >
-            Leave KarPro
-          </Button>
+            )}
+          </>
         )}
       </div>
 

@@ -19,7 +19,9 @@ export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
 export function karPassportConstructorArgs(manifest: DeploymentManifest) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  return [manifest.karProStaking, deployer, DISPUTE_DEPOSIT] as const;
+  const platformRecipient =
+    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
+  return [manifest.karProStaking, deployer, DISPUTE_DEPOSIT, platformRecipient] as const;
 }
 
 export function karProStakingConstructorArgs(manifest: DeploymentManifest) {

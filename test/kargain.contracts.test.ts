@@ -10,6 +10,7 @@ import {
   deployEscrowStack,
   deployPassportStack,
   deployVerifierStack,
+  increaseTime,
   joinVerifier,
   mintPassport,
   MIN_STAKE,
@@ -18,6 +19,7 @@ import {
 } from "../scripts/lib/local-stack.js";
 
 const TOKEN_ID_BASE = 31337n << 128n;
+const UNBONDING_PERIOD = 14n * 24n * 60n * 60n;
 
 const ZERO_ADDR = ZERO;
 
@@ -274,7 +276,7 @@ describe("KarProStaking — leave", () => {
     await connection.close();
   });
 
-  it("returns exact staked amount", async () => {
+  it("leave ends role immediately; claimStake returns exact staked amount after unbonding", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { verifier, staking } = await deployVerifierStack(viem);
@@ -282,11 +284,29 @@ describe("KarProStaking — leave", () => {
     await joinVerifier(staking, verifier, { value: extra });
     const stakingBefore = await publicClient.getBalance({ address: staking.address });
     await staking.write.leave([], { account: verifier.account });
+    assert.equal(await publicClient.getBalance({ address: staking.address }), stakingBefore);
+    assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
+    await assert.rejects(
+      staking.write.claimStake([], { account: verifier.account }),
+      revertsWith("UnbondNotReady"),
+    );
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     const stakingAfter = await publicClient.getBalance({ address: staking.address });
     assert.equal(stakingBefore - stakingAfter, extra);
   });
 
-  it("burns KarProPass", async () => {
+  it("claimStake without leave reverts NoUnbond", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await assert.rejects(
+      staking.write.claimStake([], { account: verifier.account }),
+      revertsWith("NoUnbond"),
+    );
+  });
+
+  it("burns KarProPass on leave", async () => {
     const { viem } = connection;
     const { verifier, proPass, staking } = await deployVerifierStack(viem);
     await joinVerifier(staking, verifier);
@@ -311,7 +331,7 @@ describe("KarProStaking — leave", () => {
     );
   });
 
-  it("emits VerifierLeft", async () => {
+  it("emits VerifierLeft and UnbondStarted", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { verifier, staking } = await deployVerifierStack(viem);
@@ -320,20 +340,30 @@ describe("KarProStaking — leave", () => {
     const logs = await receiptLogs(publicClient, hash, staking.abi);
     const left = logs.find((l) => l.eventName === "VerifierLeft");
     assert.ok(left);
-    assert.equal(left!.args.returned, MIN_STAKE);
+    assert.equal(left!.args.amount, MIN_STAKE);
+    const started = logs.find((l) => l.eventName === "UnbondStarted");
+    assert.ok(started);
+    assert.equal(started!.args.amount, MIN_STAKE);
   });
 
-  it("can rejoin after leaving", async () => {
+  it("cannot rejoin while unbonding; can rejoin after claimStake", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const { verifier, proPass, staking } = await deployVerifierStack(viem);
     await joinVerifier(staking, verifier);
     await staking.write.leave([], { account: verifier.account });
+    await assert.rejects(
+      joinVerifier(staking, verifier, { name: "Early" }),
+      revertsWith("UnbondPending"),
+    );
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     await joinVerifier(staking, verifier, { name: "Rejoined" });
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
     assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), true);
   });
 
-  it("returns locked amount even after minStake changed", async () => {
+  it("claimStake returns locked amount even after minStake changed", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { admin, verifier, staking } = await deployVerifierStack(viem);
@@ -342,12 +372,14 @@ describe("KarProStaking — leave", () => {
     await staking.write.setMinStakeNative([higherMin], { account: admin.account });
     const stakingBefore = await publicClient.getBalance({ address: staking.address });
     await staking.write.leave([], { account: verifier.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     const stakingAfter = await publicClient.getBalance({ address: staking.address });
     assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
     assert.equal(await staking.read.minStakeNative(), higherMin);
   });
 
-  it("leave to RevertingRecipient credits claim; stake cleared", async () => {
+  it("claimStake to RevertingRecipient credits claim; stake cleared", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { staking, proPass } = await deployVerifierStack(viem);
@@ -360,6 +392,8 @@ describe("KarProStaking — leave", () => {
     const stakingBefore = await publicClient.getBalance({ address: staking.address });
     await recipient.write.leaveStaking([staking.address]);
     assert.equal(await staking.read.isActiveVerifier([recipient.address]), false);
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await recipient.write.claimStake([staking.address]);
     assert.equal(await staking.read.pendingClaims([recipient.address, ZERO]), MIN_STAKE);
     assert.equal(await publicClient.getBalance({ address: staking.address }), stakingBefore);
     await assert.rejects(
@@ -371,7 +405,7 @@ describe("KarProStaking — leave", () => {
     assert.equal(await staking.read.pendingClaims([recipient.address, ZERO]), 0n);
   });
 
-  it("leave to GasBurningRecipient credits claim; solvency holds", async () => {
+  it("claimStake to GasBurningRecipient credits claim; solvency holds", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { staking } = await deployVerifierStack(viem);
@@ -380,6 +414,8 @@ describe("KarProStaking — leave", () => {
       value: MIN_STAKE,
     });
     await burner.write.leaveStaking([staking.address]);
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await burner.write.claimStake([staking.address]);
     assert.equal(await staking.read.pendingClaims([burner.address, ZERO]), MIN_STAKE);
     const balance = await publicClient.getBalance({ address: staking.address });
     assert.ok(balance >= ((await staking.read.totalPendingNative()) as bigint));
@@ -407,8 +443,9 @@ describe("KarProStaking — leave", () => {
     );
   });
 
-  it("ERC-20 leave payout failure credits claim; holdings cover totalPendingErc20", async () => {
+  it("ERC-20 claimStake payout failure credits claim; holdings cover totalPendingErc20", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const { admin, verifier, staking } = await deployVerifierStack(viem);
     const token = await viem.deployContract("SelectiveFailErc20", []);
     const tokenMin = 1_000_000n;
@@ -420,6 +457,8 @@ describe("KarProStaking — leave", () => {
     });
     await token.write.setFailTo([verifier.account.address]);
     await staking.write.leave([], { account: verifier.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     assert.equal(await staking.read.pendingClaims([verifier.account.address, token.address]), tokenMin);
     const held = (await token.read.balanceOf([staking.address])) as bigint;
     const pending = (await staking.read.totalPendingErc20([token.address])) as bigint;
@@ -429,8 +468,9 @@ describe("KarProStaking — leave", () => {
     assert.equal(await staking.read.pendingClaims([verifier.account.address, token.address]), 0n);
   });
 
-  it("leave after setStakeToken refunds the original stake asset", async () => {
+  it("claimStake after setStakeToken refunds the original stake asset", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const { admin, verifier, stranger, staking } = await deployVerifierStack(viem);
     const tokenA = await viem.deployContract("MockERC20Decimals", ["TokenA", "TA", 18]);
     const tokenB = await viem.deployContract("MockERC20Decimals", ["TokenB", "TB", 18]);
@@ -453,6 +493,8 @@ describe("KarProStaking — leave", () => {
     const bHeldBefore = (await tokenB.read.balanceOf([staking.address])) as bigint;
 
     await staking.write.leave([], { account: verifier.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
 
     const aAfter = (await tokenA.read.balanceOf([verifier.account.address])) as bigint;
     const bAfterVerifier = (await tokenB.read.balanceOf([verifier.account.address])) as bigint;
@@ -464,6 +506,7 @@ describe("KarProStaking — leave", () => {
 
   it("per-asset solvency holds when stake token changes while a claim is outstanding", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const { admin, verifier, stranger, staking } = await deployVerifierStack(viem);
     const tokenA = await viem.deployContract("SelectiveFailErc20", []);
     const tokenB = await viem.deployContract("MockERC20Decimals", ["TokenB", "TB", 18]);
@@ -480,6 +523,8 @@ describe("KarProStaking — leave", () => {
 
     await tokenA.write.setFailTo([verifier.account.address]);
     await staking.write.leave([], { account: verifier.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
 
     const heldA = (await tokenA.read.balanceOf([staking.address])) as bigint;
     const pendingA = (await staking.read.totalPendingErc20([tokenA.address])) as bigint;
@@ -656,11 +701,16 @@ describe("KarProStaking — security", () => {
 
     const verifierStakingBefore = await publicClient.getBalance({ address: staking.address });
     await staking.write.leave([], { account: verifier.account });
+    assert.equal(await publicClient.getBalance({ address: staking.address }), verifierStakingBefore);
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     const verifierStakingAfter = await publicClient.getBalance({ address: staking.address });
     assert.equal(verifierStakingBefore - verifierStakingAfter, MIN_STAKE);
 
     const strangerStakingBefore = await publicClient.getBalance({ address: staking.address });
     await staking.write.leave([], { account: stranger.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: stranger.account });
     const strangerStakingAfter = await publicClient.getBalance({ address: staking.address });
     assert.equal(strangerStakingBefore - strangerStakingAfter, MIN_STAKE);
 
@@ -686,8 +736,9 @@ describe("KarProStaking — security", () => {
     void admin;
   });
 
-  it("token leave returns exact token amount", async () => {
+  it("token claimStake returns exact token amount", async () => {
     const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
     const { admin, verifier, proPass, staking } = await deployVerifierStack(viem);
     const usdc = await viem.deployContract("MockUSDC", []);
     const tokenMin = 750_000n;
@@ -700,9 +751,11 @@ describe("KarProStaking — security", () => {
     );
     const before = await usdc.read.balanceOf([verifier.account.address]);
     await staking.write.leave([], { account: verifier.account });
+    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 0n);
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
     const after = await usdc.read.balanceOf([verifier.account.address]);
     assert.equal(after - before, tokenMin);
-    assert.equal(await proPass.read.balanceOf([verifier.account.address]), 0n);
   });
 });
 
@@ -719,7 +772,7 @@ describe("KarProStaking — leave resilience", () => {
     await connection.close();
   });
 
-  it("leave() succeeds and returns stake even if KarProPass staking address was changed", async () => {
+  it("leave() succeeds and claimStake returns stake even if KarProPass staking address was changed", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { admin, verifier, stranger, proPass, staking } = await deployVerifierStack(viem);
@@ -727,10 +780,13 @@ describe("KarProStaking — leave resilience", () => {
     await proPass.write.setStaking([stranger.account.address], { account: admin.account });
     const stakingBefore = await publicClient.getBalance({ address: staking.address });
     await staking.write.leave([], { account: verifier.account });
-    const stakingAfter = await publicClient.getBalance({ address: staking.address });
-    assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
+    assert.equal(await publicClient.getBalance({ address: staking.address }), stakingBefore);
     assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
     assert.equal(await proPass.read.balanceOf([verifier.account.address]), 1n);
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    await staking.write.claimStake([], { account: verifier.account });
+    const stakingAfter = await publicClient.getBalance({ address: staking.address });
+    assert.equal(stakingBefore - stakingAfter, MIN_STAKE);
   });
 });
 
@@ -943,14 +999,18 @@ describe("KarPassport — setPassportURI", () => {
 
   it("allows edit after resolve(false) from DISPUTED", async () => {
     const { viem } = connection;
-    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    const { owner, verifier, stranger, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://d"], {
       account: owner.account,
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
+    await joinVerifier(staking, stranger);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+      account: owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
     await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://fixed"], { account: owner.account });
     assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://fixed");
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
@@ -1157,23 +1217,32 @@ describe("KarPassport — dispute and resolve", () => {
 
   it("active verifier resolves uphold=true → VERIFIED", async () => {
     const { viem } = connection;
-    const { owner, verifier, passport, staking } = await setupVerified(viem);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: verifier.account });
+    const { owner, stranger, passport, staking } = await setupVerified(viem);
+    await joinVerifier(staking, stranger);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+      account: owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: stranger.account });
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
   });
 
   it("resolve uphold=false → UNVERIFIED, verifier cleared", async () => {
     const { viem } = connection;
-    const { owner, verifier, passport, staking } = await setupVerified(viem);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const { owner, stranger, passport, staking } = await setupVerified(viem);
+    await joinVerifier(staking, stranger);
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+      account: owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
+    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([
+      TOKEN_ID_BASE,
+    ]);
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
     assert.equal(verifiedAt, 0n);
-    void staking;
   });
 
   it("resolve reverts: not active verifier", async () => {
@@ -1312,7 +1381,7 @@ describe("KarPassport — getPassportStatus", () => {
 
   it("correct through full lifecycle", async () => {
     const { viem } = connection;
-    const { owner, verifier, passport, staking } = await deployPassportStack(viem);
+    const { owner, verifier, stranger, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://s"], {
       account: owner.account,
     });
@@ -1324,11 +1393,15 @@ describe("KarPassport — getPassportStatus", () => {
     [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
 
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+      account: owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
     [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
 
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: verifier.account });
+    await joinVerifier(staking, stranger);
+    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
     [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
   });

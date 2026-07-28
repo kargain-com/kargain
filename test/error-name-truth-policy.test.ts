@@ -92,6 +92,12 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
     contracts: ["MarketplaceEscrow", "AuctionEscrow"],
     justification: "Agent fee bps above protocol max",
   },
+  {
+    error: "CannotResolveOwnDispute",
+    contracts: ["KarPassport"],
+    justification:
+      "Caller is a party to the dispute (opener, passport owner, or recorded passportVerifier) — mirrors CannotResolveOwnDeal",
+  },
 ] as const;
 
 /** `if (<cond>) revert <Name>(...);` — ignores multi-line conditions. */

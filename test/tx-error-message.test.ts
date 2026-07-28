@@ -25,10 +25,10 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps CannotResolveSelfDispute", () => {
+  it("maps CannotResolveOwnDispute", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error CannotResolveSelfDispute()")),
-      "You cannot resolve a dispute you opened yourself.",
+      txErrorMessage(new Error("reverted with custom error CannotResolveOwnDispute()")),
+      "You cannot resolve this dispute — you opened it, own the passport, or are the challenged verifier.",
     );
   });
 

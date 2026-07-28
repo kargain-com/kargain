@@ -40,12 +40,15 @@ describe("nuclear deploy plan", () => {
     assert.equal(base.params.platformRecipient, eth.params.platformRecipient);
   });
 
-  it("step list includes Auction then Gateway then setBridgeGateway", () => {
+  it("step list includes ownership handoff after setBridgeGateway", () => {
     assert.deepEqual([...base.steps], [...NUCLEAR_DEPLOY_STEPS]);
     const auctionIdx = base.steps.indexOf("AuctionEscrowProxy");
     const gatewayIdx = base.steps.indexOf("KarPassportBridgeGateway");
     const bindIdx = base.steps.indexOf("setBridgeGateway");
+    const passportOwnIdx = base.steps.indexOf("transferPassportOwnership");
+    const stakingOwnIdx = base.steps.indexOf("transferStakingOwnership");
     assert.ok(auctionIdx >= 0 && gatewayIdx > auctionIdx && bindIdx === gatewayIdx + 1);
+    assert.ok(passportOwnIdx === bindIdx + 1 && stakingOwnIdx === passportOwnIdx + 1);
   });
 
   it("tokenIdOffset is chainId << 128", () => {

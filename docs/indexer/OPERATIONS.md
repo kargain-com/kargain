@@ -90,6 +90,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Verifier place columns (Geo Phase E, July 2026) | `locationLabel` + `locationPlaceId` + `locationCountryCode` on `verifier` from KarPro Arweave — **full reindex required**; empty until replay / verifier re-saves profile |
 | Bridge mint trust accounting (July 2026) | `PassportBridgeMinted` must not write `verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` (only on-chain `VerificationReset`) — **full reindex required** to repair historical false positives |
 | Verifier `stakeAsset` address (July 2026) | `verifier.stakeAsset` integer → text address (`0x0` = native); `VerifierJoined` asset arg address — **full reindex** with Nuclear #2 |
+| Trust layer `DisputeExpired` (July 2026) | `KarPassport:DisputeExpired` → UNVERIFIED trust fields (same as Confirm) — **full reindex** with Nuclear #2 |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |

@@ -47,6 +47,11 @@ contract GasBurningRecipient {
         (bool ok,) = staking.call(abi.encodeWithSignature("leave()"));
         require(ok, "leave failed");
     }
+
+    function claimStake(address staking) external {
+        (bool ok,) = staking.call(abi.encodeWithSignature("claimStake()"));
+        require(ok, "claimStake failed");
+    }
 }
 
 /// @notice Auction bidder that burns gas on outbid refund receive.

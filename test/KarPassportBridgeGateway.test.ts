@@ -1009,6 +1009,49 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
   });
 
+  it("locked dispute bond is not stranded by bridge refuse-while-DISPUTED", async () => {
+    const { hub } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://bond-lock",
+    );
+    await joinVerifier(hub.stack.staking, hub.stack.verifier);
+    await hub.stack.passport.write.verifyPassport([tokenId], {
+      account: hub.stack.verifier.account,
+    });
+    await hub.stack.passport.write.disputePassport([tokenId, "freeze"], {
+      account: seller.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    const lockedBefore = (await hub.stack.passport.read.totalLockedDeposits()) as bigint;
+    const depositBefore = (await hub.stack.passport.read.disputeDeposits([tokenId])) as bigint;
+    assert.equal(lockedBefore, DISPUTE_DEPOSIT);
+    assert.equal(depositBefore, DISPUTE_DEPOSIT);
+
+    await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+      account: seller.account,
+    });
+    await assert.rejects(
+      bridgeSend(
+        hub.gateway,
+        sendParam(EID_SPOKE, seller.account.address, tokenId),
+        seller.account,
+      ),
+      revertsWith("PassportDisputed"),
+    );
+
+    assert.equal(await hub.stack.passport.read.totalLockedDeposits(), lockedBefore);
+    assert.equal(await hub.stack.passport.read.disputeDeposits([tokenId]), depositBefore);
+    assert.equal(Number(await hub.stack.passport.read.passportStatus([tokenId])), STATUS_DISPUTED);
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+  });
+
   it("VERSION is 1.2.0-rc.1", async () => {
     assert.equal(await pair.hub.gateway.read.VERSION(), "1.2.0-rc.1");
   });

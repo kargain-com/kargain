@@ -17,6 +17,11 @@ export const KarPassportAbi = [
         "internalType": "uint256",
         "name": "disputeDeposit_",
         "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "platformRecipient_",
+        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
@@ -24,12 +29,22 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
-    "name": "CannotResolveSelfDispute",
+    "name": "CannotResolveOwnDispute",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "CannotSelfVerify",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "DisputeWindowActive",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "DisputeWindowElapsed",
     "type": "error"
   },
   {
@@ -275,6 +290,11 @@ export const KarPassportAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "ZeroDisputeDeposit",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -467,6 +487,31 @@ export const KarPassportAbi = [
       }
     ],
     "name": "DisputeDepositUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "caller",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "DisputeExpired",
     "type": "event"
   },
   {
@@ -785,6 +830,19 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "DISPUTE_WINDOW",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "VERSION",
     "outputs": [
       {
@@ -1029,6 +1087,25 @@ export const KarPassportAbi = [
         "type": "uint256"
       }
     ],
+    "name": "disputeOpenedAt",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
     "name": "disputeOpenedBy",
     "outputs": [
       {
@@ -1056,6 +1133,19 @@ export const KarPassportAbi = [
     "name": "disputePassport",
     "outputs": [],
     "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "expireDispute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -1320,6 +1410,19 @@ export const KarPassportAbi = [
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "platformRecipient",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -2672,6 +2775,11 @@ export const KarProStakingAbi = [
   },
   {
     "inputs": [],
+    "name": "NoUnbond",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotVerifier",
     "type": "error"
   },
@@ -2731,6 +2839,16 @@ export const KarProStakingAbi = [
   {
     "inputs": [],
     "name": "TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "UnbondNotReady",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "UnbondPending",
     "type": "error"
   },
   {
@@ -2824,6 +2942,31 @@ export const KarProStakingAbi = [
     "anonymous": false,
     "inputs": [
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "verifier",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "StakeClaimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
         "indexed": false,
         "internalType": "address",
         "name": "token",
@@ -2837,6 +2980,31 @@ export const KarProStakingAbi = [
       }
     ],
     "name": "StakeTokenSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "verifier",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "unlockAt",
+        "type": "uint256"
+      }
+    ],
+    "name": "UnbondStarted",
     "type": "event"
   },
   {
@@ -2895,7 +3063,13 @@ export const KarProStakingAbi = [
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "returned",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "unlockAt",
         "type": "uint256"
       }
     ],
@@ -2905,6 +3079,19 @@ export const KarProStakingAbi = [
   {
     "inputs": [],
     "name": "MIN_STAKE_FLOOR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "UNBONDING_PERIOD",
     "outputs": [
       {
         "internalType": "uint256",
@@ -2970,6 +3157,13 @@ export const KarProStakingAbi = [
       }
     ],
     "name": "becomeVerifierToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "claimStake",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -3169,6 +3363,11 @@ export const KarProStakingAbi = [
         "internalType": "bool",
         "name": "active",
         "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "unlockAt",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

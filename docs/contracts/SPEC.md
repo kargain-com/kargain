@@ -133,19 +133,27 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 
 | Parameter | Default (deploy.ts) | Admin |
 |-----------|---------------------|-------|
-| `disputeDeposit` | `0.01 ether` | `setDisputeDeposit` (owner) |
+| `disputeDeposit` | `0.01 ether` (must be **non-zero**) | `setDisputeDeposit` (owner → Timelock48h after Nuclear handoff) |
+| `DISPUTE_WINDOW` | `14 days` (constant) | — |
+| `platformRecipient` | Immutable ctor (same as escrows) | — |
 | `totalLockedDeposits` | Sum of active bonds | Accounting only |
+| `disputeOpenedAt` | Stamped on open; cleared on every terminal | — |
 
-| Action | Caller | Effect |
-|--------|--------|--------|
-| `disputePassport` | Anyone (payable) | VERIFIED → DISPUTED; locks `msg.value ≥ disputeDeposit`; records opener |
-| `withdrawDispute` | Dispute opener only | DISPUTED → VERIFIED; full deposit refund to opener |
-| `resolveDispute(ConfirmDispute)` | Active verifier (≠ opener) | → UNVERIFIED; deposit to **opener** |
-| `resolveDispute(RejectDispute)` | Active verifier (≠ opener) | → VERIFIED; deposit to **resolver** (not seller) |
+| Action | Caller | Effect | Bond |
+|--------|--------|--------|------|
+| `disputePassport` | Anyone (payable) | VERIFIED → DISPUTED; locks `msg.value ≥ disputeDeposit`; stamps opener + `disputeOpenedAt` | Locked |
+| `withdrawDispute` | Opener only, **before** window end | DISPUTED → VERIFIED; free full refund | → opener |
+| `resolveDispute(ConfirmDispute)` | Active verifier ≠ opener ≠ `ownerOf` ≠ `passportVerifier` | → UNVERIFIED; clear verifier | → opener |
+| `resolveDispute(RejectDispute)` | Same independent verifier | → VERIFIED; keep verifier | → **`platformRecipient`** (never resolver) |
+| `expireDispute` | Anyone, **after** window | → UNVERIFIED; clear verifier | → **`platformRecipient`** |
 
-`DisputeOutcome`: `ConfirmDispute` (0) = verification was wrong; `RejectDispute` (1) = verification stands.
+`DisputeOutcome`: `ConfirmDispute` (0) = verification was wrong; `RejectDispute` (1) = verification stands. Expiry does **not** decide merits and does **not** restore VERIFIED — the assertion lapses for lack of professional backing within the window.
 
-Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefing risk documented in NatSpec).
+**Party exclusion:** covers the opener, the passport **owner**, and the **recorded `passportVerifier`**. It does **not** exclude a different verifier the owner later hires to resolve — owners pay verifiers for verification and for independent resolution.
+
+**`setDisputeDeposit`:** rejects zero (`ZeroDisputeDeposit`) so the deterrent cannot be switched off by value. There is **no** on-chain ceiling; governance can raise the bond high enough to make verifications effectively unchallengeable — control is Timelock48h visibility and cancellability.
+
+**Accepted risk — open-window griefing freeze:** a freeze of up to `DISPUTE_WINDOW` is available for the cost of gas. It blocks auctions, bridging, and metadata updates — **not** marketplace fixed-price sale. The counter is not a harsher withdrawal rule: the owner hires an independent verifier whose Reject restores VERIFIED and sends the bond to the platform, so every failed attempt costs the attacker the full bond. Withdrawal before the window stays free and whole so an honest challenger who sees no engagement can exit.
 
 ### Unchanged v1.1 behaviors
 
@@ -160,14 +168,15 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 | Function | Access | Behavior |
 |----------|--------|----------|
 | `chainIdOf` / `localIdOf` | view | Decode tokenId namespace |
-| `setDisputeDeposit` | owner | Update minimum bond; emits `DisputeDepositUpdated` |
+| `setDisputeDeposit` | owner | Update minimum bond (**≠ 0**); emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedDeposits` |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
 | `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `disputePassport` | anyone + ETH | VERIFIED → DISPUTED + deposit |
-| `withdrawDispute` | dispute opener | DISPUTED → VERIFIED + refund |
-| `resolveDispute` | active verifier | Resolve DISPUTED; route deposit |
+| `withdrawDispute` | dispute opener (before window) | DISPUTED → VERIFIED + full refund |
+| `resolveDispute` | independent active verifier | Resolve DISPUTED; bond by fault (Confirm → opener; Reject → platform) |
+| `expireDispute` | anyone (after window) | DISPUTED → UNVERIFIED; bond → platform |
 | `appendRecord` | token owner | Append typed record |
 | `reportDiscrepancy` | anyone | Append discrepancy record (no status change) |
 | `appendAttestation` | active verifier | Append attestation record |
@@ -185,12 +194,16 @@ Setting `disputeDeposit` to zero allows zero-cost disputes (owner choice; griefi
 | `NotActiveVerifier` | Verifier gate failed |
 | `CannotSelfVerify` | Verifier owns passport |
 | `InvalidStatus` | Wrong status for operation |
-| `EmptyField` | Required string/zero address empty |
+| `EmptyField` | Required string empty |
+| `ZeroAddress` | Zero address where forbidden |
+| `ZeroDisputeDeposit` | Ctor or `setDisputeDeposit` with zero bond |
 | `SameURI` | URI unchanged |
 | `InsufficientDeposit` | `disputePassport` value too low |
 | `NotDisputeOpener` | `withdrawDispute` not opener |
 | `NoActiveDispute` | Not DISPUTED |
-| `CannotResolveSelfDispute` | Resolver is dispute opener |
+| `CannotResolveOwnDispute` | Resolver is opener, owner, or recorded `passportVerifier` |
+| `DisputeWindowActive` | `expireDispute` before window end |
+| `DisputeWindowElapsed` | `withdrawDispute` after window end |
 | `NothingToRescue` | Rescue amount invalid (free balance excludes locked deposits **and** outstanding native claims) |
 | `NoClaim` | `withdrawClaim` with zero pending balance |
 | `TransferFailed` | `withdrawClaim` transfer failed (push paths credit a claim instead) |
@@ -236,10 +249,10 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ### I.4. KarProStaking (`2.0.0-rc.1`)
 
-- **`isActiveVerifier(address)`** — single source of truth (active stake record).
-- **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass.
-- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Leave refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Auction `asset`.
-- **`leave()`** — full stake refund of recorded asset; **no slashing**; `proPass.burn` wrapped in try/catch so stake always returns.
+- **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
+- **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed.
+- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Claim refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Auction `asset`.
+- **Two-phase leave:** `leave()` ends the role immediately (`active = false`, burn try/catch), sets `unlockAt = now + UNBONDING_PERIOD` (**14 days**, equal to passport `DISPUTE_WINDOW` by design). `claimStake()` after unlock pays via ClaimablePayouts (failed push → withdrawable claim). **No slashing** in this ship. There is **no** dispute↔leave coupling — a future slash design must use a monotonic “not before” unlock timestamp (bug → early unlock), never a decrementing challenge counter (bug → permanent lock).
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
 - **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). The Kargain `/kar-pro` UI composes service margin (nav display currency) plus an estimated `verifyPassport` gas cost at save time and writes the sum as a single wei value via `setVerificationFee`. Accepted off-chain payment methods are signaled in Nostr kind 0 as optional `verifierPaymentMethods` (`eth`, `usdc`, `lightning`; absent = all three). Workflow: verifier sets fee → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
 - Constructor requires non-zero `proPass` (`ZeroAddress`). Stake storage layout ships only via Nuclear #2 redeploy.
@@ -250,7 +263,8 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 |----------|--------|----------|
 | `becomeVerifierNative` | anyone + ETH | Stake native (`asset = 0`); mint pass |
 | `becomeVerifierToken` | anyone | Stake configured ERC-20 (`asset = stakeToken` at join); mint pass |
-| `leave` | active verifier | Deactivate; refund **recorded** asset; attempt burn |
+| `leave` | active verifier | End role; start 14d unbond; attempt burn (no payout yet) |
+| `claimStake` | after unlock | Pay recorded asset (or credit claim); clear unbond state |
 | `setMinStakeNative` | owner | New minimum (≥ floor) for **new** joiners |
 | `setStakeToken` | owner | Enable/update ERC-20 stake token + min (does not rewrite existing stakes) |
 | `isActiveVerifier` | view | Active stake check |
@@ -262,14 +276,18 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 |-------|------|
 | `BelowMinStake` | Native stake below minimum |
 | `AlreadyVerifier` | Active stake exists |
+| `UnbondPending` | Join while unbonding / unclaimed stake remains |
 | `NotVerifier` | Leave or fee update without active stake |
+| `UnbondNotReady` | `claimStake` before unlock |
+| `NoUnbond` | `claimStake` with no pending unbond |
 | `TokenNotEnabled` | Token path not configured |
 | `NoClaim` | `withdrawClaim` with zero pending balance |
-| `TransferFailed` | `withdrawClaim` transfer failed (leave credits a claim on push failure) |
+| `TransferFailed` | `withdrawClaim` transfer failed (`claimStake` credits a claim on push failure) |
 | `TokenHasNoCode` | `setStakeToken` address has no code |
 | `TokenNonConforming` | `setStakeToken` token fails ERC-20 transfer return probe |
 | `BelowMinStakeFloor` | Owner sets min below 0.001 ETH |
 | `ZeroAddress` | Constructor `proPass_ == 0` |
+
 ---
 
 ### I.5. MarketplaceEscrow (`2.2.0-rc.1`)
@@ -560,13 +578,15 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 
 ### Dispute deposit economics
 
-Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confirm → opener compensated; Reject → resolver compensated (incentivizes resolution).
+Default **0.01 ETH** bond on `disputePassport` (non-zero; Timelock-gated after Nuclear handoff). Confirm → opener compensated; Reject / expire → **`platformRecipient`** (never the resolver). Withdraw before the 14-day window → full free refund to opener.
 
 ### Accepted risks (audit + design)
 
 | Risk | Mitigation / acceptance |
 |------|-------------------------|
 | **`platformRecipient` immutable** | Wrong address at deploy is permanent; verify before deploy |
+| **Open-window griefing freeze** | Up to 14d freeze (auctions/bridge/URI) for gas cost; marketplace sale still allowed; counter = owner-funded independent Reject → bond to platform |
+| **No bond ceiling** | Governance can raise deposit enough to make verifications unchallengeable; Timelock48h visibility + cancel is the control |
 | **Reverting seller** | Seller contract wallet can block ETH payout; document for buyers |
 | **Agent fee front-run** | Agent may change fee between quote and buy; `ownerMinPrice` protects seller net; buyers should quote immediately before purchase |
 | **Oracle staleness** | `maxFeedStaleness` (default 3600s); stale feeds revert buys |
@@ -577,7 +597,7 @@ Default **0.01 ETH** bond on `disputePassport` reduces frivolous disputes. Confi
 ### Permanent invariants
 
 - **`CannotSelfVerify`:** verifier cannot verify own passport.
-- **`CannotResolveSelfDispute`:** opener cannot resolve own dispute (v1.2.0).
+- **`CannotResolveOwnDispute`:** opener, passport owner, and recorded `passportVerifier` cannot resolve; a later hired independent verifier may.
 
 ---
 
@@ -662,7 +682,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 2. Deploy **KarProPass** (always fresh — no reuse on Nuclear redeploy).
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
-5. Deploy **KarPassport** `1.6.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**).
+5. Deploy **KarPassport** `1.6.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
 6. Deploy **MarketplaceEscrow** implementation (passport, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
 7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
 8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
@@ -670,7 +690,17 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 10. Deploy **AuctionEscrow** impl + proxy (`initialize(timelock)`); `platformFeeBps` **10** (no wrapped-native ctor arg — claim payouts).
 11. Deploy **KarPassportBridgeGateway** (passport, marketplace proxy, **auctionEscrow**, LZ endpoint, delegate).
 12. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
-13. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
+13. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
+14. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
+
+After step 13, Timelock48h owns these ops (48h delay — no second purpose-built bond delay):
+
+| Contract | Owner-gated ops now behind Timelock48h |
+|----------|----------------------------------------|
+| KarPassport | `setDisputeDeposit`, `rescueExcessEth` (`setBridgeGateway` already consumed one-time) |
+| KarProStaking | `setMinStakeNative`, `setStakeToken` |
+
+Marketplace `transferUpgradeAuthority` remains the UUPS handoff (step 9).
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `bridgeGateway`).
 
@@ -1216,7 +1246,7 @@ Verbatim from contract headers:
 | Marketplace admin | Deployer EOA | Timelock48h |
 | Dispute withdraw | Off-chain convention (`reportDiscrepancy`) | On-chain `withdrawDispute` + deposit refund |
 | Dispute resolve | `resolveDispute(bool uphold)` | `DisputeOutcome` enum + deposit routing |
-| Self-resolve guard | None | `CannotResolveSelfDispute` |
+| Self-resolve guard | None | `CannotResolveOwnDispute` (opener / owner / recorded verifier) |
 | tokenId | Sequential | Chain-prefixed (`chainId << 128`) |
 | Verifier fee signal | None | `verificationFee` |
 | Bridge | None | ONFT adapter + spoke ONFT |

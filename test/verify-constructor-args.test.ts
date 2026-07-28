@@ -42,6 +42,7 @@ describe("verify constructor args", () => {
       baseManifest.karProStaking,
       baseManifest.deployer,
       DISPUTE_DEPOSIT,
+      baseManifest.platformRecipient,
     ]);
   });
 

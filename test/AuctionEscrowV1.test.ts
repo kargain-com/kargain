@@ -677,7 +677,8 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
-    await passport.write.resolveDispute([tokenId2, 0], { account: stack.seller.account });
+    await joinVerifierIfNeeded(stack.staking, stack.stranger);
+    await passport.write.resolveDispute([tokenId2, 0], { account: stack.stranger.account });
     assert.equal(Number(await passport.read.passportStatus([tokenId2])), 0);
     await increaseTime(publicClient, THREE_DAYS + EXTENSION_WINDOW + 1n);
     await auction.write.settle([tokenId2]);
@@ -699,7 +700,8 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
-    await passport.write.resolveDispute([tokenId, 0], { account: seller.account });
+    await joinVerifierIfNeeded(stack.staking, stack.stranger);
+    await passport.write.resolveDispute([tokenId, 0], { account: stack.stranger.account });
     assert.equal(Number(await passport.read.passportStatus([tokenId])), 0);
 
     await increaseTime(publicClient, THREE_DAYS + EXTENSION_WINDOW + 1n);

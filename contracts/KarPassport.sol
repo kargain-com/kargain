@@ -11,6 +11,7 @@ pragma solidity ^0.8.28;
 //     any change = new deployment = bump MINOR or MAJOR
 //   Upgradeable contracts (MarketplaceEscrow):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
+//   Amend-in-place: ship VERSION stays until it exists on a commercial chain
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -25,10 +26,14 @@ interface IKarProStaking {
 
 /// @title KarPassport
 /// @notice ERC-721 vehicle passport with verification lifecycle, dispute deposits, and append-only records.
-/// @dev v1.4: claim-on-failure payouts for dispute deposits and rescue; gateway-bound bridge (SPEC §I.12).
+/// @dev Dispute window, party exclusion, and bond-by-fault routing (SPEC §I.2 / §I.8). Claim-on-failure payouts;
+///      gateway-bound bridge (SPEC §I.12). Storage layout ships only via Nuclear #2 redeploy.
 /// @custom:version 1.6.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyGuard {
     string public constant VERSION = "1.6.0-rc.1";
+
+    /// @notice Window after open during which opener may withdraw; afterwards only expire/resolve.
+    uint256 public constant DISPUTE_WINDOW = 14 days;
 
     enum Status {
         UNVERIFIED,
@@ -50,6 +55,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     }
 
     address public immutable karProStakingAddress;
+    address public immutable platformRecipient;
     uint256 public immutable tokenIdOffset;
 
     uint256 public disputeDeposit;
@@ -63,6 +69,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     mapping(uint256 => PassportRecord[]) public records;
     mapping(uint256 => uint256) public disputeDeposits;
     mapping(uint256 => address) public disputeOpenedBy;
+    mapping(uint256 => uint256) public disputeOpenedAt;
 
     /// @notice One-time bound bridge gateway (set after deploy). Zero until `setBridgeGateway`.
     address public bridgeGateway;
@@ -74,6 +81,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     event PassportDisputed(uint256 indexed tokenId, address indexed disputer, string reason);
     event DisputeResolved(uint256 indexed tokenId, address indexed resolver, DisputeOutcome outcome);
     event DisputeWithdrawn(uint256 indexed tokenId, address indexed opener, uint256 amount);
+    event DisputeExpired(uint256 indexed tokenId, address indexed caller, uint256 amount);
     event DisputeDepositUpdated(uint256 previousAmount, uint256 newAmount);
     event DisputeDepositPaid(uint256 indexed tokenId, address indexed opener, uint256 amount);
     event EthRescued(address indexed to, uint256 amount);
@@ -98,11 +106,14 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     error InvalidStatus(Status current);
     error EmptyField(string fieldName);
     error ZeroAddress();
+    error ZeroDisputeDeposit();
     error SameURI();
     error InsufficientDeposit();
     error NotDisputeOpener();
     error NoActiveDispute();
-    error CannotResolveSelfDispute();
+    error CannotResolveOwnDispute();
+    error DisputeWindowActive();
+    error DisputeWindowElapsed();
     error NothingToRescue();
     error TokenIdSpaceExhausted();
     error GatewayAlreadySet();
@@ -120,13 +131,19 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     /// @notice Deploys KarPassport with chain-scoped tokenId offset and default dispute deposit.
     /// @param karProStakingAddress_ KarProStaking contract for verifier checks.
     /// @param initialOwner Owner for dispute deposit and ETH rescue parameters.
-    /// @param disputeDeposit_ Initial dispute bond in wei (default 0.01 ether recommended).
-    constructor(address karProStakingAddress_, address initialOwner, uint256 disputeDeposit_)
-        ERC721("KarPassport", "KPPT")
-        Ownable(initialOwner)
-    {
+    /// @param disputeDeposit_ Initial dispute bond in wei (must be non-zero; default 0.01 ether recommended).
+    /// @param platformRecipient_ Immutable recipient for reject/expire bond routing (same as escrow fees).
+    constructor(
+        address karProStakingAddress_,
+        address initialOwner,
+        uint256 disputeDeposit_,
+        address platformRecipient_
+    ) ERC721("KarPassport", "KPPT") Ownable(initialOwner) {
         if (karProStakingAddress_ == address(0)) revert ZeroAddress();
+        if (platformRecipient_ == address(0)) revert ZeroAddress();
+        if (disputeDeposit_ == 0) revert ZeroDisputeDeposit();
         karProStakingAddress = karProStakingAddress_;
+        platformRecipient = platformRecipient_;
         tokenIdOffset = uint256(block.chainid) << 128;
         _nextTokenId = tokenIdOffset;
         disputeDeposit = disputeDeposit_;
@@ -210,13 +227,14 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
     }
 
     /// @notice Owner updates the minimum dispute deposit for new disputes.
-    /// @param amount New minimum deposit in wei.
-    /// @dev Setting amount to zero disables griefing protection.
-    ///      Disputes can be opened at zero cost when deposit is 0.
-    function setDisputeDeposit(uint256 amount) external onlyOwner {
+    /// @param disputeDeposit_ New minimum deposit in wei (must be non-zero).
+    /// @dev Zero is rejected categorically so the deterrent cannot be switched off by value.
+    ///      Magnitude has no on-chain ceiling; Timelock48h visibility controls overpricing.
+    function setDisputeDeposit(uint256 disputeDeposit_) external onlyOwner {
+        if (disputeDeposit_ == 0) revert ZeroDisputeDeposit();
         uint256 previous = disputeDeposit;
-        disputeDeposit = amount;
-        emit DisputeDepositUpdated(previous, amount);
+        disputeDeposit = disputeDeposit_;
+        emit DisputeDepositUpdated(previous, disputeDeposit_);
     }
 
     /// @notice Withdraw ETH not locked in active dispute deposits or outstanding claims.
@@ -307,6 +325,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         passportStatus[tokenId] = Status.DISPUTED;
         disputeDeposits[tokenId] = msg.value;
         disputeOpenedBy[tokenId] = msg.sender;
+        disputeOpenedAt[tokenId] = block.timestamp;
         totalLockedDeposits += msg.value;
 
         _appendRecord(tokenId, "discrepancy", reason, "", msg.sender);
@@ -314,17 +333,16 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         emit DisputeDepositPaid(tokenId, msg.sender, msg.value);
     }
 
-    /// @notice Dispute opener withdraws dispute, restores VERIFIED, and receives full deposit refund.
+    /// @notice Dispute opener withdraws before the window ends: restores VERIFIED, full deposit refund.
     /// @param tokenId Passport token id.
     function withdrawDispute(uint256 tokenId) external nonReentrant {
         _requireExists(tokenId);
         _requireNotBridgedAway(tokenId);
         if (passportStatus[tokenId] != Status.DISPUTED) revert NoActiveDispute();
         if (disputeOpenedBy[tokenId] != msg.sender) revert NotDisputeOpener();
+        if (block.timestamp >= disputeOpenedAt[tokenId] + DISPUTE_WINDOW) revert DisputeWindowElapsed();
 
-        uint256 amount = disputeDeposits[tokenId];
-        disputeDeposits[tokenId] = 0;
-        totalLockedDeposits -= amount;
+        uint256 amount = _clearDisputeAccounting(tokenId);
 
         passportStatus[tokenId] = Status.VERIFIED;
 
@@ -335,39 +353,60 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         emit DisputeWithdrawn(tokenId, msg.sender, amount);
     }
 
-    /// @notice Active verifier resolves a dispute; deposit goes to disputer or resolver.
+    /// @notice Active verifier resolves a dispute; bond routes by fault (never to the resolver).
     /// @param tokenId Passport token id.
-    /// @param outcome ConfirmDispute (verification wrong) or RejectDispute (verification stands).
+    /// @param outcome ConfirmDispute (assertion wrong → UNVERIFIED, bond → opener) or RejectDispute (stands, bond → platform).
+    /// @dev Excludes opener, passport owner, and recorded passportVerifier. A later hired independent verifier may resolve.
     function resolveDispute(uint256 tokenId, DisputeOutcome outcome) external nonReentrant {
         _requireExists(tokenId);
         _requireNotBridgedAway(tokenId);
         if (!IKarProStaking(karProStakingAddress).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         if (passportStatus[tokenId] != Status.DISPUTED) revert NoActiveDispute();
-        if (disputeOpenedBy[tokenId] == msg.sender) revert CannotResolveSelfDispute();
 
         address opener = disputeOpenedBy[tokenId];
-        uint256 amount = disputeDeposits[tokenId];
-        disputeDeposits[tokenId] = 0;
-        if (amount > 0) {
-            totalLockedDeposits -= amount;
+        address challenged = passportVerifier[tokenId];
+        if (msg.sender == opener || msg.sender == ownerOf(tokenId) || msg.sender == challenged) {
+            revert CannotResolveOwnDispute();
         }
 
-        address payee;
+        uint256 amount = _clearDisputeAccounting(tokenId);
+
         if (outcome == DisputeOutcome.ConfirmDispute) {
             passportStatus[tokenId] = Status.UNVERIFIED;
             passportVerifier[tokenId] = address(0);
             passportVerifiedAt[tokenId] = 0;
-            payee = opener;
+            if (amount > 0) {
+                _payNative(opener, amount);
+            }
         } else {
             passportStatus[tokenId] = Status.VERIFIED;
-            payee = msg.sender;
-        }
-
-        if (amount > 0) {
-            _payNative(payee, amount);
+            if (amount > 0) {
+                _payNative(platformRecipient, amount);
+            }
         }
 
         emit DisputeResolved(tokenId, msg.sender, outcome);
+    }
+
+    /// @notice Permissionless conclusion after the dispute window: assertion lapses to UNVERIFIED; bond → platform.
+    /// @param tokenId Passport token id.
+    function expireDispute(uint256 tokenId) external nonReentrant {
+        _requireExists(tokenId);
+        _requireNotBridgedAway(tokenId);
+        if (passportStatus[tokenId] != Status.DISPUTED) revert NoActiveDispute();
+        if (block.timestamp < disputeOpenedAt[tokenId] + DISPUTE_WINDOW) revert DisputeWindowActive();
+
+        uint256 amount = _clearDisputeAccounting(tokenId);
+
+        passportStatus[tokenId] = Status.UNVERIFIED;
+        passportVerifier[tokenId] = address(0);
+        passportVerifiedAt[tokenId] = 0;
+
+        if (amount > 0) {
+            _payNative(platformRecipient, amount);
+        }
+
+        emit DisputeExpired(tokenId, msg.sender, amount);
     }
 
     /// @notice Owner appends a rich on-chain record.
@@ -445,6 +484,17 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
 
     function _requireNotBridgedAway(uint256 tokenId) internal view {
         if (custodyLocked[tokenId]) revert PassportBridgedAway();
+    }
+
+    /// @dev Clears deposit, opener, and openedAt; unlocks accounting. Returns locked amount.
+    function _clearDisputeAccounting(uint256 tokenId) internal returns (uint256 amount) {
+        amount = disputeDeposits[tokenId];
+        disputeDeposits[tokenId] = 0;
+        disputeOpenedBy[tokenId] = address(0);
+        disputeOpenedAt[tokenId] = 0;
+        if (amount > 0) {
+            totalLockedDeposits -= amount;
+        }
     }
 
     function _appendRecord(

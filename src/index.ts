@@ -313,6 +313,13 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
     .set(disputeResolvedTrustFields(uphold, event.block.timestamp));
 });
 
+ponder.on("KarPassport:DisputeExpired", async ({ event, context }) => {
+  // Expiry lapses verification (UNVERIFIED) — same trust fields as ConfirmDispute.
+  await context.db
+    .update(passport, { id: event.args.tokenId.toString() })
+    .set(disputeResolvedTrustFields(false, event.block.timestamp));
+});
+
 ponder.on("KarPassport:DisputeWithdrawn", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })

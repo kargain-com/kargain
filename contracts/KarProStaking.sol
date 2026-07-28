@@ -11,6 +11,7 @@ pragma solidity ^0.8.28;
 //     any change = new deployment = bump MINOR or MAJOR
 //   Upgradeable contracts (MarketplaceEscrow):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
+//   Amend-in-place: ship VERSION stays until it exists on a commercial chain
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -27,20 +28,24 @@ interface IKarProPass {
 
 /// @title KarProStaking
 /// @notice Single entry point to become a verifier: stake ETH or an optional ERC-20, receive a KarProPass.
-/// @dev Stakes are fully refundable on leave; failed refunds become withdrawable claims. Owner cannot withdraw user funds.
-///      Each stake records its own asset address (`address(0)` = native) — leave refunds that asset, never the current
-///      `stakeToken` setting. Storage layout ships only via Nuclear #2 redeploy.
+/// @dev Two-phase leave: role ends immediately; stake unlocks after UNBONDING_PERIOD via claimStake (ClaimablePayouts
+///      on failed push). Re-entry blocked while unbonding. No dispute coupling — future slashing should use a
+///      monotonic not-before unlock, never a decrementing counter. Storage layout: Nuclear #2 redeploy only.
 /// @custom:version 2.0.0-rc.1
 contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
     string public constant VERSION = "2.0.0-rc.1";
 
     using SafeERC20 for IERC20;
 
+    /// @notice Delay between leave (role ends) and claimStake (funds unlock). Equal to passport DISPUTE_WINDOW by design.
+    uint256 public constant UNBONDING_PERIOD = 14 days;
+
     struct Stake {
         address asset;
         uint256 amount;
         uint256 stakedAt;
         bool active;
+        uint256 unlockAt;
     }
 
     IKarProPass public immutable proPass;
@@ -56,13 +61,18 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
     error BelowMinStake();
     error AlreadyVerifier();
+    error UnbondPending();
     error NotVerifier();
+    error UnbondNotReady();
+    error NoUnbond();
     error TokenNotEnabled();
     error BelowMinStakeFloor();
     error ZeroAddress();
 
     event VerifierJoined(address indexed verifier, address asset, uint256 amount);
-    event VerifierLeft(address indexed verifier, uint256 returned);
+    event VerifierLeft(address indexed verifier, uint256 amount, uint256 unlockAt);
+    event UnbondStarted(address indexed verifier, uint256 amount, uint256 unlockAt);
+    event StakeClaimed(address indexed verifier, address asset, uint256 amount);
     event MinStakeNativeUpdated(uint256 newMin);
     event StakeTokenSet(address token, uint256 minAmount);
     event VerificationFeeUpdated(address indexed verifier, uint256 fee);
@@ -86,13 +96,14 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         nonReentrant
     {
         if (msg.value < minStakeNative) revert BelowMinStake();
-        if (stakes[msg.sender].active) revert AlreadyVerifier();
+        _requireCanJoin(msg.sender);
 
         stakes[msg.sender] = Stake({
             asset: address(0),
             amount: msg.value,
             stakedAt: block.timestamp,
-            active: true
+            active: true,
+            unlockAt: 0
         });
 
         proPass.mint(msg.sender, category, name, metadataURI);
@@ -109,7 +120,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         nonReentrant
     {
         if (stakeToken == address(0)) revert TokenNotEnabled();
-        if (stakes[msg.sender].active) revert AlreadyVerifier();
+        _requireCanJoin(msg.sender);
 
         address tokenAddr = stakeToken;
         IERC20 token = IERC20(tokenAddr);
@@ -122,7 +133,8 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
             asset: tokenAddr,
             amount: received,
             stakedAt: block.timestamp,
-            active: true
+            active: true,
+            unlockAt: 0
         });
 
         proPass.mint(msg.sender, category, name, metadataURI);
@@ -130,34 +142,52 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         emit VerifierJoined(msg.sender, tokenAddr, received);
     }
 
-    /// @notice Leave verifier status: burn KarProPass and return the locked stake amount.
-    /// @dev burn is wrapped in try/catch so the stake is always refundable even if KarProPass burn authorization changed.
-    ///      Refund uses the stake's recorded asset, not the current `stakeToken` configuration.
+    /// @notice End verifier role immediately; stake unlocks after UNBONDING_PERIOD via claimStake.
+    /// @dev burn is wrapped in try/catch so unbonding always starts even if KarProPass burn authorization changed.
     function leave() external nonReentrant {
-        Stake memory s = stakes[msg.sender];
+        Stake storage s = stakes[msg.sender];
         if (!s.active) revert NotVerifier();
 
-        stakes[msg.sender].active = false;
-        stakes[msg.sender].amount = 0;
+        uint256 amount = s.amount;
+        uint256 unlockAt = block.timestamp + UNBONDING_PERIOD;
+        s.active = false;
+        s.unlockAt = unlockAt;
 
         try proPass.burn(msg.sender) {} catch {}
 
-        if (s.asset == address(0)) {
-            _payNative(msg.sender, s.amount);
-        } else {
-            _payErc20(s.asset, msg.sender, s.amount);
-        }
-
-        emit VerifierLeft(msg.sender, s.amount);
+        emit VerifierLeft(msg.sender, amount, unlockAt);
+        emit UnbondStarted(msg.sender, amount, unlockAt);
     }
 
-    /// @notice Withdraw a pending native (`asset == address(0)`) or ERC-20 stake claim after a failed leave payout.
+    /// @notice Claim stake after the unbonding period. Failed push credits ClaimablePayouts.
+    function claimStake() external nonReentrant {
+        Stake storage s = stakes[msg.sender];
+        if (s.active || s.unlockAt == 0) revert NoUnbond();
+        if (block.timestamp < s.unlockAt) revert UnbondNotReady();
+
+        address asset = s.asset;
+        uint256 amount = s.amount;
+        s.amount = 0;
+        s.unlockAt = 0;
+        s.asset = address(0);
+        s.stakedAt = 0;
+
+        if (asset == address(0)) {
+            _payNative(msg.sender, amount);
+        } else {
+            _payErc20(asset, msg.sender, amount);
+        }
+
+        emit StakeClaimed(msg.sender, asset, amount);
+    }
+
+    /// @notice Withdraw a pending native (`asset == address(0)`) or ERC-20 stake claim after a failed claimStake payout.
     function withdrawClaim(address asset) external nonReentrant {
         _withdrawClaim(asset);
     }
 
     /// @notice Updates the minimum native stake for new verifiers only.
-    /// @dev Existing stakes keep their locked amount until leave.
+    /// @dev Existing stakes keep their locked amount until leave + claim.
     ///      Minimum is capped at MIN_STAKE_FLOOR to prevent accidental zero-stake sybil attack.
     /// @param v New minimum native stake in wei.
     function setMinStakeNative(uint256 v) external onlyOwner {
@@ -178,7 +208,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
     /// @notice Returns whether an address is an active verifier with a locked stake.
     /// @param a Address to query.
-    /// @return True if the address has an active stake and KarProPass.
+    /// @return True if the address has an active stake (false immediately after leave, including during unbond).
     function isActiveVerifier(address a) external view returns (bool) {
         return stakes[a].active;
     }
@@ -189,5 +219,11 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         if (!stakes[msg.sender].active) revert NotVerifier();
         verificationFee[msg.sender] = fee;
         emit VerificationFeeUpdated(msg.sender, fee);
+    }
+
+    function _requireCanJoin(address account) internal view {
+        Stake storage s = stakes[account];
+        if (s.active) revert AlreadyVerifier();
+        if (s.unlockAt != 0 || s.amount > 0) revert UnbondPending();
     }
 }

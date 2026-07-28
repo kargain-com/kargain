@@ -188,6 +188,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       const owner = wallets[1]!;
       const verifier = wallets[2]!;
       const buyer = wallets[2]!;
+      const resolver = wallets[3]!;
 
       // 1 — becomeVerifierNative
       await joinVerifier(staking, verifier, {
@@ -228,8 +229,13 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       });
       await assertChainStatus(passport, firstTokenId, 2);
 
-      // 7 — resolveDispute(false)
-      await passport.write.resolveDispute([firstTokenId, false], { account: verifier.account });
+      // 7 — resolveDispute(Confirm) via independent resolver
+      await joinVerifier(staking, resolver, {
+        category: Category.INSPECTOR,
+        name: "E2E Resolver",
+        metadataURI: "ar://e2e-resolver",
+      });
+      await passport.write.resolveDispute([firstTokenId, 0], { account: resolver.account });
       await assertChainStatus(passport, firstTokenId, 0);
 
       // 8 — setPassportURI after resolve (T9)

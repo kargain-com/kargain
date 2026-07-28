@@ -41,6 +41,8 @@ interface IKarProStakingJoinLeave {
         payable;
 
     function leave() external;
+
+    function claimStake() external;
 }
 
 /// @notice Recipient that reverts on native receive until `acceptEth` is set — tests claim credits.
@@ -69,9 +71,14 @@ contract RevertingRecipient {
         IKarProStakingJoinLeave(staking).becomeVerifierNative{value: msg.value}(category, name, metadataURI);
     }
 
-    /// @notice Leave staking; native refund hits receive() and fails → claim.
+    /// @notice Leave staking; role ends; stake unlocks after unbonding via claimStake.
     function leaveStaking(address staking) external {
         IKarProStakingJoinLeave(staking).leave();
+    }
+
+    /// @notice Claim unlocked stake after unbonding; native refund hits receive() and may fail → claim.
+    function claimStake(address staking) external {
+        IKarProStakingJoinLeave(staking).claimStake();
     }
 
     function withdrawClaim(address staking, address asset) external {

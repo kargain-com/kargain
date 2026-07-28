@@ -110,7 +110,12 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     const { viem } = connection;
     const { admin } = await deployPassportStack(viem);
     await assert.rejects(
-      viem.deployContract("KarPassport", [ZERO, admin.account.address, DISPUTE_DEPOSIT]),
+      viem.deployContract("KarPassport", [
+        ZERO,
+        admin.account.address,
+        DISPUTE_DEPOSIT,
+        admin.account.address,
+      ]),
       revertsWith("ZeroAddress"),
     );
   });

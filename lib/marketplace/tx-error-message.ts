@@ -31,7 +31,15 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   InsufficientDeposit: "The required deposit has changed. Please retry.",
   NotDisputeOpener: "Only the dispute opener can withdraw this dispute.",
   NoActiveDispute: "This passport is not in an active dispute.",
-  CannotResolveSelfDispute: "You cannot resolve a dispute you opened yourself.",
+  CannotResolveOwnDispute:
+    "You cannot resolve this dispute — you opened it, own the passport, or are the challenged verifier.",
+  DisputeWindowActive: "The dispute window has not ended yet.",
+  DisputeWindowElapsed:
+    "The dispute window has ended. Use expire instead of withdraw.",
+  ZeroDisputeDeposit: "Dispute deposit cannot be zero.",
+  UnbondPending: "Finish claiming your unbonding stake before rejoining.",
+  UnbondNotReady: "Your stake is still in the unbonding period.",
+  NoUnbond: "There is no unbonding stake to claim.",
   BidTooLow:
     "Bid at least [min next bid] — the minimum step is [3]% above the current bid.",
   AuctionEnded: "This auction has ended. The page will update shortly.",

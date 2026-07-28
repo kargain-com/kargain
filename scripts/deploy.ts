@@ -237,6 +237,7 @@ async function runLiveDeploy() {
       staking.address,
       deployerAddress,
       params.disputeDeposit,
+      params.platformRecipient,
     ]);
 
     const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
@@ -316,6 +317,24 @@ async function runLiveDeploy() {
     );
     if (boundGateway !== getAddress(gateway.address)) {
       throw new Error(`bridgeGateway mismatch: ${boundGateway} vs ${gateway.address}`);
+    }
+
+    const stakingContract = await viem.getContractAt("KarProStaking", staking.address);
+    await writeStep(viem, "KarPassport.transferOwnership → Timelock48h", () =>
+      passport.write.transferOwnership([timelock.address], { account: deployer.account }),
+    );
+    await writeStep(viem, "KarProStaking.transferOwnership → Timelock48h", () =>
+      stakingContract.write.transferOwnership([timelock.address], {
+        account: deployer.account,
+      }),
+    );
+    const passportOwner = getAddress((await passport.read.owner([])) as `0x${string}`);
+    if (passportOwner !== getAddress(timelock.address)) {
+      throw new Error(`KarPassport owner should be timelock, got ${passportOwner}`);
+    }
+    const stakingOwner = getAddress((await stakingContract.read.owner([])) as `0x${string}`);
+    if (stakingOwner !== getAddress(timelock.address)) {
+      throw new Error(`KarProStaking owner should be timelock, got ${stakingOwner}`);
     }
 
     const upgradeAuthority = getAddress(
