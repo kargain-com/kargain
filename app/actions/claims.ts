@@ -4,6 +4,13 @@ import { getAddress } from "viem";
 
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
+export type PendingClaimCreditApiRow = {
+  id: string;
+  amount: string;
+  reasonCode: string;
+  timestamp: string;
+};
+
 export type PendingClaimApiRow = {
   id: string;
   chainId: number;
@@ -14,6 +21,8 @@ export type PendingClaimApiRow = {
   reasonCode: string;
   updatedAt: string;
   firstCreditedAt: string;
+  /** Ledger credits for this four-tuple (chronological). */
+  credits: PendingClaimCreditApiRow[];
 };
 
 export type PendingClaimsResponse = {

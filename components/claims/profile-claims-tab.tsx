@@ -9,6 +9,7 @@ import { usePendingClaims } from "@/hooks/use-pending-claims";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { claimablePayoutsAbi } from "@/lib/claims/claimable-payouts-abi";
 import { formatClaimAmount } from "@/lib/claims/format-claim-amount";
+import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
 import { monoNumeric } from "@/lib/design/instrument-classes";
 import { shortChainName } from "@/lib/web3/supported-chains";
@@ -31,6 +32,19 @@ function ClaimRow({ claim }: { claim: PendingClaimView }) {
     nativeSymbol: meta.nativeSymbol,
     isNative: claim.isNative,
   });
+
+  const reasonExplanation = explainClaimFromCredits(
+    claim.credits.map((c) => ({
+      amount: c.amount,
+      reasonCode: c.reasonCode,
+      asset: claim.asset,
+    })),
+    {
+      decimals: meta.decimals,
+      symbol: meta.symbol,
+      nativeSymbol: meta.nativeSymbol,
+    },
+  );
 
   const onWithdraw = () => {
     void runTx(() =>
@@ -56,7 +70,7 @@ function ClaimRow({ claim }: { claim: PendingClaimView }) {
         Owed by {claim.roleLabel}
         <span className="font-mono text-xs text-text-tertiary"> · {claim.contract}</span>
       </p>
-      <p className="text-sm text-text-primary">{claim.reasonExplanation}</p>
+      <p className="whitespace-pre-line text-sm text-text-primary">{reasonExplanation}</p>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Button
           type="button"

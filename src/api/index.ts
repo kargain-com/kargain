@@ -9,6 +9,7 @@ import {
   passport,
   passportRecord,
   passportUriHistory,
+  claimCredit,
   pendingClaim,
   verifier,
 } from "ponder:schema";
@@ -881,9 +882,54 @@ app.get("/accounts/:address/claims", async (c) => {
     db.select({ value: count() }).from(pendingClaim).where(where),
   ]);
 
+  const creditConditions = [eq(claimCredit.account, address)];
+  if (chainId !== undefined) {
+    creditConditions.push(eq(claimCredit.chainId, chainId));
+  }
+  const creditRows =
+    rows.length === 0
+      ? []
+      : await db
+          .select()
+          .from(claimCredit)
+          .where(and(...creditConditions))
+          .orderBy(asc(claimCredit.timestamp));
+
+  const balanceKeys = new Set(
+    rows.map(
+      (r) =>
+        `${r.chainId}-${r.contract.toLowerCase()}-${r.account.toLowerCase()}-${r.asset.toLowerCase()}`,
+    ),
+  );
+
+  const creditsByBalance = new Map<
+    string,
+    { id: string; amount: bigint; reasonCode: string; timestamp: bigint }[]
+  >();
+  for (const credit of creditRows) {
+    const key = `${credit.chainId}-${credit.contract.toLowerCase()}-${credit.account.toLowerCase()}-${credit.asset.toLowerCase()}`;
+    if (!balanceKeys.has(key)) continue;
+    const list = creditsByBalance.get(key) ?? [];
+    list.push({
+      id: credit.id,
+      amount: credit.amount,
+      reasonCode: credit.reasonCode,
+      timestamp: credit.timestamp,
+    });
+    creditsByBalance.set(key, list);
+  }
+
+  const claims = rows.map((row) => {
+    const key = `${row.chainId}-${row.contract.toLowerCase()}-${row.account.toLowerCase()}-${row.asset.toLowerCase()}`;
+    return {
+      ...row,
+      credits: creditsByBalance.get(key) ?? [],
+    };
+  });
+
   return c.json(
     jsonBody({
-      claims: rows,
+      claims,
       total: totalRow[0]?.value ?? 0,
       page,
       limit,

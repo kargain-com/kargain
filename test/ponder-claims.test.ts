@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { zeroAddress } from "viem";
 
 import { claimCreditId, pendingClaimId } from "../lib/claims/ids.ts";
+import { explainClaimFromCredits } from "../lib/claims/explain-credits.ts";
 import {
   claimReasonExplanation,
   inferClaimReason,
@@ -112,8 +113,28 @@ describe("ponder claim projection", () => {
     });
     const bal2 = pendingClaimAfterCredit({ existing: bal1, credit: credit2 });
     assert.equal(bal2.amount, 150n);
-    assert.equal(bal2.reasonCode, "auction.settlement_payout");
+    // Balance reasonCode is a denormalized last-credit hint — not product truth.
     assert.equal(bal2.firstCreditedAt, 10n);
+
+    const explanation = explainClaimFromCredits(
+      [
+        {
+          amount: credit1.amount,
+          reasonCode: credit1.reasonCode,
+          asset: zeroAddress,
+        },
+        {
+          amount: credit2.amount,
+          reasonCode: credit2.reasonCode,
+          asset: zeroAddress,
+        },
+      ],
+      { decimals: null, symbol: null, nativeSymbol: "ETH" },
+    );
+    assert.match(explanation, /100 ETH/);
+    assert.match(explanation, /auction bid refund/i);
+    assert.match(explanation, /50 ETH/);
+    assert.match(explanation, /auction sale payout/i);
 
     const cleared = pendingClaimAfterWithdraw({ existing: bal2, timestamp: 30n });
     assert.equal(cleared.amount, 0n);

@@ -456,7 +456,7 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
-| Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, reason explanation, `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab |
+| Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, explanation from ledger `credits[]` (one line per credit origin — amount + reason; multi-origin balances list every credit), `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab; body is **this credit’s** amount + reason only |
 | Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable`; toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`) |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until `messagingReadyForChecklist(snapshot)` |
@@ -498,7 +498,7 @@ Implementation: [`notifications-shell.tsx`](../components/notifications/notifica
 | Heading | Compact `text-fluid-h2` above tabs |
 | Tabs | Alerts (default) · Watchlist (`?tab=watchlist`) |
 | Mark read | Per-row on interaction; **Mark all read** when `unreadCount > 0` — no auto mark-read on page open |
-| Claim recorded | High-priority `claim.recorded` — body explains why funds wait; href `/profile/{address}?tab=claims` |
+| Claim recorded | High-priority `claim.recorded` — body is this credit’s amount + reason (not the aggregate balance); href `/profile/{address}?tab=claims` |
 
 Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.tsx).
 
@@ -1527,4 +1527,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.91 (July 2026 — ClaimablePayouts product surface: claims tab, global banner, notifications, honest payout copy). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.92 (July 2026 — Claims ledger explanation: multi-origin copy from claim_credit). Update when tokens, app shell, or component contracts change.*

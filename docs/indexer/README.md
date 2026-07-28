@@ -120,7 +120,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are 
 | `GET /owners/:address/authorizations` | Active authorizations granted by owner (`page`, `limit`; `hasActiveListing`; optional filter) |
 | `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner (`page`, `limit`; `?awaiting=`; passport enrichment) |
 | `GET /notifications/:address` | Notification feed, including active marketplace delegation and reserve-auction authorization grants |
-| `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); optional `?chainId=`; `{ claims, total, page, limit }` |
+| `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); optional `?chainId=`; each claim includes `credits[]` from `claim_credit` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |

@@ -1,10 +1,9 @@
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { passportGroupKey, ponderNotifId } from "@/lib/notifications/id";
 import type { NotificationItem, NotificationType, PonderFeedItem } from "@/lib/notifications/types";
-import {
-  claimReasonExplanation,
-  isClaimReasonCode,
-} from "@/lib/claims/reason";
+import { claimNotificationBody } from "@/lib/claims/explain-credits";
+import { isClaimReasonCode } from "@/lib/claims/reason";
+import { zeroAddress } from "viem";
 
 const PONDER_TYPE_CONFIG: Record<
   string,
@@ -39,11 +38,37 @@ function isHexAddress(value: string): value is `0x${string}` {
 }
 
 function claimBody(item: PonderFeedItem): string {
-  const code = item.meta?.reasonCode;
-  if (typeof code === "string" && isClaimReasonCode(code)) {
-    return claimReasonExplanation(code);
+  const meta = item.meta ?? {};
+  const reasonCode =
+    typeof meta.reasonCode === "string" && isClaimReasonCode(meta.reasonCode)
+      ? meta.reasonCode
+      : "unknown";
+  const amountRaw = meta.amount;
+  const amount =
+    typeof amountRaw === "string" || typeof amountRaw === "number"
+      ? String(amountRaw)
+      : null;
+  const asset =
+    typeof meta.asset === "string" && isHexAddress(meta.asset)
+      ? meta.asset
+      : zeroAddress;
+
+  if (amount == null) {
+    return PONDER_TYPE_CONFIG["claim.recorded"]!.body;
   }
-  return PONDER_TYPE_CONFIG["claim.recorded"]!.body;
+
+  try {
+    return claimNotificationBody({
+      amount,
+      asset,
+      reasonCode,
+      // Feed has no token metadata — native uses 18; ERC-20 fail-closed raw via null decimals.
+      decimals: asset.toLowerCase() === zeroAddress ? 18 : null,
+      nativeSymbol: "ETH",
+    });
+  } catch {
+    return PONDER_TYPE_CONFIG["claim.recorded"]!.body;
+  }
 }
 
 function mapSingleItem(

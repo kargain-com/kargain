@@ -61,7 +61,7 @@ describe("mapPonderFeedItems delegation grants", () => {
     assert.equal(item.read, true);
   });
 
-  it("maps claim.recorded to profile claims tab with reason body", () => {
+  it("maps claim.recorded to profile claims tab with credit amount and reason", () => {
     const [item] = mapPonderFeedItems(
       [
         {
@@ -71,6 +71,8 @@ describe("mapPonderFeedItems delegation grants", () => {
           timestamp: "300",
           meta: {
             account: OWNER,
+            asset: "0x0000000000000000000000000000000000000000",
+            amount: "50000000000000000",
             reasonCode: "staking.stake_refund",
           },
         },
@@ -82,6 +84,7 @@ describe("mapPonderFeedItems delegation grants", () => {
     assert.equal(item.type, "claim.recorded");
     assert.equal(item.subject.kind, "claim");
     assert.equal(item.href, `/profile/${OWNER}?tab=claims`);
+    assert.match(item.body, /0\.05 ETH/);
     assert.match(item.body, /KarPro stake refund/i);
     assert.equal(item.priority, "high");
     assert.equal(item.read, false);
