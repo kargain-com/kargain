@@ -167,7 +167,7 @@ interface IAuctionEscrow {
     /// @notice Owner revokes agent authorization when no auction is active.
     function revokeAuctionAgent(uint256 tokenId) external;
 
-    /// @notice Agent creates an auction on behalf of the owner.
+    /// @notice Agent creates an auction on behalf of the owner (VERIFIED passport required at open).
     function createAuctionOnBehalf(
         uint256 tokenId,
         address asset,

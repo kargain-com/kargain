@@ -718,7 +718,7 @@ UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgrade
 |------|------|
 | Direct seller | Token owner **and** `isActiveVerifier(msg.sender)` to `createAuction` |
 | Agent create | Auth’d agent **and** `isActiveVerifier(agent)` for `createAuctionOnBehalf`; private owners use the agent funnel |
-| Passport | `passportStatus == VERIFIED` required to **open** a lot (`createAuction`); after the first qualifying bid, passport status does **not** gate `bid` or `settle` |
+| Passport | `passportStatus == VERIFIED` required to **open** a lot via `createAuction` **or** `createAuctionOnBehalf` (not at `authorizeAuctionAgent` — status may change between appoint and open); after the first qualifying bid, passport status does **not** gate `bid` or `settle` |
 | Bid ban | Seller and agent cannot bid (`BidFromSeller` / `BidFromAgent`) |
 | Assets | Native (`asset = address(0)`) or USDC only — **no oracles** on any path |
 
@@ -854,7 +854,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 | `createAuction(tokenId, asset, reserve, duration)` | Owner + active verifier | VERIFIED passport; asset ∈ {0, USDC}; NFT → escrow; `SettlementPending` / pause gated |
 | `authorizeAuctionAgent(tokenId, agent, expiry, asset, ownerMinAsset)` | Owner | Approval required; no active auction; pause + `SettlementPending` gated |
 | `revokeAuctionAgent(tokenId)` | Owner | No active auction |
-| `createAuctionOnBehalf(tokenId, asset, reserve, duration, agentFeeBps)` | Agent + active verifier | Auth snapshot; net ≥ `ownerMinAsset`; pause + `SettlementPending` gated |
+| `createAuctionOnBehalf(tokenId, asset, reserve, duration, agentFeeBps)` | Agent + active verifier | VERIFIED passport; auth snapshot; net ≥ `ownerMinAsset`; pause + `SettlementPending` gated |
 | `bid(tokenId, amount)` payable | Not seller/agent | No passport-status gate; first bid ≥ reserve starts clock; then min increment; extension window; prior bid refunded |
 | `cancelAuction` / `agentCancelAuction` | Seller / agent | Only `startedAt == 0`; NFT → seller |
 | `requestReturn` / `forceReturn` | Owner | Pre-start only; force after cooldown |
@@ -878,7 +878,7 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 | `NotOwner` | Caller is not `karPassport.ownerOf(tokenId)` |
 | `NotBuyer` | Caller is not the settlement hold buyer |
 | `NotActiveVerifier` | Seller/agent/resolver admission |
-| `PassportNotVerified` / `PassportDisputed` | Create-time status gates only |
+| `PassportNotVerified` / `PassportDisputed` | Status gates on both create entrypoints (`createAuction`, `createAuctionOnBehalf`) only — not authorize, bid, or settle |
 | `AuctionExists` / `NoAuction` | Mapping occupancy |
 | `AuctionAlreadyStarted` | Cancel/return after first bid (Solidity: cannot share name with `event AuctionStarted`) |
 | `AuctionNotStarted` / `AuctionNotEnded` / `AuctionEnded` | Lifecycle timing |

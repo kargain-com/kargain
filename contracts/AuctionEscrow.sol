@@ -199,6 +199,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ClaimablePayouts, Ree
         if (asset != auth.asset) revert WrongAsset();
         if (auctions[tokenId].active) revert AuctionExists();
         if (!IKarProStakingAuction(karProStaking).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
+        _requirePassportVerified(tokenId);
 
         _checkOwnerMinAtReserve(reserve, agentFeeBps, auth.ownerMinAsset);
 

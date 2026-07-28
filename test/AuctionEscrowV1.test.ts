@@ -481,6 +481,38 @@ describe("AuctionEscrow v1 — recall matrix", () => {
     );
   });
 
+  it("cancelAuction with no auction reverts NoAuction", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport } = stack;
+    await joinVerifierIfNeeded(stack.staking, seller);
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://no-auc-cancel");
+    await verifyPassport(passport, verifier, tokenId);
+    await assert.rejects(
+      stack.auction.write.cancelAuction([tokenId], { account: seller.account }),
+      revertsWith("NoAuction"),
+    );
+  });
+
+  it("agentCancelAuction with no auction reverts NoAuction", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://no-auc-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.agentCancelAuction([tokenId], { account: verifier.account }),
+      revertsWith("NoAuction"),
+    );
+  });
+
   it("cancelAuction direct before bid ok; after bid reverts", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
@@ -825,7 +857,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     assert.equal(auth[4] as boolean, false);
   });
 
-  it("Phase A: createAuction still requires VERIFIED passport", async () => {
+  it("createAuction requires VERIFIED passport — PassportNotVerified and PassportDisputed", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
     const { seller, verifier, passport, auction, admin } = stack;
@@ -850,6 +882,51 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     await assert.rejects(
       auction.write.createAuction([disputedId, NATIVE, 10n ** 18n, THREE_DAYS], {
         account: seller.account,
+      }),
+      revertsWith("PassportDisputed"),
+    );
+  });
+
+  it("createAuctionOnBehalf requires VERIFIED passport — PassportNotVerified", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    // Private owner + authorized agent: authorize allowed while UNVERIFIED; open is gated.
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://agent-unv");
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 500], {
+        account: verifier.account,
+      }),
+      revertsWith("PassportNotVerified"),
+    );
+  });
+
+  it("createAuctionOnBehalf requires VERIFIED passport — PassportDisputed", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction, admin } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://agent-dis");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    // Status may change between authorize and create — gate is at open, not authorize.
+    await passport.write.disputePassport([tokenId, "agent create gate"], {
+      account: admin.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 500], {
+        account: verifier.account,
       }),
       revertsWith("PassportDisputed"),
     );
@@ -1222,6 +1299,45 @@ describe("AuctionEscrow v1 — pause matrix", () => {
     await increaseTime(publicClient, THREE_DAYS + 1n);
     await stack.auction.write.settle([tokenId]);
   });
+
+  it("createAuction while paused reverts ContractPaused", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction, admin } = stack;
+    await joinVerifierIfNeeded(stack.staking, seller);
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://pause-direct");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.setPaused([true], { account: admin.account });
+    await assert.rejects(
+      auction.write.createAuction([tokenId, NATIVE, 10n ** 18n, THREE_DAYS], {
+        account: seller.account,
+      }),
+      revertsWith("ContractPaused"),
+    );
+  });
+
+  it("createAuctionOnBehalf while paused reverts ContractPaused", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction, admin } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://pause-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await auction.write.setPaused([true], { account: admin.account });
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS, 500], {
+        account: verifier.account,
+      }),
+      revertsWith("ContractPaused"),
+    );
+  });
 });
 
 describe("AuctionEscrow v1 — reentrancy", () => {
@@ -1329,6 +1445,30 @@ describe("AuctionEscrow — guard order and hold semantics", () => {
     await assert.rejects(
       stack.auction.write.createAuction([tokenId, NATIVE, reserve, THREE_DAYS], {
         account: stack.seller.account,
+      }),
+      revertsWith("AuctionExists"),
+    );
+  });
+
+  it("createAuctionOnBehalf while auction active reverts AuctionExists", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://exists-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    const reserve = 10n ** 18n;
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await auction.write.createAuctionOnBehalf([tokenId, NATIVE, reserve, THREE_DAYS, 500], {
+      account: verifier.account,
+    });
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, reserve, THREE_DAYS, 500], {
+        account: verifier.account,
       }),
       revertsWith("AuctionExists"),
     );
@@ -1748,6 +1888,28 @@ describe("AuctionEscrow — error coverage matrix", () => {
     );
   });
 
+  it("createAuctionOnBehalf unsupported asset reverts UnsupportedAsset", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://unsup-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    // _validateAsset runs before WrongAsset — unsupported token reverts UnsupportedAsset.
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf(
+        [tokenId, "0x1111111111111111111111111111111111111111", 10n ** 18n, THREE_DAYS, 500],
+        { account: verifier.account },
+      ),
+      revertsWith("UnsupportedAsset"),
+    );
+  });
+
   it("createAuctionOnBehalf wrong asset reverts WrongAsset", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
@@ -1816,6 +1978,26 @@ describe("AuctionEscrow — error coverage matrix", () => {
     );
   });
 
+  it("createAuctionOnBehalf zero reserve reverts BadReserve", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-res-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 0n, THREE_DAYS, 500], {
+        account: verifier.account,
+      }),
+      revertsWith("BadReserve"),
+    );
+  });
+
   it("createAuction duration below min reverts BadDuration", async () => {
     const { viem } = connection;
     const stack = await deployAuctionStack(viem);
@@ -1828,6 +2010,26 @@ describe("AuctionEscrow — error coverage matrix", () => {
     await assert.rejects(
       auction.write.createAuction([tokenId, NATIVE, 10n ** 18n, THREE_DAYS - 1n], {
         account: seller.account,
+      }),
+      revertsWith("BadDuration"),
+    );
+  });
+
+  it("createAuctionOnBehalf duration below min reverts BadDuration", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://bad-dur-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await assert.rejects(
+      auction.write.createAuctionOnBehalf([tokenId, NATIVE, 10n ** 18n, THREE_DAYS - 1n, 500], {
+        account: verifier.account,
       }),
       revertsWith("BadDuration"),
     );
