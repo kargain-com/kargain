@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.2.0-rc.1`, MarketplaceEscrow `2.0.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.2.0-rc.1`, MarketplaceEscrow `2.1.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -47,7 +47,7 @@
 | KarPassport | `1.3.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits, bridge mint/burn/lock hooks |
 | KarProPass | `1.0.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `1.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` |
-| MarketplaceEscrow | `2.0.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
+| MarketplaceEscrow | `2.1.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
 | AuctionEscrow | `2.0.0-draft` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
 | KarPassportBridgeGateway | `1.1.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X) |
@@ -262,9 +262,9 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-### I.5. MarketplaceEscrow (`2.0.0-rc.1`)
+### I.5. MarketplaceEscrow (`2.1.0-rc.1`)
 
-UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `usdc`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness`.
+UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `usdc`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness`. Source VERSION `2.1.0-rc.1` (guard-order / error-semantics fix); live I.9.1 / I.9.2 proxies remain `2.0.0-rc.1` until Nuclear #2 full-stack redeploy.
 
 ### 5.1 Currency system
 
@@ -296,8 +296,6 @@ EUR listing on Base Sepolia requires post-deploy `setCurrencyFeed` once a live E
 | `list` | Owner | Transfer NFT to escrow; no agent |
 | `delist` | Seller only | Return NFT; clear listing |
 | `setSettlementNote` | Seller | Store off-chain payment instructions (required for external confirm) |
-
-**Note:** `list` reverts **`NotActive`** when `listings[tokenId].active` is already true (misleading name — means “already listed”).
 
 Direct listings cannot use agent paths (`ListingHasAgent` on seller-only ops where applicable).
 
@@ -406,8 +404,8 @@ Public mappings: `listings`, `agentAuthorizations`, `returnRequestedAt`, `settle
 | `NotSeller` | Seller-only guard |
 | `NotAgent` | Agent-only guard |
 | `NotOwner` | Token owner guard |
-| `NotActive` | Listing inactive **or already listed** (see §5.2) |
-| `AlreadyListed` | Authorize while listed |
+| `NotActive` | Listing inactive |
+| `AlreadyListed` | `list` / `listOnBehalf` / `authorizeAgent` while listed |
 | `BadPrice` | Zero price |
 | `FeeTooHigh` | Platform fee over cap |
 | `AgentFeeTooHigh` | Agent fee > 30% |
@@ -822,9 +820,11 @@ Marketplace recall boundary is preserved: the **first qualifying bid** commits t
 | `WrongAsset` / `WrongValue` / `UnsupportedAsset` | Asset/payment mismatch |
 | `BadDuration` / `BadReserve` / `BadConfig` | Param validation |
 | `BelowOwnerMinAsset` | Agent reserve net below owner min |
-| `AgentNotAuthorized` / `AgentAuthorizationActive` / `EscrowNotApproved` | Auth/approval |
+| `AgentNotAuthorized` / `AgentAuthorizationActive` / `EscrowNotApproved` | Auth/approval (`AgentAuthorizationActive` = revoke while auction active) |
 | `ReturnNotRequested` / `ReturnAlreadyRequested` / `ReturnCooldownPending` | Owner return flow |
-| `HoldActive` / `NoHold` / `HoldReleased` / `DisputeActive` / `NoDispute` | Settlement hold/dispute |
+| `HoldActive` | Hold still running (`releaseFunds` before `releaseAt`; `claimAbandonedRefund` before timeout) |
+| `HoldReleased` | Confirmation / dispute window over (`confirmReceipt` / `openSettlementDispute` after `releaseAt`) |
+| `NoHold` / `DisputeActive` / `NoDispute` | Settlement hold/dispute presence |
 | `BondTooLow` / `CannotResolveOwnDeal` / `RefundNotPending` | Dispute / refund paths |
 | `TransferFailed` / `ContractPaused` / `NotUpgradeAuthority` | Infra |
 | `FeeTooHigh` / `AgentFeeTooHigh` | Fee caps |

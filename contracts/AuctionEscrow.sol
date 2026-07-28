@@ -132,13 +132,13 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     {
         if (paused) revert ContractPaused();
         if (holds[tokenId].releaseAt != 0) revert SettlementPending();
+        if (auctions[tokenId].active) revert AuctionExists();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (!IKarProStakingAuction(karProStaking).isActiveVerifier(msg.sender)) revert NotActiveVerifier();
         _requirePassportVerified(tokenId);
         _validateAsset(asset);
         if (reserve == 0) revert BadReserve();
         if (duration < minDuration || duration > maxDuration) revert BadDuration();
-        if (auctions[tokenId].active) revert AuctionExists();
 
         karPassport.safeTransferFrom(msg.sender, address(this), tokenId);
         _writeAuction(tokenId, msg.sender, address(0), 0, asset, reserve, 0, duration);
@@ -154,9 +154,9 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
     ) external nonReentrant {
         if (paused) revert ContractPaused();
         if (holds[tokenId].releaseAt != 0) revert SettlementPending();
+        if (auctions[tokenId].active) revert AuctionExists();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (agent == address(0)) revert AgentNotAuthorized();
-        if (auctions[tokenId].active) revert AuctionExists();
         _validateAsset(asset);
 
         if (
@@ -178,8 +178,8 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
 
     /// @inheritdoc IAuctionEscrow
     function revokeAuctionAgent(uint256 tokenId) external nonReentrant {
-        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (auctions[tokenId].active) revert AgentAuthorizationActive();
+        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         delete auctionAgentAuthorizations[tokenId];
         emit AuctionAgentRevoked(tokenId, msg.sender);
     }
@@ -331,7 +331,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         if (h.refundPendingAt > 0) revert RefundNotPending();
         if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
-        if (block.timestamp >= h.releaseAt) revert HoldActive();
+        if (block.timestamp >= h.releaseAt) revert HoldReleased();
 
         _payout(tokenId, false, msg.sender, 0);
         emit ReceiptConfirmed(tokenId, msg.sender);
@@ -363,7 +363,7 @@ contract AuctionEscrow is IAuctionEscrow, IERC721Receiver, ReentrancyGuard, Init
         if (msg.sender != h.buyer) revert NotBuyer();
         if (h.disputedAt > 0) revert DisputeActive();
         if (h.refundPendingAt > 0) revert RefundNotPending();
-        if (block.timestamp >= h.releaseAt) revert HoldActive();
+        if (block.timestamp >= h.releaseAt) revert HoldReleased();
         if (msg.value < settlementDisputeBond) revert BondTooLow();
 
         h.disputedAt = uint40(block.timestamp);

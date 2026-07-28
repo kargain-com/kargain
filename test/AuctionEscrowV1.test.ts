@@ -1260,3 +1260,153 @@ describe("AuctionEscrow v1 — gas samples", () => {
     assert.ok(r3.gasUsed > 0n);
   });
 });
+
+describe("AuctionEscrow — guard order and hold semantics", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  async function settleToHold(stack: AuctionStack) {
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await stack.auction.write.bid([tokenId, reserve], {
+      account: stack.stranger.account,
+      value: reserve,
+    });
+    await increaseTime(stack.publicClient!, THREE_DAYS + EXTENSION_WINDOW + 1n);
+    await stack.auction.write.settle([tokenId]);
+    return { tokenId, reserve, buyer: stack.stranger };
+  }
+
+  it("owner createAuction while auction active reverts AuctionExists not NotOwner", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, reserve } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.createAuction([tokenId, NATIVE, reserve, THREE_DAYS], {
+        account: stack.seller.account,
+      }),
+      revertsWith("AuctionExists"),
+    );
+  });
+
+  it("owner authorizeAuctionAgent while auction active reverts AuctionExists not NotOwner", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await prepareDirectAuction(stack);
+    await assert.rejects(
+      stack.auction.write.authorizeAuctionAgent(
+        [tokenId, stack.verifier.account.address, 0n, NATIVE, 0n],
+        { account: stack.seller.account },
+      ),
+      revertsWith("AuctionExists"),
+    );
+  });
+
+  it("owner revokeAuctionAgent during live agent auction reverts AgentAuthorizationActive not NotOwner", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://rev-agent");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: seller.account });
+    const reserve = 10n ** 18n;
+    await auction.write.authorizeAuctionAgent(
+      [tokenId, verifier.account.address, 0n, NATIVE, 0n],
+      { account: seller.account },
+    );
+    await auction.write.createAuctionOnBehalf(
+      [tokenId, NATIVE, reserve, THREE_DAYS, 500],
+      { account: verifier.account },
+    );
+    await assert.rejects(
+      auction.write.revokeAuctionAgent([tokenId], { account: seller.account }),
+      revertsWith("AgentAuthorizationActive"),
+    );
+  });
+
+  it("stranger createAuction when no auction reverts NotOwner", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, stranger, verifier, passport, auction } = stack;
+    await joinVerifierIfNeeded(stack.staking, verifier);
+    await joinVerifierIfNeeded(stack.staking, stranger);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://stranger");
+    await verifyPassport(passport, verifier, tokenId);
+    await passport.write.setApprovalForAll([auction.address, true], { account: stranger.account });
+    await assert.rejects(
+      auction.write.createAuction([tokenId, NATIVE, 10n ** 18n, THREE_DAYS], {
+        account: stranger.account,
+      }),
+      revertsWith("NotOwner"),
+    );
+  });
+
+  it("stranger revokeAuctionAgent when no auction reverts NotOwner", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { seller, stranger, passport } = stack;
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://stranger-rev");
+    await assert.rejects(
+      stack.auction.write.revokeAuctionAgent([tokenId], { account: stranger.account }),
+      revertsWith("NotOwner"),
+    );
+  });
+
+  it("confirmReceipt after releaseAt reverts HoldReleased", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    await increaseTime(stack.publicClient!, SEVEN_DAYS + 1n);
+    await assert.rejects(
+      stack.auction.write.confirmReceipt([tokenId], { account: buyer.account }),
+      revertsWith("HoldReleased"),
+    );
+  });
+
+  it("openSettlementDispute after releaseAt reverts HoldReleased", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    await increaseTime(stack.publicClient!, SEVEN_DAYS + 1n);
+    await assert.rejects(
+      stack.auction.write.openSettlementDispute([tokenId], {
+        account: buyer.account,
+        value: DISPUTE_DEPOSIT,
+      }),
+      revertsWith("HoldReleased"),
+    );
+  });
+
+  it("releaseFunds before releaseAt reverts HoldActive", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId } = await settleToHold(stack);
+    await assert.rejects(
+      stack.auction.write.releaseFunds([tokenId]),
+      revertsWith("HoldActive"),
+    );
+  });
+
+  it("claimAbandonedRefund before timeout reverts HoldActive", async () => {
+    const { viem } = connection;
+    const stack = await deployAuctionStack(viem);
+    const { tokenId, buyer } = await settleToHold(stack);
+    const { auction, seller, verifier } = stack;
+    await auction.write.openSettlementDispute([tokenId], {
+      account: buyer.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await auction.write.resolveSettlementDispute([tokenId, 1], { account: verifier.account });
+    await assert.rejects(
+      auction.write.claimAbandonedRefund([tokenId], { account: seller.account }),
+      revertsWith("HoldActive"),
+    );
+  });
+});

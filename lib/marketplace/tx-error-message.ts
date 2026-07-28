@@ -2,9 +2,14 @@ import { UserRejectedRequestError } from "viem";
 
 const REVERT_COPY: ReadonlyArray<readonly [string, string]> = [
   ["AlreadyListed", "This vehicle is already listed. Delist it first."],
+  ["NotActive", "This listing is not active."],
+  ["NotOwner", "Only the passport owner can do this."],
   ["MarketplaceNotApproved", "Approve the marketplace on your passport first."],
   ["CannotRaiseMinPrice", "New minimum must be lower than the current minimum."],
-  ["AgentAuthorizationActive", "Return the vehicle from the agent before revoking access."],
+  [
+    "AgentAuthorizationActive",
+    "End or delist the active sale before revoking access.",
+  ],
   [
     "BelowOwnerMinPrice",
     "Owner would receive less than their guaranteed minimum after fees. Lower commission or raise the asking price.",

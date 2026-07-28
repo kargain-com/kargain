@@ -31,4 +31,32 @@ describe("txErrorMessage", () => {
       "You cannot resolve a dispute you opened yourself.",
     );
   });
+
+  it("maps NotOwner", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotOwner()")),
+      "Only the passport owner can do this.",
+    );
+  });
+
+  it("maps NotActive", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotActive()")),
+      "This listing is not active.",
+    );
+  });
+
+  it("maps AgentAuthorizationActive", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error AgentAuthorizationActive()")),
+      "End or delist the active sale before revoking access.",
+    );
+  });
+
+  it("maps HoldReleased", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error HoldReleased()")),
+      "The payment hold has already been released.",
+    );
+  });
 });

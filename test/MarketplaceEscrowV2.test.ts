@@ -483,3 +483,91 @@ describe("MarketplaceEscrow v2 — audit fixes", () => {
     );
   });
 });
+
+describe("MarketplaceEscrow v2 — guard order and AlreadyListed", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  it("VERSION is 2.1.0-rc.1", async () => {
+    const { viem } = connection;
+    const { marketplace } = await deployEscrowStack(viem);
+    assert.equal(await marketplace.read.VERSION(), "2.1.0-rc.1");
+  });
+
+  it("list on already-listed token reverts AlreadyListed", async () => {
+    const { viem } = connection;
+    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://dbl");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    await assert.rejects(
+      marketplace.write.list([tokenId, 200n * 10n ** 8n, CURRENCY_USD], { account: seller.account }),
+      revertsWith("AlreadyListed"),
+    );
+  });
+
+  it("owner authorizeAgent while listed reverts AlreadyListed not NotOwner", async () => {
+    const { viem } = connection;
+    const { seller, verifier, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://auth-listed");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    await marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    await assert.rejects(
+      marketplace.write.authorizeAgent([tokenId, verifier.account.address, expiry, 0n], {
+        account: seller.account,
+      }),
+      revertsWith("AlreadyListed"),
+    );
+  });
+
+  it("owner revokeAgent while listed reverts AgentAuthorizationActive not NotOwner", async () => {
+    const { viem } = connection;
+    const { seller, verifier, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://rev-listed");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    await marketplace.write.authorizeAgent([tokenId, verifier.account.address, expiry, 0n], {
+      account: seller.account,
+    });
+    await marketplace.write.listOnBehalf(
+      [tokenId, 1000n * 10n ** 8n, CURRENCY_USD, 100, "0x"],
+      { account: verifier.account },
+    );
+    await assert.rejects(
+      marketplace.write.revokeAgent([tokenId], { account: seller.account }),
+      revertsWith("AgentAuthorizationActive"),
+    );
+  });
+
+  it("stranger authorizeAgent when not listed reverts NotOwner", async () => {
+    const { viem } = connection;
+    const { seller, stranger, verifier, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://stranger");
+    await passport.write.setApprovalForAll([marketplace.address, true], { account: seller.account });
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400);
+    await assert.rejects(
+      marketplace.write.authorizeAgent([tokenId, verifier.account.address, expiry, 0n], {
+        account: stranger.account,
+      }),
+      revertsWith("NotOwner"),
+    );
+  });
+
+  it("stranger revokeAgent when not listed reverts NotOwner", async () => {
+    const { viem } = connection;
+    const { seller, stranger, passport, marketplace } = await deployEscrowStack(viem);
+    const tokenId = await mintPassport(passport, seller, seller.account.address, "ar://stranger-rev");
+    await assert.rejects(
+      marketplace.write.revokeAgent([tokenId], { account: stranger.account }),
+      revertsWith("NotOwner"),
+    );
+  });
+});

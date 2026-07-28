@@ -30,9 +30,9 @@ interface IKarProStaking {
 /// @title MarketplaceEscrow
 /// @notice KarPassport escrow with dynamic fiat currencies, agent consignment, and multi-token checkout.
 /// @dev UUPS upgradeable; timelock is upgrade authority. v2 fresh proxy deployment.
-/// @custom:version 2.0.0-rc.1
+/// @custom:version 2.1.0-rc.1
 contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGuard, Initializable, UUPSUpgradeable {
-    string public constant VERSION = "2.0.0-rc.1";
+    string public constant VERSION = "2.1.0-rc.1";
 
     using SafeERC20 for IERC20;
 
@@ -270,9 +270,9 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         nonReentrant
     {
         if (paused) revert ContractPaused();
+        if (listings[tokenId].active) revert AlreadyListed();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (agent == address(0)) revert AgentNotAuthorized();
-        if (listings[tokenId].active) revert AlreadyListed();
 
         if (
             karPassport.getApproved(tokenId) != address(this)
@@ -289,8 +289,8 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
     /// @notice Seller revokes agent authorization when not actively listed.
     /// @param tokenId Passport token id.
     function revokeAgent(uint256 tokenId) external nonReentrant {
-        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (listings[tokenId].active) revert AgentAuthorizationActive();
+        if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
         delete agentAuthorizations[tokenId];
         emit AgentRevoked(tokenId, msg.sender);
     }
@@ -303,7 +303,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         if (paused) revert ContractPaused();
         if (fiatPrice1e8 == 0) revert BadPrice();
         _requireCurrencySupported(currencyCode);
-        if (listings[tokenId].active) revert NotActive();
+        if (listings[tokenId].active) revert AlreadyListed();
         if (karPassport.ownerOf(tokenId) != msg.sender) revert NotOwner();
 
         karPassport.safeTransferFrom(msg.sender, address(this), tokenId);
@@ -326,7 +326,7 @@ contract MarketplaceEscrow is IMarketplaceEscrow, IERC721Receiver, ReentrancyGua
         AgentAuth memory auth = agentAuthorizations[tokenId];
         if (!auth.active || auth.agent != msg.sender) revert AgentNotAuthorized();
         if (auth.expiry != 0 && block.timestamp > auth.expiry) revert AgentNotAuthorized();
-        if (listings[tokenId].active) revert NotActive();
+        if (listings[tokenId].active) revert AlreadyListed();
 
         address owner = karPassport.ownerOf(tokenId);
         _checkSellerNet(fiatPrice1e8, agentFeeBps, platformFeeBps, auth.ownerMinPrice1e8);

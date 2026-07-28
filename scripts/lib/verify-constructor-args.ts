@@ -128,13 +128,13 @@ export const VERIFY_TARGETS = {
     buildArgs: karPassportConstructorArgs,
   },
   marketplaceImpl: {
-    label: "MarketplaceEscrow impl (2.0.0-rc.1)",
+    label: `MarketplaceEscrow impl (${CONTRACT_VERSIONS.MarketplaceEscrow})`,
     contract: "contracts/MarketplaceEscrow.sol:MarketplaceEscrow",
     addressKey: "marketplaceImpl" as const,
     buildArgs: marketplaceImplConstructorArgs,
   },
   marketplaceProxy: {
-    label: "MarketplaceEscrow proxy (2.0.0-rc.1)",
+    label: `MarketplaceEscrow proxy (${CONTRACT_VERSIONS.MarketplaceEscrow})`,
     contract:
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
     addressKey: "marketplace" as const,
