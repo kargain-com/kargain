@@ -1,3 +1,12 @@
+/**
+ * Error coverage policy — every declared custom error must have a suite `revertsWith`.
+ *
+ * Money-path outcome testing (modes inherit this): where a rule states what money does
+ * (split / fee / payout), tests assert **amounts / outcomes** under adversarial storage
+ * or inputs. Do not lock money invariants by scanning source identifiers — rename and
+ * extraction defeat that silently. This suite and name-truth remain necessary but are
+ * insufficient for branch inertness (see consignment-base direct floor poison assert).
+ */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -53,6 +62,11 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     contract: "Timelock48h",
     errorSource: "Timelock48h.sol",
     suiteFiles: ["Timelock48h.test.ts"],
+  },
+  {
+    contract: "FixedPriceConsignment",
+    errorSource: "FixedPriceConsignment.sol",
+    suiteFiles: ["fixed-price/FixedPriceConsignment.test.ts"],
   },
 ] as const;
 

@@ -1,3 +1,9 @@
+/**
+ * Error name-truth policy — one error name, one predicate family (polarity / allowlist).
+ *
+ * Money-path outcome testing: see header of `error-coverage-policy.test.ts` — assert
+ * amounts under adversarial inputs; this suite does not prove branch inertness.
+ */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -49,7 +55,7 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
   },
   {
     error: "BadOracleAnswer",
-    contracts: ["MarketplaceEscrow"],
+    contracts: ["MarketplaceEscrow", "FixedPriceConsignment"],
     justification: "Oracle answer or derived rate non-positive",
   },
   {
@@ -74,7 +80,7 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
   },
   {
     error: "WrongValue",
-    contracts: ["AuctionEscrow", "MarketplaceEscrow"],
+    contracts: ["AuctionEscrow", "MarketplaceEscrow", "FixedPriceConsignment"],
     justification: "msg.value does not match the required native amount (or must be zero)",
   },
   {

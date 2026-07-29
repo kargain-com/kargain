@@ -19,12 +19,14 @@ const CLAIMABLE_INHERITORS = new Set([
   "MarketplaceEscrow",
   "KarPassport",
   "KarProStaking",
+  "FixedPriceConsignment",
 ]);
 
 const ERC20_ADMISSION_CONTRACTS = new Set([
   "AuctionEscrow",
   "MarketplaceEscrow",
   "KarProStaking",
+  "FixedPriceConsignment",
 ]);
 
 function allProductionErrorNames(): string[] {

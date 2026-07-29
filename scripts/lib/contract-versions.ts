@@ -13,6 +13,7 @@ export const CONTRACT_VERSIONS = {
   /** @deprecated C2 — removed adapter; kept for historical smoke key lookups */
   ProxyONFT721Adapter: "1.1.0-rc.1",
   AuctionEscrow: "2.0.0-rc.1",
+  FixedPriceConsignment: "1.0.0-rc.1",
 } as const;
 
 export type ContractVersionName = keyof typeof CONTRACT_VERSIONS;

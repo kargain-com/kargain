@@ -36,6 +36,10 @@ const PRODUCTION_CONTRACTS = [
     artifactPath:
       "artifacts/contracts/KarPassportBridgeGateway.sol/KarPassportBridgeGateway.json",
   },
+  {
+    name: "FixedPriceConsignment",
+    artifactPath: "artifacts/contracts/FixedPriceConsignment.sol/FixedPriceConsignment.json",
+  },
 ] as const;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

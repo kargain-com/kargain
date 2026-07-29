@@ -194,17 +194,45 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
 
   // ---- Split matrix ----
 
-  it("split: direct — platform share then owner remainder", async () => {
+  it("split: direct — platform share then owner remainder; floor slot inert", async () => {
     await openDirect();
     const settled = 1_000_000n;
-    const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeSplitPublic([
+    const expectedPlatform = (settled * PLATFORM_FEE_BPS) / 10_000n;
+    const [p0, o0, a0] = (await harness.read.computeSplitPublic([
       settled,
       TOKEN_DIRECT,
     ])) as [bigint, bigint, bigint];
-    const expectedPlatform = (settled * PLATFORM_FEE_BPS) / 10_000n;
-    assert.equal(platformAmt, expectedPlatform);
-    assert.equal(ownerAmt, settled - expectedPlatform);
-    assert.equal(agentAmt, 0n);
+    assert.equal(p0, expectedPlatform);
+    assert.equal(o0, settled - expectedPlatform);
+    assert.equal(a0, 0n);
+
+    // Poison unused floor storage to a value that would change / BelowFloor an agented margin split.
+    const poison = settled;
+    await harness.write.forceSetConsignmentFloor([TOKEN_DIRECT, poison]);
+    assert.equal(await harness.read.consignmentFloorOf([TOKEN_DIRECT]), poison);
+
+    const [p1, o1, a1] = (await harness.read.computeSplitPublic([
+      settled,
+      TOKEN_DIRECT,
+    ])) as [bigint, bigint, bigint];
+    assert.equal(p1, p0);
+    assert.equal(o1, o0);
+    assert.equal(a1, a0);
+  });
+
+  it("direct setPrice does not apply floor / BelowFloor", async () => {
+    await openDirect(PRICE);
+    await harness.write.setPrice([TOKEN_DIRECT, 1n], { account: owner.account });
+    assert.equal(await harness.read.consignmentPriceOf([TOKEN_DIRECT]), 1n);
+  });
+
+  it("open asks Intent.OpenConsignment via setMay (not a per-intent virtual)", async () => {
+    // Intent.OpenConsignment = 1
+    await harness.write.setMay([TOKEN_DIRECT, 1, false]);
+    await assert.rejects(openDirect(), revertsWith("OpenConsignmentRefused"));
+    await harness.write.setMay([TOKEN_DIRECT, 1, true]);
+    await openDirect();
+    assert.equal(await harness.read.consignmentPhase([TOKEN_DIRECT]), 1);
   });
 
   it("split: margin — floor is payout line; agent earns remainder", async () => {
@@ -493,7 +521,9 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
       assert.ok(!src.includes("passportStatus"));
       assert.ok(!/\.status\s*\(/.test(src));
     }
-    assert.ok(base.includes("_mayOpenConsignment"));
-    assert.ok(harnessSrc.includes("mayOpen"));
+    assert.ok(base.includes("IKarPassportEncumbrance.Intent.OpenConsignment"));
+    assert.ok(base.includes("function _may("));
+    assert.ok(!base.includes("_mayOpenConsignment"));
+    assert.ok(harnessSrc.includes("mayPermit"));
   });
 });

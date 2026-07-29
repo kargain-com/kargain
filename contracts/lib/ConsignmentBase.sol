@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import {IKarPassportEncumbrance} from "../interfaces/IKarPassportEncumbrance.sol";
 import {ClaimablePayouts} from "./ClaimablePayouts.sol";
 import {Mandate} from "./Mandate.sol";
 import {Recall} from "./Recall.sol";
@@ -16,8 +17,8 @@ import {Recall} from "./Recall.sol";
  *      (settlement challenge is ascending/HELD-only). Settlement notes / external confirmation
  *      belong to fixed mode, not here (§4.4).
  *
- *      Carry-ins (model gaps): immutable platformFeeBps + platformRecipient; encumbrance via
- *      virtual `_mayOpenConsignment` until the passport registry ships.
+ *      Encumbrance: callers name `IKarPassportEncumbrance.Intent` via `_may` (E0). Passport registry later.
+ *      Direct consignments have no floor concept — agented paths alone consult floor / BelowFloor.
  */
 abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, ReentrancyGuard {
     uint256 internal constant _BPS_DENOM = 10_000;
@@ -34,6 +35,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         address agent;
         address asset;
         Denomination denomination;
+        /// @dev Meaningful only when `agent != 0`. Ignored for direct consignments.
         uint128 floor;
         Compensation compensation;
         uint128 price;
@@ -108,7 +110,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
     // ---- Opening (N1) ----
 
-    /// @notice Owner opens a direct (unagented) consignment.
+    /// @notice Owner opens a direct (unagented) consignment. No floor — seller sets price freely.
     function openDirect(
         uint256 tokenId,
         Denomination calldata denomination,
@@ -118,7 +120,6 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         address owner = passportOwner(tokenId);
         if (owner != msg.sender) revert NotPassportOwner();
         _requireCanOpen(tokenId, owner);
-        _requirePriceMeetsFloor(price, 0, address(0), Compensation(CompensationForm.Margin, 0));
 
         _takeCustody(tokenId, owner);
         _writeOpen({
@@ -127,7 +128,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
             agent: address(0),
             asset: asset,
             denomination: denomination,
-            floor: 0,
+            floor: 0, // unused storage slot; direct path never consults floor
             compensation: Compensation(CompensationForm.Margin, 0),
             price: price
         });
@@ -144,7 +145,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
         address owner = passportOwner(tokenId);
         _requireCanOpen(tokenId, owner);
-        _requirePriceMeetsFloor(price, m.floor, m.agent, m.compensation);
+        _requireAgentedPriceMeetsFloor(price, m.floor, m.compensation);
 
         _takeCustody(tokenId, owner);
         _writeOpen({
@@ -161,16 +162,18 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
     // ---- OFFERED amend (C3 / C6) ----
 
-    /// @notice Whoever runs the sale may move price freely within C6 while OFFERED.
+    /// @notice Whoever runs the sale may move price while OFFERED. Agented paths enforce C6.
     function setPrice(uint256 tokenId, uint128 newPrice) external nonReentrant {
         _requireOfferedActionable(tokenId);
         Consignment storage c = _consignments[tokenId];
         if (c.agent == address(0)) {
             if (c.seller != msg.sender) revert NotConsignmentSeller();
-        } else if (c.agent != msg.sender) {
-            revert NotConsignmentRunner();
+            c.price = newPrice;
+            return;
         }
-        _setPrice(tokenId, newPrice);
+        if (c.agent != msg.sender) revert NotConsignmentRunner();
+        _requireAgentedPriceMeetsFloor(newPrice, c.floor, c.compensation);
+        c.price = newPrice;
     }
 
     // ---- OFFERED exits (O1) ----
@@ -201,7 +204,16 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     /// @dev Arithmetic from the live snapshot. Modes call when funds are ready.
     function _computeSplit(uint256 settledAmount, uint256 tokenId) internal view returns (SplitResult memory) {
         Consignment storage c = _consignments[tokenId];
-        return _computeSplitAmounts(settledAmount, c.agent, c.floor, c.compensation);
+        if (c.agent == address(0)) {
+            return _computeDirectSplit(settledAmount);
+        }
+        return _computeAgentedSplitAmounts(settledAmount, c.floor, c.compensation);
+    }
+
+    /// @dev Direct: platform share then owner remainder. No floor.
+    function _computeDirectSplit(uint256 settled) private view returns (SplitResult memory) {
+        uint256 platform = (settled * platformFeeBps) / _BPS_DENOM;
+        return SplitResult({platform: platform, ownerAmount: settled - platform, agentAmount: 0});
     }
 
     /// @dev Pays the split then closes. Caller (mode/harness) must have funded the contract.
@@ -232,12 +244,6 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         _clearRecallRequest(tokenId);
     }
 
-    function _setPrice(uint256 tokenId, uint128 newPrice) internal {
-        Consignment storage c = _consignments[tokenId];
-        _requirePriceMeetsFloor(newPrice, c.floor, c.agent, c.compensation);
-        c.price = newPrice;
-    }
-
     function _requireOfferedActionable(uint256 tokenId) private view {
         if (!_isOfferedActionable(tokenId)) revert NotOffered();
     }
@@ -250,10 +256,9 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         if (agent != msg.sender) revert NotConsignmentAgent();
     }
 
-    /// @dev Single BelowFloor site for open, setPrice, and settle (C6 / §5.1).
-    function _computeSplitAmounts(
+    /// @dev Single BelowFloor site for agented open, setPrice, and settle (C6 / §5.1).
+    function _computeAgentedSplitAmounts(
         uint256 settled,
-        address agent,
         uint128 floor,
         Compensation memory comp
     ) private view returns (SplitResult memory) {
@@ -262,13 +267,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         uint256 agentAmount;
         bool ok;
 
-        if (agent == address(0)) {
-            ok = settled >= platform;
-            if (ok) {
-                ownerAmount = settled - platform;
-                ok = ownerAmount >= floor;
-            }
-        } else if (comp.form == CompensationForm.Margin) {
+        if (comp.form == CompensationForm.Margin) {
             ok = settled >= platform + uint256(floor);
             if (ok) {
                 ownerAmount = floor;
@@ -285,6 +284,14 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
         if (!ok) revert BelowFloor();
         return SplitResult({platform: platform, ownerAmount: ownerAmount, agentAmount: agentAmount});
+    }
+
+    function _requireAgentedPriceMeetsFloor(
+        uint256 price,
+        uint128 floor,
+        Compensation memory comp
+    ) private view {
+        _computeAgentedSplitAmounts(price, floor, comp);
     }
 
     // ---- Mandate hooks ----
@@ -334,7 +341,8 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
     // ---- Instance hooks (encumbrance + custody) ----
 
-    function _mayOpenConsignment(uint256 tokenId) internal view virtual returns (bool);
+    /// @dev Passport permission for a named intent (E0). Production will call IKarPassportEncumbrance.may.
+    function _may(uint256 tokenId, IKarPassportEncumbrance.Intent intent) internal view virtual returns (bool);
 
     function _takeCustody(uint256 tokenId, address from) internal virtual;
 
@@ -343,18 +351,9 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     // ---- Internals ----
 
     function _requireCanOpen(uint256 tokenId, address owner) private view {
-        if (!_mayOpenConsignment(tokenId)) revert OpenConsignmentRefused();
+        if (!_may(tokenId, IKarPassportEncumbrance.Intent.OpenConsignment)) revert OpenConsignmentRefused();
         if (isLiveConsignment(tokenId)) revert LiveConsignment();
         if (!isEscrowApproved(tokenId, owner)) revert EscrowNotApproved();
-    }
-
-    function _requirePriceMeetsFloor(
-        uint256 price,
-        uint128 floor,
-        address agent,
-        Compensation memory comp
-    ) private view {
-        _computeSplitAmounts(price, agent, floor, comp);
     }
 
     function _writeOpen(
@@ -391,10 +390,11 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         _releaseCustody(tokenId, seller);
     }
 
-    function _close(uint256 tokenId) private {
+    /// @dev Modes transfer the passport to the buyer first, then call this (or `_paySplit` which calls it).
+    function _close(uint256 tokenId) internal {
         _clearRecallRequest(tokenId);
         _committedNotOffered[tokenId] = false;
-        // Passport already with buyer — modes handle transfer before calling _paySplit.
+        // Passport already with buyer — modes handle transfer before calling _paySplit / external close.
         // Base clears commercial state only.
         delete _consignments[tokenId];
         _phase[tokenId] = Phase.Closed;
