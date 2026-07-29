@@ -39,9 +39,9 @@ const SELECTOR_REASON: Record<
     "0x5039c5f7": "marketplace.settlement_payout", // confirmExternalPayment
   },
   passport: {
-    "0x615f248c": "passport.dispute_deposit", // withdrawDispute
-    "0xe55e4211": "passport.dispute_deposit", // resolveDispute
-    "0x42443efd": "passport.dispute_deposit", // expireDispute
+    "0x2e1a7d4d": "passport.dispute_deposit", // withdraw
+    "0xceb983aa": "passport.dispute_deposit", // judge
+    "0x3487b256": "passport.dispute_deposit", // conclude
     "0xc877714f": "passport.rescue", // rescueExcessEth
   },
   staking: {

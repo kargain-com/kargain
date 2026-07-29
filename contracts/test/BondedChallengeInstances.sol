@@ -27,6 +27,7 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
 
     address public immutable owner;
     address public immutable challengedVerifier;
+    uint256 private immutable _bondAmount;
 
     mapping(uint256 => uint8) public passportStatus;
     mapping(uint256 => uint8) public lastTerminalKind;
@@ -56,10 +57,12 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
         uint256 bondAmount_,
         uint256 windowDuration_
     )
-        BondedChallenge(forfeitRecipient_, bondAmount_, windowDuration_)
+        BondedChallenge(forfeitRecipient_, windowDuration_)
     {
+        require(bondAmount_ != 0, "bondAmount");
         owner = owner_;
         challengedVerifier = challengedVerifier_;
+        _bondAmount = bondAmount_;
     }
 
     function setCheckOrdering(bool enabled) external {
@@ -89,6 +92,10 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
 
     function isEligibleChallenger(uint256, address) internal pure override returns (bool) {
         return true;
+    }
+
+    function _requiredBondAmount() internal view override returns (uint256) {
+        return _bondAmount;
     }
 
     function isQualifiedJudge(uint256, address judge) internal view override returns (bool) {
@@ -208,6 +215,7 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
     address public immutable seller;
     address public immutable agent;
     uint256 public immutable abandonmentWindowDuration;
+    uint256 private immutable _bondAmount;
 
     // Domain simulation for CH3/CH4/CH5/CH6.
     mapping(uint256 => uint256) public protectionEndsAt;
@@ -240,12 +248,14 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
         uint256 windowDuration_,
         uint256 abandonmentWindowDuration_
     )
-        BondedChallenge(forfeitRecipient_, bondAmount_, windowDuration_)
+        BondedChallenge(forfeitRecipient_, windowDuration_)
     {
+        require(bondAmount_ != 0, "bondAmount");
         buyer = buyer_;
         seller = seller_;
         agent = agent_;
         abandonmentWindowDuration = abandonmentWindowDuration_;
+        _bondAmount = bondAmount_;
     }
 
     function setCheckOrdering(bool enabled) external {
@@ -275,6 +285,10 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
 
     function isEligibleChallenger(uint256, address challenger) internal view override returns (bool) {
         return challenger == buyer;
+    }
+
+    function _requiredBondAmount() internal view override returns (uint256) {
+        return _bondAmount;
     }
 
     function isQualifiedJudge(uint256, address) internal pure override returns (bool) {

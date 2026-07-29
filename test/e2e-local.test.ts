@@ -222,20 +222,20 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
       await assertChainStatus(passport, firstTokenId, 1);
 
-      // 6 — disputePassport
-      await passport.write.disputePassport([firstTokenId, "e2e dispute"], {
+      // 6 — open challenge
+      await passport.write.open([firstTokenId], {
         account: owner.account,
         value: DISPUTE_DEPOSIT,
       });
       await assertChainStatus(passport, firstTokenId, 2);
 
-      // 7 — resolveDispute(Confirm) via independent resolver
+      // 7 — judge(Upheld) via independent resolver
       await joinVerifier(staking, resolver, {
         category: Category.INSPECTOR,
         name: "E2E Resolver",
         metadataURI: "ar://e2e-resolver",
       });
-      await passport.write.resolveDispute([firstTokenId, 0], { account: resolver.account });
+      await passport.write.judge([firstTokenId, 0], { account: resolver.account });
       await assertChainStatus(passport, firstTokenId, 0);
 
       // 8 — setPassportURI after resolve (T9)

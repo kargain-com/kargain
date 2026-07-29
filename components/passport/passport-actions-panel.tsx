@@ -105,7 +105,6 @@ export function PassportActionsPanel({
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
-  const [disputeReason, setDisputeReason] = useState("");
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
   const [discrepancyEvidencePaste, setDiscrepancyEvidencePaste] = useState("");
@@ -162,7 +161,7 @@ export function PassportActionsPanel({
           {
             address: passport,
             abi: KarPassportAbi,
-            functionName: "disputeOpenedAt",
+            functionName: "challengeOpenedAt",
             args: [tid],
             chainId: wc,
           },
@@ -448,8 +447,7 @@ export function PassportActionsPanel({
 
   const actionsDirty =
     Boolean(
-      disputeReason.trim() ||
-        clarificationText.trim() ||
+      clarificationText.trim() ||
         discrepancyText.trim() ||
         discrepancyEvidencePaste.trim() ||
         discrepancyEvidenceFile ||
@@ -549,13 +547,6 @@ export function PassportActionsPanel({
 
       {isConnected && disputeSurface.canOpen && (
         <div className="space-y-2">
-          <Label htmlFor="dispute-reason">Dispute reason</Label>
-          <Textarea
-            id="dispute-reason"
-            value={disputeReason}
-            onChange={(e) => setDisputeReason(e.target.value)}
-            rows={3}
-          />
           {disputeDepositLoading ? (
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
           ) : disputeDeposit != null ? (
@@ -573,8 +564,7 @@ export function PassportActionsPanel({
             disabled={
               actionsBusy ||
               disputeDepositLoading ||
-              disputeDeposit === undefined ||
-              !disputeReason.trim()
+              disputeDeposit === undefined
             }
             onClick={() =>
               void run(
@@ -582,8 +572,8 @@ export function PassportActionsPanel({
                   writeContractAsync({
                     address: passport!,
                     abi: KarPassportAbi,
-                    functionName: "disputePassport",
-                    args: [tid, disputeReason.trim()],
+                    functionName: "open",
+                    args: [tid],
                     value: disputeDeposit,
                     chainId: wc,
                   }),
@@ -646,7 +636,7 @@ export function PassportActionsPanel({
                     writeContractAsync({
                       address: passport!,
                       abi: KarPassportAbi,
-                      functionName: "resolveDispute",
+                      functionName: "judge",
                       args: [tid, 0],
                       chainId: wc,
                     }),
@@ -672,7 +662,7 @@ export function PassportActionsPanel({
                     writeContractAsync({
                       address: passport!,
                       abi: KarPassportAbi,
-                      functionName: "resolveDispute",
+                      functionName: "judge",
                       args: [tid, 1],
                       chainId: wc,
                     }),
@@ -706,7 +696,7 @@ export function PassportActionsPanel({
                   writeContractAsync({
                     address: passport!,
                     abi: KarPassportAbi,
-                    functionName: "withdrawDispute",
+                    functionName: "withdraw",
                     args: [tid],
                     chainId: wc,
                   }),
@@ -737,7 +727,7 @@ export function PassportActionsPanel({
                   writeContractAsync({
                     address: passport!,
                     abi: KarPassportAbi,
-                    functionName: "expireDispute",
+                    functionName: "conclude",
                     args: [tid],
                     chainId: wc,
                   }),

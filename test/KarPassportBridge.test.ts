@@ -65,7 +65,7 @@ async function lockedHomeToken(
     });
   }
   if (opts.disputed) {
-    await stack.passport.write.disputePassport([tokenId, "issue"], {
+    await stack.passport.write.open([tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -153,10 +153,10 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("VERSION is 1.6.0-rc.1", async () => {
+  it("VERSION is 1.7.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.6.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.7.0-rc.1");
   });
 });
 
@@ -273,11 +273,11 @@ describe("KarPassport v1.3 — G3 custody-lock freeze", () => {
     );
   });
 
-  it("G3: disputePassport reverts PassportBridgedAway when custodyLocked", async () => {
+  it("G3: open reverts PassportBridgedAway when custodyLocked", async () => {
     const { viem } = connection;
     const { owner, passport, tokenId } = await lockedHomeToken(viem, { verified: true });
     await assert.rejects(
-      passport.write.disputePassport([tokenId, "issue"], {
+      passport.write.open([tokenId], {
         account: owner.account,
         value: DISPUTE_DEPOSIT,
       }),
@@ -285,20 +285,20 @@ describe("KarPassport v1.3 — G3 custody-lock freeze", () => {
     );
   });
 
-  it("G3: withdrawDispute reverts PassportBridgedAway when custodyLocked", async () => {
+  it("G3: withdraw reverts PassportBridgedAway when custodyLocked", async () => {
     const { viem } = connection;
     const { owner, passport, tokenId } = await lockedHomeToken(viem, { disputed: true });
     await assert.rejects(
-      passport.write.withdrawDispute([tokenId], { account: owner.account }),
+      passport.write.withdraw([tokenId], { account: owner.account }),
       revertsWith("PassportBridgedAway"),
     );
   });
 
-  it("G3: resolveDispute reverts PassportBridgedAway when custodyLocked", async () => {
+  it("G3: judge reverts PassportBridgedAway when custodyLocked", async () => {
     const { viem } = connection;
     const { verifier, passport, tokenId } = await lockedHomeToken(viem, { disputed: true });
     await assert.rejects(
-      passport.write.resolveDispute([tokenId, 1], { account: verifier.account }),
+      passport.write.judge([tokenId, 1], { account: verifier.account }),
       revertsWith("PassportBridgedAway"),
     );
   });

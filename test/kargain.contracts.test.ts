@@ -974,7 +974,7 @@ describe("KarPassport — setPassportURI", () => {
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.open([TOKEN_ID_BASE], { account: owner.account, value: DISPUTE_DEPOSIT });
     await assert.rejects(
       passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account }),
       revertsWith("InvalidStatus"),
@@ -997,7 +997,7 @@ describe("KarPassport — setPassportURI", () => {
     );
   });
 
-  it("allows edit after resolve(false) from DISPUTED", async () => {
+  it("allows edit after judge(Upheld) from DISPUTED", async () => {
     const { viem } = connection;
     const { owner, verifier, stranger, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://d"], {
@@ -1006,11 +1006,11 @@ describe("KarPassport — setPassportURI", () => {
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await joinVerifier(staking, stranger);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+    await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
+    await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
     await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://fixed"], { account: owner.account });
     assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://fixed");
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
@@ -1185,58 +1185,49 @@ describe("KarPassport — dispute and resolve", () => {
     return stack;
   }
 
-  it("anyone disputes VERIFIED passport", async () => {
+  it("anyone opens challenge on VERIFIED passport", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await setupVerified(viem);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "fraud"], { account: stranger.account, value: DISPUTE_DEPOSIT });
+    await passport.write.open([TOKEN_ID_BASE], { account: stranger.account, value: DISPUTE_DEPOSIT });
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
     void owner;
   });
 
-  it("reverts dispute on UNVERIFIED", async () => {
+  it("reverts open on UNVERIFIED", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://u"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.disputePassport([TOKEN_ID_BASE, "reason"], { account: owner.account, value: DISPUTE_DEPOSIT }),
+      passport.write.open([TOKEN_ID_BASE], { account: owner.account, value: DISPUTE_DEPOSIT }),
       revertsWith("InvalidStatus"),
     );
   });
 
-  it("reverts dispute empty reason", async () => {
-    const { viem } = connection;
-    const { owner, passport } = await setupVerified(viem);
-    await assert.rejects(
-      passport.write.disputePassport([TOKEN_ID_BASE, ""], { account: owner.account, value: DISPUTE_DEPOSIT }),
-      revertsWith("EmptyField"),
-    );
-  });
-
-  it("active verifier resolves uphold=true → VERIFIED", async () => {
+  it("active verifier judges Rejected → VERIFIED", async () => {
     const { viem } = connection;
     const { owner, stranger, passport, staking } = await setupVerified(viem);
     await joinVerifier(staking, stranger);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+    await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: stranger.account });
+    await passport.write.judge([TOKEN_ID_BASE, 1], { account: stranger.account });
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
   });
 
-  it("resolve uphold=false → UNVERIFIED, verifier cleared", async () => {
+  it("judge Upheld → UNVERIFIED, verifier cleared", async () => {
     const { viem } = connection;
     const { owner, stranger, passport, staking } = await setupVerified(viem);
     await joinVerifier(staking, stranger);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+    await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
+    await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
     const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([
       TOKEN_ID_BASE,
     ]);
@@ -1245,21 +1236,21 @@ describe("KarPassport — dispute and resolve", () => {
     assert.equal(verifiedAt, 0n);
   });
 
-  it("resolve reverts: not active verifier", async () => {
+  it("judge reverts: not qualified judge", async () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await setupVerified(viem);
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: owner.account, value: DISPUTE_DEPOSIT });
+    await passport.write.open([TOKEN_ID_BASE], { account: owner.account, value: DISPUTE_DEPOSIT });
     await assert.rejects(
-      passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: stranger.account }),
-      revertsWith("NotActiveVerifier"),
+      passport.write.judge([TOKEN_ID_BASE, 1], { account: stranger.account }),
+      revertsWith("NotQualifiedJudge"),
     );
   });
 
-  it("resolve reverts: not DISPUTED", async () => {
+  it("judge reverts: not DISPUTED", async () => {
     const { viem } = connection;
     const { verifier, passport, staking } = await setupVerified(viem);
     await assert.rejects(
-      passport.write.resolveDispute([TOKEN_ID_BASE, 1], { account: verifier.account }),
+      passport.write.judge([TOKEN_ID_BASE, 1], { account: verifier.account }),
       revertsWith("NoActiveDispute"),
     );
     void staking;
@@ -1393,7 +1384,7 @@ describe("KarPassport — getPassportStatus", () => {
     [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 1);
 
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+    await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -1401,7 +1392,7 @@ describe("KarPassport — getPassportStatus", () => {
     assert.equal(status, 2);
 
     await joinVerifier(staking, stranger);
-    await passport.write.resolveDispute([TOKEN_ID_BASE, 0], { account: stranger.account });
+    await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
     [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 0);
   });
@@ -1689,7 +1680,7 @@ describe("MarketplaceEscrow", () => {
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], { account: seller.account, value: DISPUTE_DEPOSIT });
+    await passport.write.open([TOKEN_ID_BASE], { account: seller.account, value: DISPUTE_DEPOSIT });
     const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
     assert.equal(status, 2);
     await passport.write.setApprovalForAll([marketplace.address, true], {
@@ -1735,19 +1726,19 @@ describe("KarPassport — error coverage matrix", () => {
     await connection.close();
   });
 
-  it("withdrawDispute when not DISPUTED reverts NoActiveDispute", async () => {
+  it("withdraw when not DISPUTED reverts NoActiveDispute", async () => {
     const { viem } = connection;
     const { owner, passport } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://cov"], {
       account: owner.account,
     });
     await assert.rejects(
-      passport.write.withdrawDispute([TOKEN_ID_BASE], { account: owner.account }),
+      passport.write.withdraw([TOKEN_ID_BASE], { account: owner.account }),
       revertsWith("NoActiveDispute"),
     );
   });
 
-  it("withdrawDispute by non-opener reverts NotDisputeOpener", async () => {
+  it("withdraw by non-opener reverts NotDisputeOpener", async () => {
     const { viem } = connection;
     const { owner, stranger, verifier, passport, staking } = await deployPassportStack(viem);
     await passport.write.mintPassport([owner.account.address, "ar://cov"], {
@@ -1755,12 +1746,12 @@ describe("KarPassport — error coverage matrix", () => {
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    await passport.write.disputePassport([TOKEN_ID_BASE, "issue"], {
+    await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
     await assert.rejects(
-      passport.write.withdrawDispute([TOKEN_ID_BASE], { account: stranger.account }),
+      passport.write.withdraw([TOKEN_ID_BASE], { account: stranger.account }),
       revertsWith("NotDisputeOpener"),
     );
   });

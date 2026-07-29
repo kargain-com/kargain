@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.6.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.7.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -46,7 +46,7 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.6.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, dispute deposits, claim payouts, bridge mint/burn/lock hooks |
+| KarPassport | `1.7.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | MarketplaceEscrow | `2.2.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
@@ -65,7 +65,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 | Agent sales | None | Dépôt-vente: authorize → listOnBehalf → fee split |
 | External payment | None | `setSettlementNote` + `confirmExternalPayment` |
 | KarPassport tokenId | Sequential from 0 | `chainId << 128 \| localSequence` |
-| Disputes | Deposit-free; D6 withdraw via `reportDiscrepancy` | Payable deposit; `withdrawDispute`; `DisputeOutcome` enum |
+| Disputes | Deposit-free; D6 withdraw via `reportDiscrepancy` | BondedChallenge `open`/`withdraw`/`judge`/`conclude`; exact `disputeDeposit`; encumbrance `may` |
 | Verifier pricing | None on-chain | `verificationFee` (informational) |
 | Bridge | None | LayerZero ONFT (lock on hub, mint on spoke) → **end-state:** Unified Passport v1.3 + symmetric `KarPassportBridgeGateway` ([§I.12](#i12-multi-chain-architecture-normative)) |
 | Checkout | ETH + USDC | Native + any approved ERC-20 payment token |
@@ -94,23 +94,23 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 ```
 UNVERIFIED ──verifyPassport──► VERIFIED
      ▲                              │
-     │                              │ disputePassport (+ deposit)
+     │                              │ open (+ exact bond via BondedChallenge)
      │                              ▼
      │                          DISPUTED
      │                         /    |    \
-     │        withdrawDispute  /     |     \  expireDispute (anyone, after window)
-     │        (opener, <14d)  /      |      \
+     │            withdraw     /     |     \  conclude (anyone, after window)
+     │         (opener, <14d) /      |      \
      │                       ▼       |       ▼
      │                   VERIFIED    |   UNVERIFIED (lapse)
      │                               |
-     │              resolveDispute (independent verifier, <14d)
-     │              ConfirmDispute ──► UNVERIFIED
-     │              RejectDispute  ──► VERIFIED
+     │              judge (independent KarPro, <14d)
+     │              Upheld ──► UNVERIFIED
+     │              Rejected ──► VERIFIED
      │
      └── setPassportURI from VERIFIED ── VerificationReset ──► UNVERIFIED
 ```
 
-**Exit from DISPUTED:** `withdrawDispute` (opener, **before** window) **or** `resolveDispute` (independent active verifier — not opener, owner, or recorded verifier — **before** window) **or** `expireDispute` (anyone, **after** window). No overlap: resolve and expire never compete. Owner cannot `setPassportURI` while DISPUTED.
+**Exit from DISPUTED:** `withdraw` (opener, **before** window) **or** `judge` (independent active verifier — not opener, owner, or recorded verifier — **before** window) **or** `conclude` (anyone, **after** window). Challenge state lives in `BondedChallenge`; the passport supplies eligibility, exclusion, qualification, bond amount, and domain terminals only. Owner cannot `setPassportURI` while DISPUTED.
 
 ### tokenId encoding
 
@@ -130,31 +130,35 @@ Constructor sets `tokenIdOffset = block.chainid << 128` and `_nextTokenId = toke
 
 Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).max`.
 
-### Dispute deposit system
+### Verification challenge (BondedChallenge instance)
 
 | Parameter | Default (deploy.ts) | Admin |
 |-----------|---------------------|-------|
-| `disputeDeposit` | `0.01 ether` (must be **non-zero**) | `setDisputeDeposit` (owner → Timelock48h after Nuclear handoff) |
-| `DISPUTE_WINDOW` | `14 days` (constant) | — |
-| `platformRecipient` | Immutable ctor (same as escrows) | — |
-| `totalLockedDeposits` | Sum of active bonds | Accounting only |
-| `disputeOpenedAt` | Stamped on open; cleared on every terminal | — |
+| `disputeDeposit` | `0.01 ether` (must be **non-zero**) | `setDisputeDeposit` (owner → Timelock48h after Nuclear handoff); exact match at `open` |
+| `DISPUTE_WINDOW` | `14 days` (constant → library window) | — |
+| `platformRecipient` | Immutable ctor / forfeit recipient | — |
+| `totalLockedBonds` | Sum of active challenge bonds (library) | Rescue accounting |
+| `challengeOpenedAt` | Stamped on open; cleared on every terminal | — |
 
 | Action | Caller | Effect | Bond |
 |--------|--------|--------|------|
-| `disputePassport` | Anyone (payable) | VERIFIED → DISPUTED; locks `msg.value ≥ disputeDeposit`; stamps opener + `disputeOpenedAt` | Locked |
-| `withdrawDispute` | Opener only, **before** window end | DISPUTED → VERIFIED; free full refund | → opener |
-| `resolveDispute(ConfirmDispute)` | Active verifier ≠ opener ≠ `ownerOf` ≠ `passportVerifier`, **before** window end | → UNVERIFIED; clear verifier | → opener |
-| `resolveDispute(RejectDispute)` | Same independent verifier, **before** window end | → VERIFIED; keep verifier | → **`platformRecipient`** (never resolver) |
-| `expireDispute` | Anyone, **after** window | → UNVERIFIED; clear verifier | → **`platformRecipient`** |
+| `open` | Anyone (payable, exact bond) | VERIFIED → DISPUTED; captures window + bond | Locked in library |
+| `withdraw` | Opener only, **before** window end | DISPUTED → VERIFIED; free full refund | → opener |
+| `judge(Upheld)` | Active KarPro ≠ opener ≠ `ownerOf` ≠ `passportVerifier`, **before** window | → UNVERIFIED; clear verifier | → opener |
+| `judge(Rejected)` | Same independent judge, **before** window | → VERIFIED; keep verifier | → **`platformRecipient`** (never judge) |
+| `conclude` | Anyone, **after** window | → UNVERIFIED; clear verifier | → **`platformRecipient`** |
 
-`DisputeOutcome`: `ConfirmDispute` (0) = verification was wrong; `RejectDispute` (1) = verification stands. Expiry does **not** decide merits and does **not** restore VERIFIED — the assertion lapses for lack of professional backing within the window.
+`JudgeOutcome`: `Upheld` (0) = verification lapses; `Rejected` (1) = verification stands. Expiry does **not** decide merits and does **not** restore VERIFIED — the assertion lapses for lack of professional backing within the window.
 
-**Party exclusion:** covers the opener, the passport **owner**, and the **recorded `passportVerifier`**. It does **not** exclude a different verifier the owner later hires to resolve — owners pay verifiers for verification and for independent resolution.
+**Encumbrance:** `may(tokenId, Intent)` combines readiness (`OpenConsignment` requires VERIFIED; `LeaveChain` always) with intrinsic challenge + governed external sources. Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
 
-**`setDisputeDeposit`:** rejects zero (`ZeroDisputeDeposit`) so the deterrent cannot be switched off by value. There is **no** on-chain ceiling; governance can raise the bond high enough to make verifications effectively unchallengeable — control is Timelock48h visibility and cancellability.
+**E6 — unanswerable source forbids by name:** each registered source is probed with a bounded `staticcall` (`SOURCE_MAY_GAS` = 100 000). Revert, empty returndata, unreadable returndata, or gas exhaustion → `SourceUnanswerable(source)` (never treat silence as permission). A healthy `false` still returns `false` without naming. Governance removes the named address to restore service.
 
-**Accepted risk — open-window griefing freeze:** a freeze of up to `DISPUTE_WINDOW` is available for the cost of gas. It blocks auctions, bridging, and metadata updates — **not** marketplace fixed-price sale. The counter is not a harsher withdrawal rule: the owner hires an independent verifier whose Reject restores VERIFIED and sends the bond to the platform, so every failed attempt costs the attacker the full bond. Withdrawal before the window stays free and whole so an honest challenger who sees no engagement can exit.
+**Party exclusion:** covers the opener, the passport **owner**, and the **recorded `passportVerifier`**. Qualification is active KarPro (`NotQualifiedJudge`). Exclusion is checked before qualification.
+
+**`setDisputeDeposit`:** rejects zero (`ZeroDisputeDeposit`) so the deterrent cannot be switched off by value. There is **no** on-chain ceiling; governance can raise the bond high enough to make verifications effectively unchallengeable — control is Timelock48h visibility and cancellability. Open challenges keep the bond captured at open.
+
+**Accepted risk — open-window griefing freeze:** a freeze of up to `DISPUTE_WINDOW` is available for the cost of gas. It blocks auctions, bridging, and metadata updates — **not** marketplace fixed-price sale already offered. New consignments are refused via `may(OpenConsignment)` while challenged.
 
 ### Unchanged v1.1 behaviors
 
@@ -169,15 +173,17 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 | Function | Access | Behavior |
 |----------|--------|----------|
 | `chainIdOf` / `localIdOf` | view | Decode tokenId namespace |
-| `setDisputeDeposit` | owner | Update minimum bond (**≠ 0**); emits `DisputeDepositUpdated` |
-| `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedDeposits` |
+| `may` | view | Permission for `LeaveChain` / `OpenConsignment` (readiness + challenge + sources) |
+| `addEncumbranceSource` / `removeEncumbranceSource` | owner | Governed external obligation registry |
+| `setDisputeDeposit` | owner | Update exact bond for next `open` (**≠ 0**); emits `DisputeDepositUpdated` |
+| `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedBonds` or pending claims |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
 | `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
-| `disputePassport` | anyone + ETH | VERIFIED → DISPUTED + deposit |
-| `withdrawDispute` | dispute opener (before window) | DISPUTED → VERIFIED + full refund |
-| `resolveDispute` | independent active verifier (before window) | Resolve DISPUTED; bond by fault (Confirm → opener; Reject → platform) |
-| `expireDispute` | anyone (after window) | DISPUTED → UNVERIFIED; bond → platform |
+| `open` | anyone + exact ETH | VERIFIED → DISPUTED; BondedChallenge open |
+| `withdraw` | challenge opener (before window) | DISPUTED → VERIFIED + full refund |
+| `judge` | independent active KarPro (before window) | Resolve; Upheld → UNVERIFIED / Rejected → VERIFIED; bond by fault |
+| `conclude` | anyone (after window) | DISPUTED → UNVERIFIED; bond → platform |
 | `appendRecord` | token owner | Append typed record |
 | `reportDiscrepancy` | anyone | Append discrepancy record (no status change) |
 | `appendAttestation` | active verifier | Append attestation record |
@@ -199,13 +205,17 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 | `ZeroAddress` | Zero address where forbidden |
 | `ZeroDisputeDeposit` | Ctor or `setDisputeDeposit` with zero bond |
 | `SameURI` | URI unchanged |
-| `InsufficientDeposit` | `disputePassport` value too low |
-| `NotDisputeOpener` | `withdrawDispute` not opener |
-| `NoActiveDispute` | Not DISPUTED |
-| `CannotResolveOwnDispute` | Resolver is opener, owner, or recorded `passportVerifier` |
-| `DisputeWindowActive` | `expireDispute` before window end |
-| `DisputeWindowElapsed` | `withdrawDispute` or `resolveDispute` after window end |
-| `NothingToRescue` | Rescue amount invalid (free balance excludes locked deposits **and** outstanding native claims) |
+| `WrongValue` | `open` bond ≠ `disputeDeposit` |
+| `NotDisputeOpener` | `withdraw` not opener |
+| `NoActiveDispute` | No active challenge |
+| `CannotResolveOwnDispute` | Judge is opener, owner, or recorded `passportVerifier` |
+| `NotQualifiedJudge` | Judge is not an active KarPro |
+| `DisputeWindowActive` | `conclude` before window end |
+| `DisputeWindowElapsed` | `withdraw` or `judge` after window end |
+| `SourceAlreadyRegistered` | Duplicate encumbrance source |
+| `SourceNotRegistered` | Remove unknown source |
+| `SourceUnanswerable` | Registered source could not answer `may` (revert / empty / unreadable / OOG within `SOURCE_MAY_GAS`) |
+| `NothingToRescue` | Rescue amount invalid (free balance excludes locked bonds **and** outstanding native claims) |
 | `NoClaim` | `withdrawClaim` with zero pending balance |
 | `TransferFailed` | `withdrawClaim` transfer failed (push paths credit a claim instead) |
 | `TokenIdSpaceExhausted` | 2^128 mints on chain |
@@ -579,7 +589,7 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 
 ### Dispute deposit economics
 
-Default **0.01 ETH** bond on `disputePassport` (non-zero; Timelock-gated after Nuclear handoff). Confirm → opener compensated; Reject / expire → **`platformRecipient`** (never the resolver). Withdraw before the 14-day window → full free refund to opener.
+Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclear handoff). Upheld → opener compensated; Rejected / Expired → **`platformRecipient`** (never the judge). Withdraw before the 14-day window → full free refund to opener.
 
 ### Accepted risks (audit + design)
 
@@ -683,7 +693,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 2. Deploy **KarProPass** (always fresh — no reuse on Nuclear redeploy).
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
-5. Deploy **KarPassport** `1.6.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
+5. Deploy **KarPassport** `1.7.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
 6. Deploy **MarketplaceEscrow** implementation (passport, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
 7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
 8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
@@ -935,7 +945,7 @@ Every crossing lands **UNVERIFIED**, in **both** directions. Outbound mints the 
 
 ### 12.4 Custody-lock freezes the home trust surface
 
-`KarPassport v1.3` tracks `custodyLocked[tokenId]` (set by the gateway on lock, cleared on unlock). While locked, **all trust-mutating paths revert**: `verifyPassport`, `disputePassport`, `withdrawDispute`, `resolveDispute`, `reportDiscrepancy`, `appendAttestation`, `appendRecord`, `setPassportURI`.
+`KarPassport v1.7` tracks `custodyLocked[tokenId]` (set by the gateway on lock, cleared on unlock). While locked, **all trust-mutating paths revert**: `verifyPassport`, `open` / `withdraw` / `judge` / `conclude`, `reportDiscrepancy`, `appendAttestation`, `appendRecord`, `setPassportURI`.
 
 ### 12.5 Metadata authority is symmetric
 
@@ -1126,9 +1136,9 @@ Indexer env: [indexer/OPERATIONS.md](../indexer/OPERATIONS.md) · `pnpm ponder:c
 
 ### II.6. Dispute model
 
-Normative on-chain rules: **Part I** dispute deposit system (14-day window, party exclusion, Confirm → opener / Reject|Expire → `platformRecipient`, permissionless `expireDispute`).
+Normative on-chain rules: **Part I** verification challenge (BondedChallenge instance: 14-day window, party exclusion, Upheld → opener / Rejected|Expired → `platformRecipient`, permissionless `conclude`). Generation v1.x entry points below are historical only.
 
-### On-chain (summary)
+### On-chain (historical v1.x summary)
 
 - `disputePassport` — VERIFIED → DISPUTED; locks deposit.
 - `withdrawDispute` — opener only, before window; → VERIFIED + full refund.

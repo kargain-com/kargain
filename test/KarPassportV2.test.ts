@@ -88,7 +88,7 @@ describe("KarPassport v2 — tokenId offset", () => {
   });
 });
 
-describe("KarPassport v2 — dispute deposits", () => {
+describe("KarPassport v2 — bonded challenge", () => {
   let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
 
   beforeEach(async () => {
@@ -112,7 +112,7 @@ describe("KarPassport v2 — dispute deposits", () => {
     return { ...stack, tokenId };
   }
 
-  /** Independent resolver ≠ owner, opener, or recorded passportVerifier. Prefer stranger. */
+  /** Independent judge ≠ owner, opener, or recorded passportVerifier. Prefer stranger. */
   async function joinIndependent(
     stack: Awaited<ReturnType<typeof verified>>,
   ) {
@@ -120,64 +120,64 @@ describe("KarPassport v2 — dispute deposits", () => {
     return stack.stranger;
   }
 
-  it("disputePassport requires deposit", async () => {
+  it("open requires exact bond — WrongValue on zero", async () => {
     const { viem } = connection;
     const { owner, passport, tokenId } = await verified(viem);
     await assert.rejects(
-      passport.write.disputePassport([tokenId, "issue"], { account: owner.account, value: 0n }),
-      revertsWith("InsufficientDeposit"),
+      passport.write.open([tokenId], { account: owner.account, value: 0n }),
+      revertsWith("WrongValue"),
     );
   });
 
-  it("dispute locks deposit and stamps disputeOpenedAt", async () => {
+  it("open locks bond and stamps challengeOpenedAt", async () => {
     const { viem } = connection;
     const { owner, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "issue"], {
+    await passport.write.open([tokenId], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    assert.equal(await passport.read.totalLockedDeposits(), DISPUTE_DEPOSIT);
-    assert.equal(await passport.read.disputeDeposits([tokenId]), DISPUTE_DEPOSIT);
+    assert.equal(await passport.read.totalLockedBonds(), DISPUTE_DEPOSIT);
+    assert.equal(await passport.read.challengeBondAmount([tokenId]), DISPUTE_DEPOSIT);
     assert.equal(
-      getAddress(await passport.read.disputeOpenedBy([tokenId])),
+      getAddress(await passport.read.challengeChallenger([tokenId])),
       getAddress(owner.account.address),
     );
-    assert.ok(((await passport.read.disputeOpenedAt([tokenId])) as bigint) > 0n);
+    assert.ok(((await passport.read.challengeOpenedAt([tokenId])) as bigint) > 0n);
   });
 
-  it("withdrawDispute refunds opener fully and restores VERIFIED before window", async () => {
+  it("withdraw refunds opener fully and restores VERIFIED before window", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "issue"], {
+    await passport.write.open([tokenId], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
     const before = await publicClient.getBalance({ address: owner.account.address });
-    const hash = await passport.write.withdrawDispute([tokenId], { account: owner.account });
+    const hash = await passport.write.withdraw([tokenId], { account: owner.account });
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     const after = await publicClient.getBalance({ address: owner.account.address });
     const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
     assert.equal(after + gas - before, DISPUTE_DEPOSIT);
     const [status] = await passport.read.getPassportStatus([tokenId]);
     assert.equal(status, 1);
-    assert.equal(await passport.read.totalLockedDeposits(), 0n);
-    assert.equal(await passport.read.disputeDeposits([tokenId]), 0n);
-    assert.equal(await passport.read.disputeOpenedBy([tokenId]), ZERO);
-    assert.equal(await passport.read.disputeOpenedAt([tokenId]), 0n);
+    assert.equal(await passport.read.totalLockedBonds(), 0n);
+    assert.equal(await passport.read.challengeBondAmount([tokenId]), 0n);
+    assert.equal(await passport.read.challengeChallenger([tokenId]), ZERO);
+    assert.equal(await passport.read.challengeOpenedAt([tokenId]), 0n);
   });
 
-  it("resolve ConfirmDispute pays opener and sets UNVERIFIED (independent resolver)", async () => {
+  it("judge Upheld pays opener and sets UNVERIFIED (independent judge)", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    const judge = await joinIndependent(stack);
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
     const before = await publicClient.getBalance({ address: stack.owner.account.address });
-    await stack.passport.write.resolveDispute([stack.tokenId, 0], { account: resolver.account });
+    await stack.passport.write.judge([stack.tokenId, 0], { account: judge.account });
     const after = await publicClient.getBalance({ address: stack.owner.account.address });
     assert.equal(after - before, DISPUTE_DEPOSIT);
     const [status, recordedVerifier] = await stack.passport.read.getPassportStatus([stack.tokenId]);
@@ -185,116 +185,116 @@ describe("KarPassport v2 — dispute deposits", () => {
     assert.equal(recordedVerifier, ZERO);
   });
 
-  it("resolve RejectDispute pays platformRecipient not resolver", async () => {
+  it("judge Rejected pays platformRecipient not judge", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
+    const judge = await joinIndependent(stack);
     const platform = getAddress(await stack.passport.read.platformRecipient());
     assert.equal(platform, getAddress(stack.admin.account.address));
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
     const platformBefore = await publicClient.getBalance({ address: platform });
-    const resolverBefore = await publicClient.getBalance({ address: resolver.account.address });
-    const hash = await stack.passport.write.resolveDispute([stack.tokenId, 1], {
-      account: resolver.account,
+    const judgeBefore = await publicClient.getBalance({ address: judge.account.address });
+    const hash = await stack.passport.write.judge([stack.tokenId, 1], {
+      account: judge.account,
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
     const platformAfter = await publicClient.getBalance({ address: platform });
-    const resolverAfter = await publicClient.getBalance({ address: resolver.account.address });
+    const judgeAfter = await publicClient.getBalance({ address: judge.account.address });
     assert.equal(platformAfter - platformBefore, DISPUTE_DEPOSIT);
-    assert.equal(resolverAfter + gas, resolverBefore);
+    assert.equal(judgeAfter + gas, judgeBefore);
     const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 1);
-    assert.equal(await stack.passport.read.totalLockedDeposits(), 0n);
+    assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
   });
 
-  it("opener cannot resolve — CannotResolveOwnDispute", async () => {
+  it("opener cannot judge — CannotResolveOwnDispute", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
     await joinVerifier(stack.staking, stack.stranger);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.stranger.account,
       value: DISPUTE_DEPOSIT,
     });
     await assert.rejects(
-      stack.passport.write.resolveDispute([stack.tokenId, 1], {
+      stack.passport.write.judge([stack.tokenId, 1], {
         account: stack.stranger.account,
       }),
       revertsWith("CannotResolveOwnDispute"),
     );
   });
 
-  it("owner cannot resolve — CannotResolveOwnDispute", async () => {
+  it("owner cannot judge — CannotResolveOwnDispute", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
     await joinVerifier(stack.staking, stack.owner);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.stranger.account,
       value: DISPUTE_DEPOSIT,
     });
     await assert.rejects(
-      stack.passport.write.resolveDispute([stack.tokenId, 1], { account: stack.owner.account }),
+      stack.passport.write.judge([stack.tokenId, 1], { account: stack.owner.account }),
       revertsWith("CannotResolveOwnDispute"),
     );
   });
 
-  it("challenged passportVerifier cannot resolve — CannotResolveOwnDispute", async () => {
+  it("challenged passportVerifier cannot judge — CannotResolveOwnDispute", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.stranger.account,
       value: DISPUTE_DEPOSIT,
     });
     await assert.rejects(
-      stack.passport.write.resolveDispute([stack.tokenId, 1], {
+      stack.passport.write.judge([stack.tokenId, 1], {
         account: stack.verifier.account,
       }),
       revertsWith("CannotResolveOwnDispute"),
     );
   });
 
-  it("owner-hired independent verifier can resolve Reject", async () => {
+  it("owner-hired independent verifier can judge Rejected", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
     const hired = await joinIndependent(stack);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await stack.passport.write.resolveDispute([stack.tokenId, 1], { account: hired.account });
+    await stack.passport.write.judge([stack.tokenId, 1], { account: hired.account });
     const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 1);
   });
 
-  it("expireDispute before window reverts DisputeWindowActive", async () => {
+  it("conclude before window reverts DisputeWindowActive", async () => {
     const { viem } = connection;
     const { owner, stranger, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "issue"], {
+    await passport.write.open([tokenId], {
       account: stranger.account,
       value: DISPUTE_DEPOSIT,
     });
     await assert.rejects(
-      passport.write.expireDispute([tokenId], { account: owner.account }),
+      passport.write.conclude([tokenId], { account: owner.account }),
       revertsWith("DisputeWindowActive"),
     );
   });
 
-  it("expireDispute after window → UNVERIFIED, bond to platform; owner gains nothing by silence", async () => {
+  it("conclude after window → UNVERIFIED, bond to platform; owner gains nothing by silence", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.stranger.account,
       value: DISPUTE_DEPOSIT,
     });
     await increaseTime(publicClient, DISPUTE_WINDOW);
     const platform = getAddress(await stack.passport.read.platformRecipient());
     const platformBefore = await publicClient.getBalance({ address: platform });
-    await stack.passport.write.expireDispute([stack.tokenId], {
+    await stack.passport.write.conclude([stack.tokenId], {
       account: stack.owner.account,
     });
     const platformAfter = await publicClient.getBalance({ address: platform });
@@ -304,63 +304,63 @@ describe("KarPassport v2 — dispute deposits", () => {
     ]);
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
-    assert.equal(await stack.passport.read.totalLockedDeposits(), 0n);
+    assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
   });
 
-  it("withdrawDispute after window reverts DisputeWindowElapsed", async () => {
+  it("withdraw after window reverts DisputeWindowElapsed", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { owner, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "issue"], {
+    await passport.write.open([tokenId], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
     await increaseTime(publicClient, DISPUTE_WINDOW);
     await assert.rejects(
-      passport.write.withdrawDispute([tokenId], { account: owner.account }),
+      passport.write.withdraw([tokenId], { account: owner.account }),
       revertsWith("DisputeWindowElapsed"),
     );
   });
 
-  it("resolveDispute after window reverts DisputeWindowElapsed (no race with expire)", async () => {
+  it("judge after window reverts DisputeWindowElapsed (no race with conclude)", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    const judge = await joinIndependent(stack);
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
     await increaseTime(publicClient, DISPUTE_WINDOW);
     await assert.rejects(
-      stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account }),
+      stack.passport.write.judge([stack.tokenId, 1], { account: judge.account }),
       revertsWith("DisputeWindowElapsed"),
     );
-    // Elapsed phase still has an actor: anyone may expire.
-    await stack.passport.write.expireDispute([stack.tokenId], {
+    // Elapsed phase still has an actor: anyone may conclude.
+    await stack.passport.write.conclude([stack.tokenId], {
       account: stack.stranger.account,
     });
     const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 0);
   });
 
-  it("resolveDispute during window succeeds for independent verifier", async () => {
+  it("judge during window succeeds for independent verifier", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    const judge = await joinIndependent(stack);
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account });
+    await stack.passport.write.judge([stack.tokenId, 1], { account: judge.account });
     const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 1);
   });
 
-  it("rescueExcessEth cannot touch locked deposits", async () => {
+  it("rescueExcessEth cannot touch locked bonds", async () => {
     const { viem } = connection;
     const { admin, owner, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "issue"], {
+    await passport.write.open([tokenId], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -372,17 +372,17 @@ describe("KarPassport v2 — dispute deposits", () => {
     );
   });
 
-  it("owner can rescue excess after dispute resolved", async () => {
+  it("owner can rescue excess after challenge judged", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
+    const judge = await joinIndependent(stack);
     const extra = 5_000_000_000_000_000n;
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account });
+    await stack.passport.write.judge([stack.tokenId, 1], { account: judge.account });
     const bomber = await viem.deployContract("SelfDestructSender", []);
     await bomber.write.destroyAndSend([stack.passport.address], {
       account: stack.admin.account,
@@ -396,27 +396,27 @@ describe("KarPassport v2 — dispute deposits", () => {
     assert.ok(adminAfter - adminBefore >= extra - 50_000_000_000_000n);
   });
 
-  it("re-dispute after withdrawDispute works with correct accounting", async () => {
+  it("re-open after withdraw works with correct accounting", async () => {
     const { viem } = connection;
     const stack = await verified(viem);
-    const resolver = await joinIndependent(stack);
-    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+    const judge = await joinIndependent(stack);
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    await stack.passport.write.withdrawDispute([stack.tokenId], { account: stack.owner.account });
+    await stack.passport.write.withdraw([stack.tokenId], { account: stack.owner.account });
     let [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 1);
-    assert.equal(await stack.passport.read.totalLockedDeposits(), 0n);
-    await stack.passport.write.disputePassport([stack.tokenId, "again"], {
+    assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
+    await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
     [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
     assert.equal(status, 2);
-    assert.equal(await stack.passport.read.totalLockedDeposits(), DISPUTE_DEPOSIT);
-    await stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account });
-    assert.equal(await stack.passport.read.totalLockedDeposits(), 0n);
+    assert.equal(await stack.passport.read.totalLockedBonds(), DISPUTE_DEPOSIT);
+    await stack.passport.write.judge([stack.tokenId, 1], { account: judge.account });
+    assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
   });
 
   it("setDisputeDeposit(0) reverts ZeroDisputeDeposit", async () => {
@@ -442,16 +442,16 @@ describe("KarPassport v2 — dispute deposits", () => {
     );
   });
 
-  it("disputePassport with exactly disputeDeposit succeeds", async () => {
+  it("open with exactly disputeDeposit succeeds", async () => {
     const { viem } = connection;
     const { owner, passport, tokenId } = await verified(viem);
-    await passport.write.disputePassport([tokenId, "exact"], {
+    await passport.write.open([tokenId], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
     const [status] = await passport.read.getPassportStatus([tokenId]);
     assert.equal(status, 2);
-    assert.equal(await passport.read.disputeDeposits([tokenId]), DISPUTE_DEPOSIT);
+    assert.equal(await passport.read.challengeBondAmount([tokenId]), DISPUTE_DEPOSIT);
   });
 });
 
@@ -523,7 +523,7 @@ describe("KarPassport — claim payout coverage", () => {
     const publicClient = await viem.getPublicClient();
     const balance = await publicClient.getBalance({ address: passport.address });
     const locked =
-      ((await passport.read.totalLockedDeposits()) as bigint) +
+      ((await passport.read.totalLockedBonds()) as bigint) +
       ((await passport.read.totalPendingNative()) as bigint);
     const free = balance - locked;
     await assert.rejects(
@@ -579,9 +579,9 @@ describe("KarPassport — claim payout coverage", () => {
     );
   });
 
-  it("VERSION is 1.6.0-rc.1", async () => {
+  it("VERSION is 1.7.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.6.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.7.0-rc.1");
   });
 });

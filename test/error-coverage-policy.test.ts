@@ -39,6 +39,7 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     errorSource: "KarPassport.sol",
     suiteFiles: [
       "KarPassportV2.test.ts",
+      "KarPassportEncumbrance.test.ts",
       "kargain.contracts.test.ts",
       "KarPassportBridge.test.ts",
     ],

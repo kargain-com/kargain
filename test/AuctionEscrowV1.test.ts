@@ -690,7 +690,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     const { auction, passport, stranger, admin } = stack;
 
     await auction.write.bid([tokenId, reserve], { account: stranger.account, value: reserve });
-    await passport.write.disputePassport([tokenId, "mid-auction"], {
+    await passport.write.open([tokenId], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -705,12 +705,12 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
 
     const { tokenId: tokenId2, reserve: reserve2 } = await prepareDirectAuction(stack);
     await auction.write.bid([tokenId2, reserve2], { account: stranger.account, value: reserve2 });
-    await passport.write.disputePassport([tokenId2, "confirm then settle"], {
+    await passport.write.open([tokenId2], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
     await joinVerifierIfNeeded(stack.staking, stack.stranger);
-    await passport.write.resolveDispute([tokenId2, 0], { account: stack.stranger.account });
+    await passport.write.judge([tokenId2, 0], { account: stack.stranger.account });
     assert.equal(Number(await passport.read.passportStatus([tokenId2])), 0);
     await increaseTime(publicClient, THREE_DAYS + EXTENSION_WINDOW + 1n);
     await auction.write.settle([tokenId2]);
@@ -728,12 +728,12 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     const { auction, passport, stranger, admin, seller } = stack;
 
     await auction.write.bid([tokenId, reserve], { account: stranger.account, value: reserve });
-    await passport.write.disputePassport([tokenId, "seller-escape"], {
+    await passport.write.open([tokenId], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
     await joinVerifierIfNeeded(stack.staking, stack.stranger);
-    await passport.write.resolveDispute([tokenId, 0], { account: stack.stranger.account });
+    await passport.write.judge([tokenId, 0], { account: stack.stranger.account });
     assert.equal(Number(await passport.read.passportStatus([tokenId])), 0);
 
     await increaseTime(publicClient, THREE_DAYS + EXTENSION_WINDOW + 1n);
@@ -752,7 +752,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     const { auction, passport, stranger, admin } = stack;
 
     await auction.write.bid([tokenId, reserve], { account: stranger.account, value: reserve });
-    await passport.write.disputePassport([tokenId, "unresolved"], {
+    await passport.write.open([tokenId], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -775,7 +775,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
     const { auction, passport, stranger } = stack;
 
     await auction.write.bid([tokenId, reserve], { account: stranger.account, value: reserve });
-    await passport.write.disputePassport([tokenId, "bidder-escape"], {
+    await passport.write.open([tokenId], {
       account: stranger.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -875,7 +875,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
 
     const disputedId = await mintPassport(passport, seller, seller.account.address, "ar://dis");
     await verifyPassport(passport, verifier, disputedId);
-    await passport.write.disputePassport([disputedId, "create gate"], {
+    await passport.write.open([disputedId], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });
@@ -920,7 +920,7 @@ describe("AuctionEscrow v2 — passport status decoupling", () => {
       { account: seller.account },
     );
     // Status may change between authorize and create — gate is at open, not authorize.
-    await passport.write.disputePassport([tokenId, "agent create gate"], {
+    await passport.write.open([tokenId], {
       account: admin.account,
       value: DISPUTE_DEPOSIT,
     });

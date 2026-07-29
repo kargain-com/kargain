@@ -42,6 +42,8 @@ contract AscendingConsignment is
 
     IERC721 public immutable karPassport;
     IKarProActive public immutable karProStaking;
+    /// @dev Settlement challenge bond (exact match at open). Captured into Challenge at open.
+    uint256 private immutable _challengeBond;
 
     uint40 public immutable minDuration;
     uint40 public immutable maxDuration;
@@ -130,7 +132,7 @@ contract AscendingConsignment is
         address initialOwner_
     )
         ConsignmentBase(platformRecipient_, feeBps_)
-        BondedChallenge(forfeitRecipient_, challengeBond_, challengeWindow_)
+        BondedChallenge(forfeitRecipient_, challengeWindow_)
         Ownable(initialOwner_)
     {
         if (
@@ -139,12 +141,14 @@ contract AscendingConsignment is
         ) {
             revert ZeroAddress();
         }
+        if (challengeBond_ == 0) revert BadConfig();
         if (minDuration_ == 0 || maxDuration_ < minDuration_) revert BadConfig();
         if (extensionWindow_ == 0 || protectionWindow_ == 0 || abandonmentWindow_ == 0) revert BadConfig();
         if (minIncrementBps_ == 0 || minIncrementBps_ > _BPS) revert BadConfig();
 
         karPassport = IERC721(passport_);
         karProStaking = IKarProActive(karProStaking_);
+        _challengeBond = challengeBond_;
         minDuration = minDuration_;
         maxDuration = maxDuration_;
         extensionWindow = extensionWindow_;
@@ -412,6 +416,10 @@ contract AscendingConsignment is
 
     function isQualifiedJudge(uint256, address judge_) internal view override returns (bool) {
         return karProStaking.isActiveVerifier(judge_);
+    }
+
+    function _requiredBondAmount() internal view override returns (uint256) {
+        return _challengeBond;
     }
 
     function isExcludedJudge(uint256 subjectId, address /*challenger*/, address judge_)

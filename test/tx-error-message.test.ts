@@ -4,10 +4,10 @@ import { describe, it } from "node:test";
 import { txErrorMessage } from "../lib/marketplace/tx-error-message.ts";
 
 describe("txErrorMessage", () => {
-  it("maps InsufficientDeposit", () => {
+  it("maps WrongValue", () => {
     assert.equal(
-      txErrorMessage(new Error("ContractFunctionRevertedError: InsufficientDeposit()")),
-      "The required deposit has changed. Please retry.",
+      txErrorMessage(new Error("ContractFunctionRevertedError: WrongValue()")),
+      "Native amount does not match. Refresh and try again.",
     );
   });
 

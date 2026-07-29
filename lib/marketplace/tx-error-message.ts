@@ -28,7 +28,6 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   ReturnNotRequested: "Request a return first before forcing it.",
   EmptySettlementNote: "Settlement note cannot be empty.",
   NotVerifier: "You must be an active KarPro verifier to set a verification fee.",
-  InsufficientDeposit: "The required deposit has changed. Please retry.",
   NotDisputeOpener: "Only the dispute opener can withdraw this dispute.",
   NoActiveDispute: "This passport is not in an active dispute.",
   CannotResolveOwnDispute:
@@ -130,6 +129,10 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotEligibleChallenger: "This address is not eligible to open the challenge.",
   NotQualifiedJudge:
     "Only a qualified professional can resolve this challenge. Active KarPro status is required.",
+  SourceAlreadyRegistered: "That encumbrance source is already registered.",
+  SourceNotRegistered: "That encumbrance source is not registered.",
+  SourceUnanswerable:
+    "An encumbrance source could not answer. Governance must remove or replace that source before this action can proceed.",
   CannotRouteBondToJudge:
     "The routed bond would reach the judge; refresh and try the correct outcome.",
   NotPassportOwner: "Only the passport owner can manage this mandate.",

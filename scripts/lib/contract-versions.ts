@@ -2,7 +2,7 @@
  *  Source VERSIONs are the Nuclear #2 ship numbers and are amended in place until that version exists on a chain.
  */
 export const CONTRACT_VERSIONS = {
-  KarPassport: "1.6.0-rc.1",
+  KarPassport: "1.7.0-rc.1",
   KarProPass: "1.1.0-rc.1",
   KarProStaking: "2.0.0-rc.1",
   MarketplaceEscrow: "2.2.0-rc.1",

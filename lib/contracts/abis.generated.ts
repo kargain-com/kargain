@@ -34,7 +34,17 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "CannotRouteBondToJudge",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "CannotSelfVerify",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "DisputeActive",
     "type": "error"
   },
   {
@@ -167,11 +177,6 @@ export const KarPassportAbi = [
     "type": "error"
   },
   {
-    "inputs": [],
-    "name": "InsufficientDeposit",
-    "type": "error"
-  },
-  {
     "inputs": [
       {
         "internalType": "enum KarPassport.Status",
@@ -214,6 +219,11 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "NotEligibleChallenger",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotForeignToken",
     "type": "error"
   },
@@ -225,6 +235,11 @@ export const KarPassportAbi = [
   {
     "inputs": [],
     "name": "NotOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotQualifiedJudge",
     "type": "error"
   },
   {
@@ -271,6 +286,27 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "SourceAlreadyRegistered",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "SourceNotRegistered",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "SourceUnanswerable",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TokenExists",
     "type": "error"
   },
@@ -282,6 +318,11 @@ export const KarPassportAbi = [
   {
     "inputs": [],
     "name": "TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "WrongValue",
     "type": "error"
   },
   {
@@ -531,7 +572,7 @@ export const KarPassportAbi = [
       },
       {
         "indexed": false,
-        "internalType": "enum KarPassport.DisputeOutcome",
+        "internalType": "uint8",
         "name": "outcome",
         "type": "uint8"
       }
@@ -562,6 +603,32 @@ export const KarPassportAbi = [
       }
     ],
     "name": "DisputeWithdrawn",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "EncumbranceSourceAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "EncumbranceSourceRemoved",
     "type": "event"
   },
   {
@@ -667,12 +734,6 @@ export const KarPassportAbi = [
         "internalType": "address",
         "name": "disputer",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "string",
-        "name": "reason",
-        "type": "string"
       }
     ],
     "name": "PassportDisputed",
@@ -843,6 +904,19 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
+    "name": "SOURCE_MAY_GAS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "VERSION",
     "outputs": [
       {
@@ -852,6 +926,19 @@ export const KarPassportAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "addEncumbranceSource",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -1032,6 +1119,95 @@ export const KarPassportAbi = [
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      }
+    ],
+    "name": "challengeBondAmount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      }
+    ],
+    "name": "challengeChallenger",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      }
+    ],
+    "name": "challengeOpenedAt",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      }
+    ],
+    "name": "challengeWindowDuration",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      }
+    ],
+    "name": "conclude",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "",
         "type": "uint256"
       }
@@ -1064,49 +1240,11 @@ export const KarPassportAbi = [
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "",
+        "name": "index",
         "type": "uint256"
       }
     ],
-    "name": "disputeDeposits",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "disputeOpenedAt",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "disputeOpenedBy",
+    "name": "encumbranceSourceAt",
     "outputs": [
       {
         "internalType": "address",
@@ -1118,34 +1256,16 @@ export const KarPassportAbi = [
     "type": "function"
   },
   {
-    "inputs": [
+    "inputs": [],
+    "name": "encumbranceSourceCount",
+    "outputs": [
       {
         "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "string",
-        "name": "reason",
-        "type": "string"
-      }
-    ],
-    "name": "disputePassport",
-    "outputs": [],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokenId",
+        "name": "",
         "type": "uint256"
       }
     ],
-    "name": "expireDispute",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -1221,6 +1341,43 @@ export const KarPassportAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "isEncumbranceSource",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum BondedChallenge.JudgeOutcome",
+        "name": "outcome",
+        "type": "uint8"
+      }
+    ],
+    "name": "judge",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "karProStakingAddress",
     "outputs": [
@@ -1250,6 +1407,30 @@ export const KarPassportAbi = [
       }
     ],
     "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum IKarPassportEncumbrance.Intent",
+        "name": "intent",
+        "type": "uint8"
+      }
+    ],
+    "name": "may",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -1300,6 +1481,19 @@ export const KarPassportAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "open",
+    "outputs": [],
+    "stateMutability": "payable",
     "type": "function"
   },
   {
@@ -1492,6 +1686,19 @@ export const KarPassportAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "source",
+        "type": "address"
+      }
+    ],
+    "name": "removeEncumbranceSource",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
@@ -1535,24 +1742,6 @@ export const KarPassportAbi = [
       }
     ],
     "name": "rescueExcessEth",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "enum KarPassport.DisputeOutcome",
-        "name": "outcome",
-        "type": "uint8"
-      }
-    ],
-    "name": "resolveDispute",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1754,7 +1943,7 @@ export const KarPassportAbi = [
   },
   {
     "inputs": [],
-    "name": "totalLockedDeposits",
+    "name": "totalLockedBonds",
     "outputs": [
       {
         "internalType": "uint256",
@@ -1849,12 +2038,12 @@ export const KarPassportAbi = [
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "asset",
-        "type": "address"
+        "internalType": "uint256",
+        "name": "subjectId",
+        "type": "uint256"
       }
     ],
-    "name": "withdrawClaim",
+    "name": "withdraw",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1862,12 +2051,12 @@ export const KarPassportAbi = [
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
       }
     ],
-    "name": "withdrawDispute",
+    "name": "withdrawClaim",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

@@ -11,6 +11,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @dev Spec source: docs/research/commerce-model-2026.md §7 + §13a.1.
  *      Phase is derived inside the primitive from (openedAt + captured window).
  *      Routing happens inside the primitive; instance handlers run after routing and after state clear.
+ *      Bond amount is asked of the instance at open and captured into Challenge (§11 entry freeze).
  */
 abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     enum JudgeOutcome {
@@ -28,8 +29,10 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     mapping(uint256 => Challenge) internal challenges;
 
     address internal immutable forfeitRecipient;
-    uint256 internal immutable bondAmount;
     uint256 internal immutable windowDuration;
+
+    /// @notice Sum of bonds held in active challenges (rescue accounting).
+    uint256 public totalLockedBonds;
 
     error DisputeActive();
     error NoActiveDispute();
@@ -42,12 +45,10 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     error NotQualifiedJudge();
     error CannotRouteBondToJudge();
 
-    constructor(address forfeitRecipient_, uint256 bondAmount_, uint256 windowDuration_) {
+    constructor(address forfeitRecipient_, uint256 windowDuration_) {
         require(forfeitRecipient_ != address(0), "forfeitRecipient");
-        require(bondAmount_ != 0, "bondAmount");
         require(windowDuration_ != 0, "windowDuration");
         forfeitRecipient = forfeitRecipient_;
-        bondAmount = bondAmount_;
         windowDuration = windowDuration_;
     }
 
@@ -82,6 +83,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     }
 
     function _openChallenge(uint256 subjectId, address challenger, uint256 value) internal {
+        _requireChallengeActionAllowed(subjectId);
         _requireNoChallenge(subjectId);
         _requireEligibleChallenger(subjectId, challenger);
         _requireBondAmount(value);
@@ -92,21 +94,24 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
             challenger: challenger,
             bondAmount: value
         });
+        totalLockedBonds += value;
     }
 
     function withdraw(uint256 subjectId) external nonReentrant {
+        _requireChallengeActionAllowed(subjectId);
         Challenge memory c = _requireActiveChallenge(subjectId);
         _requireChallenger(c);
         _requireWithinWindow(c);
 
         // (a) clear state before routing and before terminal handler
-        delete challenges[subjectId];
+        _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(c.challenger, address(0), c.bondAmount);
         _onWithdrawn(subjectId, c.challenger, c.challenger, c.openedAt, c.windowDuration, c.bondAmount);
     }
 
     function judge(uint256 subjectId, JudgeOutcome outcome) external nonReentrant {
+        _requireChallengeActionAllowed(subjectId);
         Challenge memory c = _requireActiveChallenge(subjectId);
         _requireWithinWindow(c);
         // Exclusion before qualification (§13a.1): a party who is also a professional learns they are
@@ -118,7 +123,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         address bondRecipient = outcome == JudgeOutcome.Upheld ? c.challenger : forfeitRecipient;
 
         // (a) clear state before routing and before terminal handler
-        delete challenges[subjectId];
+        _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(bondRecipient, judgeCaller, c.bondAmount);
 
@@ -146,14 +151,20 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     }
 
     function conclude(uint256 subjectId) external nonReentrant {
+        _requireChallengeActionAllowed(subjectId);
         Challenge memory c = _requireActiveChallenge(subjectId);
         _requireAfterWindow(c);
 
         // (a) clear state before routing and before terminal handler
-        delete challenges[subjectId];
+        _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(forfeitRecipient, address(0), c.bondAmount);
         _onExpired(subjectId, c.challenger, forfeitRecipient, c.openedAt, c.windowDuration, c.bondAmount);
+    }
+
+    function _clearChallengeAccounting(uint256 subjectId, uint256 bondAmount_) private {
+        delete challenges[subjectId];
+        totalLockedBonds -= bondAmount_;
     }
 
     // ---- Phase checks (single revert sites per error name) ----
@@ -172,7 +183,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     }
 
     function _requireBondAmount(uint256 amount) internal view {
-        if (amount != bondAmount) revert WrongValue();
+        if (amount != _requiredBondAmount()) revert WrongValue();
     }
 
     function _requireChallenger(Challenge memory c) internal view {
@@ -206,7 +217,13 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         _payNative(recipient, amount);
     }
 
-    // ---- Instance hooks (four terminal handlers + open eligibility/exclusion set) ----
+    // ---- Instance hooks ----
+
+    /// @dev Instance supplies the live bond amount; captured into Challenge at open.
+    function _requiredBondAmount() internal view virtual returns (uint256);
+
+    /// @dev Custody / domain gate before any challenge action (passport freeze). Default no-op.
+    function _requireChallengeActionAllowed(uint256 subjectId) internal view virtual {}
 
     function isEligibleChallenger(uint256 subjectId, address challenger) internal view virtual returns (bool);
 
@@ -254,4 +271,3 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         uint256 bondAmount_
     ) internal virtual;
 }
-

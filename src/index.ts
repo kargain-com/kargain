@@ -311,7 +311,7 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
     .update(passport, { id: event.args.tokenId.toString() })
     .set({
       lastDisputer: event.args.disputer,
-      disputeReason: event.args.reason,
+      disputeReason: "",
       ...passportDisputedTrustFields(event.block.timestamp),
     });
 });
