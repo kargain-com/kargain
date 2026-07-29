@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { REVERT_COPY, resolveRevertCopy } from "../lib/marketplace/tx-error-message.ts";
 import {
   ERROR_COVERAGE_REGISTRY,
+  LIB_ERROR_COVERAGE_REGISTRY,
   parseErrorNames,
 } from "./error-coverage-policy.test.ts";
 
@@ -28,7 +29,7 @@ const ERC20_ADMISSION_CONTRACTS = new Set([
 
 function allProductionErrorNames(): string[] {
   const names = new Set<string>();
-  for (const entry of ERROR_COVERAGE_REGISTRY) {
+  for (const entry of [...ERROR_COVERAGE_REGISTRY, ...LIB_ERROR_COVERAGE_REGISTRY]) {
     const source = fs.readFileSync(path.join(CONTRACTS_DIR, entry.errorSource), "utf8");
     for (const name of parseErrorNames(source)) names.add(name);
     if (CLAIMABLE_INHERITORS.has(entry.contract)) {

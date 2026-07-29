@@ -54,12 +54,34 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     errorSource: "Timelock48h.sol",
     suiteFiles: ["Timelock48h.test.ts"],
   },
+] as const;
+
+/**
+ * Abstract lib primitives under contracts/lib/ that own custom errors.
+ * Not listed by the root contracts/*.sol production scanner.
+ */
+export const LIB_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
   {
     contract: "BondedChallenge",
-    errorSource: "BondedChallenge.sol",
+    errorSource: "lib/BondedChallenge.sol",
     suiteFiles: ["bonded-challenge/BondedChallenge.test.ts"],
   },
+  {
+    contract: "Mandate",
+    errorSource: "lib/Mandate.sol",
+    suiteFiles: ["mandate-recall/MandateRecall.test.ts"],
+  },
+  {
+    contract: "Recall",
+    errorSource: "lib/Recall.sol",
+    suiteFiles: ["mandate-recall/MandateRecall.test.ts"],
+  },
 ] as const;
+
+const ALL_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
+  ...ERROR_COVERAGE_REGISTRY,
+  ...LIB_ERROR_COVERAGE_REGISTRY,
+];
 
 export type EscapeHatchEntry = {
   contract: string;
@@ -143,7 +165,7 @@ export function buildErrorCoverageReport(): {
   );
   const pairs: CoveragePair[] = [];
 
-  for (const entry of ERROR_COVERAGE_REGISTRY) {
+  for (const entry of ALL_ERROR_COVERAGE_REGISTRY) {
     const sourcePath = path.join(CONTRACTS_DIR, entry.errorSource);
     const source = fs.readFileSync(sourcePath, "utf8");
     let errors = parseErrorNames(source);
@@ -236,9 +258,18 @@ describe("error coverage policy", () => {
     );
   });
 
+  it("registers abstract lib primitives under contracts/lib/", () => {
+    const registered = LIB_ERROR_COVERAGE_REGISTRY.map((e) => e.contract).sort();
+    assert.deepEqual(registered, ["BondedChallenge", "Mandate", "Recall"]);
+    for (const entry of LIB_ERROR_COVERAGE_REGISTRY) {
+      const abs = path.join(CONTRACTS_DIR, entry.errorSource);
+      assert.ok(fs.existsSync(abs), `missing lib error source: ${entry.errorSource}`);
+    }
+  });
+
   it("untriggerable and pending_removal are disjoint and cite declared errors", () => {
     const declared = new Map<string, Set<string>>();
-    for (const entry of ERROR_COVERAGE_REGISTRY) {
+    for (const entry of ALL_ERROR_COVERAGE_REGISTRY) {
       const source = fs.readFileSync(path.join(CONTRACTS_DIR, entry.errorSource), "utf8");
       declared.set(entry.contract, new Set(parseErrorNames(source)));
     }

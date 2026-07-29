@@ -130,6 +130,20 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotEligibleChallenger: "This address is not eligible to open the challenge.",
   CannotRouteBondToJudge:
     "The routed bond would reach the judge; refresh and try the correct outcome.",
+  NotPassportOwner: "Only the passport owner can manage this mandate.",
+  LiveConsignment: "Finish or return the live consignment before changing the mandate.",
+  NoLiveConsignment: "There is no live consignment to concede against.",
+  MandateExpired: "This mandate has expired. Grant a new one to open a consignment.",
+  NoMandate: "There is no active mandate for this passport.",
+  DenominationMismatch:
+    "The consignment denomination must match the mandate. Grant a new mandate for other terms.",
+  CannotRaiseFloor: "The owner floor may only be lowered while a consignment is live.",
+  CannotRaiseCommission: "The commission rate may only be lowered by the agent.",
+  NotCommissionForm: "This consignment uses margin compensation, so there is no commission rate.",
+  NotConsignmentAgent: "Only the consignment agent can lower the commission.",
+  NotConsignmentSeller: "Only the consignment seller can request or force a recall.",
+  NotOfferedAgented:
+    "Recall is only available while an agented offer is open — not after a sale is bound.",
 };
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {BondedChallenge} from "../BondedChallenge.sol";
+import {BondedChallenge} from "../lib/BondedChallenge.sol";
 
 contract RejectETH {
     // Mirror BondedChallenge error to help viem decode when the revert bubbles through this helper.

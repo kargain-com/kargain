@@ -36,7 +36,7 @@ const ABANDONMENT_WINDOW = 600n;
 // Print deployed sizes before registering describes (plan requirement).
 {
   const rows = [
-    { name: "BondedChallenge", artifactPath: "artifacts/contracts/BondedChallenge.sol/BondedChallenge.json" },
+    { name: "BondedChallenge", artifactPath: "artifacts/contracts/lib/BondedChallenge.sol/BondedChallenge.json" },
     {
       name: "BondedChallengeInstanceVerificationHarness",
       artifactPath:
