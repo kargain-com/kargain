@@ -128,6 +128,8 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   Soulbound: "KarPro Pass is soulbound and cannot be transferred.",
   NotHolder: "Only the KarPro Pass holder can do this.",
   NotEligibleChallenger: "This address is not eligible to open the challenge.",
+  NotQualifiedJudge:
+    "Only a qualified professional can resolve this challenge. Active KarPro status is required.",
   CannotRouteBondToJudge:
     "The routed bond would reach the judge; refresh and try the correct outcome.",
   NotPassportOwner: "Only the passport owner can manage this mandate.",
@@ -152,6 +154,17 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   BelowFloor:
     "This price or settlement would leave the owner below their protected floor.",
   NotConsignmentRunner: "Only the party running this sale can change the price.",
+  AscendingOpenPath:
+    "Use the ascending open entrypoints that include auction duration.",
+  TermsFixed: "Ascending sale terms are fixed at creation and cannot be amended.",
+  NotBinding: "Settlement requires a binding ascending sale with a winning bid.",
+  HoldNotReady: "The protection window is still open or frozen by a challenge.",
+  NotHoldBuyer: "Only the settlement buyer can confirm receipt or complete a reversal.",
+  ReversalPending: "A settlement reversal is pending. Complete or abandon it first.",
+  NoReversalPending: "There is no pending settlement reversal for this vehicle.",
+  AbandonmentNotReady: "The abandonment window has not finished yet.",
+  ProtectionElapsed: "The protection window has ended. Confirm or release instead.",
+  NotPassportHolder: "Return the passport to this wallet before completing the reversal.",
 };
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);

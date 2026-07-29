@@ -40,12 +40,12 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
   },
   {
     error: "BidTooLow",
-    contracts: ["AuctionEscrow"],
+    contracts: ["AuctionEscrow", "AscendingConsignment"],
     justification: "Amount below first-bid reserve or below min next bid",
   },
   {
     error: "BadConfig",
-    contracts: ["AuctionEscrow"],
+    contracts: ["AuctionEscrow", "AscendingConsignment"],
     justification: "Config value out of allowed bounds or zero where forbidden",
   },
   {

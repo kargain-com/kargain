@@ -68,6 +68,11 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     errorSource: "FixedPriceConsignment.sol",
     suiteFiles: ["fixed-price/FixedPriceConsignment.test.ts"],
   },
+  {
+    contract: "AscendingConsignment",
+    errorSource: "AscendingConsignment.sol",
+    suiteFiles: ["ascending/AscendingConsignment.test.ts"],
+  },
 ] as const;
 
 /**

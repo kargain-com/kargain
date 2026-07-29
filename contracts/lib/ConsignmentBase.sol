@@ -116,9 +116,10 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         Denomination calldata denomination,
         address asset,
         uint128 price
-    ) external nonReentrant {
+    ) external virtual nonReentrant {
         address owner = passportOwner(tokenId);
         if (owner != msg.sender) revert NotPassportOwner();
+        _requireModeOpen(tokenId, owner, denomination, asset);
         _requireCanOpen(tokenId, owner);
 
         _takeCustody(tokenId, owner);
@@ -139,11 +140,12 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         uint256 tokenId,
         Denomination calldata denomination,
         uint128 price
-    ) external nonReentrant {
+    ) external virtual nonReentrant {
         MandateRecord memory m = _requireMandateAllowsOpen(tokenId, denomination);
         _requireAgentCaller(m.agent);
 
         address owner = passportOwner(tokenId);
+        _requireModeOpen(tokenId, m.agent, denomination, m.asset);
         _requireCanOpen(tokenId, owner);
         _requireAgentedPriceMeetsFloor(price, m.floor, m.compensation);
 
@@ -163,7 +165,8 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     // ---- OFFERED amend (C3 / C6) ----
 
     /// @notice Whoever runs the sale may move price while OFFERED. Agented paths enforce C6.
-    function setPrice(uint256 tokenId, uint128 newPrice) external nonReentrant {
+    function setPrice(uint256 tokenId, uint128 newPrice) external virtual nonReentrant {
+        _requireModeSetPrice(tokenId);
         _requireOfferedActionable(tokenId);
         Consignment storage c = _consignments[tokenId];
         if (c.agent == address(0)) {
@@ -244,15 +247,15 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         _clearRecallRequest(tokenId);
     }
 
-    function _requireOfferedActionable(uint256 tokenId) private view {
+    function _requireOfferedActionable(uint256 tokenId) internal view {
         if (!_isOfferedActionable(tokenId)) revert NotOffered();
     }
 
-    function _isOfferedActionable(uint256 tokenId) private view returns (bool) {
+    function _isOfferedActionable(uint256 tokenId) internal view returns (bool) {
         return _phase[tokenId] == Phase.Offered && !_committedNotOffered[tokenId];
     }
 
-    function _requireAgentCaller(address agent) private view {
+    function _requireAgentCaller(address agent) internal view {
         if (agent != msg.sender) revert NotConsignmentAgent();
     }
 
@@ -261,7 +264,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         uint256 settled,
         uint128 floor,
         Compensation memory comp
-    ) private view returns (SplitResult memory) {
+    ) internal view returns (SplitResult memory) {
         uint256 platform = (settled * platformFeeBps) / _BPS_DENOM;
         uint256 ownerAmount;
         uint256 agentAmount;
@@ -290,7 +293,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         uint256 price,
         uint128 floor,
         Compensation memory comp
-    ) private view {
+    ) internal view {
         _computeAgentedSplitAmounts(price, floor, comp);
     }
 
@@ -348,14 +351,27 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
     function _releaseCustody(uint256 tokenId, address to) internal virtual;
 
+    /// @dev Mode-specific opening gates (ascending N2/N4). FixedPrice leaves no-op.
+    function _requireModeOpen(
+        uint256 tokenId,
+        address runner,
+        Denomination memory denomination,
+        address asset
+    ) internal view virtual {}
+
+    /// @dev Mode-specific price-amend gate (ascending C4 refuses). FixedPrice leaves no-op.
+    function _requireModeSetPrice(uint256 tokenId) internal view virtual {}
+
     // ---- Internals ----
 
-    function _requireCanOpen(uint256 tokenId, address owner) private view {
+    /// @dev Internal so ascending can open with a duration term the base signature does not carry.
+    function _requireCanOpen(uint256 tokenId, address owner) internal view {
         if (!_may(tokenId, IKarPassportEncumbrance.Intent.OpenConsignment)) revert OpenConsignmentRefused();
         if (isLiveConsignment(tokenId)) revert LiveConsignment();
         if (!isEscrowApproved(tokenId, owner)) revert EscrowNotApproved();
     }
 
+    /// @dev Internal so ascending can open with a duration term the base signature does not carry.
     function _writeOpen(
         uint256 tokenId,
         address seller,
@@ -365,7 +381,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         uint128 floor,
         Compensation memory compensation,
         uint128 price
-    ) private {
+    ) internal {
         _consignments[tokenId] = Consignment({
             seller: seller,
             agent: agent,

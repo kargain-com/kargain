@@ -39,6 +39,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     error CannotResolveOwnDispute();
     error WrongValue();
     error NotEligibleChallenger();
+    error NotQualifiedJudge();
     error CannotRouteBondToJudge();
 
     constructor(address forfeitRecipient_, uint256 bondAmount_, uint256 windowDuration_) {
@@ -74,16 +75,22 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
 
     // ---- Entry points (exactly one entrypoint per actor per phase) ----
 
+    /// @dev External entry. Modes that must mutate state before opening override `open` and call `_openChallenge`
+    ///      (nested `nonReentrant` on `super.open` would revert — ReentrancyGuard is shared).
     function open(uint256 subjectId) public payable nonReentrant virtual {
+        _openChallenge(subjectId, msg.sender, msg.value);
+    }
+
+    function _openChallenge(uint256 subjectId, address challenger, uint256 value) internal {
         _requireNoChallenge(subjectId);
-        _requireEligibleChallenger(subjectId, msg.sender);
-        _requireBondAmount(msg.value);
+        _requireEligibleChallenger(subjectId, challenger);
+        _requireBondAmount(value);
 
         challenges[subjectId] = Challenge({
             openedAt: block.timestamp,
             windowDuration: windowDuration,
-            challenger: msg.sender,
-            bondAmount: msg.value
+            challenger: challenger,
+            bondAmount: value
         });
     }
 
@@ -102,7 +109,10 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     function judge(uint256 subjectId, JudgeOutcome outcome) external nonReentrant {
         Challenge memory c = _requireActiveChallenge(subjectId);
         _requireWithinWindow(c);
+        // Exclusion before qualification (§13a.1): a party who is also a professional learns they are
+        // a party; a non-party who is not qualified learns they are not a professional.
         _requireNotExcludedJudge(subjectId, c);
+        _requireQualifiedJudge(subjectId);
 
         address judgeCaller = msg.sender;
         address bondRecipient = outcome == JudgeOutcome.Upheld ? c.challenger : forfeitRecipient;
@@ -181,6 +191,10 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         if (isExcludedJudge(subjectId, c.challenger, msg.sender)) revert CannotResolveOwnDispute();
     }
 
+    function _requireQualifiedJudge(uint256 subjectId) internal view {
+        if (!isQualifiedJudge(subjectId, msg.sender)) revert NotQualifiedJudge();
+    }
+
     // ---- Routing ----
 
     function _payBond(
@@ -196,6 +210,10 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
 
     function isEligibleChallenger(uint256 subjectId, address challenger) internal view virtual returns (bool);
 
+    /// @dev Qualification: may this address judge anything (instance supplies the professional test).
+    function isQualifiedJudge(uint256 subjectId, address judge) internal view virtual returns (bool);
+
+    /// @dev Exclusion: may this address judge *this* dispute (parties to the subject).
     function isExcludedJudge(uint256 subjectId, address challenger, address judge) internal view virtual returns (bool);
 
     function _onUpheld(

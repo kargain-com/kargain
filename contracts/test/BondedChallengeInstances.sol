@@ -42,6 +42,10 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
     bool public revertEnabled;
     TerminalKind public revertTerminal;
 
+    /// @dev When true (default), every address is qualified. When false, only `individuallyQualified`.
+    bool public qualifyAll = true;
+    mapping(address account => bool) public individuallyQualified;
+
     error OrderingViolation();
     error HandlerReverted();
 
@@ -62,6 +66,14 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
         checkOrdering = enabled;
     }
 
+    function setQualifyAll(bool enabled) external {
+        qualifyAll = enabled;
+    }
+
+    function setQualified(address account, bool enabled) external {
+        individuallyQualified[account] = enabled;
+    }
+
     function setRevertTerminal(TerminalKind kind, bool enabled) external {
         revertEnabled = enabled;
         revertTerminal = kind;
@@ -77,6 +89,11 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
 
     function isEligibleChallenger(uint256, address) internal pure override returns (bool) {
         return true;
+    }
+
+    function isQualifiedJudge(uint256, address judge) internal view override returns (bool) {
+        if (qualifyAll) return true;
+        return individuallyQualified[judge];
     }
 
     function isExcludedJudge(uint256, address challenger, address judge)
@@ -258,6 +275,10 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
 
     function isEligibleChallenger(uint256, address challenger) internal view override returns (bool) {
         return challenger == buyer;
+    }
+
+    function isQualifiedJudge(uint256, address) internal pure override returns (bool) {
+        return true;
     }
 
     function isExcludedJudge(uint256, address challenger, address judge)

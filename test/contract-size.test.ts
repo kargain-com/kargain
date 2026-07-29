@@ -40,6 +40,10 @@ const PRODUCTION_CONTRACTS = [
     name: "FixedPriceConsignment",
     artifactPath: "artifacts/contracts/FixedPriceConsignment.sol/FixedPriceConsignment.json",
   },
+  {
+    name: "AscendingConsignment",
+    artifactPath: "artifacts/contracts/AscendingConsignment.sol/AscendingConsignment.json",
+  },
 ] as const;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

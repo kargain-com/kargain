@@ -154,6 +154,27 @@ describe("BondedChallenge (CH1–CH6)", () => {
     );
   });
 
+  it("judge qualification hook: NotQualifiedJudge before success when toggled", async () => {
+    const subject = 50n;
+    await verification.write.open([subject], { account: vChallenger.account, value: BOND });
+
+    await verification.write.setQualifyAll([false]);
+    await assert.rejects(
+      verification.write.judge([subject, 1], { account: vJudge.account }),
+      revertsWith("NotQualifiedJudge"),
+    );
+
+    // Exclusion still wins when the party is also unqualified.
+    await assert.rejects(
+      verification.write.judge([subject, 1], { account: vChallenger.account }),
+      revertsWith("CannotResolveOwnDispute"),
+    );
+
+    await verification.write.setQualified([vJudge.account.address, true]);
+    await verification.write.judge([subject, 1], { account: vJudge.account });
+    assert.equal(await verification.read.challengeOpenedAt([subject]), 0n);
+  });
+
   it("N0 subjectId key: open twice on same subject fails (DisputeActive)", async () => {
     const subject = 2n;
     await verification.write.open([subject], { account: vChallenger.account, value: BOND });

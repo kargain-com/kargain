@@ -14,6 +14,7 @@ export const CONTRACT_VERSIONS = {
   ProxyONFT721Adapter: "1.1.0-rc.1",
   AuctionEscrow: "2.0.0-rc.1",
   FixedPriceConsignment: "1.0.0-rc.1",
+  AscendingConsignment: "1.0.0-rc.1",
 } as const;
 
 export type ContractVersionName = keyof typeof CONTRACT_VERSIONS;
