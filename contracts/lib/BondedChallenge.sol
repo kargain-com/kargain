@@ -57,6 +57,40 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     error ChallengeAlreadyConfigured();
     error ChallengeNotConfigured();
 
+    /// @notice Challenge opened. Instance = emitting contract (passport vs ascending).
+    event ChallengeOpened(
+        uint256 indexed subjectId,
+        address indexed challenger,
+        uint256 bondAmount,
+        uint256 windowDuration,
+        uint256 openedAt
+    );
+    event ChallengeWithdrawn(
+        uint256 indexed subjectId,
+        address indexed challenger,
+        uint256 bondAmount,
+        uint256 windowDuration,
+        uint256 openedAt
+    );
+    event ChallengeJudged(
+        uint256 indexed subjectId,
+        address indexed challenger,
+        address indexed judge,
+        JudgeOutcome outcome,
+        address bondRecipient,
+        uint256 bondAmount,
+        uint256 windowDuration,
+        uint256 openedAt
+    );
+    event ChallengeConcluded(
+        uint256 indexed subjectId,
+        address indexed challenger,
+        address bondRecipient,
+        uint256 bondAmount,
+        uint256 windowDuration,
+        uint256 openedAt
+    );
+
     /// @dev One-shot. Call from child constructor (non-upgradeable) or initialize (UUPS).
     function _configureBondedChallenge(address forfeitRecipient_, uint256 windowDuration_) internal {
         if (_bondedChallengeConfigured) revert ChallengeAlreadyConfigured();
@@ -111,6 +145,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
             bondAmount: value
         });
         totalLockedBonds += value;
+        emit ChallengeOpened(subjectId, challenger, value, windowDuration, block.timestamp);
     }
 
     function withdraw(uint256 subjectId) external nonReentrant {
@@ -123,6 +158,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(c.challenger, address(0), c.bondAmount);
+        emit ChallengeWithdrawn(subjectId, c.challenger, c.bondAmount, c.windowDuration, c.openedAt);
         _onWithdrawn(subjectId, c.challenger, c.challenger, c.openedAt, c.windowDuration, c.bondAmount);
     }
 
@@ -142,6 +178,16 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(bondRecipient, judgeCaller, c.bondAmount);
+        emit ChallengeJudged(
+            subjectId,
+            c.challenger,
+            judgeCaller,
+            outcome,
+            bondRecipient,
+            c.bondAmount,
+            c.windowDuration,
+            c.openedAt
+        );
 
         if (outcome == JudgeOutcome.Upheld) {
             _onUpheld(
@@ -175,6 +221,9 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
         _clearChallengeAccounting(subjectId, c.bondAmount);
 
         _payBond(forfeitRecipient, address(0), c.bondAmount);
+        emit ChallengeConcluded(
+            subjectId, c.challenger, forfeitRecipient, c.bondAmount, c.windowDuration, c.openedAt
+        );
         _onExpired(subjectId, c.challenger, forfeitRecipient, c.openedAt, c.windowDuration, c.bondAmount);
     }
 

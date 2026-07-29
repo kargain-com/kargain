@@ -76,11 +76,14 @@ Generation v2 adds agent consignment fields:
 
 | Event | Purpose |
 |-------|---------|
-| `DisputeDepositPaid` | Bond locked on dispute open |
-| `DisputeWithdrawn` | Opener withdrew dispute + refund |
+| `ChallengeOpened` | Bond locked on verification challenge open (BondedChallenge; replaces `DisputeDepositPaid`) |
+| `ChallengeWithdrawn` | Opener withdrew challenge + refund (replaces `DisputeWithdrawn`) |
+| `ChallengeJudged` / `ChallengeConcluded` | Merits or window expiry (replaces `DisputeResolved` / `DisputeExpired`) |
+| `PassportDisputed` | Domain status → DISPUTED (kept) |
+| `VerificationLapsed` / `VerificationStood` | Domain status after terminals |
 | `DisputeDepositUpdated` | Owner changed global deposit amount |
 
-Existing handlers (`PassportDisputed`, `DisputeResolved`, etc.) remain relevant; `DisputeResolved` now carries `DisputeOutcome` enum instead of bool.
+Handlers in `src/index.ts` listen for `Challenge*` on Nuclear #2 ABIs; legacy `Dispute*` names remain historical for live I.9 until redeploy.
 
 ### KarProStaking
 
@@ -96,8 +99,10 @@ Handlers in [`src/index.ts`](../../src/index.ts) index generation v2 events. Key
 
 - **`Listed`:** `currencyCode` (bytes32 → ASCII), `agent`, `agentFeeBps`
 - **`Sale`:** `platformFee`, `agentFee`, `payToken`, `agent`
-- **`DisputeResolved`:** `outcome` enum via `disputeOutcomeUpholdsVerification`
-- **`DisputeWithdrawn`:** dedicated handler (status `VERIFIED`)
+- **`ChallengeJudged`:** `outcome` enum via `disputeOutcomeUpholdsVerification` (replaces `DisputeResolved`)
+- **`ChallengeWithdrawn`:** dedicated handler (status `VERIFIED`; replaces `DisputeWithdrawn`)
+- **`ChallengeConcluded`:** expire-lapse path (replaces `DisputeExpired`)
+- **`ChallengeOpened`:** bond lock + `disputeDeposit` column (replaces `DisputeDepositPaid`)
 
 API layer ([`src/api/index.ts`](../../src/api/index.ts)) exposes legacy `fiatCurrency: 0|1` derived from `currencyCode` for existing browse/buy UI.
 
@@ -220,7 +225,7 @@ Generation v2 is a **fresh deploy** at new addresses — v1.x event history stay
 ### Deferred (phase 2) — ✅ complete
 
 - ~~Marketplace: `ReturnRequested`, `ForceReturn`, `SettlementNoteSet`, `ExternalPaymentConfirmed`, `PaymentTokenApproved/Revoked`, `Paused`~~ — handlers in `src/index.ts`; schema columns `returnRequestedAt`, `externalPaymentConfirmedAt` on `marketplace_listing`; `disputeDeposit` on `passport`. **`SettlementNoteSet`** is a no-op handler (event has no `note` arg); frontend reads `settlementNotes(tokenId)` via wagmi RPC.
-- ~~KarPassport: `DisputeDepositPaid`, `DisputeDepositUpdated`~~ — `DisputeDepositPaid` writes `passport.disputeDeposit`; cleared on `DisputeResolved` / `DisputeWithdrawn` via trust-field helpers.
+- ~~KarPassport: `ChallengeOpened`, `DisputeDepositUpdated`~~ — `ChallengeOpened` writes `passport.disputeDeposit`; cleared on challenge terminals via trust-field helpers (legacy names: `DisputeDepositPaid` / `DisputeResolved` / `DisputeWithdrawn`).
 - CoinGecko FX extension — §6 below
 
 ---

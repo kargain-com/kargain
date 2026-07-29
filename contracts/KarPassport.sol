@@ -31,9 +31,9 @@ interface IKarProStaking {
 /// @dev Verification challenge state machine lives in BondedChallenge. This contract supplies
 ///      eligibility, exclusion, qualification, bond amount, and domain terminals (lapse/stand).
 ///      Spec: commerce-model §7.2, §9, §13a.1, §13a.4. Nuclear #2 redeploy for live cutover.
-/// @custom:version 1.7.0-rc.1
+/// @custom:version 1.8.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassportEncumbrance {
-    string public constant VERSION = "1.7.0-rc.1";
+    string public constant VERSION = "1.8.0-rc.1";
 
     /// @notice Window captured into each verification challenge at open (library immutable).
     uint256 public constant DISPUTE_WINDOW = 14 days;
@@ -86,12 +86,11 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     event PassportMinted(address indexed to, uint256 indexed tokenId, string uri);
     event PassportVerified(uint256 indexed tokenId, address indexed verifier);
     event PassportDisputed(uint256 indexed tokenId, address indexed disputer);
-    /// @param outcome 0 = Upheld (lapse), 1 = Rejected (stand) — BondedChallenge.JudgeOutcome.
-    event DisputeResolved(uint256 indexed tokenId, address indexed resolver, uint8 outcome);
-    event DisputeWithdrawn(uint256 indexed tokenId, address indexed opener, uint256 amount);
-    event DisputeExpired(uint256 indexed tokenId, address indexed caller, uint256 amount);
+    /// @notice Verification lapsed after an upheld or expired challenge (domain outcome).
+    event VerificationLapsed(uint256 indexed tokenId);
+    /// @notice Verification stood after a rejected or withdrawn challenge (domain outcome).
+    event VerificationStood(uint256 indexed tokenId);
     event DisputeDepositUpdated(uint256 previousAmount, uint256 newAmount);
-    event DisputeDepositPaid(uint256 indexed tokenId, address indexed opener, uint256 amount);
     event EthRescued(address indexed to, uint256 amount);
     event PassportURIUpdated(uint256 indexed tokenId, string newURI, address indexed author);
     event VerificationReset(uint256 indexed tokenId, address indexed author);
@@ -383,7 +382,6 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         passportStatus[tokenId] = Status.DISPUTED;
 
         emit PassportDisputed(tokenId, msg.sender);
-        emit DisputeDepositPaid(tokenId, msg.sender, msg.value);
     }
 
     /// @notice Owner appends a rich on-chain record.
@@ -485,27 +483,26 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     function _onUpheld(
         uint256 tokenId,
         address /*challenger*/,
-        address judgeCaller,
+        address /*judgeCaller*/,
         address /*bondRecipient*/,
         uint256 /*openedAt*/,
         uint256 /*windowDuration*/,
         uint256 /*bondAmount_*/
     ) internal override {
         _lapseVerification(tokenId);
-        emit DisputeResolved(tokenId, judgeCaller, uint8(JudgeOutcome.Upheld));
     }
 
     function _onRejected(
         uint256 tokenId,
         address /*challenger*/,
-        address judgeCaller,
+        address /*judgeCaller*/,
         address /*bondRecipient*/,
         uint256 /*openedAt*/,
         uint256 /*windowDuration*/,
         uint256 /*bondAmount_*/
     ) internal override {
         passportStatus[tokenId] = Status.VERIFIED;
-        emit DisputeResolved(tokenId, judgeCaller, uint8(JudgeOutcome.Rejected));
+        emit VerificationStood(tokenId);
     }
 
     function _onExpired(
@@ -514,10 +511,9 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         address /*bondRecipient*/,
         uint256 /*openedAt*/,
         uint256 /*windowDuration*/,
-        uint256 bondAmount_
+        uint256 /*bondAmount_*/
     ) internal override {
         _lapseVerification(tokenId);
-        emit DisputeExpired(tokenId, msg.sender, bondAmount_);
     }
 
     function _onWithdrawn(
@@ -526,17 +522,18 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         address /*bondRecipient*/,
         uint256 /*openedAt*/,
         uint256 /*windowDuration*/,
-        uint256 bondAmount_
+        uint256 /*bondAmount_*/
     ) internal override {
         passportStatus[tokenId] = Status.VERIFIED;
         _appendRecord(tokenId, "dispute_withdrawn", "Challenge withdrawn by opener", "", challenger);
-        emit DisputeWithdrawn(tokenId, challenger, bondAmount_);
+        emit VerificationStood(tokenId);
     }
 
     function _lapseVerification(uint256 tokenId) private {
         passportStatus[tokenId] = Status.UNVERIFIED;
         passportVerifier[tokenId] = address(0);
         passportVerifiedAt[tokenId] = 0;
+        emit VerificationLapsed(tokenId);
     }
 
     function _requireExists(uint256 tokenId) internal view {

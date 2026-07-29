@@ -23,7 +23,7 @@ import {Erc20Admission} from "./lib/Erc20Admission.sol";
 contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Receiver, IKarPassportEncumbrance {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.0.0-rc.1";
+    string public constant VERSION = "2.1.0-rc.1";
 
     bytes32 public constant CURRENCY_USD = bytes32("USD");
 
@@ -176,7 +176,7 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         address buyer = msg.sender;
         _releaseCustody(tokenId, buyer);
         emit Bought(tokenId, buyer, asset, amount);
-        _paySplit(tokenId, amount);
+        _paySplit(tokenId, amount, CloseReason.Sold);
     }
 
     // ---- External confirmation (C7 / R4) — never paused ----
@@ -206,7 +206,7 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         _releaseCustody(tokenId, buyer);
         emit ExternalPaymentConfirmed(tokenId, buyer, msg.sender);
         // No _paySplit, no floor check, no money movement (C7 / R4).
-        _close(tokenId);
+        _close(tokenId, CloseReason.ExternalConfirmed);
     }
 
     // ---- UUPS ----

@@ -127,7 +127,7 @@ describe("FixedPriceConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
   });
 
   it("source carries no verifier-admission / staking gate symbols (N2)", () => {
@@ -635,9 +635,75 @@ describe("FixedPriceConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
     assert.equal(await mode.read.consignmentPriceOf([TOKEN]), priceBefore);
     void modeImpl;
+  });
+
+  describe("accountability event surface (args vs chain state)", () => {
+    async function lastEvent(eventName: string) {
+      const logs = await publicClient.getContractEvents({
+        address: mode.address,
+        abi: mode.abi,
+        eventName: eventName as "ConsignmentOpened",
+        fromBlock: 0n,
+        toBlock: "latest",
+      });
+      assert.ok(logs.length > 0, `expected ${eventName}`);
+      return logs[logs.length - 1]!;
+    }
+
+    it("ConsignmentOpened matches open storage; buy emits SplitPaid + Closed Sold", async () => {
+      const price = parseEther("1");
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, price], { account: owner.account });
+      const opened = await lastEvent("ConsignmentOpened");
+      const a = opened.args as {
+        tokenId: bigint;
+        seller: string;
+        price: bigint;
+        platformFeeBps: number;
+        openedAt: bigint;
+      };
+      assert.equal(a.tokenId, TOKEN);
+      assert.equal(a.seller.toLowerCase(), owner.account.address.toLowerCase());
+      assert.equal(a.price, price);
+      assert.equal(BigInt(a.platformFeeBps), PLATFORM_FEE_BPS);
+      assert.equal(a.openedAt, await mode.read.consignmentOpenedAt([TOKEN]));
+      assert.equal(await mode.read.consignmentPriceOf([TOKEN]), price);
+
+      await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+      const split = await lastEvent("ConsignmentSplitPaid");
+      const s = split.args as {
+        tokenId: bigint;
+        ownerAmount: bigint;
+        platformAmount: bigint;
+        agentAmount: bigint;
+      };
+      const platformShare = (price * PLATFORM_FEE_BPS) / 10_000n;
+      assert.equal(s.tokenId, TOKEN);
+      assert.equal(s.platformAmount, platformShare);
+      assert.equal(s.ownerAmount, price - platformShare);
+      assert.equal(s.agentAmount, 0n);
+
+      const closed = await lastEvent("ConsignmentClosed");
+      assert.equal((closed.args as { reason: number }).reason, 1); // Sold
+      assert.equal(await mode.read.consignmentPhase([TOKEN]), 2); // Closed
+    });
+
+    it("ConsignmentPriceSet matches storage after setPrice", async () => {
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: owner.account,
+      });
+      await mode.write.setPrice([TOKEN, parseEther("2")], { account: owner.account });
+      const priced = await lastEvent("ConsignmentPriceSet");
+      const p = priced.args as { tokenId: bigint; setter: string; newPrice: bigint };
+      assert.equal(p.tokenId, TOKEN);
+      assert.equal(p.setter.toLowerCase(), owner.account.address.toLowerCase());
+      assert.equal(p.newPrice, parseEther("2"));
+      assert.equal(await mode.read.consignmentPriceOf([TOKEN]), p.newPrice);
+    });
   });
 });

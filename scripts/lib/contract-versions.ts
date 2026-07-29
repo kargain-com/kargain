@@ -2,7 +2,7 @@
  *  Source VERSIONs are the Nuclear #2 ship numbers and are amended in place until that version exists on a chain.
  */
 export const CONTRACT_VERSIONS = {
-  KarPassport: "1.7.0-rc.1",
+  KarPassport: "1.8.0-rc.1",
   KarProPass: "1.1.0-rc.1",
   KarProStaking: "2.0.0-rc.1",
   MarketplaceEscrow: "2.2.0-rc.1",
@@ -13,8 +13,8 @@ export const CONTRACT_VERSIONS = {
   /** @deprecated C2 — removed adapter; kept for historical smoke key lookups */
   ProxyONFT721Adapter: "1.1.0-rc.1",
   AuctionEscrow: "2.0.0-rc.1",
-  FixedPriceConsignment: "2.0.0-rc.1",
-  AscendingConsignment: "2.0.0-rc.1",
+  FixedPriceConsignment: "2.1.0-rc.1",
+  AscendingConsignment: "2.1.0-rc.1",
 } as const;
 
 export type ContractVersionName = keyof typeof CONTRACT_VERSIONS;

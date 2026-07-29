@@ -36,7 +36,7 @@ contract AscendingConsignment is
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.0.0-rc.1";
+    string public constant VERSION = "2.1.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
 
@@ -45,17 +45,28 @@ contract AscendingConsignment is
     /// @dev Settlement challenge bond (exact match at open). Captured into Challenge at open (§11).
     uint256 private _challengeBond;
 
-    uint40 public minDuration;
-    uint40 public maxDuration;
-
+    /// @dev Live auction rules (future opens / bids / settles). Read via `auctionRules()`.
+    uint40 internal minDuration;
+    uint40 internal maxDuration;
     /// @dev Anti-sniping window. Mutable: applies from the next bid (B3) — never rewrites a captured endsAt alone.
-    uint40 public extensionWindow;
+    uint40 internal extensionWindow;
     /// @dev Minimum raise over the standing high bid, in bps. Mutable for subsequent bids (B3).
-    uint16 public minIncrementBps;
+    uint16 internal minIncrementBps;
     /// @dev Protection length applied at settle (H1). Mutable for future settles only.
-    uint40 public protectionWindow;
+    uint40 internal protectionWindow;
     /// @dev Abandonment length applied when reversal becomes pending (CH5). Mutable for future reversals only.
-    uint40 public abandonmentWindow;
+    uint40 internal abandonmentWindow;
+
+    /// @notice Complete live auction-rule set (governance + open floors).
+    struct AuctionRules {
+        uint40 minDuration;
+        uint40 maxDuration;
+        uint40 extensionWindow;
+        uint16 minIncrementBps;
+        uint40 protectionWindow;
+        uint40 abandonmentWindow;
+        uint256 challengeBond;
+    }
 
     /// @dev Slot 0: five uint40 + uint16 (216 bits). Slot 1: highestBidder. Slot 2: highestBid.
     ///      Terms that govern a live lot are frozen at open (G1); storage setters only affect later opens.
@@ -113,21 +124,34 @@ contract AscendingConsignment is
     error DirectEthNotAccepted();
     error NotPassportHolder();
 
-    event ExtensionWindowSet(uint40 previous, uint40 current);
-    event MinIncrementBpsSet(uint16 previous, uint16 current);
-    event ProtectionWindowSet(uint40 previous, uint40 current);
-    event AbandonmentWindowSet(uint40 previous, uint40 current);
-    event MinDurationSet(uint40 previous, uint40 current);
-    event MaxDurationSet(uint40 previous, uint40 current);
-    event ChallengeBondSet(uint256 previous, uint256 current);
+    event AuctionRulesSet(
+        uint40 minDuration,
+        uint40 maxDuration,
+        uint40 extensionWindow,
+        uint16 minIncrementBps,
+        uint40 protectionWindow,
+        uint40 abandonmentWindow,
+        uint256 challengeBond
+    );
     event PaymentTokenApproved(address indexed token);
     event PaymentTokenRevoked(address indexed token);
     event BidPlaced(uint256 indexed tokenId, address indexed bidder, uint128 amount, uint40 endsAt);
+    event BidRefunded(uint256 indexed tokenId, address indexed bidder, address asset, uint128 amount);
     event Settled(uint256 indexed tokenId, address indexed buyer, uint128 gross, uint64 protectionEndsAt);
     event ReceiptConfirmed(uint256 indexed tokenId, address indexed buyer);
     event FundsReleased(uint256 indexed tokenId, address indexed buyer);
+    event ReversalStarted(uint256 indexed tokenId, address indexed buyer, uint64 abandonmentDeadline);
     event ReversalCompleted(uint256 indexed tokenId, address indexed buyer);
     event ReversalAbandoned(uint256 indexed tokenId, address indexed buyer);
+    event AscendingTermsSnapshotted(
+        uint256 indexed tokenId,
+        uint40 duration,
+        uint40 extensionWindow,
+        uint40 protectionWindow,
+        uint40 abandonmentWindow,
+        uint16 minIncrementBps,
+        uint128 reserve
+    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -175,53 +199,39 @@ contract AscendingConsignment is
 
     // ---- Admin ----
 
-    function setMinDuration(uint40 value) external onlyOwner {
-        if (value == 0 || value > maxDuration) revert BadConfig();
-        uint40 previous = minDuration;
-        minDuration = value;
-        emit MinDurationSet(previous, value);
-    }
+    /// @notice Replace the full live auction-rule set (future opens / bids / settles / challenges).
+    /// @dev Timelock queue is serialized: a later scheduled full-set execute wins over an earlier one.
+    function setAuctionRules(
+        uint40 minDuration_,
+        uint40 maxDuration_,
+        uint40 extensionWindow_,
+        uint16 minIncrementBps_,
+        uint40 protectionWindow_,
+        uint40 abandonmentWindow_,
+        uint256 challengeBond_
+    ) external onlyOwner {
+        if (minDuration_ == 0 || maxDuration_ < minDuration_) revert BadConfig();
+        if (extensionWindow_ == 0 || protectionWindow_ == 0 || abandonmentWindow_ == 0) revert BadConfig();
+        if (minIncrementBps_ == 0 || minIncrementBps_ > _BPS) revert BadConfig();
+        if (challengeBond_ == 0) revert BadConfig();
 
-    function setMaxDuration(uint40 value) external onlyOwner {
-        if (value == 0 || value < minDuration) revert BadConfig();
-        uint40 previous = maxDuration;
-        maxDuration = value;
-        emit MaxDurationSet(previous, value);
-    }
+        minDuration = minDuration_;
+        maxDuration = maxDuration_;
+        extensionWindow = extensionWindow_;
+        minIncrementBps = minIncrementBps_;
+        protectionWindow = protectionWindow_;
+        abandonmentWindow = abandonmentWindow_;
+        _challengeBond = challengeBond_;
 
-    function setChallengeBond(uint256 value) external onlyOwner {
-        if (value == 0) revert BadConfig();
-        uint256 previous = _challengeBond;
-        _challengeBond = value;
-        emit ChallengeBondSet(previous, value);
-    }
-
-    function setExtensionWindow(uint40 value) external onlyOwner {
-        if (value == 0) revert BadConfig();
-        uint40 previous = extensionWindow;
-        extensionWindow = value;
-        emit ExtensionWindowSet(previous, value);
-    }
-
-    function setMinIncrementBps(uint16 value) external onlyOwner {
-        if (value == 0 || value > _BPS) revert BadConfig();
-        uint16 previous = minIncrementBps;
-        minIncrementBps = value;
-        emit MinIncrementBpsSet(previous, value);
-    }
-
-    function setProtectionWindow(uint40 value) external onlyOwner {
-        if (value == 0) revert BadConfig();
-        uint40 previous = protectionWindow;
-        protectionWindow = value;
-        emit ProtectionWindowSet(previous, value);
-    }
-
-    function setAbandonmentWindow(uint40 value) external onlyOwner {
-        if (value == 0) revert BadConfig();
-        uint40 previous = abandonmentWindow;
-        abandonmentWindow = value;
-        emit AbandonmentWindowSet(previous, value);
+        emit AuctionRulesSet(
+            minDuration_,
+            maxDuration_,
+            extensionWindow_,
+            minIncrementBps_,
+            protectionWindow_,
+            abandonmentWindow_,
+            challengeBond_
+        );
     }
 
     function approvePaymentToken(address token) external onlyOwner {
@@ -347,7 +357,7 @@ contract AscendingConsignment is
         emit BidPlaced(tokenId, msg.sender, amount, a.endsAt);
 
         if (prevBidder != address(0)) {
-            _refundBid(prevBidder, c.asset, prevAmount);
+            _refundBid(tokenId, prevBidder, c.asset, prevAmount);
         }
     }
 
@@ -389,8 +399,9 @@ contract AscendingConsignment is
         if (msg.sender != h.buyer) revert NotHoldBuyer();
         _requireNoChallenge(tokenId);
         if (h.reversalPending) revert ReversalPending();
-        _payoutHoldAndClose(tokenId);
-        emit ReceiptConfirmed(tokenId, h.buyer);
+        address buyer = h.buyer;
+        _payoutHoldAndClose(tokenId, CloseReason.HoldReleased);
+        emit ReceiptConfirmed(tokenId, buyer);
     }
 
     function releaseFunds(uint256 tokenId) external nonReentrant {
@@ -399,7 +410,7 @@ contract AscendingConsignment is
         if (h.reversalPending) revert ReversalPending();
         if (block.timestamp < h.protectionEndsAt) revert HoldNotReady();
         address buyer = h.buyer;
-        _payoutHoldAndClose(tokenId);
+        _payoutHoldAndClose(tokenId, CloseReason.HoldReleased);
         emit FundsReleased(tokenId, buyer);
     }
 
@@ -425,7 +436,7 @@ contract AscendingConsignment is
             _payErc20(asset, buyer, gross);
         }
 
-        _terminateToOwner(tokenId);
+        _terminateToOwner(tokenId, CloseReason.ReversalCompleted);
         emit ReversalCompleted(tokenId, buyer);
     }
 
@@ -435,7 +446,7 @@ contract AscendingConsignment is
         if (!h.reversalPending) revert NoReversalPending();
         if (block.timestamp < h.abandonmentDeadline) revert AbandonmentNotReady();
         address buyer = h.buyer;
-        _payoutHoldAndClose(tokenId);
+        _payoutHoldAndClose(tokenId, CloseReason.ReversalAbandoned);
         emit ReversalAbandoned(tokenId, buyer);
     }
 
@@ -489,6 +500,7 @@ contract AscendingConsignment is
         h.frozenRemaining = 0;
         h.protectionEndsAt = 0;
         h.abandonmentDeadline = uint64(block.timestamp + h.abandonmentWindow);
+        emit ReversalStarted(subjectId, h.buyer, h.abandonmentDeadline);
     }
 
     function _onRejected(
@@ -500,7 +512,7 @@ contract AscendingConsignment is
         uint256, /*windowDuration_*/
         uint256 /*bondAmount_*/
     ) internal override {
-        _payoutHoldAndClose(subjectId);
+        _payoutHoldAndClose(subjectId, CloseReason.HoldReleased);
     }
 
     function _onExpired(
@@ -511,7 +523,7 @@ contract AscendingConsignment is
         uint256, /*windowDuration_*/
         uint256 /*bondAmount_*/
     ) internal override {
-        _payoutHoldAndClose(subjectId);
+        _payoutHoldAndClose(subjectId, CloseReason.HoldReleased);
     }
 
     function _onWithdrawn(
@@ -562,9 +574,17 @@ contract AscendingConsignment is
         return _auction[tokenId].minIncrementBps;
     }
 
-    /// @notice Current required settlement-challenge bond (live-read at open; frozen into Challenge).
-    function challengeBond() external view returns (uint256) {
-        return _challengeBond;
+    /// @notice Live auction-rule set (governance storage; lot snapshots are separate views).
+    function auctionRules() external view returns (AuctionRules memory) {
+        return AuctionRules({
+            minDuration: minDuration,
+            maxDuration: maxDuration,
+            extensionWindow: extensionWindow,
+            minIncrementBps: minIncrementBps,
+            protectionWindow: protectionWindow,
+            abandonmentWindow: abandonmentWindow,
+            challengeBond: _challengeBond
+        });
     }
 
     function holdBuyer(uint256 tokenId) external view returns (address) {
@@ -679,6 +699,7 @@ contract AscendingConsignment is
     }
 
     function _writeAuctionTerms(uint256 tokenId, uint40 duration) private {
+        uint128 reserve = _consignments[tokenId].price;
         _auction[tokenId] = AuctionTerms({
             duration: duration,
             endsAt: 0,
@@ -689,6 +710,15 @@ contract AscendingConsignment is
             highestBidder: address(0),
             highestBid: 0
         });
+        emit AscendingTermsSnapshotted(
+            tokenId,
+            duration,
+            extensionWindow,
+            protectionWindow,
+            abandonmentWindow,
+            minIncrementBps,
+            reserve
+        );
     }
 
     function _applyExtension(AuctionTerms storage a) private {
@@ -709,18 +739,19 @@ contract AscendingConsignment is
         }
     }
 
-    function _refundBid(address to, address asset, uint128 amount) private {
+    function _refundBid(uint256 tokenId, address to, address asset, uint128 amount) private {
         if (asset == address(0)) {
             _payNative(to, amount);
         } else {
             _payErc20(asset, to, amount);
         }
+        emit BidRefunded(tokenId, to, asset, amount);
     }
 
-    function _payoutHoldAndClose(uint256 tokenId) private {
+    function _payoutHoldAndClose(uint256 tokenId, CloseReason reason) private {
         Hold memory h = _holds[tokenId];
         delete _holds[tokenId];
         // Passport already with buyer (or abandoned with buyer). Pay sellers from escrowed gross.
-        _paySplit(tokenId, h.gross);
+        _paySplit(tokenId, h.gross, reason);
     }
 }

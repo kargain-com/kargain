@@ -56,6 +56,24 @@ abstract contract Mandate {
     error NotCommissionForm();
     error NotConsignmentAgent();
 
+    event MandateGranted(
+        uint256 indexed tokenId,
+        address indexed owner,
+        address indexed agent,
+        uint64 expiry,
+        address asset,
+        DenominationKind denominationKind,
+        bytes32 currencyCode,
+        uint128 floor,
+        CompensationForm compensationForm,
+        uint16 commissionBps
+    );
+    event MandateRevoked(uint256 indexed tokenId, address indexed owner, address indexed priorAgent);
+    /// @notice Snapshot floor lowered on a live consignment (not the standing mandate).
+    event ConsignmentFloorLowered(uint256 indexed tokenId, uint128 newFloor);
+    /// @notice Snapshot commission lowered on a live consignment (not the standing mandate).
+    event ConsignmentCommissionLowered(uint256 indexed tokenId, uint16 newBps);
+
     // ---- Views ----
 
     function mandateAgent(uint256 tokenId) public view returns (address) {
@@ -124,13 +142,27 @@ abstract contract Mandate {
             compensation: comp,
             active: true
         });
+        emit MandateGranted(
+            tokenId,
+            msg.sender,
+            agent,
+            expiry,
+            asset,
+            denomination.kind,
+            denomination.kind == DenominationKind.Fiat ? denomination.currencyCode : bytes32(0),
+            floor,
+            comp.form,
+            comp.commissionBps
+        );
     }
 
     function revoke(uint256 tokenId) external {
         if (passportOwner(tokenId) != msg.sender) revert NotPassportOwner();
         if (isLiveConsignment(tokenId)) revert LiveConsignment();
-        _requireActiveMandate(tokenId);
+        MandateRecord memory m = _requireActiveMandate(tokenId);
+        address priorAgent = m.agent;
         delete mandates[tokenId];
+        emit MandateRevoked(tokenId, msg.sender, priorAgent);
     }
 
     /// @notice Owner lowers the floor on the live consignment snapshot (C1). Never touches the mandate.
@@ -141,6 +173,7 @@ abstract contract Mandate {
         uint128 current = snapshotFloor(tokenId);
         if (newFloor >= current) revert CannotRaiseFloor();
         _setSnapshotFloor(tokenId, newFloor);
+        emit ConsignmentFloorLowered(tokenId, newFloor);
     }
 
     /// @notice Agent lowers commission bps on the live snapshot (C2). Never touches the mandate.
@@ -154,6 +187,7 @@ abstract contract Mandate {
         uint16 current = snapshotCommissionBps(tokenId);
         if (newBps >= current) revert CannotRaiseCommission();
         _setSnapshotCommissionBps(tokenId, newBps);
+        emit ConsignmentCommissionLowered(tokenId, newBps);
     }
 
     // ---- Opening helper (M1 / M3) — copies terms; does not open ----

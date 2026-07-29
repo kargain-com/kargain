@@ -316,10 +316,19 @@ ponder.on("KarPassport:PassportDisputed", async ({ event, context }) => {
     });
 });
 
-ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
+ponder.on("KarPassport:ChallengeOpened", async ({ event, context }) => {
+  await context.db
+    .update(passport, { id: event.args.subjectId.toString() })
+    .set({
+      disputeDeposit: event.args.bondAmount,
+      updatedAt: event.block.timestamp,
+    });
+});
+
+ponder.on("KarPassport:ChallengeJudged", async ({ event, context }) => {
   const uphold = disputeOutcomeUpholdsVerification(Number(event.args.outcome));
   await context.db
-    .update(passport, { id: event.args.tokenId.toString() })
+    .update(passport, { id: event.args.subjectId.toString() })
     .set(
       disputeResolvedTrustFields(
         uphold,
@@ -329,16 +338,16 @@ ponder.on("KarPassport:DisputeResolved", async ({ event, context }) => {
     );
 });
 
-ponder.on("KarPassport:DisputeExpired", async ({ event, context }) => {
+ponder.on("KarPassport:ChallengeConcluded", async ({ event, context }) => {
   // Expiry lapses verification (UNVERIFIED) — not a merits Confirm.
   await context.db
-    .update(passport, { id: event.args.tokenId.toString() })
+    .update(passport, { id: event.args.subjectId.toString() })
     .set(disputeExpiredTrustFields(event.block.timestamp));
 });
 
-ponder.on("KarPassport:DisputeWithdrawn", async ({ event, context }) => {
+ponder.on("KarPassport:ChallengeWithdrawn", async ({ event, context }) => {
   await context.db
-    .update(passport, { id: event.args.tokenId.toString() })
+    .update(passport, { id: event.args.subjectId.toString() })
     .set(disputeWithdrawnTrustFields(event.block.timestamp));
 });
 
@@ -748,15 +757,6 @@ ponder.on("MarketplaceEscrow:PaymentTokenApproved", async () => {});
 ponder.on("MarketplaceEscrow:PaymentTokenRevoked", async () => {});
 
 ponder.on("MarketplaceEscrow:Paused", async () => {});
-
-ponder.on("KarPassport:DisputeDepositPaid", async ({ event, context }) => {
-  await context.db
-    .update(passport, { id: event.args.tokenId.toString() })
-    .set({
-      disputeDeposit: event.args.amount,
-      updatedAt: event.block.timestamp,
-    });
-});
 
 ponder.on("KarPassport:DisputeDepositUpdated", async () => {});
 

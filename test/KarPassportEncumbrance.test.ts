@@ -370,9 +370,75 @@ describe("KarPassport encumbrance + verification challenge", () => {
     }
   });
 
-  it("VERSION is 1.7.0-rc.1", async () => {
+  it("VERSION is 1.8.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.7.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.8.0-rc.1");
+  });
+
+  it("ChallengeOpened/Judged + VerificationLapsed match chain state (no Dispute* duplicates)", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { passport, tokenId, owner, stranger, staking } = await verified(viem);
+    await passport.write.open([tokenId], { account: owner.account, value: DISPUTE_DEPOSIT });
+
+    const openedLogs = await publicClient.getContractEvents({
+      address: passport.address,
+      abi: passport.abi,
+      eventName: "ChallengeOpened",
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+    assert.equal(openedLogs.length, 1);
+    const opened = openedLogs[0]!.args as {
+      subjectId: bigint;
+      challenger: string;
+      bondAmount: bigint;
+      openedAt: bigint;
+      windowDuration: bigint;
+    };
+    assert.equal(opened.subjectId, tokenId);
+    assert.equal(opened.challenger.toLowerCase(), owner.account.address.toLowerCase());
+    assert.equal(opened.bondAmount, DISPUTE_DEPOSIT);
+    assert.equal(opened.bondAmount, await passport.read.challengeBondAmount([tokenId]));
+    assert.equal(opened.openedAt, await passport.read.challengeOpenedAt([tokenId]));
+    assert.equal(opened.windowDuration, await passport.read.challengeWindowDuration([tokenId]));
+    assert.equal(await passport.read.passportStatus([tokenId]), 2); // DISPUTED
+
+    const disputed = await publicClient.getContractEvents({
+      address: passport.address,
+      abi: passport.abi,
+      eventName: "PassportDisputed",
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+    assert.equal(disputed.length, 1);
+
+    await joinVerifier(staking, stranger);
+    await passport.write.judge([tokenId, 0], { account: stranger.account }); // Upheld → lapse
+
+    const judged = await publicClient.getContractEvents({
+      address: passport.address,
+      abi: passport.abi,
+      eventName: "ChallengeJudged",
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+    assert.equal(judged.length, 1);
+    const j = judged[0]!.args as { outcome: number; judge: string; bondRecipient: string };
+    assert.equal(j.outcome, 0);
+    assert.equal(j.judge.toLowerCase(), stranger.account.address.toLowerCase());
+    assert.equal(j.bondRecipient.toLowerCase(), owner.account.address.toLowerCase());
+
+    const lapsed = await publicClient.getContractEvents({
+      address: passport.address,
+      abi: passport.abi,
+      eventName: "VerificationLapsed",
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+    assert.equal(lapsed.length, 1);
+    assert.equal(await passport.read.passportStatus([tokenId]), 0); // UNVERIFIED
+    assert.equal(await passport.read.challengeOpenedAt([tokenId]), 0n);
   });
 });

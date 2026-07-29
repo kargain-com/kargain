@@ -78,7 +78,7 @@ contract ConsignmentBaseHarness is ConsignmentBase {
     }
 
     function paySplitPublic(uint256 tokenId, uint256 settledAmount) external payable nonReentrant {
-        _paySplit(tokenId, settledAmount);
+        _paySplit(tokenId, settledAmount, CloseReason.Sold);
     }
 
     // ---- Mandate / Recall instance hooks ----

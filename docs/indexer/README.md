@@ -93,7 +93,7 @@ for per-passport writes — owner list routes feed the delegated portfolio (read
 Ponder mirrors replacement grants, revokes, and terminal storage clears for
 agent- and owner-facing queries and notifications.
 
-Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisputeTerminal`, …) and nullable `disputeDeposit` (set on `DisputeDepositPaid`, cleared on resolve/withdraw/expire). `lastDisputeTerminal` is `confirm` | `reject` | `expire` | `withdraw` | `""` — distinguishes expire-lapse from Confirm for product copy. Owner feed: `passport.dispute_expired` when terminal is expire; `passport.dispute_resolved` for confirm/reject.
+Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisputeTerminal`, …) and nullable `disputeDeposit` (set on `ChallengeOpened` / legacy `DisputeDepositPaid`, cleared on challenge terminals). `lastDisputeTerminal` is `confirm` | `reject` | `expire` | `withdraw` | `""` — distinguishes expire-lapse from Confirm for product copy. Owner feed: `passport.dispute_expired` when terminal is expire; `passport.dispute_resolved` for confirm/reject. Nuclear #2 ABIs use BondedChallenge `Challenge*` events (see MIGRATION-V2).
 
 ## HTTP API
 

@@ -21,6 +21,8 @@ abstract contract Recall {
     error ReturnNotRequested();
     error ReturnCooldownPending();
 
+    event RecallRequested(uint256 indexed tokenId, address indexed seller, uint256 requestedAt);
+
     function recallRequestTimestamp(uint256 tokenId) public view returns (uint256) {
         return recallRequestedAt[tokenId];
     }
@@ -36,6 +38,7 @@ abstract contract Recall {
         if (recallRequestedAt[tokenId] != 0) revert ReturnAlreadyRequested();
 
         recallRequestedAt[tokenId] = block.timestamp;
+        emit RecallRequested(tokenId, msg.sender, block.timestamp);
     }
 
     /// @notice Owner forces return after the cooldown. Terminates the consignment; passport to owner.

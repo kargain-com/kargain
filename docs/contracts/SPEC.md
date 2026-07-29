@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.7.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.1.0-rc.1`, AscendingConsignment `2.1.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -46,13 +46,15 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.7.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
+| KarPassport | `1.8.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | MarketplaceEscrow | `2.2.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
 | AuctionEscrow | `2.0.0-rc.1` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
+| FixedPriceConsignment | `2.1.0-rc.1` | UUPS proxy | Fixed-price consignment mode (Mandate/Recall/base + accountability events) |
+| AscendingConsignment | `2.1.0-rc.1` | UUPS proxy | Ascending auction consignment + settlement hold + BondedChallenge |
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
 
@@ -149,6 +151,45 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 | `conclude` | Anyone, **after** window | → UNVERIFIED; clear verifier | → **`platformRecipient`** |
 
 `JudgeOutcome`: `Upheld` (0) = verification lapses; `Rejected` (1) = verification stands. Expiry does **not** decide merits and does **not** restore VERIFIED — the assertion lapses for lack of professional backing within the window.
+
+#### Accountability event surface (BondedChallenge + passport domain)
+
+A state transition a party can be held to must leave a log complete enough to reconstruct without reading storage.
+
+| Transition | Event | Notes |
+|---|---|---|
+| Challenge open | `ChallengeOpened(subjectId, challenger, bondAmount, windowDuration, openedAt)` | Emitted by `BondedChallenge` (both instances). Indexed: `subjectId`, `challenger`. |
+| Challenge withdraw | `ChallengeWithdrawn(...)` | Full refund reconstructable from args |
+| Challenge judge | `ChallengeJudged(..., judge, outcome, bondRecipient, ...)` | Indexed: `subjectId`, `challenger`, `judge` |
+| Challenge conclude | `ChallengeConcluded(...)` | After window; bond → forfeit recipient |
+| Status → DISPUTED | `PassportDisputed` | Domain only (kept); bond mechanics are `ChallengeOpened` |
+| Status → UNVERIFIED (lapse) | `VerificationLapsed` | After upheld / expired |
+| Status → VERIFIED (stand) | `VerificationStood` | After rejected / withdrawn |
+
+**Removed (duplicates of library challenge events):** `DisputeDepositPaid`, `DisputeResolved`, `DisputeExpired`, `DisputeWithdrawn`. Governance still emits `DisputeDepositUpdated` on `setDisputeDeposit`.
+
+#### Commerce mode events (ConsignmentBase / Mandate / Recall / modes)
+
+| Transition | Event |
+|---|---|
+| Mandate grant / revoke | `MandateGranted` / `MandateRevoked` |
+| Snapshot floor / commission lower | `ConsignmentFloorLowered` / `ConsignmentCommissionLowered` |
+| Recall request | `RecallRequested` |
+| Consignment open | `ConsignmentOpened` (full terms + snapshotted `platformFeeBps`) |
+| Price amend | `ConsignmentPriceSet` |
+| Close / return | `ConsignmentClosed(tokenId, CloseReason)` |
+| Settlement split | `ConsignmentSplitPaid` (owner/agent/platform legs) |
+| Ascending terms at open | `AscendingTermsSnapshotted` (required: `_auction` deleted at settle) |
+| Outbid refund | `BidRefunded` |
+| Reversal begins | `ReversalStarted` |
+
+`CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
+
+FixedPriceConsignment `VERSION` **`2.1.0-rc.1`**. AscendingConsignment `VERSION` **`2.1.0-rc.1`**.
+
+**Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `protectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve/revoke stay separate. Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
+
+**EIP-170:** Ascending deployed bytecode **24179** (limit 24576, headroom **397**) after consolidating public rule getters + admin setters — accountability event surface unchanged.
 
 **Encumbrance:** `may(tokenId, Intent)` combines readiness (`OpenConsignment` requires VERIFIED; `LeaveChain` always) with intrinsic challenge + governed external sources. Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
 
@@ -693,7 +734,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 2. Deploy **KarProPass** (always fresh — no reuse on Nuclear redeploy).
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
-5. Deploy **KarPassport** `1.7.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
+5. Deploy **KarPassport** `1.8.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
 6. Deploy **MarketplaceEscrow** implementation (passport, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
 7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
 8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.

@@ -31,6 +31,17 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         Returned
     }
 
+    /// @notice Why a consignment left the live set. Reconstructable without storage.
+    enum CloseReason {
+        Returned,
+        Sold,
+        ExternalConfirmed,
+        HoldReleased,
+        Recalled,
+        ReversalCompleted,
+        ReversalAbandoned
+    }
+
     struct Consignment {
         address seller;
         address agent;
@@ -74,6 +85,32 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     event Paused(address account);
     event Unpaused(address account);
     event GuardianSet(address indexed previous, address indexed current);
+    event ConsignmentOpened(
+        uint256 indexed tokenId,
+        address indexed seller,
+        address indexed agent,
+        address asset,
+        DenominationKind denominationKind,
+        bytes32 currencyCode,
+        uint128 floor,
+        CompensationForm compensationForm,
+        uint16 commissionBps,
+        uint128 price,
+        uint16 platformFeeBps,
+        uint64 openedAt
+    );
+    event ConsignmentPriceSet(uint256 indexed tokenId, address indexed setter, uint128 newPrice);
+    event ConsignmentClosed(uint256 indexed tokenId, CloseReason reason);
+    event ConsignmentSplitPaid(
+        uint256 indexed tokenId,
+        address indexed asset,
+        address ownerRecipient,
+        uint256 ownerAmount,
+        address agentRecipient,
+        uint256 agentAmount,
+        address platformRecipient,
+        uint256 platformAmount
+    );
 
     /// @dev Used: platformRecipient, platformFeeBps, _phase, _consignments, _committedNotOffered, paused, guardian = 7.
     ///      Reserve to 50 for this contract's namespace (ClaimablePayouts / Mandate / Recall own their gaps).
@@ -233,11 +270,13 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         if (c.agent == address(0)) {
             if (c.seller != msg.sender) revert NotConsignmentSeller();
             c.price = newPrice;
+            emit ConsignmentPriceSet(tokenId, msg.sender, newPrice);
             return;
         }
         if (c.agent != msg.sender) revert NotConsignmentRunner();
         _requireAgentedPriceMeetsFloor(newPrice, c.floor, c.compensation, c.platformFeeBps);
         c.price = newPrice;
+        emit ConsignmentPriceSet(tokenId, msg.sender, newPrice);
     }
 
     // ---- OFFERED exits (O1) ----
@@ -248,14 +287,14 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         Consignment storage c = _consignments[tokenId];
         if (c.agent != address(0)) revert NotDirectConsignment();
         if (c.seller != msg.sender) revert NotConsignmentSeller();
-        _terminateToOwner(tokenId);
+        _terminateToOwner(tokenId, CloseReason.Returned);
     }
 
     /// @notice Agent withdraws anytime in OFFERED (including during recall cooldown).
     function agentWithdraw(uint256 tokenId) external nonReentrant {
         _requireOfferedActionable(tokenId);
         _requireAgentCaller(_consignments[tokenId].agent);
-        _terminateToOwner(tokenId);
+        _terminateToOwner(tokenId, CloseReason.Returned);
     }
 
     /// @notice Recipient withdraws a credited claim (PA1).
@@ -281,7 +320,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     }
 
     /// @dev Pays the split then closes. Caller (mode/harness) must have funded the contract.
-    function _paySplit(uint256 tokenId, uint256 settledAmount) internal {
+    function _paySplit(uint256 tokenId, uint256 settledAmount, CloseReason reason) internal {
         if (!isLiveConsignment(tokenId)) revert NoLiveConsignment();
 
         SplitResult memory split = _computeSplit(settledAmount, tokenId);
@@ -298,7 +337,17 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
             if (split.agentAmount != 0) _payErc20(asset, c.agent, split.agentAmount);
         }
 
-        _close(tokenId);
+        emit ConsignmentSplitPaid(
+            tokenId,
+            asset,
+            c.seller,
+            split.ownerAmount,
+            c.agent,
+            split.agentAmount,
+            platformRecipient,
+            split.platform
+        );
+        _close(tokenId, reason);
     }
 
     /// @dev Modes/harness mark ascending commit: still live, recall leaves the transition set (RC1).
@@ -402,7 +451,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     }
 
     function _onForceRecall(uint256 tokenId) internal virtual override {
-        _terminateToOwner(tokenId);
+        _terminateToOwner(tokenId, CloseReason.Recalled);
     }
 
     // ---- Instance hooks (encumbrance + custody) ----
@@ -445,6 +494,8 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         Compensation memory compensation,
         uint128 price
     ) internal {
+        uint64 openedAt = uint64(block.timestamp);
+        uint16 feeBps = platformFeeBps;
         _consignments[tokenId] = Consignment({
             seller: seller,
             agent: agent,
@@ -452,31 +503,47 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
             denomination: denomination,
             floor: floor,
             compensation: compensation,
-            platformFeeBps: platformFeeBps,
+            platformFeeBps: feeBps,
             price: price,
-            openedAt: uint64(block.timestamp)
+            openedAt: openedAt
         });
         _committedNotOffered[tokenId] = false;
         _phase[tokenId] = Phase.Offered;
         _clearRecallRequest(tokenId);
+        emit ConsignmentOpened(
+            tokenId,
+            seller,
+            agent,
+            asset,
+            denomination.kind,
+            denomination.kind == DenominationKind.Fiat ? denomination.currencyCode : bytes32(0),
+            floor,
+            compensation.form,
+            compensation.commissionBps,
+            price,
+            feeBps,
+            openedAt
+        );
     }
 
-    function _terminateToOwner(uint256 tokenId) internal {
+    function _terminateToOwner(uint256 tokenId, CloseReason reason) internal {
         address seller = _consignments[tokenId].seller;
         _clearRecallRequest(tokenId);
         _committedNotOffered[tokenId] = false;
         delete _consignments[tokenId];
         _phase[tokenId] = Phase.Returned;
         _releaseCustody(tokenId, seller);
+        emit ConsignmentClosed(tokenId, reason);
     }
 
     /// @dev Modes transfer the passport to the buyer first, then call this (or `_paySplit` which calls it).
-    function _close(uint256 tokenId) internal {
+    function _close(uint256 tokenId, CloseReason reason) internal {
         _clearRecallRequest(tokenId);
         _committedNotOffered[tokenId] = false;
         // Passport already with buyer — modes handle transfer before calling _paySplit / external close.
         // Base clears commercial state only.
         delete _consignments[tokenId];
         _phase[tokenId] = Phase.Closed;
+        emit ConsignmentClosed(tokenId, reason);
     }
 }
