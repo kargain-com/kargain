@@ -143,7 +143,8 @@ export function deriveDisputeSurface(
   const canResolve =
     Boolean(input.wallet) &&
     input.isActiveVerifier === true &&
-    !partyExcluded;
+    !partyExcluded &&
+    windowPhase === "active";
 
   return {
     windowPhase,

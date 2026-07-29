@@ -621,8 +621,7 @@ export function PassportActionsPanel({
           {disputeSurface.windowPhase === "elapsed" && (
             <p className="text-sm text-text-secondary">
               The dispute window has ended. Anyone may conclude the dispute so verification
-              lapses, or an independent KarPro may still confirm or reject on the merits. The
-              deposit goes to the platform on expiry or reject; confirm returns it to the opener.
+              lapses. The deposit goes to the platform. Merits resolution is no longer available.
             </p>
           )}
           {exclusionCopy && (

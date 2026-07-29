@@ -528,7 +528,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 **Header details:** seal `sublabel` (DISPUTED → `under review`; VERIFIED → short verifier); dispute line → `?tab=records`; MRZ all breakpoints. VIN in attributes uses `InstrumentFrame` with `w-fit max-w-full` (brackets hug the VIN string, not the full section width).
 
-**Passport dispute Actions** ([`dispute-surface.ts`](../lib/passport/dispute-surface.ts) + [`passport-actions-panel.tsx`](../components/passport/passport-actions-panel.tsx)): 14-day window readout from recorded `disputeOpenedAt` + chain `DISPUTE_WINDOW`; Confirm/Reject only for independent active KarPro (not opener/owner/recorded verifier) with exclusion copy for the rest; withdraw only opener while window active; permissionless **Conclude dispute** (`expireDispute`) after window; honest bond destinations (confirm → opener, reject/expire → platform); undelivered returns use Claims via receipt `ClaimRecorded`. Trust banners: lapse (`lastDisputeTerminal=expire`) and upheld confirm are informational (§10.3), not `status-error`. Timeline shows a derived terminal tick for expire/confirm/reject/withdraw.
+**Passport dispute Actions** ([`dispute-surface.ts`](../lib/passport/dispute-surface.ts) + [`passport-actions-panel.tsx`](../components/passport/passport-actions-panel.tsx)): 14-day window readout from recorded `disputeOpenedAt` + chain `DISPUTE_WINDOW`; Confirm/Reject only for independent active KarPro (not opener/owner/recorded verifier) **while the window is active**; withdraw only opener while window active; permissionless **Conclude dispute** (`expireDispute`) after window — no resolve after the deadline; honest bond destinations (confirm → opener, reject/expire → platform); undelivered returns use Claims via receipt `ClaimRecorded`. Trust banners: lapse (`lastDisputeTerminal=expire`) and upheld confirm are informational (§10.3), not `status-error`. Timeline shows a derived terminal tick for expire/confirm/reject/withdraw.
 
 **Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
@@ -1529,4 +1529,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.92 (July 2026 — Claims ledger explanation: multi-origin copy from claim_credit). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.93 (July 2026 — Dispute resolve bound to window; conclude-only after deadline). Update when tokens, app shell, or component contracts change.*

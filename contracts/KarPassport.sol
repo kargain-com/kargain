@@ -32,7 +32,7 @@ interface IKarProStaking {
 contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyGuard {
     string public constant VERSION = "1.6.0-rc.1";
 
-    /// @notice Window after open during which opener may withdraw; afterwards only expire/resolve.
+    /// @notice Window after open during which opener may withdraw and an independent verifier may resolve; afterwards only expire.
     uint256 public constant DISPUTE_WINDOW = 14 days;
 
     enum Status {
@@ -353,10 +353,10 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         emit DisputeWithdrawn(tokenId, msg.sender, amount);
     }
 
-    /// @notice Active verifier resolves a dispute; bond routes by fault (never to the resolver).
+    /// @notice Active verifier resolves a dispute while the window is open; bond routes by fault (never to the resolver).
     /// @param tokenId Passport token id.
     /// @param outcome ConfirmDispute (assertion wrong → UNVERIFIED, bond → opener) or RejectDispute (stands, bond → platform).
-    /// @dev Excludes opener, passport owner, and recorded passportVerifier. A later hired independent verifier may resolve.
+    /// @dev Excludes opener, passport owner, and recorded passportVerifier. Must be before DISPUTE_WINDOW end; afterwards only expireDispute.
     function resolveDispute(uint256 tokenId, DisputeOutcome outcome) external nonReentrant {
         _requireExists(tokenId);
         _requireNotBridgedAway(tokenId);
@@ -368,6 +368,7 @@ contract KarPassport is ERC721URIStorage, Ownable, ClaimablePayouts, ReentrancyG
         if (msg.sender == opener || msg.sender == ownerOf(tokenId) || msg.sender == challenged) {
             revert CannotResolveOwnDispute();
         }
+        if (block.timestamp >= disputeOpenedAt[tokenId] + DISPUTE_WINDOW) revert DisputeWindowElapsed();
 
         uint256 amount = _clearDisputeAccounting(tokenId);
 

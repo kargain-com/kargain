@@ -1661,7 +1661,7 @@ export const KarPassportAbi = [
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "amount",
+        "name": "disputeDeposit_",
         "type": "uint256"
       }
     ],

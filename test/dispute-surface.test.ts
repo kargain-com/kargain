@@ -137,7 +137,7 @@ describe("deriveDisputeSurface", () => {
     assert.equal(elapsed.windowRemainingSec, 0);
   });
 
-  it("offers expire to anyone connected after the window", () => {
+  it("offers expire to anyone connected after the window; never resolve", () => {
     const guest = deriveDisputeSurface(
       disputed({
         wallet: "0x5555555555555555555555555555555555555555",
@@ -153,7 +153,24 @@ describe("deriveDisputeSurface", () => {
       disputed({ nowSec: OPENED + WINDOW + 1 }),
     );
     assert.equal(independent.canExpire, true);
-    assert.equal(independent.canResolve, true);
+    assert.equal(independent.canResolve, false);
+    assert.equal(independent.canWithdraw, false);
+  });
+
+  it("offers resolve only while the window is active", () => {
+    const active = deriveDisputeSurface(
+      disputed({ nowSec: OPENED + WINDOW - 1 }),
+    );
+    assert.equal(active.windowPhase, "active");
+    assert.equal(active.canResolve, true);
+    assert.equal(active.canExpire, false);
+
+    const elapsed = deriveDisputeSurface(
+      disputed({ nowSec: OPENED + WINDOW }),
+    );
+    assert.equal(elapsed.windowPhase, "elapsed");
+    assert.equal(elapsed.canResolve, false);
+    assert.equal(elapsed.canExpire, true);
   });
 
   it("does not offer expire without a recorded opening", () => {

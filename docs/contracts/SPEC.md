@@ -103,13 +103,14 @@ UNVERIFIED ──verifyPassport──► VERIFIED
      │                       ▼       |       ▼
      │                   VERIFIED    |   UNVERIFIED (lapse)
      │                               |
-     │              resolveDispute(ConfirmDispute) ──► UNVERIFIED
-     │              resolveDispute(RejectDispute)  ──► VERIFIED
+     │              resolveDispute (independent verifier, <14d)
+     │              ConfirmDispute ──► UNVERIFIED
+     │              RejectDispute  ──► VERIFIED
      │
      └── setPassportURI from VERIFIED ── VerificationReset ──► UNVERIFIED
 ```
 
-**Exit from DISPUTED:** `withdrawDispute` (opener, before window) **or** `resolveDispute` (independent active verifier — not opener, owner, or recorded verifier) **or** `expireDispute` (anyone, after window). Owner cannot `setPassportURI` while DISPUTED.
+**Exit from DISPUTED:** `withdrawDispute` (opener, **before** window) **or** `resolveDispute` (independent active verifier — not opener, owner, or recorded verifier — **before** window) **or** `expireDispute` (anyone, **after** window). No overlap: resolve and expire never compete. Owner cannot `setPassportURI` while DISPUTED.
 
 ### tokenId encoding
 
@@ -143,8 +144,8 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 |--------|--------|--------|------|
 | `disputePassport` | Anyone (payable) | VERIFIED → DISPUTED; locks `msg.value ≥ disputeDeposit`; stamps opener + `disputeOpenedAt` | Locked |
 | `withdrawDispute` | Opener only, **before** window end | DISPUTED → VERIFIED; free full refund | → opener |
-| `resolveDispute(ConfirmDispute)` | Active verifier ≠ opener ≠ `ownerOf` ≠ `passportVerifier` | → UNVERIFIED; clear verifier | → opener |
-| `resolveDispute(RejectDispute)` | Same independent verifier | → VERIFIED; keep verifier | → **`platformRecipient`** (never resolver) |
+| `resolveDispute(ConfirmDispute)` | Active verifier ≠ opener ≠ `ownerOf` ≠ `passportVerifier`, **before** window end | → UNVERIFIED; clear verifier | → opener |
+| `resolveDispute(RejectDispute)` | Same independent verifier, **before** window end | → VERIFIED; keep verifier | → **`platformRecipient`** (never resolver) |
 | `expireDispute` | Anyone, **after** window | → UNVERIFIED; clear verifier | → **`platformRecipient`** |
 
 `DisputeOutcome`: `ConfirmDispute` (0) = verification was wrong; `RejectDispute` (1) = verification stands. Expiry does **not** decide merits and does **not** restore VERIFIED — the assertion lapses for lack of professional backing within the window.
@@ -175,7 +176,7 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `disputePassport` | anyone + ETH | VERIFIED → DISPUTED + deposit |
 | `withdrawDispute` | dispute opener (before window) | DISPUTED → VERIFIED + full refund |
-| `resolveDispute` | independent active verifier | Resolve DISPUTED; bond by fault (Confirm → opener; Reject → platform) |
+| `resolveDispute` | independent active verifier (before window) | Resolve DISPUTED; bond by fault (Confirm → opener; Reject → platform) |
 | `expireDispute` | anyone (after window) | DISPUTED → UNVERIFIED; bond → platform |
 | `appendRecord` | token owner | Append typed record |
 | `reportDiscrepancy` | anyone | Append discrepancy record (no status change) |
@@ -203,7 +204,7 @@ Mint reverts `TokenIdSpaceExhausted` when local sequence reaches `type(uint128).
 | `NoActiveDispute` | Not DISPUTED |
 | `CannotResolveOwnDispute` | Resolver is opener, owner, or recorded `passportVerifier` |
 | `DisputeWindowActive` | `expireDispute` before window end |
-| `DisputeWindowElapsed` | `withdrawDispute` after window end |
+| `DisputeWindowElapsed` | `withdrawDispute` or `resolveDispute` after window end |
 | `NothingToRescue` | Rescue amount invalid (free balance excludes locked deposits **and** outstanding native claims) |
 | `NoClaim` | `withdrawClaim` with zero pending balance |
 | `TransferFailed` | `withdrawClaim` transfer failed (push paths credit a claim instead) |
@@ -1131,7 +1132,7 @@ Normative on-chain rules: **Part I** dispute deposit system (14-day window, part
 
 - `disputePassport` — VERIFIED → DISPUTED; locks deposit.
 - `withdrawDispute` — opener only, before window; → VERIFIED + full refund.
-- `resolveDispute` — independent active verifier only (not opener, owner, or recorded verifier).
+- `resolveDispute` — independent active verifier only (not opener, owner, or recorded verifier), **before** window; afterwards only `expireDispute`.
 - `expireDispute` — anyone after window; → UNVERIFIED (lapse, no merits); bond → platform.
 - `reportDiscrepancy` — light record only; does **not** withdraw a dispute or change status.
 

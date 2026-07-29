@@ -322,6 +322,41 @@ describe("KarPassport v2 — dispute deposits", () => {
     );
   });
 
+  it("resolveDispute after window reverts DisputeWindowElapsed (no race with expire)", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const stack = await verified(viem);
+    const resolver = await joinIndependent(stack);
+    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+      account: stack.owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await increaseTime(publicClient, DISPUTE_WINDOW);
+    await assert.rejects(
+      stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account }),
+      revertsWith("DisputeWindowElapsed"),
+    );
+    // Elapsed phase still has an actor: anyone may expire.
+    await stack.passport.write.expireDispute([stack.tokenId], {
+      account: stack.stranger.account,
+    });
+    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    assert.equal(status, 0);
+  });
+
+  it("resolveDispute during window succeeds for independent verifier", async () => {
+    const { viem } = connection;
+    const stack = await verified(viem);
+    const resolver = await joinIndependent(stack);
+    await stack.passport.write.disputePassport([stack.tokenId, "issue"], {
+      account: stack.owner.account,
+      value: DISPUTE_DEPOSIT,
+    });
+    await stack.passport.write.resolveDispute([stack.tokenId, 1], { account: resolver.account });
+    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    assert.equal(status, 1);
+  });
+
   it("rescueExcessEth cannot touch locked deposits", async () => {
     const { viem } = connection;
     const { admin, owner, passport, tokenId } = await verified(viem);

@@ -35,7 +35,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "You cannot resolve this dispute — you opened it, own the passport, or are the challenged verifier.",
   DisputeWindowActive: "The dispute window has not ended yet.",
   DisputeWindowElapsed:
-    "The dispute window has ended. Use expire instead of withdraw.",
+    "The dispute window has ended. Only concluding the dispute is available now.",
   ZeroDisputeDeposit: "Dispute deposit cannot be zero.",
   UnbondPending: "Finish claiming your unbonding stake before rejoining.",
   UnbondNotReady: "Your stake is still in the unbonding period.",
