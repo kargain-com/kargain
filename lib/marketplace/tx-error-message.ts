@@ -127,6 +127,9 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   DoesNotHoldPass: "This wallet does not hold a KarPro Pass.",
   Soulbound: "KarPro Pass is soulbound and cannot be transferred.",
   NotHolder: "Only the KarPro Pass holder can do this.",
+  NotEligibleChallenger: "This address is not eligible to open the challenge.",
+  CannotRouteBondToJudge:
+    "The routed bond would reach the judge; refresh and try the correct outcome.",
 };
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);

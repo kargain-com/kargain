@@ -54,6 +54,11 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     errorSource: "Timelock48h.sol",
     suiteFiles: ["Timelock48h.test.ts"],
   },
+  {
+    contract: "BondedChallenge",
+    errorSource: "BondedChallenge.sol",
+    suiteFiles: ["bonded-challenge/BondedChallenge.test.ts"],
+  },
 ] as const;
 
 export type EscapeHatchEntry = {
