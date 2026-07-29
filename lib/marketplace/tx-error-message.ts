@@ -144,6 +144,14 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotConsignmentSeller: "Only the consignment seller can request or force a recall.",
   NotOfferedAgented:
     "Recall is only available while an agented offer is open — not after a sale is bound.",
+  OpenConsignmentRefused:
+    "This passport cannot open a consignment right now (encumbrance refused).",
+  NotOffered: "This consignment is not in an open offer state.",
+  NotDirectConsignment:
+    "Only a direct (unagented) seller can withdraw immediately — use recall when an agent is appointed.",
+  BelowFloor:
+    "This price or settlement would leave the owner below their protected floor.",
+  NotConsignmentRunner: "Only the party running this sale can change the price.",
 };
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);

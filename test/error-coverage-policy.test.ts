@@ -58,13 +58,18 @@ export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
 
 /**
  * Abstract lib primitives under contracts/lib/ that own custom errors.
- * Not listed by the root contracts/*.sol production scanner.
+ * Completeness vs directory scan: every contracts/lib/*.sol is here or in LIB_ERROR_FOLDED.
  */
 export const LIB_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
   {
     contract: "BondedChallenge",
     errorSource: "lib/BondedChallenge.sol",
     suiteFiles: ["bonded-challenge/BondedChallenge.test.ts"],
+  },
+  {
+    contract: "ConsignmentBase",
+    errorSource: "lib/ConsignmentBase.sol",
+    suiteFiles: ["consignment-base/ConsignmentBase.test.ts"],
   },
   {
     contract: "Mandate",
@@ -77,6 +82,11 @@ export const LIB_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
     suiteFiles: ["mandate-recall/MandateRecall.test.ts"],
   },
 ] as const;
+
+/**
+ * Lib sources whose errors are exercised only via money-path parents (not standalone suites).
+ */
+export const LIB_ERROR_FOLDED: readonly string[] = ["ClaimablePayouts", "Erc20Admission"] as const;
 
 const ALL_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
   ...ERROR_COVERAGE_REGISTRY,
@@ -115,6 +125,16 @@ export type CoveragePair = {
 function listProductionContractSolFiles(): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(CONTRACTS_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".sol")) continue;
+    out.push(entry.name.replace(/\.sol$/, ""));
+  }
+  return out.sort();
+}
+
+function listLibContractSolFiles(): string[] {
+  const libDir = path.join(CONTRACTS_DIR, "lib");
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(libDir, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".sol")) continue;
     out.push(entry.name.replace(/\.sol$/, ""));
   }
@@ -258,9 +278,22 @@ describe("error coverage policy", () => {
     );
   });
 
-  it("registers abstract lib primitives under contracts/lib/", () => {
+  it("registers or folds every contracts/lib/*.sol", () => {
+    const onDisk = listLibContractSolFiles();
     const registered = LIB_ERROR_COVERAGE_REGISTRY.map((e) => e.contract).sort();
-    assert.deepEqual(registered, ["BondedChallenge", "Mandate", "Recall"]);
+    const folded = [...LIB_ERROR_FOLDED].sort();
+    const covered = [...registered, ...folded].sort();
+    assert.deepEqual(
+      covered,
+      onDisk,
+      `LIB registry ∪ FOLDED must equal contracts/lib/*.sol. onDisk=${onDisk.join(",")} covered=${covered.join(",")}`,
+    );
+    for (const name of folded) {
+      assert.ok(
+        !registered.includes(name),
+        `folded lib ${name} must not also be in LIB_ERROR_COVERAGE_REGISTRY`,
+      );
+    }
     for (const entry of LIB_ERROR_COVERAGE_REGISTRY) {
       const abs = path.join(CONTRACTS_DIR, entry.errorSource);
       assert.ok(fs.existsSync(abs), `missing lib error source: ${entry.errorSource}`);
