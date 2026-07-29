@@ -11,6 +11,7 @@
 | Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; **VPS full reindex** required to repair historical false positives ([OPERATIONS.md](./OPERATIONS.md)) |
 | Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` (July 2026 dispute surface) — expire ≠ Confirm for product; **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
 | ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
+| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` API for FixedPrice/Ascending — **local proven**; **live addresses = Nuclear #2**; **VPS full reindex** when schema ships ([OPERATIONS.md](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **AuctionEscrow** indexing is documented in [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md). This document remains as reference for the v2 mapping and FX display work (§6).
 
@@ -268,6 +269,14 @@ continues to chain-read authorization truth as a fail-closed client guard.
 **Buyer UI (July 2026):** `agent` on listing responses powers browse-card and detail attribution; buyers see agent identity, not `agentFeeBps` or `ownerMinPrice1e8`. See [design-spec.md](../design-spec.md) §4.16.
 
 Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
+
+### Commerce modes (FixedPrice / Ascending) — ✅ schema July 2026
+
+Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedChallenge` / mode-specific surfaces feed new tables (`consignment`, `ascending_terms`, `consignment_bid`, `consignment_hold`, `challenge`, `mandate`, `consignment_settlement`, `commerce_claim` + `commerce_claim_credit`, `commerce_mode`, `commerce_payment_token`, `commerce_currency_feed`). Claim reasons come from **same-tx event correlation**, not tx selectors. Floor/commission lowers update the **consignment** snapshot, not the standing mandate.
+
+**Addresses:** optional slots on the same `resolveCommercialStack` path as auction escrow. **Live commercial registration = Nuclear #2.** Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
+
+**HTTP:** see [indexer/README.md](./README.md#commerce-modes-api-fixedprice--ascending--july-2026). Old escrow tables/handlers/routes untouched — no compatibility projection.
 
 ### Known display limitations
 

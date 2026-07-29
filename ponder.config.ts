@@ -1,6 +1,8 @@
 import { createConfig } from "ponder";
 import {
+  AscendingConsignmentAbi,
   AuctionEscrowAbi,
+  FixedPriceConsignmentAbi,
   KarPassportAbi,
   KarProPassAbi,
   KarProStakingAbi,
@@ -21,6 +23,9 @@ import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
  *   optional PONDER_* env (84532 debug) → deployments/<chainId>.json → COMMERCIAL_ACTIVE
  *   VPS needs no deployments/*.json when COMMERCIAL_ACTIVE is current in git.
  *
+ * FixedPrice / Ascending: registered when addresses resolve (local always after
+ * deploy:local; commercial chains at Nuclear #2). See docs/indexer/MIGRATION-V2.md.
+ *
  * After Nuclear redeploy: one full ponder-reindex.sql covers both chains —
  * see docs/indexer/OPERATIONS.md
  */
@@ -33,19 +38,21 @@ const {
   database,
 } = buildPonderRuntime();
 
+type DualContract =
+  | "karPassport"
+  | "karProPass"
+  | "karProStaking"
+  | "marketplace"
+  | "auctionEscrow"
+  | "fixedPriceConsignment"
+  | "ascendingConsignment";
+
 function dualEntry(
   hubAddress: `0x${string}`,
-  contract: "karPassport" | "karProPass" | "karProStaking" | "marketplace" | "auctionEscrow",
+  contract: DualContract,
   localAddress?: `0x${string}`,
 ) {
-  const ethAddress =
-    ethereumSepoliaAddresses?.[
-      contract === "marketplace"
-        ? "marketplace"
-        : contract === "auctionEscrow"
-          ? "auctionEscrow"
-          : contract
-    ];
+  const ethAddress = ethereumSepoliaAddresses?.[contract];
   return contractEntry(hubAddress, contract, {
     ...(ethAddress ? { ethereumSepoliaAddress: ethAddress } : {}),
     ...(localAddress ? { localAddress } : {}),
@@ -53,6 +60,10 @@ function dualEntry(
 }
 
 const auctionOnHub = addresses.auctionEscrow;
+const fixedPriceAddress =
+  addresses.fixedPriceConsignment ?? localAddresses?.fixedPriceConsignment;
+const ascendingAddress =
+  addresses.ascendingConsignment ?? localAddresses?.ascendingConsignment;
 
 export default createConfig({
   // Cross-chain consistency for owner/status/uri via global timestamp order.
@@ -90,6 +101,30 @@ export default createConfig({
               auctionOnHub,
               "auctionEscrow",
               localAddresses?.auctionEscrow,
+            ),
+          },
+        }
+      : {}),
+    ...(fixedPriceAddress
+      ? {
+          FixedPriceConsignment: {
+            abi: FixedPriceConsignmentAbi,
+            ...dualEntry(
+              fixedPriceAddress,
+              "fixedPriceConsignment",
+              localAddresses?.fixedPriceConsignment,
+            ),
+          },
+        }
+      : {}),
+    ...(ascendingAddress
+      ? {
+          AscendingConsignment: {
+            abi: AscendingConsignmentAbi,
+            ...dualEntry(
+              ascendingAddress,
+              "ascendingConsignment",
+              localAddresses?.ascendingConsignment,
             ),
           },
         }

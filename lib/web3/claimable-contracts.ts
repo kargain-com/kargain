@@ -14,6 +14,8 @@ export const CLAIMABLE_STACK_KEYS = [
   "karProStaking",
   "marketplace",
   "auctionEscrow",
+  "fixedPriceConsignment",
+  "ascendingConsignment",
 ] as const;
 
 export type ClaimableStackKey = (typeof CLAIMABLE_STACK_KEYS)[number];
@@ -22,13 +24,17 @@ export type ClaimableContractRole =
   | "passport"
   | "staking"
   | "marketplace"
-  | "auction";
+  | "auction"
+  | "fixedPrice"
+  | "ascending";
 
 const ROLE_BY_KEY: Record<ClaimableStackKey, ClaimableContractRole> = {
   karPassport: "passport",
   karProStaking: "staking",
   marketplace: "marketplace",
   auctionEscrow: "auction",
+  fixedPriceConsignment: "fixedPrice",
+  ascendingConsignment: "ascending",
 };
 
 export type ClaimableContractEntry = {
@@ -42,11 +48,17 @@ export function claimableContractsForChain(
 ): ClaimableContractEntry[] {
   const stack = commercialActive(chainId);
   if (!stack) return [];
-  return CLAIMABLE_STACK_KEYS.map((key) => ({
-    key,
-    role: ROLE_BY_KEY[key],
-    address: stack[key as keyof CommercialActiveStack] as `0x${string}`,
-  }));
+  const out: ClaimableContractEntry[] = [];
+  for (const key of CLAIMABLE_STACK_KEYS) {
+    const address = stack[key as keyof CommercialActiveStack];
+    if (typeof address !== "string" || !address.startsWith("0x")) continue;
+    out.push({
+      key,
+      role: ROLE_BY_KEY[key],
+      address: address as `0x${string}`,
+    });
+  }
+  return out;
 }
 
 /** Reverse-lookup role from an emitting contract address on a known commercial chain. */

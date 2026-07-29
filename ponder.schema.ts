@@ -289,3 +289,294 @@ export const claimCredit = onchainTable(
     accountIdx: index().on(table.account),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Commerce modes (FixedPriceConsignment / AscendingConsignment) — additive.
+// Live registration deferred to Nuclear #2; proven on local Hardhat.
+// Do not project into marketplace_* / auction_* tables.
+// ---------------------------------------------------------------------------
+
+/** Append-only consignment open — PK = chainId-modeContract-tokenId-txHash-logIndex. */
+export const consignment = onchainTable(
+  "consignment",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    /** fixedPrice | ascending */
+    mode: t.text().notNull(),
+    modeContract: t.text().notNull(),
+    tokenId: t.text().notNull(),
+    /** 1-based sale ordinal for (chainId, tokenId) — UI only, not a key. */
+    saleOrdinal: t.integer().notNull(),
+    seller: t.text().notNull(),
+    agent: t.text().notNull().default(""),
+    asset: t.text().notNull(),
+    /** 0 = Asset, 1 = Fiat */
+    denominationKind: t.integer().notNull(),
+    currencyCode: t.text().notNull().default(""),
+    floor: t.bigint().notNull(),
+    /** 0 = Margin, 1 = Commission */
+    compensationForm: t.integer().notNull(),
+    commissionBps: t.integer().notNull().default(0),
+    price: t.bigint().notNull(),
+    platformFeeBps: t.integer().notNull(),
+    /** offered | binding | held | closed | returned */
+    phase: t.text().notNull(),
+    closeReason: t.integer(),
+    openedAt: t.bigint().notNull(),
+    closedAt: t.bigint(),
+    recallRequestedAt: t.bigint(),
+    /** FixedPrice: buyer from Bought / ExternalPaymentConfirmed. */
+    buyer: t.text().notNull().default(""),
+    settlementNoteSetAt: t.bigint(),
+    settlementNoteSetter: t.text().notNull().default(""),
+    openTxHash: t.text().notNull(),
+    openLogIndex: t.integer().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    tokenIdx: index().on(table.chainId, table.tokenId),
+    sellerIdx: index().on(table.seller),
+    agentIdx: index().on(table.agent),
+    phaseIdx: index().on(table.chainId, table.mode, table.phase),
+    liveIdx: index().on(table.chainId, table.modeContract, table.tokenId, table.phase),
+  }),
+);
+
+/** 1:1 Ascending terms snapshot — survives settle (storage does not). */
+export const ascendingTerms = onchainTable("ascending_terms", (t) => ({
+  id: t.text().primaryKey(),
+  consignmentId: t.text().notNull(),
+  chainId: t.integer().notNull(),
+  tokenId: t.text().notNull(),
+  duration: t.integer().notNull(),
+  extensionWindow: t.integer().notNull(),
+  protectionWindow: t.integer().notNull(),
+  abandonmentWindow: t.integer().notNull(),
+  minIncrementBps: t.integer().notNull(),
+  reserve: t.bigint().notNull(),
+}));
+
+export const consignmentBid = onchainTable(
+  "consignment_bid",
+  (t) => ({
+    id: t.text().primaryKey(),
+    consignmentId: t.text().notNull(),
+    chainId: t.integer().notNull(),
+    tokenId: t.text().notNull(),
+    bidder: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    endsAt: t.bigint().notNull(),
+    extended: t.boolean().notNull().default(false),
+    refunded: t.boolean().notNull().default(false),
+    refundAsset: t.text().notNull().default(""),
+    refundAmount: t.bigint(),
+    refundTxHash: t.text().notNull().default(""),
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    consignmentIdx: index().on(table.consignmentId),
+    tokenIdx: index().on(table.tokenId),
+    refundTxIdx: index().on(table.refundTxHash),
+  }),
+);
+
+/** Ascending hold + reversal — PK = consignment id. */
+export const consignmentHold = onchainTable("consignment_hold", (t) => ({
+  id: t.text().primaryKey(),
+  consignmentId: t.text().notNull(),
+  chainId: t.integer().notNull(),
+  tokenId: t.text().notNull(),
+  buyer: t.text().notNull(),
+  gross: t.bigint().notNull(),
+  protectionEndsAt: t.bigint().notNull(),
+  /** active | receiptConfirmed | fundsReleased | reversalStarted | reversalCompleted | reversalAbandoned */
+  state: t.text().notNull().default("active"),
+  abandonmentDeadline: t.bigint(),
+  receiptConfirmedAt: t.bigint(),
+  fundsReleasedAt: t.bigint(),
+  reversalStartedAt: t.bigint(),
+  clearedAt: t.bigint(),
+  createdAt: t.bigint().notNull(),
+  updatedAt: t.bigint().notNull(),
+}));
+
+/**
+ * BondedChallenge lifecycle — passport verification + ascending settlement.
+ * PK = chainId-instanceContract-subjectId-txHash-logIndex (append-only opens).
+ */
+export const challenge = onchainTable(
+  "challenge",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    /** passport | ascending */
+    instance: t.text().notNull(),
+    instanceContract: t.text().notNull(),
+    subjectId: t.text().notNull(),
+    challenger: t.text().notNull(),
+    bondAmount: t.bigint().notNull(),
+    windowDuration: t.bigint().notNull(),
+    openedAt: t.bigint().notNull(),
+    /** open | withdrawn | judged | concluded */
+    status: t.text().notNull().default("open"),
+    judge: t.text().notNull().default(""),
+    /** 0 upheld | 1 rejected — set on Judged */
+    outcome: t.integer(),
+    bondRecipient: t.text().notNull().default(""),
+    terminalAt: t.bigint(),
+    terminalTxHash: t.text().notNull().default(""),
+    openTxHash: t.text().notNull(),
+    openLogIndex: t.integer().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    subjectIdx: index().on(table.chainId, table.instanceContract, table.subjectId),
+    statusIdx: index().on(table.status),
+    terminalTxIdx: index().on(table.terminalTxHash),
+  }),
+);
+
+/** Standing mandate per mode contract + passport. */
+export const mandate = onchainTable(
+  "mandate",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    modeContract: t.text().notNull(),
+    /** fixedPrice | ascending */
+    mode: t.text().notNull(),
+    tokenId: t.text().notNull(),
+    owner: t.text().notNull(),
+    agent: t.text().notNull(),
+    expiry: t.bigint().notNull().default(0n),
+    asset: t.text().notNull(),
+    denominationKind: t.integer().notNull(),
+    currencyCode: t.text().notNull().default(""),
+    floor: t.bigint().notNull(),
+    compensationForm: t.integer().notNull(),
+    commissionBps: t.integer().notNull().default(0),
+    active: t.boolean().notNull().default(true),
+    grantedAt: t.bigint().notNull(),
+    revokedAt: t.bigint(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    agentIdx: index().on(table.agent),
+    ownerIdx: index().on(table.owner),
+    tokenIdx: index().on(table.tokenId),
+  }),
+);
+
+/** Money outcome from ConsignmentSplitPaid — PK = consignment id. */
+export const consignmentSettlement = onchainTable(
+  "consignment_settlement",
+  (t) => ({
+    id: t.text().primaryKey(),
+    consignmentId: t.text().notNull(),
+    chainId: t.integer().notNull(),
+    tokenId: t.text().notNull(),
+    asset: t.text().notNull(),
+    ownerRecipient: t.text().notNull(),
+    ownerAmount: t.bigint().notNull(),
+    agentRecipient: t.text().notNull().default(""),
+    agentAmount: t.bigint().notNull().default(0n),
+    platformRecipient: t.text().notNull(),
+    platformAmount: t.bigint().notNull(),
+    txHash: t.text().notNull(),
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    txIdx: index().on(table.txHash),
+  }),
+);
+
+/**
+ * Mode ClaimablePayouts balance (new surface — not pending_claim).
+ * PK = chainId-contract-account-asset.
+ */
+export const commerceClaim = onchainTable(
+  "commerce_claim",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    contract: t.text().notNull(),
+    account: t.text().notNull(),
+    asset: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+    firstCreditedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    accountIdx: index().on(table.account),
+  }),
+);
+
+/** Append-only commerce ClaimRecorded credits — reason via same-tx correlation. */
+export const commerceClaimCredit = onchainTable(
+  "commerce_claim_credit",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    contract: t.text().notNull(),
+    account: t.text().notNull(),
+    asset: t.text().notNull(),
+    amount: t.bigint().notNull(),
+    reasonCode: t.text().notNull(),
+    causeEvent: t.text().notNull().default(""),
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    accountIdx: index().on(table.account),
+  }),
+);
+
+/** Per-chain mode config: pause, guardian, auction rules, feed staleness. */
+export const commerceMode = onchainTable("commerce_mode", (t) => ({
+  id: t.text().primaryKey(),
+  chainId: t.integer().notNull(),
+  modeContract: t.text().notNull(),
+  mode: t.text().notNull(),
+  paused: t.boolean().notNull().default(false),
+  guardian: t.text().notNull().default(""),
+  /** Ascending AuctionRulesSet fields (0 when unset / FixedPrice). */
+  minDuration: t.integer().notNull().default(0),
+  maxDuration: t.integer().notNull().default(0),
+  extensionWindow: t.integer().notNull().default(0),
+  minIncrementBps: t.integer().notNull().default(0),
+  protectionWindow: t.integer().notNull().default(0),
+  abandonmentWindow: t.integer().notNull().default(0),
+  challengeBond: t.bigint().notNull().default(0n),
+  /** FixedPrice max feed staleness. */
+  maxFeedStaleness: t.bigint().notNull().default(0n),
+  updatedAt: t.bigint().notNull(),
+}));
+
+export const commercePaymentToken = onchainTable(
+  "commerce_payment_token",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.integer().notNull(),
+    modeContract: t.text().notNull(),
+    mode: t.text().notNull(),
+    token: t.text().notNull(),
+    /** FixedPrice only — empty on Ascending. */
+    feed: t.text().notNull().default(""),
+    decimals: t.integer().notNull().default(0),
+    active: t.boolean().notNull().default(true),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    modeIdx: index().on(table.chainId, table.modeContract),
+  }),
+);
+
+/** FixedPrice currency feeds — separate from legacy unread currency_feed. */
+export const commerceCurrencyFeed = onchainTable("commerce_currency_feed", (t) => ({
+  id: t.text().primaryKey(),
+  chainId: t.integer().notNull(),
+  modeContract: t.text().notNull(),
+  currencyCode: t.text().notNull(),
+  feed: t.text().notNull(),
+  updatedAt: t.bigint().notNull(),
+}));

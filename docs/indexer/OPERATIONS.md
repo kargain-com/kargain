@@ -93,6 +93,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trust layer challenge terminals (July 2026+) | `KarPassport:ChallengeConcluded` (and `ChallengeJudged` / `ChallengeWithdrawn`) → UNVERIFIED/VERIFIED + `lastDisputeTerminal` — **full reindex** with Nuclear #2 (legacy live ABI: `DisputeExpired`) |
 | Passport `lastDisputeTerminal` (July 2026) | Distinguishes confirm / reject / expire / withdraw for lapse UX + notifications — **full reindex** with Nuclear #2 |
 | ClaimablePayouts projection (July 2026) | `pending_claim` + `claim_credit` tables; `ClaimRecorded` / `ClaimWithdrawn` on Auction / Marketplace / KarPassport / KarProStaking — **full reindex** with Nuclear #2 |
+| Commerce modes (FixedPrice / Ascending, July 2026) | New `consignment` / `ascending_terms` / `consignment_bid` / `consignment_hold` / `challenge` / `mandate` / `consignment_settlement` / `commerce_claim*` / `commerce_mode` / payment+currency tables — **full reindex required** when schema deploys; **live mode addresses/start blocks deferred to Nuclear #2** (local Hardhat indexes after `deploy:local`) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |

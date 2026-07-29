@@ -45,6 +45,38 @@ interface IKarProStakingJoinLeave {
     function claimStake() external;
 }
 
+interface IFixedPriceConsignment {
+    struct Denomination {
+        uint8 kind;
+        bytes32 currencyCode;
+    }
+
+    struct Compensation {
+        uint8 form;
+        uint16 commissionBps;
+    }
+
+    function openDirect(
+        uint256 tokenId,
+        Denomination calldata denomination,
+        address asset,
+        uint128 price
+    ) external;
+
+    function grant(
+        uint256 tokenId,
+        address agent,
+        uint64 expiry,
+        address asset,
+        Denomination calldata denomination,
+        uint128 floor,
+        Compensation calldata compensation
+    ) external;
+
+    function openFromMandate(uint256 tokenId, Denomination calldata denomination, uint128 price)
+        external;
+}
+
 /// @notice Recipient that reverts on native receive until `acceptEth` is set — tests claim credits.
 contract RevertingRecipient {
     bool public acceptEth;
@@ -83,6 +115,63 @@ contract RevertingRecipient {
 
     function withdrawClaim(address staking, address asset) external {
         IClaimWithdraw(staking).withdrawClaim(asset);
+    }
+
+    function approvePassport(address passport, address operator, bool approved) external {
+        IERC721(passport).setApprovalForAll(operator, approved);
+    }
+
+    function openFixedDirect(
+        address mode,
+        uint256 tokenId,
+        uint8 denomKind,
+        bytes32 currencyCode,
+        address asset,
+        uint128 price
+    ) external {
+        IFixedPriceConsignment(mode).openDirect(
+            tokenId,
+            IFixedPriceConsignment.Denomination(denomKind, currencyCode),
+            asset,
+            price
+        );
+    }
+
+    function grantFixed(
+        address mode,
+        uint256 tokenId,
+        address agent,
+        uint64 expiry,
+        address asset,
+        uint8 denomKind,
+        bytes32 currencyCode,
+        uint128 floor,
+        uint8 compensationForm,
+        uint16 commissionBps
+    ) external {
+        IFixedPriceConsignment(mode).grant(
+            tokenId,
+            agent,
+            expiry,
+            asset,
+            IFixedPriceConsignment.Denomination(denomKind, currencyCode),
+            floor,
+            IFixedPriceConsignment.Compensation(compensationForm, commissionBps)
+        );
+    }
+
+    function openFixedFromMandate(
+        address mode,
+        uint256 tokenId,
+        uint8 denomKind,
+        bytes32 currencyCode,
+        uint128 price
+    ) external {
+        IFixedPriceConsignment(mode).openFromMandate(
+            tokenId,
+            IFixedPriceConsignment.Denomination(denomKind, currencyCode),
+            price
+        );
     }
 
     /// @notice Owner-only helper: approve escrow and authorize agent (msg.sender to escrow = this contract).

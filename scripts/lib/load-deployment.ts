@@ -123,6 +123,8 @@ export type PonderAddressBundle = {
   marketplace: `0x${string}`;
   marketplaceImpl?: `0x${string}`;
   auctionEscrow?: `0x${string}`;
+  fixedPriceConsignment?: `0x${string}`;
+  ascendingConsignment?: `0x${string}`;
 };
 
 function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
@@ -142,6 +144,21 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
     ...(raw.auctionEscrowImpl
       ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) }
+      : {}),
+    ...(raw.fixedPriceConsignment
+      ? { fixedPriceConsignment: getAddress(raw.fixedPriceConsignment) }
+      : {}),
+    ...(raw.fixedPriceConsignmentImpl
+      ? { fixedPriceConsignmentImpl: getAddress(raw.fixedPriceConsignmentImpl) }
+      : {}),
+    ...(raw.ascendingConsignment
+      ? { ascendingConsignment: getAddress(raw.ascendingConsignment) }
+      : {}),
+    ...(raw.ascendingConsignmentImpl
+      ? { ascendingConsignmentImpl: getAddress(raw.ascendingConsignmentImpl) }
+      : {}),
+    ...(raw.commercePayoutSink
+      ? { commercePayoutSink: getAddress(raw.commercePayoutSink) }
       : {}),
   };
 }
@@ -194,6 +211,19 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
     ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
     ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
+    ...(raw.fixedPriceConsignment
+      ? { fixedPriceConsignment: getAddress(raw.fixedPriceConsignment) }
+      : {}),
+    ...(raw.fixedPriceConsignmentImpl
+      ? { fixedPriceConsignmentImpl: getAddress(raw.fixedPriceConsignmentImpl) }
+      : {}),
+    ...(raw.ascendingConsignment
+      ? { ascendingConsignment: getAddress(raw.ascendingConsignment) }
+      : {}),
+    ...(raw.ascendingConsignmentImpl
+      ? { ascendingConsignmentImpl: getAddress(raw.ascendingConsignmentImpl) }
+      : {}),
+    ...(raw.commerceGuardian ? { commerceGuardian: getAddress(raw.commerceGuardian) } : {}),
     ...(raw.bridgeGateway ? { bridgeGateway: getAddress(raw.bridgeGateway) } : {}),
     ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
     ...(raw.historical ? { historical: normalizeHistorical(raw.historical) } : {}),
@@ -305,6 +335,18 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     ...(process.env.PONDER_AUCTION_ESCROW_ADDRESS
       ? { auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}` }
       : {}),
+    ...(process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS
+      ? {
+          fixedPriceConsignment: process.env
+            .PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS as `0x${string}`,
+        }
+      : {}),
+    ...(process.env.PONDER_ASCENDING_CONSIGNMENT_ADDRESS
+      ? {
+          ascendingConsignment: process.env
+            .PONDER_ASCENDING_CONSIGNMENT_ADDRESS as `0x${string}`,
+        }
+      : {}),
     deployedAt: "",
   };
 
@@ -341,5 +383,11 @@ export function ponderAddressesFromCommercialManifest(
     marketplace: manifest.marketplace,
     ...(manifest.marketplaceImpl ? { marketplaceImpl: manifest.marketplaceImpl } : {}),
     ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
+    ...(manifest.fixedPriceConsignment
+      ? { fixedPriceConsignment: manifest.fixedPriceConsignment }
+      : {}),
+    ...(manifest.ascendingConsignment
+      ? { ascendingConsignment: manifest.ascendingConsignment }
+      : {}),
   };
 }

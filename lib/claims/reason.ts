@@ -47,6 +47,9 @@ const SELECTOR_REASON: Record<
   staking: {
     "0xeb321173": "staking.stake_refund", // claimStake
   },
+  /** Mode claims use same-tx event correlation in ponder-commerce — not selectors. */
+  fixedPrice: {},
+  ascending: {},
 };
 
 const ROLE_FALLBACK: Record<ClaimableContractRole, ClaimReasonCode> = {
@@ -54,6 +57,8 @@ const ROLE_FALLBACK: Record<ClaimableContractRole, ClaimReasonCode> = {
   marketplace: "marketplace.settlement_payout",
   passport: "passport.dispute_deposit",
   staking: "staking.stake_refund",
+  fixedPrice: "unknown",
+  ascending: "unknown",
 };
 
 export function normalizeTxSelector(input: string | undefined | null): string | null {
@@ -113,6 +118,10 @@ export function claimableRoleLabel(role: ClaimableContractRole | null): string {
       return "Marketplace escrow";
     case "auction":
       return "Auction escrow";
+    case "fixedPrice":
+      return "Fixed-price consignment";
+    case "ascending":
+      return "Ascending consignment";
     case null:
       return "Protocol contract";
   }

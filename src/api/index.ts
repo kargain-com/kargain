@@ -44,11 +44,13 @@ import {
   SLUG_PATTERN,
 } from "../../lib/kar-pro/kar-pro-slug-rules";
 import { buildNotificationFeed } from "./notifications-query";
+import { registerCommerceRoutes } from "./commerce-routes";
 import { legacyFiatFromCurrencyCode } from "../../lib/marketplace/currency-code";
 import { normalizeVerifierId } from "../lib/ponder-verifier-lifecycle";
 
 const app = new Hono();
 
+registerCommerceRoutes(app);
 const STATUS_ORDER = sql`CASE ${passport.status}
   WHEN 'VERIFIED' THEN 0
   WHEN 'UNVERIFIED' THEN 1

@@ -17,6 +17,11 @@ export type CommercialActiveBlocks = {
   auctionEscrowImpl?: number;
   auctionEscrow?: number;
   bridgeGateway?: number;
+  /** Present after Nuclear #2 mode deploy. */
+  fixedPriceConsignment?: number;
+  fixedPriceConsignmentImpl?: number;
+  ascendingConsignment?: number;
+  ascendingConsignmentImpl?: number;
 };
 
 export type CommercialActiveStack = {
@@ -35,6 +40,11 @@ export type CommercialActiveStack = {
   bridgeGateway: `0x${string}`;
   auctionEscrow: `0x${string}`;
   auctionEscrowImpl?: `0x${string}`;
+  /** Commerce modes — filled at Nuclear #2; absent until then. */
+  fixedPriceConsignment?: `0x${string}`;
+  fixedPriceConsignmentImpl?: `0x${string}`;
+  ascendingConsignment?: `0x${string}`;
+  ascendingConsignmentImpl?: `0x${string}`;
   layerZeroEndpoint: `0x${string}`;
   platformRecipient: `0x${string}`;
   deployer: `0x${string}`;

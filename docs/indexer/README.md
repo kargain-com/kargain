@@ -33,6 +33,33 @@ Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12
 
 Browse: `GET /listings?custodyChain=84532` (optional). Passport detail returns `records[]` / `uriHistory[]` with per-row `chainId` (UNION by global `tokenId`). Verifier detail: prefer `GET /verifiers/:address?chainId=84532`.
 
+## Commerce modes API (FixedPrice / Ascending — July 2026)
+
+New tables and routes for `FixedPriceConsignment` and `AscendingConsignment`. **Do not** project into `marketplace_*` / `auction_*`. Old escrow routes stay until cutover.
+
+**Live registration** of mode addresses on commercial chains is **deferred to Nuclear #2**. Local Hardhat (`PONDER_ENABLE_LOCAL=1` after `pnpm deploy:local`) registers both modes. **VPS full reindex required** when this schema ships ([OPERATIONS.md](./OPERATIONS.md)).
+
+| Identity | Format |
+|----------|--------|
+| `consignment.id` | `` `${chainId}-${modeContract}-${tokenId}-${txHash}-${logIndex}` `` (append-only open) |
+| `saleOrdinal` | 1-based count of opens for `(chainId, tokenId)` — UI only |
+| `mandate.id` | `` `${chainId}-${modeContract}-${tokenId}` `` |
+| `challenge.id` | `` `${chainId}-${instanceContract}-${subjectId}-${txHash}-${logIndex}` `` |
+| `commerce_claim.id` | `` `${chainId}-${contract}-${account}-${asset}` `` (new surface; not `pending_claim`) |
+
+| Route | Cutover consumer |
+|-------|------------------|
+| `GET /consignments` | Marketplace + auctions browse (`mode`, `active`, `seller`, `agent`, `chainId`) |
+| `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred) |
+| `GET /consignments/:id` | History deep link (“sale N”) |
+| `GET /consignments/:id/bids` | Ascending bid history |
+| `GET /agents/:address/mandates` | Agent portfolio |
+| `GET /owners/:address/mandates` | Owner delegated tab |
+| `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
+| `GET /accounts/:address/commerce-claims` | Profile Claims (transitional; old `/accounts/:address/claims` untouched) |
+
+No standalone `/challenges`, `/holds`, or `/commerce-mode` routes — embed in consignment detail / chain reads until a consumer exists.
+
 ## Auction API (July 2026)
 
 AuctionEscrow on each commercial chain from that chain’s manifest. Response rows include `chainId` (+ passport `custodyChain` when enriched).

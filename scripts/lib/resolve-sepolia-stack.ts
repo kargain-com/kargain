@@ -38,6 +38,8 @@ export type ResolvedCommercialStack = {
   timelock?: `0x${string}`;
   bridgeGateway?: `0x${string}`;
   auctionEscrow?: `0x${string}`;
+  fixedPriceConsignment?: `0x${string}`;
+  ascendingConsignment?: `0x${string}`;
   indexFromBlock: number;
   blocks: DeploymentBlocks;
 };
@@ -81,6 +83,12 @@ function stackFromCommitted(chainId: number): ResolvedCommercialStack {
     timelock: active.timelock,
     bridgeGateway: active.bridgeGateway,
     auctionEscrow: active.auctionEscrow,
+    ...(active.fixedPriceConsignment
+      ? { fixedPriceConsignment: active.fixedPriceConsignment }
+      : {}),
+    ...(active.ascendingConsignment
+      ? { ascendingConsignment: active.ascendingConsignment }
+      : {}),
     indexFromBlock: active.indexFromBlock,
     blocks: { ...active.blocks },
   };
@@ -105,6 +113,12 @@ function stackFromManifest(
     ...(manifest.timelock ? { timelock: manifest.timelock } : {}),
     ...(manifest.bridgeGateway ? { bridgeGateway: manifest.bridgeGateway } : {}),
     ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
+    ...(manifest.fixedPriceConsignment
+      ? { fixedPriceConsignment: manifest.fixedPriceConsignment }
+      : {}),
+    ...(manifest.ascendingConsignment
+      ? { ascendingConsignment: manifest.ascendingConsignment }
+      : {}),
     indexFromBlock: manifest.indexFromBlock,
     blocks: manifest.blocks,
   };
@@ -148,6 +162,12 @@ function stackFromEnv84532(): ResolvedCommercialStack | null {
     auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS
       ? getAddress(process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}`)
       : base.auctionEscrow,
+    fixedPriceConsignment: process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS
+      ? getAddress(process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS as `0x${string}`)
+      : base.fixedPriceConsignment,
+    ascendingConsignment: process.env.PONDER_ASCENDING_CONSIGNMENT_ADDRESS
+      ? getAddress(process.env.PONDER_ASCENDING_CONSIGNMENT_ADDRESS as `0x${string}`)
+      : base.ascendingConsignment,
     indexFromBlock,
   };
 }
@@ -160,6 +180,12 @@ export function ponderAddressesFromStack(stack: ResolvedCommercialStack): Ponder
     marketplace: stack.marketplace,
     marketplaceImpl: stack.marketplaceImpl,
     ...(stack.auctionEscrow ? { auctionEscrow: stack.auctionEscrow } : {}),
+    ...(stack.fixedPriceConsignment
+      ? { fixedPriceConsignment: stack.fixedPriceConsignment }
+      : {}),
+    ...(stack.ascendingConsignment
+      ? { ascendingConsignment: stack.ascendingConsignment }
+      : {}),
   };
 }
 
@@ -272,6 +298,8 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
     `  karPassport:    ${stack.karPassport}`,
     `  marketplace:    ${stack.marketplace}`,
     `  auctionEscrow:  ${stack.auctionEscrow ?? "(none)"}`,
+    `  fixedPrice:     ${stack.fixedPriceConsignment ?? "(none — Nuclear #2)"}`,
+    `  ascending:      ${stack.ascendingConsignment ?? "(none — Nuclear #2)"}`,
     `  gateway:        ${stack.bridgeGateway ?? "(none)"}`,
     "",
     `Ethereum Sepolia (11155111) — source: ${eth.source}`,
@@ -279,6 +307,8 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
     `  karPassport:    ${eth.karPassport}`,
     `  marketplace:    ${eth.marketplace}`,
     `  auctionEscrow:  ${eth.auctionEscrow ?? "(none)"}`,
+    `  fixedPrice:     ${eth.fixedPriceConsignment ?? "(none — Nuclear #2)"}`,
+    `  ascending:      ${eth.ascendingConsignment ?? "(none — Nuclear #2)"}`,
     `  gateway:        ${eth.bridgeGateway ?? "(none)"}`,
     "",
     "Network (VPS — see .env.example):",

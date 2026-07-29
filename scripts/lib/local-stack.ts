@@ -68,6 +68,16 @@ export type LocalStackAddresses = {
   /** Present after `pnpm deploy:local` with auction deploy (iteration в). */
   auctionEscrow?: `0x${string}`;
   auctionEscrowImpl?: `0x${string}`;
+  /** Commerce modes (local E2E / Nuclear #2 prep). */
+  fixedPriceConsignment?: `0x${string}`;
+  fixedPriceConsignmentImpl?: `0x${string}`;
+  ascendingConsignment?: `0x${string}`;
+  ascendingConsignmentImpl?: `0x${string}`;
+  /**
+   * RevertingRecipient used as FixedPrice/Ascending platformRecipient and
+   * Ascending forfeitRecipient — toggle acceptEth in E2E to force ClaimRecorded.
+   */
+  commercePayoutSink?: `0x${string}`;
   deployedAt: string;
 };
 
@@ -358,6 +368,11 @@ export function stackToDeploymentAddresses(
   stack: Awaited<ReturnType<typeof deployEscrowStack>> & {
     auctionEscrow?: `0x${string}`;
     auctionEscrowImpl?: `0x${string}`;
+    fixedPriceConsignment?: `0x${string}`;
+    fixedPriceConsignmentImpl?: `0x${string}`;
+    ascendingConsignment?: `0x${string}`;
+    ascendingConsignmentImpl?: `0x${string}`;
+    commercePayoutSink?: `0x${string}`;
   },
   chainId: number,
 ): LocalStackAddresses {
@@ -376,6 +391,21 @@ export function stackToDeploymentAddresses(
     ...(stack.auctionEscrow ? { auctionEscrow: getAddress(stack.auctionEscrow) } : {}),
     ...(stack.auctionEscrowImpl
       ? { auctionEscrowImpl: getAddress(stack.auctionEscrowImpl) }
+      : {}),
+    ...(stack.fixedPriceConsignment
+      ? { fixedPriceConsignment: getAddress(stack.fixedPriceConsignment) }
+      : {}),
+    ...(stack.fixedPriceConsignmentImpl
+      ? { fixedPriceConsignmentImpl: getAddress(stack.fixedPriceConsignmentImpl) }
+      : {}),
+    ...(stack.ascendingConsignment
+      ? { ascendingConsignment: getAddress(stack.ascendingConsignment) }
+      : {}),
+    ...(stack.ascendingConsignmentImpl
+      ? { ascendingConsignmentImpl: getAddress(stack.ascendingConsignmentImpl) }
+      : {}),
+    ...(stack.commercePayoutSink
+      ? { commercePayoutSink: getAddress(stack.commercePayoutSink) }
       : {}),
     deployedAt: new Date().toISOString(),
   };

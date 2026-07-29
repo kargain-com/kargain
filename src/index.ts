@@ -20,6 +20,13 @@ import { getAddress } from "viem";
 
 import { decodeCurrencyCode } from "../lib/marketplace/currency-code";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
+// Additive KarPassport `challenge` table writes — registers FixedPriceConsignment /
+// AscendingConsignment handlers as a side effect. Passport trust-field writes
+// (below) are NOT touched by this import; see src/commerce-handlers.ts module doc.
+import {
+  indexPassportChallengeOpened,
+  indexPassportChallengeTerminal,
+} from "./commerce-handlers";
 import {
   AUCTION_PHASE,
   auctionAgentAuthorizedRow,
@@ -323,6 +330,8 @@ ponder.on("KarPassport:ChallengeOpened", async ({ event, context }) => {
       disputeDeposit: event.args.bondAmount,
       updatedAt: event.block.timestamp,
     });
+  // Additive — shared `challenge` table row (src/commerce-handlers.ts).
+  await indexPassportChallengeOpened(event, context);
 });
 
 ponder.on("KarPassport:ChallengeJudged", async ({ event, context }) => {
@@ -336,6 +345,8 @@ ponder.on("KarPassport:ChallengeJudged", async ({ event, context }) => {
         uphold ? "reject" : "confirm",
       ),
     );
+  // Additive — shared `challenge` table row (src/commerce-handlers.ts).
+  await indexPassportChallengeTerminal("judged", event, context);
 });
 
 ponder.on("KarPassport:ChallengeConcluded", async ({ event, context }) => {
@@ -343,12 +354,16 @@ ponder.on("KarPassport:ChallengeConcluded", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.subjectId.toString() })
     .set(disputeExpiredTrustFields(event.block.timestamp));
+  // Additive — shared `challenge` table row (src/commerce-handlers.ts).
+  await indexPassportChallengeTerminal("concluded", event, context);
 });
 
 ponder.on("KarPassport:ChallengeWithdrawn", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.subjectId.toString() })
     .set(disputeWithdrawnTrustFields(event.block.timestamp));
+  // Additive — shared `challenge` table row (src/commerce-handlers.ts).
+  await indexPassportChallengeTerminal("withdrawn", event, context);
 });
 
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
