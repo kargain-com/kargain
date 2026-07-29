@@ -3,10 +3,14 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
-import { parseEther, stringToHex, padHex } from "viem";
+import { getAddress, parseEther, stringToHex, padHex } from "viem";
 
 import hardhat from "hardhat";
-import { increaseTime, ZERO } from "../../scripts/lib/local-stack.js";
+import {
+  deployAscendingConsignment,
+  increaseTime,
+  ZERO,
+} from "../../scripts/lib/local-stack.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -82,6 +86,7 @@ describe("AscendingConsignment", () => {
   let forfeit: WalletClient;
   let judge: WalletClient;
   let stranger: WalletClient;
+  let guardian: WalletClient;
 
   async function deployMode(overrides: {
     protectionWindow?: bigint;
@@ -90,32 +95,36 @@ describe("AscendingConsignment", () => {
     challengeWindow?: bigint;
     minDuration?: bigint;
     maxDuration?: bigint;
+    harness?: boolean;
   } = {}) {
     connection = await hardhat.network.connect();
     viem = connection.viem;
     publicClient = await viem.getPublicClient();
     const wallets = await viem.getWalletClients();
-    [owner, agent, buyer, bidder2, platform, forfeit, judge, stranger] = wallets;
+    [owner, agent, buyer, bidder2, platform, forfeit, judge, stranger, guardian] = wallets;
 
     passport = await viem.deployContract("MockPassportEncumbrance", []);
     staking = await viem.deployContract("MockKarProActive", []);
 
-    mode = await viem.deployContract("AscendingConsignment", [
-      passport.address,
-      staking.address,
-      platform.account.address,
-      PLATFORM_FEE_BPS,
-      forfeit.account.address,
-      BOND,
-      overrides.challengeWindow ?? CHALLENGE_WINDOW,
-      overrides.minDuration ?? MIN_DURATION,
-      overrides.maxDuration ?? MAX_DURATION,
-      overrides.extensionWindow ?? EXTENSION,
-      MIN_INCREMENT_BPS,
-      overrides.protectionWindow ?? PROTECTION,
-      overrides.abandonmentWindow ?? ABANDONMENT,
-      owner.account.address,
-    ]);
+    const deployed = await deployAscendingConsignment(viem, {
+      passport: passport.address,
+      karProStaking: staking.address,
+      platformRecipient: platform.account.address,
+      feeBps: PLATFORM_FEE_BPS,
+      forfeitRecipient: forfeit.account.address,
+      challengeBond: BOND,
+      challengeWindow: overrides.challengeWindow ?? CHALLENGE_WINDOW,
+      minDuration: overrides.minDuration ?? MIN_DURATION,
+      maxDuration: overrides.maxDuration ?? MAX_DURATION,
+      extensionWindow: overrides.extensionWindow ?? EXTENSION,
+      minIncrementBps: MIN_INCREMENT_BPS,
+      protectionWindow: overrides.protectionWindow ?? PROTECTION,
+      abandonmentWindow: overrides.abandonmentWindow ?? ABANDONMENT,
+      owner: owner.account.address,
+      guardian: guardian.account.address,
+      harness: overrides.harness ?? false,
+    });
+    mode = deployed.mode;
   }
 
   async function mintAndApprove(tokenId: bigint = TOKEN, holder: WalletClient = owner) {
@@ -155,7 +164,7 @@ describe("AscendingConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "1.0.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
   });
 
   // ---- N2 KarPro by behaviour (not source scan) ----
@@ -234,43 +243,45 @@ describe("AscendingConsignment", () => {
     );
   });
 
-  it("BadDuration / BadConfig on invalid ctor and governance params", async () => {
+  it("BadDuration / BadConfig on invalid initialize and governance params", async () => {
     await assert.rejects(
-      viem.deployContract("AscendingConsignment", [
-        passport.address,
-        staking.address,
-        platform.account.address,
-        PLATFORM_FEE_BPS,
-        forfeit.account.address,
-        BOND,
-        CHALLENGE_WINDOW,
-        MIN_DURATION,
-        MAX_DURATION,
-        0n,
-        MIN_INCREMENT_BPS,
-        PROTECTION,
-        ABANDONMENT,
-        owner.account.address,
-      ]),
+      deployAscendingConsignment(viem, {
+        passport: passport.address,
+        karProStaking: staking.address,
+        platformRecipient: platform.account.address,
+        feeBps: PLATFORM_FEE_BPS,
+        forfeitRecipient: forfeit.account.address,
+        challengeBond: BOND,
+        challengeWindow: CHALLENGE_WINDOW,
+        minDuration: MIN_DURATION,
+        maxDuration: MAX_DURATION,
+        extensionWindow: 0n,
+        minIncrementBps: MIN_INCREMENT_BPS,
+        protectionWindow: PROTECTION,
+        abandonmentWindow: ABANDONMENT,
+        owner: owner.account.address,
+        guardian: guardian.account.address,
+      }),
       revertsWith("BadConfig"),
     );
     await assert.rejects(
-      viem.deployContract("AscendingConsignment", [
-        passport.address,
-        staking.address,
-        platform.account.address,
-        PLATFORM_FEE_BPS,
-        forfeit.account.address,
-        BOND,
-        CHALLENGE_WINDOW,
-        500n,
-        100n,
-        EXTENSION,
-        MIN_INCREMENT_BPS,
-        PROTECTION,
-        ABANDONMENT,
-        owner.account.address,
-      ]),
+      deployAscendingConsignment(viem, {
+        passport: passport.address,
+        karProStaking: staking.address,
+        platformRecipient: platform.account.address,
+        feeBps: PLATFORM_FEE_BPS,
+        forfeitRecipient: forfeit.account.address,
+        challengeBond: BOND,
+        challengeWindow: CHALLENGE_WINDOW,
+        minDuration: 500n,
+        maxDuration: 100n,
+        extensionWindow: EXTENSION,
+        minIncrementBps: MIN_INCREMENT_BPS,
+        protectionWindow: PROTECTION,
+        abandonmentWindow: ABANDONMENT,
+        owner: owner.account.address,
+        guardian: guardian.account.address,
+      }),
       revertsWith("BadConfig"),
     );
   });
@@ -326,20 +337,88 @@ describe("AscendingConsignment", () => {
     );
   });
 
-  it("B3: bid inside extension window moves endsAt; governance change does not rewrite alone", async () => {
+  it("B3 snapshot: extension frozen at open; storage change only affects later lots", async () => {
     await openDirect(RESERVE, DURATION);
+    assert.equal(Number(await mode.read.auctionExtensionWindow([TOKEN])), Number(EXTENSION));
     await firstBid();
-    const ends1 = (await mode.read.auctionEndsAt([TOKEN])) as number;
+    const ends1 = Number(await mode.read.auctionEndsAt([TOKEN]));
     await increaseTime(publicClient, DURATION - EXTENSION + 1n);
     const raise = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
     await mode.write.bid([TOKEN, raise], { account: bidder2.account, value: raise });
-    const ends2 = (await mode.read.auctionEndsAt([TOKEN])) as number;
+    const afterExt = await publicClient.getBlock();
+    const ends2 = Number(await mode.read.auctionEndsAt([TOKEN]));
     assert.ok(ends2 > ends1, "extension moved the end");
+    const remainingA = ends2 - Number(afterExt.timestamp);
+    assert.ok(
+      remainingA >= Number(EXTENSION) - 2,
+      `lot A anti-snipe leaves ~${EXTENSION}s, got ${remainingA}`,
+    );
 
-    const beforeGov = (await mode.read.auctionEndsAt([TOKEN])) as number;
+    const beforeGov = Number(await mode.read.auctionEndsAt([TOKEN]));
     await mode.write.setExtensionWindow([1n], { account: owner.account });
-    const afterGov = (await mode.read.auctionEndsAt([TOKEN])) as number;
-    assert.equal(afterGov, beforeGov, "governance alone does not rewrite endsAt");
+    assert.equal(Number(await mode.read.auctionEndsAt([TOKEN])), beforeGov, "governance alone does not rewrite endsAt");
+    assert.equal(Number(await mode.read.auctionExtensionWindow([TOKEN])), Number(EXTENSION), "lot A snapshot unchanged");
+    assert.equal(Number(await mode.read.extensionWindow()), 1);
+    // Live remaining unchanged by governance (same endsAt).
+    assert.equal(Number(await mode.read.auctionEndsAt([TOKEN])), ends2);
+
+    // Finish lot A so custody returns for token B open on a fresh passport.
+    await increaseTime(publicClient, BigInt(remainingA + 5));
+    await mode.write.settle([TOKEN], { account: stranger.account });
+    await mode.write.confirmReceipt([TOKEN], { account: bidder2.account });
+
+    const tokenB = 2n;
+    await activate(owner);
+    await mintAndApprove(tokenB);
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+    assert.equal(Number(await mode.read.auctionExtensionWindow([tokenB])), 1);
+    await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
+    // Leave 2s headroom: increaseTime+mine then the bid block each consume a second.
+    await increaseTime(publicClient, DURATION - 2n);
+    const raiseB = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
+    await mode.write.bid([tokenB, raiseB], { account: bidder2.account, value: raiseB });
+    const afterBid = await publicClient.getBlock();
+    const endsB2 = Number(await mode.read.auctionEndsAt([tokenB]));
+    const remainingB = endsB2 - Number(afterBid.timestamp);
+    assert.ok(
+      remainingB <= 3,
+      `lot B extension leaves ~1s remaining, remaining=${remainingB}`,
+    );
+  });
+
+  it("snapshot: minIncrementBps frozen at open; later lots use storage", async () => {
+    await openDirect();
+    await firstBid();
+    assert.equal(Number(await mode.read.auctionMinIncrementBps([TOKEN])), Number(MIN_INCREMENT_BPS));
+
+    const newBps = 5_000n; // 50%
+    await mode.write.setMinIncrementBps([newBps], { account: owner.account });
+    assert.equal(Number(await mode.read.minIncrementBps()), Number(newBps));
+    assert.equal(Number(await mode.read.auctionMinIncrementBps([TOKEN])), Number(MIN_INCREMENT_BPS));
+
+    const oldNext = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
+    await mode.write.bid([TOKEN, oldNext], { account: bidder2.account, value: oldNext });
+
+    await increaseTime(publicClient, DURATION + 2n);
+    await mode.write.settle([TOKEN], { account: stranger.account });
+    await mode.write.confirmReceipt([TOKEN], { account: bidder2.account });
+
+    const tokenB = 2n;
+    await activate(owner);
+    await mintAndApprove(tokenB);
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+    assert.equal(Number(await mode.read.auctionMinIncrementBps([tokenB])), Number(newBps));
+    await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
+    await assert.rejects(
+      mode.write.bid([tokenB, oldNext], { account: bidder2.account, value: oldNext }),
+      revertsWith("BidTooLow"),
+    );
+    const newNext = RESERVE + (RESERVE * newBps) / 10_000n;
+    await mode.write.bid([tokenB, newNext], { account: bidder2.account, value: newNext });
   });
 
   // ---- B1 single exit ----
@@ -469,6 +548,70 @@ describe("AscendingConsignment", () => {
       mode.write.confirmReceipt([TOKEN], { account: buyer.account }),
       revertsWith("NoHold"),
     );
+  });
+
+  it("platformFeeBps snapshot: direct confirm uses open fee after live force", async () => {
+    await deployMode({ harness: true });
+    await openDirect();
+    await firstBid();
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    assert.equal(await mode.read.platformFeeBps(), 1000);
+    await settleAfterEnd();
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    assert.equal(platformAfter - platformBefore, (RESERVE * PLATFORM_FEE_BPS) / 10_000n);
+  });
+
+  it("platformFeeBps snapshot: commission confirm uses open fee after live force", async () => {
+    await deployMode({ harness: true });
+    await activate(owner);
+    await activate(agent);
+    await mintAndApprove();
+    const floor = parseEther("0.5");
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_COMMISSION_500],
+      { account: owner.account },
+    );
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+      account: agent.account,
+    });
+    await firstBid();
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    await settleAfterEnd();
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+    await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    const agentAfter = await publicClient.getBalance({ address: agent.account.address });
+    const agentCut = (RESERVE * 500n) / 10_000n;
+    assert.equal(platformAfter - platformBefore, (RESERVE * PLATFORM_FEE_BPS) / 10_000n);
+    assert.equal(agentAfter - agentBefore, agentCut);
+  });
+
+  it("platformFeeBps snapshot: margin confirm uses open fee after live force", async () => {
+    await deployMode({ harness: true });
+    await activate(owner);
+    await activate(agent);
+    await mintAndApprove();
+    const floor = parseEther("0.8");
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_MARGIN],
+      { account: owner.account },
+    );
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+      account: agent.account,
+    });
+    await firstBid();
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    await settleAfterEnd();
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    const ownerBefore = await publicClient.getBalance({ address: owner.account.address });
+    await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    const ownerAfter = await publicClient.getBalance({ address: owner.account.address });
+    assert.equal(platformAfter - platformBefore, (RESERVE * PLATFORM_FEE_BPS) / 10_000n);
+    assert.equal(ownerAfter - ownerBefore, floor);
   });
 
   it("releaseFunds: HoldNotReady before window; succeeds after", async () => {
@@ -705,13 +848,81 @@ describe("AscendingConsignment", () => {
     );
   });
 
-  it("H1: protection length captured at settle; later governance does not move deadline", async () => {
+  it("H1 snapshot: protection frozen at settle from open terms; later lots use storage", async () => {
     await openDirect();
     await firstBid();
+    assert.equal(Number(await mode.read.auctionProtectionWindow([TOKEN])), Number(PROTECTION));
     await settleAfterEnd();
     const ends = Number(await mode.read.holdProtectionEndsAt([TOKEN]));
     await mode.write.setProtectionWindow([10n], { account: owner.account });
     assert.equal(Number(await mode.read.holdProtectionEndsAt([TOKEN])), ends);
+    assert.equal(Number(await mode.read.protectionWindow()), 10);
+
+    await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
+
+    const tokenB = 2n;
+    await activate(owner);
+    await mintAndApprove(tokenB);
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+    assert.equal(Number(await mode.read.auctionProtectionWindow([tokenB])), 10);
+    await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
+    await increaseTime(publicClient, DURATION + 2n);
+    const beforeSettle = await publicClient.getBlock();
+    await mode.write.settle([tokenB], { account: stranger.account });
+    const protectionEnds = Number(await mode.read.holdProtectionEndsAt([tokenB]));
+    assert.ok(
+      protectionEnds <= Number(beforeSettle.timestamp) + 12,
+      `lot B protection ~10s from settle, got ${protectionEnds - Number(beforeSettle.timestamp)}`,
+    );
+  });
+
+  it("snapshot: abandonmentWindow copied to Hold at settle; later upholds use storage", async () => {
+    await openDirect();
+    await firstBid();
+    assert.equal(Number(await mode.read.auctionAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
+    await settleAfterEnd();
+    assert.equal(Number(await mode.read.holdAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
+
+    await mode.write.setAbandonmentWindow([50n], { account: owner.account });
+    assert.equal(Number(await mode.read.abandonmentWindow()), 50);
+    assert.equal(Number(await mode.read.holdAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
+
+    await mode.write.open([TOKEN], { account: buyer.account, value: BOND });
+    await activateJudge();
+    const beforeUphold = await publicClient.getBlock();
+    await mode.write.judge([TOKEN, 0], { account: judge.account }); // Upheld
+    const deadlineA = Number(await mode.read.holdAbandonmentDeadline([TOKEN]));
+    assert.ok(
+      deadlineA >= Number(beforeUphold.timestamp) + Number(ABANDONMENT) - 2,
+      "lot A uses snapshotted abandonment",
+    );
+
+    // Complete reversal so we can open token B (buyer returns NFT to seller).
+    await passport.write.approve([mode.address, TOKEN], { account: buyer.account });
+    await mode.write.completeReversal([TOKEN], { account: buyer.account });
+
+    const tokenB = 2n;
+    await activate(owner);
+    await mintAndApprove(tokenB);
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+    assert.equal(Number(await mode.read.auctionAbandonmentWindow([tokenB])), 50);
+    await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
+    await increaseTime(publicClient, DURATION + 2n);
+    await mode.write.settle([tokenB], { account: stranger.account });
+    assert.equal(Number(await mode.read.holdAbandonmentWindow([tokenB])), 50);
+    await mode.write.open([tokenB], { account: buyer.account, value: BOND });
+    await activateJudge();
+    const beforeB = await publicClient.getBlock();
+    await mode.write.judge([tokenB, 0], { account: judge.account });
+    const deadlineB = Number(await mode.read.holdAbandonmentDeadline([tokenB]));
+    assert.ok(
+      deadlineB <= Number(beforeB.timestamp) + 55,
+      `lot B abandonment ~50s, got ${deadlineB - Number(beforeB.timestamp)}`,
+    );
   });
 
   it("money: agented commission split under escrowed bid (outcome)", async () => {
@@ -741,5 +952,132 @@ describe("AscendingConsignment", () => {
     assert.ok(ownerAmt >= floor);
     assert.ok(agentAfter >= agentBefore + agentAmt - parseEther("0.01"));
     assert.ok(sellerAfter >= sellerBefore + ownerAmt - parseEther("0.01"));
+  });
+
+  // ---- PA1 outbid + refund reentrancy (commerce §15.2 step 4 carry-forward) ----
+
+  it("PA1: outbid refund to reverting bidder credits claim; withdraw after accept", async () => {
+    await openDirect();
+    const reverting = await viem.deployContract("RevertingBidder", [mode.address]);
+    await reverting.write.bidNative([TOKEN], { value: RESERVE });
+    assert.equal(getAddress(await mode.read.auctionHighestBidder([TOKEN])), getAddress(reverting.address));
+
+    const raise = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
+    await mode.write.bid([TOKEN, raise], { account: bidder2.account, value: raise });
+
+    assert.equal(getAddress(await mode.read.auctionHighestBidder([TOKEN])), getAddress(bidder2.account.address));
+    assert.equal(await mode.read.pendingClaims([reverting.address, ZERO]), RESERVE);
+    assert.equal(await mode.read.totalPendingNative(), RESERVE);
+
+    await reverting.write.setAcceptEth([true]);
+    await reverting.write.withdrawClaim([ZERO]);
+    assert.equal(await mode.read.pendingClaims([reverting.address, ZERO]), 0n);
+    assert.equal(await mode.read.totalPendingNative(), 0n);
+  });
+
+  it("reentrancy: reentrant bid during outbid refund fails; outer bid wins", async () => {
+    await openDirect();
+    const reentrant = await viem.deployContract("ReentrantBidder", [mode.address]);
+    await reentrant.write.bidNative([TOKEN, RESERVE], { value: RESERVE });
+
+    const raise = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
+    // Fund the attacker so the receive-path reentry has value to spend — otherwise the
+    // call fails on balance before nonReentrant is exercised.
+    await owner.sendTransaction({ to: reentrant.address, value: raise });
+    await reentrant.write.configure([TOKEN, raise]);
+    await mode.write.bid([TOKEN, raise], { account: bidder2.account, value: raise });
+
+    assert.equal(
+      getAddress(await mode.read.auctionHighestBidder([TOKEN])),
+      getAddress(bidder2.account.address),
+    );
+    assert.equal(await mode.read.auctionHighestBid([TOKEN]), raise);
+    // nonReentrant aborts the nested bid → receive reverts → push fails → claim (PA1).
+    assert.equal(await mode.read.pendingClaims([reentrant.address, ZERO]), RESERVE);
+  });
+
+  // ---- G3 pause + duration/bond setters + G4 UUPS ----
+
+  it("G3: pause blocks openAscending* and bid; settle/challenge/claim still work", async () => {
+    await openDirect();
+    await firstBid();
+    await mode.write.pause({ account: guardian.account });
+
+    await assert.rejects(
+      mode.write.bid([TOKEN, RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n], {
+        account: bidder2.account,
+        value: RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n,
+      }),
+      revertsWith("ContractPaused"),
+    );
+
+    const token2 = 2n;
+    await activate(owner);
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+        account: owner.account,
+      }),
+      revertsWith("ContractPaused"),
+    );
+
+    await settleAfterEnd();
+    assert.equal(await mode.read.holdBuyer([TOKEN]), getAddress(buyer.account.address));
+
+    await mode.write.open([TOKEN], { account: buyer.account, value: BOND });
+    await activateJudge();
+    await mode.write.judge([TOKEN, 1], { account: judge.account }); // Rejected
+    assert.equal(await mode.read.holdBuyer([TOKEN]), ZERO);
+
+    await mode.write.unpause({ account: owner.account });
+    await mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+  });
+
+  it("setters: inverted duration / zero bond revert; live duration + open challenge bond snapshotted", async () => {
+    await openDirect();
+    const durationAtOpen = (await mode.read.auctionDuration([TOKEN])) as bigint;
+    await assert.rejects(
+      mode.write.setMinDuration([MAX_DURATION + 1n], { account: owner.account }),
+      revertsWith("BadConfig"),
+    );
+    await assert.rejects(
+      mode.write.setMaxDuration([MIN_DURATION - 1n], { account: owner.account }),
+      revertsWith("BadConfig"),
+    );
+    await assert.rejects(
+      mode.write.setChallengeBond([0n], { account: owner.account }),
+      revertsWith("BadConfig"),
+    );
+
+    await mode.write.setMinDuration([MIN_DURATION + 10n], { account: owner.account });
+    await mode.write.setMaxDuration([MAX_DURATION - 10n], { account: owner.account });
+    assert.equal(await mode.read.auctionDuration([TOKEN]), durationAtOpen);
+
+    await firstBid();
+    await settleAfterEnd();
+    await mode.write.open([TOKEN], { account: buyer.account, value: BOND });
+    const frozenBond = (await mode.read.challengeBondAmount([TOKEN])) as bigint;
+    assert.equal(frozenBond, BOND);
+    const newBond = BOND * 2n;
+    await mode.write.setChallengeBond([newBond], { account: owner.account });
+    assert.equal(await mode.read.challengeBond(), newBond);
+    assert.equal(await mode.read.challengeBondAmount([TOKEN]), frozenBond);
+  });
+
+  it("G4: owner upgrade preserves auction + pendingClaims; non-owner cannot upgrade", async () => {
+    await openDirect();
+    await firstBid();
+    const endsAt = (await mode.read.auctionEndsAt([TOKEN])) as bigint;
+    const nextImpl = await viem.deployContract("AscendingConsignment", []);
+    await assert.rejects(
+      mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: stranger.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
+    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
+    assert.equal(await mode.read.auctionEndsAt([TOKEN]), endsAt);
+    assert.equal(await mode.read.auctionHighestBid([TOKEN]), RESERVE);
   });
 });

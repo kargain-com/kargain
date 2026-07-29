@@ -5,7 +5,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
@@ -16,22 +16,22 @@ import {Erc20Admission} from "./lib/Erc20Admission.sol";
  * @title FixedPriceConsignment
  * @notice Fixed-price selling mode: stated price (asset or fiat), on-chain buy, external confirmation.
  *
- * @dev Spec: docs/research/commerce-model-2026.md §3.2, §4.0–§4.5, §5.1, §13a.5.
- *      No verifier-admission gate (N2). No HELD / protection window. External path moves no money and checks no floor (C7 / R4).
- *      FX, settlement notes, and confirmExternal live here — not on ConsignmentBase (§4.4).
+ * @dev Spec: docs/research/commerce-model-2026.md §3.2, §4.0–§4.5, §5.1, §11 G3/G4, §13a.5.
+ *      UUPS; owner = timelock; guardian pauses (G3). Pause gates open (base) + buy only.
+ *      No verifier-admission gate (N2). No HELD / protection window. External path moves no money (C7 / R4).
  */
-contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
+contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Receiver, IKarPassportEncumbrance {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "1.0.0-rc.1";
+    string public constant VERSION = "2.0.0-rc.1";
 
     bytes32 public constant CURRENCY_USD = bytes32("USD");
 
     uint256 internal constant _FIAT_SCALE = 1e8;
 
-    IERC721 public immutable karPassport;
-    AggregatorV3Interface public immutable nativeUsdFeed;
-    uint256 public immutable maxFeedStaleness;
+    IERC721 public karPassport;
+    AggregatorV3Interface public nativeUsdFeed;
+    uint256 public maxFeedStaleness;
 
     struct PaymentTokenConfig {
         address feed;
@@ -42,6 +42,9 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
     mapping(address token => PaymentTokenConfig) public paymentTokens;
     mapping(bytes32 currencyCode => address feed) public currencyFeeds;
     mapping(uint256 tokenId => bytes) public settlementNotes;
+
+    /// @dev ClaimablePayouts owns its own `__gap`. Child reserve for this contract's slots.
+    uint256[48] private __gap;
 
     error WrongValue();
     error StalePrice();
@@ -59,22 +62,30 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
     event PaymentTokenApproved(address indexed token, address feed, uint8 decimals);
     event PaymentTokenRevoked(address indexed token);
     event CurrencyFeedSet(bytes32 indexed currencyCode, address feed);
+    event MaxFeedStalenessSet(uint256 previous, uint256 current);
     event Bought(uint256 indexed tokenId, address indexed buyer, address indexed asset, uint256 amount);
     event SettlementNoteSet(uint256 indexed tokenId, address indexed setter);
     event ExternalPaymentConfirmed(uint256 indexed tokenId, address indexed buyer, address indexed confirmer);
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address passport_,
         address platformRecipient_,
         uint256 feeBps_,
         address nativeUsdFeed_,
         uint256 maxFeedStaleness_,
-        address initialOwner_
-    ) ConsignmentBase(platformRecipient_, feeBps_) Ownable(initialOwner_) {
-        if (passport_ == address(0) || nativeUsdFeed_ == address(0) || initialOwner_ == address(0)) {
-            revert ZeroAddress();
-        }
+        address initialOwner_,
+        address guardian_
+    ) external initializer {
+        if (passport_ == address(0) || nativeUsdFeed_ == address(0)) revert ZeroAddress();
         if (maxFeedStaleness_ == 0) revert ZeroFeedStaleness();
+
+        __ConsignmentBase_init(platformRecipient_, feeBps_, initialOwner_, guardian_);
+
         karPassport = IERC721(passport_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
         maxFeedStaleness = maxFeedStaleness_;
@@ -108,6 +119,14 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
         emit CurrencyFeedSet(currencyCode, feed);
     }
 
+    /// @dev Live at quote/buy (oracle freshness is environmental). Rejects zero (G2).
+    function setMaxFeedStaleness(uint256 maxFeedStaleness_) external onlyOwner {
+        if (maxFeedStaleness_ == 0) revert ZeroFeedStaleness();
+        uint256 previous = maxFeedStaleness;
+        maxFeedStaleness = maxFeedStaleness_;
+        emit MaxFeedStalenessSet(previous, maxFeedStaleness_);
+    }
+
     // ---- Views ----
 
     function consignmentAssetOf(uint256 tokenId) external view returns (address) {
@@ -133,6 +152,7 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
     // ---- Purchase (on-chain) ----
 
     function buy(uint256 tokenId) external payable nonReentrant {
+        _requireNotPaused();
         _requireOfferedForSale(tokenId);
         Consignment storage c = _consignments[tokenId];
         uint256 amount = _quoteAmount(c.price, c.denomination, c.asset);
@@ -159,7 +179,7 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
         _paySplit(tokenId, amount);
     }
 
-    // ---- External confirmation (C7 / R4) ----
+    // ---- External confirmation (C7 / R4) — never paused ----
 
     function setSettlementNote(uint256 tokenId, bytes calldata note) external nonReentrant {
         _requireOfferedForSale(tokenId);
@@ -189,6 +209,10 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
         _close(tokenId);
     }
 
+    // ---- UUPS ----
+
+    function _authorizeUpgrade(address) internal view override onlyOwner {}
+
     // ---- Instance hooks ----
 
     function isEscrowApproved(uint256 tokenId, address owner_) internal view override returns (bool) {
@@ -201,6 +225,13 @@ contract FixedPriceConsignment is ConsignmentBase, Ownable, IERC721Receiver {
 
     function _may(uint256 tokenId, IKarPassportEncumbrance.Intent intent) internal view override returns (bool) {
         return IKarPassportEncumbrance(address(karPassport)).may(tokenId, intent);
+    }
+
+    /// @inheritdoc IKarPassportEncumbrance
+    /// @dev Live consignment forbids both intents (listed survival for LeaveChain; open mutex).
+    function may(uint256 tokenId, Intent intent) external view override returns (bool) {
+        intent;
+        return !isLiveConsignment(tokenId);
     }
 
     function _takeCustody(uint256 tokenId, address from) internal override {

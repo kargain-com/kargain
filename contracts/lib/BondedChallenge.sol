@@ -12,6 +12,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *      Phase is derived inside the primitive from (openedAt + captured window).
  *      Routing happens inside the primitive; instance handlers run after routing and after state clear.
  *      Bond amount is asked of the instance at open and captured into Challenge (§11 entry freeze).
+ *
+ *      Config is one-shot via `_configureBondedChallenge` (KarPassport ctor or UUPS initialize).
+ *      Unconfigured open is inexpressible: `_openChallenge` reverts `ChallengeNotConfigured`.
  */
 abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     enum JudgeOutcome {
@@ -28,11 +31,15 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
 
     mapping(uint256 => Challenge) internal challenges;
 
-    address internal immutable forfeitRecipient;
-    uint256 internal immutable windowDuration;
+    address internal forfeitRecipient;
+    uint256 internal windowDuration;
+    bool private _bondedChallengeConfigured;
 
     /// @notice Sum of bonds held in active challenges (rescue accounting).
     uint256 public totalLockedBonds;
+
+    /// @dev Used slots above = 5; reserve to 50.
+    uint256[45] private __gap;
 
     error DisputeActive();
     error NoActiveDispute();
@@ -45,11 +52,19 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     error NotQualifiedJudge();
     error CannotRouteBondToJudge();
 
-    constructor(address forfeitRecipient_, uint256 windowDuration_) {
-        require(forfeitRecipient_ != address(0), "forfeitRecipient");
-        require(windowDuration_ != 0, "windowDuration");
+    error ZeroForfeitRecipient();
+    error ZeroChallengeWindow();
+    error ChallengeAlreadyConfigured();
+    error ChallengeNotConfigured();
+
+    /// @dev One-shot. Call from child constructor (non-upgradeable) or initialize (UUPS).
+    function _configureBondedChallenge(address forfeitRecipient_, uint256 windowDuration_) internal {
+        if (_bondedChallengeConfigured) revert ChallengeAlreadyConfigured();
+        if (forfeitRecipient_ == address(0)) revert ZeroForfeitRecipient();
+        if (windowDuration_ == 0) revert ZeroChallengeWindow();
         forfeitRecipient = forfeitRecipient_;
         windowDuration = windowDuration_;
+        _bondedChallengeConfigured = true;
     }
 
     // ---- Views (owned-state introspection for test + derived handlers) ----
@@ -83,6 +98,7 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
     }
 
     function _openChallenge(uint256 subjectId, address challenger, uint256 value) internal {
+        if (!_bondedChallengeConfigured) revert ChallengeNotConfigured();
         _requireChallengeActionAllowed(subjectId);
         _requireNoChallenge(subjectId);
         _requireEligibleChallenger(subjectId, challenger);

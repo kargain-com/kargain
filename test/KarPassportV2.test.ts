@@ -60,7 +60,8 @@ describe("KarPassport v2 — tokenId offset", () => {
     const maxLocal = (1n << 128n) - 1n;
     const penultimate = TOKEN_ID_BASE | (maxLocal - 1n);
     let slotFound = false;
-    for (let slot = 0; slot < 64; slot++) {
+    // BondedChallenge storage + __gap (was immutable) shifts KarPassport slots; scan wide.
+    for (let slot = 0; slot < 256; slot++) {
       const slotHex = padHex(toHex(slot), { size: 32 });
       await publicClient.request({
         method: "hardhat_setStorageAt",

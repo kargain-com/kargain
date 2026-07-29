@@ -5,7 +5,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
 import {BondedChallenge} from "./lib/BondedChallenge.sol";
@@ -20,33 +20,33 @@ interface IKarProActive {
  * @title AscendingConsignment
  * @notice Ascending (auction) selling mode: BINDING, HELD, settlement challenge, two-phase reversal.
  *
- * @dev Spec: docs/research/commerce-model-2026.md §4.2–§4.3, §7.3–§7.4, §13a.1.
+ * @dev Spec: docs/research/commerce-model-2026.md §4.2–§4.3, §7.3–§7.4, §11 G3/G4, §13a.1.
  *      Settlement challenge is BondedChallenge — this contract supplies eligibility, exclusions,
  *      forfeit recipient, and the four handlers only. No second challenge state machine here.
  *
- *      Obligation answers (`may`) are exposed on this contract for the passport registry (next step).
- *      Opening still questions the passport via `_may` (E0).
+ *      UUPS; owner = timelock; guardian pauses (G3). Pause gates ascending open + bid only —
+ *      never settle, hold exit, challenge terminals, claims, or recall.
  */
 contract AscendingConsignment is
     ConsignmentBase,
     BondedChallenge,
-    Ownable,
+    UUPSUpgradeable,
     IERC721Receiver,
     IKarPassportEncumbrance
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "1.0.0-rc.1";
+    string public constant VERSION = "2.0.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
 
-    IERC721 public immutable karPassport;
-    IKarProActive public immutable karProStaking;
-    /// @dev Settlement challenge bond (exact match at open). Captured into Challenge at open.
-    uint256 private immutable _challengeBond;
+    IERC721 public karPassport;
+    IKarProActive public karProStaking;
+    /// @dev Settlement challenge bond (exact match at open). Captured into Challenge at open (§11).
+    uint256 private _challengeBond;
 
-    uint40 public immutable minDuration;
-    uint40 public immutable maxDuration;
+    uint40 public minDuration;
+    uint40 public maxDuration;
 
     /// @dev Anti-sniping window. Mutable: applies from the next bid (B3) — never rewrites a captured endsAt alone.
     uint40 public extensionWindow;
@@ -57,9 +57,15 @@ contract AscendingConsignment is
     /// @dev Abandonment length applied when reversal becomes pending (CH5). Mutable for future reversals only.
     uint40 public abandonmentWindow;
 
+    /// @dev Slot 0: five uint40 + uint16 (216 bits). Slot 1: highestBidder. Slot 2: highestBid.
+    ///      Terms that govern a live lot are frozen at open (G1); storage setters only affect later opens.
     struct AuctionTerms {
         uint40 duration;
         uint40 endsAt;
+        uint40 extensionWindow;
+        uint40 protectionWindow;
+        uint40 abandonmentWindow;
+        uint16 minIncrementBps;
         address highestBidder;
         uint128 highestBid;
     }
@@ -72,11 +78,16 @@ contract AscendingConsignment is
         uint64 frozenRemaining;
         bool reversalPending;
         uint64 abandonmentDeadline;
+        /// @dev Copied from AuctionTerms at settle (auction storage is deleted before uphold).
+        uint40 abandonmentWindow;
     }
 
     mapping(uint256 tokenId => AuctionTerms) internal _auction;
     mapping(uint256 tokenId => Hold) internal _holds;
     mapping(address token => bool) public paymentTokenEnabled;
+
+    /// @dev ClaimablePayouts / BondedChallenge / ConsignmentBase own their gaps. Child reserve.
+    uint256[48] private __gap;
 
     error AscendingOpenPath();
     error TermsFixed();
@@ -106,6 +117,9 @@ contract AscendingConsignment is
     event MinIncrementBpsSet(uint16 previous, uint16 current);
     event ProtectionWindowSet(uint40 previous, uint40 current);
     event AbandonmentWindowSet(uint40 previous, uint40 current);
+    event MinDurationSet(uint40 previous, uint40 current);
+    event MaxDurationSet(uint40 previous, uint40 current);
+    event ChallengeBondSet(uint256 previous, uint256 current);
     event PaymentTokenApproved(address indexed token);
     event PaymentTokenRevoked(address indexed token);
     event BidPlaced(uint256 indexed tokenId, address indexed bidder, uint128 amount, uint40 endsAt);
@@ -115,7 +129,12 @@ contract AscendingConsignment is
     event ReversalCompleted(uint256 indexed tokenId, address indexed buyer);
     event ReversalAbandoned(uint256 indexed tokenId, address indexed buyer);
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address passport_,
         address karProStaking_,
         address platformRecipient_,
@@ -129,22 +148,19 @@ contract AscendingConsignment is
         uint16 minIncrementBps_,
         uint40 protectionWindow_,
         uint40 abandonmentWindow_,
-        address initialOwner_
-    )
-        ConsignmentBase(platformRecipient_, feeBps_)
-        BondedChallenge(forfeitRecipient_, challengeWindow_)
-        Ownable(initialOwner_)
-    {
-        if (
-            passport_ == address(0) || karProStaking_ == address(0) || initialOwner_ == address(0)
-                || forfeitRecipient_ == address(0)
-        ) {
+        address initialOwner_,
+        address guardian_
+    ) external initializer {
+        if (passport_ == address(0) || karProStaking_ == address(0) || forfeitRecipient_ == address(0)) {
             revert ZeroAddress();
         }
         if (challengeBond_ == 0) revert BadConfig();
         if (minDuration_ == 0 || maxDuration_ < minDuration_) revert BadConfig();
         if (extensionWindow_ == 0 || protectionWindow_ == 0 || abandonmentWindow_ == 0) revert BadConfig();
         if (minIncrementBps_ == 0 || minIncrementBps_ > _BPS) revert BadConfig();
+
+        __ConsignmentBase_init(platformRecipient_, feeBps_, initialOwner_, guardian_);
+        _configureBondedChallenge(forfeitRecipient_, challengeWindow_);
 
         karPassport = IERC721(passport_);
         karProStaking = IKarProActive(karProStaking_);
@@ -158,6 +174,27 @@ contract AscendingConsignment is
     }
 
     // ---- Admin ----
+
+    function setMinDuration(uint40 value) external onlyOwner {
+        if (value == 0 || value > maxDuration) revert BadConfig();
+        uint40 previous = minDuration;
+        minDuration = value;
+        emit MinDurationSet(previous, value);
+    }
+
+    function setMaxDuration(uint40 value) external onlyOwner {
+        if (value == 0 || value < minDuration) revert BadConfig();
+        uint40 previous = maxDuration;
+        maxDuration = value;
+        emit MaxDurationSet(previous, value);
+    }
+
+    function setChallengeBond(uint256 value) external onlyOwner {
+        if (value == 0) revert BadConfig();
+        uint256 previous = _challengeBond;
+        _challengeBond = value;
+        emit ChallengeBondSet(previous, value);
+    }
 
     function setExtensionWindow(uint40 value) external onlyOwner {
         if (value == 0) revert BadConfig();
@@ -226,6 +263,7 @@ contract AscendingConsignment is
         uint128 reserve,
         uint40 duration
     ) external nonReentrant {
+        _requireNotPaused();
         address owner_ = passportOwner(tokenId);
         if (owner_ != msg.sender) revert NotPassportOwner();
         Denomination memory denom = Denomination(DenominationKind.Asset, bytes32(0));
@@ -244,10 +282,11 @@ contract AscendingConsignment is
             compensation: Compensation(CompensationForm.Margin, 0),
             price: reserve
         });
-        _auction[tokenId] = AuctionTerms({duration: duration, endsAt: 0, highestBidder: address(0), highestBid: 0});
+        _writeAuctionTerms(tokenId, duration);
     }
 
     function openAscendingFromMandate(uint256 tokenId, uint128 reserve, uint40 duration) external nonReentrant {
+        _requireNotPaused();
         Denomination memory denom = Denomination(DenominationKind.Asset, bytes32(0));
         MandateRecord memory m = _requireMandateAllowsOpen(tokenId, denom);
         _requireAgentCaller(m.agent);
@@ -255,7 +294,7 @@ contract AscendingConsignment is
         _requireModeOpen(tokenId, m.agent, m.denomination, m.asset);
         _requireCanOpen(tokenId, owner_);
         _requireAuctionOpenParams(reserve, duration, m.asset);
-        _requireAgentedPriceMeetsFloor(reserve, m.floor, m.compensation);
+        _requireAgentedPriceMeetsFloor(reserve, m.floor, m.compensation, platformFeeBps);
 
         _takeCustody(tokenId, owner_);
         _writeOpen({
@@ -268,12 +307,13 @@ contract AscendingConsignment is
             compensation: m.compensation,
             price: reserve
         });
-        _auction[tokenId] = AuctionTerms({duration: duration, endsAt: 0, highestBidder: address(0), highestBid: 0});
+        _writeAuctionTerms(tokenId, duration);
     }
 
     // ---- Bidding ----
 
     function bid(uint256 tokenId, uint128 amount) external payable nonReentrant {
+        _requireNotPaused();
         if (_holds[tokenId].buyer != address(0)) revert SettlementPending();
         if (!_isOfferedActionable(tokenId) && !_isBinding(tokenId)) revert NotOffered();
 
@@ -287,7 +327,7 @@ contract AscendingConsignment is
         if (a.highestBidder == address(0)) {
             if (amount < c.price) revert BidTooLow();
         } else {
-            uint256 minNext = uint256(a.highestBid) + (uint256(a.highestBid) * minIncrementBps) / _BPS;
+            uint256 minNext = uint256(a.highestBid) + (uint256(a.highestBid) * a.minIncrementBps) / _BPS;
             if (uint256(amount) < minNext || amount <= a.highestBid) revert BidTooLow();
         }
 
@@ -323,7 +363,8 @@ contract AscendingConsignment is
 
         address buyer = a.highestBidder;
         uint128 gross = a.highestBid;
-        uint64 ends = uint64(block.timestamp + protectionWindow);
+        uint64 ends = uint64(block.timestamp + a.protectionWindow);
+        uint40 abandonWin = a.abandonmentWindow;
 
         // Clear auction terms; consignment snapshot retained for split until hold closes.
         delete _auction[tokenId];
@@ -336,7 +377,8 @@ contract AscendingConsignment is
             protectionEndsAt: ends,
             frozenRemaining: 0,
             reversalPending: false,
-            abandonmentDeadline: 0
+            abandonmentDeadline: 0,
+            abandonmentWindow: abandonWin
         });
 
         emit Settled(tokenId, buyer, gross, ends);
@@ -446,7 +488,7 @@ contract AscendingConsignment is
         h.reversalPending = true;
         h.frozenRemaining = 0;
         h.protectionEndsAt = 0;
-        h.abandonmentDeadline = uint64(block.timestamp + abandonmentWindow);
+        h.abandonmentDeadline = uint64(block.timestamp + h.abandonmentWindow);
     }
 
     function _onRejected(
@@ -504,6 +546,27 @@ contract AscendingConsignment is
         return _auction[tokenId].duration;
     }
 
+    function auctionExtensionWindow(uint256 tokenId) external view returns (uint40) {
+        return _auction[tokenId].extensionWindow;
+    }
+
+    function auctionProtectionWindow(uint256 tokenId) external view returns (uint40) {
+        return _auction[tokenId].protectionWindow;
+    }
+
+    function auctionAbandonmentWindow(uint256 tokenId) external view returns (uint40) {
+        return _auction[tokenId].abandonmentWindow;
+    }
+
+    function auctionMinIncrementBps(uint256 tokenId) external view returns (uint16) {
+        return _auction[tokenId].minIncrementBps;
+    }
+
+    /// @notice Current required settlement-challenge bond (live-read at open; frozen into Challenge).
+    function challengeBond() external view returns (uint256) {
+        return _challengeBond;
+    }
+
     function holdBuyer(uint256 tokenId) external view returns (address) {
         return _holds[tokenId].buyer;
     }
@@ -526,6 +589,10 @@ contract AscendingConsignment is
 
     function holdAbandonmentDeadline(uint256 tokenId) external view returns (uint64) {
         return _holds[tokenId].abandonmentDeadline;
+    }
+
+    function holdAbandonmentWindow(uint256 tokenId) external view returns (uint40) {
+        return _holds[tokenId].abandonmentWindow;
     }
 
     function isBinding(uint256 tokenId) external view returns (bool) {
@@ -584,6 +651,10 @@ contract AscendingConsignment is
         revert DirectEthNotAccepted();
     }
 
+    // ---- UUPS ----
+
+    function _authorizeUpgrade(address) internal view override onlyOwner {}
+
     // ---- Internals ----
 
     function _requireAuctionOpenParams(uint128 reserve, uint40 duration, address asset) private view {
@@ -607,10 +678,23 @@ contract AscendingConsignment is
         if (h.buyer == address(0)) revert NoHold();
     }
 
+    function _writeAuctionTerms(uint256 tokenId, uint40 duration) private {
+        _auction[tokenId] = AuctionTerms({
+            duration: duration,
+            endsAt: 0,
+            extensionWindow: extensionWindow,
+            protectionWindow: protectionWindow,
+            abandonmentWindow: abandonmentWindow,
+            minIncrementBps: minIncrementBps,
+            highestBidder: address(0),
+            highestBid: 0
+        });
+    }
+
     function _applyExtension(AuctionTerms storage a) private {
         if (a.endsAt == 0) return;
-        if (block.timestamp + extensionWindow >= a.endsAt) {
-            uint40 extended = uint40(block.timestamp + extensionWindow);
+        if (block.timestamp + a.extensionWindow >= a.endsAt) {
+            uint40 extended = uint40(block.timestamp + a.extensionWindow);
             if (extended > a.endsAt) a.endsAt = extended;
         }
     }

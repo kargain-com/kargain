@@ -56,10 +56,9 @@ contract BondedChallengeInstanceVerificationHarness is BondedChallenge {
         address forfeitRecipient_,
         uint256 bondAmount_,
         uint256 windowDuration_
-    )
-        BondedChallenge(forfeitRecipient_, windowDuration_)
-    {
+    ) {
         require(bondAmount_ != 0, "bondAmount");
+        _configureBondedChallenge(forfeitRecipient_, windowDuration_);
         owner = owner_;
         challengedVerifier = challengedVerifier_;
         _bondAmount = bondAmount_;
@@ -247,10 +246,9 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
         uint256 bondAmount_,
         uint256 windowDuration_,
         uint256 abandonmentWindowDuration_
-    )
-        BondedChallenge(forfeitRecipient_, windowDuration_)
-    {
+    ) {
         require(bondAmount_ != 0, "bondAmount");
+        _configureBondedChallenge(forfeitRecipient_, windowDuration_);
         buyer = buyer_;
         seller = seller_;
         agent = agent_;
@@ -415,5 +413,43 @@ contract BondedChallengeInstanceSettlementHarness is BondedChallenge {
         reversalPending[subjectId] = false;
         sellerPaid[subjectId] = true;
     }
+}
+
+/// @dev Never configures in the constructor — proves ChallengeNotConfigured / configure errors.
+contract BondedChallengeUnconfiguredHarness is BondedChallenge {
+    uint256 private immutable _bondAmount;
+
+    constructor(uint256 bondAmount_) {
+        require(bondAmount_ != 0, "bondAmount");
+        _bondAmount = bondAmount_;
+    }
+
+    function configure(address forfeitRecipient_, uint256 windowDuration_) external {
+        _configureBondedChallenge(forfeitRecipient_, windowDuration_);
+    }
+
+    function _requiredBondAmount() internal view override returns (uint256) {
+        return _bondAmount;
+    }
+
+    function isEligibleChallenger(uint256, address) internal pure override returns (bool) {
+        return true;
+    }
+
+    function isQualifiedJudge(uint256, address) internal pure override returns (bool) {
+        return true;
+    }
+
+    function isExcludedJudge(uint256, address, address) internal pure override returns (bool) {
+        return false;
+    }
+
+    function _onUpheld(uint256, address, address, address, uint256, uint256, uint256) internal override {}
+
+    function _onRejected(uint256, address, address, address, uint256, uint256, uint256) internal override {}
+
+    function _onExpired(uint256, address, address, uint256, uint256, uint256) internal override {}
+
+    function _onWithdrawn(uint256, address, address, uint256, uint256, uint256) internal override {}
 }
 

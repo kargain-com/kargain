@@ -32,6 +32,10 @@ export type DeploymentBlocks = {
   bridgeGateway?: number;
   auctionEscrow?: number;
   auctionEscrowImpl?: number;
+  fixedPriceConsignment?: number;
+  fixedPriceConsignmentImpl?: number;
+  ascendingConsignment?: number;
+  ascendingConsignmentImpl?: number;
 };
 
 /** Prior hub gateway address retained when gateway is redeployed. */
@@ -76,6 +80,13 @@ export type DeploymentManifest = {
   /** English reserve auction escrow (additive deploy) */
   auctionEscrow?: `0x${string}`;
   auctionEscrowImpl?: `0x${string}`;
+  /** Commerce modes (UUPS; G3 guardian) */
+  fixedPriceConsignment?: `0x${string}`;
+  fixedPriceConsignmentImpl?: `0x${string}`;
+  ascendingConsignment?: `0x${string}`;
+  ascendingConsignmentImpl?: `0x${string}`;
+  /** G3 pause guardian (EOA or multisig); not the timelock */
+  commerceGuardian?: `0x${string}`;
   layerZeroEndpoint?: `0x${string}`;
   tokenIdOffset?: string;
   deployedAt: string;

@@ -7,7 +7,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import hardhat from "hardhat";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -29,11 +31,11 @@ import {
 } from "viem";
 
 import {
-  CURRENCY_USD,
   DISPUTE_DEPOSIT,
-  deployAuctionEscrow,
+  deployAscendingConsignment,
   deployEscrowStack,
-  deployTimelock,
+  deployFixedPriceConsignment,
+  increaseTime,
   joinVerifier,
   mintPassport,
   type DeployedContract,
@@ -41,6 +43,7 @@ import {
   ZERO,
 } from "../scripts/lib/local-stack.js";
 
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EID_HUB = 1;
 const EID_SPOKE = 2;
 const LZ_RECEIVE_GAS = 1_000_000n;
@@ -50,6 +53,22 @@ const STATUS_DISPUTED = 2;
 const HUB_CHAIN_ID = 84532n;
 const SPOKE_CHAIN_ID = 11155111n;
 const THIRD_ORIGIN = 999n;
+
+const BYTES32_ZERO =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const DENOM_ASSET = { kind: 0, currencyCode: BYTES32_ZERO } as const;
+const ASC_MIN_DURATION = 10n;
+const ASC_MAX_DURATION = 10_000n;
+const ASC_DURATION = 20n;
+const ASC_EXTENSION = 5n;
+const ASC_MIN_INCREMENT_BPS = 300n;
+const ASC_PROTECTION = 10n;
+const ASC_ABANDONMENT = 20n;
+const ASC_CHALLENGE_WINDOW = 30n;
+const ASC_BOND = DISPUTE_DEPOSIT;
+const ASC_RESERVE = parseEther("1");
+const PLATFORM_FEE_BPS = 250n;
+const MAX_STALENESS = 3600n;
 
 const require = createRequire(import.meta.url);
 const endpointArtifactPath = require
@@ -62,10 +81,9 @@ const endpointArtifact = JSON.parse(readFileSync(endpointArtifactPath, "utf8")) 
 
 /** Custom-error selectors when mock/endpoint ABI cannot decode passport/gateway errors. */
 const ERROR_SELECTORS: Record<string, string> = {
-  ListedInMarketplace: keccak256(toBytes("ListedInMarketplace()")).slice(0, 10),
-  PassportDisputed: keccak256(toBytes("PassportDisputed()")).slice(0, 10),
-  InSettlementHold: keccak256(toBytes("InSettlementHold()")).slice(0, 10),
+  LeaveChainRefused: keccak256(toBytes("LeaveChainRefused()")).slice(0, 10),
   NotRepresentationOwner: keccak256(toBytes("NotRepresentationOwner()")).slice(0, 10),
+  ZeroAddress: keccak256(toBytes("ZeroAddress()")).slice(0, 10),
 };
 
 function revertsWith(errorName: string) {
@@ -73,7 +91,9 @@ function revertsWith(errorName: string) {
     if (!(err instanceof Error)) return false;
     if (err.message.includes(errorName)) return true;
     const selector = ERROR_SELECTORS[errorName];
-    return selector != null && err.message.includes(selector);
+    if (selector == null) return false;
+    // Creation-revert payloads embed the selector without a `0x` prefix.
+    return err.message.includes(selector) || err.message.includes(selector.slice(2));
   };
 }
 
@@ -160,8 +180,6 @@ async function stopImpersonating(publicClient: PublicClient, address: Address) {
 
 type ChainSide = {
   stack: Awaited<ReturnType<typeof deployEscrowStack>>;
-  holdMock: DeployedContract;
-  auction: DeployedContract;
   gateway: DeployedContract;
   endpoint: EndpointMock;
   publicClient: PublicClient;
@@ -190,24 +208,9 @@ async function deploySide(
   assert.equal(BigInt(chainIdOnNet), chainId, `${networkName} chainId`);
 
   const endpoint = await deployEndpointMock(viem, eid, wallet, publicClient);
-  const holdMock = await viem.deployContract("MockAuctionHold", []);
-  const timelock = await deployTimelock(viem, stack.admin.account.address);
-  const { auction } = await deployAuctionEscrow(
-    viem,
-    {
-      passport: stack.passport,
-      staking: stack.staking,
-      usdc: stack.usdc,
-      timelock,
-      admin: stack.admin,
-    },
-    { feeBps: 250n, upgradeAuthority: stack.admin.account.address },
-  );
 
   const gateway = await viem.deployContract("KarPassportBridgeGateway", [
     stack.passport.address,
-    stack.marketplace.address,
-    holdMock.address,
     endpoint.address,
     stack.admin.account.address,
   ]);
@@ -217,8 +220,6 @@ async function deploySide(
 
   return {
     stack,
-    holdMock,
-    auction,
     gateway,
     endpoint,
     publicClient,
@@ -366,23 +367,8 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       const publicClient = await viem.getPublicClient();
       assert.equal(BigInt(await publicClient.getChainId()), chainId);
       const endpoint = await deployEndpointMock(viem, eid, wallet, publicClient);
-      const holdMock = await viem.deployContract("MockAuctionHold", []);
-      const timelock = await deployTimelock(viem, stack.admin.account.address);
-      const { auction } = await deployAuctionEscrow(
-        viem,
-        {
-          passport: stack.passport,
-          staking: stack.staking,
-          usdc: stack.usdc,
-          timelock,
-          admin: stack.admin,
-        },
-        { feeBps: 250n, upgradeAuthority: stack.admin.account.address },
-      );
       const gateway = await viem.deployContract("KarPassportBridgeGateway", [
         stack.passport.address,
-        stack.marketplace.address,
-        holdMock.address,
         endpoint.address,
         stack.admin.account.address,
       ]);
@@ -391,8 +377,6 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       });
       return {
         stack,
-        holdMock,
-        auction,
         gateway,
         endpoint,
         publicClient,
@@ -547,11 +531,14 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     assert.equal(status, STATUS_UNVERIFIED);
   });
 
-  it("#5 outbound guards (G1): listed, DISPUTED, InSettlementHold, NotRepresentationOwner", async () => {
+  it("#5 outbound guards (G1): listed/challenged/settlement via may → LeaveChainRefused; NotRepresentationOwner", async () => {
     const { hub, spoke } = pair;
     const seller = hub.stack.seller;
+    const admin = hub.stack.admin;
+    await joinVerifier(hub.stack.staking, hub.stack.verifier);
+    await joinVerifier(hub.stack.staking, seller);
 
-    // listed
+    // Listed — FixedPrice registered + live consignment → may false
     {
       const tokenId = await mintPassport(
         hub.stack.passport,
@@ -559,10 +546,25 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         seller.account.address,
         "ar://listed",
       );
-      await hub.stack.passport.write.setApprovalForAll([hub.stack.marketplace.address, true], {
+      await hub.stack.passport.write.verifyPassport([tokenId], {
+        account: hub.stack.verifier.account,
+      });
+      const { mode: fixedPrice } = await deployFixedPriceConsignment(hub.viem, {
+        passport: hub.stack.passport.address,
+        platformRecipient: admin.account.address,
+        feeBps: PLATFORM_FEE_BPS,
+        nativeUsdFeed: hub.stack.nativeFeed.address,
+        maxFeedStaleness: MAX_STALENESS,
+        owner: admin.account.address,
+        guardian: admin.account.address,
+      });
+      await hub.stack.passport.write.addEncumbranceSource([fixedPrice.address], {
+        account: admin.account,
+      });
+      await hub.stack.passport.write.setApprovalForAll([fixedPrice.address, true], {
         account: seller.account,
       });
-      await hub.stack.marketplace.write.list([tokenId, 100n * 10n ** 8n, CURRENCY_USD], {
+      await fixedPrice.write.openDirect([tokenId, DENOM_ASSET, ZERO, parseEther("1")], {
         account: seller.account,
       });
       await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
@@ -574,19 +576,21 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
           sendParam(EID_SPOKE, seller.account.address, tokenId),
           seller.account,
         ),
-        revertsWith("ListedInMarketplace"),
+        revertsWith("LeaveChainRefused"),
       );
+      await hub.stack.passport.write.removeEncumbranceSource([fixedPrice.address], {
+        account: admin.account,
+      });
     }
 
-    // DISPUTED
+    // Challenged — intrinsic BondedChallenge → may false
     {
       const tokenId = await mintPassport(
         hub.stack.passport,
         seller,
         seller.account.address,
-        "ar://disputed",
+        "ar://challenged",
       );
-      await joinVerifier(hub.stack.staking, hub.stack.verifier);
       await hub.stack.passport.write.verifyPassport([tokenId], {
         account: hub.stack.verifier.account,
       });
@@ -603,11 +607,11 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
           sendParam(EID_SPOKE, seller.account.address, tokenId),
           seller.account,
         ),
-        revertsWith("PassportDisputed"),
+        revertsWith("LeaveChainRefused"),
       );
     }
 
-    // InSettlementHold via mock
+    // Settlement — Ascending registered + unresolved hold → may false
     {
       const tokenId = await mintPassport(
         hub.stack.passport,
@@ -615,22 +619,55 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         seller.account.address,
         "ar://hold",
       );
-      await hub.holdMock.write.setReleaseAt([tokenId, 1], {
-        account: hub.stack.admin.account,
+      await hub.stack.passport.write.verifyPassport([tokenId], {
+        account: hub.stack.verifier.account,
       });
-      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+      const { mode: ascending } = await deployAscendingConsignment(hub.viem, {
+        passport: hub.stack.passport.address,
+        karProStaking: hub.stack.staking.address,
+        platformRecipient: admin.account.address,
+        feeBps: PLATFORM_FEE_BPS,
+        forfeitRecipient: admin.account.address,
+        challengeBond: ASC_BOND,
+        challengeWindow: ASC_CHALLENGE_WINDOW,
+        minDuration: ASC_MIN_DURATION,
+        maxDuration: ASC_MAX_DURATION,
+        extensionWindow: ASC_EXTENSION,
+        minIncrementBps: ASC_MIN_INCREMENT_BPS,
+        protectionWindow: ASC_PROTECTION,
+        abandonmentWindow: ASC_ABANDONMENT,
+        owner: admin.account.address,
+        guardian: admin.account.address,
+      });
+      await hub.stack.passport.write.addEncumbranceSource([ascending.address], {
+        account: admin.account,
+      });
+      await hub.stack.passport.write.setApprovalForAll([ascending.address, true], {
         account: seller.account,
+      });
+      await ascending.write.openAscendingDirect(
+        [tokenId, ZERO, ASC_RESERVE, ASC_DURATION],
+        { account: seller.account },
+      );
+      await ascending.write.bid([tokenId, ASC_RESERVE], {
+        account: hub.stack.buyer.account,
+        value: ASC_RESERVE,
+      });
+      await increaseTime(hub.publicClient, ASC_DURATION + 2n);
+      await ascending.write.settle([tokenId], { account: hub.stack.stranger.account });
+      await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+        account: hub.stack.buyer.account,
       });
       await assert.rejects(
         bridgeSend(
           hub.gateway,
-          sendParam(EID_SPOKE, seller.account.address, tokenId),
-          seller.account,
+          sendParam(EID_SPOKE, hub.stack.buyer.account.address, tokenId),
+          hub.stack.buyer.account,
         ),
-        revertsWith("InSettlementHold"),
+        revertsWith("LeaveChainRefused"),
       );
-      await hub.holdMock.write.setReleaseAt([tokenId, 0], {
-        account: hub.stack.admin.account,
+      await hub.stack.passport.write.removeEncumbranceSource([ascending.address], {
+        account: admin.account,
       });
     }
 
@@ -780,40 +817,77 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     assert.equal(spokeStatus, STATUS_UNVERIFIED);
   });
 
-  it("#11 auction×bridge (A16): InSettlementHold then succeeds after clear", async () => {
+  it("#11 settlement×bridge: LeaveChainRefused while HELD then succeeds after release", async () => {
     const { hub, spoke } = pair;
     const seller = hub.stack.seller;
+    const buyer = hub.stack.buyer;
+    const admin = hub.stack.admin;
     const tokenId = await mintPassport(
       hub.stack.passport,
       seller,
       seller.account.address,
       "ar://a16",
     );
-    await hub.holdMock.write.setReleaseAt([tokenId, 42], {
-      account: hub.stack.admin.account,
+    await joinVerifier(hub.stack.staking, seller);
+    await joinVerifier(hub.stack.staking, hub.stack.verifier);
+    await hub.stack.passport.write.verifyPassport([tokenId], {
+      account: hub.stack.verifier.account,
     });
-    await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+    const { mode: ascending } = await deployAscendingConsignment(hub.viem, {
+      passport: hub.stack.passport.address,
+      karProStaking: hub.stack.staking.address,
+      platformRecipient: admin.account.address,
+      feeBps: PLATFORM_FEE_BPS,
+      forfeitRecipient: admin.account.address,
+      challengeBond: ASC_BOND,
+      challengeWindow: ASC_CHALLENGE_WINDOW,
+      minDuration: ASC_MIN_DURATION,
+      maxDuration: ASC_MAX_DURATION,
+      extensionWindow: ASC_EXTENSION,
+      minIncrementBps: ASC_MIN_INCREMENT_BPS,
+      protectionWindow: ASC_PROTECTION,
+      abandonmentWindow: ASC_ABANDONMENT,
+      owner: admin.account.address,
+      guardian: admin.account.address,
+    });
+    await hub.stack.passport.write.addEncumbranceSource([ascending.address], {
+      account: admin.account,
+    });
+    await hub.stack.passport.write.setApprovalForAll([ascending.address, true], {
       account: seller.account,
+    });
+    await ascending.write.openAscendingDirect([tokenId, ZERO, ASC_RESERVE, ASC_DURATION], {
+      account: seller.account,
+    });
+    await ascending.write.bid([tokenId, ASC_RESERVE], {
+      account: buyer.account,
+      value: ASC_RESERVE,
+    });
+    await increaseTime(hub.publicClient, ASC_DURATION + 2n);
+    await ascending.write.settle([tokenId], { account: hub.stack.stranger.account });
+
+    await hub.stack.passport.write.setApprovalForAll([hub.gateway.address, true], {
+      account: buyer.account,
     });
     await assert.rejects(
       bridgeSend(
         hub.gateway,
-        sendParam(EID_SPOKE, seller.account.address, tokenId),
-        seller.account,
+        sendParam(EID_SPOKE, buyer.account.address, tokenId),
+        buyer.account,
       ),
-      revertsWith("InSettlementHold"),
+      revertsWith("LeaveChainRefused"),
     );
 
-    await hub.holdMock.write.setReleaseAt([tokenId, 0], {
-      account: hub.stack.admin.account,
-    });
+    await increaseTime(hub.publicClient, ASC_PROTECTION + 2n);
+    await ascending.write.releaseFunds([tokenId], { account: hub.stack.stranger.account });
+
     await relaySend({
       src: hub,
       dst: spoke,
-      to: seller.account.address,
+      to: buyer.account.address,
       tokenId,
       uri: "ar://a16",
-      senderAccount: seller.account,
+      senderAccount: buyer.account,
     });
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
   });
@@ -1040,7 +1114,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         sendParam(EID_SPOKE, seller.account.address, tokenId),
         seller.account,
       ),
-      revertsWith("PassportDisputed"),
+      revertsWith("LeaveChainRefused"),
     );
 
     assert.equal(await hub.stack.passport.read.totalLockedBonds(), lockedBefore);
@@ -1052,8 +1126,66 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
   });
 
-  it("VERSION is 1.2.0-rc.1", async () => {
-    assert.equal(await pair.hub.gateway.read.VERSION(), "1.2.0-rc.1");
+  it("VERSION is 1.3.0-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.3.0-rc.1");
+  });
+
+  it("gateway source and ABI have no commerce / status leave refs", () => {
+    const src = readFileSync(
+      path.join(repoRoot, "contracts/KarPassportBridgeGateway.sol"),
+      "utf8",
+    );
+    for (const banned of [
+      "marketplace",
+      "auctionEscrow",
+      "passportStatus",
+      "isListed",
+      "holds(",
+      "IMarketplaceEscrow",
+      "IAuctionHold",
+      "IKarPassportStatus",
+      "ListedInMarketplace",
+      "InSettlementHold",
+      "PassportDisputed",
+    ]) {
+      assert.ok(!src.includes(banned), `gateway source must not contain ${banned}`);
+    }
+    const abi = pair.hub.gateway.abi as readonly { type?: string; name?: string }[];
+    const names = new Set(
+      abi.filter((e) => e.type === "error" || e.type === "function").map((e) => e.name),
+    );
+    for (const banned of [
+      "marketplace",
+      "auctionEscrow",
+      "ListedInMarketplace",
+      "InSettlementHold",
+      "PassportDisputed",
+    ]) {
+      assert.ok(!names.has(banned), `gateway ABI must not declare ${banned}`);
+    }
+    assert.ok(names.has("LeaveChainRefused"));
+  });
+
+  it("UNVERIFIED idle passport may leave (no forbidding source)", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://idle-unverified",
+    );
+    const [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    assert.equal(status, STATUS_UNVERIFIED);
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: "ar://idle-unverified",
+      senderAccount: seller.account,
+    });
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
   });
 
   it("ctor reverts ZeroAddress on required immutable deps", async () => {
@@ -1061,8 +1193,6 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     const { stack, endpoint } = hub;
     await assert.rejects(
       hub.viem.deployContract("KarPassportBridgeGateway", [
-        ZERO,
-        stack.marketplace.address,
         ZERO,
         endpoint.address,
         stack.admin.account.address,
@@ -1073,9 +1203,15 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       hub.viem.deployContract("KarPassportBridgeGateway", [
         stack.passport.address,
         ZERO,
-        ZERO,
-        endpoint.address,
         stack.admin.account.address,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
+    await assert.rejects(
+      hub.viem.deployContract("KarPassportBridgeGateway", [
+        stack.passport.address,
+        endpoint.address,
+        ZERO,
       ]),
       revertsWith("ZeroAddress"),
     );

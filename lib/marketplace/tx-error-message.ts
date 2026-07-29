@@ -60,6 +60,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   HoldReleased: "The payment hold has already been released.",
   ContractPaused:
     "This contract is temporarily paused. Existing refunds and payouts are unaffected.",
+  NotGuardian: "Only the pause guardian can pause this contract.",
   NoHold: "There is no open settlement hold for this vehicle.",
   DisputeActive:
     "A settlement dispute is still open. Wait for resolution or the auto-release timeout.",
@@ -67,7 +68,8 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   RefundNotPending: "No failed-sale refund is pending for this vehicle.",
   RefundPending: "A failed-sale refund is pending for this vehicle.",
   NotBuyer: "Only the winning buyer can do this.",
-  ListedInMarketplace: "Delist this vehicle before bridging.",
+  LeaveChainRefused:
+    "This passport cannot leave the chain right now (encumbrance refused).",
   NoClaim: "There is no pending claim to withdraw for this asset.",
   TransferFailed: "The transfer could not be completed. Try again later.",
   TokenHasNoCode: "That address has no contract code and cannot be used as a token.",
@@ -118,7 +120,6 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   CannotResolveOwnDeal: "You cannot resolve a dispute on your own deal.",
   ZeroAddress: "Address cannot be zero.",
   BadConfig: "Configuration value is outside the allowed range.",
-  InSettlementHold: "This passport is in an auction settlement hold.",
   NotRepresentationOwner: "Only the representation owner can do this.",
   NotLocked: "This passport is not custody-locked for bridging.",
   OnlyStaking: "Only KarProStaking can call this.",
@@ -131,6 +132,11 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "Only a qualified professional can resolve this challenge. Active KarPro status is required.",
   SourceAlreadyRegistered: "That encumbrance source is already registered.",
   SourceNotRegistered: "That encumbrance source is not registered.",
+  TooManyEncumbranceSources: "The encumbrance source registry is full (maximum eight).",
+  ZeroForfeitRecipient: "Challenge forfeit recipient cannot be zero.",
+  ZeroChallengeWindow: "Challenge window must be greater than zero.",
+  ChallengeAlreadyConfigured: "Bonded challenge is already configured.",
+  ChallengeNotConfigured: "Bonded challenge is not configured.",
   SourceUnanswerable:
     "An encumbrance source could not answer. Governance must remove or replace that source before this action can proceed.",
   CannotRouteBondToJudge:

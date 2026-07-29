@@ -24,34 +24,28 @@ import {ONFT721MsgCodec} from "@layerzerolabs/onft-evm/contracts/onft721/libs/ON
 import {IOAppMsgInspector} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppMsgInspector.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 
-import {IAuctionHold} from "./interfaces/IAuctionHold.sol";
 import {IKarPassportBridge} from "./interfaces/IKarPassportBridge.sol";
-import {IKarPassportStatus} from "./interfaces/IKarPassportStatus.sol";
-import {IMarketplaceEscrow} from "./interfaces/IMarketplaceEscrow.sol";
+import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
 
 interface IERC721MetadataURI {
     function tokenURI(uint256 tokenId) external view returns (string memory);
 }
 
 /// @title KarPassportBridgeGateway
-/// @notice Symmetric lock-and-mint / burn-and-unlock OApp for KarPassport v1.3 (SPEC §I.12).
-/// @dev LayerZero imports are confined to this gateway (§7.6 provider isolation).
-/// @custom:version 1.2.0-rc.1
+/// @notice Symmetric lock-and-mint / burn-and-unlock OApp for KarPassport (SPEC §I.12).
+/// @dev Leave permission is a single passport question (`may(LeaveChain)`). The gateway holds no
+///      commerce references and does not read trust status (E2/E5). LayerZero imports are confined
+///      here (§7.6 provider isolation).
+/// @custom:version 1.3.0-rc.1
 contract KarPassportBridgeGateway is ONFT721Adapter {
-    string public constant VERSION = "1.2.0-rc.1";
+    string public constant VERSION = "1.3.0-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
 
     uint8 private constant _SENDER_BYTES = 32;
 
-    IMarketplaceEscrow public immutable marketplace;
-    /// @notice AuctionEscrow for settlement-hold guard; `address(0)` skips the hold check (e.g. spoke pre-C5).
-    address public immutable auctionEscrow;
-
-    error ListedInMarketplace();
-    error PassportDisputed();
-    error InSettlementHold();
+    error LeaveChainRefused();
     error NotRepresentationOwner();
     error NotHomeToken();
     error NotLocked();
@@ -62,23 +56,14 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
 
     /// @notice Deploys the symmetric bridge gateway wrapping a KarPassport.
     /// @param karPassport Underlying KarPassport address.
-    /// @param marketplace_ MarketplaceEscrow for `isListed` outbound guard.
-    /// @param auctionEscrow_ AuctionEscrow for settlement-hold guard (or zero).
     /// @param lzEndpoint LayerZero EndpointV2 address.
     /// @param delegate OApp Endpoint delegate and Ownable owner (Timelock48h on mainnet).
-    constructor(
-        address karPassport,
-        address marketplace_,
-        address auctionEscrow_,
-        address lzEndpoint,
-        address delegate
-    ) ONFT721Adapter(karPassport, lzEndpoint, delegate) {
+    constructor(address karPassport, address lzEndpoint, address delegate)
+        ONFT721Adapter(karPassport, lzEndpoint, delegate)
+    {
         if (karPassport == address(0)) revert ZeroAddress();
-        if (marketplace_ == address(0)) revert ZeroAddress();
         if (lzEndpoint == address(0)) revert ZeroAddress();
         if (delegate == address(0)) revert ZeroAddress();
-        marketplace = IMarketplaceEscrow(marketplace_);
-        auctionEscrow = auctionEscrow_;
     }
 
     function _isHome(uint256 tokenId) internal view returns (bool) {
@@ -114,16 +99,12 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
 
     /// @inheritdoc ONFT721Adapter
     function _debit(address from, uint256 tokenId, uint32 dstEid) internal virtual override {
-        if (marketplace.isListed(tokenId)) revert ListedInMarketplace();
         if (
-            IKarPassportStatus(address(innerToken)).passportStatus(tokenId)
-                == IKarPassportStatus.Status.DISPUTED
+            !IKarPassportEncumbrance(address(innerToken)).may(
+                tokenId, IKarPassportEncumbrance.Intent.LeaveChain
+            )
         ) {
-            revert PassportDisputed();
-        }
-        if (auctionEscrow != address(0)) {
-            (,, uint40 releaseAt,,,) = IAuctionHold(auctionEscrow).holds(tokenId);
-            if (releaseAt != 0) revert InSettlementHold();
+            revert LeaveChainRefused();
         }
 
         if (_isHome(tokenId)) {

@@ -62,11 +62,11 @@ function mapBridgeError(err: unknown): string {
     return err.message;
   }
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("LeaveChainRefused")) {
+    return "This passport cannot leave the chain right now (encumbrance refused).";
+  }
   if (msg.includes("PassportDisputed")) {
     return formatPassportBridgeBlockedMessage();
-  }
-  if (msg.includes("ListedInMarketplace")) {
-    return "Delist this vehicle before bridging.";
   }
   return txErrorMessage(err);
 }

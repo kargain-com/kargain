@@ -6,7 +6,13 @@ import { fileURLToPath } from "node:url";
 import { parseEther, stringToHex, padHex } from "viem";
 
 import hardhat from "hardhat";
-import { increaseTime, ZERO } from "../../scripts/lib/local-stack.js";
+import {
+  deployFixedPriceConsignment,
+  increaseTime,
+  ZERO,
+} from "../../scripts/lib/local-stack.js";
+import { encodeFunctionData } from "viem";
+import { FixedPriceConsignmentAbi } from "../../lib/contracts/abis.generated.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -83,26 +89,31 @@ describe("FixedPriceConsignment", () => {
   let buyer: WalletClient;
   let platform: WalletClient;
   let stranger: WalletClient;
+  let guardian: WalletClient;
+  let modeImpl: DeployedContract;
 
   async function deployStack(useHarness = false) {
     connection = await hardhat.network.connect();
     viem = connection.viem;
     publicClient = await viem.getPublicClient();
     const wallets = await viem.getWalletClients();
-    [owner, agent, buyer, platform, stranger] = wallets;
+    [owner, agent, buyer, platform, stranger, guardian] = wallets;
 
     passport = await viem.deployContract("MockPassportEncumbrance", []);
     nativeFeed = await viem.deployContract("MockV3Aggregator", [8, ETH_USD_1E8]);
 
-    const name = useHarness ? "FixedPriceConsignmentHarness" : "FixedPriceConsignment";
-    mode = await viem.deployContract(name, [
-      passport.address,
-      platform.account.address,
-      PLATFORM_FEE_BPS,
-      nativeFeed.address,
-      MAX_STALENESS,
-      owner.account.address,
-    ]);
+    const deployed = await deployFixedPriceConsignment(viem, {
+      passport: passport.address,
+      platformRecipient: platform.account.address,
+      feeBps: PLATFORM_FEE_BPS,
+      nativeUsdFeed: nativeFeed.address,
+      maxFeedStaleness: MAX_STALENESS,
+      owner: owner.account.address,
+      guardian: guardian.account.address,
+      harness: useHarness,
+    });
+    mode = deployed.mode;
+    modeImpl = deployed.impl;
   }
 
   async function mintAndApprove(tokenId: bigint, holder: WalletClient = owner) {
@@ -116,7 +127,7 @@ describe("FixedPriceConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "1.0.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
   });
 
   it("source carries no verifier-admission / staking gate symbols (N2)", () => {
@@ -147,18 +158,34 @@ describe("FixedPriceConsignment", () => {
     );
   });
 
-  it("ZeroFeedStaleness on ctor", async () => {
-    await assert.rejects(
-      viem.deployContract("FixedPriceConsignment", [
+  it("ZeroFeedStaleness on initialize", async () => {
+    const impl = await viem.deployContract("FixedPriceConsignment", []);
+    const initData = encodeFunctionData({
+      abi: FixedPriceConsignmentAbi,
+      functionName: "initialize",
+      args: [
         passport.address,
         platform.account.address,
         PLATFORM_FEE_BPS,
         nativeFeed.address,
         0n,
         owner.account.address,
-      ]),
+        guardian.account.address,
+      ],
+    });
+    await assert.rejects(
+      viem.deployContract("ERC1967Proxy", [impl.address, initData]),
       revertsWith("ZeroFeedStaleness"),
     );
+  });
+
+  it("setMaxFeedStaleness: owner updates live window; zero reverts", async () => {
+    await assert.rejects(
+      mode.write.setMaxFeedStaleness([0n], { account: owner.account }),
+      revertsWith("ZeroFeedStaleness"),
+    );
+    await mode.write.setMaxFeedStaleness([MAX_STALENESS * 2n], { account: owner.account });
+    assert.equal(await mode.read.maxFeedStaleness(), MAX_STALENESS * 2n);
   });
 
   it("DirectEthNotAccepted on bare receive", async () => {
@@ -470,5 +497,147 @@ describe("FixedPriceConsignment", () => {
       }),
       revertsWith("InvalidFeedDecimals"),
     );
+  });
+
+  // ---- G3 pause + G4 UUPS ----
+
+  it("G3: guardian pauses; only owner unpauses; stranger cannot; setGuardian onlyOwner", async () => {
+    await assert.rejects(
+      mode.write.pause({ account: stranger.account }),
+      revertsWith("NotGuardian"),
+    );
+    await mode.write.pause({ account: guardian.account });
+    assert.equal(await mode.read.paused(), true);
+    await assert.rejects(
+      mode.write.unpause({ account: guardian.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await assert.rejects(
+      mode.write.unpause({ account: stranger.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await mode.write.unpause({ account: owner.account });
+    assert.equal(await mode.read.paused(), false);
+
+    await assert.rejects(
+      mode.write.setGuardian([stranger.account.address], { account: stranger.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await mode.write.setGuardian([stranger.account.address], { account: owner.account });
+    assert.equal(
+      ((await mode.read.guardian()) as string).toLowerCase(),
+      stranger.account.address.toLowerCase(),
+    );
+  });
+
+  it("platformFeeBps snapshot: direct buy uses open fee after live force", async () => {
+    await deployStack(true);
+    const price = parseEther("1");
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, price], { account: owner.account });
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    assert.equal(await mode.read.platformFeeBps(), 1000);
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    assert.equal(platformAfter - platformBefore, (price * PLATFORM_FEE_BPS) / 10_000n);
+  });
+
+  it("platformFeeBps snapshot: commission buy uses open fee after live force", async () => {
+    await deployStack(true);
+    const price = parseEther("1");
+    const floor = parseEther("0.5");
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_COMMISSION_500],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_ASSET, price], { account: agent.account });
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    const agentAfter = await publicClient.getBalance({ address: agent.account.address });
+    const agentCut = (price * 500n) / 10_000n;
+    assert.equal(platformAfter - platformBefore, (price * PLATFORM_FEE_BPS) / 10_000n);
+    assert.equal(agentAfter - agentBefore, agentCut);
+  });
+
+  it("platformFeeBps snapshot: margin buy uses open fee after live force", async () => {
+    await deployStack(true);
+    const price = parseEther("1");
+    const floor = parseEther("0.8");
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_MARGIN],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_ASSET, price], { account: agent.account });
+    await mode.write.forceSetPlatformFeeBps([1000]);
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    const ownerBefore = await publicClient.getBalance({ address: owner.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+    const platformAfter = await publicClient.getBalance({ address: platform.account.address });
+    const ownerAfter = await publicClient.getBalance({ address: owner.account.address });
+    assert.equal(platformAfter - platformBefore, (price * PLATFORM_FEE_BPS) / 10_000n);
+    assert.equal(ownerAfter - ownerBefore, floor);
+  });
+
+  it("G3: pause blocks open + buy; confirmExternalPayment and withdrawClaim still work", async () => {
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+      account: owner.account,
+    });
+    await mode.write.pause({ account: guardian.account });
+
+    const token2 = 2n;
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openDirect([token2, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: owner.account,
+      }),
+      revertsWith("ContractPaused"),
+    );
+    await assert.rejects(
+      mode.write.buy([TOKEN], { account: buyer.account, value: parseEther("1") }),
+      revertsWith("ContractPaused"),
+    );
+
+    await mode.write.setSettlementNote([TOKEN, stringToHex("wire")], {
+      account: owner.account,
+    });
+    await mode.write.confirmExternalPayment([TOKEN, buyer.account.address], {
+      account: owner.account,
+    });
+    assert.equal(
+      ((await passport.read.ownerOf([TOKEN])) as string).toLowerCase(),
+      buyer.account.address.toLowerCase(),
+    );
+
+    await mode.write.unpause({ account: owner.account });
+    await mode.write.openDirect([token2, DENOM_ASSET, ZERO, parseEther("1")], {
+      account: owner.account,
+    });
+    await mode.write.buy([token2], { account: buyer.account, value: parseEther("1") });
+  });
+
+  it("G4: owner upgrade preserves live consignment; non-owner cannot upgrade", async () => {
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("2")], {
+      account: owner.account,
+    });
+    const priceBefore = (await mode.read.consignmentPriceOf([TOKEN])) as bigint;
+
+    const nextImpl = await viem.deployContract("FixedPriceConsignment", []);
+    await assert.rejects(
+      mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: stranger.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
+    assert.equal(await mode.read.VERSION(), "2.0.0-rc.1");
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+    assert.equal(await mode.read.consignmentPriceOf([TOKEN]), priceBefore);
+    void modeImpl;
   });
 });

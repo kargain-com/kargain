@@ -34,6 +34,10 @@ const FULL_VERIFY_ORDER: HubVerifyTargetKey[] = [
   "bridgeGateway",
   "auctionEscrowImpl",
   "auctionEscrowProxy",
+  "fixedPriceConsignmentImpl",
+  "fixedPriceConsignmentProxy",
+  "ascendingConsignmentImpl",
+  "ascendingConsignmentProxy",
 ];
 
 const AUCTION_VERIFY_ORDER: HubVerifyTargetKey[] = ["auctionEscrowImpl", "auctionEscrowProxy"];

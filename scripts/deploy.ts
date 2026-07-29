@@ -1,15 +1,22 @@
 /**
  * Nuclear full-stack deploy for commercial chains 84532 | 11155111.
  * Sequence: Timelock → KarProPass → Staking → Passport → Marketplace →
- * AuctionEscrow → KarPassportBridgeGateway → setBridgeGateway.
+ * AuctionEscrow → FixedPrice + Ascending (encumbrance sources) →
+ * KarPassportBridgeGateway → setBridgeGateway → ownership handoff.
  *
  * `--dry-run` / `--compare`: print 84532 vs 11155111 parity table; no txs.
- * Live deploy requires DEPLOYER_PRIVATE_KEY and `--network baseSepolia|ethereumSepolia`.
+ * Live deploy requires DEPLOYER_PRIVATE_KEY, COMMERCE_GUARDIAN, and
+ * `--network baseSepolia|ethereumSepolia`.
  */
 
 import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "viem";
 
-import { AuctionEscrowAbi, MarketplaceEscrowAbi } from "../lib/contracts/abis.generated.js";
+import {
+  AscendingConsignmentAbi,
+  AuctionEscrowAbi,
+  FixedPriceConsignmentAbi,
+  MarketplaceEscrowAbi,
+} from "../lib/contracts/abis.generated.js";
 import {
   isCommercialChainId,
   verifyFeedBytecode,
@@ -24,6 +31,20 @@ import {
 } from "./lib/load-deployment.js";
 import { computeIndexFromBlock, writeDeploymentManifest } from "./lib/write-deployment.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
+import {
+  ASCENDING_ABANDONMENT_WINDOW,
+  ASCENDING_CHALLENGE_BOND,
+  ASCENDING_CHALLENGE_WINDOW,
+  ASCENDING_EXTENSION_WINDOW,
+  ASCENDING_MAX_DURATION,
+  ASCENDING_MIN_DURATION,
+  ASCENDING_MIN_INCREMENT_BPS,
+  ASCENDING_PROTECTION_WINDOW,
+  AUCTION_PLATFORM_FEE_BPS,
+  MARKETPLACE_FEE_BPS,
+  MARKETPLACE_MAX_FEED_STALENESS,
+  resolveCommerceGuardian,
+} from "./lib/verify-constructor-args.js";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 120_000;
@@ -182,8 +203,16 @@ function printDryRunCompare() {
 }
 
 async function runLiveDeploy() {
-  if (!process.env.DEPLOYER_PRIVATE_KEY) {
+    if (!process.env.DEPLOYER_PRIVATE_KEY) {
     console.error("DEPLOYER_PRIVATE_KEY not set in .env.local");
+    process.exit(1);
+  }
+
+  let commerceGuardian: `0x${string}`;
+  try {
+    commerceGuardian = resolveCommerceGuardian();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   }
 
@@ -211,6 +240,7 @@ async function runLiveDeploy() {
 
     console.log(`Kargain nuclear deploy — chain ${chainId} (generation v2)`);
     console.log(`Deployer: ${deployerAddress}`);
+    console.log(`Guardian: ${commerceGuardian}`);
     console.log(`Registry: ${plan.registry}`);
     console.log(`USDC:     ${externals.usdc}`);
     console.log(`LZ:       ${externals.layerZeroEndpoint}`);
@@ -295,20 +325,81 @@ async function runLiveDeploy() {
       auctionInitData,
     ]);
 
+    const fixedPriceImpl = await deployStep(
+      viem,
+      "FixedPriceConsignment impl",
+      "FixedPriceConsignment",
+      [],
+    );
+    const fixedPriceInitData = encodeFunctionData({
+      abi: FixedPriceConsignmentAbi,
+      functionName: "initialize",
+      args: [
+        karPassport.address,
+        params.platformRecipient,
+        MARKETPLACE_FEE_BPS,
+        externals.nativeUsdFeed,
+        MARKETPLACE_MAX_FEED_STALENESS,
+        timelock.address,
+        commerceGuardian,
+      ],
+    });
+    const fixedPriceProxy = await deployStep(viem, "FixedPriceConsignment proxy", "ERC1967Proxy", [
+      fixedPriceImpl.address,
+      fixedPriceInitData,
+    ]);
+
+    const ascendingImpl = await deployStep(
+      viem,
+      "AscendingConsignment impl",
+      "AscendingConsignment",
+      [],
+    );
+    const ascendingInitData = encodeFunctionData({
+      abi: AscendingConsignmentAbi,
+      functionName: "initialize",
+      args: [
+        karPassport.address,
+        staking.address,
+        params.platformRecipient,
+        AUCTION_PLATFORM_FEE_BPS,
+        params.platformRecipient,
+        ASCENDING_CHALLENGE_BOND,
+        ASCENDING_CHALLENGE_WINDOW,
+        ASCENDING_MIN_DURATION,
+        ASCENDING_MAX_DURATION,
+        ASCENDING_EXTENSION_WINDOW,
+        ASCENDING_MIN_INCREMENT_BPS,
+        ASCENDING_PROTECTION_WINDOW,
+        ASCENDING_ABANDONMENT_WINDOW,
+        timelock.address,
+        commerceGuardian,
+      ],
+    });
+    const ascendingProxy = await deployStep(viem, "AscendingConsignment proxy", "ERC1967Proxy", [
+      ascendingImpl.address,
+      ascendingInitData,
+    ]);
+
+    const passport = await viem.getContractAt("KarPassport", karPassport.address);
+    await writeStep(viem, `addEncumbranceSource(FixedPrice) → ${fixedPriceProxy.address}`, () =>
+      passport.write.addEncumbranceSource([fixedPriceProxy.address], {
+        account: deployer.account,
+      }),
+    );
+    await writeStep(viem, `addEncumbranceSource(Ascending) → ${ascendingProxy.address}`, () =>
+      passport.write.addEncumbranceSource([ascendingProxy.address], {
+        account: deployer.account,
+      }),
+    );
+
     const gateway = await deployStep(
       viem,
       "KarPassportBridgeGateway",
       "KarPassportBridgeGateway",
-      [
-        karPassport.address,
-        proxy.address,
-        auctionProxy.address,
-        externals.layerZeroEndpoint,
-        deployerAddress,
-      ],
+      [karPassport.address, externals.layerZeroEndpoint, deployerAddress],
     );
 
-    const passport = await viem.getContractAt("KarPassport", karPassport.address);
     await writeStep(viem, `setBridgeGateway → ${gateway.address}`, () =>
       passport.write.setBridgeGateway([gateway.address], { account: deployer.account }),
     );
@@ -363,6 +454,10 @@ async function runLiveDeploy() {
       marketplace: Number(proxy.blockNumber),
       auctionEscrowImpl: Number(auctionImpl.blockNumber),
       auctionEscrow: Number(auctionProxy.blockNumber),
+      fixedPriceConsignmentImpl: Number(fixedPriceImpl.blockNumber),
+      fixedPriceConsignment: Number(fixedPriceProxy.blockNumber),
+      ascendingConsignmentImpl: Number(ascendingImpl.blockNumber),
+      ascendingConsignment: Number(ascendingProxy.blockNumber),
       bridgeGateway: Number(gateway.blockNumber),
     };
 
@@ -376,6 +471,11 @@ async function runLiveDeploy() {
       marketplaceImpl: marketplaceImpl.address,
       auctionEscrow: auctionProxy.address,
       auctionEscrowImpl: auctionImpl.address,
+      fixedPriceConsignment: fixedPriceProxy.address,
+      fixedPriceConsignmentImpl: fixedPriceImpl.address,
+      ascendingConsignment: ascendingProxy.address,
+      ascendingConsignmentImpl: ascendingImpl.address,
+      commerceGuardian,
       usdc: externals.usdc,
       nativeFeed: externals.nativeUsdFeed,
       timelock: timelock.address,
@@ -397,6 +497,10 @@ async function runLiveDeploy() {
         marketplace: proxy.txHash,
         auctionEscrowImpl: auctionImpl.txHash,
         auctionEscrow: auctionProxy.txHash,
+        fixedPriceConsignmentImpl: fixedPriceImpl.txHash,
+        fixedPriceConsignment: fixedPriceProxy.txHash,
+        ascendingConsignmentImpl: ascendingImpl.txHash,
+        ascendingConsignment: ascendingProxy.txHash,
         bridgeGateway: gateway.txHash,
       },
       contractVersions: { ...CONTRACT_VERSIONS },
@@ -412,6 +516,9 @@ async function runLiveDeploy() {
     console.log(`  KarPassport:              ${karPassport.address}`);
     console.log(`  MarketplaceEscrow proxy:  ${proxy.address}`);
     console.log(`  AuctionEscrow proxy:      ${auctionProxy.address}`);
+    console.log(`  FixedPriceConsignment:    ${fixedPriceProxy.address}`);
+    console.log(`  AscendingConsignment:     ${ascendingProxy.address}`);
+    console.log(`  commerceGuardian:         ${commerceGuardian}`);
     console.log(`  KarPassportBridgeGateway: ${gateway.address}`);
     console.log(`  bridgeGateway bound:      ${boundGateway}`);
     console.log(`  upgradeAuthority:         ${upgradeAuthority}`);

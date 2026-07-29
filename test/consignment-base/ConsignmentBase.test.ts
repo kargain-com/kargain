@@ -91,9 +91,12 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
     const wallets = await viem.getWalletClients();
     [owner, agent, platform, stranger] = wallets;
 
-    harness = await viem.deployContract("ConsignmentBaseHarness", [
+    harness = await viem.deployContract("ConsignmentBaseHarness", []);
+    await harness.write.initialize([
       platform.account.address,
       PLATFORM_FEE_BPS,
+      owner.account.address,
+      owner.account.address,
     ]);
     for (const id of [TOKEN, TOKEN_DIRECT]) {
       await harness.write.setPassportOwner([id, owner.account.address]);
@@ -131,14 +134,44 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
   }
 
   it("declared ConsignmentBase errors are reachable", async () => {
+    const badZeroRecipient = await viem.deployContract("ConsignmentBaseHarness", []);
     await assert.rejects(
-      viem.deployContract("ConsignmentBaseHarness", [ZERO, PLATFORM_FEE_BPS]),
+      badZeroRecipient.write.initialize([
+        ZERO,
+        PLATFORM_FEE_BPS,
+        owner.account.address,
+        owner.account.address,
+      ]),
       revertsWith("ZeroAddress"),
     );
+    const badZeroGuardian = await viem.deployContract("ConsignmentBaseHarness", []);
     await assert.rejects(
-      viem.deployContract("ConsignmentBaseHarness", [platform.account.address, 10_001n]),
+      badZeroGuardian.write.initialize([
+        platform.account.address,
+        PLATFORM_FEE_BPS,
+        owner.account.address,
+        ZERO,
+      ]),
+      revertsWith("ZeroAddress"),
+    );
+    const badFee = await viem.deployContract("ConsignmentBaseHarness", []);
+    await assert.rejects(
+      badFee.write.initialize([
+        platform.account.address,
+        10_001n,
+        owner.account.address,
+        owner.account.address,
+      ]),
       revertsWith("FeeTooHigh"),
     );
+
+    await assert.rejects(
+      harness.write.pause({ account: stranger.account }),
+      revertsWith("NotGuardian"),
+    );
+    await harness.write.pause({ account: owner.account }); // owner is also guardian in harness ctor
+    await assert.rejects(openDirect(), revertsWith("ContractPaused"));
+    await harness.write.unpause({ account: owner.account });
 
     await harness.write.setMayOpen([TOKEN_DIRECT, false]);
     await assert.rejects(openDirect(), revertsWith("OpenConsignmentRefused"));
@@ -218,6 +251,49 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
     assert.equal(p1, p0);
     assert.equal(o1, o0);
     assert.equal(a1, a0);
+  });
+
+  it("split: snapshotted platformFeeBps after live force (direct)", async () => {
+    await openDirect();
+    await harness.write.forceSetPlatformFeeBps([1000]);
+    assert.equal(await harness.read.platformFeeBps(), 1000);
+    const settled = 1_000_000n;
+    const [platformCut, ownerCut, agentCut] = (await harness.read.computeSplitPublic([
+      settled,
+      TOKEN_DIRECT,
+    ])) as [bigint, bigint, bigint];
+    assert.equal(platformCut, 25_000n); // open fee 250 bps, not live 1000
+    assert.equal(ownerCut, 975_000n);
+    assert.equal(agentCut, 0n);
+  });
+
+  it("split: snapshotted platformFeeBps after live force (commission)", async () => {
+    await grantCommission();
+    await openMandate(PRICE);
+    await harness.write.forceSetPlatformFeeBps([1000]);
+    const settled = PRICE; // 2_000_000 — same as open (owner share must clear floor)
+    const [platformCut, ownerCut, agentCut] = (await harness.read.computeSplitPublic([
+      settled,
+      TOKEN,
+    ])) as [bigint, bigint, bigint];
+    // open 250 bps: platform 50k; agent 5% of gross = 100_000; owner 1_850_000
+    assert.equal(platformCut, 50_000n);
+    assert.equal(agentCut, 100_000n);
+    assert.equal(ownerCut, 1_850_000n);
+  });
+
+  it("split: snapshotted platformFeeBps after live force (margin)", async () => {
+    await grantMargin(FLOOR);
+    await openMandate(PRICE);
+    await harness.write.forceSetPlatformFeeBps([1000]);
+    const settled = PRICE;
+    const [platformCut, ownerCut, agentCut] = (await harness.read.computeSplitPublic([
+      settled,
+      TOKEN,
+    ])) as [bigint, bigint, bigint];
+    assert.equal(platformCut, 50_000n);
+    assert.equal(ownerCut, FLOOR);
+    assert.equal(agentCut, settled - 50_000n - FLOOR);
   });
 
   it("direct setPrice does not apply floor / BelowFloor", async () => {

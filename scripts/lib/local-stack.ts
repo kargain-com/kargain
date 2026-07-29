@@ -216,6 +216,92 @@ export async function deployAuctionEscrow(
   return { impl, proxy, auction, feeBps };
 }
 
+/** FixedPriceConsignment UUPS: empty impl ctor → initialize via ERC1967Proxy. */
+export async function deployFixedPriceConsignment(
+  viem: ViemSuite,
+  params: {
+    passport: `0x${string}`;
+    platformRecipient: `0x${string}`;
+    feeBps: bigint;
+    nativeUsdFeed: `0x${string}`;
+    maxFeedStaleness: bigint;
+    owner: `0x${string}`;
+    guardian: `0x${string}`;
+    /** Deploy harness artifact instead of production (floor poison tests). */
+    harness?: boolean;
+  },
+) {
+  const name = params.harness ? "FixedPriceConsignmentHarness" : "FixedPriceConsignment";
+  const impl = await viem.deployContract(name, []);
+  const initData = encodeFunctionData({
+    abi: impl.abi,
+    functionName: "initialize",
+    args: [
+      params.passport,
+      params.platformRecipient,
+      params.feeBps,
+      params.nativeUsdFeed,
+      params.maxFeedStaleness,
+      params.owner,
+      params.guardian,
+    ],
+  });
+  const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
+  const mode = await viem.getContractAt(name, proxy.address);
+  return { impl, proxy, mode };
+}
+
+/** AscendingConsignment UUPS: empty impl ctor → initialize configures BondedChallenge via ERC1967Proxy. */
+export async function deployAscendingConsignment(
+  viem: ViemSuite,
+  params: {
+    passport: `0x${string}`;
+    karProStaking: `0x${string}`;
+    platformRecipient: `0x${string}`;
+    feeBps: bigint;
+    forfeitRecipient: `0x${string}`;
+    challengeBond: bigint;
+    challengeWindow: bigint;
+    minDuration: bigint;
+    maxDuration: bigint;
+    extensionWindow: bigint;
+    minIncrementBps: bigint;
+    protectionWindow: bigint;
+    abandonmentWindow: bigint;
+    owner: `0x${string}`;
+    guardian: `0x${string}`;
+    /** Deploy harness artifact instead of production (fee snapshot tests). */
+    harness?: boolean;
+  },
+) {
+  const name = params.harness ? "AscendingConsignmentHarness" : "AscendingConsignment";
+  const impl = await viem.deployContract(name, []);
+  const initData = encodeFunctionData({
+    abi: impl.abi,
+    functionName: "initialize",
+    args: [
+      params.passport,
+      params.karProStaking,
+      params.platformRecipient,
+      params.feeBps,
+      params.forfeitRecipient,
+      params.challengeBond,
+      params.challengeWindow,
+      params.minDuration,
+      params.maxDuration,
+      params.extensionWindow,
+      params.minIncrementBps,
+      params.protectionWindow,
+      params.abandonmentWindow,
+      params.owner,
+      params.guardian,
+    ],
+  });
+  const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
+  const mode = await viem.getContractAt(name, proxy.address);
+  return { impl, proxy, mode };
+}
+
 /** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */
 export async function increaseTime(publicClient: PublicClient, seconds: bigint) {
   await publicClient.request({

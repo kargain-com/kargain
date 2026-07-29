@@ -52,7 +52,7 @@
 | MarketplaceEscrow | `2.2.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
 | AuctionEscrow | `2.0.0-rc.1` | UUPS proxy | English reserve auction escrow, settlement hold |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
-| KarPassportBridgeGateway | `1.2.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X) |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
 
@@ -507,12 +507,12 @@ Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPasspo
 - **Star topology only (hub ↔ spoke).** Spoke↔spoke pathways are forbidden. Hub `ProxyONFT721Adapter` embeds `tokenURI` in the LZ compose payload (`_buildMsgAndOptions`); spoke `KarPassportONFT721` uses base `ONFT721Core` outbound debit (burn only) and does **not** embed `tokenURI` on send — spoke↔spoke would drop metadata. Wire tooling enforces the `{40245, 40161}` star (`scripts/bridge-wire.ts` / `layerzero-pathway`); see also §7.6 EID allowlist.
 - **Never wire testnet EIDs to mainnet EIDs** in `setPeer`.
 
-### 7.2 ProxyONFT721Adapter v1.1.0-rc.1 (hub)
+### 7.2 ProxyONFT721Adapter v1.1.0-rc.1 (hub) — historical Bridge-1–7
 
 - Wraps existing KarPassport ERC-721.
-- `_debit`: reverts **`ListedInMarketplace`** if `marketplace.isListed(tokenId)`; then reverts **`PassportDisputed`** if `passportStatus(tokenId) == DISPUTED` (via minimal `IKarPassportStatus` on `innerToken`).
+- `_debit`: reverts **`ListedInMarketplace`** if `marketplace.isListed(tokenId)`; then reverts **`PassportDisputed`** if `passportStatus(tokenId) == DISPUTED` (via minimal status view on `innerToken`).
 - `_buildMsgAndOptions`: embeds `tokenURI(tokenId)` as `abi.encode(string)` compose payload.
-- Live 84532: `VERSION` `1.1.0-rc.1` — address in [I.9.1](#i91-active-deployment-base-sepolia-84532).
+- **Superseded** for Nuclear stacks by **`KarPassportBridgeGateway` `1.3.0-rc.1`** — leave is a single `may(LeaveChain)` question ([§12.6](#126-outbound-guards)); no marketplace/auction/status reads.
 
 ### 7.3 KarPassportONFT721 v1.0.0 (spoke)
 
@@ -550,8 +550,8 @@ Confirmations: **5** both directions — explicit fallback (`confirmations.sourc
 Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridge-wire.ts`](../../scripts/bridge-wire.ts)). Live Nuclear pathway recorded in [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) (July 21, 2026).
 ### 7.5 Bridge flow (step by step)
 
-1. **Preconditions:** Owner on hub; passport **not** marketplace-listed; passport **not** `DISPUTED`; LZ peers wired (testnet↔testnet only; star per §7.1 / §7.6).
-2. **Hub:** User calls ONFT send via `ProxyONFT721Adapter` → `_debit` reverts **`ListedInMarketplace`** then **`PassportDisputed`** (v1.1.0-rc.1); locks NFT in adapter; message carries tokenId + URI compose.
+1. **Preconditions (Nuclear gateway):** Owner on hub; `may(LeaveChain)` true ([§12.6](#126-outbound-guards)); LZ peers wired (testnet↔testnet only; star per §7.1 / §7.6). *(Historical thin-ONFT also refused marketplace-listed and `DISPUTED`.)*
+2. **Hub:** User calls ONFT send via **`KarPassportBridgeGateway`** → `_debit` reverts **`LeaveChainRefused`** when `may(LeaveChain)` is false; locks home NFT / burns foreign rep; message carries tokenId + URI compose. *(Historical `ProxyONFT721Adapter` used `ListedInMarketplace` / `PassportDisputed`.)*
 3. **LayerZero:** Message delivered to spoke endpoint (DVN quorum / confirmations per §7.4 / §7.6).
 4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from compose when present. Spoke ONFT has **no** on-chain `passportStatus` — **UNVERIFIED** is product/UI semantics for a fresh spoke mint (trust not ported), not a written hub status field.
 5. **Return path (end-state, [§I.12.3](#i12-multi-chain-architecture-normative)):** Burn representation on spoke → unlock on home via gateway debit/credit pairing. **On unlock the home row resets to `UNVERIFIED`** (verifier/verifiedAt cleared, `VerificationReset` emitted) and adopts the returned URI (§I.12.5). *Note: the Bridge-1–7 thin ONFT preserved hub status on return; that is superseded — once commerce exists at the destination, preserving trust across a round trip re-attaches verification to a possibly-mutated asset/new owner.*
@@ -699,16 +699,19 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
 9. **`transferUpgradeAuthority(timelock)`** on MarketplaceEscrow.
 10. Deploy **AuctionEscrow** impl + proxy (`initialize(timelock)`); `platformFeeBps` **10** (no wrapped-native ctor arg — claim payouts).
-11. Deploy **KarPassportBridgeGateway** (passport, marketplace proxy, **auctionEscrow**, LZ endpoint, delegate).
+11. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only — no marketplace/auction ctor deps).
 12. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
-13. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
-14. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
+13. **Encumbrance sources (commerce modes):** when FixedPriceConsignment and AscendingConsignment are deployed on the stack, call **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** while passport Ownable is still the deployer (or as the first Timelock ops). **Only then** open consignments. Between deploy and registration the passport can answer LeaveChain `true` while a mode holds an obligation; a fresh deploy has no settlements — harmless by circumstance; registration-before-open makes it harmless by construction.
+14. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
+15. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
 
-After step 13, Timelock48h owns these ops (48h delay — no second purpose-built bond delay):
+**Cutover silence — AuctionEscrow holds:** gateway `1.3.0-rc.1` must **not** go live on a commercial stack that still settles via **AuctionEscrow** unless Ascending is registered **and** AuctionEscrow is retired in the **same** Nuclear wave (§15 step 4). After `AuctionEscrow.settle` the NFT sits with the buyer; without a registered hold source, LeaveChain would be `true`. Marketplace listings remain custody-safe without registration (NFT in escrow).
+
+After step 14, Timelock48h owns these ops (48h delay — no second purpose-built bond delay):
 
 | Contract | Owner-gated ops now behind Timelock48h |
 |----------|----------------------------------------|
-| KarPassport | `setDisputeDeposit`, `rescueExcessEth` (`setBridgeGateway` already consumed one-time) |
+| KarPassport | `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
 | KarProStaking | `setMinStakeNative`, `setStakeToken` |
 
 Marketplace `transferUpgradeAuthority` remains the UUPS handoff (step 9).
@@ -762,7 +765,7 @@ No total-extension cap in Phase A (`BadConfig` on setter bound violations).
 
 **Read live (affect in-flight deals):** `extensionWindow` (`_applyExtension`), `minIncrementBps` (`bid`), `disputeResolutionTimeout` (`releaseFunds` on an open dispute), and `settlementHold` in `claimAbandonedRefund` (abandoned-refund deadline — distinct from the settle snapshot).
 
-Changing a live-read parameter is a governance action that affects deals already in flight. Control is `Timelock48h` plus the emitted config events. Snapshotting these into `SettlementHold` was considered and rejected: the bridge gateway decodes `holds()` positionally through `IAuctionHold`, and the upgrade authority can already replace the implementation outright via UUPS — a struct snapshot would not defend against that adversary.
+Changing a live-read parameter is a governance action that affects deals already in flight. Control is `Timelock48h` plus the emitted config events. Snapshotting these into `SettlementHold` was considered and rejected: the upgrade authority can already replace the implementation outright via UUPS — a struct snapshot would not defend against that adversary.
 
 ### 11.4 Storage
 
@@ -953,7 +956,9 @@ URI is embedded on **every** send (both directions) and written by the receiver:
 
 ### 12.6 Outbound guards
 
-The gateway refuses to send a token that is: marketplace-`isListed`; in an active auction; **under an active auction settlement hold (`AuctionEscrow.holds(tokenId).releaseAt != 0`)**; `DISPUTED`; or already custody-locked here. The settlement-hold guard is mandatory: after `settle` the NFT is free in the buyer's wallet, so `returnPassportAndRefund` (buyer→seller on a refund-resolved dispute, `AuctionEscrow.sol`) would break if the token were bridged away.
+The gateway asks one permission question: **`KarPassport.may(tokenId, LeaveChain)`**. If false (or if a registered source is unanswerable → `SourceUnanswerable`), debit reverts **`LeaveChainRefused`**. The gateway holds **no** marketplace/auction references and does **not** read `passportStatus` (E2/E5).
+
+LeaveChain is refused when: an intrinsic verification challenge is active; a registered FixedPrice live consignment forbids; a registered Ascending unresolved settlement forbids; or a registered source cannot answer (E6). Idle UNVERIFIED passports may leave (verification is not required to travel). MarketplaceEscrow-listed NFTs remain blocked by **custody** until that escrow is retired. **Do not** activate this gateway beside live AuctionEscrow settlement holds without Ascending registration + AuctionEscrow retirement in the same Nuclear wave (see §I.10).
 
 ### 12.7 Bridge entrypoints (gateway-only)
 

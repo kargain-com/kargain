@@ -154,6 +154,30 @@ describe("BondedChallenge (CH1–CH6)", () => {
     );
   });
 
+  it("configure: unconfigured open / zero args / one-shot", async () => {
+    const unconfigured = await viem.deployContract("BondedChallengeUnconfiguredHarness", [BOND]);
+    await assert.rejects(
+      unconfigured.write.open([1n], { account: vChallenger.account, value: BOND }),
+      revertsWith("ChallengeNotConfigured"),
+    );
+    await assert.rejects(
+      unconfigured.write.configure([ZERO, WINDOW_V], { account: vOwner.account }),
+      revertsWith("ZeroForfeitRecipient"),
+    );
+    await assert.rejects(
+      unconfigured.write.configure([rejectPlatform.address, 0n], { account: vOwner.account }),
+      revertsWith("ZeroChallengeWindow"),
+    );
+    await unconfigured.write.configure([rejectPlatform.address, WINDOW_V], {
+      account: vOwner.account,
+    });
+    await assert.rejects(
+      unconfigured.write.configure([rejectPlatform.address, WINDOW_V], { account: vOwner.account }),
+      revertsWith("ChallengeAlreadyConfigured"),
+    );
+    await unconfigured.write.open([2n], { account: vChallenger.account, value: BOND });
+  });
+
   it("judge qualification hook: NotQualifiedJudge before success when toggled", async () => {
     const subject = 50n;
     await verification.write.open([subject], { account: vChallenger.account, value: BOND });

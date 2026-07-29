@@ -6,6 +6,7 @@ import {
   auctionEscrowImplConstructorArgs,
   auctionEscrowProxyConstructorArgs,
   DISPUTE_DEPOSIT,
+  karPassportBridgeGatewayConstructorArgs,
   karPassportConstructorArgs,
   karProStakingConstructorArgs,
   marketplaceImplConstructorArgs,
@@ -14,6 +15,7 @@ import {
   MARKETPLACE_MAX_FEED_STALENESS,
   MARKETPLACE_PRO_FEE_BPS,
 } from "../scripts/lib/verify-constructor-args.ts";
+import { lzEndpointForChain } from "../scripts/lib/chainlink-feeds.ts";
 import type { DeploymentManifest } from "../scripts/lib/load-deployment.ts";
 
 const baseManifest: DeploymentManifest = {
@@ -98,5 +100,24 @@ describe("verify constructor args", () => {
     assert.equal(args[0], baseManifest.auctionEscrowImpl);
     assert.match(String(args[1]), /^0x[a-fA-F0-9]+$/);
     assert.ok(String(args[1]).length > 10);
+  });
+
+  it("builds KarPassportBridgeGateway args (passport, LZ, deployer) only", () => {
+    const args = karPassportBridgeGatewayConstructorArgs(baseManifest);
+    assert.deepEqual(args, [
+      baseManifest.karPassport,
+      lzEndpointForChain(84532),
+      baseManifest.deployer,
+    ]);
+    assert.equal(args.length, 3);
+  });
+
+  it("builds KarPassportBridgeGateway args with manifest layerZeroEndpoint override", () => {
+    const lz = "0x3333333333333333333333333333333333333333" as const;
+    const args = karPassportBridgeGatewayConstructorArgs({
+      ...baseManifest,
+      layerZeroEndpoint: lz,
+    });
+    assert.deepEqual(args, [baseManifest.karPassport, lz, baseManifest.deployer]);
   });
 });

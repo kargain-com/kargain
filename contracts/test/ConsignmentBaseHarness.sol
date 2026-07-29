@@ -9,6 +9,7 @@ import {ConsignmentBase} from "../lib/ConsignmentBase.sol";
  * @notice Minimal concrete base consumer for split / opening / recall / encumbrance tests.
  *
  * @dev Stubs encumbrance by Intent + custody maps. No bidding, HELD window, settlement notes, or BondedChallenge.
+ *      Production init path only: empty ctor + `initialize` → `__ConsignmentBase_init`.
  */
 contract ConsignmentBaseHarness is ConsignmentBase {
     mapping(uint256 tokenId => address) internal owners;
@@ -16,7 +17,14 @@ contract ConsignmentBaseHarness is ConsignmentBase {
     mapping(uint256 tokenId => mapping(IKarPassportEncumbrance.Intent intent => bool)) public mayPermit;
     mapping(uint256 tokenId => address) public custodyHolder;
 
-    constructor(address platformRecipient_, uint256 feeBps_) ConsignmentBase(platformRecipient_, feeBps_) {}
+    function initialize(
+        address platformRecipient_,
+        uint256 feeBps_,
+        address initialOwner_,
+        address guardian_
+    ) external initializer {
+        __ConsignmentBase_init(platformRecipient_, feeBps_, initialOwner_, guardian_);
+    }
 
     receive() external payable {}
 
@@ -48,6 +56,11 @@ contract ConsignmentBaseHarness is ConsignmentBase {
         require(isLiveConsignment(tokenId), "not live");
         require(_consignments[tokenId].agent == address(0), "not direct");
         _consignments[tokenId].floor = floor_;
+    }
+
+    /// @dev Test-only: rewrite live storage fee after open to prove splits use the open-time snapshot.
+    function forceSetPlatformFeeBps(uint16 feeBps_) external {
+        platformFeeBps = feeBps_;
     }
 
     /// @dev RC1 stand-in: live but not OFFERED for recall.

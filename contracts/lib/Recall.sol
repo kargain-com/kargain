@@ -61,4 +61,7 @@ abstract contract Recall {
 
     /// @dev Consumer terminates the consignment and returns the passport to the seller.
     function _onForceRecall(uint256 tokenId) internal virtual;
+
+    /// @dev Future-safe layout under UUPS children. Used: recallRequestedAt mapping = 1; reserve to 50.
+    uint256[49] private __gap;
 }

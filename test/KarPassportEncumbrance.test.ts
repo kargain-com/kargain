@@ -168,6 +168,29 @@ describe("KarPassport encumbrance + verification challenge", () => {
     );
   });
 
+  it("registry: MAX_ENCUMBRANCE_SOURCES=8; ninth rejects; remove frees a slot", async () => {
+    const { viem } = connection;
+    const { passport, admin } = await verified(viem);
+    const max = Number(await passport.read.MAX_ENCUMBRANCE_SOURCES());
+    assert.equal(max, 8);
+    const sources: `0x${string}`[] = [];
+    for (let i = 0; i < max; i++) {
+      const source = await viem.deployContract("MockEncumbranceSource", []);
+      sources.push(source.address);
+      await passport.write.addEncumbranceSource([source.address], { account: admin.account });
+    }
+    assert.equal(await passport.read.encumbranceSourceCount(), BigInt(max));
+    const ninth = await viem.deployContract("MockEncumbranceSource", []);
+    await assert.rejects(
+      passport.write.addEncumbranceSource([ninth.address], { account: admin.account }),
+      revertsWith("TooManyEncumbranceSources"),
+    );
+    await passport.write.removeEncumbranceSource([sources[0]!], { account: admin.account });
+    await passport.write.addEncumbranceSource([ninth.address], { account: admin.account });
+    assert.equal(await passport.read.encumbranceSourceCount(), BigInt(max));
+    assert.equal(await passport.read.isEncumbranceSource([ninth.address]), true);
+  });
+
   it("registry: remove while source would forbid — obligation stops counting", async () => {
     const { viem } = connection;
     const { passport, tokenId, admin } = await verified(viem);

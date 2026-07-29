@@ -37,6 +37,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
 
     /// @notice Window captured into each verification challenge at open (library immutable).
     uint256 public constant DISPUTE_WINDOW = 14 days;
+    uint256 public constant MAX_ENCUMBRANCE_SOURCES = 8;
 
     /// @notice Gas stipend for each registered source `may` probe (E6).
     /// @dev Sized for a correct source with dozens of SLOADs; stops a buggy infinite loop
@@ -127,6 +128,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     error PassportBridgedAway();
     error SourceAlreadyRegistered();
     error SourceNotRegistered();
+    error TooManyEncumbranceSources();
     /// @notice Registered source reverted, returned nothing, returned unreadable data, or exhausted its gas stipend (E6).
     error SourceUnanswerable(address source);
 
@@ -139,20 +141,17 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     /// @param karProStakingAddress_ KarProStaking contract for verifier / judge checks.
     /// @param initialOwner Owner for bond, registry, and ETH rescue parameters.
     /// @param disputeDeposit_ Initial challenge bond in wei (must be non-zero).
-    /// @param platformRecipient_ Immutable forfeit recipient (reject/expire bonds).
+    /// @param platformRecipient_ Forfeit recipient (reject/expire bonds); also configures BondedChallenge.
     constructor(
         address karProStakingAddress_,
         address initialOwner,
         uint256 disputeDeposit_,
         address platformRecipient_
-    )
-        ERC721("KarPassport", "KPPT")
-        Ownable(initialOwner)
-        BondedChallenge(platformRecipient_, DISPUTE_WINDOW)
-    {
+    ) ERC721("KarPassport", "KPPT") Ownable(initialOwner) {
         if (karProStakingAddress_ == address(0)) revert ZeroAddress();
         if (platformRecipient_ == address(0)) revert ZeroAddress();
         if (disputeDeposit_ == 0) revert ZeroDisputeDeposit();
+        _configureBondedChallenge(platformRecipient_, DISPUTE_WINDOW);
         karProStakingAddress = karProStakingAddress_;
         platformRecipient = platformRecipient_;
         tokenIdOffset = uint256(block.chainid) << 128;
@@ -206,6 +205,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     /// @notice Governed registration of an external encumbrance source (E4).
     function addEncumbranceSource(address source) external onlyOwner {
         if (source == address(0)) revert ZeroAddress();
+        if (_encumbranceSources.length >= MAX_ENCUMBRANCE_SOURCES) revert TooManyEncumbranceSources();
         if (_encumbranceSourceIndex[source] != 0) revert SourceAlreadyRegistered();
         _encumbranceSources.push(source);
         _encumbranceSourceIndex[source] = _encumbranceSources.length; // 1-based

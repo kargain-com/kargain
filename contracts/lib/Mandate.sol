@@ -201,4 +201,7 @@ abstract contract Mandate {
     function _setSnapshotFloor(uint256 tokenId, uint128 newFloor) internal virtual;
 
     function _setSnapshotCommissionBps(uint256 tokenId, uint16 newBps) internal virtual;
+
+    /// @dev Future-safe layout under UUPS children. Used: mandates mapping = 1; reserve to 50.
+    uint256[49] private __gap;
 }

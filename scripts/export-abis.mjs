@@ -30,6 +30,16 @@ const contracts = [
       "artifacts/contracts/AuctionEscrow.sol/AuctionEscrow.json",
   },
   {
+    exportName: "FixedPriceConsignment",
+    artifactPath:
+      "artifacts/contracts/FixedPriceConsignment.sol/FixedPriceConsignment.json",
+  },
+  {
+    exportName: "AscendingConsignment",
+    artifactPath:
+      "artifacts/contracts/AscendingConsignment.sol/AscendingConsignment.json",
+  },
+  {
     exportName: "KarPassportBridgeGateway",
     artifactPath:
       "artifacts/contracts/KarPassportBridgeGateway.sol/KarPassportBridgeGateway.json",
