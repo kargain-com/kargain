@@ -21,6 +21,7 @@ import {
 } from "../lib/contracts/abis.generated.js";
 import {
   isCommercialChainId,
+  requireUsdcUsdFeed,
   verifyFeedBytecode,
 } from "./lib/chainlink-feeds.js";
 import {
@@ -214,6 +215,15 @@ function printDryRunCompare() {
     "\nOrdering: proxies → register ×2 → admit USDC ×2 → gateway → mode handoff → passport/staking handoff (structural).",
   );
   console.log(`On-chain open gate: ${ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE}`);
+  console.log("\nFixedPrice USDC/USD feed (P4 — no silent peg):");
+  for (const plan of [base, eth]) {
+    try {
+      requireUsdcUsdFeed(plan.externals.usdcUsdFeed, plan.chainId);
+      console.log(`  ${plan.chainId}: ${plan.externals.usdcUsdFeed} — admit OK`);
+    } catch (err) {
+      console.log(`  ${plan.chainId}: REFUSE admit — ${err instanceof Error ? err.message : err}`);
+    }
+  }
   console.log("Guardian immediate ops (G3 reduce-exposure):");
   for (const op of NUCLEAR_GUARDIAN_IMMEDIATE_OPS) {
     console.log(`  - ${op}`);
@@ -223,7 +233,7 @@ function printDryRunCompare() {
     console.log(`  - ${op}`);
   }
   console.log(
-    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
+    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. FixedPrice requires a non-zero USDC/USD feed (monotonic — cannot clear later). Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
   );
 }
 
@@ -259,6 +269,8 @@ async function runLiveDeploy() {
     await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
     await assertExternalBytecode(publicClient, "usdc", externals.usdc);
     await assertExternalBytecode(publicClient, "layerZeroEndpoint", externals.layerZeroEndpoint);
+    const usdcUsdFeed = requireUsdcUsdFeed(externals.usdcUsdFeed, chainId);
+    await assertExternalBytecode(publicClient, "usdcUsdFeed", usdcUsdFeed);
 
     const [deployer] = await viem.getWalletClients();
     const deployerAddress = getAddress(deployer.account.address);
@@ -384,11 +396,13 @@ async function runLiveDeploy() {
       "AscendingConsignment",
       ascendingProxy.address,
     );
-    const zeroFeed = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-    await writeStep(viem, `FixedPrice.approvePaymentToken(USDC) → ${externals.usdc}`, () =>
-      fixedPrice.write.approvePaymentToken([externals.usdc, zeroFeed], {
-        account: deployer.account,
-      }),
+    await writeStep(
+      viem,
+      `FixedPrice.approvePaymentToken(USDC, usdcUsdFeed) → ${externals.usdc}`,
+      () =>
+        fixedPrice.write.approvePaymentToken([externals.usdc, usdcUsdFeed], {
+          account: deployer.account,
+        }),
     );
     await writeStep(viem, `Ascending.approvePaymentToken(USDC) → ${externals.usdc}`, () =>
       ascending.write.approvePaymentToken([externals.usdc], {
@@ -399,14 +413,18 @@ async function runLiveDeploy() {
     const fpEnabled = Array.isArray(fpCfg)
       ? Boolean(fpCfg[2])
       : Boolean((fpCfg as { enabled: boolean }).enabled);
+    const fpFeed = Array.isArray(fpCfg)
+      ? (fpCfg[0] as string)
+      : String((fpCfg as { feed: string }).feed);
     assertPaymentTokensAdmitted({
       fixedPriceUsdcEnabled: fpEnabled,
       ascendingUsdcEnabled: Boolean(
         await ascending.read.paymentTokenEnabled([externals.usdc]),
       ),
       usdc: externals.usdc,
+      fixedPriceUsdcFeed: fpFeed,
     });
-    console.log("  ✓ USDC admitted on both modes (refusing handoff until this holds)");
+    console.log("  ✓ USDC admitted on both modes (FixedPrice feed non-zero; refusing handoff until this holds)");
 
     const gateway = await deployStep(
       viem,

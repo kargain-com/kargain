@@ -28,7 +28,8 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 |------------|-------------|
 | Mode proxies → `addEncumbranceSource` ×2 → admit USDC → gateway → mode handoff → passport handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run |
 | Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
-| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes |
+| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes **and** FixedPrice USDC feed ≠ 0 |
+| FixedPrice USDC/USD feed present | `requireUsdcUsdFeed` — chain without `CHAINLINK_FEEDS.usdcUsdFeed` **refuses** FixedPrice USDC admit (no silent peg). Base Sepolia (84532) has none today; Eth Sepolia has Chainlink USDC/USD |
 | Open requires live encumbrance source | On-chain `ModeNotEncumbranceSource` in `ConsignmentBase._requireCanOpen` |
 
 ---
@@ -71,7 +72,7 @@ For FixedPrice, Ascending, KarPassport, KarProStaking:
 - `owner()` == Timelock48h
 - Mode `guardian()` == `COMMERCE_GUARDIAN` (≠ Timelock, ≠ deployer)
 - Passport `isEncumbranceSource(fixedPrice)` and `isEncumbranceSource(ascending)` are true
-- Both modes: USDC payment token **enabled** (admitted at construction)
+- Both modes: USDC payment token **enabled** (admitted at construction); FixedPrice `paymentTokens(USDC).feed` **non-zero** (measured USDC/USD)
 - `bridgeGateway()` bound
 
 Prove guardian can `pause()` and `revokePaymentToken(usdc)` (soft-disable); guardian **cannot** `approvePaymentToken` / `unpause` — only Timelock schedule/execute those.
@@ -82,7 +83,7 @@ Initial USDC admission is **already done at deploy**. Use Timelock for later exp
 
 | Target | Example |
 |--------|---------|
-| FixedPrice | `setCurrencyFeed`, `setMaxFeedStaleness`, re-`approvePaymentToken`, `unpause`, `setGuardian`, UUPS |
+| FixedPrice | `setCurrencyFeed`, `setMaxFeedStaleness`, re-`approvePaymentToken` (**must keep or replace feed — cannot clear to zero**), `unpause`, `setGuardian`, UUPS |
 | Ascending | `setAuctionRules`, re-`approvePaymentToken`, `unpause`, `setGuardian`, UUPS |
 | KarPassport | `addEncumbranceSource` / `removeEncumbranceSource` (post-handoff) |
 
@@ -90,10 +91,12 @@ Schedule → wait `getMinDelay()` (48h) → execute.
 
 **Feed freshness:** `setCurrencyFeed` / feed-bearing `approvePaymentToken` run `_validateFeed` at **execute** time. Live Chainlink aggregators stay fresh across 48h. Do not point Timelock ops at a static mock feed without refreshing it before execute.
 
+**Chain without USDC/USD feed:** FixedPrice Nuclear admit **aborts** (`requireUsdcUsdFeed`). Do not pass `address(0)` as a peg. Ascending admit (asset-only) does not need a payment-token feed.
+
 ### 6. Guardian-immediate ops (no delay)
 
 - `pause` / soft-`revokePaymentToken` on either mode
-- Soft-revoke keeps decimals/feed so **in-flight** buy/bid/settle still complete; **new** opens in that asset fail until Timelock re-approves
+- Soft-revoke keeps decimals/feed so **in-flight** buy/bid/settle still complete via the **measured** feed (not a $1 peg); **new** opens in that asset fail until Timelock re-approves with a non-zero feed
 
 ### 7. Cutover app + indexer (after both manifests)
 

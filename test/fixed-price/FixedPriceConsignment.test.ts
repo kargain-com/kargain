@@ -26,6 +26,7 @@ const EIP170_MAX = 24_576;
 const PLATFORM_FEE_BPS = 250n;
 const MAX_STALENESS = 3_600n;
 const ETH_USD_1E8 = 2_000n * 10n ** 8n; // $2000
+const USDC_USD_1E8 = 1n * 10n ** 8n; // $1
 const FIAT_100_USD = 100n * 10n ** 8n; // $100
 
 function deployedBytecodeBytes(artifactPath: string, name: string): number {
@@ -122,6 +123,16 @@ describe("FixedPriceConsignment", () => {
     await passport.write.approve([mode.address, tokenId], { account: holder.account });
   }
 
+  /** Admit ERC-20 with a measured USD feed (P4 — no silent peg for fiat). */
+  async function admitWithUsdFeed(
+    token: `0x${string}`,
+    answer: bigint = USDC_USD_1E8,
+  ): Promise<DeployedContract> {
+    const feed = await viem.deployContract("MockV3Aggregator", [8, answer]);
+    await mode.write.approvePaymentToken([token, feed.address], { account: owner.account });
+    return feed;
+  }
+
   beforeEach(async () => {
     await deployStack(false);
   });
@@ -202,7 +213,7 @@ describe("FixedPriceConsignment", () => {
 
   it("fiat USD → ERC-20@6: quote and seller proceeds use admission decimals", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await admitWithUsdFeed(usdc.address);
 
     await mintAndApprove(TOKEN);
     await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
@@ -210,7 +221,7 @@ describe("FixedPriceConsignment", () => {
     });
 
     const quote = (await mode.read.quoteBuy([TOKEN])) as bigint;
-    // $100 pegged @ 6 decimals → 100e6
+    // $100 @ $1 feed @ 6 decimals → 100e6
     assert.equal(quote, 100n * 10n ** 6n);
 
     await usdc.write.mint([buyer.account.address, quote]);
@@ -240,7 +251,7 @@ describe("FixedPriceConsignment", () => {
 
   it("fiat USD → ERC-20@18: quote and seller proceeds use admission decimals", async () => {
     const dai = await viem.deployContract("MockERC20Decimals", ["DAI", "DAI", 18]);
-    await mode.write.approvePaymentToken([dai.address, ZERO], { account: owner.account });
+    await admitWithUsdFeed(dai.address);
 
     await mintAndApprove(TOKEN);
     await mode.write.openDirect([TOKEN, DENOM_USD, dai.address, FIAT_100_USD], {
@@ -344,7 +355,7 @@ describe("FixedPriceConsignment", () => {
 
   it("agented margin fiat buy: floor converts with same rate; agent earns remainder", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await admitWithUsdFeed(usdc.address);
 
     const floor = 80n * 10n ** 8n; // $80
     const price = FIAT_100_USD; // $100
@@ -429,7 +440,7 @@ describe("FixedPriceConsignment", () => {
 
   it("external: agent may confirm; stranger cannot; empty buyer refused", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await admitWithUsdFeed(usdc.address);
     await mintAndApprove(TOKEN);
     await mode.write.grant(
       [TOKEN, agent.account.address, 0n, usdc.address, DENOM_USD, 50n * 10n ** 8n, COMP_MARGIN],
@@ -708,10 +719,12 @@ describe("FixedPriceConsignment", () => {
 
   it("G3 revoke: guardian can revoke, cannot approve; mid-sale buy still settles", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    const usdcFeed = await admitWithUsdFeed(usdc.address);
 
     await assert.rejects(
-      mode.write.approvePaymentToken([usdc.address, ZERO], { account: guardian.account }),
+      mode.write.approvePaymentToken([usdc.address, usdcFeed.address], {
+        account: guardian.account,
+      }),
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await assert.rejects(
@@ -749,8 +762,10 @@ describe("FixedPriceConsignment", () => {
       revertsWith("PaymentTokenNotSupported"),
     );
 
-    // Owner can revoke and re-approve.
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    // Owner can re-approve with same feed (monotonic) and revoke.
+    await mode.write.approvePaymentToken([usdc.address, usdcFeed.address], {
+      account: owner.account,
+    });
     await mode.write.revokePaymentToken([usdc.address], { account: owner.account });
     const afterOwnerRevoke = (await mode.read.paymentTokens([usdc.address])) as
       | { enabled: boolean }
@@ -1095,26 +1110,94 @@ describe("FixedPriceConsignment", () => {
     assert.equal(await paymentTokenEnabled(tok.address), true);
   });
 
-  it("zero feed: USD-stable peg — $100 fiat quotes 100e6 USDC without oracle", async () => {
+  // ---- P4: measured feed for fiat; feedless asset-only; monotonic feed ----
+
+  it("P4: fiat open in feedless token refused; asset denom opens and settles", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
     await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
-    const cfg = (await mode.read.paymentTokens([usdc.address])) as {
-      feed: string;
-      decimals: number;
-      enabled: boolean;
-    };
-    const feedAddr =
-      typeof cfg === "object" && cfg !== null && "feed" in cfg
-        ? (cfg.feed as string)
-        : ((cfg as unknown as readonly [string, number, boolean])[0] as string);
-    assert.equal(getAddress(feedAddr), getAddress(ZERO));
     assert.equal(await paymentTokenEnabled(usdc.address), true);
+
+    await mintAndApprove(TOKEN);
+    await assert.rejects(
+      mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
+        account: owner.account,
+      }),
+      revertsWith("PaymentTokenFeedRequired"),
+    );
+
+    const assetPrice = 500n * 10n ** 6n;
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, usdc.address, assetPrice], {
+      account: owner.account,
+    });
+    assert.equal(await mode.read.quoteBuy([TOKEN]), assetPrice);
+    await usdc.write.mint([buyer.account.address, assetPrice]);
+    await usdc.write.approve([mode.address, assetPrice], { account: buyer.account });
+    await mode.write.buy([TOKEN], { account: buyer.account });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 2);
+    assert.equal(
+      ((await passport.read.ownerOf([TOKEN])) as string).toLowerCase(),
+      buyer.account.address.toLowerCase(),
+    );
+  });
+
+  it("P4: fiat with fed token quotes via oracle; clearing feed refused; open lot not repriced", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    const usdcFeed = await admitWithUsdFeed(usdc.address);
 
     await mintAndApprove(TOKEN);
     await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
       account: owner.account,
     });
-    const quote = (await mode.read.quoteBuy([TOKEN])) as bigint;
-    assert.equal(quote, 100n * 10n ** 6n);
+    assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+
+    await assert.rejects(
+      mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account }),
+      revertsWith("CannotClearPaymentTokenFeed"),
+    );
+    const cfg = (await mode.read.paymentTokens([usdc.address])) as
+      | { feed: string }
+      | readonly [string, number, boolean];
+    const feedAddr = Array.isArray(cfg) ? cfg[0] : cfg.feed;
+    assert.equal(getAddress(feedAddr as string), getAddress(usdcFeed.address));
+    assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+  });
+
+  it("P4: quote refuses when payment-token feed cleared (no parity) or unusable", async () => {
+    await deployStack(true); // harness can force-clear feed after open
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    const usdcFeed = await admitWithUsdFeed(usdc.address);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
+      account: owner.account,
+    });
+    assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+
+    await usdcFeed.write.setAnswer([0n]);
+    await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("BadOracleAnswer"));
+    await usdcFeed.write.setAnswer([USDC_USD_1E8]);
+    assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+
+    await increaseTime(publicClient, MAX_STALENESS + 1n);
+    await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("StalePrice"));
+    await usdcFeed.write.setAnswer([USDC_USD_1E8]);
+    assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+
+    await mode.write.forceSetPaymentTokenFeed([usdc.address, ZERO]);
+    await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("PaymentTokenFeedRequired"));
+  });
+
+  it("P4: source has no USD-stable parity branch", () => {
+    const src = readFileSync(
+      path.join(repoRoot, "contracts/FixedPriceConsignment.sol"),
+      "utf8",
+    );
+    assert.ok(!src.includes("USD-stable"), "NatSpec must not describe USD-stable peg");
+    assert.ok(
+      !src.includes("(usd1e8 * scale) / _FIAT_SCALE"),
+      "parity math branch must be gone",
+    );
+    assert.ok(src.includes("PaymentTokenFeedRequired"));
+    assert.ok(src.includes("CannotClearPaymentTokenFeed"));
   });
 });

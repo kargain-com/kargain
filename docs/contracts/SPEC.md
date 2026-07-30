@@ -189,7 +189,7 @@ FixedPriceConsignment `VERSION` **`2.2.0-rc.1`**. AscendingConsignment `VERSION`
 
 **Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `protectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
-**EIP-170:** Ascending deployed bytecode **24309** (limit 24576, headroom **267**); FixedPrice **17847** (headroom **6729**). Combined mode headroom **6996**. Accountability event surface unchanged.
+**EIP-170:** Ascending deployed bytecode **24324** (limit 24576, headroom **252**); FixedPrice **18070** (headroom **6506**). Combined mode headroom **6758**. Accountability event surface unchanged.
 
 **Open gate:** `_requireCanOpen` refuses unless `IEncumbranceRegistry(passport).isEncumbranceSource(address(this))` — `ModeNotEncumbranceSource`. Registration is not answered inside `may` (previews stay bool / `SourceUnanswerable` only).
 
@@ -366,7 +366,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 **Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). VERSION amend-in-place `2.2.0-rc.1`.
 
-**FixedPrice payment-token feed:** `approvePaymentToken(token, feed)` with `feed == address(0)` means the token is treated as **USD-stable** — fiat amounts convert as `(usd1e8 × 10^decimals) / 1e8` with no Chainlink read. A non-zero `feed` must pass admit-time `_validateFeed` (freshness included) and is read again at quote/buy. Nuclear deploy admits USDC with zero feed for this peg.
+**FixedPrice payment-token feed (P4):** `approvePaymentToken(token, feed)` with `feed == address(0)` admits the token for **asset-denominated sales only** (seller names token units; no conversion). Fiat + ERC-20 opens require a non-zero feed (`PaymentTokenFeedRequired` at open and again in `_usdToTokenAmount` — no USD-stable parity). Once a non-zero feed is set it cannot be cleared by re-admission (`CannotClearPaymentTokenFeed`). Soft-revoke keeps decimals/feed so in-flight fiat quotes still resolve via the measured feed. Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAINLINK_FEEDS.usdcUsdFeed`; if that entry is zero, admit is refused (no silent peg).
 
 **Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
 
@@ -608,7 +608,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 6. Deploy **FixedPriceConsignment** impl + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`; **USD-only** currency registry at init (native USD feed).
 7. Deploy **AscendingConsignment** impl + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`.
 8. **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** on KarPassport while Ownable is still deployer — **deploy scripts abort if `isEncumbranceSource` is false** before gateway. On-chain `open*` also refuses unless the mode is a live source (`ModeNotEncumbranceSource`).
-9. **`approvePaymentToken`** on both modes while deployer still owns them (FixedPrice: USDC + `address(0)` feed for USD-stable; Ascending: USDC). Scripts abort if admission read-back fails. **Post-handoff** approve / `setCurrencyFeed` still go through Timelock48h — `_validateFeed` runs at **execute** time (live Chainlink stays fresh across the delay).
+9. **`approvePaymentToken`** on both modes while deployer still owns them (FixedPrice: USDC + **non-zero** `CHAINLINK_FEEDS.usdcUsdFeed`; Ascending: USDC). Scripts **abort** if `usdcUsdFeed` is zero or admission read-back fails (no silent USD peg). **Post-handoff** approve / `setCurrencyFeed` still go through Timelock48h — `_validateFeed` runs at **execute** time (live Chainlink stays fresh across the delay). Re-admission cannot clear a FixedPrice payment-token feed once set.
 10. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only).
 11. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
 12. **Mode ownership handoff:** `FixedPrice.transferOwnership(timelock)` then `Ascending.transferOwnership(timelock)` — scripts abort if owners ≠ Timelock.

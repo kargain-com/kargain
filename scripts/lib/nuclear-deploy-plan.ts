@@ -68,6 +68,8 @@ export type NuclearDeployPlan = {
   /** Chain-specific externals — only from verified tables. */
   externals: {
     usdc: `0x${string}`;
+    /** FixedPrice payment-token feed; zero → refuse admit (no silent peg). */
+    usdcUsdFeed: `0x${string}`;
     nativeUsdFeed: `0x${string}`;
     layerZeroEndpoint: `0x${string}`;
   };
@@ -98,6 +100,7 @@ export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
     },
     externals: {
       usdc: getAddress(feedConfig.usdc),
+      usdcUsdFeed: feedConfig.usdcUsdFeed,
       nativeUsdFeed: getAddress(feedConfig.nativeUsdFeed),
       layerZeroEndpoint: lzEndpointForChain(chainId),
     },
@@ -133,6 +136,7 @@ export function externalsMatchTables(plan: NuclearDeployPlan): boolean {
   const feeds = CHAINLINK_FEEDS[chainId];
   return (
     externals.usdc.toLowerCase() === feeds.usdc.toLowerCase() &&
+    externals.usdcUsdFeed.toLowerCase() === feeds.usdcUsdFeed.toLowerCase() &&
     externals.nativeUsdFeed.toLowerCase() === feeds.nativeUsdFeed.toLowerCase() &&
     externals.layerZeroEndpoint.toLowerCase() ===
       LZ_ENDPOINT_V2_BY_CHAIN[chainId].toLowerCase()
@@ -165,6 +169,7 @@ export function formatNuclearParityTable(
     ["platformRecipient", base.params.platformRecipient, eth.params.platformRecipient],
     ["tokenIdOffset", base.tokenIdOffset.toString(), eth.tokenIdOffset.toString()],
     ["usdc", base.externals.usdc, eth.externals.usdc],
+    ["usdcUsdFeed", base.externals.usdcUsdFeed, eth.externals.usdcUsdFeed],
     ["nativeUsdFeed", base.externals.nativeUsdFeed, eth.externals.nativeUsdFeed],
     ["layerZeroEndpoint", base.externals.layerZeroEndpoint, eth.externals.layerZeroEndpoint],
   ];

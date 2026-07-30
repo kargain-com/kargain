@@ -3806,6 +3806,11 @@ export const FixedPriceConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "CannotClearPaymentTokenFeed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "CannotRaiseCommission",
     "type": "error"
   },
@@ -4005,6 +4010,11 @@ export const FixedPriceConsignmentAbi = [
       }
     ],
     "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PaymentTokenFeedRequired",
     "type": "error"
   },
   {

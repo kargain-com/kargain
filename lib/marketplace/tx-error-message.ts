@@ -79,6 +79,10 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   InvalidFeed: "Currency feed address is invalid.",
   InvalidFeedDecimals: "Currency feed decimals are invalid.",
   PaymentTokenNotSupported: "This payment token is not supported.",
+  PaymentTokenFeedRequired:
+    "Fiat-priced sales in this token need a payment-token price feed.",
+  CannotClearPaymentTokenFeed:
+    "A payment-token price feed cannot be cleared once set.",
   DirectEthNotAccepted: "Send ETH only through the supported payable functions.",
   AuctionNotEnded: "The auction has not ended yet.",
   BadDuration: "Auction duration is outside the allowed range.",

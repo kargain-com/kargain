@@ -9,6 +9,11 @@ export type ChainFeedConfig = {
   chainId: number;
   nativeUsdFeed: `0x${string}`;
   usdc: `0x${string}`;
+  /**
+   * Chainlink USDC/USD aggregator for FixedPrice fiat conversion.
+   * `0x0…0` means none — Nuclear FixedPrice USDC admit must abort (no silent peg).
+   */
+  usdcUsdFeed: `0x${string}`;
   currencies: CurrencyFeedEntry[];
 };
 
@@ -18,12 +23,15 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
     chainId: 84532,
     nativeUsdFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
     usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    // No Chainlink USDC/USD aggregator on Base Sepolia (verified 2026-07-30).
+    usdcUsdFeed: "0x0000000000000000000000000000000000000000",
     currencies: [{ code: "USD", feed: "0x0000000000000000000000000000000000000000" }],
   },
   11155111: {
     chainId: 11155111,
     nativeUsdFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
     usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    usdcUsdFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
     currencies: [
       { code: "USD", feed: "0x0000000000000000000000000000000000000000" },
       { code: "EUR", feed: "0x1a81afB8146aeFfCFc5E50e8479e826E7D55b910" },
@@ -35,12 +43,15 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
     chainId: 80002,
     nativeUsdFeed: "0x001382149eBa3441043c1c66972b4772963f5D43",
     usdc: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+    usdcUsdFeed: "0x0000000000000000000000000000000000000000",
     currencies: [{ code: "USD", feed: "0x0000000000000000000000000000000000000000" }],
   },
   8453: {
     chainId: 8453,
     nativeUsdFeed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    // Commit only after RPC bytecode verify of a live USDC/USD aggregator.
+    usdcUsdFeed: "0x0000000000000000000000000000000000000000",
     currencies: [
       { code: "USD", feed: "0x0000000000000000000000000000000000000000" },
       { code: "EUR", feed: "0xc91D87E81faB8f93699ECf7Ee9B44D11e1D53F0F" },
@@ -114,13 +125,31 @@ export async function filterLiveFeeds(
 export function getChainFeedConfig(chainId: number): ChainFeedConfig {
   const config = CHAINLINK_FEEDS[chainId];
   if (!config) throw new Error(`No Chainlink feed map for chainId ${chainId}`);
+  const zero = "0x0000000000000000000000000000000000000000";
   return {
     ...config,
     nativeUsdFeed: getAddress(config.nativeUsdFeed),
     usdc: getAddress(config.usdc),
+    usdcUsdFeed:
+      config.usdcUsdFeed === zero ? zero : getAddress(config.usdcUsdFeed),
     currencies: config.currencies.map((c) => ({
       ...c,
-      feed: c.feed === "0x0000000000000000000000000000000000000000" ? c.feed : getAddress(c.feed),
+      feed: c.feed === zero ? c.feed : getAddress(c.feed),
     })),
   };
+}
+
+const ZERO_FEED = "0x0000000000000000000000000000000000000000" as const;
+
+/** Nuclear FixedPrice USDC admit — refuse silent USD peg when no aggregator is configured. */
+export function requireUsdcUsdFeed(
+  usdcUsdFeed: `0x${string}`,
+  chainId: number,
+): `0x${string}` {
+  if (usdcUsdFeed.toLowerCase() === ZERO_FEED) {
+    throw new Error(
+      `FixedPrice USDC admit requires a USDC/USD Chainlink feed on chain ${chainId}; none configured — refusing silent peg`,
+    );
+  }
+  return getAddress(usdcUsdFeed);
 }

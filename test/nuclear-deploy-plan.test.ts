@@ -76,6 +76,10 @@ describe("nuclear deploy plan", () => {
 
     assert.equal(base.externals.usdc.toLowerCase(), CHAINLINK_FEEDS[84532].usdc.toLowerCase());
     assert.equal(
+      base.externals.usdcUsdFeed.toLowerCase(),
+      CHAINLINK_FEEDS[84532].usdcUsdFeed.toLowerCase(),
+    );
+    assert.equal(
       base.externals.nativeUsdFeed.toLowerCase(),
       CHAINLINK_FEEDS[84532].nativeUsdFeed.toLowerCase(),
     );
@@ -86,6 +90,10 @@ describe("nuclear deploy plan", () => {
 
     assert.equal(eth.externals.usdc.toLowerCase(), CHAINLINK_FEEDS[11155111].usdc.toLowerCase());
     assert.equal(
+      eth.externals.usdcUsdFeed.toLowerCase(),
+      CHAINLINK_FEEDS[11155111].usdcUsdFeed.toLowerCase(),
+    );
+    assert.equal(
       eth.externals.nativeUsdFeed.toLowerCase(),
       CHAINLINK_FEEDS[11155111].nativeUsdFeed.toLowerCase(),
     );
@@ -95,6 +103,15 @@ describe("nuclear deploy plan", () => {
     );
 
     assert.notEqual(base.externals.usdc.toLowerCase(), eth.externals.usdc.toLowerCase());
+    // 84532 has no USDC/USD feed; Eth Sepolia does — FixedPrice admit refuse vs OK.
+    assert.equal(
+      base.externals.usdcUsdFeed,
+      "0x0000000000000000000000000000000000000000",
+    );
+    assert.notEqual(
+      eth.externals.usdcUsdFeed,
+      "0x0000000000000000000000000000000000000000",
+    );
   });
 
   it("parity table reports identical shared parameters", () => {

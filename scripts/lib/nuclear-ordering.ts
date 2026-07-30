@@ -142,6 +142,8 @@ export function assertPaymentTokensAdmitted(input: {
   fixedPriceUsdcEnabled: boolean;
   ascendingUsdcEnabled: boolean;
   usdc: string;
+  /** FixedPrice payment-token feed; required non-zero for Nuclear USDC. */
+  fixedPriceUsdcFeed?: string;
 }): void {
   if (!input.fixedPriceUsdcEnabled) {
     throw new Error(
@@ -152,6 +154,14 @@ export function assertPaymentTokensAdmitted(input: {
     throw new Error(
       `Ascending payment token not admitted for ${input.usdc} — refusing mode ownership handoff`,
     );
+  }
+  if (input.fixedPriceUsdcFeed !== undefined) {
+    const zero = "0x0000000000000000000000000000000000000000";
+    if (input.fixedPriceUsdcFeed.toLowerCase() === zero) {
+      throw new Error(
+        `FixedPrice USDC feed is zero for ${input.usdc} — refusing silent peg / mode ownership handoff`,
+      );
+    }
   }
 }
 

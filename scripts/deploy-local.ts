@@ -100,10 +100,11 @@ async function main() {
     console.log("Encumbrance sources registered.");
 
     console.log("Admitting USDC on both modes…");
-    const zeroFeed = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-    await fixedPrice.mode.write.approvePaymentToken([stack.usdc.address, zeroFeed], {
-      account: stack.admin.account,
-    });
+    const usdcUsdFeed = await viem.deployContract("MockV3Aggregator", [8, 10n ** 8n]);
+    await fixedPrice.mode.write.approvePaymentToken(
+      [stack.usdc.address, usdcUsdFeed.address],
+      { account: stack.admin.account },
+    );
     await ascending.mode.write.approvePaymentToken([stack.usdc.address], {
       account: stack.admin.account,
     });

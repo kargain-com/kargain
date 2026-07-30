@@ -20,4 +20,9 @@ contract FixedPriceConsignmentHarness is FixedPriceConsignment {
     function forceSetPlatformFeeBps(uint16 feeBps_) external {
         platformFeeBps = feeBps_;
     }
+
+    /// @dev Test-only: clear payment-token feed after open to prove quote refuses parity (P4).
+    function forceSetPaymentTokenFeed(address token, address feed) external {
+        paymentTokens[token].feed = feed;
+    }
 }

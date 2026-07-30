@@ -110,6 +110,34 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     executedOps.push(label);
   }
 
+  /** Timelock approve that refreshes the mock USDC/USD feed after the 48h delay (P4). */
+  async function viaTimelockApproveUsdc(label: string) {
+    const { networkHelpers } = connection;
+    const data = encodeFunctionData({
+      abi: FixedPriceConsignmentAbi,
+      functionName: "approvePaymentToken",
+      args: [stack.usdc.address, stack.usdcUsdFeed.address],
+    });
+    const op = await buildTimelockOp({
+      timelock: asTimelock(stack.timelock),
+      target: stack.fixedPrice.address,
+      data,
+      saltLabel: `nuclear-rehearsal:${label}:${Date.now()}:${Math.random()}`,
+    });
+    await stack.timelock.write.schedule(
+      [op.target, op.value, op.data, op.predecessor, op.salt, op.delay],
+      { account: stack.deployer.account },
+    );
+    await networkHelpers.time.increase(Number(op.delay));
+    await networkHelpers.mine();
+    await stack.usdcUsdFeed.write.setAnswer([10n ** 8n]);
+    await stack.timelock.write.execute(
+      [op.target, op.value, op.data, op.predecessor, op.salt],
+      { account: stack.deployer.account },
+    );
+    executedOps.push(label);
+  }
+
   before(async () => {
     connection = await hardhat.network.connect();
     stack = await deployNuclearRehearsalStack(connection.viem);
@@ -252,15 +280,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
   });
 
   it("Timelock: FixedPrice approve/revoke token, currency feed, staleness, guardian", async () => {
-    await viaTimelock(
-      "FixedPrice.approvePaymentToken",
-      stack.fixedPrice.address,
-      encodeFunctionData({
-        abi: FixedPriceConsignmentAbi,
-        functionName: "approvePaymentToken",
-        args: [stack.usdc.address, ZERO],
-      }),
-    );
+    await viaTimelockApproveUsdc("FixedPrice.approvePaymentToken");
     const cfg = await stack.fixedPrice.read.paymentTokens([stack.usdc.address]);
     assert.equal(paymentEnabled(cfg), true);
 
@@ -326,15 +346,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     assert.equal(paymentEnabled(after), false);
 
     // Re-approve for product completeness of later commerce (not required by this it).
-    await viaTimelock(
-      "FixedPrice.approvePaymentToken(re)",
-      stack.fixedPrice.address,
-      encodeFunctionData({
-        abi: FixedPriceConsignmentAbi,
-        functionName: "approvePaymentToken",
-        args: [stack.usdc.address, ZERO],
-      }),
-    );
+    await viaTimelockApproveUsdc("FixedPrice.approvePaymentToken(re)");
 
     const nextGuardian = stack.stranger.account.address;
     await viaTimelock(
@@ -577,21 +589,14 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       false,
     );
     await assert.rejects(
-      stack.fixedPrice.write.approvePaymentToken([stack.usdc.address, ZERO], {
-        account: stack.guardian.account,
-      }),
+      stack.fixedPrice.write.approvePaymentToken(
+        [stack.usdc.address, stack.usdcUsdFeed.address],
+        { account: stack.guardian.account },
+      ),
       revertsWith("OwnableUnauthorizedAccount"),
     );
-    // Restore via Timelock (owner).
-    await viaTimelock(
-      "FixedPrice.approvePaymentToken(guardian-restore)",
-      stack.fixedPrice.address,
-      encodeFunctionData({
-        abi: FixedPriceConsignmentAbi,
-        functionName: "approvePaymentToken",
-        args: [stack.usdc.address, ZERO],
-      }),
-    );
+    // Restore via Timelock (owner) — keep measured feed (P4 monotonic).
+    await viaTimelockApproveUsdc("FixedPrice.approvePaymentToken(guardian-restore)");
 
     // Unregistered mode cannot open (bytecode gate).
     const mock = await connection.viem.deployContract("MockEncumbranceSource", []);

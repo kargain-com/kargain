@@ -54,6 +54,10 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     error BadOracleAnswer();
     error EmptySettlementNote();
     error PaymentTokenNotSupported();
+    /// @dev Fiat + ERC-20 requires a measured payment-token feed (open and quote/buy).
+    error PaymentTokenFeedRequired();
+    /// @dev Re-admission cannot clear a non-zero payment-token feed (monotonic).
+    error CannotClearPaymentTokenFeed();
     error ZeroFeedStaleness();
     error InvalidFeed();
     error InvalidFeedDecimals();
@@ -99,13 +103,17 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
 
     /// @notice Admit an ERC-20 for fixed-price settlement.
     /// @param token Conforming ERC-20 with readable `decimals` (EOA / broken decimals refused).
-    /// @param feed Chainlink USD aggregator for the token, or `address(0)` for a **USD-stable peg**:
-    ///             fiat 1e8 units convert as `(usd1e8 * 10^decimals) / 1e8` with no oracle read.
+    /// @param feed Chainlink USD aggregator, or `address(0)` for **asset-denominated sales only**
+    ///             (seller names token amount; no conversion). Fiat opens require a non-zero feed.
     ///             Non-zero feeds must pass `_validateFeed` (code, 8 decimals, positive answer, fresh).
+    ///             Once a non-zero feed is set it cannot be cleared by re-admission (monotonic).
     function approvePaymentToken(address token, address feed) external onlyOwner {
         if (token == address(0)) revert ZeroAddress();
         Erc20Admission.requireConforming(token);
         uint8 decimals_ = Erc20Admission.requireDecimals(token);
+        if (paymentTokens[token].feed != address(0) && feed == address(0)) {
+            revert CannotClearPaymentTokenFeed();
+        }
         if (feed != address(0)) _validateFeed(feed);
         paymentTokens[token] = PaymentTokenConfig({feed: feed, decimals: decimals_, enabled: true});
         emit PaymentTokenApproved(token, feed, decimals_);
@@ -251,10 +259,16 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     function _requireModeOpen(
         uint256, /*tokenId*/
         address, /*runner*/
-        Denomination memory, /*denomination*/
+        Denomination memory denomination,
         address asset
     ) internal view override {
         if (asset != address(0) && !paymentTokens[asset].enabled) revert PaymentTokenNotSupported();
+        if (
+            denomination.kind == DenominationKind.Fiat && asset != address(0)
+                && paymentTokens[asset].feed == address(0)
+        ) {
+            revert PaymentTokenFeedRequired();
+        }
     }
 
     function _takeCustody(uint256 tokenId, address from) internal override {
@@ -310,12 +324,10 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         return (usd1e8 * 1e18) / uint256(px);
     }
 
-    /// @dev `cfg.feed == address(0)` → USD-stable peg (no Chainlink). Otherwise quote via feed / 1e8.
+    /// @dev Fiat ERC-20 conversion requires a measured feed (P4). No parity assumption.
     function _usdToTokenAmount(uint256 usd1e8, PaymentTokenConfig memory cfg) private view returns (uint256) {
+        if (cfg.feed == address(0)) revert PaymentTokenFeedRequired();
         uint256 scale = 10 ** uint256(cfg.decimals);
-        if (cfg.feed == address(0)) {
-            return (usd1e8 * scale) / _FIAT_SCALE;
-        }
         (, int256 px,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
         _checkFeedFresh(upd);
         if (px <= 0) revert BadOracleAnswer();

@@ -48,8 +48,6 @@ const endpointArtifact = JSON.parse(readFileSync(endpointArtifactPath, "utf8")) 
   bytecode: Hex;
 };
 
-const ZERO = "0x0000000000000000000000000000000000000000" as const;
-
 /** Local EndpointV2Mock eid (arbitrary; rehearsal never sends messages). */
 export const REHEARSAL_LZ_EID = 1;
 
@@ -67,6 +65,8 @@ export type NuclearRehearsalStack = {
   staking: DeployedContract;
   proPass: DeployedContract;
   usdc: DeployedContract;
+  /** MockV3Aggregator @ $1 — FixedPrice USDC feed (P4). */
+  usdcUsdFeed: DeployedContract;
   nativeFeed: DeployedContract;
   timelock: DeployedContract;
   fixedPrice: DeployedContract;
@@ -167,7 +167,11 @@ export async function deployNuclearRehearsalStack(
     ascending: asc.proxy.address,
   });
 
-  await fp.mode.write.approvePaymentToken([usdc.address, ZERO], {
+  const usdcUsdFeed = await viem.deployContract("MockV3Aggregator", [
+    8,
+    10n ** 8n, // $1
+  ]);
+  await fp.mode.write.approvePaymentToken([usdc.address, usdcUsdFeed.address], {
     account: deployer.account,
   });
   await asc.mode.write.approvePaymentToken([usdc.address], {
@@ -181,6 +185,7 @@ export async function deployNuclearRehearsalStack(
       await asc.mode.read.paymentTokenEnabled([usdc.address]),
     ),
     usdc: usdc.address,
+    fixedPriceUsdcFeed: usdcUsdFeed.address,
   });
 
   const endpoint = await deployEndpointMock(viem, deployer);
@@ -214,6 +219,7 @@ export async function deployNuclearRehearsalStack(
     staking,
     proPass,
     usdc,
+    usdcUsdFeed,
     nativeFeed,
     timelock,
     fixedPrice: fp.mode,
