@@ -11,9 +11,18 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
+import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
+import {
+  ASCENDING_RESERVE_HELP,
+  ASCENDING_RESERVE_INTRO,
+} from "@/lib/auction/ascending-public-claims";
+import {
+  durationBoundsErrorMessage,
+  durationDayOptions,
+} from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
 import {
@@ -41,9 +50,6 @@ type Props = {
   isActiveVerifier: boolean;
 };
 
-const THREE_DAYS = 3 * 24 * 60 * 60;
-const SEVEN_DAYS = 7 * 24 * 60 * 60;
-
 export function CreateAuctionPanel({
   chainId,
   tokenId,
@@ -61,7 +67,7 @@ export function CreateAuctionPanel({
   const [durationDays, setDurationDays] = useState(3);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
   const usdc = usdcAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
@@ -70,32 +76,40 @@ export function CreateAuctionPanel({
     mode: "ascending",
     chainId,
   });
+  const { rules: auctionRules } = useAscendingAuctionRules({ chainId });
+  const durationOptions = auctionRules
+    ? durationDayOptions(auctionRules.minDuration, auctionRules.maxDuration)
+    : [];
+  const selectedDurationDays =
+    durationOptions.length > 0 && !durationOptions.includes(durationDays)
+      ? durationOptions[0]!
+      : durationDays;
 
   const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
     address: passport,
     abi: KarPassportAbi,
     functionName: "isApprovedForAll",
-    args: address && escrow ? [address, escrow] : undefined,
+    args: address && mode ? [address, mode] : undefined,
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(address && passport && escrow) },
+    query: { enabled: Boolean(address && passport && mode) },
   });
 
   const { data: unresolvedSettlement } = useReadContract({
-    address: escrow,
+    address: mode,
     abi: AscendingConsignmentAbi,
     functionName: "hasUnresolvedSettlement",
     args: [BigInt(tokenId)],
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(escrow && tokenId) },
+    query: { enabled: Boolean(mode && tokenId) },
   });
 
   const { data: protectionEndsAt } = useReadContract({
-    address: escrow,
+    address: mode,
     abi: AscendingConsignmentAbi,
     functionName: "holdProtectionEndsAt",
     args: [BigInt(tokenId)],
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(escrow && unresolvedSettlement === true) },
+    query: { enabled: Boolean(mode && unresolvedSettlement === true) },
   });
 
   const settlementPending = unresolvedSettlement === true;
@@ -118,17 +132,17 @@ export function CreateAuctionPanel({
     isOwner &&
     isActiveVerifier &&
     canOpen &&
-    Boolean(escrow && passport);
+    Boolean(mode && passport);
 
   if (!canShow) return null;
 
   async function ensureApproval() {
-    if (!passport || !escrow || approvedForAll) return;
+    if (!passport || !mode || approvedForAll) return;
     const hash = await writeContractAsync({
       address: passport,
       abi: KarPassportAbi,
       functionName: "setApprovalForAll",
-      args: [escrow, true],
+      args: [mode, true],
       chainId: wagmiChainId(chainId),
     });
     await awaitReceipt(hash);
@@ -137,7 +151,7 @@ export function CreateAuctionPanel({
 
   async function onCreate() {
     setFormError(null);
-    if (!escrow) return;
+    if (!mode) return;
     if (modePaused === true) {
       setFormError(commercePausedAnnouncementForMode("ascending"));
       return;
@@ -149,9 +163,21 @@ export function CreateAuctionPanel({
       return;
     }
 
-    const durationSec = durationDays * 24 * 60 * 60;
-    if (durationSec < THREE_DAYS || durationSec > SEVEN_DAYS) {
-      setFormError("Duration must be between 3 and 7 days.");
+    if (!auctionRules) {
+      setFormError("Loading auction rules…");
+      return;
+    }
+    const durationSec = selectedDurationDays * 24 * 60 * 60;
+    if (
+      durationSec < auctionRules.minDuration ||
+      durationSec > auctionRules.maxDuration
+    ) {
+      setFormError(
+        durationBoundsErrorMessage(
+          auctionRules.minDuration,
+          auctionRules.maxDuration,
+        ),
+      );
       return;
     }
 
@@ -179,7 +205,7 @@ export function CreateAuctionPanel({
       await ensureApproval();
       const asset = assetKind === "ETH" ? zeroAddress : usdc!;
       return writeContractAsync({
-        address: escrow,
+        address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingDirect",
         args: [BigInt(tokenId), asset, reserve, durationSec],
@@ -209,8 +235,7 @@ export function CreateAuctionPanel({
       )}
 
       <p className="font-sans text-sm text-text-secondary">
-        Auctions are open to professional sellers with verified vehicles. The
-        reserve is public and bidding starts at or above it.
+        {ASCENDING_RESERVE_INTRO}
       </p>
 
       <div className="space-y-2">
@@ -263,7 +288,7 @@ export function CreateAuctionPanel({
           )}
         />
         <p className="font-sans text-xs text-text-secondary">
-          Lowest price you will accept. Shown to everyone.
+          {ASCENDING_RESERVE_HELP}
         </p>
       </div>
 
@@ -276,20 +301,26 @@ export function CreateAuctionPanel({
         </label>
         <select
           id="auction-duration"
-          value={durationDays}
+          value={selectedDurationDays}
           onChange={(e) => setDurationDays(Number(e.target.value))}
-          disabled={busy}
+          disabled={busy || durationOptions.length === 0}
           className={cn(
             "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
             "font-mono text-sm tabular-nums text-text-primary",
             "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
           )}
         >
-          {[3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
+          {durationOptions.length > 0
+            ? durationOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))
+            : (
+                <option value={selectedDurationDays}>
+                  {selectedDurationDays}
+                </option>
+              )}
         </select>
       </div>
 

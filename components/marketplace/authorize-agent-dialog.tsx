@@ -343,7 +343,7 @@ export function AuthorizeAgentDialog({
         {displayStep === "approval" && !isMarketplaceApproved && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Before delegating, approve the marketplace contract to hold your passport when your
+              Before delegating, approve the fixed-price consignment contract to hold your passport when your
               agent lists it for sale. This avoids surprises when they try to list on your behalf.
             </p>
             {(txError ?? error) && (
@@ -362,7 +362,7 @@ export function AuthorizeAgentDialog({
                 disabled={busy}
                 onClick={() => void runSetApprovalForAll()}
               >
-                {busy ? "Confirming…" : "Approve marketplace for all passports"}
+                {busy ? "Confirming…" : "Approve fixed-price mode for all passports"}
               </Button>
               <Button
                 type="button"

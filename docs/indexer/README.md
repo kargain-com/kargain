@@ -55,8 +55,8 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 | `GET /agents/:address/mandates` | Agent portfolio (`?active=`) |
 | `GET /owners/:address/mandates` | Owner delegated tab (`?active=`) |
 | `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
-| `GET /accounts/:address/commerce-claims` | Profile Claims (transitional; legacy `/accounts/:address/claims` untouched) |
-| `GET /commerce-claim-credits` | Whole-table credit scan for local E2E (optional `?reasonCode=`) |
+| `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions passport/staking `pending_claim` and mode `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
+| `GET /commerce-claim-credits` | Whole-table commerce credit scan for local E2E (optional `?reasonCode=`) |
 | `GET /challenges` | `BondedChallenge` feed shared by KarPassport disputes and `AscendingConsignment` — `?instance=passport\|ascending`, `?status=`, `?subjectId=`, `?challenger=`, `?chainId=`, `page`, `limit`; `instance=passport` rows include a denormalized `passport` object |
 | `GET /commerce-modes` | Mode pause/guardian/rules projection (`?chainId=`, `?mode=fixedPrice\|ascending`, `?paused=`, `page`, `limit`) |
 | `GET /commerce-payment-tokens` | Admitted payment tokens (`?chainId=`, `?modeContract=`, `?active=`, `page`, `limit`); soft-revoke → `active=false` |
@@ -72,7 +72,7 @@ Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisput
 
 ## HTTP API
 
-Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, verifier, notifications, legacy claims) and [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) (consignments, mandates, challenges, commerce claims — see table above). Bigints are serialized as strings in JSON.
+Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, verifier, notifications, claims union) and [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) (consignments, mandates, challenges, commerce config — see table above). Bigints are serialized as strings in JSON.
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -81,7 +81,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 | `GET /passports/batch` | Batch passport lookup (`?ids=`) |
 | `GET /profile/:address/passports` | Passports owned by address |
 | `GET /notifications/:address` | Notification feed, including active mandate grants (`mandate.granted`) |
-| `GET /accounts/:address/claims` | Outstanding legacy ClaimablePayouts balances (`amount > 0`); optional `?chainId=`; each claim includes `credits[]` from `claim_credit` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
+| `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions `pending_claim` + `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp); `{ claims, total, page, limit }` |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |

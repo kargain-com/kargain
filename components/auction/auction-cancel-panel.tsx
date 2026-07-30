@@ -4,6 +4,10 @@ import { useAccount, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import {
+  ASCENDING_CANCEL_BEFORE_FIRST_BID,
+  ASCENDING_NO_CANCEL_AFTER_BID,
+} from "@/lib/auction/ascending-public-claims";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
 import { commerceModeAddress } from "@/lib/commerce/mode";
@@ -30,7 +34,7 @@ export function AuctionCancelPanel({
 
   const busy = phase !== "idle";
 
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
 
   const isSeller = addressesMatch(auction.seller, address);
   const isAgent =
@@ -38,15 +42,15 @@ export function AuctionCancelPanel({
     !isZeroAddress(auction.agent) &&
     addressesMatch(auction.agent, address);
 
-  if (!escrow || auction.startedAt !== 0n || (!isSeller && !isAgent)) {
+  if (!mode || auction.startedAt !== 0n || (!isSeller && !isAgent)) {
     return null;
   }
 
   const runCancel = async () => {
-    if (!escrow) return;
+    if (!mode) return;
     await runTx(() =>
       writeContractAsync({
-        address: escrow,
+        address: mode,
         abi: AscendingConsignmentAbi,
         functionName: isAgent ? "agentWithdraw" : "ownerWithdraw",
         args: [BigInt(tokenId)],
@@ -57,7 +61,10 @@ export function AuctionCancelPanel({
   return (
     <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
       <p className="font-sans text-sm text-text-secondary">
-        You can cancel only before the first qualifying bid.
+        {ASCENDING_CANCEL_BEFORE_FIRST_BID}
+      </p>
+      <p className="font-sans text-xs text-text-tertiary">
+        {ASCENDING_NO_CANCEL_AFTER_BID}
       </p>
       <Button
         type="button"

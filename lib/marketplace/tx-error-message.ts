@@ -10,7 +10,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotAgent: "Only the authorized agent can do this.",
   ReturnAlreadyRequested:
     "A return has already been requested. Check the countdown for when force return becomes available.",
-  ReturnCooldownPending: "The 7-day return countdown has not finished yet.",
+  ReturnCooldownPending: "The return countdown has not finished yet.",
   ReturnNotRequested: "Request a return first before forcing it.",
   EmptySettlementNote: "Settlement note cannot be empty.",
   NotVerifier: "You must be an active KarPro verifier to set a verification fee.",
@@ -41,7 +41,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "This selling mode is not registered as an encumbrance source on the passport.",
   NoHold: "There is no open settlement hold for this vehicle.",
   DisputeActive:
-    "A settlement dispute is still open. Wait for resolution or the auto-release timeout.",
+    "A settlement challenge is still open. Wait for resolution or the challenge window to end.",
   LeaveChainRefused:
     "This passport cannot leave the chain right now (encumbrance refused).",
   NoClaim: "There is no pending claim to withdraw for this asset.",
@@ -87,7 +87,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   AuctionNotEnded: "The auction has not ended yet.",
   BadDuration: "Auction duration is outside the allowed range.",
   BadReserve: "Auction reserve must be greater than zero.",
-  EscrowNotApproved: "Approve the escrow on your passport first.",
+  EscrowNotApproved: "Approve the selling mode contract to hold your passport first.",
   ZeroAddress: "Address cannot be zero.",
   BadConfig: "Configuration value is outside the allowed range.",
   NotRepresentationOwner: "Only the representation owner can do this.",
@@ -127,7 +127,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "Recall is only available while an agented offer is open — not after a sale is bound.",
   OpenConsignmentRefused:
     "This passport cannot open a consignment right now (encumbrance refused).",
-  NotOffered: "This consignment is not in an open offer state.",
+  NotOffered: "This lot is not open for bidding or withdrawal.",
   NotDirectConsignment:
     "Only a direct (unagented) seller can withdraw immediately — use recall when an agent is appointed.",
   BelowFloor:

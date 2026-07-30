@@ -75,6 +75,21 @@ describe("claimReasonExplanation", () => {
   it("explains unknown honestly", () => {
     assert.match(claimReasonExplanation("unknown"), /waiting for you to withdraw/i);
   });
+
+  it("explains commerce mode reasons", () => {
+    assert.match(
+      claimReasonExplanation("ascending.outbid_refund"),
+      /outbid refund/i,
+    );
+    assert.match(
+      claimReasonExplanation("consignment.owner_payout"),
+      /seller proceeds/i,
+    );
+    assert.match(
+      claimReasonExplanation("challenge.bond_returned"),
+      /challenge bond return/i,
+    );
+  });
 });
 
 describe("ponder claim projection", () => {

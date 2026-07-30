@@ -82,7 +82,8 @@ export function useAuctionLiveSignals({
       liveForExtension &&
       detectEndsAtExtension(prevEndsAtRef.current, endsAt)
     ) {
-      setExtensionFlash(formatExtensionFlash(extensionWindow));
+      const flash = formatExtensionFlash(extensionWindow);
+      if (flash != null) setExtensionFlash(flash);
     }
     prevEndsAtRef.current = endsAt > 0n ? endsAt : prevEndsAtRef.current;
 

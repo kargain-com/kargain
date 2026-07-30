@@ -1,6 +1,8 @@
 import { db } from "ponder:api";
 import {
   claimCredit,
+  commerceClaim,
+  commerceClaimCredit,
   passport,
   passportRecord,
   passportUriHistory,
@@ -153,7 +155,10 @@ app.get("/notifications/:address", async (c) => {
   );
 });
 
-/** Outstanding ClaimablePayouts balances for an account across commercial chains. */
+/**
+ * Outstanding ClaimablePayouts balances for an account.
+ * Unions passport/staking `pending_claim` with mode `commerce_claim` — one product reader.
+ */
 app.get("/accounts/:address/claims", async (c) => {
   const address = parseAddressParam(c.req.param("address"));
   if (!address) {
@@ -164,45 +169,80 @@ app.get("/accounts/:address/claims", async (c) => {
   const limit = parseLimit(c.req.query("limit"));
   const offset = (page - 1) * limit;
 
-  const conditions = [
-    eq(pendingClaim.account, address),
-    gt(pendingClaim.amount, 0n),
-  ];
+  const legacyCond = [eq(pendingClaim.account, address), gt(pendingClaim.amount, 0n)];
+  const commerceCond = [eq(commerceClaim.account, address), gt(commerceClaim.amount, 0n)];
   if (chainId !== undefined) {
-    conditions.push(eq(pendingClaim.chainId, chainId));
+    legacyCond.push(eq(pendingClaim.chainId, chainId));
+    commerceCond.push(eq(commerceClaim.chainId, chainId));
   }
-  const where = and(...conditions);
 
-  const [rows, totalRow] = await Promise.all([
+  const [legacyRows, commerceRows, legacyTotal, commerceTotal] = await Promise.all([
     db
       .select()
       .from(pendingClaim)
-      .where(where)
-      .orderBy(desc(pendingClaim.updatedAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ value: count() }).from(pendingClaim).where(where),
+      .where(and(...legacyCond))
+      .orderBy(desc(pendingClaim.updatedAt)),
+    db
+      .select()
+      .from(commerceClaim)
+      .where(and(...commerceCond))
+      .orderBy(desc(commerceClaim.updatedAt)),
+    db.select({ value: count() }).from(pendingClaim).where(and(...legacyCond)),
+    db.select({ value: count() }).from(commerceClaim).where(and(...commerceCond)),
   ]);
 
-  const creditConditions = [eq(claimCredit.account, address)];
-  if (chainId !== undefined) {
-    creditConditions.push(eq(claimCredit.chainId, chainId));
-  }
-  const creditRows =
-    rows.length === 0
-      ? []
-      : await db
-          .select()
-          .from(claimCredit)
-          .where(and(...creditConditions))
-          .orderBy(asc(claimCredit.timestamp));
+  type BalanceRow = {
+    id: string;
+    chainId: number;
+    contract: string;
+    account: string;
+    asset: string;
+    amount: bigint;
+    reasonCode: string;
+    updatedAt: bigint;
+    firstCreditedAt: bigint;
+  };
+
+  const merged: BalanceRow[] = [...legacyRows, ...commerceRows].sort((a, b) => {
+    if (a.updatedAt === b.updatedAt) return a.id < b.id ? 1 : -1;
+    return a.updatedAt < b.updatedAt ? 1 : -1;
+  });
+
+  const total =
+    (legacyTotal[0]?.value ?? 0) + (commerceTotal[0]?.value ?? 0);
+  const pageRows = merged.slice(offset, offset + limit);
 
   const balanceKeys = new Set(
-    rows.map(
+    pageRows.map(
       (r) =>
         `${r.chainId}-${r.contract.toLowerCase()}-${r.account.toLowerCase()}-${r.asset.toLowerCase()}`,
     ),
   );
+
+  const legacyCreditCond = [eq(claimCredit.account, address)];
+  const commerceCreditCond = [eq(commerceClaimCredit.account, address)];
+  if (chainId !== undefined) {
+    legacyCreditCond.push(eq(claimCredit.chainId, chainId));
+    commerceCreditCond.push(eq(commerceClaimCredit.chainId, chainId));
+  }
+
+  const creditRows =
+    pageRows.length === 0
+      ? []
+      : (
+          await Promise.all([
+            db
+              .select()
+              .from(claimCredit)
+              .where(and(...legacyCreditCond))
+              .orderBy(asc(claimCredit.timestamp)),
+            db
+              .select()
+              .from(commerceClaimCredit)
+              .where(and(...commerceCreditCond))
+              .orderBy(asc(commerceClaimCredit.timestamp)),
+          ])
+        ).flat();
 
   const creditsByBalance = new Map<
     string,
@@ -221,7 +261,11 @@ app.get("/accounts/:address/claims", async (c) => {
     creditsByBalance.set(key, list);
   }
 
-  const claims = rows.map((row) => {
+  for (const [, list] of creditsByBalance) {
+    list.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  }
+
+  const claims = pageRows.map((row) => {
     const key = `${row.chainId}-${row.contract.toLowerCase()}-${row.account.toLowerCase()}-${row.asset.toLowerCase()}`;
     return {
       ...row,
@@ -232,7 +276,7 @@ app.get("/accounts/:address/claims", async (c) => {
   return c.json(
     jsonBody({
       claims,
-      total: totalRow[0]?.value ?? 0,
+      total,
       page,
       limit,
     }),

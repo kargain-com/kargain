@@ -51,7 +51,7 @@ export function AuctionDetailClientIsland({
   detail,
 }: Props) {
   const { address, isConnected } = useAccount();
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
 
   const auction = detail.auction;
   const uiState = detail.uiState;
@@ -126,7 +126,7 @@ export function AuctionDetailClientIsland({
     enabled: Boolean(auction && showLiveCommerce),
   });
 
-  if (!escrow) return null;
+  if (!mode) return null;
 
   if (!showLiveCommerce && !showAgentCreate) {
     // Listed (or isListed unread): create impossible — do not flash checking UI over Manage listing.

@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import {
+  useChainId,
+  useReadContract,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 
 import {
   ReturnCooldownDisplay,
@@ -9,6 +14,7 @@ import {
 } from "@/components/marketplace/return-cooldown-display";
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
 import { commerceModeAbi, commerceModeAddress } from "@/lib/commerce/mode";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -25,12 +31,19 @@ type Props = {
   onChanged?: () => void;
 };
 
-const MODE_COPY: Record<CommerceMode, string> = {
-  fixedPrice:
-    "Your KarPro can price and sell this vehicle without further approval. If they are unresponsive, request it back. After 7 days you may force the recall on-chain.",
-  ascending:
-    "A recall request does not stop bidding — if a qualifying bid lands first, the sale stands. After 7 days you may force the recall on-chain.",
-};
+function recallIntroCopy(
+  mode: CommerceMode,
+  cooldownSec: number | null,
+): string {
+  const label = formatWindowDurationLabel(cooldownSec ?? undefined);
+  const after = label
+    ? `After ${label} you may force the recall on-chain.`
+    : "After the recall cooldown you may force the recall on-chain.";
+  if (mode === "fixedPrice") {
+    return `Your KarPro can price and sell this vehicle without further approval. If they are unresponsive, request it back. ${after}`;
+  }
+  return `A recall request does not stop bidding — if a qualifying bid lands first, the sale stands. ${after}`;
+}
 
 /**
  * Owner recall on an agented consignment (`Recall.requestRecall` /
@@ -56,6 +69,20 @@ export function OwnerRecallPanel({
   const tid = useMemo(() => BigInt(tokenId), [tokenId]);
   const wrongChain = walletChain !== chainId;
   const busy = isPending || phase !== "idle";
+
+  const { data: cooldownRaw } = useReadContract({
+    address: market,
+    abi,
+    functionName: "recallCooldown",
+    chainId: wc,
+    query: { enabled: Boolean(market), staleTime: 300_000 },
+  });
+  const cooldownSec =
+    typeof cooldownRaw === "bigint"
+      ? Number(cooldownRaw)
+      : typeof cooldownRaw === "number"
+        ? cooldownRaw
+        : null;
 
   const remaining = useReturnRemainingSeconds(recallRequestedAt);
   const cooldownActive = recallRequestedAt > 0n && remaining > 0n;
@@ -102,7 +129,9 @@ export function OwnerRecallPanel({
         <p className="font-sans text-xs font-medium uppercase tracking-[0.12em] text-text-tertiary">
           Recall from agent
         </p>
-        <p className="mt-2 text-sm text-text-secondary">{MODE_COPY[mode]}</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          {recallIntroCopy(mode, cooldownSec)}
+        </p>
       </div>
 
       {noRequestYet && (

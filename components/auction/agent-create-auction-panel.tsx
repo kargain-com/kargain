@@ -5,6 +5,7 @@ import { useAccount, useChainId, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
+import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
 import { useMandate } from "@/hooks/use-mandate";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -18,6 +19,10 @@ import {
   computeAgentedSplit,
 } from "@/lib/commerce/agented-split";
 import { compensationFormLabel } from "@/lib/commerce/denomination";
+import {
+  durationBoundsErrorMessage,
+  durationDayOptions,
+} from "@/lib/commerce/format-window-duration";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
@@ -31,9 +36,6 @@ type Props = {
   /** Local UI only (e.g. collapse). Sync is owned by `useTxSync`. */
   onSuccess?: () => void;
 };
-
-const THREE_DAYS = 3 * 24 * 60 * 60;
-const SEVEN_DAYS = 7 * 24 * 60 * 60;
 
 /**
  * Agent `openAscendingFromMandate` — asset, floor and compensation are fixed
@@ -54,12 +56,20 @@ export function AgentCreateAuctionPanel({
   const [txError, setTxError] = useState<string | null>(null);
   const busy = phase !== "idle";
 
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
     chainId,
   });
+  const { rules: auctionRules } = useAscendingAuctionRules({ chainId });
+  const durationOptions = auctionRules
+    ? durationDayOptions(auctionRules.minDuration, auctionRules.maxDuration)
+    : [];
+  const selectedDurationDays =
+    durationOptions.length > 0 && !durationOptions.includes(durationDays)
+      ? durationOptions[0]!
+      : durationDays;
   const tid = useMemo(() => {
     try {
       return BigInt(tokenId);
@@ -106,7 +116,7 @@ export function AgentCreateAuctionPanel({
         })
       : null;
 
-  if (!escrow) return null;
+  if (!mode) return null;
 
   if (mandatePending || mandate === undefined) {
     return (
@@ -126,11 +136,23 @@ export function AgentCreateAuctionPanel({
 
   async function onCreate() {
     setTxError(null);
-    if (!escrow || !mandate || !usable) return;
+    if (!mode || !mandate || !usable) return;
 
-    const durationSec = durationDays * 24 * 60 * 60;
-    if (durationSec < THREE_DAYS || durationSec > SEVEN_DAYS) {
-      setTxError("Duration must be between 3 and 7 days.");
+    if (!auctionRules) {
+      setTxError("Loading auction rules…");
+      return;
+    }
+    const durationSec = selectedDurationDays * 24 * 60 * 60;
+    if (
+      durationSec < auctionRules.minDuration ||
+      durationSec > auctionRules.maxDuration
+    ) {
+      setTxError(
+        durationBoundsErrorMessage(
+          auctionRules.minDuration,
+          auctionRules.maxDuration,
+        ),
+      );
       return;
     }
     if (reserve == null || reserve <= 0n) {
@@ -148,7 +170,7 @@ export function AgentCreateAuctionPanel({
 
     const succeeded = await runTx(() =>
       writeContractAsync({
-        address: escrow,
+        address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingFromMandate",
         args: [tid, reserve, durationSec],
@@ -218,20 +240,26 @@ export function AgentCreateAuctionPanel({
         </label>
         <select
           id="agent-auction-duration"
-          value={durationDays}
+          value={selectedDurationDays}
           onChange={(e) => setDurationDays(Number(e.target.value))}
-          disabled={busy || isWriting}
+          disabled={busy || isWriting || durationOptions.length === 0}
           className={cn(
             "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
             "font-mono text-sm tabular-nums text-text-primary",
             "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
           )}
         >
-          {[3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
+          {durationOptions.length > 0
+            ? durationOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))
+            : (
+                <option value={selectedDurationDays}>
+                  {selectedDurationDays}
+                </option>
+              )}
         </select>
       </div>
 

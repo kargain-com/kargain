@@ -460,11 +460,15 @@ export function ListingEditClient({
           ) : null}
           {!isApproved && (
             <Button type="button" variant="outline" disabled={actionsPending || commerce.paused === true} onClick={() => void runApprove()}>
-              {actionsPending ? "Confirming…" : "Approve marketplace"}
+              {actionsPending ? "Confirming…" : "Approve fixed-price mode"}
             </Button>
           )}
-          {isApproved && <p className="text-xs text-text-secondary">Marketplace approved.</p>}
-          <ListingSellerSettlementPanel
+          {isApproved && <p className="text-xs text-text-secondary">Fixed-price mode approved.</p>}
+          <p className="font-sans text-xs text-text-secondary">
+            On an on-chain buy, payment splits immediately between you, any
+            agent, and the platform — there is no protection window. Undeliverable
+            payouts appear under Claims for withdrawClaim.
+          </p>          <ListingSellerSettlementPanel
             chainId={chainId}
             priceInput={priceInput}
             onPriceInputChange={setPriceInput}

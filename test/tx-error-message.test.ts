@@ -63,7 +63,21 @@ describe("txErrorMessage", () => {
   it("maps EscrowNotApproved", () => {
     assert.equal(
       txErrorMessage(new Error("reverted with custom error EscrowNotApproved()")),
-      "Approve the escrow on your passport first.",
+      "Approve the selling mode contract to hold your passport first.",
+    );
+  });
+
+  it("maps NotOffered to bidding-or-withdrawal cause", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error NotOffered()")),
+      "This lot is not open for bidding or withdrawal.",
+    );
+  });
+
+  it("maps DisputeActive as settlement challenge", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error DisputeActive()")),
+      "A settlement challenge is still open. Wait for resolution or the challenge window to end.",
     );
   });
 

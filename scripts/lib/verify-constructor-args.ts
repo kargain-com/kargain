@@ -19,15 +19,15 @@ export const MARKETPLACE_FEE_BPS = 10n;
 export const MARKETPLACE_MAX_FEED_STALENESS = 3600n;
 export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
-/** Ascending nuclear defaults (governance-mutable after deploy; §11). */
+/** Ascending nuclear defaults (governance-mutable after deploy; model §11 / §7.3). */
 export const ASCENDING_CHALLENGE_BOND = DISPUTE_DEPOSIT;
-export const ASCENDING_CHALLENGE_WINDOW = 14n * 24n * 60n * 60n;
+export const ASCENDING_CHALLENGE_WINDOW = 30n * 24n * 60n * 60n;
 export const ASCENDING_MIN_DURATION = 3n * 24n * 60n * 60n;
 export const ASCENDING_MAX_DURATION = 30n * 24n * 60n * 60n;
 export const ASCENDING_EXTENSION_WINDOW = 15n * 60n;
 export const ASCENDING_MIN_INCREMENT_BPS = 300n;
 export const ASCENDING_PROTECTION_WINDOW = 7n * 24n * 60n * 60n;
-export const ASCENDING_ABANDONMENT_WINDOW = 7n * 24n * 60n * 60n;
+export const ASCENDING_ABANDONMENT_WINDOW = 30n * 24n * 60n * 60n;
 
 /** Fail-closed: nuclear live deploy requires `COMMERCE_GUARDIAN` (G3 pause role). */
 export function resolveCommerceGuardian(

@@ -562,10 +562,11 @@ Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 | Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
 | Direct payment | Optional seller `settlementNotes` (bank, BTC, Lightning, etc.); buy panel **Direct payment** card when note set — detected identifiers render as QR + copy blocks; raw note unchanged below; *Not verified by Kargain* |
 | Seller preview | The listing seller sees the same read-only **Direct payment** card below *Buyers see these direct payment instructions.* when a note is set; no caption or card when the note is empty |
-| Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; ETH / USDC toggle |
-| Disclosure | Bordered panel: seller receives (asking fiat), you pay, rate at settlement — method-specific rows |
-| USDC buy | ERC-20 `approve` then `buyWithToken(tokenId, usdc)`; disabled when USDC not configured on chain |
-| Buy errors | Inline `text-status-error` message under the buy button (`role="alert"`) on `approve` / `buyWithNative` / `buyWithToken` failure, via shared [`tx-error-message.ts`](../lib/marketplace/tx-error-message.ts); preflight balance check (ETH and USDC) disables the button with a `text-text-secondary` hint before a doomed transaction is sent; `useSimulateContract` gates the final purchase call so most reverts surface before the wallet signature prompt |
+| Buy panel | Hero via [`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx) + `convertPrice()`; settlement asset fixed at open (native or admitted ERC-20 via `buy(tokenId)`) |
+| R1 disclosure | Canonical [`FIXED_PRICE_R1_DISCLOSURE`](../lib/marketplace/fixed-price-r1-disclosure.ts) on the buyer checkout card above **Buy now** — no protection window, no escrow-backed reversal, no on-chain dispute |
+| Disclosure | Bordered panel: seller receives (after platform fee and any agent share), you pay, rate at settlement |
+| On-chain buy | Optional ERC-20 `approve` then `buy(tokenId)` (native value when asset is zero); disabled when FixedPrice mode not deployed on chain |
+| Buy errors | Inline `text-status-error` message under the buy button (`role="alert"`) on `approve` / `buy` failure, via shared [`tx-error-message.ts`](../lib/marketplace/tx-error-message.ts); preflight balance check disables the button with a `text-text-secondary` hint before a doomed transaction is sent; `useSimulateContract` gates the final purchase call so most reverts surface before the wallet signature prompt |
 | Guest / buyer | `ListingBuyPanel` + `SellerContactButton` (XMTP) |
 | Message seller | `SellerContactButton` — peer reachability check; enables buyer messaging first if needed; passes `listingTokenId` on active listings so new DMs open with listing context (§4.12). On consignment listings the contact peer is the passport owner (on-chain `seller`), not the agent |
 
@@ -605,7 +606,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Browse cards | [`listing-card.tsx`](../components/marketplace/listing-card.tsx) — compact **Sold by** row (`UserRound` icon, `shortAddress`, link to `/profile/[agent]`). No per-card profile fetch |
 | Listing detail | [`listing-agent-buyer-attribution.tsx`](../components/marketplace/listing-agent-buyer-attribution.tsx) below buy panel — avatar + KarPro name via `usePeerIdentity` / `fetchKarProVerifierProfile`; copy *Sold by [name] on behalf of the owner*; link to `/pro/[slug]` when slug exists else `/profile/[address]` |
 | Degradation | When profile missing: *Sold by an agent* with link to `/profile/[agent]` — no error state |
-| Buy flow | Unchanged — `buyWithNative` / `buyWithToken` work the same for direct and consignment listings |
+| Buy flow | Unchanged — FixedPrice `buy(tokenId)` works the same for direct and consignment listings |
 
 #### Agent consignment — owners
 
@@ -615,7 +616,7 @@ When `agent` is set on an active listing, buyers see who is selling on their beh
 | Owner minimum price | No currency selector on authorize form — `ownerMinPrice1e8` is a raw on-chain scalar until the agent lists (`listOnBehalf` picks currency); label uses [`listingCurrencyCodesForChain`](../lib/marketplace/currency-code.ts); confirmation copy: guaranteed minimum *in the currency the agent chooses* |
 | Agent authorization | [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) reads `agentAuthorizations(tokenId)` on-chain (not Ponder); an active row replaces Delegate with [`agent-authorization-status.tsx`](../components/marketplace/agent-authorization-status.tsx), showing agent identity, minimum, expiry; **Lower minimum** / **Revoke agent** owner actions |
 | Revoke agent gate | **Revoke agent** disabled while listing active; copy: *Return the vehicle from the agent before revoking access* |
-| Owner return flow | When owner + active consignment (`agent` non-zero): [`owner-return-request-panel.tsx`](../components/marketplace/owner-return-request-panel.tsx) — **Request return** (`requestReturn`) → 7-day [`return-cooldown-display.tsx`](../components/marketplace/return-cooldown-display.tsx) (live countdown) → **Force return** (`forceReturn`) when elapsed; request button hidden (not disabled) during cooldown; force button disabled until countdown ends; chain `agentAuthorizations` gates force submit; `returnRequestedAt` from Ponder + chain read |
+| Owner return flow | When owner + active consignment (`agent` non-zero): [`owner-recall-panel.tsx`](../components/commerce/owner-recall-panel.tsx) — **Request recall** → live countdown from chain `recallCooldown()` → **Force recall** when elapsed; intro copy formats the cooldown from chain (never a hardcoded day count) |
 | Delegated vehicles | Owner-only profile tab [`delegated-vehicles-tab.tsx`](../components/profile/delegated-vehicles-tab.tsx) (`?tab=delegated`); badge count = marketplace `GET /owners/:address/authorizations` `total`; sections **Needs attention** → **Awaiting agent** → **Live** → **Past** (`omitWhenEmpty`); rows via shared [`consignment-portfolio-row.tsx`](../components/consignment/consignment-portfolio-row.tsx) + [`lib/consignment/lifecycle.ts`](../lib/consignment/lifecycle.ts); CTA **View** → `/marketplace/{tokenId}` only (revoke/return stay on passport/lot); Ponder-only (owner auth + profile listings + seller auctions) |
 
 #### Agent consignment — KarPro agents
@@ -739,11 +740,11 @@ Reserve auctions on AscendingConsignment. **Canonical lot URL** remains `/market
 |------|------|--------|
 | Viewer / bidder | Reserve, current bid, min next, countdown, bid history; return advisory when set (S2); hold readout; DISPUTED advisory (S4) | Bid (ETH or USDC) including while DISPUTED; Finalize when ended; permissionless `releaseFunds` when hold/dispute timed out |
 | Leading bidder | Same + *You are the highest bidder* (neutral, not accent) | Wait / bid again if outbid |
-| Winning buyer (hold) | Hold amount · release countdown; passport trust readout if status became DISPUTED (`status-error`) or UNVERIFIED (neutral) after the bid | Confirm receipt · Open dispute (native bond, U8) · after ConfirmFailure: return passport for refund |
-| KarPro direct seller | Own-lot create panel; settlement informational | `createAuction` when VERIFIED, not listed, active verifier, no open hold (U9); Cancel before first bid; cannot bid; abandoned-refund claim |
-| Private owner (agent path) | Authorization entry; return timer on agent auction | Authorize auction agent · Revoke (no active auction) · Request / force return (pre-start); U9 blocks authorize during hold |
-| KarPro agent | Consigned **Awaiting auction** / **Active auctions**; lot create panel when authorized | `createAuctionOnBehalf` · Cancel before first bid |
-| Active verifier (not party) | Dispute frozen readout | Minimal resolve: ReleaseToSeller / ConfirmFailure (full resolver post-MVP) |
+| Winning buyer (hold) | Hold amount · release countdown; passport trust readout if status became DISPUTED (`status-error`) or UNVERIFIED (neutral) after the bid | Confirm receipt · Open challenge (native bond) · after ConfirmFailure: return passport for refund |
+| KarPro direct seller | Own-lot create panel; settlement informational | `openAscendingDirect` when VERIFIED, not listed, active verifier, no open hold (U9); Cancel/`ownerWithdraw` before first bid; cannot bid |
+| Private owner (agent path) | Authorization entry; return timer on agent auction | Grant ascending mandate · Revoke (no active auction) · Request / force recall (pre-binding); U9 blocks authorize during hold |
+| KarPro agent | Consigned **Awaiting auction** / **Active auctions**; lot create panel when authorized | `openAscendingFromMandate` · Cancel/`agentWithdraw` before first bid |
+| Active verifier (not party) | Challenge frozen readout | Minimal resolve: uphold / reject (full resolver post-MVP) |
 
 #### Derived states (blueprint S#)
 
@@ -756,11 +757,11 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S3** | Live bidding | Bid panel; no cancel |
 | **S4** | Live + passport `DISPUTED` | Bid **enabled**; quiet `status-error` advisory (trust chroma only — not a block) |
 | **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle` (always; passport status ignored) |
-| **S6 / HOLD** | `SETTLED`, before `releaseAt`, no dispute | Buyer: Confirm receipt · Open dispute; passport status change readout when DISPUTED/UNVERIFIED; others: informational payout date + same passport readout |
-| **HOLD_RELEASABLE** | `now ≥ releaseAt`, no dispute | Permissionless **Release payment** → `releaseFunds` |
-| **S7 / DISPUTED** | Settlement dispute open | *Payout frozen*; auto-release date; minimal verifier resolve |
-| **DISPUTE_TIMED_OUT** | `now ≥ disputedAt + disputeResolutionTimeout` | Permissionless **Release payment** (auto-ReleaseToSeller path) |
-| **REFUND_PENDING** | ConfirmFailure | Buyer: approve passport → `returnPassportAndRefund`; seller: `claimAbandonedRefund` after `settlementHold` |
+| **S6 / HOLD** | `SETTLED`, before `releaseAt`, no challenge | Buyer: Confirm receipt · Open challenge; passport status change readout when DISPUTED/UNVERIFIED; others: informational payout date + same passport readout |
+| **HOLD_RELEASABLE** | `now ≥ releaseAt`, no challenge | Permissionless **Release payment** |
+| **S7 / CHALLENGE** | Settlement challenge open | *Payout frozen*; challenge window; minimal verifier resolve |
+| **CHALLENGE_TIMED_OUT** | Challenge window elapsed | Permissionless conclude / release path |
+| **REFUND_PENDING** | ConfirmFailure / reversal | Buyer: approve passport → return for refund; seller: abandon after abandonment window |
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
 | **S9** | `CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
@@ -795,31 +796,33 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Authorize | Unified sell group opens [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — approve auction escrow → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; active authorization becomes an always-visible neutral status card; **Manage** opens inline **Revoke** when no active auction |
 | Create on behalf | [`agent-create-auction-panel.tsx`](../components/auction/agent-create-auction-panel.tsx) — chain-read auth (U2); asset locked; reserve / 3–7 d / commission ≤ 30%; net preview at reserve; blocked when `BelowOwnerMinAsset` |
 | Cancel (S1) | [`auction-cancel-panel.tsx`](../components/auction/auction-cancel-panel.tsx) — seller `cancelAuction` / agent `agentCancelAuction` while `startedAt == 0` |
-| Owner return | [`owner-auction-return-panel.tsx`](../components/auction/owner-auction-return-panel.tsx) — `requestReturn` → 7-day cooldown → `forceReturn` (pre-start only) |
+| Owner return | [`owner-recall-panel.tsx`](../components/commerce/owner-recall-panel.tsx) — `requestRecall` → chain `recallCooldown` countdown → `forceRecall` (pre-start / OFFERED) |
 | Return advisory (U7) | [`auction-return-advisory.tsx`](../components/auction/auction-return-advisory.tsx) — elevated advisory to all when `returnRequestedAt` set and pre-start |
 | Consigned tab | Awaiting: `GET /agents/:address/auction-authorizations?awaiting=true` (expired badge client-side); Active: `GET /auctions?agent=&active=true`; **no per-row chain reads** |
 
 #### Copy (verbatim catalog subset)
 
+Canonical ascending claim strings: [`lib/auction/ascending-public-claims.ts`](../lib/auction/ascending-public-claims.ts).
+
 | Surface | String |
 |---------|--------|
-| Bid footer | Your full bid is held by the auction contract until you are outbid or you win. Outbid funds are released — if they do not arrive, check Claims. |
+| Bid footer | Every bid is held in full by the contract until you are outbid or you win. Outbid funds are released; if they do not arrive, withdraw them under Claims. |
 | Outbid toast | You were outbid. Your [amount] was released. If it did not arrive in your wallet, check Claims. |
 | S8 sale complete | Sale complete + fee split; note that undeliverable payouts wait under Claims |
-| Live help | Bids in the last [N] minutes extend the auction by [N] minutes. (`N` from `extensionWindow`) |
+| Live help | Bids in the last [N] minutes extend the auction by [N] minutes. (`N` from chain `extensionWindow`; omit until read — never invent minutes) |
 | Extension flash | Extended by [N] minutes |
-| Outbid toast | You were outbid. Your [amount] was returned to your wallet automatically. |
 | Leading | You are the highest bidder. |
-| S1 help | The auction starts when someone bids at least the reserve. Until then the seller can cancel. |
-| S2 advisory | The owner has asked for this vehicle back. If no one bids before [date], the auction can be cancelled. A qualifying bid before then completes the sale. |
+| S1 help | The auction starts when someone bids at least the reserve. Until then the seller can cancel or withdraw. |
 | Cancel guard | You can cancel only before the first qualifying bid. |
+| No cancel after bid | After the first qualifying bid the seller cannot cancel, withdraw, or recall — settlement is the only exit. |
+| S2 advisory | The owner has asked for this vehicle back. If no one bids before [date], the auction can be cancelled. A qualifying bid before then completes the sale. |
 | Authorize min help | Your minimum is in the auction currency ([ETH]/[USDC]), not a display price. You receive at least this amount after all fees. |
 | Agent net preview | At reserve [X]: you receive [fee], owner receives [net]. Your commission is fixed for the whole auction. |
 | S4 | This passport is disputed. Bidding continues; after finalize, delivery issues use the settlement hold. |
-| S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a 7-day protection hold. |
-| Hold — buyer | [2.40 ETH] is held for your protection until [date]. Confirm receipt to release payment early, or open a dispute if the vehicle was not delivered as sold. |
+| S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a protection hold (duration from chain `auctionRules().protectionWindow`; Nuclear default 7 days). |
+| Hold — buyer | [amount] is held for your protection until [date]. Confirm receipt to release payment early, or open a challenge if the vehicle was not delivered as sold. |
 | Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
-| Dispute bond (U8) | Opening a dispute locks a [0.01 ETH] bond, even for USDC auctions. You get it back if the dispute is confirmed. |
+| Challenge bond | Opening a challenge locks a [bond] bond and freezes the protection clock. You get it back if the challenge is upheld for you. |
 | Released (S8) | Sale complete. [gross] split: seller [net] · agent [fee] · platform [fee]. |
 | Cancelled (S9) | The auction was cancelled before any qualifying bid. The vehicle returned to the owner. |
 | Returned (S9) | The owner recalled this vehicle before any qualifying bid. |
@@ -1545,4 +1548,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.95 (July 2026 — G3 commerce pause ops surface + chain-sourced paused notices on open/bid/buy). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.97 (July 2026 — ascending windows from chain; Nuclear defaults match model §11: extension 900s, settlement challenge/abandonment 30d). Update when tokens, app shell, or component contracts change.*

@@ -1,6 +1,7 @@
 /**
  * Derive why a ClaimRecorded credit exists.
- * The on-chain event has no reason field — infer from emitting contract role + tx selector.
+ * Passport/staking: infer from emitting contract role + tx selector.
+ * Modes: correlated reason codes from ponder-commerce (same-tx cause events).
  */
 
 import type { ClaimableContractRole } from "@/lib/web3/claimable-contracts";
@@ -9,6 +10,13 @@ export const CLAIM_REASON_CODES = [
   "passport.dispute_deposit",
   "passport.rescue",
   "staking.stake_refund",
+  "ascending.outbid_refund",
+  "ascending.reversal_refund",
+  "consignment.owner_payout",
+  "consignment.agent_payout",
+  "consignment.platform_payout",
+  "challenge.bond_returned",
+  "challenge.bond_routed",
   "unknown",
 ] as const;
 
@@ -70,8 +78,22 @@ export function claimReasonExplanation(code: ClaimReasonCode): string {
       return "Rescued excess ETH could not be delivered to your wallet, so it was recorded as a claim.";
     case "staking.stake_refund":
       return "Your KarPro stake refund could not be delivered to your wallet, so it was recorded as a claim.";
+    case "ascending.outbid_refund":
+      return "An outbid refund could not be delivered to your wallet, so it was recorded as a claim. Withdraw it from the ascending consignment contract.";
+    case "ascending.reversal_refund":
+      return "A settlement reversal refund could not be delivered to your wallet, so it was recorded as a claim.";
+    case "consignment.owner_payout":
+      return "Your seller proceeds could not be delivered to your wallet, so they were recorded as a claim. Withdraw them from the consignment contract.";
+    case "consignment.agent_payout":
+      return "Your agent commission could not be delivered to your wallet, so it was recorded as a claim.";
+    case "consignment.platform_payout":
+      return "A platform fee payout could not be delivered, so it was recorded as a claim.";
+    case "challenge.bond_returned":
+      return "A challenge bond return could not be delivered to your wallet, so it was recorded as a claim.";
+    case "challenge.bond_routed":
+      return "A challenge bond payout could not be delivered to your wallet, so it was recorded as a claim.";
     case "unknown":
-      return "Funds could not be delivered and are waiting for you to withdraw.";
+      return "Funds could not be delivered and are waiting for you to withdraw from the owing contract.";
   }
 }
 

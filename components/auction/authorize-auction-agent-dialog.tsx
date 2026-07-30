@@ -116,7 +116,7 @@ export function AuthorizeAuctionAgentDialog({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const passport = karPassportAddress(chainId);
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
   const usdc = usdcAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== wc;
@@ -135,7 +135,7 @@ export function AuthorizeAuctionAgentDialog({
 
   const { data: approvalReads, refetch: refetchApproval } = useReadContracts({
     contracts:
-      passport && escrow && address
+      passport && mode && address
         ? [
             {
               address: passport,
@@ -148,7 +148,7 @@ export function AuthorizeAuctionAgentDialog({
               address: passport,
               abi: KarPassportAbi,
               functionName: "isApprovedForAll",
-              args: [address, escrow],
+              args: [address, mode],
               chainId: wc,
             },
           ]
@@ -164,21 +164,21 @@ export function AuthorizeAuctionAgentDialog({
   });
 
   const { data: unresolvedSettlement } = useReadContract({
-    address: escrow,
+    address: mode,
     abi: AscendingConsignmentAbi,
     functionName: "hasUnresolvedSettlement",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(open && escrow) },
+    query: { enabled: Boolean(open && mode) },
   });
 
   const { data: protectionEndsAt } = useReadContract({
-    address: escrow,
+    address: mode,
     abi: AscendingConsignmentAbi,
     functionName: "holdProtectionEndsAt",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(open && escrow && unresolvedSettlement === true) },
+    query: { enabled: Boolean(open && mode && unresolvedSettlement === true) },
   });
 
   const settlementPending = unresolvedSettlement === true;
@@ -202,14 +202,14 @@ export function AuthorizeAuctionAgentDialog({
   const showRevoke = authActive && !hasActiveAuction;
 
   const approvedForToken =
-    escrow &&
+    mode &&
     approvalReads?.[0]?.result &&
-    (approvalReads[0].result as string).toLowerCase() === escrow.toLowerCase();
+    (approvalReads[0].result as string).toLowerCase() === mode.toLowerCase();
   const approvedForAll = approvalReads?.[1]?.result === true;
-  const isEscrowApproved = Boolean(approvedForToken || approvedForAll);
+  const isModeApproved = Boolean(approvedForToken || approvedForAll);
 
   const displayStep: Step =
-    step === "approval" && isEscrowApproved ? "agent" : step;
+    step === "approval" && isModeApproved ? "agent" : step;
 
   const resetState = useCallback(() => {
     setStep("approval");
@@ -231,10 +231,10 @@ export function AuthorizeAuctionAgentDialog({
 
   useEffect(() => {
     if (!open) return;
-    if (isEscrowApproved) {
+    if (isModeApproved) {
       setStep((prev) => (prev === "approval" ? "agent" : prev));
     }
-  }, [open, isEscrowApproved]);
+  }, [open, isModeApproved]);
 
   useEffect(() => {
     if (!open || displayStep !== "agent" || verifiers.length > 0 || showRevoke)
@@ -254,7 +254,7 @@ export function AuthorizeAuctionAgentDialog({
   }, [open, displayStep, verifiers.length, showRevoke]);
 
   const runSetApprovalForAll = useCallback(async () => {
-    if (!passport || !escrow) return;
+    if (!passport || !mode) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
@@ -262,7 +262,7 @@ export function AuthorizeAuctionAgentDialog({
         address: passport,
         abi: KarPassportAbi,
         functionName: "setApprovalForAll",
-        args: [escrow, true],
+        args: [mode, true],
       });
       await awaitReceipt(hash);
       await refetchApproval();
@@ -272,7 +272,7 @@ export function AuthorizeAuctionAgentDialog({
     }
   }, [
     passport,
-    escrow,
+    mode,
     wrongChain,
     switchChainAsync,
     wc,
@@ -282,7 +282,7 @@ export function AuthorizeAuctionAgentDialog({
   ]);
 
   const runApproveToken = useCallback(async () => {
-    if (!passport || !escrow) return;
+    if (!passport || !mode) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
@@ -290,7 +290,7 @@ export function AuthorizeAuctionAgentDialog({
         address: passport,
         abi: KarPassportAbi,
         functionName: "approve",
-        args: [escrow, tid],
+        args: [mode, tid],
       });
       await awaitReceipt(hash);
       await refetchApproval();
@@ -300,7 +300,7 @@ export function AuthorizeAuctionAgentDialog({
     }
   }, [
     passport,
-    escrow,
+    mode,
     wrongChain,
     switchChainAsync,
     wc,
@@ -311,11 +311,11 @@ export function AuthorizeAuctionAgentDialog({
   ]);
 
   const runRevoke = useCallback(async () => {
-    if (!escrow || hasActiveAuction) return;
+    if (!mode || hasActiveAuction) return;
     setTxError(null);
     const succeeded = await runTx(() =>
       writeContractAsync({
-        address: escrow,
+        address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "revoke",
         args: [tid],
@@ -327,7 +327,7 @@ export function AuthorizeAuctionAgentDialog({
       handleOpenChange(false);
     }
   }, [
-    escrow,
+    mode,
     hasActiveAuction,
     writeContractAsync,
     tid,
@@ -345,7 +345,7 @@ export function AuthorizeAuctionAgentDialog({
 
   const canSubmitTerms = useMemo(() => {
     if (settlementPending) return false;
-    if (!selectedAgent || !escrow) return false;
+    if (!selectedAgent || !mode) return false;
     if (assetKind === "USDC" && !usdc) return false;
     if (!isValidOwnerMinAsset(minAssetInput, assetKind)) return false;
     if (noExpiration) return true;
@@ -353,7 +353,7 @@ export function AuthorizeAuctionAgentDialog({
   }, [
     settlementPending,
     selectedAgent,
-    escrow,
+    mode,
     assetKind,
     usdc,
     minAssetInput,
@@ -362,7 +362,7 @@ export function AuthorizeAuctionAgentDialog({
   ]);
 
   const runAuthorize = useCallback(async () => {
-    if (!escrow || !selectedAgent || !canSubmitTerms) return;
+    if (!mode || !selectedAgent || !canSubmitTerms) return;
     if (settlementPending) {
       setTxError(
         "The previous sale of this vehicle is still settling. Try again after the hold ends.",
@@ -376,7 +376,7 @@ export function AuthorizeAuctionAgentDialog({
     const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
     const succeeded = await runTx(() =>
       writeContractAsync({
-        address: escrow,
+        address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "grant",
         args: [
@@ -399,7 +399,7 @@ export function AuthorizeAuctionAgentDialog({
       handleOpenChange(false);
     }
   }, [
-    escrow,
+    mode,
     selectedAgent,
     canSubmitTerms,
     settlementPending,
@@ -492,11 +492,11 @@ export function AuthorizeAuctionAgentDialog({
           </div>
         )}
 
-        {!showRevoke && displayStep === "approval" && !isEscrowApproved && (
+        {!showRevoke && displayStep === "approval" && !isModeApproved && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Approve the auction contract to hold your passport when your agent
-              starts the auction.
+              Approve the ascending consignment contract to hold your passport
+              when your agent starts the auction.
             </p>
             {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">
@@ -516,7 +516,7 @@ export function AuthorizeAuctionAgentDialog({
               >
                 {phase === "indexing" || busy
                   ? "Confirming…"
-                  : "Approve auction escrow for all passports"}
+                  : "Approve ascending mode for all passports"}
               </Button>
               <Button
                 type="button"

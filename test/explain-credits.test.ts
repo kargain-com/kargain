@@ -73,6 +73,34 @@ describe("explainClaimFromCredits", () => {
   it("falls back when credits are empty", () => {
     assert.match(explainClaimFromCredits([]), /waiting for you to withdraw/i);
   });
+
+  it("explains ascending outbid and consignment owner payout claims", () => {
+    const outbid = explainClaimFromCredits(
+      [
+        {
+          amount: parseEther("0.5"),
+          reasonCode: "ascending.outbid_refund",
+          asset: zeroAddress,
+        },
+      ],
+      NATIVE_DISPLAY,
+    );
+    assert.match(outbid, /0\.5 ETH/);
+    assert.match(outbid, /outbid refund/i);
+
+    const owner = explainClaimFromCredits(
+      [
+        {
+          amount: parseEther("1"),
+          reasonCode: "consignment.owner_payout",
+          asset: zeroAddress,
+        },
+      ],
+      NATIVE_DISPLAY,
+    );
+    assert.match(owner, /seller proceeds/i);
+    assert.match(owner, /consignment contract/i);
+  });
 });
 
 describe("claimNotificationBody", () => {

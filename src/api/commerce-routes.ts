@@ -1,7 +1,8 @@
 /**
- * Commerce-mode HTTP routes: consignment browse/detail, mandates, claims,
- * and the shared BondedChallenge feed. Legacy /accounts/:address/claims
- * (pending_claim / claim_credit) stays in src/api/index.ts, untouched.
+ * Commerce-mode HTTP routes: consignment browse/detail, mandates,
+ * commerce claim-credit E2E scan, and the shared BondedChallenge feed.
+ * Product claims reader is `GET /accounts/:address/claims` in index.ts
+ * (unions pending_claim + commerce_claim).
  */
 
 import { db } from "ponder:api";
@@ -428,90 +429,6 @@ export function registerCommerceRoutes(app: Hono): void {
           causeEvent: r.causeEvent,
           timestamp: r.timestamp,
         })),
-        total: totalRow[0]?.value ?? 0,
-        page,
-        limit,
-      }),
-    );
-  });
-
-  /** Profile Claims tab (new tables) — transitional until cutover renames. */
-  app.get("/accounts/:address/commerce-claims", async (c) => {
-    const address = parseAddressParam(c.req.param("address"));
-    if (!address) return c.json({ error: "Invalid address" }, 400);
-    const chainId = parseOptionalChainId(c.req.query("chainId"));
-    const page = parsePage(c.req.query("page"));
-    const limit = parseLimit(c.req.query("limit"));
-    const offset = (page - 1) * limit;
-
-    const conditions = [eq(commerceClaim.account, address), gt(commerceClaim.amount, 0n)];
-    if (chainId !== undefined) conditions.push(eq(commerceClaim.chainId, chainId));
-    const where = and(...conditions);
-
-    const [rows, totalRow] = await Promise.all([
-      db
-        .select()
-        .from(commerceClaim)
-        .where(where)
-        .orderBy(desc(commerceClaim.updatedAt))
-        .limit(limit)
-        .offset(offset),
-      db.select({ value: count() }).from(commerceClaim).where(where),
-    ]);
-
-    const creditConditions = [eq(commerceClaimCredit.account, address)];
-    if (chainId !== undefined) creditConditions.push(eq(commerceClaimCredit.chainId, chainId));
-    const creditRows =
-      rows.length === 0
-        ? []
-        : await db
-            .select()
-            .from(commerceClaimCredit)
-            .where(and(...creditConditions))
-            .orderBy(asc(commerceClaimCredit.timestamp));
-
-    const balanceKeys = new Set(
-      rows.map(
-        (r) =>
-          `${r.chainId}-${r.contract.toLowerCase()}-${r.account.toLowerCase()}-${r.asset.toLowerCase()}`,
-      ),
-    );
-
-    const creditsByBalance = new Map<
-      string,
-      {
-        id: string;
-        amount: bigint;
-        reasonCode: string;
-        causeEvent: string;
-        timestamp: bigint;
-      }[]
-    >();
-    for (const credit of creditRows) {
-      const key = `${credit.chainId}-${credit.contract.toLowerCase()}-${credit.account.toLowerCase()}-${credit.asset.toLowerCase()}`;
-      if (!balanceKeys.has(key)) continue;
-      const list = creditsByBalance.get(key) ?? [];
-      list.push({
-        id: credit.id,
-        amount: credit.amount,
-        reasonCode: credit.reasonCode,
-        causeEvent: credit.causeEvent,
-        timestamp: credit.timestamp,
-      });
-      creditsByBalance.set(key, list);
-    }
-
-    const claims = rows.map((row) => {
-      const key = `${row.chainId}-${row.contract.toLowerCase()}-${row.account.toLowerCase()}-${row.asset.toLowerCase()}`;
-      return {
-        ...row,
-        credits: creditsByBalance.get(key) ?? [],
-      };
-    });
-
-    return c.json(
-      jsonBody({
-        claims,
         total: totalRow[0]?.value ?? 0,
         page,
         limit,

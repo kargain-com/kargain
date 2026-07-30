@@ -16,6 +16,10 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { minNextBid } from "@/lib/auction/auction-bid-math";
 import { formatExtensionHelp } from "@/lib/auction/auction-live-signals";
+import {
+  ASCENDING_BID_HELD,
+  ASCENDING_S1_HELP,
+} from "@/lib/auction/ascending-public-claims";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auction";
 import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
@@ -92,7 +96,7 @@ export function AuctionBidPanel({
   const [amountStr, setAmountStr] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
-  const escrow = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeAddress("ascending", chainId);
   const isUsdcAuction = auction.assetLabel === "USDC";
   const usdc =
     isUsdcAuction &&
@@ -105,7 +109,7 @@ export function AuctionBidPanel({
   const { data: ethBalance } = useBalance({
     address,
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(address && escrow && !isUsdcAuction) },
+    query: { enabled: Boolean(address && mode && !isUsdcAuction) },
   });
 
   const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
@@ -121,9 +125,9 @@ export function AuctionBidPanel({
     address: usdc,
     abi: ERC20_ABI,
     functionName: "allowance",
-    args: address && escrow ? [address, escrow] : undefined,
+    args: address && mode ? [address, mode] : undefined,
     chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(address && usdc && escrow && isUsdcAuction) },
+    query: { enabled: Boolean(address && usdc && mode && isUsdcAuction) },
   });
 
   const parsedAmount = parseOwnerMinAsset(amountStr, assetLabel);
@@ -155,7 +159,7 @@ export function AuctionBidPanel({
     uiState === "S1" || uiState === "S3" || uiState === "S4";
 
   const disabledReason = (() => {
-    if (!escrow) return "Auctions are not available on this chain.";
+    if (!mode) return "Auctions are not available on this chain.";
     if (isUsdcAuction && !usdc)
       return "The settlement token for this lot is unavailable.";
     if (paused === true) return null;
@@ -192,7 +196,7 @@ export function AuctionBidPanel({
   async function onBid() {
     await runFlow(async () => {
       setTxError(null);
-      if (!escrow || !address) return;
+      if (!mode || !address) return;
 
       const amount = parseOwnerMinAsset(amountStr, assetLabel);
       if (amount == null) {
@@ -229,7 +233,7 @@ export function AuctionBidPanel({
               address: usdc,
               abi: ERC20_ABI,
               functionName: "approve",
-              args: [escrow, amount],
+              args: [mode, amount],
               chainId: wagmiChainId(chainId),
             });
             await awaitReceipt(approveHash, { mapError: mapBidError });
@@ -241,7 +245,7 @@ export function AuctionBidPanel({
         const succeeded = await runTx(
           () =>
             writeContractAsync({
-              address: escrow,
+              address: mode,
               abi: AscendingConsignmentAbi,
               functionName: "bid",
               args: [BigInt(tokenId), amount],
@@ -289,8 +293,7 @@ export function AuctionBidPanel({
 
       {uiState === "S1" && (
         <p className="font-sans text-sm text-text-secondary">
-          The auction starts when someone bids at least the reserve. Until then
-          the seller can cancel.
+          {ASCENDING_S1_HELP}
         </p>
       )}
 
@@ -359,24 +362,21 @@ export function AuctionBidPanel({
       </Button>
 
       <div className="space-y-2 border-t border-border-default pt-3">
-        <p className="font-sans text-xs text-text-secondary">
-          Your full bid is held by the auction contract until you are outbid or
-          you win. Outbid funds are released — if they do not arrive, check Claims.
-        </p>
+        <p className="font-sans text-xs text-text-secondary">{ASCENDING_BID_HELD}</p>
         <div className="min-h-[2.5rem]" aria-live="polite" aria-atomic="true">
           {extensionFlash ? (
             <p className="font-sans text-xs text-text-secondary">{extensionFlash}</p>
-          ) : (
+          ) : formatExtensionHelp(extensionWindow) != null ? (
             <p className="font-sans text-xs text-text-secondary">
               {formatExtensionHelp(extensionWindow)}
             </p>
-          )}
+          ) : null}
         </div>
-        {escrow && (
+        {mode && (
           <p className="font-sans text-xs text-text-secondary">
             Ascending consignment contract{" "}
             <EnsWalletLink
-              address={escrow}
+              address={mode}
               className="font-mono text-xs text-text-secondary"
             />
           </p>

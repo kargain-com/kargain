@@ -1,24 +1,15 @@
 /**
  * Derive-only live auction signals (extension flash, outbid toast).
  * No timers/subscriptions — callers feed values from existing detail refetch.
+ * Extension / outbid copy lives in ascending-public-claims (single source).
  */
 
-/** Seconds → whole minutes for copy (“Extended by N minutes”). */
-export function extensionWindowMinutes(extensionWindowSec: bigint): number {
-  const sec = Number(extensionWindowSec);
-  if (!Number.isFinite(sec) || sec <= 0) return 5;
-  return Math.max(1, Math.round(sec / 60));
-}
-
-export function formatExtensionFlash(extensionWindowSec: bigint): string {
-  const mins = extensionWindowMinutes(extensionWindowSec);
-  return `Extended by ${mins} minutes`;
-}
-
-export function formatExtensionHelp(extensionWindowSec: bigint): string {
-  const mins = extensionWindowMinutes(extensionWindowSec);
-  return `Bids in the last ${mins} minutes extend the auction by ${mins} minutes.`;
-}
+export {
+  extensionWindowMinutes,
+  formatExtensionFlash,
+  formatExtensionHelp,
+  formatOutbidToastMessage,
+} from "@/lib/auction/ascending-public-claims";
 
 /**
  * True when a refetch shows endsAt jumped while the auction had a prior end
@@ -30,10 +21,6 @@ export function detectEndsAtExtension(
 ): boolean {
   if (prevEndsAt == null || prevEndsAt <= 0n) return false;
   return nextEndsAt > prevEndsAt;
-}
-
-export function formatOutbidToastMessage(amountLabel: string): string {
-  return `You were outbid. Your ${amountLabel} was released. If it did not arrive in your wallet, check Claims.`;
 }
 
 /** sessionStorage key — once per lost lead for this auction start + bid amount. */

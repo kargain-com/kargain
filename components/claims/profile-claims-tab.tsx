@@ -123,7 +123,7 @@ export function ProfileClaimsTab() {
         level="B"
         icon={CreditCardIcon}
         title="No pending claims"
-        description="When a payout cannot reach your wallet, it appears here for you to withdraw."
+        description="When a payout cannot reach your wallet, it appears here. Withdraw sends it from the owing contract via withdrawClaim."
       />
     );
   }

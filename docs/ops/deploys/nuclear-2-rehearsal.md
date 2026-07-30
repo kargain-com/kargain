@@ -11,6 +11,18 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | Local rehearsal | `pnpm hardhat test test/nuclear-rehearsal.test.ts` |
 | Spec | [SPEC §I.10](../../contracts/SPEC.md#i10-deploy-sequence) |
 
+**Ascending Nuclear initialize defaults** (must match model §11; asserted by `test/ascending-nuclear-defaults-parity.test.ts`):
+
+| Parameter | Value |
+|-----------|-------|
+| Extension window | 900 seconds |
+| Minimum increment | 300 bps |
+| Duration bounds | 3–30 days |
+| Protection window | 7 days |
+| Settlement challenge window | 30 days |
+| Abandonment window | 30 days |
+| Challenge bond | 0.01 ETH |
+
 ---
 
 ## Prerequisites

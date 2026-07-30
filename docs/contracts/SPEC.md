@@ -370,6 +370,20 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 **Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
 
+**Ascending Nuclear initialize defaults** (governance-mutable after deploy; normative model §11 / §7.3):
+
+| Parameter | Default | Notes |
+|-----------|---------|--------|
+| Extension window | **900 seconds** | Live — applies from the next bid |
+| Minimum increment | **300 bps** | Live — applies from the next bid |
+| Duration bounds | **3–30 days** | Checked at open; Timelock `setAuctionRules` |
+| Protection window | **7 days** | Snapshotted into hold at `settle` |
+| Settlement challenge window | **30 days** | Ascending BondedChallenge instance (distinct from KarPassport verification **14 days**) |
+| Abandonment window | **30 days** | Fixed when reversal becomes pending |
+| Challenge bond | **0.01 ETH** | Exact match at `open` |
+
+**Settlement challenge vs protection:** a challenge may open only while the protection hold is active; opening freezes remaining protection; the challenge window then bounds judgement. KarPassport verification challenges use a separate BondedChallenge instance with a **14-day** window ([verification challenge](#verification-challenge-bondedchallenge-instance)).
+
 **Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges`, config mirrors `GET /commerce-modes` / `/commerce-payment-tokens` / `/commerce-currency-feeds` — [indexer/README.md](../indexer/README.md).
 
 **Live addresses:** mode proxies are **absent** from `COMMERCIAL_ACTIVE` until **Nuclear #2** registers them and Ponder mode start blocks. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
@@ -627,7 +641,7 @@ After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps i
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + gateway addresses (`fixedPriceConsignment`, `ascendingConsignment`, `bridgeGateway`).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · Ascending Nuclear windows from model §11: extension **900s**, protection **7 days**, settlement challenge **30 days**, abandonment **30 days**, min increment **300 bps**, duration **3–30 days**, challenge bond **0.01 ETH** · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 

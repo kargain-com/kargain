@@ -27,6 +27,7 @@ import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import { FIXED_PRICE_R1_DISCLOSURE } from "@/lib/marketplace/fixed-price-r1-disclosure";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
@@ -434,7 +435,15 @@ export function ListingBuyPanel({
             }
             valueClassName="text-xs text-text-secondary"
           />
+          <p className="font-sans text-xs text-text-tertiary">
+            Seller receives is after the platform fee (and any agent share)
+            snapshotted when the sale opened.
+          </p>
         </div>
+
+        <p className="font-sans text-xs text-text-secondary">
+          {FIXED_PRICE_R1_DISCLOSURE}
+        </p>
 
         <Button
           type="button"
