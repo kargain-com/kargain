@@ -554,7 +554,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         platformRecipient: admin.account.address,
         feeBps: PLATFORM_FEE_BPS,
         nativeUsdFeed: hub.stack.nativeFeed.address,
-        maxFeedStaleness: MAX_STALENESS,
+        nativeUsdStalenessTolerance: Number(MAX_STALENESS),
         owner: admin.account.address,
         guardian: admin.account.address,
       });

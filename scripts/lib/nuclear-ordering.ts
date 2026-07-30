@@ -34,7 +34,7 @@ export const NUCLEAR_GUARDIAN_IMMEDIATE_OPS = [
 export const NUCLEAR_TIMELOCK_OWNER_OPS = [
   "FixedPrice.approvePaymentToken",
   "FixedPrice.setCurrencyFeed",
-  "FixedPrice.setMaxFeedStaleness",
+  "FixedPrice.setNativeUsdStalenessTolerance",
   "FixedPrice.setGuardian",
   "FixedPrice.unpause",
   "FixedPrice.upgradeToAndCall",

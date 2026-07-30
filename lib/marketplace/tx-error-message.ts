@@ -51,7 +51,12 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "That token does not follow the ERC-20 transfer return convention and cannot be used.",
   TokenDecimalsUnavailable:
     "That token does not expose a decimals() value and cannot be used as a payment token.",
-  ZeroFeedStaleness: "Oracle freshness window must be greater than zero.",
+  ZeroFeedStaleness:
+    "A measured price feed requires a non-zero freshness tolerance.",
+  StalenessWithoutFeed:
+    "A freshness tolerance cannot be set without a price feed.",
+  FeedStalenessOutOfBounds:
+    "Feed freshness tolerance is outside the allowed range (60 seconds to 48 hours).",
   InvalidCategory: "That verifier category is not valid.",
   AlreadyVerifier: "This wallet is already an active verifier.",
   BelowMinStake: "Stake amount is below the current minimum.",
@@ -72,7 +77,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   TokenExists: "This passport id already exists.",
   PassportBridgedAway: "This passport is bridged away and cannot be used here.",
   FeeTooHigh: "Platform fee is above the allowed maximum.",
-  StalePrice: "The price oracle answer is stale. Try again shortly.",
+  StalePrice: "The price oracle answer is stale for this feed's freshness window. Try again shortly.",
   BadOracleAnswer: "The price oracle returned an invalid answer.",
   CurrencyNotAvailableOnChain: "This listing currency is not available on this chain.",
   InvalidCurrencyCode: "That currency code cannot be registered as a listing feed.",

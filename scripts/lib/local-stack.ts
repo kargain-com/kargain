@@ -144,7 +144,8 @@ export async function deployFixedPriceConsignment(
     platformRecipient: `0x${string}`;
     feeBps: bigint;
     nativeUsdFeed: `0x${string}`;
-    maxFeedStaleness: bigint;
+    /** Per-feed freshness for native USD only (not a global default). */
+    nativeUsdStalenessTolerance: number | bigint;
     owner: `0x${string}`;
     guardian: `0x${string}`;
     /** Deploy harness artifact instead of production (floor poison tests). */
@@ -161,7 +162,7 @@ export async function deployFixedPriceConsignment(
       params.platformRecipient,
       params.feeBps,
       params.nativeUsdFeed,
-      params.maxFeedStaleness,
+      Number(params.nativeUsdStalenessTolerance),
       params.owner,
       params.guardian,
     ],

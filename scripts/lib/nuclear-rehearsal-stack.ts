@@ -25,7 +25,6 @@ import {
   ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "./verify-constructor-args.js";
 import {
   deployAscendingConsignment,
@@ -128,7 +127,7 @@ export async function deployNuclearRehearsalStack(
     platformRecipient,
     feeBps: MARKETPLACE_FEE_BPS,
     nativeUsdFeed: nativeFeed.address,
-    maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
+    nativeUsdStalenessTolerance: 3600,
     owner: deployerAddress,
     guardian: getAddress(guardian.account.address),
   });
@@ -173,7 +172,7 @@ export async function deployNuclearRehearsalStack(
     8,
     10n ** 8n, // $1
   ]);
-  await fp.mode.write.approvePaymentToken([usdc.address, usdcUsdFeed.address], {
+  await fp.mode.write.approvePaymentToken([usdc.address, usdcUsdFeed.address, 3600], {
     account: deployer.account,
   });
   await asc.mode.write.approvePaymentToken([usdc.address], {

@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.2.0-rc.1`, AscendingConsignment `2.2.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.3.0-rc.1`, AscendingConsignment `2.2.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -51,7 +51,7 @@
 | KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
-| FixedPriceConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
+| FixedPriceConsignment | `2.3.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
 | AscendingConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
 
 **Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** until Nuclear #2 refreshes the stack ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
@@ -185,7 +185,7 @@ A state transition a party can be held to must leave a log complete enough to re
 
 `CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
 
-FixedPriceConsignment `VERSION` **`2.2.0-rc.1`**. AscendingConsignment `VERSION` **`2.2.0-rc.1`**.
+FixedPriceConsignment `VERSION` **`2.3.0-rc.1`**. AscendingConsignment `VERSION` **`2.2.0-rc.1`**.
 
 **Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `minProtectionWindow` / `maxProtectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
@@ -199,7 +199,7 @@ FixedPriceConsignment `VERSION` **`2.2.0-rc.1`**. AscendingConsignment `VERSION`
 |----|-----------|
 | `pause` | Guardian (`NotGuardian`) |
 | `revokePaymentToken` | Guardian **or** owner (Timelock) — soft-disable; in-flight buy/bid/settle keep stored config (`NotGuardianOrOwner`) |
-| `unpause` / `approvePaymentToken` / `setGuardian` / UUPS / `setAuctionRules` / `setCurrencyFeed` / `setMaxFeedStaleness` | Owner (Timelock) |
+| `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / `setAuctionRules` / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
 | Passport `addEncumbranceSource` / `removeEncumbranceSource` / `setDisputeDeposit` / `rescueExcessEth` | Owner (Timelock); `setBridgeGateway` one-shot |
 
 **Encumbrance:** `may(tokenId, Intent)` combines readiness (`OpenConsignment` requires VERIFIED; `LeaveChain` always) with intrinsic challenge + governed external sources. Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
@@ -359,14 +359,20 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 | Mode | VERSION | Role |
 |------|---------|------|
-| FixedPriceConsignment | `2.2.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; agent commission splits |
+| FixedPriceConsignment | `2.3.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
 | AscendingConsignment | `2.2.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
 **Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
-**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). VERSION amend-in-place `2.2.0-rc.1`.
+**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.3.0-rc.1`**; Ascending amend-in-place **`2.2.0-rc.1`**.
 
-**FixedPrice payment-token feed (P4):** `approvePaymentToken(token, feed)` with `feed == address(0)` admits the token for **asset-denominated sales only** (seller names token units; no conversion). Fiat + ERC-20 opens require a non-zero feed (`PaymentTokenFeedRequired` at open and again in `_usdToTokenAmount` — no USD-stable parity). Once a non-zero feed is set it cannot be cleared by re-admission (`CannotClearPaymentTokenFeed`). Soft-revoke keeps decimals/feed so in-flight fiat quotes still resolve via the measured feed. Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAINLINK_FEEDS.usdcUsdFeed` when present; when that entry is zero, Nuclear still admits USDC with `feed=0` and **announces** that fiat-denominated USDC sales are unavailable on that chain (asset-only). Never invent a feed or treat zero as a silent peg. Timelock may later `approvePaymentToken` with a non-zero feed; once set, feed is monotonic. **Mainnet feed rows** (Ethereum `1`, Base `8453`) in `CHAINLINK_FEEDS` are configuration only — Nuclear deploy remains `isCommercialChainId` → **84532 | 11155111**; populating mainnet feeds does not unlock a mainnet Nuclear path (§7.6). Seller open UI offers Fiat×token only when the admitted token has a feed (`lib/commerce/fixed-price-open-options.ts`); Asset denomination is always offered for admitted assets.
+**FixedPrice payment-token feed (P4):** `approvePaymentToken(token, feed, stalenessTolerance)` with `feed == address(0)` admits the token for **asset-denominated sales only** (seller names token units; no conversion). `stalenessTolerance` must be **0** when `feed == 0`; otherwise it must sit in on-chain bounds **`MIN_FEED_STALENESS` = 60s** through **`MAX_FEED_STALENESS` = 259 200s (72h)** — below 60s block-time and RPC skew dominate; 72h admits `2 × max(observedMaxGap, publishedHeartbeat)` for ~24h stablecoin/FX feeds when observed gap slightly exceeds published heartbeat (see commerce-model P4 derivation). Fiat + ERC-20 opens require a non-zero feed (`PaymentTokenFeedRequired` at open and again in `_usdToTokenAmount` — no USD-stable parity). Once a non-zero feed is set it cannot be cleared by re-admission (`CannotClearPaymentTokenFeed`). Soft-revoke keeps decimals/feed/tolerance so in-flight fiat quotes still resolve via the measured feed. **No global staleness default** — the removed `maxFeedStaleness` / `setMaxFeedStaleness` cannot silently inherit across feeds.
+
+**Per-feed oracle freshness:** native USD uses `nativeUsdStalenessTolerance` (set at `initialize` and via `setNativeUsdStalenessTolerance`); each payment token and currency feed carries its own tolerance at admit/set. Quote and buy paths compare Chainlink `updatedAt` against **that feed’s** tolerance (`StalePrice` on breach). Ascending has no feeds (unchanged). Tolerances are derived by one rule — `2 × max(observedMaxInterRoundGap, publishedHeartbeat)` — in `scripts/lib/chainlink-feeds.ts` (`deriveFeedStalenessTolerance`); `pnpm deploy:nuclear:dry-run` calls `assertNuclearFeedsFresh` against each configured tolerance before any tx. Normative write-up: commerce-model **P4 tolerance derivation**.
+
+Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAINLINK_FEEDS.usdcUsdFeed` when present; when that entry is zero, Nuclear still admits USDC with `feed=0` and **announces** that fiat-denominated USDC sales are unavailable on that chain (asset-only). Never invent a feed or treat zero as a silent peg. Timelock may later `approvePaymentToken` with a non-zero feed and tolerance; once set, feed is monotonic. **Mainnet feed rows** (Ethereum `1`, Base `8453`) in `CHAINLINK_FEEDS` are configuration only — Nuclear deploy remains `isCommercialChainId` → **84532 | 11155111**; populating mainnet feeds does not unlock a mainnet Nuclear path (§7.6). A single global bound (e.g. 3600s) cannot serve both ETH/USD (~hourly) and USDC/USD (~24h) heartbeats — Base mainnet USDC/USD would fail a 3600s global check when probed ~18–20h stale (motivation for per-feed tolerances). Seller open UI offers Fiat×token only when the admitted token has a feed (`lib/commerce/fixed-price-open-options.ts`); Asset denomination is always offered for admitted assets.
+
+**Nuclear admit tolerances (P4 rule; RPC gap + Chainlink directory 2026-07-30):** Base Sepolia **84532** — native ETH/USD **2444s** (obs max 1222, hb 1200; obs governs); USDC feed zero (asset-only). Ethereum Sepolia **11155111** — native ETH/USD **7392s** (obs 3696, hb 3600; obs governs); USDC/USD **172 992s** (obs 86496, hb 86400; obs governs). **Full redeploy** both commercial chains required — nothing live survives; Timelock patch of the old global slot is rejected.
 
 **Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
 
@@ -515,7 +521,7 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 | **No bond ceiling** | Governance can raise deposit enough to make verifications unchallengeable; Timelock48h visibility + cancel is the control |
 | **Reverting seller** | Seller contract wallet can block ETH payout; document for buyers |
 | **Agent fee front-run** | Agent may change fee between quote and buy; `ownerMinPrice` protects seller net; buyers should quote immediately before purchase |
-| **Oracle staleness** | `maxFeedStaleness` (default 3600s); stale feeds revert buys |
+| **Oracle staleness** | Per-feed `stalenessTolerance` on FixedPrice (native, payment token, currency); bounds 60s–72h; P4 rule `2 × max(obs, publishedHb)`; stale feeds revert quote/buy (`StalePrice`); no global default |
 | **External payment trust** | `confirmExternalPayment` is seller attestation — no on-chain payment proof |
 | **`verificationFee`** | Informational on-chain signal only — no escrow or payment enforcement; Kargain UI may facilitate direct owner→verifier ETH (memo) or USDC transfer |
 | **Bridge trust** | LayerZero + ONFT config per §7.6 (pinned config, ≥2 independent DVNs, no defaults); misconfigured peers are operational risk |
@@ -531,33 +537,37 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
-| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear Model X v1.3) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
-| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (full Model X v1.3) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
+| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear #2) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (Nuclear #2) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). Nuclear cutover July 21, 2026 — production Ponder must reindex from hub `indexFromBlock` **44434865** (ops follow-up).
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #2** July 30, 2026 — production Ponder must **full reindex** from hub `indexFromBlock` **44833462** and Eth **11384136**.
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
 > **Single source of truth** for active 84532 contract addresses and semver. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[84532]` / `SEPOLIA_ACTIVE`). Local `deployments/84532.json` is a deploy-machine artifact (not in git).
 
-Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **44434865** · committed: `COMMERCIAL_ACTIVE[84532]`
+Nuclear #2 cutover July 30, 2026 · KarPassport **`1.8.0-rc.1`** · FixedPrice **`2.3.0-rc.1`** · Ascending **`2.2.0-rc.1`** · `indexFromBlock`: **44833462** · committed: `COMMERCIAL_ACTIVE[84532]` · commerce guardian `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
 | Contract | VERSION | Address | Basescan |
 |----------|---------|---------|----------|
-| Timelock48h | `1.0.0-rc.1` | `0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760` | [code](https://sepolia.basescan.org/address/0x9730A0e7B97d15d9Fb1668690B3b46331e6E1760#code) |
-| KarProPass | `1.0.0-rc.1` | `0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25` | [code](https://sepolia.basescan.org/address/0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25#code) |
-| KarProStaking | `1.1.0-rc.1` | `0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f` | [code](https://sepolia.basescan.org/address/0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f#code) |
-| KarPassport | `1.3.0-rc.1` | `0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a` | [code](https://sepolia.basescan.org/address/0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a#code) |
-| KarPassportBridgeGateway | `1.1.0-rc.1` | `0x2a4339656393da943730b7Ac728480f40909f14C` | [code](https://sepolia.basescan.org/address/0x2a4339656393da943730b7Ac728480f40909f14C#code) |
+| Timelock48h | `1.0.0-rc.1` | `0x380021e9a560b8CF1482Cd501F4B2629739b2452` | [code](https://sepolia.basescan.org/address/0x380021e9a560b8CF1482Cd501F4B2629739b2452#code) |
+| KarProPass | `1.1.0-rc.1` | `0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f` | [code](https://sepolia.basescan.org/address/0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f#code) |
+| KarProStaking | `2.0.0-rc.1` | `0xC90d6Ecd1BB814eD18E6704f433662541f94fcaD` | [code](https://sepolia.basescan.org/address/0xC90d6Ecd1BB814eD18E6704f433662541f94fcaD#code) |
+| KarPassport | `1.8.0-rc.1` | `0xFC33887c97Ff4c65B47279b43c6Ca6817f5528aE` | [code](https://sepolia.basescan.org/address/0xFC33887c97Ff4c65B47279b43c6Ca6817f5528aE#code) |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | `0x77C881b9FB3cD425367c99378588b2790669F51F` | [code](https://sepolia.basescan.org/address/0x77C881b9FB3cD425367c99378588b2790669F51F#code) |
+| FixedPriceConsignment | `2.3.0-rc.1` | `0xE98EbDb9354ff9c91872390D7106D621794C9118` | [code](https://sepolia.basescan.org/address/0xE98EbDb9354ff9c91872390D7106D621794C9118#code) |
+| AscendingConsignment | `2.2.0-rc.1` | `0x568f44F238BD1104D8c51Ea93eC92dC91ef5a17D` | [code](https://sepolia.basescan.org/address/0x568f44F238BD1104D8c51Ea93eC92dC91ef5a17D#code) |
 | USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
 
-**Retired escrows (denylisted — not in `COMMERCIAL_ACTIVE`; removed from app/indexer July 2026 step 5):** on-chain proxies persist until **Nuclear #2** refreshes the stack. Do not integrate.
+**FixedPrice oracle (84532):** native ETH/USD stalenessTolerance **2444s**; USDC admitted **asset-only** (feed zero — no Chainlink USDC/USD on Base Sepolia).
+
+**Retired escrows (denylisted — not in `COMMERCIAL_ACTIVE`; removed from app/indexer July 2026 step 5):**
 
 | Contract | VERSION | Address |
 |----------|---------|---------|
@@ -566,30 +576,33 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 | AuctionEscrow impl | `1.0.1-draft` | `0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2` |
 | AuctionEscrow proxy | `1.0.1-draft` | `0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04` |
 
-**Commerce modes (Nuclear #2 — not yet in committed stack):** `FixedPriceConsignment` + `AscendingConsignment` proxies register here after the next full-stack deploy; until then production commerce is **inert** (fail-closed UI/indexer).
+**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` · `COMMERCE_GUARDIAN` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
-**Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
+> **Superseded (July 21 Nuclear hub, denylisted):** Timelock `0x9730A0…1760` · KarProPass `0xD9B6C2…5b25` · KarProStaking `0xdEe5eD…257f` · KarPassport `0x899FaE…416a` · gateway `0x2a4339…f14C`. **Pre-Nuclear hub** (June–July RC): KarPassport `0x2C46…` · adapter `0xC219…6Fb0` (same hex is live Eth Nuclear #2 KarPassport — denylist is chain-scoped) · see [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
 
-> **Superseded (pre-Nuclear hub, denylisted):** KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` · MarketplaceEscrow `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` · AuctionEscrow `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` · ProxyONFT721Adapter `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` · KarProStaking `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` · KarProPass `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` · earlier adapter `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c`. **July 2026 Nuclear escrows** (`0x60336…` / `0x37Fa…`) are also denylisted post step 5 — see retired table above. Historical pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
-
-**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire:read-only` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
-> **Single source of truth** for the Nuclear full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[11155111]`). Local `deployments/11155111.json` is a deploy-machine artifact (not in git).
+> **Single source of truth** for the Nuclear #2 full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[11155111]`). Local `deployments/11155111.json` is a deploy-machine artifact (not in git).
 
-Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock`: **11319840** · committed: `COMMERCIAL_ACTIVE[11155111]` · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
+Nuclear #2 cutover July 30, 2026 · KarPassport **`1.8.0-rc.1`** · FixedPrice **`2.3.0-rc.1`** · Ascending **`2.2.0-rc.1`** · `indexFromBlock`: **11384136** · committed: `COMMERCIAL_ACTIVE[11155111]` · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
 
 | Contract | VERSION | Address | Etherscan |
 |----------|---------|---------|-----------|
-| Timelock48h | `1.0.0-rc.1` | `0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083` | [code](https://sepolia.etherscan.io/address/0xCfA1eAB89D6D1DE1244CF346D5a4F1E7343E9083#code) |
-| KarProPass | `1.0.0-rc.1` | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` | [code](https://sepolia.etherscan.io/address/0x8888594b12DF2e1EF406e91CFF72d52801BCaC24#code) |
-| KarProStaking | `1.1.0-rc.1` | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` | [code](https://sepolia.etherscan.io/address/0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F#code) |
-| KarPassport | `1.3.0-rc.1` | `0x6378469256907D7DC14BBfce0261ceDE22314507` | [code](https://sepolia.etherscan.io/address/0x6378469256907D7DC14BBfce0261ceDE22314507#code) |
-| KarPassportBridgeGateway | `1.1.0-rc.1` | `0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB` | [code](https://sepolia.etherscan.io/address/0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB#code) |
+| Timelock48h | `1.0.0-rc.1` | `0x48B0a4205A3CD16BA97FE17222A717c63F6756D8` | [code](https://sepolia.etherscan.io/address/0x48B0a4205A3CD16BA97FE17222A717c63F6756D8#code) |
+| KarProPass | `1.1.0-rc.1` | `0xc31197fcBa5D4f373A556b36CD05916fd73a9376` | [code](https://sepolia.etherscan.io/address/0xc31197fcBa5D4f373A556b36CD05916fd73a9376#code) |
+| KarProStaking | `2.0.0-rc.1` | `0x3F6594d97FbD9D332866BB7EFB3f1b89554e1249` | [code](https://sepolia.etherscan.io/address/0x3F6594d97FbD9D332866BB7EFB3f1b89554e1249#code) |
+| KarPassport | `1.8.0-rc.1` | `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` | [code](https://sepolia.etherscan.io/address/0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0#code) |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | `0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655` | [code](https://sepolia.etherscan.io/address/0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655#code) |
+| FixedPriceConsignment | `2.3.0-rc.1` | `0xf9dF8c00B89D833A1C7E1210259F9c4F673258E9` | [code](https://sepolia.etherscan.io/address/0xf9dF8c00B89D833A1C7E1210259F9c4F673258E9#code) |
+| AscendingConsignment | `2.2.0-rc.1` | `0xe8ECf3b42b489F6289434840661770b43B027F13` | [code](https://sepolia.etherscan.io/address/0xe8ECf3b42b489F6289434840661770b43B027F13#code) |
 | USDC | — | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | [token](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
 | Native USD feed | — | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | [feed](https://sepolia.etherscan.io/address/0x694AA1769357215DE4FAC081bf1f309aDC325306) |
+| USDC/USD feed | — | `0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E` | [feed](https://sepolia.etherscan.io/address/0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.etherscan.io/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
+
+**FixedPrice oracle (11155111):** native ETH/USD stalenessTolerance **7392s**; USDC/USD **172992s** (P4 rule).
 
 **Retired escrows (denylisted — same policy as [I.9.1](#i91-active-deployment-base-sepolia-84532)):**
 
@@ -602,9 +615,11 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 
 **Parameters:** same Nuclear policy as [I.9.1](#i91-active-deployment-base-sepolia-84532) (USD-only registry, `disputeDeposit` 0.01 ETH, `platformFeeBps` 10, `minStakeNative` 0.05 ETH, `upgradeAuthority` Timelock48h) · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
+> **Superseded (July 21 Nuclear Eth, denylisted):** Timelock `0xCfA1eA…9083` · KarProPass `0x888859…aC24` · KarProStaking `0xcD40C8…Fb7F` · KarPassport `0x637846…4507` · gateway `0xEBcd44…4eAB`.
+
 > **Superseded thin ONFT (denylisted):** KarPassportONFT721 `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` (July 20 spoke) — retired by Nuclear full stack.
 
-**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · peers hub gateway `0x2a4339656393da943730b7Ac728480f40909f14C` ↔ eth gateway `0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB` · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x53f2ed09090b32e0578a32d5a97a9798fee07a8735a10e713134f0efcded1c71`
+**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · peers hub gateway `0x77C881b9FB3cD425367c99378588b2790669F51F` ↔ eth gateway `0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655` · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0xccce0f757699dd8e97f3ab6814258e8c562bae5e79349338a449d44410343697`
 
 **Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · `pnpm verify:sepolia:eth` · runbook: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md) · security policy: [§7.6](#76-layerzero-security-configuration).
 
@@ -622,7 +637,7 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 6. Deploy **FixedPriceConsignment** impl + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`; **USD-only** currency registry at init (native USD feed).
 7. Deploy **AscendingHoldLib** then **AscendingOpenLib** (no ctor deps), then **AscendingConsignment** impl linked to those libraries + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`. Manifest stores `ascendingHoldLib` / `ascendingOpenLib` beside impl/proxy.
 8. **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** on KarPassport while Ownable is still deployer — **deploy scripts abort if `isEncumbranceSource` is false** before gateway. On-chain `open*` also refuses unless the mode is a live source (`ModeNotEncumbranceSource`).
-9. **`approvePaymentToken`** on both modes while deployer still owns them (FixedPrice: USDC + `CHAINLINK_FEEDS.usdcUsdFeed` — **zero allowed** for asset-only; Ascending: USDC). When `usdcUsdFeed` is zero, scripts **admit and announce** that fiat-denominated USDC sales are unavailable on that chain (never invent a feed / silent peg). Scripts **abort** only if admission read-back fails (token not enabled or feed ≠ configured). **Post-handoff** approve / `setCurrencyFeed` still go through Timelock48h — `_validateFeed` runs at **execute** time (live Chainlink stays fresh across the delay). Re-admission cannot clear a FixedPrice payment-token feed once set.
+9. **`approvePaymentToken(token, feed, stalenessTolerance)`** on both modes while deployer still owns them (FixedPrice: USDC + `CHAINLINK_FEEDS.usdcUsdFeed` and `usdcUsdStalenessTolerance` — **zero feed allowed** for asset-only with tolerance 0; Ascending: USDC, asset-only, no feed). FixedPrice `initialize` also sets `nativeUsdStalenessTolerance` from `CHAINLINK_FEEDS.nativeUsdStalenessTolerance`. When `usdcUsdFeed` is zero, scripts **admit and announce** that fiat-denominated USDC sales are unavailable on that chain (never invent a feed / silent peg). **`pnpm deploy:nuclear:dry-run`** runs `assertNuclearFeedsFresh` against each feed’s configured tolerance before txs. Scripts **abort** only if admission read-back fails (token not enabled or feed ≠ configured). **Post-handoff** approve / `setCurrencyFeed` / `setNativeUsdStalenessTolerance` still go through Timelock48h — `_validateFeed` runs at **execute** time against **that feed’s** tolerance (live Chainlink must stay fresh across the delay). Re-admission cannot clear a FixedPrice payment-token feed once set.
 10. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only).
 11. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
 12. **Mode ownership handoff:** `FixedPrice.transferOwnership(timelock)` then `Ascending.transferOwnership(timelock)` — scripts abort if owners ≠ Timelock.
@@ -637,11 +652,11 @@ After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps i
 |----------|-----------|
 | KarPassport | Timelock: `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
 | KarProStaking | Timelock: `setMinStakeNative`, `setStakeToken` |
-| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken`, `setGuardian`, UUPS, feeds / staleness / `setAuctionRules` |
+| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken(token, feed, stalenessTolerance)`, `setGuardian`, UUPS, `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance` (FixedPrice only), `setAuctionRules` (Ascending) |
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + library + gateway addresses (`fixedPriceConsignment`, `ascendingHoldLib`, `ascendingOpenLib`, `ascendingConsignment`, `bridgeGateway`).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · Ascending Nuclear windows from model §11: extension **900s**, protection **bounds 7–45 days** (opener chooses at open), settlement challenge **14 days**, abandonment **30 days**, min increment **300 bps**, duration **3–30 days**, challenge bond **0.01 ETH** · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · FixedPrice per-feed oracle tolerances from `CHAINLINK_FEEDS` (native + USDC at admit; bounds 60s–72h — see [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment)) · `minStakeNative` 0.05 ETH · Ascending Nuclear windows from model §11: extension **900s**, protection **bounds 7–45 days** (opener chooses at open), settlement challenge **14 days**, abandonment **30 days**, min increment **300 bps**, duration **3–30 days**, challenge bond **0.01 ETH** · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke · **FixedPrice `2.3.0-rc.1` full redeploy** (no in-place Timelock patch). Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 
@@ -717,7 +732,7 @@ Procedure: [ops/recovery-bridge.md](../ops/recovery-bridge.md). Hardhat gate: ga
 
 ### 12.12 Cross-chain address identity
 
-Contract addresses are **not** unique across networks. The same CREATE address hex can appear on different chains when one deployer hits the same nonce (observed: Base Sepolia historical vs Ethereum Sepolia live Nuclear KarPassport `0x637846…4507` / MarketplaceEscrow `0x4FC74e…198B`).
+Contract addresses are **not** unique across networks. The same CREATE address hex can appear on different chains when one deployer hits the same nonce (observed: Base Sepolia historical adapter vs Ethereum Sepolia live Nuclear #2 KarPassport `0xC219…6Fb0`; earlier Base historical vs Eth July 21 Nuclear KarPassport `0x637846…4507` / MarketplaceEscrow `0x4FC74e…198B`).
 
 **Normative:**
 

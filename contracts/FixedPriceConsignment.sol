@@ -22,28 +22,48 @@ import {Erc20Admission} from "./lib/Erc20Admission.sol";
  *      Pause gates open (base) + buy only. Payment admission is checked at open; in-flight buy uses
  *      retained config even after soft revoke. No verifier-admission gate (N2). No HELD / protection
  *      window. External path moves no money (C7 / R4).
+ *
+ *      Oracle freshness is per feed: each admitted feed carries its own `stalenessTolerance`
+ *      (seconds). Stablecoin/FX aggregators have long heartbeats; ETH/USD does not. A single global
+ *      bound cannot serve both.
  */
 contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Receiver, IKarPassportEncumbrance {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.2.0-rc.1";
+    string public constant VERSION = "2.3.0-rc.1";
 
     bytes32 public constant CURRENCY_USD = bytes32("USD");
+
+    /// @dev Below this, block-time / RPC skew dominate; admission refuses.
+    uint32 public constant MIN_FEED_STALENESS = 60;
+    /// @dev Upper governance bound for per-feed tolerances. Must admit
+    ///      `FEED_STALENESS_MULTIPLIER × max(observedMaxGap, publishedHeartbeat)` for daily-heartbeat
+    ///      feeds (see commerce-model P4). 72h = room for 2× ~24h with observation overshoot;
+    ///      48h was exactly 2×86400 with zero slack when observed gap exceeds published heartbeat.
+    uint32 public constant MAX_FEED_STALENESS = 259_200; // 72 hours
 
     uint256 internal constant _FIAT_SCALE = 1e8;
 
     IERC721 public karPassport;
     AggregatorV3Interface public nativeUsdFeed;
-    uint256 public maxFeedStaleness;
+    /// @notice Freshness window (seconds) for `nativeUsdFeed` only — not a global default for other feeds.
+    uint32 public nativeUsdStalenessTolerance;
 
     struct PaymentTokenConfig {
         address feed;
         uint8 decimals;
         bool enabled;
+        /// @dev Seconds; must be 0 when `feed == address(0)`, else within MIN/MAX and validated at admit.
+        uint32 stalenessTolerance;
+    }
+
+    struct CurrencyFeedConfig {
+        address feed;
+        uint32 stalenessTolerance;
     }
 
     mapping(address token => PaymentTokenConfig) public paymentTokens;
-    mapping(bytes32 currencyCode => address feed) public currencyFeeds;
+    mapping(bytes32 currencyCode => CurrencyFeedConfig) public currencyFeeds;
     mapping(uint256 tokenId => bytes) public settlementNotes;
 
     /// @dev ClaimablePayouts owns its own `__gap`. Child reserve for this contract's slots.
@@ -58,7 +78,12 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     error PaymentTokenFeedRequired();
     /// @dev Re-admission cannot clear a non-zero payment-token feed (monotonic).
     error CannotClearPaymentTokenFeed();
+    /// @dev Non-zero feed with zero tolerance.
     error ZeroFeedStaleness();
+    /// @dev Zero feed with non-zero tolerance (tolerance only attaches to a feed).
+    error StalenessWithoutFeed();
+    /// @dev Tolerance outside [MIN_FEED_STALENESS, MAX_FEED_STALENESS].
+    error FeedStalenessOutOfBounds();
     error InvalidFeed();
     error InvalidFeedDecimals();
     error InvalidCurrencyCode();
@@ -66,10 +91,10 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     error DirectEthNotAccepted();
     error NotSellerOrAgent();
 
-    event PaymentTokenApproved(address indexed token, address feed, uint8 decimals);
+    event PaymentTokenApproved(address indexed token, address feed, uint8 decimals, uint32 stalenessTolerance);
     event PaymentTokenRevoked(address indexed token);
-    event CurrencyFeedSet(bytes32 indexed currencyCode, address feed);
-    event MaxFeedStalenessSet(uint256 previous, uint256 current);
+    event CurrencyFeedSet(bytes32 indexed currencyCode, address feed, uint32 stalenessTolerance);
+    event NativeUsdStalenessToleranceSet(uint32 previous, uint32 current);
     event Bought(uint256 indexed tokenId, address indexed buyer, address indexed asset, uint256 amount);
     event SettlementNoteSet(uint256 indexed tokenId, address indexed setter);
     event ExternalPaymentConfirmed(uint256 indexed tokenId, address indexed buyer, address indexed confirmer);
@@ -84,19 +109,18 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         address platformRecipient_,
         uint256 feeBps_,
         address nativeUsdFeed_,
-        uint256 maxFeedStaleness_,
+        uint32 nativeUsdStalenessTolerance_,
         address initialOwner_,
         address guardian_
     ) external initializer {
         if (passport_ == address(0) || nativeUsdFeed_ == address(0)) revert ZeroAddress();
-        if (maxFeedStaleness_ == 0) revert ZeroFeedStaleness();
 
         __ConsignmentBase_init(platformRecipient_, feeBps_, initialOwner_, guardian_);
 
         karPassport = IERC721(passport_);
         nativeUsdFeed = AggregatorV3Interface(nativeUsdFeed_);
-        maxFeedStaleness = maxFeedStaleness_;
-        _validateFeed(nativeUsdFeed_);
+        nativeUsdStalenessTolerance = nativeUsdStalenessTolerance_;
+        _validateFeed(nativeUsdFeed_, nativeUsdStalenessTolerance_);
     }
 
     // ---- Admin ----
@@ -105,45 +129,63 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     /// @param token Conforming ERC-20 with readable `decimals` (EOA / broken decimals refused).
     /// @param feed Chainlink USD aggregator, or `address(0)` for **asset-denominated sales only**
     ///             (seller names token amount; no conversion). Fiat opens require a non-zero feed.
-    ///             Non-zero feeds must pass `_validateFeed` (code, 8 decimals, positive answer, fresh).
-    ///             Once a non-zero feed is set it cannot be cleared by re-admission (monotonic).
-    function approvePaymentToken(address token, address feed) external onlyOwner {
+    ///             Non-zero feeds must pass `_validateFeed` (code, 8 decimals, positive answer, fresh
+    ///             within `stalenessTolerance_`). Once a non-zero feed is set it cannot be cleared
+    ///             by re-admission (monotonic).
+    /// @param stalenessTolerance_ Seconds of allowed age for this feed. Must be 0 iff `feed == 0`;
+    ///        otherwise within governance [MIN_FEED_STALENESS, MAX_FEED_STALENESS].
+    function approvePaymentToken(address token, address feed, uint32 stalenessTolerance_) external onlyOwner {
         if (token == address(0)) revert ZeroAddress();
         Erc20Admission.requireConforming(token);
         uint8 decimals_ = Erc20Admission.requireDecimals(token);
         if (paymentTokens[token].feed != address(0) && feed == address(0)) {
             revert CannotClearPaymentTokenFeed();
         }
-        if (feed != address(0)) _validateFeed(feed);
-        paymentTokens[token] = PaymentTokenConfig({feed: feed, decimals: decimals_, enabled: true});
-        emit PaymentTokenApproved(token, feed, decimals_);
+        if (feed == address(0)) {
+            if (stalenessTolerance_ != 0) revert StalenessWithoutFeed();
+        } else {
+            _validateFeed(feed, stalenessTolerance_);
+        }
+        paymentTokens[token] = PaymentTokenConfig({
+            feed: feed,
+            decimals: decimals_,
+            enabled: true,
+            stalenessTolerance: stalenessTolerance_
+        });
+        emit PaymentTokenApproved(token, feed, decimals_, stalenessTolerance_);
     }
 
     /// @notice Soft-disable a payment token (G3 reduce-exposure). Guardian or owner.
-    /// @dev Keeps decimals/feed so consignments already open in this asset can still quote and buy.
+    /// @dev Keeps decimals/feed/tolerance so consignments already open in this asset can still quote and buy.
     function revokePaymentToken(address token) external {
         if (msg.sender != guardian && msg.sender != owner()) revert NotGuardianOrOwner();
         paymentTokens[token].enabled = false;
         emit PaymentTokenRevoked(token);
     }
 
-    function setCurrencyFeed(bytes32 currencyCode, address feed) external onlyOwner {
+    /// @notice Set or clear a non-USD fiat currency feed with its own freshness tolerance.
+    function setCurrencyFeed(bytes32 currencyCode, address feed, uint32 stalenessTolerance_) external onlyOwner {
         if (currencyCode == CURRENCY_USD) revert InvalidCurrencyCode();
         if (feed == address(0)) {
+            if (stalenessTolerance_ != 0) revert StalenessWithoutFeed();
             delete currencyFeeds[currencyCode];
         } else {
-            _validateFeed(feed);
-            currencyFeeds[currencyCode] = feed;
+            _validateFeed(feed, stalenessTolerance_);
+            currencyFeeds[currencyCode] =
+                CurrencyFeedConfig({feed: feed, stalenessTolerance: stalenessTolerance_});
         }
-        emit CurrencyFeedSet(currencyCode, feed);
+        emit CurrencyFeedSet(currencyCode, feed, stalenessTolerance_);
     }
 
-    /// @dev Live at quote/buy (oracle freshness is environmental). Rejects zero (G2).
-    function setMaxFeedStaleness(uint256 maxFeedStaleness_) external onlyOwner {
-        if (maxFeedStaleness_ == 0) revert ZeroFeedStaleness();
-        uint256 previous = maxFeedStaleness;
-        maxFeedStaleness = maxFeedStaleness_;
-        emit MaxFeedStalenessSet(previous, maxFeedStaleness_);
+    /// @notice Retune freshness for the native USD feed only (does not affect payment/currency feeds).
+    function setNativeUsdStalenessTolerance(uint32 nativeUsdStalenessTolerance_) external onlyOwner {
+        _requireStalenessInBounds(nativeUsdStalenessTolerance_);
+        (, int256 answer,, uint256 updatedAt,) = nativeUsdFeed.latestRoundData();
+        if (answer <= 0) revert BadOracleAnswer();
+        _checkFeedFresh(updatedAt, nativeUsdStalenessTolerance_);
+        uint32 previous = nativeUsdStalenessTolerance;
+        nativeUsdStalenessTolerance = nativeUsdStalenessTolerance_;
+        emit NativeUsdStalenessToleranceSet(previous, nativeUsdStalenessTolerance_);
     }
 
     // ---- Views ----
@@ -301,7 +343,7 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         if (asset == address(0)) {
             return _usdToNative(usd1e8);
         }
-        // Soft-revoke keeps decimals/feed so in-flight fiat quotes still resolve.
+        // Soft-revoke keeps decimals/feed/tolerance so in-flight fiat quotes still resolve.
         return _usdToTokenAmount(usd1e8, paymentTokens[asset]);
     }
 
@@ -309,17 +351,17 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         if (currencyCode == CURRENCY_USD) {
             return uint256(fiatPrice1e8);
         }
-        address feed = currencyFeeds[currencyCode];
-        if (feed == address(0)) revert CurrencyNotAvailableOnChain();
-        (, int256 rate,, uint256 upd,) = AggregatorV3Interface(feed).latestRoundData();
-        _checkFeedFresh(upd);
+        CurrencyFeedConfig memory cfg = currencyFeeds[currencyCode];
+        if (cfg.feed == address(0)) revert CurrencyNotAvailableOnChain();
+        (, int256 rate,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
+        _checkFeedFresh(upd, cfg.stalenessTolerance);
         if (rate <= 0) revert BadOracleAnswer();
         return (uint256(fiatPrice1e8) * uint256(rate)) / _FIAT_SCALE;
     }
 
     function _usdToNative(uint256 usd1e8) private view returns (uint256) {
         (, int256 px,, uint256 upd,) = nativeUsdFeed.latestRoundData();
-        _checkFeedFresh(upd);
+        _checkFeedFresh(upd, nativeUsdStalenessTolerance);
         if (px <= 0) revert BadOracleAnswer();
         return (usd1e8 * 1e18) / uint256(px);
     }
@@ -329,21 +371,29 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         if (cfg.feed == address(0)) revert PaymentTokenFeedRequired();
         uint256 scale = 10 ** uint256(cfg.decimals);
         (, int256 px,, uint256 upd,) = AggregatorV3Interface(cfg.feed).latestRoundData();
-        _checkFeedFresh(upd);
+        _checkFeedFresh(upd, cfg.stalenessTolerance);
         if (px <= 0) revert BadOracleAnswer();
         return (usd1e8 * scale) / uint256(px);
     }
 
-    function _validateFeed(address feed) private view {
+    function _requireStalenessInBounds(uint32 stalenessTolerance_) private pure {
+        if (stalenessTolerance_ < MIN_FEED_STALENESS || stalenessTolerance_ > MAX_FEED_STALENESS) {
+            revert FeedStalenessOutOfBounds();
+        }
+    }
+
+    function _validateFeed(address feed, uint32 stalenessTolerance_) private view {
+        if (stalenessTolerance_ == 0) revert ZeroFeedStaleness();
+        _requireStalenessInBounds(stalenessTolerance_);
         if (feed.code.length == 0) revert InvalidFeed();
         AggregatorV3Interface agg = AggregatorV3Interface(feed);
         if (agg.decimals() != 8) revert InvalidFeedDecimals();
         (, int256 answer,, uint256 updatedAt,) = agg.latestRoundData();
         if (answer <= 0) revert BadOracleAnswer();
-        _checkFeedFresh(updatedAt);
+        _checkFeedFresh(updatedAt, stalenessTolerance_);
     }
 
-    function _checkFeedFresh(uint256 updatedAt) private view {
-        if (block.timestamp - updatedAt > maxFeedStaleness) revert StalePrice();
+    function _checkFeedFresh(uint256 updatedAt, uint32 stalenessTolerance_) private view {
+        if (block.timestamp - updatedAt > stalenessTolerance_) revert StalePrice();
     }
 }

@@ -148,12 +148,21 @@ type RecallRequestedEvent = LogMeta & {
 type ClaimEvent = LogMeta & { args: { account: Address; asset: Address; amount: bigint } };
 
 type FixedPricePaymentTokenApprovedEvent = LogMeta & {
-  args: { token: Address; feed: Address; decimals: number | bigint };
+  args: {
+    token: Address;
+    feed: Address;
+    decimals: number | bigint;
+    stalenessTolerance: number | bigint;
+  };
 };
 type AscendingPaymentTokenApprovedEvent = LogMeta & { args: { token: Address } };
 type PaymentTokenRevokedEvent = LogMeta & { args: { token: Address } };
-type CurrencyFeedSetEvent = LogMeta & { args: { currencyCode: Hash; feed: Address } };
-type MaxFeedStalenessSetEvent = LogMeta & { args: { previous: bigint; current: bigint } };
+type CurrencyFeedSetEvent = LogMeta & {
+  args: { currencyCode: Hash; feed: Address; stalenessTolerance: number | bigint };
+};
+type NativeUsdStalenessToleranceSetEvent = LogMeta & {
+  args: { previous: number | bigint; current: number | bigint };
+};
 type BoughtEvent = LogMeta & {
   args: { tokenId: bigint; buyer: Address; asset: Address; amount: bigint };
 };
@@ -404,7 +413,7 @@ async function ensureCommerceMode(
       maxProtectionWindow: 0,
       abandonmentWindow: 0,
       challengeBond: 0n,
-      maxFeedStaleness: 0n,
+      nativeUsdStalenessTolerance: 0,
       updatedAt: params.timestamp,
     })
     .onConflictDoNothing();
@@ -819,6 +828,7 @@ async function handleFixedPricePaymentTokenApproved(
     token: getAddress(event.args.token),
     feed: feedChecksum === zeroAddress ? "" : feedChecksum,
     decimals: Number(event.args.decimals),
+    stalenessTolerance: Number(event.args.stalenessTolerance),
     active: true,
     updatedAt: event.block.timestamp,
   };
@@ -828,6 +838,7 @@ async function handleFixedPricePaymentTokenApproved(
     .onConflictDoUpdate({
       feed: values.feed,
       decimals: values.decimals,
+      stalenessTolerance: values.stalenessTolerance,
       active: true,
       updatedAt: values.updatedAt,
     });
@@ -889,6 +900,7 @@ async function handleCurrencyFeedSet(
     modeContract,
     currencyCode,
     feed: checksumOrZero(event.args.feed),
+    stalenessTolerance: Number(event.args.stalenessTolerance),
     updatedAt: event.block.timestamp,
   };
   await context.db
@@ -896,12 +908,13 @@ async function handleCurrencyFeedSet(
     .values(values)
     .onConflictDoUpdate({
       feed: values.feed,
+      stalenessTolerance: values.stalenessTolerance,
       updatedAt: values.updatedAt,
     });
 }
 
-async function handleMaxFeedStalenessSet(
-  event: MaxFeedStalenessSetEvent,
+async function handleNativeUsdStalenessToleranceSet(
+  event: NativeUsdStalenessToleranceSetEvent,
   context: CommerceContext,
 ): Promise<void> {
   const chainId = indexingChainId(context);
@@ -914,7 +927,10 @@ async function handleMaxFeedStalenessSet(
   });
   await context.db
     .update(commerceMode, { id: commerceModeId(chainId, modeContract) })
-    .set({ maxFeedStaleness: event.args.current, updatedAt: event.block.timestamp });
+    .set({
+      nativeUsdStalenessTolerance: Number(event.args.current),
+      updatedAt: event.block.timestamp,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1395,8 +1411,11 @@ ponder.on("FixedPriceConsignment:PaymentTokenRevoked", async ({ event, context }
 ponder.on("FixedPriceConsignment:CurrencyFeedSet", async ({ event, context }) => {
   await handleCurrencyFeedSet(event as CurrencyFeedSetEvent, context);
 });
-ponder.on("FixedPriceConsignment:MaxFeedStalenessSet", async ({ event, context }) => {
-  await handleMaxFeedStalenessSet(event as MaxFeedStalenessSetEvent, context);
+ponder.on("FixedPriceConsignment:NativeUsdStalenessToleranceSet", async ({ event, context }) => {
+  await handleNativeUsdStalenessToleranceSet(
+    event as NativeUsdStalenessToleranceSetEvent,
+    context,
+  );
 });
 
 // Ascending only.

@@ -28,15 +28,15 @@ describe("resolveAddress commercial fallback", () => {
   });
 });
 
-describe("commerce mode resolvers fail closed (Nuclear #2 pending)", () => {
-  it("fixedPriceConsignmentAddress is undefined when unset on both live stacks", () => {
-    assert.equal(fixedPriceConsignmentAddress(84532), undefined);
-    assert.equal(fixedPriceConsignmentAddress(11155111), undefined);
+describe("commerce mode resolvers (Nuclear #2 live)", () => {
+  it("fixedPriceConsignmentAddress resolves on both commercial stacks", () => {
+    assert.equal(fixedPriceConsignmentAddress(84532), HUB.fixedPriceConsignment);
+    assert.equal(fixedPriceConsignmentAddress(11155111), SPOKE.fixedPriceConsignment);
   });
 
-  it("ascendingConsignmentAddress is undefined when unset on both live stacks", () => {
-    assert.equal(ascendingConsignmentAddress(84532), undefined);
-    assert.equal(ascendingConsignmentAddress(11155111), undefined);
+  it("ascendingConsignmentAddress resolves on both commercial stacks", () => {
+    assert.equal(ascendingConsignmentAddress(84532), HUB.ascendingConsignment);
+    assert.equal(ascendingConsignmentAddress(11155111), SPOKE.ascendingConsignment);
   });
 
   it("returns undefined for unknown chain", () => {

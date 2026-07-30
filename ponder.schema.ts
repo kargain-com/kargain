@@ -392,8 +392,8 @@ export const commerceMode = onchainTable("commerce_mode", (t) => ({
   maxProtectionWindow: t.integer().notNull().default(0),
   abandonmentWindow: t.integer().notNull().default(0),
   challengeBond: t.bigint().notNull().default(0n),
-  /** FixedPrice max feed staleness. */
-  maxFeedStaleness: t.bigint().notNull().default(0n),
+  /** FixedPrice native USD feed staleness tolerance (seconds). Per-feed; not a global bound. */
+  nativeUsdStalenessTolerance: t.integer().notNull().default(0),
   updatedAt: t.bigint().notNull(),
 }));
 
@@ -408,6 +408,8 @@ export const commercePaymentToken = onchainTable(
     /** FixedPrice only — empty on Ascending. */
     feed: t.text().notNull().default(""),
     decimals: t.integer().notNull().default(0),
+    /** FixedPrice only — seconds; 0 when feed empty. */
+    stalenessTolerance: t.integer().notNull().default(0),
     active: t.boolean().notNull().default(true),
     updatedAt: t.bigint().notNull(),
   }),
@@ -423,5 +425,7 @@ export const commerceCurrencyFeed = onchainTable("commerce_currency_feed", (t) =
   modeContract: t.text().notNull(),
   currencyCode: t.text().notNull(),
   feed: t.text().notNull(),
+  /** Seconds; 0 when feed cleared. */
+  stalenessTolerance: t.integer().notNull().default(0),
   updatedAt: t.bigint().notNull(),
 }));

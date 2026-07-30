@@ -14,16 +14,24 @@
  */
 
 import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "viem";
+import { baseSepolia, sepolia } from "viem/chains";
 
 import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
 } from "../lib/contracts/abis.generated.js";
 import {
+  ETHEREUM_SEPOLIA_PUBLIC_RPC,
+  SEPOLIA_PUBLIC_RPC,
+} from "../lib/web3/sepolia-addresses.js";
+import {
+  assertNuclearFeedsFresh,
+  getChainFeedConfig,
   isCommercialChainId,
   resolveUsdcUsdFeedForAdmit,
   verifyFeedBytecode,
 } from "./lib/chainlink-feeds.js";
+import { createPublicClientForChain } from "./lib/deployer-viem.js";
 import {
   buildNuclearDeployPlan,
   formatNuclearParityTable,
@@ -54,7 +62,6 @@ import {
   ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
   resolveCommerceGuardian,
 } from "./lib/verify-constructor-args.js";
 
@@ -204,7 +211,7 @@ async function assertExternalBytecode(
   }
 }
 
-function printDryRunCompare() {
+async function printDryRunCompare() {
   assertNuclearEncumbranceOrdering();
   const base = buildNuclearDeployPlan(84532);
   const eth = buildNuclearDeployPlan(11155111);
@@ -219,16 +226,58 @@ function printDryRunCompare() {
     "\nOrdering: proxies → register ×2 → admit USDC ×2 → gateway → mode handoff → passport/staking handoff (structural).",
   );
   console.log(`On-chain open gate: ${ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE}`);
+  console.log("\nPer-feed staleness tolerances (property of each feed — not a global bound):");
+  for (const plan of [base, eth]) {
+    console.log(
+      `  ${plan.chainId}: nativeUsd=${plan.externals.nativeUsdStalenessTolerance}s ` +
+        `usdcUsd=${plan.externals.usdcUsdStalenessTolerance}s`,
+    );
+  }
   console.log("\nFixedPrice USDC/USD feed (P4 — no silent peg):");
   for (const plan of [base, eth]) {
-    const admit = resolveUsdcUsdFeedForAdmit(plan.externals.usdcUsdFeed, plan.chainId);
+    const admit = resolveUsdcUsdFeedForAdmit({
+      usdcUsdFeed: plan.externals.usdcUsdFeed,
+      usdcUsdStalenessTolerance: plan.externals.usdcUsdStalenessTolerance,
+      chainId: plan.chainId,
+    });
     if (admit.fiatLimitation) {
-      console.log(`  ${plan.chainId}: admit USDC with feed ${admit.feed}`);
+      console.log(`  ${plan.chainId}: admit USDC with feed ${admit.feed} (tolerance ${admit.stalenessTolerance})`);
       console.log(`    LIMITATION: ${admit.fiatLimitation}`);
     } else {
-      console.log(`  ${plan.chainId}: ${admit.feed} — admit OK with measured feed`);
+      console.log(
+        `  ${plan.chainId}: ${admit.feed} — admit OK with measured feed, stalenessTolerance=${admit.stalenessTolerance}s`,
+      );
     }
   }
+
+  console.log("\nLive feed freshness vs configured per-feed tolerance (RPC):");
+  const rpcPairs: Array<{
+    chainId: 84532 | 11155111;
+    chain: typeof baseSepolia | typeof sepolia;
+    rpc: string;
+  }> = [
+    {
+      chainId: 84532,
+      chain: baseSepolia,
+      rpc: process.env.PONDER_RPC_URL_84532 ?? SEPOLIA_PUBLIC_RPC,
+    },
+    {
+      chainId: 11155111,
+      chain: sepolia,
+      rpc: process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC,
+    },
+  ];
+  for (const { chainId, chain, rpc } of rpcPairs) {
+    const client = createPublicClientForChain(chain, rpc);
+    const config = getChainFeedConfig(chainId);
+    const checks = await assertNuclearFeedsFresh(client, config);
+    for (const c of checks) {
+      console.log(
+        `  ✓ ${chainId} ${c.label}: age ${c.ageSeconds}s ≤ tolerance ${c.stalenessTolerance}s`,
+      );
+    }
+  }
+
   console.log("Guardian immediate ops (G3 reduce-exposure):");
   for (const op of NUCLEAR_GUARDIAN_IMMEDIATE_OPS) {
     console.log(`  - ${op}`);
@@ -238,7 +287,12 @@ function printDryRunCompare() {
     console.log(`  - ${op}`);
   }
   console.log(
-    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. Zero usdcUsdFeed admits asset-only USDC and announces the fiat limitation (never a silent peg). Non-zero feed enables fiat; once set, feed is monotonic and cannot be cleared. Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
+    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. " +
+      "Each feed carries its own stalenessTolerance at admit (native at initialize). Zero usdcUsdFeed admits " +
+      "asset-only USDC and announces the fiat limitation (never a silent peg). Non-zero feed enables fiat with " +
+      "its tolerance; once set, feed is monotonic and cannot be cleared. Post-handoff approve / setCurrencyFeed " +
+      "still go through Timelock — `_validateFeed(feed, tolerance)` runs at execute. " +
+      "Dry-run aborts before any tx if a feed's age exceeds its configured tolerance.",
   );
 }
 
@@ -274,8 +328,11 @@ async function runLiveDeploy() {
     await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
     await assertExternalBytecode(publicClient, "usdc", externals.usdc);
     await assertExternalBytecode(publicClient, "layerZeroEndpoint", externals.layerZeroEndpoint);
-    const usdcAdmit = resolveUsdcUsdFeedForAdmit(externals.usdcUsdFeed, chainId);
+    const feedConfig = getChainFeedConfig(chainId);
+    await assertNuclearFeedsFresh(publicClient, feedConfig);
+    const usdcAdmit = resolveUsdcUsdFeedForAdmit(feedConfig);
     const usdcUsdFeed = usdcAdmit.feed;
+    const usdcUsdStalenessTolerance = usdcAdmit.stalenessTolerance;
     if (usdcAdmit.fiatLimitation) {
       console.log(`LIMITATION: ${usdcAdmit.fiatLimitation}`);
     } else {
@@ -291,7 +348,12 @@ async function runLiveDeploy() {
     console.log(`Guardian: ${commerceGuardian}`);
     console.log(`Registry: ${plan.registry}`);
     console.log(`USDC:     ${externals.usdc}`);
-    console.log(`USDC/USD: ${usdcUsdFeed}${usdcAdmit.fiatLimitation ? " (asset-only — fiat unavailable)" : ""}`);
+    console.log(
+      `USDC/USD: ${usdcUsdFeed}${usdcAdmit.fiatLimitation ? " (asset-only — fiat unavailable)" : ` (stalenessTolerance=${usdcUsdStalenessTolerance}s)`}`,
+    );
+    console.log(
+      `Native/USD stalenessTolerance: ${externals.nativeUsdStalenessTolerance}s`,
+    );
     console.log(`LZ:       ${externals.layerZeroEndpoint}`);
     console.log("");
 
@@ -333,7 +395,7 @@ async function runLiveDeploy() {
         params.platformRecipient,
         MARKETPLACE_FEE_BPS,
         externals.nativeUsdFeed,
-        MARKETPLACE_MAX_FEED_STALENESS,
+        externals.nativeUsdStalenessTolerance,
         deployerAddress,
         commerceGuardian,
       ],
@@ -417,11 +479,14 @@ async function runLiveDeploy() {
     );
     await writeStep(
       viem,
-      `FixedPrice.approvePaymentToken(USDC, usdcUsdFeed) → ${externals.usdc}`,
+      `FixedPrice.approvePaymentToken(USDC, usdcUsdFeed, ${usdcUsdStalenessTolerance}) → ${externals.usdc}`,
       () =>
-        fixedPrice.write.approvePaymentToken([externals.usdc, usdcUsdFeed], {
-          account: deployer.account,
-        }),
+        fixedPrice.write.approvePaymentToken(
+          [externals.usdc, usdcUsdFeed, usdcUsdStalenessTolerance],
+          {
+            account: deployer.account,
+          },
+        ),
     );
     await writeStep(viem, `Ascending.approvePaymentToken(USDC) → ${externals.usdc}`, () =>
       ascending.write.approvePaymentToken([externals.usdc], {
@@ -592,7 +657,7 @@ async function runLiveDeploy() {
 
 async function main() {
   if (argvHas("--dry-run", "--compare")) {
-    printDryRunCompare();
+    await printDryRunCompare();
     return;
   }
   await runLiveDeploy();

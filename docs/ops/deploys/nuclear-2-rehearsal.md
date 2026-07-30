@@ -2,9 +2,11 @@
 
 Operator steps for the next commercial Nuclear wave. **Cursor never runs live txs** — execute these yourself. Local proof lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts` (construction admission + Timelock expand/restore path).
 
+> **FixedPrice `2.3.0-rc.1` (July 2026):** per-feed oracle staleness replaces global `maxFeedStaleness`. **Full redeploy both commercial chains** — nothing live survives; Timelock patch of the old slot is rejected. Ponder schema gains `nativeUsdStalenessTolerance` / per-row `stalenessTolerance`; event `NativeUsdStalenessToleranceSet` replaces `MaxFeedStalenessSet`. **Full reindex** with Nuclear #2 cutover.
+
 | | |
 |--|--|
-| Scope | Timelock → KarPro → Passport → FixedPrice + **AscendingHoldLib → AscendingOpenLib → Ascending** (**owner=deployer**) → encumbrance register → **USDC admission** → gateway → **mode ownership handoff** → passport/staking handoff → post-handoff Timelock ops |
+| Scope | Timelock → KarPro → Passport → FixedPrice + **AscendingHoldLib → AscendingOpenLib → Ascending** (**owner=deployer**) → encumbrance register → **USDC admission (with per-feed tolerance)** → gateway → **mode ownership handoff** → passport/staking handoff → post-handoff Timelock ops |
 | Chains | Base Sepolia **84532** and Ethereum Sepolia **11155111** (identical protocol params) |
 | Script | `pnpm deploy:sepolia` / `pnpm deploy:sepolia:eth` → [`scripts/deploy.ts`](../../../scripts/deploy.ts) |
 | Dry-run | `pnpm deploy:nuclear:dry-run` (parity + structural encumbrance/admission order; no txs) |
@@ -28,7 +30,7 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 ## Prerequisites
 
 - `.env.local`: `DEPLOYER_PRIVATE_KEY`, `COMMERCE_GUARDIAN` (EOA **distinct** from deployer and from Timelock)
-- `pnpm compile`; `pnpm deploy:nuclear:dry-run` green
+- `pnpm compile`; `pnpm deploy:nuclear:dry-run` green (includes **`assertNuclearFeedsFresh`** per configured tolerance)
 - Guardian key available for **pause** and **soft-revoke**; deployer is Timelock proposer + executor on both chains
 - Modes refuse `open*` unless `isEncumbranceSource(mode)` (bytecode + tooling)
 
@@ -41,8 +43,9 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | Mode proxies → `addEncumbranceSource` ×2 → admit USDC → gateway → mode handoff → passport handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run |
 | AscendingHoldLib → AscendingOpenLib → AscendingConsignmentImpl → Proxy | **Structural** — linked libraries before Ascending impl; manifest stores `ascendingHoldLib` / `ascendingOpenLib` |
 | Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
-| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not **enabled** on both modes, or FixedPrice feed read-back ≠ configured `usdcUsdFeed` (including zero) |
-| FixedPrice USDC/USD feed | `resolveUsdcUsdFeedForAdmit` — non-zero feed → admit with measured oracle; **zero feed → admit asset-only and announce fiat unavailable** (never invent a feed / silent peg). Base Sepolia (84532) has **no** Chainlink USDC/USD (RPC-probed 2026-07-30). Eth Sepolia has `0xA2F78…270E`. Mainnet rows (`1`, `8453`) carry verified feeds for future config but are **not** Nuclear targets (`isCommercialChainId` → 84532\|11155111 only) |
+| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not **enabled** on both modes, or FixedPrice feed read-back ≠ configured `usdcUsdFeed` (including zero), or tolerance read-back ≠ configured value |
+| FixedPrice USDC/USD feed | `resolveUsdcUsdFeedForAdmit` — non-zero feed → admit with measured oracle **and `stalenessTolerance`**; **zero feed → admit asset-only and announce fiat unavailable** (never invent a feed / silent peg). Base Sepolia (84532) has **no** Chainlink USDC/USD (RPC-probed 2026-07-30). Eth Sepolia has `0xA2F78…270E` with tolerance **172 992s** (P4: obs 86496 ×2, hb 86400). Mainnet rows (`1`, `8453`) carry verified feeds for future config but are **not** Nuclear targets (`isCommercialChainId` → 84532\|11155111 only) |
+| FixedPrice native ETH/USD tolerance | From `CHAINLINK_FEEDS.nativeUsdStalenessTolerance` — **84532: 2444s** (obs 1222, hb 1200); **11155111: 7392s** (obs 3696, hb 3600). Rule: `2 × max(obs, publishedHeartbeat)` — see commerce-model P4 |
 | Open requires live encumbrance source | On-chain `ModeNotEncumbranceSource` in `ConsignmentBase._requireCanOpen` |
 
 ---
@@ -55,10 +58,10 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 pnpm deploy:nuclear:dry-run
 ```
 
-Confirm shared params, step list (includes admission + mode handoff), Timelock expand/restore ops, and guardian-immediate ops. Expect:
+Confirm shared params, step list (includes admission + mode handoff), Timelock expand/restore ops, guardian-immediate ops, and **feed freshness lines** (`assertNuclearFeedsFresh`). Expect:
 
-- `84532: admit USDC with feed 0x0…0` plus a `LIMITATION:` line that fiat-denominated USDC sales are unavailable
-- `11155111: <feed> — admit OK with measured feed`
+- `84532: admit USDC with feed 0x0…0` plus a `LIMITATION:` line that fiat-denominated USDC sales are unavailable; native/USD tolerance **2444s**
+- `11155111: <feed> — admit OK with measured feed, stalenessTolerance=172992s`; native/USD tolerance **7392s**
 
 Abort if ordering assert fails.
 
@@ -82,7 +85,7 @@ Record manifest `deployments/84532.json` addresses + `blocks.*` / `indexFromBloc
 - Fiat-denominated USDC sales are exercised on **Ethereum Sepolia (11155111)** with feed `0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E`.
 - Base **mainnet** carries a verified USDC/USD feed at `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` (config only — not a Nuclear target).
 - The untested pairing is Base Sepolia × fiat USDC, which corresponds to no production configuration.
-- Path forward: Timelock `approvePaymentToken(USDC, feed)` with a real aggregator when one appears; once set, feed is **monotonic** and cannot be cleared. Do **not** deploy a mock / private-key price contract on any commercial chain.
+- Path forward: Timelock `approvePaymentToken(USDC, feed, stalenessTolerance)` with a real aggregator when one appears; once set, feed is **monotonic** and cannot be cleared. Do **not** deploy a mock / private-key price contract on any commercial chain.
 
 ### 3. Deploy Ethereum Sepolia (11155111)
 
@@ -111,13 +114,13 @@ Initial USDC admission is **already done at deploy**. Use Timelock for later exp
 
 | Target | Example |
 |--------|---------|
-| FixedPrice | `setCurrencyFeed`, `setMaxFeedStaleness`, re-`approvePaymentToken` (**must keep or replace feed — cannot clear to zero**), `unpause`, `setGuardian`, UUPS |
+| FixedPrice | `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance`, re-`approvePaymentToken(token, feed, stalenessTolerance)` (**must keep or replace feed — cannot clear to zero**), `unpause`, `setGuardian`, UUPS |
 | Ascending | `setAuctionRules`, re-`approvePaymentToken`, `unpause`, `setGuardian`, UUPS |
 | KarPassport | `addEncumbranceSource` / `removeEncumbranceSource` (post-handoff) |
 
 Schedule → wait `getMinDelay()` (48h) → execute.
 
-**Feed freshness:** `setCurrencyFeed` / feed-bearing `approvePaymentToken` run `_validateFeed` at **execute** time. Live Chainlink aggregators stay fresh across 48h. Do not point Timelock ops at a static mock feed without refreshing it before execute.
+**Feed freshness:** `setCurrencyFeed`, feed-bearing `approvePaymentToken`, and `setNativeUsdStalenessTolerance` run `_validateFeed` at **execute** time against **that feed’s configured tolerance**. Live Chainlink aggregators must stay within the tolerance across 48h. Dry-run (`pnpm deploy:nuclear:dry-run`) probes the same bounds before any tx. Do not point Timelock ops at a static mock feed without refreshing it before execute.
 
 **Chain without USDC/USD feed:** Nuclear **admits** USDC with `feed=0` and announces fiat unavailable. Do not pass a fabricated address as a peg. Ascending admit (asset-only) does not need a payment-token feed. Populating mainnet `usdcUsdFeed` in `CHAINLINK_FEEDS` does **not** enable `pnpm deploy:sepolia`-style Nuclear on mainnet — commercial allowlist stays testnet-only until §7.6 clears.
 

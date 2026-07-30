@@ -21,8 +21,9 @@ contract FixedPriceConsignmentHarness is FixedPriceConsignment {
         platformFeeBps = feeBps_;
     }
 
-    /// @dev Test-only: clear payment-token feed after open to prove quote refuses parity (P4).
-    function forceSetPaymentTokenFeed(address token, address feed) external {
+    /// @dev Test-only: rewrite payment-token feed/tolerance after open (P4 / per-feed freshness).
+    function forceSetPaymentTokenFeed(address token, address feed, uint32 stalenessTolerance_) external {
         paymentTokens[token].feed = feed;
+        paymentTokens[token].stalenessTolerance = stalenessTolerance_;
     }
 }

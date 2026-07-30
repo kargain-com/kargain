@@ -251,6 +251,8 @@ The `agent_authorization` / `marketplace_listing` agent routes described above (
 
 Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedChallenge` / mode-specific surfaces feed new tables (`consignment`, `ascending_terms`, `consignment_bid`, `consignment_hold`, `challenge`, `mandate`, `consignment_settlement`, `commerce_claim` + `commerce_claim_credit`, `commerce_mode`, `commerce_payment_token`, `commerce_currency_feed`). Claim reasons come from **same-tx event correlation**, not tx selectors. Floor/commission lowers update the **consignment** snapshot, not the standing mandate.
 
+**FixedPrice oracle projection (July 2026, `2.3.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. **Full reindex** with Nuclear #2 redeploy.
+
 **Addresses:** optional slots on the same `resolveCommercialStack` path as auction escrow. **Live commercial registration = Nuclear #2.** Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
 
 **HTTP:** see [indexer/README.md](./README.md#commerce-modes-api-fixedprice--ascending--july-2026). Old escrow tables/handlers/routes untouched — no compatibility projection.
@@ -266,4 +268,4 @@ Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedCha
 
 ---
 
-*Last updated: July 30, 2026 — commerce cutover step 5; consignment surface is sole live commerce indexer path.*
+*Last updated: July 30, 2026 — FixedPrice per-feed oracle staleness (`2.3.0-rc.1`); commerce cutover step 5; consignment surface is sole live commerce indexer path.*

@@ -3877,6 +3877,11 @@ export const FixedPriceConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "FeedStalenessOutOfBounds",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "InvalidCurrencyCode",
     "type": "error"
   },
@@ -4056,6 +4061,11 @@ export const FixedPriceConsignmentAbi = [
   {
     "inputs": [],
     "name": "StalePrice",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "StalenessWithoutFeed",
     "type": "error"
   },
   {
@@ -4420,6 +4430,12 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "address",
         "name": "feed",
         "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "stalenessTolerance",
+        "type": "uint32"
       }
     ],
     "name": "CurrencyFeedSet",
@@ -4579,18 +4595,18 @@ export const FixedPriceConsignmentAbi = [
     "inputs": [
       {
         "indexed": false,
-        "internalType": "uint256",
+        "internalType": "uint32",
         "name": "previous",
-        "type": "uint256"
+        "type": "uint32"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
+        "internalType": "uint32",
         "name": "current",
-        "type": "uint256"
+        "type": "uint32"
       }
     ],
-    "name": "MaxFeedStalenessSet",
+    "name": "NativeUsdStalenessToleranceSet",
     "type": "event"
   },
   {
@@ -4645,6 +4661,12 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "uint8",
         "name": "decimals",
         "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "stalenessTolerance",
+        "type": "uint32"
       }
     ],
     "name": "PaymentTokenApproved",
@@ -4748,6 +4770,32 @@ export const FixedPriceConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "MAX_FEED_STALENESS",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_FEED_STALENESS",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "UPGRADE_INTERFACE_VERSION",
     "outputs": [
       {
@@ -4796,6 +4844,11 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "address",
         "name": "feed",
         "type": "address"
+      },
+      {
+        "internalType": "uint32",
+        "name": "stalenessTolerance_",
+        "type": "uint32"
       }
     ],
     "name": "approvePaymentToken",
@@ -5062,6 +5115,11 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "address",
         "name": "feed",
         "type": "address"
+      },
+      {
+        "internalType": "uint32",
+        "name": "stalenessTolerance",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -5183,9 +5241,9 @@ export const FixedPriceConsignmentAbi = [
         "type": "address"
       },
       {
-        "internalType": "uint256",
-        "name": "maxFeedStaleness_",
-        "type": "uint256"
+        "internalType": "uint32",
+        "name": "nativeUsdStalenessTolerance_",
+        "type": "uint32"
       },
       {
         "internalType": "address",
@@ -5424,19 +5482,6 @@ export const FixedPriceConsignmentAbi = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "maxFeedStaleness",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -5468,6 +5513,19 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "contract AggregatorV3Interface",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "nativeUsdStalenessTolerance",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -5652,6 +5710,11 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "bool",
         "name": "enabled",
         "type": "bool"
+      },
+      {
+        "internalType": "uint32",
+        "name": "stalenessTolerance",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -5828,6 +5891,11 @@ export const FixedPriceConsignmentAbi = [
         "internalType": "address",
         "name": "feed",
         "type": "address"
+      },
+      {
+        "internalType": "uint32",
+        "name": "stalenessTolerance_",
+        "type": "uint32"
       }
     ],
     "name": "setCurrencyFeed",
@@ -5851,12 +5919,12 @@ export const FixedPriceConsignmentAbi = [
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "maxFeedStaleness_",
-        "type": "uint256"
+        "internalType": "uint32",
+        "name": "nativeUsdStalenessTolerance_",
+        "type": "uint32"
       }
     ],
-    "name": "setMaxFeedStaleness",
+    "name": "setNativeUsdStalenessTolerance",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

@@ -1,6 +1,6 @@
 /**
- * Pure nuclear deploy plan — identical protocol params on 84532 and 11155111.
- * External addresses only from CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN.
+ * Pure nuclear deploy plan — shared protocol params on 84532 and 11155111.
+ * External addresses + per-feed staleness tolerances from CHAINLINK_FEEDS.
  */
 
 import { getAddress } from "viem";
@@ -17,7 +17,6 @@ import {
   AUCTION_PLATFORM_FEE_BPS,
   DISPUTE_DEPOSIT,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "./verify-constructor-args.js";
 import { SEPOLIA_FALLBACK } from "./load-deployment.js";
 
@@ -62,17 +61,20 @@ export type NuclearDeployPlan = {
     disputeDeposit: bigint;
     /** FixedPriceConsignment platform fee bps (commerce cutover Phase 1: modes-only). */
     marketplaceFeeBps: bigint;
-    maxFeedStaleness: bigint;
     /** AscendingConsignment platform fee bps (commerce cutover Phase 1: modes-only). */
     auctionPlatformFeeBps: bigint;
     platformRecipient: `0x${string}`;
   };
-  /** Chain-specific externals — only from verified tables. */
+  /** Chain-specific externals — only from verified tables (incl. per-feed tolerances). */
   externals: {
     usdc: `0x${string}`;
     /** FixedPrice payment-token feed; zero → admit asset-only + announce fiat unavailable. */
     usdcUsdFeed: `0x${string}`;
+    /** Seconds; 0 iff usdcUsdFeed is zero. */
+    usdcUsdStalenessTolerance: number;
     nativeUsdFeed: `0x${string}`;
+    /** Seconds for native USD feed at FixedPrice initialize. */
+    nativeUsdStalenessTolerance: number;
     layerZeroEndpoint: `0x${string}`;
   };
 };
@@ -96,14 +98,15 @@ export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
     params: {
       disputeDeposit: DISPUTE_DEPOSIT,
       marketplaceFeeBps: MARKETPLACE_FEE_BPS,
-      maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
       auctionPlatformFeeBps: AUCTION_PLATFORM_FEE_BPS,
       platformRecipient: getAddress(SEPOLIA_FALLBACK.platformRecipient),
     },
     externals: {
       usdc: getAddress(feedConfig.usdc),
       usdcUsdFeed: feedConfig.usdcUsdFeed,
+      usdcUsdStalenessTolerance: feedConfig.usdcUsdStalenessTolerance,
       nativeUsdFeed: getAddress(feedConfig.nativeUsdFeed),
+      nativeUsdStalenessTolerance: feedConfig.nativeUsdStalenessTolerance,
       layerZeroEndpoint: lzEndpointForChain(chainId),
     },
   };
@@ -139,7 +142,9 @@ export function externalsMatchTables(plan: NuclearDeployPlan): boolean {
   return (
     externals.usdc.toLowerCase() === feeds.usdc.toLowerCase() &&
     externals.usdcUsdFeed.toLowerCase() === feeds.usdcUsdFeed.toLowerCase() &&
+    externals.usdcUsdStalenessTolerance === feeds.usdcUsdStalenessTolerance &&
     externals.nativeUsdFeed.toLowerCase() === feeds.nativeUsdFeed.toLowerCase() &&
+    externals.nativeUsdStalenessTolerance === feeds.nativeUsdStalenessTolerance &&
     externals.layerZeroEndpoint.toLowerCase() ===
       LZ_ENDPOINT_V2_BY_CHAIN[chainId].toLowerCase()
   );
@@ -159,11 +164,6 @@ export function formatNuclearParityTable(
       eth.params.marketplaceFeeBps.toString(),
     ],
     [
-      "maxFeedStaleness",
-      base.params.maxFeedStaleness.toString(),
-      eth.params.maxFeedStaleness.toString(),
-    ],
-    [
       "auctionPlatformFeeBps",
       base.params.auctionPlatformFeeBps.toString(),
       eth.params.auctionPlatformFeeBps.toString(),
@@ -172,7 +172,17 @@ export function formatNuclearParityTable(
     ["tokenIdOffset", base.tokenIdOffset.toString(), eth.tokenIdOffset.toString()],
     ["usdc", base.externals.usdc, eth.externals.usdc],
     ["usdcUsdFeed", base.externals.usdcUsdFeed, eth.externals.usdcUsdFeed],
+    [
+      "usdcUsdStalenessTolerance",
+      String(base.externals.usdcUsdStalenessTolerance),
+      String(eth.externals.usdcUsdStalenessTolerance),
+    ],
     ["nativeUsdFeed", base.externals.nativeUsdFeed, eth.externals.nativeUsdFeed],
+    [
+      "nativeUsdStalenessTolerance",
+      String(base.externals.nativeUsdStalenessTolerance),
+      String(eth.externals.nativeUsdStalenessTolerance),
+    ],
     ["layerZeroEndpoint", base.externals.layerZeroEndpoint, eth.externals.layerZeroEndpoint],
   ];
 
@@ -189,6 +199,8 @@ export function formatNuclearParityTable(
     lines.push(`${pad(k, col0)}  ${pad(v1, col1)}  ${pad(v2, col2)}`);
   }
   lines.push("");
-  lines.push("84532 vs 11155111 parameters identical (shared params + usd-only registry)");
+  lines.push(
+    "Shared params identical; per-feed staleness tolerances differ by chain (heartbeat property of each feed)",
+  );
   return lines.join("\n");
 }

@@ -22,7 +22,6 @@ import {
   ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "./lib/verify-constructor-args.js";
 import { assertSourcesRegistered } from "./lib/nuclear-ordering.js";
 
@@ -57,7 +56,7 @@ async function main() {
       platformRecipient: modePlatform,
       feeBps: MARKETPLACE_FEE_BPS,
       nativeUsdFeed: stack.nativeFeed.address,
-      maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
+      nativeUsdStalenessTolerance: 3600,
       owner: deployer,
       guardian,
     });
@@ -104,7 +103,7 @@ async function main() {
     console.log("Admitting USDC on both modes…");
     const usdcUsdFeed = await viem.deployContract("MockV3Aggregator", [8, 10n ** 8n]);
     await fixedPrice.mode.write.approvePaymentToken(
-      [stack.usdc.address, usdcUsdFeed.address],
+      [stack.usdc.address, usdcUsdFeed.address, 3600],
       { account: stack.admin.account },
     );
     await ascending.mode.write.approvePaymentToken([stack.usdc.address], {

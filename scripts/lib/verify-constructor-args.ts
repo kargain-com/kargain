@@ -4,7 +4,7 @@ import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
 } from "../../lib/contracts/abis.generated.js";
-import { lzEndpointForChain } from "./chainlink-feeds.js";
+import { lzEndpointForChain, getChainFeedConfig } from "./chainlink-feeds.js";
 import { CONTRACT_VERSIONS } from "./contract-versions.js";
 import {
   SEPOLIA_FALLBACK,
@@ -16,7 +16,11 @@ export const AUCTION_PLATFORM_FEE_BPS = 10n;
 
 /** Must match `scripts/deploy.ts` nuclear constants (FixedPriceConsignment platform fee). */
 export const MARKETPLACE_FEE_BPS = 10n;
-export const MARKETPLACE_MAX_FEED_STALENESS = 3600n;
+/** Re-export FixedPrice governance bounds for deploy/tests. */
+export {
+  MIN_FEED_STALENESS,
+  MAX_FEED_STALENESS,
+} from "./chainlink-feeds.js";
 export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
 /** Ascending nuclear defaults (governance-mutable after deploy; model §11 / §7.3). */
@@ -85,6 +89,7 @@ export function fixedPriceConsignmentProxyConstructorArgs(manifest: DeploymentMa
   const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
   const platformRecipient =
     manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
+  const feeds = getChainFeedConfig(manifest.chainId);
   const initData = encodeFunctionData({
     abi: FixedPriceConsignmentAbi,
     functionName: "initialize",
@@ -93,7 +98,7 @@ export function fixedPriceConsignmentProxyConstructorArgs(manifest: DeploymentMa
       platformRecipient,
       MARKETPLACE_FEE_BPS,
       nativeFeed,
-      MARKETPLACE_MAX_FEED_STALENESS,
+      feeds.nativeUsdStalenessTolerance,
       timelock,
       guardian,
     ],

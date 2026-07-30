@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   CHAINLINK_FEEDS,
+  getChainFeedConfig,
   resolveUsdcUsdFeedForAdmit,
   usdcFiatUnavailableAnnouncement,
   ZERO_USDC_USD_FEED,
@@ -11,10 +12,12 @@ import { assertPaymentTokensAdmitted } from "../scripts/lib/nuclear-ordering.ts"
 
 describe("Nuclear USDC/USD feed admit (P4 reduced capability)", () => {
   it("84532 resolves zero feed to admit + fiat limitation announcement", () => {
-    const feed = CHAINLINK_FEEDS[84532].usdcUsdFeed;
-    assert.equal(feed, ZERO_USDC_USD_FEED);
-    const admit = resolveUsdcUsdFeedForAdmit(feed, 84532);
+    const config = getChainFeedConfig(84532);
+    assert.equal(config.usdcUsdFeed, ZERO_USDC_USD_FEED);
+    assert.equal(config.usdcUsdStalenessTolerance, 0);
+    const admit = resolveUsdcUsdFeedForAdmit(config);
     assert.equal(admit.feed, ZERO_USDC_USD_FEED);
+    assert.equal(admit.stalenessTolerance, 0);
     assert.equal(admit.fiatLimitation, usdcFiatUnavailableAnnouncement(84532));
     assert.match(
       admit.fiatLimitation!,
@@ -23,16 +26,30 @@ describe("Nuclear USDC/USD feed admit (P4 reduced capability)", () => {
     assert.match(admit.fiatLimitation!, /Asset-denominated USDC sales remain available/);
     assert.match(
       admit.fiatLimitation!,
-      /Timelock may later approvePaymentToken with a non-zero feed; once set, the feed cannot be cleared/,
+      /Timelock may later approvePaymentToken with a non-zero feed and its stalenessTolerance/,
     );
   });
 
-  it("11155111 resolves measured feed with no limitation", () => {
-    const feed = CHAINLINK_FEEDS[11155111].usdcUsdFeed;
-    assert.notEqual(feed, ZERO_USDC_USD_FEED);
-    const admit = resolveUsdcUsdFeedForAdmit(feed, 11155111);
-    assert.equal(admit.feed.toLowerCase(), feed.toLowerCase());
+  it("11155111 resolves measured feed with tolerance and no limitation", () => {
+    const config = getChainFeedConfig(11155111);
+    assert.notEqual(config.usdcUsdFeed, ZERO_USDC_USD_FEED);
+    assert.equal(config.usdcUsdStalenessTolerance, 172_992);
+    const admit = resolveUsdcUsdFeedForAdmit(config);
+    assert.equal(admit.feed.toLowerCase(), config.usdcUsdFeed.toLowerCase());
+    assert.equal(admit.stalenessTolerance, 172_992);
     assert.equal(admit.fiatLimitation, null);
+  });
+
+  it("resolveUsdcUsdFeedForAdmit rejects non-zero tolerance when feed is zero", () => {
+    assert.throws(
+      () =>
+        resolveUsdcUsdFeedForAdmit({
+          chainId: 84532,
+          usdcUsdFeed: ZERO_USDC_USD_FEED,
+          usdcUsdStalenessTolerance: 3600,
+        }),
+      /usdcUsdStalenessTolerance must be 0 when usdcUsdFeed is zero/,
+    );
   });
 
   it("assertPaymentTokensAdmitted allows zero FixedPrice feed when enabled", () => {
@@ -40,7 +57,7 @@ describe("Nuclear USDC/USD feed admit (P4 reduced capability)", () => {
       assertPaymentTokensAdmitted({
         fixedPriceUsdcEnabled: true,
         ascendingUsdcEnabled: true,
-        usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        usdc: CHAINLINK_FEEDS[84532].usdc,
         fixedPriceUsdcFeed: ZERO_USDC_USD_FEED,
         expectedFixedPriceUsdcFeed: ZERO_USDC_USD_FEED,
       }),
@@ -53,7 +70,7 @@ describe("Nuclear USDC/USD feed admit (P4 reduced capability)", () => {
         assertPaymentTokensAdmitted({
           fixedPriceUsdcEnabled: false,
           ascendingUsdcEnabled: true,
-          usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          usdc: CHAINLINK_FEEDS[84532].usdc,
           fixedPriceUsdcFeed: ZERO_USDC_USD_FEED,
           expectedFixedPriceUsdcFeed: ZERO_USDC_USD_FEED,
         }),
@@ -67,9 +84,9 @@ describe("Nuclear USDC/USD feed admit (P4 reduced capability)", () => {
         assertPaymentTokensAdmitted({
           fixedPriceUsdcEnabled: true,
           ascendingUsdcEnabled: true,
-          usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          usdc: CHAINLINK_FEEDS[84532].usdc,
           fixedPriceUsdcFeed: ZERO_USDC_USD_FEED,
-          expectedFixedPriceUsdcFeed: "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
+          expectedFixedPriceUsdcFeed: CHAINLINK_FEEDS[11155111].usdcUsdFeed,
         }),
       /FixedPrice USDC feed mismatch/,
     );

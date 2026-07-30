@@ -41,6 +41,8 @@ import {
   runTimelockOp,
   type TimelockClient,
 } from "../scripts/lib/timelock-execute.js";
+import { NUCLEAR_DEPLOY_STEPS } from "../scripts/lib/nuclear-deploy-plan.js";
+import { getChainFeedConfig } from "../scripts/lib/chainlink-feeds.js";
 import {
   ASCENDING_ABANDONMENT_WINDOW,
   ASCENDING_CHALLENGE_BOND,
@@ -50,9 +52,7 @@ import {
   ASCENDING_MIN_DURATION,
   ASCENDING_MIN_INCREMENT_BPS,
   ASCENDING_MIN_PROTECTION_WINDOW,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "../scripts/lib/verify-constructor-args.js";
-import { NUCLEAR_DEPLOY_STEPS } from "../scripts/lib/nuclear-deploy-plan.js";
 
 type Connection = Awaited<ReturnType<typeof hardhat.network.connect>>;
 
@@ -62,6 +62,9 @@ const DENOM_ASSET = { kind: 0, currencyCode: BYTES32_ZERO } as const;
 const EUR = padHex(stringToHex("EUR"), { size: 32, dir: "right" });
 const RESERVE = parseEther("1");
 const MIN_INCREMENT_BPS = ASCENDING_MIN_INCREMENT_BPS;
+const REHEARSAL_FEED_CONFIG = getChainFeedConfig(84532);
+const REHEARSAL_USDC_FEED_TOLERANCE = 3600;
+const REHEARSAL_EUR_FEED_TOLERANCE = 90_000;
 
 function revertsWith(errorName: string) {
   return (err: unknown) => {
@@ -118,7 +121,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     const data = encodeFunctionData({
       abi: FixedPriceConsignmentAbi,
       functionName: "approvePaymentToken",
-      args: [stack.usdc.address, stack.usdcUsdFeed.address],
+      args: [stack.usdc.address, stack.usdcUsdFeed.address, REHEARSAL_USDC_FEED_TOLERANCE],
     });
     const op = await buildTimelockOp({
       timelock: asTimelock(stack.timelock),
@@ -211,7 +214,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
   });
 
   it("atomic init: proxy state live after deploy; re-initialize reverts", async () => {
-    assert.equal(await stack.fixedPrice.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await stack.fixedPrice.read.VERSION(), "2.3.0-rc.1");
     assert.equal(await stack.ascending.read.VERSION(), "2.2.0-rc.1");
     assert.equal(
       getAddress((await stack.fixedPrice.read.owner([])) as string),
@@ -233,7 +236,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
           stack.platformRecipient,
           10n,
           stack.nativeFeed.address,
-          MARKETPLACE_MAX_FEED_STALENESS,
+          REHEARSAL_FEED_CONFIG.nativeUsdStalenessTolerance,
           stack.timelock.address,
           stack.guardian.account.address,
         ],
@@ -304,7 +307,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
         data: encodeFunctionData({
           abi: FixedPriceConsignmentAbi,
           functionName: "setCurrencyFeed",
-          args: [EUR, eurFeed.address],
+          args: [EUR, eurFeed.address, REHEARSAL_EUR_FEED_TOLERANCE],
         }),
         saltLabel: `nuclear-rehearsal:FixedPrice.setCurrencyFeed:${Date.now()}`,
       });
@@ -321,22 +324,39 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       );
       executedOps.push("FixedPrice.setCurrencyFeed");
     }
-    assert.equal(
-      getAddress((await stack.fixedPrice.read.currencyFeeds([EUR])) as string),
-      getAddress(eurFeed.address),
-    );
+    const eurCfg = await stack.fixedPrice.read.currencyFeeds([EUR]);
+    const eurCfgFeed = Array.isArray(eurCfg)
+      ? (eurCfg[0] as `0x${string}`)
+      : (eurCfg as { feed: `0x${string}` }).feed;
+    assert.equal(getAddress(eurCfgFeed), getAddress(eurFeed.address));
 
-    const newStaleness = MARKETPLACE_MAX_FEED_STALENESS + 60n;
-    await viaTimelock(
-      "FixedPrice.setMaxFeedStaleness",
-      stack.fixedPrice.address,
-      encodeFunctionData({
-        abi: FixedPriceConsignmentAbi,
-        functionName: "setMaxFeedStaleness",
-        args: [newStaleness],
-      }),
-    );
-    assert.equal(await stack.fixedPrice.read.maxFeedStaleness([]), newStaleness);
+    const newStaleness = REHEARSAL_FEED_CONFIG.nativeUsdStalenessTolerance + 60;
+    {
+      const { networkHelpers } = connection;
+      const op = await buildTimelockOp({
+        timelock: asTimelock(stack.timelock),
+        target: stack.fixedPrice.address,
+        data: encodeFunctionData({
+          abi: FixedPriceConsignmentAbi,
+          functionName: "setNativeUsdStalenessTolerance",
+          args: [newStaleness],
+        }),
+        saltLabel: `nuclear-rehearsal:FixedPrice.setNativeUsdStalenessTolerance:${Date.now()}`,
+      });
+      await stack.timelock.write.schedule(
+        [op.target, op.value, op.data, op.predecessor, op.salt, op.delay],
+        { account: stack.deployer.account },
+      );
+      await networkHelpers.time.increase(Number(op.delay));
+      await networkHelpers.mine();
+      await stack.nativeFeed.write.setAnswer([2_000n * 10n ** 8n]);
+      await stack.timelock.write.execute(
+        [op.target, op.value, op.data, op.predecessor, op.salt],
+        { account: stack.deployer.account },
+      );
+      executedOps.push("FixedPrice.setNativeUsdStalenessTolerance");
+    }
+    assert.equal(await stack.fixedPrice.read.nativeUsdStalenessTolerance([]), newStaleness);
 
     await viaTimelock(
       "FixedPrice.revokePaymentToken",
@@ -583,7 +603,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       stack.fixedPrice.address,
       encodeUpgradeToAndCall(nextImpl.address),
     );
-    assert.equal(await stack.fixedPrice.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await stack.fixedPrice.read.VERSION(), "2.3.0-rc.1");
     assert.equal(await stack.fixedPrice.read.consignmentPhase([tokenId]), 1);
     assert.equal(await stack.fixedPrice.read.consignmentPriceOf([tokenId]), price);
   });
@@ -599,7 +619,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     );
     await assert.rejects(
       stack.fixedPrice.write.approvePaymentToken(
-        [stack.usdc.address, stack.usdcUsdFeed.address],
+        [stack.usdc.address, stack.usdcUsdFeed.address, REHEARSAL_USDC_FEED_TOLERANCE],
         { account: stack.guardian.account },
       ),
       revertsWith("OwnableUnauthorizedAccount"),
@@ -678,7 +698,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       "Ascending.unpause",
       "FixedPrice.approvePaymentToken",
       "FixedPrice.setCurrencyFeed",
-      "FixedPrice.setMaxFeedStaleness",
+      "FixedPrice.setNativeUsdStalenessTolerance",
       "FixedPrice.setGuardian",
       "Ascending.setAuctionRules",
       "Ascending.approvePaymentToken",

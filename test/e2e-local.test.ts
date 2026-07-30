@@ -100,16 +100,28 @@ async function optionalPonderChecks(ownerAddress: string, tokenId: bigint) {
     return;
   }
 
-  const row = await pollPonderPassport(tokenIdParam, (body) => body.status === "VERIFIED");
+  const row = await pollPonderPassport(tokenIdParam, (body) => {
+    if (body.status !== "VERIFIED") return false;
+    const uriHistory = body.uriHistory as
+      | Array<{ verificationReset?: boolean; uri?: string }>
+      | undefined;
+    // Do not return on the first VERIFIED snapshot — URI history rows can lag
+    // VerificationReset / PassportURIUpdated in the same backlog.
+    return Boolean(
+      uriHistory &&
+        uriHistory.length >= 2 &&
+        uriHistory.some((h) => h.verificationReset === true),
+    );
+  });
   if (!row) {
-    const reason = `Ponder did not index passport ${tokenIdParam} to VERIFIED within ${PONDER_TIMEOUT_MS}ms`;
+    const reason = `Ponder did not index passport ${tokenIdParam} to VERIFIED with uriHistory (≥2, verificationReset) within ${PONDER_TIMEOUT_MS}ms`;
     if (E2E_STRICT) failPonderChecks(reason);
     skipPonderChecks(reason);
     return;
   }
 
-  const uriHistory = row.uriHistory as Array<{ verificationReset?: boolean; uri?: string }> | undefined;
-  assert.ok(uriHistory && uriHistory.length >= 2, "expected uriHistory.length >= 2");
+  const uriHistory = row.uriHistory as Array<{ verificationReset?: boolean; uri?: string }>;
+  assert.ok(uriHistory.length >= 2, "expected uriHistory.length >= 2");
   assert.ok(
     uriHistory.some((h) => h.verificationReset === true),
     "expected at least one uriHistory row with verificationReset: true",

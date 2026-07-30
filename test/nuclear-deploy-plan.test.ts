@@ -17,7 +17,6 @@ import {
   AUCTION_PLATFORM_FEE_BPS,
   DISPUTE_DEPOSIT,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "../scripts/lib/verify-constructor-args.ts";
 
 describe("nuclear deploy plan", () => {
@@ -37,9 +36,12 @@ describe("nuclear deploy plan", () => {
     assert.equal(eth.registry, "usd-only");
     assert.equal(base.params.disputeDeposit, DISPUTE_DEPOSIT);
     assert.equal(base.params.marketplaceFeeBps, MARKETPLACE_FEE_BPS);
-    assert.equal(base.params.maxFeedStaleness, MARKETPLACE_MAX_FEED_STALENESS);
     assert.equal(base.params.auctionPlatformFeeBps, AUCTION_PLATFORM_FEE_BPS);
     assert.equal(base.params.platformRecipient, eth.params.platformRecipient);
+    assert.equal(base.externals.nativeUsdStalenessTolerance, CHAINLINK_FEEDS[84532].nativeUsdStalenessTolerance);
+    assert.equal(base.externals.usdcUsdStalenessTolerance, CHAINLINK_FEEDS[84532].usdcUsdStalenessTolerance);
+    assert.equal(eth.externals.nativeUsdStalenessTolerance, CHAINLINK_FEEDS[11155111].nativeUsdStalenessTolerance);
+    assert.equal(eth.externals.usdcUsdStalenessTolerance, CHAINLINK_FEEDS[11155111].usdcUsdStalenessTolerance);
   });
 
   it("step list includes modes + encumbrance + admit before gateway, then mode handoff then ownership handoff (no escrow steps)", () => {
@@ -124,7 +126,7 @@ describe("nuclear deploy plan", () => {
 
   it("parity table reports identical shared parameters", () => {
     const table = formatNuclearParityTable(base, eth);
-    assert.match(table, /84532 vs 11155111 parameters identical/);
+    assert.match(table, /Shared params identical; per-feed staleness tolerances differ by chain/);
     assert.match(table, /usd-only/);
     console.log("\n" + table);
   });

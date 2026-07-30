@@ -17,9 +17,8 @@ import {
   karPassportConstructorArgs,
   karProStakingConstructorArgs,
   MARKETPLACE_FEE_BPS,
-  MARKETPLACE_MAX_FEED_STALENESS,
 } from "../scripts/lib/verify-constructor-args.ts";
-import { lzEndpointForChain } from "../scripts/lib/chainlink-feeds.ts";
+import { getChainFeedConfig, lzEndpointForChain } from "../scripts/lib/chainlink-feeds.ts";
 import type { DeploymentManifest } from "../scripts/lib/load-deployment.ts";
 
 const baseManifest: DeploymentManifest = {
@@ -77,7 +76,7 @@ describe("verify constructor args", () => {
       baseManifest.platformRecipient,
       MARKETPLACE_FEE_BPS,
       baseManifest.nativeFeed,
-      MARKETPLACE_MAX_FEED_STALENESS,
+      getChainFeedConfig(baseManifest.chainId).nativeUsdStalenessTolerance,
       baseManifest.timelock,
       baseManifest.commerceGuardian,
     ]);

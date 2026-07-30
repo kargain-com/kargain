@@ -14,8 +14,8 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
 
 /**
- * Active Nuclear stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
- * KarPassport `1.3.0-rc.1` + KarPassportBridgeGateway `1.1.0-rc.1`.
+ * Active Nuclear #2 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
+ * KarPassport `1.8.0-rc.1` · FixedPrice `2.3.0-rc.1` · Ascending `2.2.0-rc.1`.
  */
 export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
 
@@ -25,12 +25,10 @@ export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
  * WARNING — strictly `chainId === 84532` scoped. Apply this list ONLY when filtering
  * Base Sepolia protocol addresses. Do NOT use chain-blind (address-string-only) matching:
  * the same hex strings can be live contracts on other chains (CREATE nonce collision with
- * one deployer). On **11155111**, `0x637846…4507` is the live Nuclear KarPassport (SPEC I.9.2);
- * treating it as denylisted there would break messaging/profile. Normative rule: SPEC §I.12.12.
+ * one deployer). On **11155111**, `0xC219…6Fb0` is the live Nuclear #2 KarPassport (SPEC I.9.2)
+ * while the same hex remains denylisted here as a historical Base adapter. Normative: SPEC §I.12.12.
  *
- * Nuclear cutover July 21, 2026: prior hub stack + thin ONFT added.
- * Commerce cutover Phase 1: legacy escrow contracts are no longer live commercial
- * on 84532 — retired into this denylist (SPEC §I.9.1 modes-only Nuclear #2 pending).
+ * Nuclear #2 cutover July 30, 2026: July 21 Nuclear hub + prior RC/escrow stacks retired.
  */
 export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x6378469256907D7DC14BBfce0261ceDE22314507",
@@ -51,6 +49,11 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x0F98B21857386dF0c3B0323c94e63e140533495F",
   "0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04",
   "0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2",
+  // July 21 Nuclear hub (superseded by Nuclear #2 July 30)
+  "0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a",
+  "0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25",
+  "0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f",
+  "0x2a4339656393da943730b7Ac728480f40909f14C",
 ];
 
 /**
@@ -59,14 +62,18 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
  * WARNING — strictly `chainId === 11155111` scoped; do not use chain-blind matching
  * (see `SEPOLIA_HISTORICAL_DENYLIST`). Normative rule: SPEC §I.12.12.
  *
- * Commerce cutover Phase 1: legacy escrow contracts are no longer live commercial
- * on 11155111 — retired into this denylist (SPEC §I.9.2 modes-only Nuclear #2 pending).
+ * Nuclear #2 cutover July 30, 2026: July 21 Nuclear Eth stack + legacy escrows retired.
  */
 export const ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
   "0x7d37e7cbcc42308264B608429a82D03B7C3112F4",
   "0x796Fb1476440C3D8A34a8EC2Fa56664864531499",
   "0xCf78b714DB70960bf1BB418C3370e4502AcFFC64",
+  // July 21 Nuclear Eth (superseded by Nuclear #2 July 30)
+  "0x6378469256907D7DC14BBfce0261ceDE22314507",
+  "0x8888594b12DF2e1EF406e91CFF72d52801BCaC24",
+  "0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F",
+  "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB",
 ];
 
 /**

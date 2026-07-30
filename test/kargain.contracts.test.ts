@@ -40,7 +40,7 @@ async function deployListedFixedPriceStack(viem: Parameters<typeof deployCommerc
     platformRecipient: base.admin.account.address,
     feeBps: 250n,
     nativeUsdFeed: base.nativeFeed.address,
-    maxFeedStaleness: 3600n,
+    nativeUsdStalenessTolerance: 3600,
     owner: getAddress(base.timelock.address),
     guardian: base.admin.account.address,
   });

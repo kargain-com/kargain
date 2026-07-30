@@ -11,7 +11,7 @@ export const CONTRACT_VERSIONS = {
   KarPassportONFT721: "1.0.0-rc.1",
   /** @deprecated C2 — removed adapter; kept for historical smoke key lookups */
   ProxyONFT721Adapter: "1.1.0-rc.1",
-  FixedPriceConsignment: "2.2.0-rc.1",
+  FixedPriceConsignment: "2.3.0-rc.1",
   AscendingConsignment: "2.2.0-rc.1",
 } as const;
 

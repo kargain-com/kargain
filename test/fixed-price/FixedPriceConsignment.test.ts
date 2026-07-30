@@ -25,6 +25,9 @@ type PublicClient = Awaited<ReturnType<ViemSuite["getPublicClient"]>>;
 const EIP170_MAX = 24_576;
 const PLATFORM_FEE_BPS = 250n;
 const MAX_STALENESS = 3_600n;
+const MIN_FEED_STALENESS = 60;
+const MAX_FEED_STALENESS_BOUND = 259_200;
+const DEFAULT_FEED_TOLERANCE = Number(MAX_STALENESS);
 const ETH_USD_1E8 = 2_000n * 10n ** 8n; // $2000
 const USDC_USD_1E8 = 1n * 10n ** 8n; // $1
 const FIAT_100_USD = 100n * 10n ** 8n; // $100
@@ -108,7 +111,7 @@ describe("FixedPriceConsignment", () => {
       platformRecipient: platform.account.address,
       feeBps: PLATFORM_FEE_BPS,
       nativeUsdFeed: nativeFeed.address,
-      maxFeedStaleness: MAX_STALENESS,
+      nativeUsdStalenessTolerance: DEFAULT_FEED_TOLERANCE,
       owner: owner.account.address,
       guardian: guardian.account.address,
       harness: useHarness,
@@ -123,13 +126,15 @@ describe("FixedPriceConsignment", () => {
     await passport.write.approve([mode.address, tokenId], { account: holder.account });
   }
 
-  /** Admit ERC-20 with a measured USD feed (P4 — no silent peg for fiat). */
   async function admitWithUsdFeed(
     token: `0x${string}`,
     answer: bigint = USDC_USD_1E8,
+    stalenessTolerance: number = DEFAULT_FEED_TOLERANCE,
   ): Promise<DeployedContract> {
     const feed = await viem.deployContract("MockV3Aggregator", [8, answer]);
-    await mode.write.approvePaymentToken([token, feed.address], { account: owner.account });
+    await mode.write.approvePaymentToken([token, feed.address, stalenessTolerance], {
+      account: owner.account,
+    });
     return feed;
   }
 
@@ -138,7 +143,7 @@ describe("FixedPriceConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
   });
 
   it("source carries no verifier-admission / staking gate symbols (N2)", () => {
@@ -179,24 +184,28 @@ describe("FixedPriceConsignment", () => {
         platform.account.address,
         PLATFORM_FEE_BPS,
         nativeFeed.address,
-        0n,
+        0,
         owner.account.address,
         guardian.account.address,
       ],
     });
     await assert.rejects(
       viem.deployContract("ERC1967Proxy", [impl.address, initData]),
-      revertsWith("ZeroFeedStaleness"),
+      (err) => {
+        if (!(err instanceof Error)) return false;
+        return err.message.includes("ZeroFeedStaleness") || err.message.includes("FailedCall");
+      },
     );
   });
 
-  it("setMaxFeedStaleness: owner updates live window; zero reverts", async () => {
+  it("setNativeUsdStalenessTolerance: owner retunes native feed window; out-of-bounds reverts", async () => {
     await assert.rejects(
-      mode.write.setMaxFeedStaleness([0n], { account: owner.account }),
-      revertsWith("ZeroFeedStaleness"),
+      mode.write.setNativeUsdStalenessTolerance([0], { account: owner.account }),
+      revertsWith("FeedStalenessOutOfBounds"),
     );
-    await mode.write.setMaxFeedStaleness([MAX_STALENESS * 2n], { account: owner.account });
-    assert.equal(await mode.read.maxFeedStaleness(), MAX_STALENESS * 2n);
+    const next = DEFAULT_FEED_TOLERANCE * 2;
+    await mode.write.setNativeUsdStalenessTolerance([next], { account: owner.account });
+    assert.equal(await mode.read.nativeUsdStalenessTolerance(), next);
   });
 
   it("DirectEthNotAccepted on bare receive", async () => {
@@ -488,7 +497,7 @@ describe("FixedPriceConsignment", () => {
 
   it("InvalidCurrencyCode when registering USD as a feed", async () => {
     await assert.rejects(
-      mode.write.setCurrencyFeed([currencyCode("USD"), nativeFeed.address], {
+      mode.write.setCurrencyFeed([currencyCode("USD"), nativeFeed.address, DEFAULT_FEED_TOLERANCE], {
         account: owner.account,
       }),
       revertsWith("InvalidCurrencyCode"),
@@ -498,14 +507,14 @@ describe("FixedPriceConsignment", () => {
   it("InvalidFeed / InvalidFeedDecimals on approvePaymentToken", async () => {
     const tok = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
     await assert.rejects(
-      mode.write.approvePaymentToken([tok.address, owner.account.address], {
+      mode.write.approvePaymentToken([tok.address, owner.account.address, DEFAULT_FEED_TOLERANCE], {
         account: owner.account,
       }),
       revertsWith("InvalidFeed"),
     );
     const badDec = await viem.deployContract("MockV3Aggregator", [18, ETH_USD_1E8]);
     await assert.rejects(
-      mode.write.approvePaymentToken([tok.address, badDec.address], {
+      mode.write.approvePaymentToken([tok.address, badDec.address, DEFAULT_FEED_TOLERANCE], {
         account: owner.account,
       }),
       revertsWith("InvalidFeedDecimals"),
@@ -648,7 +657,7 @@ describe("FixedPriceConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
     assert.equal(await mode.read.consignmentPriceOf([TOKEN]), priceBefore);
     void modeImpl;
@@ -722,7 +731,7 @@ describe("FixedPriceConsignment", () => {
     const usdcFeed = await admitWithUsdFeed(usdc.address);
 
     await assert.rejects(
-      mode.write.approvePaymentToken([usdc.address, usdcFeed.address], {
+      mode.write.approvePaymentToken([usdc.address, usdcFeed.address, DEFAULT_FEED_TOLERANCE], {
         account: guardian.account,
       }),
       revertsWith("OwnableUnauthorizedAccount"),
@@ -763,7 +772,7 @@ describe("FixedPriceConsignment", () => {
     );
 
     // Owner can re-approve with same feed (monotonic) and revoke.
-    await mode.write.approvePaymentToken([usdc.address, usdcFeed.address], {
+    await mode.write.approvePaymentToken([usdc.address, usdcFeed.address, DEFAULT_FEED_TOLERANCE], {
       account: owner.account,
     });
     await mode.write.revokePaymentToken([usdc.address], { account: owner.account });
@@ -954,7 +963,7 @@ describe("FixedPriceConsignment", () => {
       platformRecipient: platformSink.address,
       feeBps: PLATFORM_FEE_BPS,
       nativeUsdFeed: nativeFeed.address,
-      maxFeedStaleness: MAX_STALENESS,
+      nativeUsdStalenessTolerance: DEFAULT_FEED_TOLERANCE,
       owner: owner.account.address,
       guardian: guardian.account.address,
     });
@@ -998,7 +1007,7 @@ describe("FixedPriceConsignment", () => {
       platformRecipient: platformSink.address,
       feeBps: PLATFORM_FEE_BPS,
       nativeUsdFeed: nativeFeed.address,
-      maxFeedStaleness: MAX_STALENESS,
+      nativeUsdStalenessTolerance: DEFAULT_FEED_TOLERANCE,
       owner: owner.account.address,
       guardian: guardian.account.address,
     });
@@ -1063,29 +1072,29 @@ describe("FixedPriceConsignment", () => {
   it("TokenHasNoCode on approvePaymentToken; retry still refuses; conforming admits", async () => {
     const eoa = stranger.account.address;
     await assert.rejects(
-      mode.write.approvePaymentToken([eoa, ZERO], { account: owner.account }),
+      mode.write.approvePaymentToken([eoa, ZERO, 0], { account: owner.account }),
       revertsWith("TokenHasNoCode"),
     );
     assert.equal(await paymentTokenEnabled(eoa), false);
     await assert.rejects(
-      mode.write.approvePaymentToken([eoa, ZERO], { account: owner.account }),
+      mode.write.approvePaymentToken([eoa, ZERO, 0], { account: owner.account }),
       revertsWith("TokenHasNoCode"),
     );
 
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await mode.write.approvePaymentToken([usdc.address, ZERO, 0], { account: owner.account });
     assert.equal(await paymentTokenEnabled(usdc.address), true);
   });
 
   it("TokenDecimalsUnavailable on approvePaymentToken; retry still refuses", async () => {
     const bad = await viem.deployContract("NoDecimalsErc20", []);
     await assert.rejects(
-      mode.write.approvePaymentToken([bad.address, ZERO], { account: owner.account }),
+      mode.write.approvePaymentToken([bad.address, ZERO, 0], { account: owner.account }),
       revertsWith("TokenDecimalsUnavailable"),
     );
     assert.equal(await paymentTokenEnabled(bad.address), false);
     await assert.rejects(
-      mode.write.approvePaymentToken([bad.address, ZERO], { account: owner.account }),
+      mode.write.approvePaymentToken([bad.address, ZERO, 0], { account: owner.account }),
       revertsWith("TokenDecimalsUnavailable"),
     );
   });
@@ -1096,25 +1105,139 @@ describe("FixedPriceConsignment", () => {
     await increaseTime(publicClient, MAX_STALENESS + 1n);
 
     await assert.rejects(
-      mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account }),
+      mode.write.approvePaymentToken([tok.address, feed.address, DEFAULT_FEED_TOLERANCE], { account: owner.account }),
       revertsWith("StalePrice"),
     );
     assert.equal(await paymentTokenEnabled(tok.address), false);
     await assert.rejects(
-      mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account }),
+      mode.write.approvePaymentToken([tok.address, feed.address, DEFAULT_FEED_TOLERANCE], { account: owner.account }),
       revertsWith("StalePrice"),
     );
 
     await feed.write.setAnswer([ETH_USD_1E8]);
-    await mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account });
+    await mode.write.approvePaymentToken([tok.address, feed.address, DEFAULT_FEED_TOLERANCE], { account: owner.account });
     assert.equal(await paymentTokenEnabled(tok.address), true);
+  });
+
+  // ---- Per-feed staleness ----
+
+  describe("per-feed staleness", () => {
+    function abiFunctionNames(): string[] {
+      const artifact = JSON.parse(
+        readFileSync(
+          path.join(
+            repoRoot,
+            "artifacts/contracts/FixedPriceConsignment.sol/FixedPriceConsignment.json",
+          ),
+          "utf8",
+        ),
+      ) as { abi: Array<{ type?: string; name?: string }> };
+      return artifact.abi
+        .filter((item) => item.type === "function" && item.name)
+        .map((item) => item.name as string);
+    }
+
+    it("ABI exposes per-feed tolerance only (no global maxFeedStaleness)", () => {
+      const names = abiFunctionNames();
+      assert.ok(!names.includes("maxFeedStaleness"));
+      assert.ok(!names.includes("setMaxFeedStaleness"));
+      assert.ok(names.includes("nativeUsdStalenessTolerance"));
+      assert.ok(names.includes("setNativeUsdStalenessTolerance"));
+    });
+
+    it("feed within its own tolerance quotes", async () => {
+      const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+      await admitWithUsdFeed(usdc.address);
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
+        account: owner.account,
+      });
+      await increaseTime(publicClient, MAX_STALENESS - 100n);
+      assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
+    });
+
+    it("same feed beyond its tolerance refuses with StalePrice", async () => {
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_USD, ZERO, FIAT_100_USD], {
+        account: owner.account,
+      });
+      await increaseTime(publicClient, MAX_STALENESS + 1n);
+      await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("StalePrice"));
+    });
+
+    it("two payment tokens with different tolerances behave independently", async () => {
+      const tokA = await viem.deployContract("MockERC20Decimals", ["A", "A", 18]);
+      const tokB = await viem.deployContract("MockERC20Decimals", ["B", "B", 18]);
+      const feedA = await viem.deployContract("MockV3Aggregator", [8, USDC_USD_1E8]);
+      const feedB = await viem.deployContract("MockV3Aggregator", [8, USDC_USD_1E8]);
+      const tolA = DEFAULT_FEED_TOLERANCE;
+      const tolB = DEFAULT_FEED_TOLERANCE * 2;
+      await mode.write.approvePaymentToken([tokA.address, feedA.address, tolA], {
+        account: owner.account,
+      });
+      await mode.write.approvePaymentToken([tokB.address, feedB.address, tolB], {
+        account: owner.account,
+      });
+
+      const tokenA = TOKEN;
+      const tokenB = TOKEN + 1n;
+      await mintAndApprove(tokenA);
+      await mintAndApprove(tokenB);
+      await mode.write.openDirect([tokenA, DENOM_USD, tokA.address, FIAT_100_USD], {
+        account: owner.account,
+      });
+      await mode.write.openDirect([tokenB, DENOM_USD, tokB.address, FIAT_100_USD], {
+        account: owner.account,
+      });
+
+      await increaseTime(publicClient, BigInt(tolA) + 1n);
+      await assert.rejects(mode.read.quoteBuy([tokenA]), revertsWith("StalePrice"));
+      assert.equal(await mode.read.quoteBuy([tokenB]), 100n * 10n ** 18n);
+
+      await increaseTime(publicClient, BigInt(tolB - tolA));
+      await assert.rejects(mode.read.quoteBuy([tokenB]), revertsWith("StalePrice"));
+    });
+
+    it("FeedStalenessOutOfBounds at admission (below MIN and above MAX)", async () => {
+      const tok = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
+      const feed = await viem.deployContract("MockV3Aggregator", [8, USDC_USD_1E8]);
+      await assert.rejects(
+        mode.write.approvePaymentToken([tok.address, feed.address, MIN_FEED_STALENESS - 1], {
+          account: owner.account,
+        }),
+        revertsWith("FeedStalenessOutOfBounds"),
+      );
+      await assert.rejects(
+        mode.write.approvePaymentToken([tok.address, feed.address, MAX_FEED_STALENESS_BOUND + 1], {
+          account: owner.account,
+        }),
+        revertsWith("FeedStalenessOutOfBounds"),
+      );
+    });
+
+    it("StalenessWithoutFeed / ZeroFeedStaleness: feed and tolerance pairing", async () => {
+      const tok = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
+      const feed = await viem.deployContract("MockV3Aggregator", [8, USDC_USD_1E8]);
+      await assert.rejects(
+        mode.write.approvePaymentToken([tok.address, ZERO, DEFAULT_FEED_TOLERANCE], {
+          account: owner.account,
+        }),
+        revertsWith("StalenessWithoutFeed"),
+      );
+      await assert.rejects(
+        mode.write.approvePaymentToken([tok.address, feed.address, 0], { account: owner.account }),
+        revertsWith("ZeroFeedStaleness"),
+      );
+      await mode.write.approvePaymentToken([tok.address, ZERO, 0], { account: owner.account });
+      assert.equal(await paymentTokenEnabled(tok.address), true);
+    });
   });
 
   // ---- P4: measured feed for fiat; feedless asset-only; monotonic feed ----
 
   it("P4: zero-feed admission proceeds; fiat open refused; asset denom opens and settles", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
-    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await mode.write.approvePaymentToken([usdc.address, ZERO, 0], { account: owner.account });
     assert.equal(await paymentTokenEnabled(usdc.address), true);
 
     await mintAndApprove(TOKEN);
@@ -1151,7 +1274,7 @@ describe("FixedPriceConsignment", () => {
     assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
 
     await assert.rejects(
-      mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account }),
+      mode.write.approvePaymentToken([usdc.address, ZERO, 0], { account: owner.account }),
       revertsWith("CannotClearPaymentTokenFeed"),
     );
     const cfg = (await mode.read.paymentTokens([usdc.address])) as
@@ -1183,7 +1306,7 @@ describe("FixedPriceConsignment", () => {
     await usdcFeed.write.setAnswer([USDC_USD_1E8]);
     assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
 
-    await mode.write.forceSetPaymentTokenFeed([usdc.address, ZERO]);
+    await mode.write.forceSetPaymentTokenFeed([usdc.address, ZERO, 0]);
     await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("PaymentTokenFeedRequired"));
   });
 

@@ -16,21 +16,29 @@ const HUB = 84532;
 const ETH = 11155111;
 
 describe("COMMERCIAL_ACTIVE registry", () => {
-  it("includes Nuclear hub and Eth stacks", () => {
+  it("includes Nuclear #2 hub and Eth stacks with modes", () => {
     assert.equal(Object.keys(COMMERCIAL_ACTIVE).sort().join(","), `${ETH},${HUB}`);
     assert.equal(requireCommercialActive(HUB).karPassport, SEPOLIA_ACTIVE.karPassport);
     assert.equal(
       requireCommercialActive(ETH).karPassport,
-      "0x6378469256907D7DC14BBfce0261ceDE22314507",
+      "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
+    );
+    assert.equal(
+      requireCommercialActive(HUB).fixedPriceConsignment,
+      "0xE98EbDb9354ff9c91872390D7106D621794C9118",
+    );
+    assert.equal(
+      requireCommercialActive(ETH).ascendingConsignment,
+      "0xe8ECf3b42b489F6289434840661770b43B027F13",
     );
   });
 
   it("SEPOLIA_ACTIVE aliases COMMERCIAL_ACTIVE[84532]", () => {
     assert.equal(SEPOLIA_ACTIVE, COMMERCIAL_ACTIVE[HUB]);
-    assert.equal(SEPOLIA_ACTIVE.indexFromBlock, 44_434_865);
+    assert.equal(SEPOLIA_ACTIVE.indexFromBlock, 44_833_462);
   });
 
-  it("ETHEREUM_SEPOLIA_SPOKE points at Nuclear Eth KarPassport", () => {
+  it("ETHEREUM_SEPOLIA_SPOKE points at Nuclear #2 Eth KarPassport", () => {
     const eth = requireCommercialActive(ETH);
     assert.equal(ETHEREUM_SEPOLIA_SPOKE.karPassportOnft, eth.karPassport);
     assert.equal(ETHEREUM_SEPOLIA_SPOKE.bridgeGateway, eth.bridgeGateway);
@@ -61,18 +69,19 @@ describe("resolveCommercialStack committed fallback", () => {
 
       const eth = resolveCommercialStack(ETH);
       assert.ok(eth.source === "committed" || eth.source === "manifest");
-      assert.equal(eth.karPassport, "0x6378469256907D7DC14BBfce0261ceDE22314507");
-      assert.equal(eth.indexFromBlock, 11_319_840);
-      assert.equal(eth.bridgeGateway, "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB");
+      assert.equal(eth.karPassport, "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0");
+      assert.equal(eth.indexFromBlock, 11_384_136);
+      assert.equal(eth.bridgeGateway, "0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655");
 
       const bundle = ponderAddressesFromStack(eth);
       assert.equal(bundle.karPassport, eth.karPassport);
-      assert.equal(bundle.fixedPriceConsignment, undefined);
-      assert.equal(bundle.ascendingConsignment, undefined);
+      assert.equal(bundle.fixedPriceConsignment, eth.fixedPriceConsignment);
+      assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
 
       const hub = resolveCommercialStack(HUB);
       assert.ok(hub.source === "committed" || hub.source === "manifest" || hub.source === "env");
       assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
+      assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
     } finally {
       if (prev.passport) process.env.PONDER_KAR_PASSPORT_ADDRESS = prev.passport;
       else delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
