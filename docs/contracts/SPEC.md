@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.1.0-rc.1`, AscendingConsignment `2.1.0-rc.1`, MarketplaceEscrow `2.2.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.1.0-rc.1`, AscendingConsignment `2.1.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -49,12 +49,12 @@
 | KarPassport | `1.8.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
-| MarketplaceEscrow | `2.2.0-rc.1` | UUPS proxy | Listing escrow, dynamic fiat currencies, agent consignment |
-| AuctionEscrow | `2.0.0-rc.1` | UUPS proxy | English reserve auction escrow, settlement hold |
-| Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for MarketplaceEscrow / AuctionEscrow |
+| Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
-| FixedPriceConsignment | `2.1.0-rc.1` | UUPS proxy | Fixed-price consignment mode (Mandate/Recall/base + accountability events) |
-| AscendingConsignment | `2.1.0-rc.1` | UUPS proxy | Ascending auction consignment + settlement hold + BondedChallenge |
+| FixedPriceConsignment | `2.1.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
+| AscendingConsignment | `2.1.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
+
+**Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** until Nuclear #2 refreshes the stack ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
 
 Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
 
@@ -342,183 +342,26 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-### I.5. MarketplaceEscrow (`2.2.0-rc.1`)
+### I.5. Commerce modes (FixedPriceConsignment + AscendingConsignment)
 
-UUPS-upgradeable escrow. **`upgradeAuthority`** = `Timelock48h` after deploy handoff. Immutable constructor deps: `karPassport`, `nativeUsdFeed`, `karProStaking`, `platformRecipient`, fee bps, `maxFeedStaleness` (**must be > 0** — `ZeroFeedStaleness`). ERC-20 payment tokens enter only via **`approvePaymentToken`** (conformance + **`decimals()`** admission there; precision is stored on `PaymentTokenConfig`). Source VERSION `2.2.0-rc.1` (recorded token decimals + unified pricing + feed freshness always on). Storage layout change vs prior proxies — **Nuclear #2 full-stack redeploy only** (no in-place UUPS of prior `PaymentTokenConfig`). Live I.9.1 / I.9.2 proxies remain older until that redeploy.
+**Contractual commerce surface** (generation v2, post §15.2 step 5): **`FixedPriceConsignment`** and **`AscendingConsignment`** UUPS proxies. Shared libraries: **`ConsignmentBase`**, **`Mandate`**, **`Recall`**, **`BondedChallenge`** (also used by KarPassport verification challenges).
 
-### 5.1 Currency system
+| Mode | VERSION | Role |
+|------|---------|------|
+| FixedPriceConsignment | `2.1.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; agent commission splits |
+| AscendingConsignment | `2.1.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
-| Code | Constant | Feed requirement |
-|------|----------|------------------|
-| USD | `CURRENCY_USD` = `bytes32("USD")` | None (1 USD = 1e8 internal) |
-| Native-priced listing | `CURRENCY_NATIVE` = `bytes32("NATIVE")` | None — price **is** payment amount (× 1e10 scale) |
-| Other (EUR, GBP, …) | ISO-style `bytes32` padded | Live Chainlink feed registered via `setCurrencyFeed` |
+**Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, §15 cutover).
 
-**Feed validation** (`setCurrencyFeed` / payment-token feed): non-zero feed must have bytecode, `decimals() == 8`, latest `answer > 0`, and **`updatedAt` within `maxFeedStaleness`** (`StalePrice` at admission, not only at buy/quote).
+**Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges` — [indexer/README.md](../indexer/README.md).
 
-**Payment token pricing (unified):** `amount = usd1e8 * 10^decimals / priceUsd1e8`, where `priceUsd1e8 = 1e8` when `feed == address(0)` (USD-pegged), else the Chainlink answer. Token `decimals` are read and stored at `approvePaymentToken`; a token without `decimals()` is not admitted (`TokenDecimalsUnavailable`).
+**Live addresses:** mode proxies are **absent** from `COMMERCIAL_ACTIVE` until **Nuclear #2** registers them and Ponder mode start blocks. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
 
-**Policy:** No hardcoded exchange rates in contract logic — only Chainlink (or USD 1:1 for stables via `feed = address(0)` on payment tokens). No assumed 6- vs 18-decimal branch.
+**Accountability events:** ConsignmentOpened / MandateGranted / RecallRequested / ChallengeOpened / … — see KarPassport § commerce mode events above.
 
-**Initial currencies per chain** (from `scripts/lib/chainlink-feeds.ts`; deploy registers only feeds with live bytecode):
+#### Retired — MarketplaceEscrow
 
-| chainId | Network | Currencies at deploy |
-|---------|---------|---------------------|
-| 84532 | Base Sepolia | USD only (+ native USD feed for checkout) |
-| 11155111 | Ethereum Sepolia | USD, EUR, GBP, JPY (if feeds live) |
-| 80002 | Polygon Amoy | USD only |
-| 8453 | Base mainnet (planned) | USD, EUR, GBP, CAD (+ AUD if feed configured) |
-
-EUR listing on Base Sepolia requires post-deploy `setCurrencyFeed` once a live EUR/USD aggregator exists on that chain.
-
-### 5.2 Direct listing
-
-| Function | Seller | Behavior |
-|----------|--------|----------|
-| `list` | Owner | Transfer NFT to escrow; no agent |
-| `delist` | Seller only | Return NFT; clear listing |
-| `setSettlementNote` | Seller | Store off-chain payment instructions (required for external confirm) |
-
-Direct listings cannot use agent paths (`ListingHasAgent` on seller-only ops where applicable).
-
-### 5.3 Agent consignment (dépôt-vente)
-
-Owner retains **title** (seller field); agent manages sale terms.
-
-| Step | Function | Notes |
-|------|----------|-------|
-| 1 | Owner approves marketplace (`approve` or `setApprovalForAll`) | Required before authorize |
-| 2 | `authorizeAgent(tokenId, agent, expiry, ownerMinPrice)` | `expiry = 0` → no expiry |
-| 3 | `listOnBehalf(...)` | Agent sets price, `agentFeeBps`, optional settlement note |
-| 4 | `updateListing` | Agent may change price **and** fee without owner signature |
-| 5 | Sale or return | Fee split or return flows |
-
-**Invariant:** `sellerNet = price - agentFee - platformFee ≥ ownerMinPrice1e8` always (`BelowOwnerMinPrice`).
-
-| Constant | Value |
-|----------|-------|
-| `_MAX_AGENT_FEE_BPS` | 3000 (30%) |
-| `_MAX_FEE_BPS` | 1000 (10%) platform cap |
-| `_RETURN_COOLDOWN` | 7 days |
-
-| Return path | Caller | Behavior |
-|-------------|--------|----------|
-| `requestReturn` | Owner | Starts 7-day timer; `ReturnAlreadyRequested` if timer already set |
-| `forceReturn` | Owner | After cooldown; returns NFT |
-| `agentDelist` | Agent | Voluntary return anytime |
-| `revokeAgent` | Owner | Only when **not** actively listed |
-
-`updateOwnerMinPrice`: owner may **lower** only (`CannotRaiseMinPrice`).
-
-### 5.4 Payment flows
-
-| Path | Entry | Settlement |
-|------|-------|------------|
-| Native checkout | `buyWithNative` | ETH (or chain native) via `nativeUsdFeed` quote |
-| ERC-20 checkout | `buyWithToken(tokenId, token)` | Approved payment token + optional feed |
-| External | `confirmExternalPayment(tokenId, buyer)` | Seller attests off-chain payment; **zero platform fee** |
-
-- **Three-way split** (agent listings): `agentFee` → agent, `platformFee` → `platformRecipient`, remainder → seller.
-- **`confirmExternalPayment`**: trust-based seller attestation — not cryptographic proof of bank/Lightning/BTC payment.
-- Active verifier sellers may get reduced platform fee via `proFeeBps` (immutable at deploy; Sepolia deploy uses `0`).
-
-### 5.5 Quote functions
-
-| Function | Returns |
-|----------|---------|
-| `listingUsd1e8` | Listing price normalized to USD 1e8 |
-| `quoteBuyWithNative` | Wei required (reverts if stale oracle) |
-| `quoteBuyWithToken` | Token amount for approved pay token |
-
-**NATIVE listing:** payment = `fiatPrice1e8 * 1e10` (direct wei-scale conversion, no oracle).
-
-**USD listing:** USD 1e8 ÷ ETH/USD rate → wei.
-
-**Other fiat:** convert listing currency → USD via currency feed, then USD → native/token via payment feed.
-
-### 5.6 Governance
-
-All admin operations require **`upgradeAuthority`** (Timelock after handoff):
-
-- `setCurrencyFeed` / `revokeCurrencyFeed`
-- `approvePaymentToken` / `revokePaymentToken`
-- `setPaused` — blocks list/buy when true
-- `transferUpgradeAuthority`
-- UUPS `_authorizeUpgrade`
-
-Deployer registers genesis currencies **before** transferring authority to timelock (`deploy.ts` steps 8–10).
-
-### 5.7 MarketplaceEscrow — function reference
-
-| Function | Access | Behavior |
-|----------|--------|----------|
-| `initialize` | once | Set initial `upgradeAuthority` |
-| `isListed` | view | Listing active flag |
-| `transferUpgradeAuthority` | upgradeAuthority | Hand off governance |
-| `setCurrencyFeed` / `revokeCurrencyFeed` | upgradeAuthority | Fiat registry |
-| `approvePaymentToken` / `revokePaymentToken` | upgradeAuthority | Checkout tokens |
-| `setPaused` | upgradeAuthority | Global pause |
-| `authorizeAgent` | owner | Agent authorization |
-| `revokeAgent` | owner | Revoke when not listed |
-| `list` | seller | Direct listing |
-| `listOnBehalf` | agent | Consignment listing |
-| `updateListing` | agent | Price + agent fee update |
-| `updateOwnerMinPrice` | seller | Lower owner minimum |
-| `requestReturn` | seller | Start return cooldown |
-| `agentDelist` | agent | Agent-initiated return |
-| `forceReturn` | seller | Post-cooldown return |
-| `delist` | seller | Direct delist |
-| `buyWithNative` | buyer | Native payment settlement |
-| `buyWithToken` | buyer | ERC-20 payment settlement |
-| `setSettlementNote` | seller | External payment instructions |
-| `confirmExternalPayment` | seller | Attest external payment sale |
-| `listingUsd1e8` | view | USD-normalized list price |
-| `quoteBuyWithNative` | view | Native quote |
-| `quoteBuyWithToken` | view | Token quote |
-| `onERC721Received` | — | IERC721Receiver hook |
-
-Public mappings: `listings`, `agentAuthorizations`, `returnRequestedAt`, `settlementNotes`, `currencyFeeds`, `paymentTokens`, `upgradeAuthority`, `paused`.
-
-### 5.8 MarketplaceEscrow — error reference
-
-| Error | When |
-|-------|------|
-| `NotSeller` | Caller is not the recorded listing seller |
-| `NotSellerOrAgent` | Caller is neither the listing seller nor the listing agent (`confirmExternalPayment`) |
-| `NotAgent` | Caller is not the listing agent |
-| `NoAgent` | Listing has no agent (seller used an agent-only path) |
-| `NotOwner` | Caller is not `karPassport.ownerOf(tokenId)` |
-| `NotActive` | Listing inactive |
-| `AlreadyListed` | `list` / `listOnBehalf` / `authorizeAgent` / `revokeAgent` while listed |
-| `BadPrice` | Zero listing / update price |
-| `WrongValue` | Native `msg.value` does not match the required amount |
-| `FeeTooHigh` | Platform fee over cap |
-| `AgentFeeTooHigh` | Agent fee > 30% |
-| `NoClaim` | `withdrawClaim` with zero pending balance |
-| `TransferFailed` | `withdrawClaim` transfer failed (settlement credits a claim on push failure) |
-| `TokenHasNoCode` | `approvePaymentToken` address has no code |
-| `TokenNonConforming` | `approvePaymentToken` fails ERC-20 transfer return probe |
-| `TokenDecimalsUnavailable` | `approvePaymentToken` token does not expose `decimals()` |
-| `ZeroFeedStaleness` | Constructor `maxFeedStaleness_ == 0` |
-| `StalePrice` | Oracle older than `maxFeedStaleness` (buy/quote **or** feed admission) |
-| `BadOracleAnswer` | Non-positive feed answer |
-| `ZeroAddress` | Zero address where a configured address is required |
-| `NotUpgradeAuthority` | Admin op from wrong caller |
-| `CurrencyNotAvailableOnChain` | Unregistered listing currency (missing feed) |
-| `InvalidCurrencyCode` | `setCurrencyFeed` rejects empty or `NATIVE` code |
-| `InvalidFeed` / `InvalidFeedDecimals` | Feed validation failed |
-| `BelowOwnerMinPrice` | Net to seller below minimum |
-| `AgentNotAuthorized` | Missing/expired agent auth (not zero-agent — that is `ZeroAddress`) |
-| `EscrowNotApproved` | No escrow approval for marketplace |
-| `ReturnNotRequested` | `forceReturn` without request |
-| `ReturnAlreadyRequested` | Duplicate return request |
-| `ReturnCooldownPending` | `forceReturn` too early |
-| `EmptySettlementNote` | External confirm without note |
-| `PaymentTokenNotSupported` | Token not approved (`!enabled`; zero token is `ZeroAddress`) |
-| `ContractPaused` | Pause active |
-| `DirectEthNotAccepted` | Wrong payment path |
-| `CannotRaiseMinPrice` | Owner min increase blocked |
-| `ListingHasAgent` | Direct seller op on an agent listing (e.g. `delist`) |
+`MarketplaceEscrow` Solidity, app consumers, and Ponder `marketplace_*` tables were **removed** in commerce cutover §15.2 step 5 (July 2026). July 2026 Nuclear proxies remain on-chain at [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532) until Nuclear #2 refreshes the stack; the app **denylists** them via `kargainContractDenylist(chainId)` — no new listings. Historical v1 marketplace behavior: [Part II.7](#ii7-marketplace-unchanged-in-phase-1).
 
 ---
 
@@ -532,7 +375,7 @@ OpenZeppelin `TimelockController` with fixed **`MIN_DELAY_SECONDS = 48 hours`**.
 | Executor | Execute after delay |
 | Admin | Optional; renounce after setup (`address(0)` in constructor to skip) |
 
-Used as **`MarketplaceEscrow.upgradeAuthority`** after deploy step 10. KarPassport / KarProPass / KarProStaking remain immutable — timelock governs marketplace upgrades and feed registry only.
+Used as **owner / UUPS authority** on commerce mode proxies (`FixedPriceConsignment`, `AscendingConsignment`) after deploy handoff. KarPassport / KarProPass / KarProStaking remain immutable — timelock governs mode upgrades, feed registry, and guardian pause config.
 
 ---
 
@@ -678,22 +521,27 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 | KarProPass | `1.0.0-rc.1` | `0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25` | [code](https://sepolia.basescan.org/address/0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25#code) |
 | KarProStaking | `1.1.0-rc.1` | `0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f` | [code](https://sepolia.basescan.org/address/0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f#code) |
 | KarPassport | `1.3.0-rc.1` | `0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a` | [code](https://sepolia.basescan.org/address/0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a#code) |
-| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x0F98B21857386dF0c3B0323c94e63e140533495F` | [code](https://sepolia.basescan.org/address/0x0F98B21857386dF0c3B0323c94e63e140533495F#code) |
-| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x60336c550946AF79c8FCfaDfA65d76224B356323` | [code](https://sepolia.basescan.org/address/0x60336c550946AF79c8FCfaDfA65d76224B356323#code) |
-| AuctionEscrow impl | `1.0.1-draft` | `0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2` | [code](https://sepolia.basescan.org/address/0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2#code) |
-| AuctionEscrow proxy | `1.0.1-draft` | `0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04` | [code](https://sepolia.basescan.org/address/0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04#code) |
 | KarPassportBridgeGateway | `1.1.0-rc.1` | `0x2a4339656393da943730b7Ac728480f40909f14C` | [code](https://sepolia.basescan.org/address/0x2a4339656393da943730b7Ac728480f40909f14C#code) |
 | USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
 
+**Retired escrows (denylisted — not in `COMMERCIAL_ACTIVE`; removed from app/indexer July 2026 step 5):** on-chain proxies persist until **Nuclear #2** refreshes the stack. Do not integrate.
+
+| Contract | VERSION | Address |
+|----------|---------|---------|
+| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x0F98B21857386dF0c3B0323c94e63e140533495F` |
+| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x60336c550946AF79c8FCfaDfA65d76224B356323` |
+| AuctionEscrow impl | `1.0.1-draft` | `0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2` |
+| AuctionEscrow proxy | `1.0.1-draft` | `0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04` |
+
+**Commerce modes (Nuclear #2 — not yet in committed stack):** `FixedPriceConsignment` + `AscendingConsignment` proxies register here after the next full-stack deploy; until then production commerce is **inert** (fail-closed UI/indexer).
+
 **Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
-> **Superseded (pre-Nuclear hub, denylisted):** KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` · MarketplaceEscrow `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` · AuctionEscrow `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` · ProxyONFT721Adapter `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` · KarProStaking `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` · KarProPass `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` · earlier adapter `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c`. Historical pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
+> **Superseded (pre-Nuclear hub, denylisted):** KarPassport `0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594` · MarketplaceEscrow `0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19` · AuctionEscrow `0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce` · ProxyONFT721Adapter `0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0` · KarProStaking `0xb5d79551BB11F726D2A1A110BAc645C4345dA568` · KarProPass `0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1` · earlier adapter `0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c`. **July 2026 Nuclear escrows** (`0x60336…` / `0x37Fa…`) are also denylisted post step 5 — see retired table above. Historical pattern: [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
 
 **Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire:read-only` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Bridge ops: [ops/deploys/bridge-84532-11155111.md](../ops/deploys/bridge-84532-11155111.md)
-
-**AuctionEscrow behavior:** [Part I.11](#i11-auctionescrow-200-draft).
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
@@ -707,14 +555,19 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 | KarProPass | `1.0.0-rc.1` | `0x8888594b12DF2e1EF406e91CFF72d52801BCaC24` | [code](https://sepolia.etherscan.io/address/0x8888594b12DF2e1EF406e91CFF72d52801BCaC24#code) |
 | KarProStaking | `1.1.0-rc.1` | `0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F` | [code](https://sepolia.etherscan.io/address/0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F#code) |
 | KarPassport | `1.3.0-rc.1` | `0x6378469256907D7DC14BBfce0261ceDE22314507` | [code](https://sepolia.etherscan.io/address/0x6378469256907D7DC14BBfce0261ceDE22314507#code) |
-| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` | [code](https://sepolia.etherscan.io/address/0x7d37e7cbcc42308264B608429a82D03B7C3112F4#code) |
-| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` | [code](https://sepolia.etherscan.io/address/0x4FC74e0B7eE0A741707A553D43Efff68126D198B#code) |
-| AuctionEscrow impl | `1.0.1-draft` | `0xCf78b714DB70960bf1BB418C3370e4502AcFFC64` | [code](https://sepolia.etherscan.io/address/0xCf78b714DB70960bf1BB418C3370e4502AcFFC64#code) |
-| AuctionEscrow proxy | `1.0.1-draft` | `0x796Fb1476440C3D8A34a8EC2Fa56664864531499` | [code](https://sepolia.etherscan.io/address/0x796Fb1476440C3D8A34a8EC2Fa56664864531499#code) |
 | KarPassportBridgeGateway | `1.1.0-rc.1` | `0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB` | [code](https://sepolia.etherscan.io/address/0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB#code) |
 | USDC | — | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | [token](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
 | Native USD feed | — | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | [feed](https://sepolia.etherscan.io/address/0x694AA1769357215DE4FAC081bf1f309aDC325306) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.etherscan.io/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
+
+**Retired escrows (denylisted — same policy as [I.9.1](#i91-active-deployment-base-sepolia-84532)):**
+
+| Contract | VERSION | Address |
+|----------|---------|---------|
+| MarketplaceEscrow impl | `2.0.0-rc.1` | `0x7d37e7cbcc42308264B608429a82D03B7C3112F4` |
+| MarketplaceEscrow proxy | `2.0.0-rc.1` | `0x4FC74e0B7eE0A741707A553D43Efff68126D198B` |
+| AuctionEscrow impl | `1.0.1-draft` | `0xCf78b714DB70960bf1BB418C3370e4502AcFFC64` |
+| AuctionEscrow proxy | `1.0.1-draft` | `0x796Fb1476440C3D8A34a8EC2Fa56664864531499` |
 
 **Parameters:** same Nuclear policy as [I.9.1](#i91-active-deployment-base-sepolia-84532) (USD-only registry, `disputeDeposit` 0.01 ETH, `platformFeeBps` 10, `minStakeNative` 0.05 ETH, `upgradeAuthority` Timelock48h) · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
@@ -735,237 +588,36 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
 5. Deploy **KarPassport** `1.8.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
-6. Deploy **MarketplaceEscrow** implementation (passport, native USD feed, staking, platform recipient, `platformFeeBps` **10**, `proFeeBps` **0**, `maxFeedStaleness` **3600**).
-7. Deploy **ERC1967Proxy** → `initialize(upgradeAuthority)` (deployer initially).
-8. **USD-only registry** — do **not** call `setCurrencyFeed` for non-USD feeds even when listed in `CHAINLINK_FEEDS`; **`approvePaymentToken(usdc, address(0))`** only.
-9. **`transferUpgradeAuthority(timelock)`** on MarketplaceEscrow.
-10. Deploy **AuctionEscrow** impl + proxy (`initialize(timelock)`); `platformFeeBps` **10** (no wrapped-native ctor arg — claim payouts).
-11. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only — no marketplace/auction ctor deps).
-12. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
-13. **Encumbrance sources (commerce modes):** when FixedPriceConsignment and AscendingConsignment are deployed on the stack, call **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** while passport Ownable is still the deployer (or as the first Timelock ops). **Only then** open consignments. Between deploy and registration the passport can answer LeaveChain `true` while a mode holds an obligation; a fresh deploy has no settlements — harmless by circumstance; registration-before-open makes it harmless by construction.
-14. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
-15. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
+6. Deploy **FixedPriceConsignment** impl + ERC1967Proxy → `initialize(…, owner=timelock, guardian=COMMERCE_GUARDIAN, …)`; **USD-only** currency registry at init (native USD feed). **`approvePaymentToken(usdc, address(0))` is not callable by the deployer** — mode owner is the Timelock from the proxy create tx; schedule + execute that admission through Timelock48h (see Nuclear #2 runbook). Live Chainlink feeds stay fresh across the delay; `_validateFeed` runs at **execute** time.
+7. Deploy **AscendingConsignment** impl + ERC1967Proxy → `initialize(…, owner=timelock, guardian=COMMERCE_GUARDIAN, …)`.
+8. **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** on KarPassport while Ownable is still deployer — **deploy scripts abort if `isEncumbranceSource` is false** before gateway deploy. **Only then** open consignments ([§12.6](#126-outbound-guards)). **Checklist (not bytecode):** `open*` does not require `isEncumbranceSource(this)` — an operator who skips register can still open while LeaveChain stays blind; do not skip.
+9. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only).
+10. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
+11. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
+12. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
 
-**Cutover silence — AuctionEscrow holds:** gateway `1.3.0-rc.1` must **not** go live on a commercial stack that still settles via **AuctionEscrow** unless Ascending is registered **and** AuctionEscrow is retired in the **same** Nuclear wave (§15 step 4). After `AuctionEscrow.settle` the NFT sits with the buyer; without a registered hold source, LeaveChain would be `true`. Marketplace listings remain custody-safe without registration (NFT in escrow).
+**Retired:** steps that deployed `MarketplaceEscrow` / `AuctionEscrow` were removed in commerce cutover §15.2 step 5. **`pnpm deploy:auction`** and **`pnpm upgrade:auction`** are removed — do not redeploy legacy escrows.
 
-After step 14, Timelock48h owns these ops (48h delay — no second purpose-built bond delay):
+After step 11, Timelock48h owns these ops (48h delay):
 
 | Contract | Owner-gated ops now behind Timelock48h |
 |----------|----------------------------------------|
 | KarPassport | `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
 | KarProStaking | `setMinStakeNative`, `setStakeToken` |
+| FixedPriceConsignment / AscendingConsignment | UUPS upgrades, feed/token registry, pause guardian config, ascending rule setters — via proxy **owner = timelock** |
 
-Marketplace `transferUpgradeAuthority` remains the UUPS handoff (step 9).
+Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + gateway addresses (`fixedPriceConsignment`, `ascendingConsignment`, `bridgeGateway`).
 
-Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, auction + gateway addresses (gateway under manifest key `bridgeGateway`).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · USD-only currency registry at mode deploy · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for mode pause. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `proFeeBps` 0 · `maxFeedStaleness` 3600 · auction `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · USD-only currency registry · same `platformRecipient` as prior 84532 deploy. Additive `pnpm deploy:auction` remains for legacy manifests that lack AuctionEscrow. Behavior: [I.11](#i11-auctionescrow-200-draft). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+---
+
+### I.11. Retired — AuctionEscrow
+
+**Retired** with `MarketplaceEscrow` in commerce cutover §15.2 step 5 (July 2026). Replaced by **`AscendingConsignment`** for English reserve auctions with settlement hold. Product, app, and indexer no longer target `AuctionEscrow` events or legacy `GET /auctions*` routes. Historical design: [auction-design.md](../research/auction-design.md). Denylisted proxy addresses: [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532). Ops log: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
 
 ---
 
-### I.11. AuctionEscrow (`2.0.0-rc.1`)
-
-UUPS-upgradeable English reserve auction escrow with settlement hold. **`upgradeAuthority`** = Timelock48h (same v2 handoff convention as MarketplaceEscrow). One auction per `tokenId` (`auctions[tokenId]`). **Addresses:** [I.9.1](#i91-active-deployment-base-sepolia-84532) (live proxies remain `1.0.1-draft` until Nuclear #2 full-stack redeploy). **UI:** [design-spec.md](../design-spec.md) §4.18. **Indexer:** [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md). Design rationale: [auction-design.md](../research/auction-design.md) §1–§10.
-
-### 11.1 Role gates and Phase A scope
-
-| Gate | Rule |
-|------|------|
-| Direct seller | Token owner **and** `isActiveVerifier(msg.sender)` to `createAuction` |
-| Agent create | Auth’d agent **and** `isActiveVerifier(agent)` for `createAuctionOnBehalf`; private owners use the agent funnel |
-| Passport | `passportStatus == VERIFIED` required to **open** a lot via `createAuction` **or** `createAuctionOnBehalf` (not at `authorizeAuctionAgent` — status may change between appoint and open); after the first qualifying bid, passport status does **not** gate `bid` or `settle` |
-| Bid ban | Seller and agent cannot bid (`BidFromSeller` / `BidFromAgent`) |
-| Assets | Native (`asset = address(0)`) or USDC only — **no oracles** on any path |
-
-### 11.2 Constructor (immutable deps)
-
-| Param | Role |
-|-------|------|
-| `karPassport_` | NFT custody + `passportStatus` reads (create gate only) |
-| `usdc_` | Only ERC-20 bid asset in Phase A |
-| `karProStaking_` | `isActiveVerifier` for seller/agent admission and dispute resolvers |
-| `platformRecipient_` | Platform fee recipient (may accrue a claim if it cannot accept ETH) |
-| `feeBps_` | Immutable `platformFeeBps`; cap `_MAX_FEE_BPS` = 1000 |
-
-Constructor / `initialize` reject zero addresses via **`ZeroAddress`**. Proxy `initialize(timelock)` sets upgrade authority and default config (§11.3).
-
-### 11.3 Config (upgradeAuthority-settable, evented)
-
-| Param | Default | Bounds | Note |
-|-------|---------|--------|------|
-| `extensionWindow` | 300 s (5 min) | 60–3600 s | **Live-read** in `_applyExtension` — next bid on a running auction uses the current value |
-| `minIncrementBps` | 300 (3%) | 100–1000 | **Live-read** in `bid` — minimum step of a running auction |
-| `minDuration` / `maxDuration` | 3 d / 7 d | `min ≤ max` | **Frozen at entry** — checked only at create |
-| `settlementHold` | 7 d | `> 0` | Two roles: snapshotted into `holds[].releaseAt` at `settle` (**frozen**); **live-read** in `claimAbandonedRefund` for the abandoned-refund deadline after ConfirmFailure |
-| `settlementDisputeBond` | 0.01 ETH | `> 0` | **Frozen at entry** — checked when opening a settlement dispute; **Native-fixed**, including for USDC auctions (aligned with KarPassport `disputeDeposit`) |
-| `disputeResolutionTimeout` | 30 d | `> 0` | **Live-read** in `releaseFunds` — moves the auto-release deadline of an **already open** settlement dispute; bond → `platformRecipient` |
-
-No total-extension cap in Phase A (`BadConfig` on setter bound violations).
-
-**Frozen at entry:** `minDuration` / `maxDuration` (create), `settlementDisputeBond` (open dispute), and `settlementHold` as snapshotted into `holds[].releaseAt` at `settle`.
-
-**Read live (affect in-flight deals):** `extensionWindow` (`_applyExtension`), `minIncrementBps` (`bid`), `disputeResolutionTimeout` (`releaseFunds` on an open dispute), and `settlementHold` in `claimAbandonedRefund` (abandoned-refund deadline — distinct from the settle snapshot).
-
-Changing a live-read parameter is a governance action that affects deals already in flight. Control is `Timelock48h` plus the emitted config events. Snapshotting these into `SettlementHold` was considered and rejected: the upgrade authority can already replace the implementation outright via UUPS — a struct snapshot would not defend against that adversary.
-
-### 11.4 Storage
-
-```
-struct Auction {
-    address seller;        // title owner — NFT only ever returns to them
-    address agent;         // address(0) = direct KarPro-seller auction
-    uint16  agentFeeBps;   // frozen at creation; cap 3000
-    address asset;         // address(0) = native; else usdc
-    uint128 reserve;       // asset units; > 0; public
-    uint128 ownerMinAsset; // agent auctions; asset units
-    uint40  duration;
-    uint40  startedAt;     // 0 until first bid ≥ reserve
-    uint40  endsAt;
-    address highestBidder;
-    uint128 highestBid;
-    bool    active;
-}
-
-struct SettlementHold {
-    address buyer;
-    uint128 gross;
-    uint40  releaseAt;
-    uint40  disputedAt;      // 0 = no dispute
-    uint128 bond;
-    uint40  refundPendingAt; // set by ConfirmFailure
-}
-
-struct AuctionAgentAuth {
-    address agent;
-    uint64  expiry;
-    address asset;
-    uint128 ownerMinAsset;
-    bool    active;
-}
-
-mapping(uint256 => Auction) auctions;
-mapping(uint256 => SettlementHold) holds;
-mapping(uint256 => AuctionAgentAuth) auctionAgentAuthorizations;
-mapping(uint256 => uint256) returnRequestedAt;
-```
-
-**Derived lifecycle** (no enum in storage): `None` → `Open` (active, `startedAt = 0`) → `Live` → `Ended` → `Hold` (`holds[id].releaseAt > 0`) → `Closed`.
-
-### 11.5 Agent semantics
-
-Marketplace recall boundary is preserved: the **first qualifying bid** commits the sale; owner return cannot override a live or settled auction ([auction-design.md](../research/auction-design.md) §10.2).
-
-| Rule | Behavior |
-|------|----------|
-| `ownerMinAsset` | Denominated in the auction **asset** (closes marketplace currency-unbound min debt for auctions) |
-| Create invariant | `reserve − fees(reserve) ≥ ownerMinAsset` else `BelowOwnerMinAsset` |
-| Terms snapshot | Auth `asset` / `ownerMinAsset` / `agentFeeBps` frozen into `Auction` at `createAuctionOnBehalf` — no mid-auction `updateListing` analog |
-| `requestReturn` | Owner, only `startedAt == 0`; starts 7-day cooldown; **does not block bids** |
-| `forceReturn` | Owner, post-cooldown + still no start; cancels auction, NFT → owner |
-| `revokeAuctionAgent` | Owner only with no active auction |
-
-### 11.6 Funds movement
-
-**Single payout primitive** (`ClaimablePayouts`, shared with Marketplace / KarPassport / KarProStaking): attempt the transfer; on failure credit `pendingClaims[account][asset]` (`asset == address(0)` for ETH) and emit **`ClaimRecorded`**. The entitled party withdraws via permissionless `withdrawClaim(asset)` (CEI; emits **`ClaimWithdrawn`**; reverts `TransferFailed` if still unable to accept; `NoClaim` if empty). Outstanding native claims are reserved from any free-balance accounting (KarPassport `rescueExcessEth`). Product surface: indexer `pending_claim` / `claim_credit`, profile Claims tab, notifications (`claim.recorded`) — full reindex with Nuclear #2.
-
-- **Native push:** always `call{gas: 30_000}` (`NATIVE_PUSH_GAS`) — one bound for every contract. A recipient that burns the stipend returns failure → claim (payer tx still completes). Smart accounts that need more gas on push receive a claim and withdraw later with unbounded gas.
-- **Native withdraw:** intentionally unbounded (caller is the recipient; revert is correct).
-- **ERC-20:** low-level `transfer`; failure → claim. Tokens must pass **admission** (`Erc20Admission.requireConforming`: has code; `transfer(this, 0)` succeeds with empty or 32-byte `true` returndata) at Auction USDC ctor, `approvePaymentToken`, and `setStakeToken`.
-- **Storage:** ClaimablePayouts reserves 50 slots (3 used + `__gap[47]`); UUPS children keep their own `__gap[48]`.
-- **Removed:** dual stipend modes / WETH wrap fallback.
-- **Payout** (confirm / auto-release / `ReleaseToSeller`): `agentFee` → agent, `platformFee` → `platformRecipient`, remainder → seller (same claim-on-failure for native and USDC; bond always ETH).
-- CEI: state writes before external transfers; `nonReentrant` on mutating entry points including `withdrawClaim`.
-- **Removed:** WETH wrap fallback / `wrappedNative` immutable.
-
-### 11.7 Settlement hold and dispute lifecycle
-
-1. Permissionless **`settle`**: `now ≥ endsAt`, bid exists → NFT to highest bidder via **`transferFrom`** (not `safeTransferFrom` — receiver hook deliberately omitted so a contract bidder cannot hostage the lot); funds into `SettlementHold(releaseAt = now + settlementHold)`. Passport status is **not** checked (post-delivery problems use the settlement hold). Settle **cannot fail on the buyer-receiver hook**; there is **no** time-based void/backstop.
-2. Buyer **`confirmReceipt`** before `releaseAt` (no open dispute) → immediate payout.
-3. Permissionless **`releaseFunds`**: after `releaseAt` with no dispute, **or** after `disputedAt + disputeResolutionTimeout` with no resolution (auto-`ReleaseToSeller`; bond → platform).
-4. Buyer **`openSettlementDispute`**: before `releaseAt`; `msg.value ≥ settlementDisputeBond` (native always); freezes release.
-5. Active verifier **`resolveSettlementDispute`** (≠ buyer/seller/agent): `ReleaseToSeller` → payout + bond to resolver; `ConfirmFailure` → `refundPendingAt = now`.
-6. Buyer **`returnPassportAndRefund`**: reverse swap NFT → seller, `gross + bond` → buyer.
-7. Seller **`claimAbandonedRefund`**: after ConfirmFailure if buyer never returns NFT within `settlementHold` → payout to seller.
-
-**H-1 guard:** `createAuction`, `authorizeAuctionAgent`, and `createAuctionOnBehalf` revert **`SettlementPending`** while `holds[tokenId].releaseAt != 0`. Hold is deleted on every terminal payout/refund path so the token is auctionable again after settlement clears.
-
-**Pause:** blocks `createAuction*`, `authorizeAuctionAgent`, and `bid`; **never** settle / release / refund paths.
-
-### 11.8 Liveness invariants
-
-| Stuck state | Exit |
-|-------------|------|
-| Nobody calls settle | Permissionless `settle` (`transferFrom` — infallible on the receiver hook) |
-| Passport DISPUTED / UNVERIFIED after first bid | Bidding and settle continue; delivery issues → settlement hold |
-| Buyer silent through hold | Permissionless `releaseFunds` |
-| Settlement dispute never resolved | Auto-`ReleaseToSeller` via `releaseFunds`; bond → platform |
-| ConfirmFailure, buyer never returns NFT | `claimAbandonedRefund` after timeout |
-| Pause | Never blocks settle / release / refund |
-
-### 11.9 AuctionEscrow — function reference
-
-| Function | Access | Behavior |
-|----------|--------|----------|
-| `createAuction(tokenId, asset, reserve, duration)` | Owner + active verifier | VERIFIED passport; asset ∈ {0, USDC}; NFT → escrow; `SettlementPending` / pause gated |
-| `authorizeAuctionAgent(tokenId, agent, expiry, asset, ownerMinAsset)` | Owner | Approval required; no active auction; pause + `SettlementPending` gated |
-| `revokeAuctionAgent(tokenId)` | Owner | No active auction |
-| `createAuctionOnBehalf(tokenId, asset, reserve, duration, agentFeeBps)` | Agent + active verifier | VERIFIED passport; auth snapshot; net ≥ `ownerMinAsset`; pause + `SettlementPending` gated |
-| `bid(tokenId, amount)` payable | Not seller/agent | No passport-status gate; first bid ≥ reserve starts clock; then min increment; extension window; prior bid refunded |
-| `cancelAuction` / `agentCancelAuction` | Seller / agent | Only `startedAt == 0`; NFT → seller |
-| `requestReturn` / `forceReturn` | Owner | Pre-start only; force after cooldown |
-| `settle(tokenId)` | **Permissionless** | End + bid → NFT to buyer via `transferFrom`, funds to hold (passport status ignored; no void backstop) |
-| `confirmReceipt(tokenId)` | Buyer | Before `releaseAt`, no dispute → payout |
-| `releaseFunds(tokenId)` | **Permissionless** | Auto-release or dispute-timeout `ReleaseToSeller` |
-| `openSettlementDispute(tokenId)` payable | Buyer | Native bond; freezes hold |
-| `resolveSettlementDispute(tokenId, outcome)` | Active verifier ≠ parties | `ReleaseToSeller` or `ConfirmFailure` |
-| `returnPassportAndRefund(tokenId)` | Buyer | After ConfirmFailure: reverse swap |
-| `claimAbandonedRefund(tokenId)` | Seller | ConfirmFailure abandoned → payout to seller |
-| `setPaused` / config setters / `transferUpgradeAuthority` / UUPS | Upgrade authority | v2 convention; setters emit events |
-
-### 11.10 AuctionEscrow — error reference
-
-| Error | When |
-|-------|------|
-| `NotSeller` | Caller is not the recorded auction seller |
-| `NotAgent` | Caller is not the auction agent |
-| `NoAgent` | Auction has no agent (seller used an agent-only path) |
-| `AuctionHasAgent` | Auction has an agent (seller used the direct cancel path) |
-| `NotOwner` | Caller is not `karPassport.ownerOf(tokenId)` |
-| `NotBuyer` | Caller is not the settlement hold buyer |
-| `NotActiveVerifier` | Seller/agent/resolver admission |
-| `PassportNotVerified` / `PassportDisputed` | Status gates on both create entrypoints (`createAuction`, `createAuctionOnBehalf`) only — not authorize, bid, or settle |
-| `AuctionExists` / `NoAuction` | Mapping occupancy |
-| `AuctionAlreadyStarted` | Cancel/return after first bid (Solidity: cannot share name with `event AuctionStarted`) |
-| `AuctionNotStarted` / `AuctionNotEnded` / `AuctionEnded` | Lifecycle timing |
-| `SettlementPending` | Create/authorize while hold unresolved (H-1) |
-| `BidTooLow` / `BidFromSeller` / `BidFromAgent` | Bid rules |
-| `WrongAsset` / `WrongValue` / `UnsupportedAsset` | Asset/payment mismatch |
-| `BadDuration` / `BadReserve` / `BadConfig` | Param validation |
-| `BelowOwnerMinAsset` | Agent reserve net below owner min |
-| `AgentNotAuthorized` / `AuctionExists` / `EscrowNotApproved` | Auth/approval (`AuctionExists` also blocks revoke while auction active) |
-| `ReturnNotRequested` / `ReturnAlreadyRequested` / `ReturnCooldownPending` | Owner return flow |
-| `HoldActive` | Hold still running (`releaseFunds` before `releaseAt`; `claimAbandonedRefund` before timeout) |
-| `HoldReleased` | Confirmation / dispute window over (`confirmReceipt` / `openSettlementDispute` after `releaseAt`) |
-| `NoHold` / `DisputeActive` / `NoDispute` | Settlement hold/dispute presence |
-| `BondTooLow` / `CannotResolveOwnDeal` | Dispute path |
-| `RefundPending` | `refundPendingAt > 0` blocks confirm/release/resolve |
-| `RefundNotPending` | `refundPendingAt == 0` blocks return/claim abandoned refund |
-| `NoClaim` | `withdrawClaim` with zero pending balance |
-| `TransferFailed` | `withdrawClaim` transfer failed (push paths credit a claim) |
-| `TokenHasNoCode` | Auction USDC ctor address has no code |
-| `TokenNonConforming` | Auction USDC ctor fails ERC-20 transfer return probe |
-| `ContractPaused` / `NotUpgradeAuthority` | Infra |
-| `FeeTooHigh` / `AgentFeeTooHigh` | Fee caps |
-| `ZeroAddress` | Zero ctor/init/authority address |
-| `DirectEthNotAccepted` | Unexpected ETH on non-payable path |
-
-### 11.11 AuctionEscrow — event reference
-
-`AuctionCreated` · `AuctionStarted` · `BidPlaced` · `BidRefunded` · `AuctionCancelled` · `ReturnRequested` · `ForceReturn` · `AuctionSettled` · `ReceiptConfirmed` · `FundsReleased` · `SettlementDisputeOpened` · `SettlementDisputeResolved` · `PassportReturnedAndRefunded` · `AbandonedRefundClaimed` · `AuctionAgentAuthorized` · `AuctionAgentRevoked` · `ClaimRecorded` · `ClaimWithdrawn` · config / `Paused` / `UpgradeAuthorityTransferred`.
-
-Indexer tables and HTTP routes: [indexer/MIGRATION-AUCTION.md](../indexer/MIGRATION-AUCTION.md).
-
----
 
 ### I.12. Multi-chain architecture (normative)
 
@@ -973,7 +625,7 @@ Indexer tables and HTTP routes: [indexer/MIGRATION-AUCTION.md](../indexer/MIGRAT
 
 ### 12.1 Model
 
-Every commercial Kargain chain runs the **identical** stack: `KarPassport v1.3` + KarProPass + KarProStaking + MarketplaceEscrow (+ AuctionEscrow) + one `KarPassportBridgeGateway`. There is exactly **one** passport contract type and **one** bridge contract type across all chains. The thin `KarPassportONFT721` and `ProxyONFT721Adapter` are retired.
+Every commercial Kargain chain runs the **identical** stack: `KarPassport` + KarProPass + KarProStaking + **FixedPriceConsignment** + **AscendingConsignment** + one `KarPassportBridgeGateway`. There is exactly **one** passport contract type and **one** bridge contract type across all chains. The thin `KarPassportONFT721`, `ProxyONFT721Adapter`, and legacy **`MarketplaceEscrow` / `AuctionEscrow`** are retired.
 
 **Identity.** `tokenId = (chainId << 128) | localSeq`; `chainIdOf(tokenId)` is the immutable **origin/home** chain. tokenIds are globally unique and **travel unchanged** — the gateway never re-encodes an id.
 
@@ -999,7 +651,7 @@ URI is embedded on **every** send (both directions) and written by the receiver:
 
 The gateway asks one permission question: **`KarPassport.may(tokenId, LeaveChain)`**. If false (or if a registered source is unanswerable → `SourceUnanswerable`), debit reverts **`LeaveChainRefused`**. The gateway holds **no** marketplace/auction references and does **not** read `passportStatus` (E2/E5).
 
-LeaveChain is refused when: an intrinsic verification challenge is active; a registered FixedPrice live consignment forbids; a registered Ascending unresolved settlement forbids; or a registered source cannot answer (E6). Idle UNVERIFIED passports may leave (verification is not required to travel). MarketplaceEscrow-listed NFTs remain blocked by **custody** until that escrow is retired. **Do not** activate this gateway beside live AuctionEscrow settlement holds without Ascending registration + AuctionEscrow retirement in the same Nuclear wave (see §I.10).
+LeaveChain is refused when: an intrinsic verification challenge is active; a registered FixedPrice live consignment forbids; a registered Ascending unresolved settlement forbids; or a registered source cannot answer (E6). Idle UNVERIFIED passports may leave (verification is not required to travel). Legacy escrow-listed NFTs on denylisted retired proxies are an ops concern only until Nuclear #2 refreshes the stack — the gateway reads **`may(LeaveChain)`**, not escrow custody.
 
 ### 12.7 Bridge entrypoints (gateway-only)
 
@@ -1015,7 +667,7 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 
 ### 12.10 84532 hub migration (testnet) — Nuclear
 
-`KarPassport` is immutable and `MarketplaceEscrow.karPassport` / `AuctionEscrow.karPassport` are immutable bindings, so v1.3 requires a **full-stack redeploy on 84532**. Testnet mode is **Nuclear**: deploy the identical full stack + v1.3 + gateway on both 84532 and 11155111; the prior hub stack and thin ONFT `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` move to historical/denylist; Ponder reindexes from the new hub addresses. Existing testnet-RC passports are abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from first deploy.
+`KarPassport` is immutable; commerce **modes** are UUPS but the committed stack still lacks mode addresses until **Nuclear #2**. Testnet mode is **Nuclear**: deploy the identical full stack (passport + modes + gateway) on both 84532 and 11155111; prior stacks move to historical/denylist; Ponder reindexes from new hub addresses. Existing testnet-RC passports are abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from first deploy.
 
 ### 12.11 Recovery (Approach A) — kill then restore
 

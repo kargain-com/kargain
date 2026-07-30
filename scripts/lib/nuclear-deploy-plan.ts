@@ -18,7 +18,6 @@ import {
   DISPUTE_DEPOSIT,
   MARKETPLACE_FEE_BPS,
   MARKETPLACE_MAX_FEED_STALENESS,
-  MARKETPLACE_PRO_FEE_BPS,
 } from "./verify-constructor-args.js";
 import { SEPOLIA_FALLBACK } from "./load-deployment.js";
 
@@ -33,12 +32,6 @@ export const NUCLEAR_DEPLOY_STEPS = [
   "KarProStaking",
   "setStaking",
   "KarPassport",
-  "MarketplaceEscrowImpl",
-  "MarketplaceEscrowProxy",
-  "approvePaymentToken",
-  "transferUpgradeAuthority",
-  "AuctionEscrowImpl",
-  "AuctionEscrowProxy",
   "FixedPriceConsignmentImpl",
   "FixedPriceConsignmentProxy",
   "AscendingConsignmentImpl",
@@ -61,9 +54,10 @@ export type NuclearDeployPlan = {
   /** Shared protocol params — must match across commercial chains. */
   params: {
     disputeDeposit: bigint;
+    /** FixedPriceConsignment platform fee bps (commerce cutover Phase 1: modes-only). */
     marketplaceFeeBps: bigint;
-    marketplaceProFeeBps: bigint;
     maxFeedStaleness: bigint;
+    /** AscendingConsignment platform fee bps (commerce cutover Phase 1: modes-only). */
     auctionPlatformFeeBps: bigint;
     platformRecipient: `0x${string}`;
   };
@@ -94,7 +88,6 @@ export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
     params: {
       disputeDeposit: DISPUTE_DEPOSIT,
       marketplaceFeeBps: MARKETPLACE_FEE_BPS,
-      marketplaceProFeeBps: MARKETPLACE_PRO_FEE_BPS,
       maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
       auctionPlatformFeeBps: AUCTION_PLATFORM_FEE_BPS,
       platformRecipient: getAddress(SEPOLIA_FALLBACK.platformRecipient),
@@ -154,11 +147,6 @@ export function formatNuclearParityTable(
       "marketplaceFeeBps",
       base.params.marketplaceFeeBps.toString(),
       eth.params.marketplaceFeeBps.toString(),
-    ],
-    [
-      "marketplaceProFeeBps",
-      base.params.marketplaceProFeeBps.toString(),
-      eth.params.marketplaceProFeeBps.toString(),
     ],
     [
       "maxFeedStaleness",

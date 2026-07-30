@@ -7,8 +7,7 @@ import { DEPLOYMENT_PATH, LOCAL_CHAIN_ID } from "./lib/load-deployment.js";
 import {
   DISPUTE_DEPOSIT,
   deployAscendingConsignment,
-  deployAuctionEscrow,
-  deployEscrowStack,
+  deployCommerceBaseStack,
   deployFixedPriceConsignment,
   stackToDeploymentAddresses,
 } from "./lib/local-stack.js";
@@ -24,6 +23,7 @@ import {
   MARKETPLACE_FEE_BPS,
   MARKETPLACE_MAX_FEED_STALENESS,
 } from "./lib/verify-constructor-args.js";
+import { assertSourcesRegistered } from "./lib/nuclear-ordering.js";
 
 async function main() {
   const connection = await hardhat.network.connect();
@@ -37,10 +37,8 @@ async function main() {
       );
     }
 
-    console.log("Deploying Model X stack to localhost…");
-    const stack = await deployEscrowStack(viem);
-    console.log("Deploying AuctionEscrow…");
-    const auction = await deployAuctionEscrow(viem, stack);
+    console.log("Deploying commerce base stack to localhost…");
+    const stack = await deployCommerceBaseStack(viem);
 
     const guardian = stack.admin.account.address;
     const owner = getAddress(stack.timelock.address);
@@ -88,12 +86,21 @@ async function main() {
     await stack.passport.write.addEncumbranceSource([ascending.proxy.address], {
       account: stack.admin.account,
     });
+    assertSourcesRegistered({
+      fixedPriceRegistered: Boolean(
+        await stack.passport.read.isEncumbranceSource([fixedPrice.proxy.address]),
+      ),
+      ascendingRegistered: Boolean(
+        await stack.passport.read.isEncumbranceSource([ascending.proxy.address]),
+      ),
+      fixedPrice: fixedPrice.proxy.address,
+      ascending: ascending.proxy.address,
+    });
+    console.log("Encumbrance sources registered (manifest write refused without this).");
 
     const deployment = stackToDeploymentAddresses(
       {
         ...stack,
-        auctionEscrow: getAddress(auction.proxy.address),
-        auctionEscrowImpl: getAddress(auction.impl.address),
         fixedPriceConsignment: getAddress(fixedPrice.proxy.address),
         fixedPriceConsignmentImpl: getAddress(fixedPrice.impl.address),
         ascendingConsignment: getAddress(ascending.proxy.address),

@@ -1,8 +1,11 @@
 /**
  * Nuclear full-stack deploy for commercial chains 84532 | 11155111.
- * Sequence: Timelock → KarProPass → Staking → Passport → Marketplace →
- * AuctionEscrow → FixedPrice + Ascending (encumbrance sources) →
+ * Sequence: Timelock → KarProPass → Staking → Passport →
+ * FixedPrice + Ascending (encumbrance sources) →
  * KarPassportBridgeGateway → setBridgeGateway → ownership handoff.
+ *
+ * Commerce cutover Phase 1: legacy escrow contracts are no longer part
+ * of the nuclear deploy — modes only (SPEC §I.9.x, Nuclear #2 pending).
  *
  * `--dry-run` / `--compare`: print 84532 vs 11155111 parity table; no txs.
  * Live deploy requires DEPLOYER_PRIVATE_KEY, COMMERCE_GUARDIAN, and
@@ -13,9 +16,7 @@ import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "vi
 
 import {
   AscendingConsignmentAbi,
-  AuctionEscrowAbi,
   FixedPriceConsignmentAbi,
-  MarketplaceEscrowAbi,
 } from "../lib/contracts/abis.generated.js";
 import {
   isCommercialChainId,
@@ -25,6 +26,12 @@ import {
   buildNuclearDeployPlan,
   formatNuclearParityTable,
 } from "./lib/nuclear-deploy-plan.js";
+import {
+  assertNuclearEncumbranceOrdering,
+  assertSourcesRegistered,
+  CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER,
+  NUCLEAR_TIMELOCK_OWNER_OPS,
+} from "./lib/nuclear-ordering.js";
 import {
   commercialDeploymentPath,
   type DeploymentManifest,
@@ -48,7 +55,6 @@ import {
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 120_000;
-const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as const;
 
 type ViemSuite = {
   sendDeploymentTransaction: (
@@ -191,6 +197,7 @@ async function assertExternalBytecode(
 }
 
 function printDryRunCompare() {
+  assertNuclearEncumbranceOrdering();
   const base = buildNuclearDeployPlan(84532);
   const eth = buildNuclearDeployPlan(11155111);
   console.log("Nuclear deploy dry-run — parameter parity (no txs)\n");
@@ -200,6 +207,17 @@ function printDryRunCompare() {
     console.log(`  ${i + 1}. ${step}`);
   }
   console.log("\nExternals sourced from CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN only.");
+  console.log(
+    "\nEncumbrance ordering: proxies → addEncumbranceSource ×2 → gateway → handoff (structural).",
+  );
+  console.log(`Checklist (not bytecode): ${CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER}`);
+  console.log("Post-handoff Timelock48h owner ops (schedule → wait → execute):");
+  for (const op of NUCLEAR_TIMELOCK_OWNER_OPS) {
+    console.log(`  - ${op}`);
+  }
+  console.log(
+    "\nNote: mode proxies initialize with owner=timelock; approvePaymentToken cannot run as deployer EOA — schedule after proxy deploy (Nuclear #2 runbook).",
+  );
 }
 
 async function runLiveDeploy() {
@@ -227,6 +245,7 @@ async function runLiveDeploy() {
       throw new Error(`Expected commercial chain 84532|11155111, got ${chainId}`);
     }
 
+    assertNuclearEncumbranceOrdering();
     const plan = buildNuclearDeployPlan(chainId);
     const { params, externals } = plan;
 
@@ -268,61 +287,6 @@ async function runLiveDeploy() {
       deployerAddress,
       params.disputeDeposit,
       params.platformRecipient,
-    ]);
-
-    const marketplaceImpl = await deployStep(viem, "MarketplaceEscrow impl", "MarketplaceEscrow", [
-      karPassport.address,
-      externals.nativeUsdFeed,
-      staking.address,
-      params.platformRecipient,
-      params.marketplaceFeeBps,
-      params.marketplaceProFeeBps,
-      params.maxFeedStaleness,
-    ]);
-
-    const initData = encodeFunctionData({
-      abi: MarketplaceEscrowAbi,
-      functionName: "initialize",
-      args: [deployerAddress],
-    });
-
-    const proxy = await deployStep(viem, "MarketplaceEscrow proxy", "ERC1967Proxy", [
-      marketplaceImpl.address,
-      initData,
-    ]);
-
-    const marketplace = await viem.getContractAt("MarketplaceEscrow", proxy.address);
-
-    // USD-only: skip setCurrencyFeed for non-USD feeds even when live in CHAINLINK_FEEDS.
-    await writeStep(viem, `approvePaymentToken(usdc=${externals.usdc})`, () =>
-      marketplace.write.approvePaymentToken([externals.usdc, ADDRESS_ZERO], {
-        account: deployer.account,
-      }),
-    );
-
-    await writeStep(viem, "transferUpgradeAuthority → Timelock48h", () =>
-      marketplace.write.transferUpgradeAuthority([timelock.address], {
-        account: deployer.account,
-      }),
-    );
-
-    const auctionImpl = await deployStep(viem, "AuctionEscrow impl", "AuctionEscrow", [
-      karPassport.address,
-      externals.usdc,
-      staking.address,
-      params.platformRecipient,
-      params.auctionPlatformFeeBps,
-    ]);
-
-    const auctionInitData = encodeFunctionData({
-      abi: AuctionEscrowAbi,
-      functionName: "initialize",
-      args: [timelock.address],
-    });
-
-    const auctionProxy = await deployStep(viem, "AuctionEscrow proxy", "ERC1967Proxy", [
-      auctionImpl.address,
-      auctionInitData,
     ]);
 
     const fixedPriceImpl = await deployStep(
@@ -393,6 +357,18 @@ async function runLiveDeploy() {
       }),
     );
 
+    assertSourcesRegistered({
+      fixedPriceRegistered: Boolean(
+        await passport.read.isEncumbranceSource([fixedPriceProxy.address]),
+      ),
+      ascendingRegistered: Boolean(
+        await passport.read.isEncumbranceSource([ascendingProxy.address]),
+      ),
+      fixedPrice: fixedPriceProxy.address,
+      ascending: ascendingProxy.address,
+    });
+    console.log("  ✓ encumbrance sources registered (refusing gateway until this holds)");
+
     const gateway = await deployStep(
       viem,
       "KarPassportBridgeGateway",
@@ -428,32 +404,16 @@ async function runLiveDeploy() {
       throw new Error(`KarProStaking owner should be timelock, got ${stakingOwner}`);
     }
 
-    const upgradeAuthority = getAddress(
-      (await marketplace.read.upgradeAuthority([])) as `0x${string}`,
-    );
-    if (upgradeAuthority !== getAddress(timelock.address)) {
-      throw new Error(`upgradeAuthority should be timelock, got ${upgradeAuthority}`);
-    }
-
-    const auction = await viem.getContractAt("AuctionEscrow", auctionProxy.address);
-    const auctionUpgradeAuthority = getAddress(
-      (await auction.read.upgradeAuthority([])) as `0x${string}`,
-    );
-    if (auctionUpgradeAuthority !== getAddress(timelock.address)) {
-      throw new Error(
-        `AuctionEscrow upgradeAuthority should be timelock, got ${auctionUpgradeAuthority}`,
-      );
-    }
+    // FixedPrice/Ascending are Ownable proxies initialized with `timelock.address`
+    // directly — no separate on-chain upgradeAuthority() getter to verify (unlike
+    // the retired pre-modes escrow UUPS pattern).
+    const upgradeAuthority = getAddress(timelock.address);
 
     const blocks = {
       timelock: Number(timelock.blockNumber),
       karProPass: Number(karProPass.blockNumber),
       karProStaking: Number(staking.blockNumber),
       karPassport: Number(karPassport.blockNumber),
-      marketplaceImpl: Number(marketplaceImpl.blockNumber),
-      marketplace: Number(proxy.blockNumber),
-      auctionEscrowImpl: Number(auctionImpl.blockNumber),
-      auctionEscrow: Number(auctionProxy.blockNumber),
       fixedPriceConsignmentImpl: Number(fixedPriceImpl.blockNumber),
       fixedPriceConsignment: Number(fixedPriceProxy.blockNumber),
       ascendingConsignmentImpl: Number(ascendingImpl.blockNumber),
@@ -467,10 +427,6 @@ async function runLiveDeploy() {
       karPassport: karPassport.address,
       karProPass: karProPass.address,
       karProStaking: staking.address,
-      marketplace: proxy.address,
-      marketplaceImpl: marketplaceImpl.address,
-      auctionEscrow: auctionProxy.address,
-      auctionEscrowImpl: auctionImpl.address,
       fixedPriceConsignment: fixedPriceProxy.address,
       fixedPriceConsignmentImpl: fixedPriceImpl.address,
       ascendingConsignment: ascendingProxy.address,
@@ -493,10 +449,6 @@ async function runLiveDeploy() {
         karProPass: karProPass.txHash,
         karProStaking: staking.txHash,
         karPassport: karPassport.txHash,
-        marketplaceImpl: marketplaceImpl.txHash,
-        marketplace: proxy.txHash,
-        auctionEscrowImpl: auctionImpl.txHash,
-        auctionEscrow: auctionProxy.txHash,
         fixedPriceConsignmentImpl: fixedPriceImpl.txHash,
         fixedPriceConsignment: fixedPriceProxy.txHash,
         ascendingConsignmentImpl: ascendingImpl.txHash,
@@ -514,8 +466,6 @@ async function runLiveDeploy() {
     console.log(`  KarProPass:               ${karProPass.address}`);
     console.log(`  KarProStaking:            ${staking.address}`);
     console.log(`  KarPassport:              ${karPassport.address}`);
-    console.log(`  MarketplaceEscrow proxy:  ${proxy.address}`);
-    console.log(`  AuctionEscrow proxy:      ${auctionProxy.address}`);
     console.log(`  FixedPriceConsignment:    ${fixedPriceProxy.address}`);
     console.log(`  AscendingConsignment:     ${ascendingProxy.address}`);
     console.log(`  commerceGuardian:         ${commerceGuardian}`);
