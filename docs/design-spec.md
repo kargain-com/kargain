@@ -558,7 +558,7 @@ Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 
 | Rule | Value |
 |------|-------|
-| Asking price | List denomination in ISO fiat (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
+| Asking price | List denomination is Asset (token units) or Fiat ISO (`currencyCode` on-chain); label **Asking price** on detail — not checkout currency |
 | Kargain checkout | Buyer pays **ETH or USDC** only; copy: *Checkout on Kargain is in ETH or USDC.* |
 | Direct payment | Optional seller `settlementNotes` (bank, BTC, Lightning, etc.); buy panel **Direct payment** card when note set — detected identifiers render as QR + copy blocks; raw note unchanged below; *Not verified by Kargain* |
 | Seller preview | The listing seller sees the same read-only **Direct payment** card below *Buyers see these direct payment instructions.* when a note is set; no caption or card when the note is empty |
@@ -642,7 +642,7 @@ Private portfolios share one lifecycle vocabulary ([`lib/consignment/lifecycle.t
 
 | Rule | Value |
 |------|-------|
-| Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); `encodeCurrencyCode` for `list()` |
+| Seller list UI | [`listing-seller-settlement-panel.tsx`](../components/marketplace/listing-seller-settlement-panel.tsx) + [`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx); settlement asset + Asset/Fiat denomination from [`deriveFixedPriceOpenOptions`](../lib/commerce/fixed-price-open-options.ts) via Ponder `GET /commerce-payment-tokens` + `/commerce-currency-feeds` (never a static per-chain currency map). Fiat in an ERC-20 is withheld with *Fiat-priced sales in this token need a payment-token price feed.* when that token has no feed; Asset denomination remains selectable. Mode unset → *Fixed-price selling is not available on this chain yet.* |
 | Owner list | Unified [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx): **List for sale** → `/marketplace/{tokenId}/edit` when the connected viewer is confirmed by `ownerOf` and the chain listing is inactive |
 | Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
 | Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
@@ -1551,4 +1551,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.99 (July 2026 — Timelock setAuctionRules = accepted no-ops-UI decision; Ascending linked hold/open libraries). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.100 (July 2026 — FixedPrice sell pairings from commerce resolvers; P4 Fiat×token feed gate in UI). Update when tokens, app shell, or component contracts change.*

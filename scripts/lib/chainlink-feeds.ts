@@ -17,7 +17,11 @@ export type ChainFeedConfig = {
   currencies: CurrencyFeedEntry[];
 };
 
-/** Committed Chainlink proxy addresses — bytecode verified at deploy via RPC. */
+/**
+ * Committed Chainlink proxy addresses — bytecode verified at deploy via RPC.
+ * Mainnet rows (1, 8453) are configuration only; Nuclear deploy stays
+ * `isCommercialChainId` → 84532 | 11155111 (§7.6 / commercial allowlist).
+ */
 export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
   84532: {
     chainId: 84532,
@@ -50,15 +54,26 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
     chainId: 8453,
     nativeUsdFeed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    // Commit only after RPC bytecode verify of a live USDC/USD aggregator.
-    usdcUsdFeed: "0x0000000000000000000000000000000000000000",
+    // RPC 2026-07-30: description USDC/USD; decimals 8; answer 99974007;
+    // updatedAt 2026-07-29T14:29:41.000Z (publicnode).
+    usdcUsdFeed: "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
     currencies: [
       { code: "USD", feed: "0x0000000000000000000000000000000000000000" },
       { code: "EUR", feed: "0xc91D87E81faB8f93699ECf7Ee9B44D11e1D53F0F" },
       { code: "GBP", feed: "0x9C4424Fd84C6661F97D8d6b3fc3C1aAc2BeDd137" },
       { code: "CAD", feed: "0x933014a09a567634621c170B9a244E4571A37c6C" },
+      // No Chainlink AUD/USD aggregator committed on Base (left zero).
       { code: "AUD", feed: "0x0000000000000000000000000000000000000000" },
     ],
+  },
+  1: {
+    chainId: 1,
+    nativeUsdFeed: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+    usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    // RPC 2026-07-30: description USDC/USD; decimals 8; answer 99973741;
+    // updatedAt 2026-07-30T08:00:47.000Z (publicnode).
+    usdcUsdFeed: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
+    currencies: [{ code: "USD", feed: "0x0000000000000000000000000000000000000000" }],
   },
 };
 

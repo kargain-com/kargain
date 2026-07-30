@@ -33,11 +33,8 @@ import {
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
 import { FixedPriceConsignmentAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
-import {
-  listingCurrencyCodesForChain,
-  type ListingCurrencyCode,
-} from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
@@ -104,10 +101,8 @@ export function AuthorizeAgentDialog({
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
-  // UI label only: on this chain, agents can only list in these currencies today.
-  // The contract does NOT store currency on authorizeAgent — ownerMinPrice1e8 is a raw
-  // scalar compared in whatever currency the agent picks at listOnBehalf.
-  const chainListingCurrency = listingCurrencyCodesForChain(chainId)[0] ?? "USD";
+  // Grant hardwires Fiat USD + native; floor label matches that denomination.
+  const chainListingCurrency: ListingCurrencyCode = "USD";
 
   const [step, setStep] = useState<Step>("approval");
   const [txError, setTxError] = useState<string | null>(null);
@@ -432,10 +427,6 @@ export function AuthorizeAgentDialog({
               </button>
             </div>
 
-            {/* TODO(product): when listingCurrencyCodesForChain returns >1 code, decide whether
-                the owner specifies intended currency, the agent is constrained at listOnBehalf,
-                or AgentAuth gains an on-chain currencyCode — do not re-add a selector that
-                implies a guarantee the contract does not enforce at authorize time. */}
             <div className="space-y-2">
               <Label htmlFor="agent-min-price">
                 Minimum you&apos;ll receive ({chainListingCurrency})

@@ -42,7 +42,7 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | AscendingHoldLib → AscendingOpenLib → AscendingConsignmentImpl → Proxy | **Structural** — linked libraries before Ascending impl; manifest stores `ascendingHoldLib` / `ascendingOpenLib` |
 | Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
 | Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes **and** FixedPrice USDC feed ≠ 0 |
-| FixedPrice USDC/USD feed present | `requireUsdcUsdFeed` — chain without `CHAINLINK_FEEDS.usdcUsdFeed` **refuses** FixedPrice USDC admit (no silent peg). Base Sepolia (84532) has none today; Eth Sepolia has Chainlink USDC/USD |
+| FixedPrice USDC/USD feed present | `requireUsdcUsdFeed` — chain without `CHAINLINK_FEEDS.usdcUsdFeed` **refuses** FixedPrice USDC admit (no silent peg). Base Sepolia (84532) has none today; Eth Sepolia has Chainlink USDC/USD. Mainnet rows (`1`, `8453`) carry verified feeds for future config but are **not** Nuclear targets (`isCommercialChainId` → 84532\|11155111 only) |
 | Open requires live encumbrance source | On-chain `ModeNotEncumbranceSource` in `ConsignmentBase._requireCanOpen` |
 
 ---
@@ -104,7 +104,7 @@ Schedule → wait `getMinDelay()` (48h) → execute.
 
 **Feed freshness:** `setCurrencyFeed` / feed-bearing `approvePaymentToken` run `_validateFeed` at **execute** time. Live Chainlink aggregators stay fresh across 48h. Do not point Timelock ops at a static mock feed without refreshing it before execute.
 
-**Chain without USDC/USD feed:** FixedPrice Nuclear admit **aborts** (`requireUsdcUsdFeed`). Do not pass `address(0)` as a peg. Ascending admit (asset-only) does not need a payment-token feed.
+**Chain without USDC/USD feed:** FixedPrice Nuclear admit **aborts** (`requireUsdcUsdFeed`). Do not pass `address(0)` as a peg. Ascending admit (asset-only) does not need a payment-token feed. Populating mainnet `usdcUsdFeed` in `CHAINLINK_FEEDS` does **not** enable `pnpm deploy:sepolia`-style Nuclear on mainnet — commercial allowlist stays testnet-only until §7.6 clears.
 
 ### 6. Guardian-immediate ops (no delay)
 

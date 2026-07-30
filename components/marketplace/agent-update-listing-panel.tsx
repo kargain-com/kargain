@@ -21,18 +21,25 @@ import {
 } from "@/components/marketplace/seller-net-calculator";
 import {
   COMPENSATION_FORM,
+  DENOMINATION_KIND,
   type CompensationForm,
 } from "@/lib/commerce/denomination";
+import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
+import { deriveFixedPriceOpenOptions } from "@/lib/commerce/fixed-price-open-options";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
-import {
-  listingCurrencyCodesForChain,
-  type ListingCurrencyCode,
-} from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+
+const SETTLEMENT_NOTE_ONLY_OPTIONS = deriveFixedPriceOpenOptions({
+  modeAvailable: true,
+  native: { label: "ETH", decimals: 18 },
+  paymentTokens: [],
+  currencyFeeds: [],
+});
 
 type Props = {
   chainId: number;
@@ -92,8 +99,7 @@ export function AgentUpdateListingPanel({
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
-  const listingCurrency: ListingCurrencyCode =
-    listingCurrencyCodesForChain(chainId)[0] ?? "USD";
+  const listingCurrency: ListingCurrencyCode = "USD";
 
   const [priceInput, setPriceInput] = useState(() =>
     formatFiat1e8(currentPrice1e8),
@@ -289,7 +295,11 @@ export function AgentUpdateListingPanel({
           Shown to buyers who want to pay outside Kargain checkout.
         </p>
         <ListingSellerSettlementPanel
-          chainId={chainId}
+          openOptions={SETTLEMENT_NOTE_ONLY_OPTIONS}
+          settlementAsset={ZERO_ADDRESS}
+          onSettlementAssetChange={() => {}}
+          denominationKind={DENOMINATION_KIND.Fiat}
+          onDenominationKindChange={() => {}}
           priceInput=""
           onPriceInputChange={() => {}}
           askingCurrency={listingCurrency}

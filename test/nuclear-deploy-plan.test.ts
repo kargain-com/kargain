@@ -26,6 +26,9 @@ describe("nuclear deploy plan", () => {
 
   it("rejects non-commercial chainIds", () => {
     assert.throws(() => buildNuclearDeployPlan(31337), /84532\|11155111/);
+    // Mainnet feed rows in CHAINLINK_FEEDS are configuration only — not Nuclear targets.
+    assert.throws(() => buildNuclearDeployPlan(1), /84532\|11155111/);
+    assert.throws(() => buildNuclearDeployPlan(8453), /84532\|11155111/);
   });
 
   it("84532 vs 11155111 shared params are identical", () => {

@@ -24,10 +24,7 @@ import { COMPENSATION_FORM } from "@/lib/commerce/denomination";
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
-import {
-  listingCurrencyCodesForChain,
-  type ListingCurrencyCode,
-} from "@/lib/marketplace/currency-code";
+import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -80,8 +77,7 @@ export function AgentListOnBehalfPanel({
     mode: "fixedPrice",
     chainId,
   });
-  const listingCurrency: ListingCurrencyCode =
-    listingCurrencyCodesForChain(chainId)[0] ?? "USD";
+  const listingCurrency: ListingCurrencyCode = "USD";
 
   const [priceInput, setPriceInput] = useState("");
   const [settlementNote, setSettlementNote] = useState("");

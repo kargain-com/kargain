@@ -21,8 +21,8 @@ import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
-import { listingCurrencyCodesForChain } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
+import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -61,7 +61,7 @@ export function AgentAuthorizationStatus({
 
   // The mandate stores its own denomination; this label reflects the codes the
   // chain can settle today.
-  const currencyCode = listingCurrencyCodesForChain(chainId)[0] ?? "USD";
+  const currencyCode: ListingCurrencyCode = "USD";
   const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent);
 
   const [lowerOpen, setLowerOpen] = useState(false);

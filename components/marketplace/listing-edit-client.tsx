@@ -18,15 +18,15 @@ import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useFixedPriceOpenOptions } from "@/hooks/use-fixed-price-open-options";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
-import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
-import { hasCommerceMode } from "@/lib/commerce/mode";
 import {
+  DENOMINATION_KIND,
+  ZERO_CURRENCY_CODE,
+  type DenominationKind,
   encodeCurrencyCode,
-  listingCurrencyCodesForChain,
-  type ListingCurrencyCode,
-} from "@/lib/marketplace/currency-code";
+} from "@/lib/commerce/denomination";
 import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
@@ -62,10 +62,14 @@ export function ListingEditClient({
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
     useTxSync(chainId);
-  const currencyOptions = listingCurrencyCodesForChain(chainId);
+  const { options: openOptions, pending: openOptionsPending } =
+    useFixedPriceOpenOptions(chainId);
+
   const [priceInput, setPriceInput] = useState("");
-  const [askingCurrency, setAskingCurrency] = useState<ListingCurrencyCode>(
-    currencyOptions[0] ?? "USD",
+  const [askingCurrency, setAskingCurrency] = useState("USD");
+  const [settlementAsset, setSettlementAsset] = useState<string>(ZERO_ADDRESS);
+  const [denominationKind, setDenominationKind] = useState<DenominationKind>(
+    DENOMINATION_KIND.Fiat,
   );
   const [settlementNote, setSettlementNote] = useState("");
   const [log, setLog] = useState<string | null>(null);
@@ -73,6 +77,36 @@ export function ListingEditClient({
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
+
+  useEffect(() => {
+    if (!openOptions.available || openOptions.assets.length === 0) return;
+    const stillValid = openOptions.assets.some(
+      (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+    );
+    if (!stillValid) {
+      setSettlementAsset(openOptions.assets[0]!.token);
+    }
+  }, [openOptions, settlementAsset]);
+
+  useEffect(() => {
+    if (openOptions.fiatCurrencyCodes.length === 0) return;
+    if (!openOptions.fiatCurrencyCodes.includes(askingCurrency)) {
+      setAskingCurrency(openOptions.fiatCurrencyCodes[0]!);
+    }
+  }, [openOptions.fiatCurrencyCodes, askingCurrency]);
+
+  useEffect(() => {
+    const asset = openOptions.assets.find(
+      (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+    );
+    if (
+      asset &&
+      denominationKind === DENOMINATION_KIND.Fiat &&
+      !asset.fiatDenomination
+    ) {
+      setDenominationKind(DENOMINATION_KIND.Asset);
+    }
+  }, [openOptions.assets, settlementAsset, denominationKind]);
 
   const { data: reads, refetch: refetchReads } = useReadContracts({
     contracts: passport
@@ -132,6 +166,14 @@ export function ListingEditClient({
     passportStatus !== undefined && passportStatus !== "VERIFIED"
       ? AUCTION_REQUIRES_VERIFICATION_HINT
       : DELIST_BEFORE_AUCTION_HINT;
+
+  const selectedAsset = openOptions.assets.find(
+    (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+  );
+  const priceDecimals =
+    denominationKind === DENOMINATION_KIND.Asset
+      ? (selectedAsset?.decimals ?? 18)
+      : 8;
 
   const saveSettlementNote = useCallback(
     async (note: string): Promise<boolean> => {
@@ -195,8 +237,28 @@ export function ListingEditClient({
   const runList = useCallback(async () => {
     await runFlow(async () => {
       if (!canList || !market) return;
+      if (!openOptions.available) {
+        setLog(openOptions.unavailableReason ?? "Cannot list on this chain.");
+        return;
+      }
+      const asset = openOptions.assets.find(
+        (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+      );
+      if (!asset) {
+        setLog("Select a settlement asset.");
+        return;
+      }
+      if (
+        denominationKind === DENOMINATION_KIND.Fiat &&
+        !asset.fiatDenomination
+      ) {
+        setLog(asset.fiatUnavailableReason ?? "Fiat is not available for this asset.");
+        return;
+      }
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
-      const amount = parseUnits(priceInput || "0", 8);
+      const decimals =
+        denominationKind === DENOMINATION_KIND.Asset ? asset.decimals : 8;
+      const amount = parseUnits(priceInput || "0", decimals);
       if (amount <= 0n) {
         setLog("Enter a valid asking price.");
         return;
@@ -205,11 +267,13 @@ export function ListingEditClient({
       const openArgs = [
         tid,
         {
-          kind: DENOMINATION_KIND.Fiat,
-          currencyCode: encodeCurrencyCode(askingCurrency),
+          kind: denominationKind,
+          currencyCode:
+            denominationKind === DENOMINATION_KIND.Fiat
+              ? encodeCurrencyCode(askingCurrency)
+              : ZERO_CURRENCY_CODE,
         },
-        // Native settlement; the asking price is denominated in fiat.
-        ZERO_ADDRESS,
+        settlementAsset as `0x${string}`,
         amount,
       ] as const;
       try {
@@ -244,6 +308,9 @@ export function ListingEditClient({
     canList,
     wrongChain,
     market,
+    openOptions,
+    settlementAsset,
+    denominationKind,
     priceInput,
     askingCurrency,
     settlementNote,
@@ -262,7 +329,7 @@ export function ListingEditClient({
     await runFlow(async () => {
       if (!canDelist || !market) return;
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
-      const amount = parseUnits(priceInput || "0", 8);
+      const amount = parseUnits(priceInput || "0", priceDecimals);
       if (amount <= 0n) {
         setLog("Enter a valid asking price.");
         return;
@@ -293,6 +360,7 @@ export function ListingEditClient({
     wrongChain,
     market,
     priceInput,
+    priceDecimals,
     settlementNote,
     tid,
     wc,
@@ -358,6 +426,17 @@ export function ListingEditClient({
 
   const displayCurrency = fiatCurrencyLabel(listedFiat);
 
+  const panelShared = {
+    openOptions,
+    openOptionsPending,
+    settlementAsset,
+    onSettlementAssetChange: setSettlementAsset,
+    denominationKind,
+    onDenominationKindChange: setDenominationKind,
+    askingCurrency,
+    onAskingCurrencyChange: setAskingCurrency,
+  } as const;
+
   return (
     <div className="mx-auto max-w-lg space-y-8 px-4 py-10">
       <div className="flex items-center justify-between gap-4">
@@ -411,15 +490,14 @@ export function ListingEditClient({
             The contract delists and relists in one action (two on-chain steps).
           </p>
           <ListingSellerSettlementPanel
-            chainId={chainId}
+            {...panelShared}
             priceInput={priceInput}
             onPriceInputChange={setPriceInput}
-            askingCurrency={askingCurrency}
-            onAskingCurrencyChange={setAskingCurrency}
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-update"
             showSettlementFields={false}
+            showOpenPairingFields={false}
             disabled={actionsPending}
           />
           <Button type="button" disabled={actionsPending} onClick={() => void runUpdatePrice()}>
@@ -435,11 +513,9 @@ export function ListingEditClient({
             Shown to buyers who want to pay you outside Kargain checkout.
           </p>
           <ListingSellerSettlementPanel
-            chainId={chainId}
+            {...panelShared}
             priceInput=""
             onPriceInputChange={() => {}}
-            askingCurrency={askingCurrency}
-            onAskingCurrencyChange={() => {}}
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="settlement-only"
@@ -468,18 +544,17 @@ export function ListingEditClient({
             On an on-chain buy, payment splits immediately between you, any
             agent, and the platform — there is no protection window. Undeliverable
             payouts appear under Claims for withdrawClaim.
-          </p>          <ListingSellerSettlementPanel
-            chainId={chainId}
+          </p>
+          <ListingSellerSettlementPanel
+            {...panelShared}
             priceInput={priceInput}
             onPriceInputChange={setPriceInput}
-            askingCurrency={askingCurrency}
-            onAskingCurrencyChange={setAskingCurrency}
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-new"
             disabled={actionsPending || commerce.paused === true}
           />
-          <Button type="button" disabled={actionsPending || !isApproved || commerce.paused === true} onClick={() => void runList()}>
+          <Button type="button" disabled={actionsPending || !isApproved || commerce.paused === true || !openOptions.available} onClick={() => void runList()}>
             {actionsPending ? "Confirming…" : "List for sale"}
           </Button>
         </section>
