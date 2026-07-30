@@ -86,6 +86,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   DirectEthNotAccepted: "Send ETH only through the supported payable functions.",
   AuctionNotEnded: "The auction has not ended yet.",
   BadDuration: "Auction duration is outside the allowed range.",
+  ProtectionOutOfBounds: "Protection window is outside the allowed range.",
   BadReserve: "Auction reserve must be greater than zero.",
   EscrowNotApproved: "Approve the selling mode contract to hold your passport first.",
   ZeroAddress: "Address cannot be zero.",

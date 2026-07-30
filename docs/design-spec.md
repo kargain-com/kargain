@@ -819,7 +819,10 @@ Canonical ascending claim strings: [`lib/auction/ascending-public-claims.ts`](..
 | Authorize min help | Your minimum is in the auction currency ([ETH]/[USDC]), not a display price. You receive at least this amount after all fees. |
 | Agent net preview | At reserve [X]: you receive [fee], owner receives [net]. Your commission is fixed for the whole auction. |
 | S4 | This passport is disputed. Bidding continues; after finalize, delivery issues use the settlement hold. |
-| S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a protection hold (duration from chain `auctionRules().protectionWindow`; Nuclear default 7 days). |
+| S5 | Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a protection hold (duration from **lot** `auctionProtectionWindow` / Ponder `ascendingTerms.protectionWindow`; omit the numeric claim while unread — never live `auctionRules()` bounds). |
+| Pre-bid protection | If you win, payment stays in a [N]-day protection hold after finalize so you can receive the vehicle and open a settlement challenge if needed. (`N` from the lot snapshot.) |
+| Create protection | Protection hold (days) — day options from chain `minProtectionWindow`/`maxProtectionWindow`; opener chooses; help: after settle, payment stays held so the buyer can receive the vehicle and open a settlement challenge if needed. |
+| Timelock bounds retune | Rule retunes go through Timelock by design; no product ops UI for `setAuctionRules` — accepted decision, not backlog. |
 | Hold — buyer | [amount] is held for your protection until [date]. Confirm receipt to release payment early, or open a challenge if the vehicle was not delivered as sold. |
 | Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
 | Challenge bond | Opening a challenge locks a [bond] bond and freezes the protection clock. You get it back if the challenge is upheld for you. |
@@ -1548,4 +1551,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.97 (July 2026 — ascending windows from chain; Nuclear defaults match model §11: extension 900s, settlement challenge/abandonment 30d). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.99 (July 2026 — Timelock setAuctionRules = accepted no-ops-UI decision; Ascending linked hold/open libraries). Update when tokens, app shell, or component contracts change.*

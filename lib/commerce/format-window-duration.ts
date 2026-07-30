@@ -47,3 +47,12 @@ export function durationBoundsErrorMessage(
   const maxLabel = formatWindowDurationLabel(maxSec) ?? "the maximum";
   return `Duration must be between ${minLabel} and ${maxLabel}.`;
 }
+
+export function protectionBoundsErrorMessage(
+  minSec: number,
+  maxSec: number,
+): string {
+  const minLabel = formatWindowDurationLabel(minSec) ?? "the minimum";
+  const maxLabel = formatWindowDurationLabel(maxSec) ?? "the maximum";
+  return `Protection must be between ${minLabel} and ${maxLabel}.`;
+}

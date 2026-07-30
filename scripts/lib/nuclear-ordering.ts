@@ -66,6 +66,9 @@ export function assertNuclearEncumbranceOrdering(
   };
 
   const ascendingProxy = idx("AscendingConsignmentProxy");
+  const ascendingImpl = idx("AscendingConsignmentImpl");
+  const holdLib = idx("AscendingHoldLib");
+  const openLib = idx("AscendingOpenLib");
   const regFixed = idx("addEncumbranceSourceFixedPrice");
   const regAscending = idx("addEncumbranceSourceAscending");
   const admitFixed = idx("approvePaymentTokenFixedPrice");
@@ -76,6 +79,17 @@ export function assertNuclearEncumbranceOrdering(
   const handoffAscending = idx("transferAscendingOwnership");
   const handoffPassport = idx("transferPassportOwnership");
 
+  if (
+    !(
+      holdLib < openLib &&
+      openLib < ascendingImpl &&
+      ascendingImpl < ascendingProxy
+    )
+  ) {
+    throw new Error(
+      "Nuclear ordering: AscendingHoldLib → AscendingOpenLib → AscendingConsignmentImpl → Proxy",
+    );
+  }
   if (!(ascendingProxy < regFixed && ascendingProxy < regAscending)) {
     throw new Error(
       "Nuclear ordering: both mode proxies must deploy before addEncumbranceSource",

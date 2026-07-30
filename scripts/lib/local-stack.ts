@@ -21,10 +21,16 @@ export const Category = {
   OTHER: 5,
 } as const;
 
+export type AscendingLibraries = {
+  AscendingHoldLib: `0x${string}`;
+  AscendingOpenLib: `0x${string}`;
+};
+
 export type ViemSuite = {
   deployContract: (
     name: string,
     args?: readonly unknown[],
+    config?: { libraries?: Record<string, `0x${string}`> },
   ) => Promise<{
     address: `0x${string}`;
     abi: readonly unknown[];
@@ -48,6 +54,16 @@ export type ViemSuite = {
   getPublicClient: () => Promise<PublicClient>;
 };
 
+/** Deploy Ascending linked libraries (no ctor deps). Order: Hold → Open. */
+export async function deployAscendingLibraries(viem: ViemSuite): Promise<AscendingLibraries> {
+  const holdLib = await viem.deployContract("AscendingHoldLib", []);
+  const openLib = await viem.deployContract("AscendingOpenLib", []);
+  return {
+    AscendingHoldLib: holdLib.address,
+    AscendingOpenLib: openLib.address,
+  };
+}
+
 export type WalletClient = Awaited<ReturnType<ViemSuite["getWalletClients"]>>[number];
 export type DeployedContract = Awaited<ReturnType<ViemSuite["deployContract"]>>;
 
@@ -63,6 +79,8 @@ export type LocalStackAddresses = {
   /** Commerce modes (local E2E / Nuclear #2 prep). */
   fixedPriceConsignment?: `0x${string}`;
   fixedPriceConsignmentImpl?: `0x${string}`;
+  ascendingHoldLib?: `0x${string}`;
+  ascendingOpenLib?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
   /**
@@ -168,7 +186,8 @@ export async function deployAscendingConsignment(
     maxDuration: bigint;
     extensionWindow: bigint;
     minIncrementBps: bigint;
-    protectionWindow: bigint;
+    minProtectionWindow: bigint;
+    maxProtectionWindow: bigint;
     abandonmentWindow: bigint;
     owner: `0x${string}`;
     guardian: `0x${string}`;
@@ -177,7 +196,8 @@ export async function deployAscendingConsignment(
   },
 ) {
   const name = params.harness ? "AscendingConsignmentHarness" : "AscendingConsignment";
-  const impl = await viem.deployContract(name, []);
+  const libraries = await deployAscendingLibraries(viem);
+  const impl = await viem.deployContract(name, [], { libraries });
   const initData = encodeFunctionData({
     abi: impl.abi,
     functionName: "initialize",
@@ -193,7 +213,8 @@ export async function deployAscendingConsignment(
       params.maxDuration,
       params.extensionWindow,
       params.minIncrementBps,
-      params.protectionWindow,
+      params.minProtectionWindow,
+      params.maxProtectionWindow,
       params.abandonmentWindow,
       params.owner,
       params.guardian,
@@ -201,7 +222,7 @@ export async function deployAscendingConsignment(
   });
   const proxy = await viem.deployContract("ERC1967Proxy", [impl.address, initData]);
   const mode = await viem.getContractAt(name, proxy.address);
-  return { impl, proxy, mode };
+  return { impl, proxy, mode, libraries };
 }
 
 /** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */
@@ -260,6 +281,8 @@ export function stackToDeploymentAddresses(
   stack: Awaited<ReturnType<typeof deployCommerceBaseStack>> & {
     fixedPriceConsignment?: `0x${string}`;
     fixedPriceConsignmentImpl?: `0x${string}`;
+    ascendingHoldLib?: `0x${string}`;
+    ascendingOpenLib?: `0x${string}`;
     ascendingConsignment?: `0x${string}`;
     ascendingConsignmentImpl?: `0x${string}`;
     commercePayoutSink?: `0x${string}`;
@@ -281,6 +304,8 @@ export function stackToDeploymentAddresses(
     ...(stack.fixedPriceConsignmentImpl
       ? { fixedPriceConsignmentImpl: getAddress(stack.fixedPriceConsignmentImpl) }
       : {}),
+    ...(stack.ascendingHoldLib ? { ascendingHoldLib: getAddress(stack.ascendingHoldLib) } : {}),
+    ...(stack.ascendingOpenLib ? { ascendingOpenLib: getAddress(stack.ascendingOpenLib) } : {}),
     ...(stack.ascendingConsignment
       ? { ascendingConsignment: getAddress(stack.ascendingConsignment) }
       : {}),

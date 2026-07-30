@@ -168,7 +168,8 @@ type AuctionRulesSetEvent = LogMeta & {
     maxDuration: number | bigint;
     extensionWindow: number | bigint;
     minIncrementBps: number | bigint;
-    protectionWindow: number | bigint;
+    minProtectionWindow: number | bigint;
+    maxProtectionWindow: number | bigint;
     abandonmentWindow: number | bigint;
     challengeBond: bigint;
   };
@@ -399,7 +400,8 @@ async function ensureCommerceMode(
       maxDuration: 0,
       extensionWindow: 0,
       minIncrementBps: 0,
-      protectionWindow: 0,
+      minProtectionWindow: 0,
+      maxProtectionWindow: 0,
       abandonmentWindow: 0,
       challengeBond: 0n,
       maxFeedStaleness: 0n,
@@ -936,7 +938,8 @@ async function handleAuctionRulesSet(
     maxDuration: Number(event.args.maxDuration),
     extensionWindow: Number(event.args.extensionWindow),
     minIncrementBps: Number(event.args.minIncrementBps),
-    protectionWindow: Number(event.args.protectionWindow),
+    minProtectionWindow: Number(event.args.minProtectionWindow),
+    maxProtectionWindow: Number(event.args.maxProtectionWindow),
     abandonmentWindow: Number(event.args.abandonmentWindow),
     challengeBond: event.args.challengeBond,
     updatedAt: event.block.timestamp,

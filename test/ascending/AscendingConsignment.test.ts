@@ -8,6 +8,7 @@ import { getAddress, parseEther, stringToHex, padHex } from "viem";
 import hardhat from "hardhat";
 import {
   deployAscendingConsignment,
+  deployAscendingLibraries,
   increaseTime,
   ZERO,
 } from "../../scripts/lib/local-stack.js";
@@ -96,7 +97,8 @@ describe("AscendingConsignment", () => {
   let guardian: WalletClient;
 
   async function deployMode(overrides: {
-    protectionWindow?: bigint;
+    minProtectionWindow?: bigint;
+    maxProtectionWindow?: bigint;
     abandonmentWindow?: bigint;
     extensionWindow?: bigint;
     challengeWindow?: bigint;
@@ -125,7 +127,8 @@ describe("AscendingConsignment", () => {
       maxDuration: overrides.maxDuration ?? MAX_DURATION,
       extensionWindow: overrides.extensionWindow ?? EXTENSION,
       minIncrementBps: MIN_INCREMENT_BPS,
-      protectionWindow: overrides.protectionWindow ?? PROTECTION,
+      minProtectionWindow: overrides.minProtectionWindow ?? PROTECTION,
+      maxProtectionWindow: overrides.maxProtectionWindow ?? PROTECTION * 10n,
       abandonmentWindow: overrides.abandonmentWindow ?? ABANDONMENT,
       owner: owner.account.address,
       guardian: guardian.account.address,
@@ -149,10 +152,14 @@ describe("AscendingConsignment", () => {
     await activate(judge);
   }
 
-  async function openDirect(reserve: bigint = RESERVE, duration: bigint = DURATION) {
+  async function openDirect(
+    reserve: bigint = RESERVE,
+    duration: bigint = DURATION,
+    protection: bigint = PROTECTION,
+  ) {
     await activate(owner);
     await mintAndApprove();
-    await mode.write.openAscendingDirect([TOKEN, ZERO, reserve, duration], {
+    await mode.write.openAscendingDirect([TOKEN, ZERO, reserve, duration, protection], {
       account: owner.account,
     });
   }
@@ -171,7 +178,8 @@ describe("AscendingConsignment", () => {
     maxDuration?: bigint;
     extensionWindow?: bigint;
     minIncrementBps?: bigint;
-    protectionWindow?: bigint;
+    minProtectionWindow?: bigint;
+    maxProtectionWindow?: bigint;
     abandonmentWindow?: bigint;
     challengeBond?: bigint;
   };
@@ -182,7 +190,8 @@ describe("AscendingConsignment", () => {
       maxDuration: number | bigint;
       extensionWindow: number | bigint;
       minIncrementBps: number | bigint;
-      protectionWindow: number | bigint;
+      minProtectionWindow: number | bigint;
+      maxProtectionWindow: number | bigint;
       abandonmentWindow: number | bigint;
       challengeBond: bigint;
     };
@@ -191,7 +200,8 @@ describe("AscendingConsignment", () => {
       maxDuration: BigInt(r.maxDuration),
       extensionWindow: BigInt(r.extensionWindow),
       minIncrementBps: BigInt(r.minIncrementBps),
-      protectionWindow: BigInt(r.protectionWindow),
+      minProtectionWindow: BigInt(r.minProtectionWindow),
+      maxProtectionWindow: BigInt(r.maxProtectionWindow),
       abandonmentWindow: BigInt(r.abandonmentWindow),
       challengeBond: r.challengeBond,
     };
@@ -206,7 +216,8 @@ describe("AscendingConsignment", () => {
         partial.maxDuration ?? cur.maxDuration,
         partial.extensionWindow ?? cur.extensionWindow,
         partial.minIncrementBps ?? cur.minIncrementBps,
-        partial.protectionWindow ?? cur.protectionWindow,
+        partial.minProtectionWindow ?? cur.minProtectionWindow,
+        partial.maxProtectionWindow ?? cur.maxProtectionWindow,
         partial.abandonmentWindow ?? cur.abandonmentWindow,
         partial.challengeBond ?? cur.challengeBond,
       ],
@@ -228,7 +239,7 @@ describe("AscendingConsignment", () => {
     await mintAndApprove();
     // staking.active[owner] defaults false
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("NotActiveVerifier"),
@@ -275,23 +286,36 @@ describe("AscendingConsignment", () => {
     );
     await activate(agent);
     await assert.rejects(
-      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], { account: agent.account }),
+      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], { account: agent.account }),
       revertsWith("DenominationMismatch"),
     );
 
     await mode.write.revoke([TOKEN], { account: owner.account });
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, 0n, DURATION], { account: owner.account }),
+      mode.write.openAscendingDirect([TOKEN, ZERO, 0n, DURATION, PROTECTION], { account: owner.account }),
       revertsWith("BadReserve"),
     );
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, 1n], { account: owner.account }),
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, 1n, PROTECTION], { account: owner.account }),
       revertsWith("BadDuration"),
+    );
+
+    await assert.rejects(
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION - 1n], {
+        account: owner.account,
+      }),
+      revertsWith("ProtectionOutOfBounds"),
+    );
+    await assert.rejects(
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION * 10n + 1n], {
+        account: owner.account,
+      }),
+      revertsWith("ProtectionOutOfBounds"),
     );
 
     const token = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, token.address, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([TOKEN, token.address, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("PaymentTokenNotSupported"),
@@ -312,7 +336,8 @@ describe("AscendingConsignment", () => {
         maxDuration: MAX_DURATION,
         extensionWindow: 0n,
         minIncrementBps: MIN_INCREMENT_BPS,
-        protectionWindow: PROTECTION,
+        minProtectionWindow: PROTECTION,
+        maxProtectionWindow: PROTECTION * 10n,
         abandonmentWindow: ABANDONMENT,
         owner: owner.account.address,
         guardian: guardian.account.address,
@@ -332,7 +357,8 @@ describe("AscendingConsignment", () => {
         maxDuration: 100n,
         extensionWindow: EXTENSION,
         minIncrementBps: MIN_INCREMENT_BPS,
-        protectionWindow: PROTECTION,
+        minProtectionWindow: PROTECTION,
+        maxProtectionWindow: PROTECTION * 10n,
         abandonmentWindow: ABANDONMENT,
         owner: owner.account.address,
         guardian: guardian.account.address,
@@ -383,7 +409,7 @@ describe("AscendingConsignment", () => {
       [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, parseEther("0.5"), COMP_MARGIN],
       { account: owner.account },
     );
-    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
       account: agent.account,
     });
     await assert.rejects(
@@ -425,7 +451,7 @@ describe("AscendingConsignment", () => {
     const tokenB = 2n;
     await activate(owner);
     await mintAndApprove(tokenB);
-    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
     assert.equal(Number(await mode.read.auctionExtensionWindow([tokenB])), 1);
@@ -463,7 +489,7 @@ describe("AscendingConsignment", () => {
     const tokenB = 2n;
     await activate(owner);
     await mintAndApprove(tokenB);
-    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
     assert.equal(Number(await mode.read.auctionMinIncrementBps([tokenB])), Number(newBps));
@@ -491,7 +517,7 @@ describe("AscendingConsignment", () => {
       revertsWith("NotOfferedAgented"),
     );
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("NotPassportOwner"), // custody still on mode; cannot open again
@@ -628,7 +654,7 @@ describe("AscendingConsignment", () => {
       [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_COMMISSION_500],
       { account: owner.account },
     );
-    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
       account: agent.account,
     });
     await firstBid();
@@ -654,7 +680,7 @@ describe("AscendingConsignment", () => {
       [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_MARGIN],
       { account: owner.account },
     );
-    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
       account: agent.account,
     });
     await firstBid();
@@ -685,7 +711,7 @@ describe("AscendingConsignment", () => {
   // ---- Challenge outcomes + window resume ----
 
   it("CH4: withdrawn challenge resumes remaining protection (measured)", async () => {
-    await deployMode({ protectionWindow: 1_000n, challengeWindow: 500n });
+    await deployMode({ minProtectionWindow: 1_000n, maxProtectionWindow: 10_000n, challengeWindow: 500n });
     await openDirect();
     await firstBid();
     await settleAfterEnd();
@@ -909,16 +935,17 @@ describe("AscendingConsignment", () => {
     assert.equal(Number(await mode.read.auctionProtectionWindow([TOKEN])), Number(PROTECTION));
     await settleAfterEnd();
     const ends = Number(await mode.read.holdProtectionEndsAt([TOKEN]));
-    await setAuctionRules({ protectionWindow: 10n });
+    await setAuctionRules({ minProtectionWindow: 10n, maxProtectionWindow: 10n });
     assert.equal(Number(await mode.read.holdProtectionEndsAt([TOKEN])), ends);
-    assert.equal(Number((await readAuctionRules()).protectionWindow), 10);
+    assert.equal(Number((await readAuctionRules()).minProtectionWindow), 10);
+    assert.equal(Number((await readAuctionRules()).maxProtectionWindow), 10);
 
     await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
 
     const tokenB = 2n;
     await activate(owner);
     await mintAndApprove(tokenB);
-    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, 10n], {
       account: owner.account,
     });
     assert.equal(Number(await mode.read.auctionProtectionWindow([tokenB])), 10);
@@ -961,7 +988,7 @@ describe("AscendingConsignment", () => {
     const tokenB = 2n;
     await activate(owner);
     await mintAndApprove(tokenB);
-    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
     assert.equal(Number(await mode.read.auctionAbandonmentWindow([tokenB])), 50);
@@ -989,7 +1016,7 @@ describe("AscendingConsignment", () => {
       [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_COMMISSION_500],
       { account: owner.account },
     );
-    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+    await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
       account: agent.account,
     });
     await firstBid();
@@ -1070,7 +1097,7 @@ describe("AscendingConsignment", () => {
     await activate(owner);
     await mintAndApprove(token2);
     await assert.rejects(
-      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("ContractPaused"),
@@ -1085,7 +1112,7 @@ describe("AscendingConsignment", () => {
     assert.equal(await mode.read.holdBuyer([TOKEN]), ZERO);
 
     await mode.write.unpause({ account: owner.account });
-    await mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
   });
@@ -1127,7 +1154,8 @@ describe("AscendingConsignment", () => {
     await openDirect();
     await firstBid();
     const endsAt = (await mode.read.auctionEndsAt([TOKEN])) as bigint;
-    const nextImpl = await viem.deployContract("AscendingConsignment", []);
+    const libraries = await deployAscendingLibraries(viem);
+    const nextImpl = await viem.deployContract("AscendingConsignment", [], { libraries });
     await assert.rejects(
       mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: stranger.account }),
       revertsWith("OwnableUnauthorizedAccount"),
@@ -1145,7 +1173,7 @@ describe("AscendingConsignment", () => {
     await activate(owner);
     await mintAndApprove();
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("ModeNotEncumbranceSource"),
@@ -1156,7 +1184,7 @@ describe("AscendingConsignment", () => {
     );
     await activate(agent);
     await assert.rejects(
-      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
         account: agent.account,
       }),
       revertsWith("ModeNotEncumbranceSource"),
@@ -1168,13 +1196,13 @@ describe("AscendingConsignment", () => {
     await activate(owner);
     await mintAndApprove();
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("ModeNotEncumbranceSource"),
     );
     await passport.write.setEncumbranceSource([mode.address, true]);
-    await mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+    await mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
@@ -1184,7 +1212,7 @@ describe("AscendingConsignment", () => {
     const token2 = TOKEN + 1n;
     await mintAndApprove(token2);
     await assert.rejects(
-      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("ModeNotEncumbranceSource"),
@@ -1218,7 +1246,7 @@ describe("AscendingConsignment", () => {
     await activate(owner);
     await mintAndApprove();
     const reserve = 100n * 10n ** 6n;
-    await mode.write.openAscendingDirect([TOKEN, usdc.address, reserve, DURATION], {
+    await mode.write.openAscendingDirect([TOKEN, usdc.address, reserve, DURATION, PROTECTION], {
       account: owner.account,
     });
     await mode.write.revokePaymentToken([usdc.address], { account: guardian.account });
@@ -1234,7 +1262,7 @@ describe("AscendingConsignment", () => {
     const token2 = TOKEN + 1n;
     await mintAndApprove(token2);
     await assert.rejects(
-      mode.write.openAscendingDirect([token2, usdc.address, reserve, DURATION], {
+      mode.write.openAscendingDirect([token2, usdc.address, reserve, DURATION, PROTECTION], {
         account: owner.account,
       }),
       revertsWith("PaymentTokenNotSupported"),
@@ -1381,7 +1409,7 @@ describe("AscendingConsignment", () => {
       assert.equal(g.floor, await mode.read.mandateFloor([TOKEN]));
       assert.equal(await mode.read.mandateActive([TOKEN]), true);
 
-      await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+      await mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
         account: agent.account,
       });
       await firstBid();
@@ -1409,7 +1437,7 @@ describe("AscendingConsignment", () => {
     });
   });
 
-  it("gas sample: bid / outbid / settle (EIP-170 fit report)", async () => {
+  it("gas sample: bid / outbid / settle / confirmReceipt (EIP-170 fit report)", async () => {
     await openDirect();
     const bidHash = await mode.write.bid([TOKEN, RESERVE], {
       account: buyer.account,
@@ -1425,10 +1453,13 @@ describe("AscendingConsignment", () => {
     await increaseTime(publicClient, BigInt(Number(DURATION) + 2));
     const settleHash = await mode.write.settle([TOKEN], { account: stranger.account });
     const settleReceipt = await publicClient.waitForTransactionReceipt({ hash: settleHash });
+    const confirmHash = await mode.write.confirmReceipt([TOKEN], { account: bidder2.account });
+    const confirmReceipt = await publicClient.waitForTransactionReceipt({ hash: confirmHash });
     process.stdout.write("\n--- Ascending gas sample ---\n");
     process.stdout.write(`| bid (first) | ${bidReceipt.gasUsed} |\n`);
     process.stdout.write(`| bid (outbid) | ${outReceipt.gasUsed} |\n`);
-    process.stdout.write(`| settle | ${settleReceipt.gasUsed} |\n\n`);
+    process.stdout.write(`| settle | ${settleReceipt.gasUsed} |\n`);
+    process.stdout.write(`| confirmReceipt | ${confirmReceipt.gasUsed} |\n\n`);
   });
 
   async function ascendingTokenEnabled(token: `0x${string}`): Promise<boolean> {

@@ -56,7 +56,11 @@ describe("nuclear deploy plan", () => {
     const ascOwnIdx = base.steps.indexOf("transferAscendingOwnership");
     const passportOwnIdx = base.steps.indexOf("transferPassportOwnership");
     const stakingOwnIdx = base.steps.indexOf("transferStakingOwnership");
-    assert.ok(fixedIdx === fixedImplIdx + 1 && ascendingImplIdx === fixedIdx + 1);
+    assert.ok(fixedIdx === fixedImplIdx + 1);
+    const holdLibIdx = base.steps.indexOf("AscendingHoldLib");
+    const openLibIdx = base.steps.indexOf("AscendingOpenLib");
+    assert.ok(holdLibIdx === fixedIdx + 1 && openLibIdx === holdLibIdx + 1);
+    assert.ok(ascendingImplIdx === openLibIdx + 1);
     assert.ok(ascendingIdx === ascendingImplIdx + 1);
     assert.ok(encFixedIdx === ascendingIdx + 1 && encAscIdx === encFixedIdx + 1);
     assert.ok(admitFixedIdx === encAscIdx + 1 && admitAscIdx === admitFixedIdx + 1);

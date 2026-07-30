@@ -22,6 +22,7 @@ import {
 import {
   durationBoundsErrorMessage,
   durationDayOptions,
+  protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
@@ -65,6 +66,7 @@ export function CreateAuctionPanel({
   const [assetKind, setAssetKind] = useState<"ETH" | "USDC">("ETH");
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
+  const [protectionDays, setProtectionDays] = useState(7);
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
@@ -80,10 +82,20 @@ export function CreateAuctionPanel({
   const durationOptions = auctionRules
     ? durationDayOptions(auctionRules.minDuration, auctionRules.maxDuration)
     : [];
+  const protectionOptions = auctionRules
+    ? durationDayOptions(
+        auctionRules.minProtectionWindow,
+        auctionRules.maxProtectionWindow,
+      )
+    : [];
   const selectedDurationDays =
     durationOptions.length > 0 && !durationOptions.includes(durationDays)
       ? durationOptions[0]!
       : durationDays;
+  const selectedProtectionDays =
+    protectionOptions.length > 0 && !protectionOptions.includes(protectionDays)
+      ? protectionOptions[0]!
+      : protectionDays;
 
   const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
     address: passport,
@@ -180,6 +192,19 @@ export function CreateAuctionPanel({
       );
       return;
     }
+    const protectionSec = selectedProtectionDays * 24 * 60 * 60;
+    if (
+      protectionSec < auctionRules.minProtectionWindow ||
+      protectionSec > auctionRules.maxProtectionWindow
+    ) {
+      setFormError(
+        protectionBoundsErrorMessage(
+          auctionRules.minProtectionWindow,
+          auctionRules.maxProtectionWindow,
+        ),
+      );
+      return;
+    }
 
     let reserve: bigint;
     try {
@@ -208,7 +233,7 @@ export function CreateAuctionPanel({
         address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingDirect",
-        args: [BigInt(tokenId), asset, reserve, durationSec],
+        args: [BigInt(tokenId), asset, reserve, durationSec, protectionSec],
         chainId: wagmiChainId(chainId),
       });
     });
@@ -322,6 +347,43 @@ export function CreateAuctionPanel({
                 </option>
               )}
         </select>
+      </div>
+
+      <div className="space-y-2">
+        <label
+          htmlFor="auction-protection"
+          className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary"
+        >
+          Protection hold (days)
+        </label>
+        <select
+          id="auction-protection"
+          value={selectedProtectionDays}
+          onChange={(e) => setProtectionDays(Number(e.target.value))}
+          disabled={busy || protectionOptions.length === 0}
+          className={cn(
+            "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
+            "font-mono text-sm tabular-nums text-text-primary",
+            "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+          )}
+        >
+          {protectionOptions.length > 0
+            ? protectionOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))
+            : (
+                <option value={selectedProtectionDays}>
+                  {selectedProtectionDays}
+                </option>
+              )}
+        </select>
+        <p className="font-sans text-xs text-text-secondary">
+          After the winning bid settles, payment stays held for this long so
+          the buyer can receive the vehicle and open a settlement challenge if
+          needed.
+        </p>
       </div>
 
       {wrongChain && (

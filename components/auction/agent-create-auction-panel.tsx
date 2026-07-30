@@ -22,6 +22,7 @@ import { compensationFormLabel } from "@/lib/commerce/denomination";
 import {
   durationBoundsErrorMessage,
   durationDayOptions,
+  protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
@@ -39,7 +40,7 @@ type Props = {
 
 /**
  * Agent `openAscendingFromMandate` — asset, floor and compensation are fixed
- * by the owner's mandate; the agent chooses only reserve and duration.
+ * by the owner's mandate; the agent chooses reserve, duration, and protection.
  */
 export function AgentCreateAuctionPanel({
   chainId,
@@ -53,6 +54,7 @@ export function AgentCreateAuctionPanel({
 
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
+  const [protectionDays, setProtectionDays] = useState(7);
   const [txError, setTxError] = useState<string | null>(null);
   const busy = phase !== "idle";
 
@@ -66,10 +68,20 @@ export function AgentCreateAuctionPanel({
   const durationOptions = auctionRules
     ? durationDayOptions(auctionRules.minDuration, auctionRules.maxDuration)
     : [];
+  const protectionOptions = auctionRules
+    ? durationDayOptions(
+        auctionRules.minProtectionWindow,
+        auctionRules.maxProtectionWindow,
+      )
+    : [];
   const selectedDurationDays =
     durationOptions.length > 0 && !durationOptions.includes(durationDays)
       ? durationOptions[0]!
       : durationDays;
+  const selectedProtectionDays =
+    protectionOptions.length > 0 && !protectionOptions.includes(protectionDays)
+      ? protectionOptions[0]!
+      : protectionDays;
   const tid = useMemo(() => {
     try {
       return BigInt(tokenId);
@@ -155,6 +167,19 @@ export function AgentCreateAuctionPanel({
       );
       return;
     }
+    const protectionSec = selectedProtectionDays * 24 * 60 * 60;
+    if (
+      protectionSec < auctionRules.minProtectionWindow ||
+      protectionSec > auctionRules.maxProtectionWindow
+    ) {
+      setTxError(
+        protectionBoundsErrorMessage(
+          auctionRules.minProtectionWindow,
+          auctionRules.maxProtectionWindow,
+        ),
+      );
+      return;
+    }
     if (reserve == null || reserve <= 0n) {
       setTxError("Enter a valid reserve amount.");
       return;
@@ -173,7 +198,7 @@ export function AgentCreateAuctionPanel({
         address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingFromMandate",
-        args: [tid, reserve, durationSec],
+        args: [tid, reserve, durationSec, protectionSec],
         chainId: wagmiChainId(chainId),
       }),
     );
@@ -261,6 +286,42 @@ export function AgentCreateAuctionPanel({
                 </option>
               )}
         </select>
+      </div>
+
+      <div className="space-y-2">
+        <label
+          htmlFor="agent-auction-protection"
+          className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary"
+        >
+          Protection hold (days)
+        </label>
+        <select
+          id="agent-auction-protection"
+          value={selectedProtectionDays}
+          onChange={(e) => setProtectionDays(Number(e.target.value))}
+          disabled={busy || isWriting || protectionOptions.length === 0}
+          className={cn(
+            "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
+            "font-mono text-sm tabular-nums text-text-primary",
+            "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+          )}
+        >
+          {protectionOptions.length > 0
+            ? protectionOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))
+            : (
+                <option value={selectedProtectionDays}>
+                  {selectedProtectionDays}
+                </option>
+              )}
+        </select>
+        <p className="font-sans text-xs text-text-secondary">
+          After settle, payment stays held for this long so the buyer can
+          receive the vehicle and open a settlement challenge if needed.
+        </p>
       </div>
 
       {breakdown && reserve != null && (

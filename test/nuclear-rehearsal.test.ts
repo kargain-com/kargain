@@ -21,6 +21,7 @@ import {
 } from "../lib/contracts/abis.generated.js";
 import {
   Category,
+  deployAscendingLibraries,
   joinVerifier,
   mintPassport,
   ZERO,
@@ -45,9 +46,10 @@ import {
   ASCENDING_CHALLENGE_BOND,
   ASCENDING_EXTENSION_WINDOW,
   ASCENDING_MAX_DURATION,
+  ASCENDING_MAX_PROTECTION_WINDOW,
   ASCENDING_MIN_DURATION,
   ASCENDING_MIN_INCREMENT_BPS,
-  ASCENDING_PROTECTION_WINDOW,
+  ASCENDING_MIN_PROTECTION_WINDOW,
   MARKETPLACE_MAX_FEED_STALENESS,
 } from "../scripts/lib/verify-constructor-args.js";
 import { NUCLEAR_DEPLOY_STEPS } from "../scripts/lib/nuclear-deploy-plan.js";
@@ -155,6 +157,9 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
         assertNuclearEncumbranceOrdering([
           "Timelock48h",
           "FixedPriceConsignmentProxy",
+          "AscendingHoldLib",
+          "AscendingOpenLib",
+          "AscendingConsignmentImpl",
           "AscendingConsignmentProxy",
           "KarPassportBridgeGateway",
           "addEncumbranceSourceFixedPrice",
@@ -387,7 +392,8 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
           ASCENDING_MAX_DURATION,
           ASCENDING_EXTENSION_WINDOW,
           ASCENDING_MIN_INCREMENT_BPS,
-          ASCENDING_PROTECTION_WINDOW,
+          ASCENDING_MIN_PROTECTION_WINDOW,
+          ASCENDING_MAX_PROTECTION_WINDOW,
           ASCENDING_ABANDONMENT_WINDOW,
           newBond,
         ],
@@ -397,7 +403,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       | { challengeBond: bigint }
       | readonly unknown[];
     const bond = Array.isArray(rules)
-      ? (rules[6] as bigint)
+      ? (rules[7] as bigint)
       : (rules as { challengeBond: bigint }).challengeBond;
     assert.equal(bond, newBond);
 
@@ -506,7 +512,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
 
     const duration = ASCENDING_MIN_DURATION;
     await stack.ascending.write.openAscendingDirect(
-      [tokenId, ZERO, RESERVE, duration],
+      [tokenId, ZERO, RESERVE, duration, ASCENDING_MIN_PROTECTION_WINDOW],
       { account: stack.seller.account },
     );
     assert.equal(await stack.ascending.read.consignmentPhase([tokenId]), 1);
@@ -531,7 +537,10 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     const endsAt = (await stack.ascending.read.auctionEndsAt([tokenId])) as bigint;
     const high = (await stack.ascending.read.auctionHighestBid([tokenId])) as bigint;
 
-    const nextImpl = await connection.viem.deployContract("AscendingConsignment", []);
+    const libraries = await deployAscendingLibraries(connection.viem);
+    const nextImpl = await connection.viem.deployContract("AscendingConsignment", [], {
+      libraries,
+    });
     await viaTimelock(
       "Ascending.upgradeToAndCall",
       stack.ascending.address,

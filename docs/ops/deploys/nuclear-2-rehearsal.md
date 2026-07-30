@@ -4,7 +4,7 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 
 | | |
 |--|--|
-| Scope | Timelock → KarPro → Passport → FixedPrice + Ascending (**owner=deployer**) → encumbrance register → **USDC admission** → gateway → **mode ownership handoff** → passport/staking handoff → post-handoff Timelock ops |
+| Scope | Timelock → KarPro → Passport → FixedPrice + **AscendingHoldLib → AscendingOpenLib → Ascending** (**owner=deployer**) → encumbrance register → **USDC admission** → gateway → **mode ownership handoff** → passport/staking handoff → post-handoff Timelock ops |
 | Chains | Base Sepolia **84532** and Ethereum Sepolia **11155111** (identical protocol params) |
 | Script | `pnpm deploy:sepolia` / `pnpm deploy:sepolia:eth` → [`scripts/deploy.ts`](../../../scripts/deploy.ts) |
 | Dry-run | `pnpm deploy:nuclear:dry-run` (parity + structural encumbrance/admission order; no txs) |
@@ -18,8 +18,8 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | Extension window | 900 seconds |
 | Minimum increment | 300 bps |
 | Duration bounds | 3–30 days |
-| Protection window | 7 days |
-| Settlement challenge window | 30 days |
+| Protection bounds | 7–45 days (opener chooses at open) |
+| Settlement challenge window | 14 days |
 | Abandonment window | 30 days |
 | Challenge bond | 0.01 ETH |
 
@@ -39,6 +39,7 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | Constraint | Enforcement |
 |------------|-------------|
 | Mode proxies → `addEncumbranceSource` ×2 → admit USDC → gateway → mode handoff → passport handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run |
+| AscendingHoldLib → AscendingOpenLib → AscendingConsignmentImpl → Proxy | **Structural** — linked libraries before Ascending impl; manifest stores `ascendingHoldLib` / `ascendingOpenLib` |
 | Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
 | Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes **and** FixedPrice USDC feed ≠ 0 |
 | FixedPrice USDC/USD feed present | `requireUsdcUsdFeed` — chain without `CHAINLINK_FEEDS.usdcUsdFeed` **refuses** FixedPrice USDC admit (no silent peg). Base Sepolia (84532) has none today; Eth Sepolia has Chainlink USDC/USD |

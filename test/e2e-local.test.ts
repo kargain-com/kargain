@@ -17,6 +17,7 @@ import {
   ASCENDING_ABANDONMENT_WINDOW,
   ASCENDING_CHALLENGE_WINDOW,
   ASCENDING_EXTENSION_WINDOW,
+  ASCENDING_MIN_PROTECTION_WINDOW,
 } from "../scripts/lib/verify-constructor-args.js";
 
 const URI_MINT = "ar://e2e-mint";
@@ -368,9 +369,12 @@ describeE2e("localhost commerce modes E2E", () => {
 
       async function openAscendingLot(uri: string): Promise<bigint> {
         const tokenId = await mintVerified(uri);
-        await ascending.write.openAscendingDirect([tokenId, NATIVE, reserve, duration], {
+        await ascending.write.openAscendingDirect(
+          [tokenId, NATIVE, reserve, duration, ASCENDING_MIN_PROTECTION_WINDOW],
+          {
           account: owner.account,
-        });
+        },
+        );
         return tokenId;
       }
 

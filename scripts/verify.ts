@@ -26,6 +26,8 @@ const FULL_VERIFY_ORDER: HubVerifyTargetKey[] = [
   "bridgeGateway",
   "fixedPriceConsignmentImpl",
   "fixedPriceConsignmentProxy",
+  "ascendingHoldLib",
+  "ascendingOpenLib",
   "ascendingConsignmentImpl",
   "ascendingConsignmentProxy",
 ];
@@ -83,11 +85,21 @@ async function verifyTarget(
 
   console.log("  Submitting Hardhat verify…");
   try {
+    const libraries =
+      key === "ascendingConsignmentImpl" &&
+      manifest.ascendingHoldLib &&
+      manifest.ascendingOpenLib
+        ? {
+            AscendingHoldLib: manifest.ascendingHoldLib,
+            AscendingOpenLib: manifest.ascendingOpenLib,
+          }
+        : undefined;
     const result = runHardhatVerify({
       address,
       contract: target.contract,
       constructorArgs,
       network,
+      libraries,
     });
     if (result === "bytecode_mismatch") {
       console.log("  Confirm behavior with smoke / on-chain reads.");

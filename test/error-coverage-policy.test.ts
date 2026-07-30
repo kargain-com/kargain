@@ -96,7 +96,15 @@ export const LIB_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
 /**
  * Lib sources whose errors are exercised only via money-path parents (not standalone suites).
  */
-export const LIB_ERROR_FOLDED: readonly string[] = ["ClaimablePayouts", "Erc20Admission"] as const;
+export const LIB_ERROR_FOLDED: readonly string[] = [
+  "ClaimablePayouts",
+  "Erc20Admission",
+  /** Linked into Ascending via DELEGATECALL — errors exercised by Ascending Hardhat suite. */
+  "AscendingHoldLib",
+  "AscendingOpenLib",
+  /** Shared layouts only — no custom errors. */
+  "AscendingTypes",
+] as const;
 
 const ALL_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
   ...ERROR_COVERAGE_REGISTRY,

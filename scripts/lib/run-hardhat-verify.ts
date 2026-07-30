@@ -37,11 +37,24 @@ export function runHardhatVerify(params: {
   contract?: string;
   constructorArgs: readonly unknown[];
   network?: string;
+  /** Mapping of library names → addresses for linked contracts (`--libraries-path`). */
+  libraries?: Record<string, string>;
 }): VerifyRunResult {
   const network = params.network ?? "baseSepolia";
   const args = ["hardhat", "verify", "etherscan", "--network", network];
   if (params.contract) {
     args.push("--contract", params.contract);
+  }
+
+  if (params.libraries && Object.keys(params.libraries).length > 0) {
+    const cacheDir = join(process.cwd(), "cache");
+    mkdirSync(cacheDir, { recursive: true });
+    const libsPath = join(cacheDir, `verify-libraries-${Date.now()}.cjs`);
+    writeFileSync(
+      libsPath,
+      `module.exports = ${JSON.stringify(params.libraries, null, 2)};\n`,
+    );
+    args.push("--libraries-path", libsPath);
   }
 
   if (needsConstructorArgsFile(params.constructorArgs)) {

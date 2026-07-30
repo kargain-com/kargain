@@ -60,13 +60,14 @@ export type AscendingHoldReads = {
   readonly abandonmentWindow?: bigint | number;
 };
 
-/** Global `auctionRules()` tuple. */
+/** Global `auctionRules()` — opener bounds, not a lot hold length. */
 export type AuctionRules = {
   readonly minDuration: number;
   readonly maxDuration: number;
   readonly extensionWindow: number;
   readonly minIncrementBps: number;
-  readonly protectionWindow: number;
+  readonly minProtectionWindow: number;
+  readonly maxProtectionWindow: number;
   readonly abandonmentWindow: number;
   readonly challengeBond: bigint;
 };
@@ -76,7 +77,8 @@ export type AuctionRulesTuple = readonly [
   maxDuration: number,
   extensionWindow: number,
   minIncrementBps: number,
-  protectionWindow: number,
+  minProtectionWindow: number,
+  maxProtectionWindow: number,
   abandonmentWindow: number,
   challengeBond: bigint,
 ];
@@ -161,9 +163,10 @@ export function parseAuctionRules(
     maxDuration: Number(tuple[1]),
     extensionWindow: Number(tuple[2]),
     minIncrementBps: Number(tuple[3]),
-    protectionWindow: Number(tuple[4]),
-    abandonmentWindow: Number(tuple[5]),
-    challengeBond: tuple[6],
+    minProtectionWindow: Number(tuple[4]),
+    maxProtectionWindow: Number(tuple[5]),
+    abandonmentWindow: Number(tuple[6]),
+    challengeBond: tuple[7],
   };
 }
 

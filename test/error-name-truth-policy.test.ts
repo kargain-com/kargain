@@ -29,7 +29,7 @@ export const ERROR_MULTI_CONDITION_FAMILIES: readonly {
   },
   {
     error: "BadConfig",
-    contracts: ["AscendingConsignment"],
+    contracts: ["AscendingConsignment", "AscendingOpenLib"],
     justification: "Config value out of allowed bounds or zero where forbidden",
   },
   {
@@ -91,8 +91,13 @@ export const ERROR_MULTI_CONDITION_FAMILIES: readonly {
   },
   {
     error: "NotBinding",
-    contracts: ["AscendingConsignment"],
+    contracts: ["AscendingConsignment", "AscendingHoldLib"],
     justification: "Settle refused — phase not binding or auction endsAt unset",
+  },
+  {
+    error: "DisputeActive",
+    contracts: ["AscendingHoldLib"],
+    justification: "Hold exit refused while settlement challenge open or freeze already set",
   },
 ] as const;
 

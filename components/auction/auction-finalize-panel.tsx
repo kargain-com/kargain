@@ -4,7 +4,6 @@ import { useAccount, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
-import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
@@ -17,9 +16,11 @@ type Props = {
   chainId: number;
   tokenId: string;
   auction: AuctionRow;
+  /** Lot snapshotted protection length (seconds). Omit numeric claim while unread. */
+  protectionWindowSec?: number | null;
 };
 
-function finalizeProtectionCopy(protectionWindowSec: number | null): string {
+function finalizeProtectionCopy(protectionWindowSec: number | null | undefined): string {
   const label = formatWindowDurationLabel(protectionWindowSec ?? undefined);
   if (label) {
     return `Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a ${label} protection hold.`;
@@ -27,19 +28,23 @@ function finalizeProtectionCopy(protectionWindowSec: number | null): string {
   return "Auction ended. Anyone can finalize: the vehicle transfers to the winner and payment enters a protection hold.";
 }
 
-export function AuctionFinalizePanel({ chainId, tokenId, auction }: Props) {
+export function AuctionFinalizePanel({
+  chainId,
+  tokenId,
+  auction,
+  protectionWindowSec,
+}: Props) {
   const { isConnected } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";
-  const { rules } = useAscendingAuctionRules({ chainId });
 
   const mode = commerceModeAddress("ascending", chainId);
   const finalBid =
     auction.highestBid > 0n
       ? formatAuctionAmount(auction.highestBid, auction.assetLabel)
       : null;
-  const lead = finalizeProtectionCopy(rules?.protectionWindow ?? null);
+  const lead = finalizeProtectionCopy(protectionWindowSec);
 
   async function onFinalize() {
     if (!mode) return;
@@ -88,12 +93,10 @@ export function AuctionFinalizePanel({ chainId, tokenId, auction }: Props) {
       <Button
         type="button"
         className="w-full"
-        disabled={busy || isPending || !mode}
+        disabled={busy || isPending}
         onClick={() => void onFinalize()}
       >
-        {phase === "indexing" || busy || isPending
-          ? "Confirming…"
-          : "Finalize auction"}
+        {busy || isPending ? "Finalizing…" : "Finalize auction"}
       </Button>
     </div>
   );

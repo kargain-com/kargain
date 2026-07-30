@@ -58,7 +58,7 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 | `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions passport/staking `pending_claim` and mode `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
 | `GET /commerce-claim-credits` | Whole-table commerce credit scan for local E2E (optional `?reasonCode=`) |
 | `GET /challenges` | `BondedChallenge` feed shared by KarPassport disputes and `AscendingConsignment` — `?instance=passport\|ascending`, `?status=`, `?subjectId=`, `?challenger=`, `?chainId=`, `page`, `limit`; `instance=passport` rows include a denormalized `passport` object |
-| `GET /commerce-modes` | Mode pause/guardian/rules projection (`?chainId=`, `?mode=fixedPrice\|ascending`, `?paused=`, `page`, `limit`) |
+| `GET /commerce-modes` | Mode pause/guardian/rules projection (`?chainId=`, `?mode=fixedPrice\|ascending`, `?paused=`, `page`, `limit`). Ascending rows expose `minProtectionWindow` / `maxProtectionWindow` (opener bounds — **not** the lot hold length; lot hold is `ascending_terms.protectionWindow` on the consignment). |
 | `GET /commerce-payment-tokens` | Admitted payment tokens (`?chainId=`, `?modeContract=`, `?active=`, `page`, `limit`); soft-revoke → `active=false` |
 | `GET /commerce-currency-feeds` | FixedPrice fiat currency → feed registry (`?chainId=`, `?modeContract=`, `?currencyCode=`, `page`, `limit`) |
 

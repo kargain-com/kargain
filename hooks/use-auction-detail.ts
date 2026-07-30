@@ -231,6 +231,8 @@ export function useAuctionDetail({
     challengeBond: chain.settlementDisputeBond,
     minIncrementBps: chain.minIncrementBps ?? 300,
     extensionWindow: chain.extensionWindow ?? 300n,
+    /** Lot snapshotted protection length (seconds). */
+    protectionWindow: chain.protectionWindow,
     paused: chain.paused,
     settlementDisputeBond: chain.settlementDisputeBond,
     settlementHold: chain.settlementHold,

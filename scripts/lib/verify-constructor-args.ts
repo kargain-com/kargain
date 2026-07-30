@@ -21,12 +21,14 @@ export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
 /** Ascending nuclear defaults (governance-mutable after deploy; model §11 / §7.3). */
 export const ASCENDING_CHALLENGE_BOND = DISPUTE_DEPOSIT;
-export const ASCENDING_CHALLENGE_WINDOW = 30n * 24n * 60n * 60n;
+export const ASCENDING_CHALLENGE_WINDOW = 14n * 24n * 60n * 60n;
 export const ASCENDING_MIN_DURATION = 3n * 24n * 60n * 60n;
 export const ASCENDING_MAX_DURATION = 30n * 24n * 60n * 60n;
 export const ASCENDING_EXTENSION_WINDOW = 15n * 60n;
 export const ASCENDING_MIN_INCREMENT_BPS = 300n;
-export const ASCENDING_PROTECTION_WINDOW = 7n * 24n * 60n * 60n;
+/** Inclusive opener bounds for per-lot protection (not a protocol-wide hold length). */
+export const ASCENDING_MIN_PROTECTION_WINDOW = 7n * 24n * 60n * 60n;
+export const ASCENDING_MAX_PROTECTION_WINDOW = 45n * 24n * 60n * 60n;
 export const ASCENDING_ABANDONMENT_WINDOW = 30n * 24n * 60n * 60n;
 
 /** Fail-closed: nuclear live deploy requires `COMMERCE_GUARDIAN` (G3 pause role). */
@@ -129,7 +131,8 @@ export function ascendingConsignmentProxyConstructorArgs(manifest: DeploymentMan
       ASCENDING_MAX_DURATION,
       ASCENDING_EXTENSION_WINDOW,
       ASCENDING_MIN_INCREMENT_BPS,
-      ASCENDING_PROTECTION_WINDOW,
+      ASCENDING_MIN_PROTECTION_WINDOW,
+      ASCENDING_MAX_PROTECTION_WINDOW,
       ASCENDING_ABANDONMENT_WINDOW,
       timelock,
       guardian,
@@ -175,6 +178,18 @@ export const VERIFY_TARGETS = {
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
     addressKey: "fixedPriceConsignment" as const,
     buildArgs: fixedPriceConsignmentProxyConstructorArgs,
+  },
+  ascendingHoldLib: {
+    label: "AscendingHoldLib",
+    contract: "contracts/lib/AscendingHoldLib.sol:AscendingHoldLib",
+    addressKey: "ascendingHoldLib" as const,
+    buildArgs: (_manifest: DeploymentManifest) => [] as const,
+  },
+  ascendingOpenLib: {
+    label: "AscendingOpenLib",
+    contract: "contracts/lib/AscendingOpenLib.sol:AscendingOpenLib",
+    addressKey: "ascendingOpenLib" as const,
+    buildArgs: (_manifest: DeploymentManifest) => [] as const,
   },
   ascendingConsignmentImpl: {
     label: `AscendingConsignment impl (${CONTRACT_VERSIONS.AscendingConsignment})`,

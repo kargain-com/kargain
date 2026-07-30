@@ -5,6 +5,7 @@ import {
   durationBoundsErrorMessage,
   durationDayOptions,
   formatWindowDurationLabel,
+  protectionBoundsErrorMessage,
 } from "../lib/commerce/format-window-duration.ts";
 
 describe("formatWindowDurationLabel", () => {
@@ -42,6 +43,15 @@ describe("durationBoundsErrorMessage", () => {
     assert.equal(
       durationBoundsErrorMessage(3 * 86_400, 30 * 86_400),
       "Duration must be between 3 days and 30 days.",
+    );
+  });
+});
+
+describe("protectionBoundsErrorMessage", () => {
+  it("names both bounds from seconds", () => {
+    assert.equal(
+      protectionBoundsErrorMessage(7 * 86_400, 45 * 86_400),
+      "Protection must be between 7 days and 45 days.",
     );
   });
 });

@@ -15,9 +15,10 @@ import {
   ASCENDING_CHALLENGE_WINDOW,
   ASCENDING_EXTENSION_WINDOW,
   ASCENDING_MAX_DURATION,
+  ASCENDING_MAX_PROTECTION_WINDOW,
   ASCENDING_MIN_DURATION,
   ASCENDING_MIN_INCREMENT_BPS,
-  ASCENDING_PROTECTION_WINDOW,
+  ASCENDING_MIN_PROTECTION_WINDOW,
 } from "../scripts/lib/verify-constructor-args.ts";
 
 /** Normative model §11 / §7.3 — single expected set for Nuclear. */
@@ -26,8 +27,9 @@ const MODEL = {
   minIncrementBps: 300n,
   minDurationSec: 3n * 24n * 60n * 60n,
   maxDurationSec: 30n * 24n * 60n * 60n,
-  protectionWindowSec: 7n * 24n * 60n * 60n,
-  challengeWindowSec: 30n * 24n * 60n * 60n,
+  minProtectionWindowSec: 7n * 24n * 60n * 60n,
+  maxProtectionWindowSec: 45n * 24n * 60n * 60n,
+  challengeWindowSec: 14n * 24n * 60n * 60n,
   abandonmentWindowSec: 30n * 24n * 60n * 60n,
   challengeBondWei: parseEther("0.01"),
 } as const;
@@ -46,11 +48,12 @@ describe("Ascending Nuclear defaults ↔ model §11 parity", () => {
     assert.equal(ASCENDING_MAX_DURATION, MODEL.maxDurationSec);
   });
 
-  it("protection window is 7 days", () => {
-    assert.equal(ASCENDING_PROTECTION_WINDOW, MODEL.protectionWindowSec);
+  it("protection bounds are 7–45 days (opener chooses within)", () => {
+    assert.equal(ASCENDING_MIN_PROTECTION_WINDOW, MODEL.minProtectionWindowSec);
+    assert.equal(ASCENDING_MAX_PROTECTION_WINDOW, MODEL.maxProtectionWindowSec);
   });
 
-  it("settlement challenge window is 30 days (§7.3)", () => {
+  it("settlement challenge window is 14 days", () => {
     assert.equal(ASCENDING_CHALLENGE_WINDOW, MODEL.challengeWindowSec);
   });
 
@@ -60,5 +63,14 @@ describe("Ascending Nuclear defaults ↔ model §11 parity", () => {
 
   it("challenge bond is 0.01 ETH", () => {
     assert.equal(ASCENDING_CHALLENGE_BOND, MODEL.challengeBondWei);
+  });
+
+  it("does not export a protocol-wide protection hold constant", async () => {
+    const mod = await import("../scripts/lib/verify-constructor-args.ts");
+    assert.equal(
+      "ASCENDING_PROTECTION_WINDOW" in mod,
+      false,
+      "ASCENDING_PROTECTION_WINDOW must stay deleted",
+    );
   });
 });

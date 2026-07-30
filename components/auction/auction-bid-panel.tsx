@@ -24,6 +24,7 @@ import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auction";
 import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
 import { isZeroAddress } from "@/lib/commerce/consignment";
+import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -75,6 +76,8 @@ type Props = {
   extensionWindow?: bigint;
   /** Transient extension line (synced with readout flash). */
   extensionFlash?: string | null;
+  /** Lot snapshotted protection length (seconds) — disclosed before bid. */
+  protectionWindowSec?: number | null;
 };
 
 export function AuctionBidPanel({
@@ -86,6 +89,7 @@ export function AuctionBidPanel({
   paused,
   extensionWindow = 300n,
   extensionFlash = null,
+  protectionWindowSec = null,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
@@ -296,6 +300,20 @@ export function AuctionBidPanel({
           {ASCENDING_S1_HELP}
         </p>
       )}
+
+      {(() => {
+        const protectionLabel = formatWindowDurationLabel(
+          protectionWindowSec ?? undefined,
+        );
+        if (!protectionLabel) return null;
+        return (
+          <p className="font-sans text-sm text-text-secondary" role="note">
+            If you win, payment stays in a {protectionLabel} protection hold
+            after finalize so you can receive the vehicle and open a settlement
+            challenge if needed.
+          </p>
+        );
+      })()}
 
       <div className="space-y-2">
         <label

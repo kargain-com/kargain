@@ -85,6 +85,7 @@ export function useAuctionChainReads({
         "isBinding",
         "holdFrozenRemaining",
         "challengeChallenger",
+        "auctionProtectionWindow",
       ] as const,
     [],
   );
@@ -197,7 +198,9 @@ export function useAuctionChainReads({
     challenge,
     minIncrementBps: asNum(12),
     extensionWindow: asBig(13),
-    paused: value(26) == null ? undefined : value(26) === true,
+    /** Lot snapshotted protection length (seconds) — not live mode bounds. */
+    protectionWindow: asBig(26),
+    paused: value(27) == null ? undefined : value(27) === true,
     /** Recall request timestamp — owner cooldown before `forceRecall`. */
     returnRequestedAt: asBig(22),
     isBinding: value(23) === true,

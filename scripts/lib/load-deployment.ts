@@ -30,6 +30,8 @@ export type DeploymentBlocks = {
   bridgeGateway?: number;
   fixedPriceConsignment?: number;
   fixedPriceConsignmentImpl?: number;
+  ascendingHoldLib?: number;
+  ascendingOpenLib?: number;
   ascendingConsignment?: number;
   ascendingConsignmentImpl?: number;
 };
@@ -74,6 +76,9 @@ export type DeploymentManifest = {
   /** Commerce modes (UUPS; G3 guardian) */
   fixedPriceConsignment?: `0x${string}`;
   fixedPriceConsignmentImpl?: `0x${string}`;
+  /** Linked Ascending libraries (deploy before AscendingConsignment impl). */
+  ascendingHoldLib?: `0x${string}`;
+  ascendingOpenLib?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
   /** G3 pause guardian (EOA or multisig); not the timelock */
@@ -133,6 +138,8 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     ...(raw.fixedPriceConsignmentImpl
       ? { fixedPriceConsignmentImpl: getAddress(raw.fixedPriceConsignmentImpl) }
       : {}),
+    ...(raw.ascendingHoldLib ? { ascendingHoldLib: getAddress(raw.ascendingHoldLib) } : {}),
+    ...(raw.ascendingOpenLib ? { ascendingOpenLib: getAddress(raw.ascendingOpenLib) } : {}),
     ...(raw.ascendingConsignment
       ? { ascendingConsignment: getAddress(raw.ascendingConsignment) }
       : {}),
@@ -194,6 +201,8 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     ...(raw.fixedPriceConsignmentImpl
       ? { fixedPriceConsignmentImpl: getAddress(raw.fixedPriceConsignmentImpl) }
       : {}),
+    ...(raw.ascendingHoldLib ? { ascendingHoldLib: getAddress(raw.ascendingHoldLib) } : {}),
+    ...(raw.ascendingOpenLib ? { ascendingOpenLib: getAddress(raw.ascendingOpenLib) } : {}),
     ...(raw.ascendingConsignment
       ? { ascendingConsignment: getAddress(raw.ascendingConsignment) }
       : {}),

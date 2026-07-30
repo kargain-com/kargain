@@ -48,9 +48,10 @@ import {
   ASCENDING_CHALLENGE_WINDOW,
   ASCENDING_EXTENSION_WINDOW,
   ASCENDING_MAX_DURATION,
+  ASCENDING_MAX_PROTECTION_WINDOW,
   ASCENDING_MIN_DURATION,
   ASCENDING_MIN_INCREMENT_BPS,
-  ASCENDING_PROTECTION_WINDOW,
+  ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
   MARKETPLACE_MAX_FEED_STALENESS,
@@ -64,6 +65,7 @@ type ViemSuite = {
   sendDeploymentTransaction: (
     contractName: string,
     constructorArgs?: readonly unknown[],
+    config?: { libraries?: Record<string, `0x${string}`> },
   ) => Promise<{
     contract: { address: `0x${string}` };
     deploymentTransaction: { hash: Hash };
@@ -114,6 +116,7 @@ async function deployStep(
   label: string,
   contractName: string,
   constructorArgs: readonly unknown[] = [],
+  libraries?: Record<string, `0x${string}`>,
 ): Promise<DeployResult> {
   const publicClient = await viem.getPublicClient();
   let lastError: unknown;
@@ -123,6 +126,7 @@ async function deployStep(
       const { contract, deploymentTransaction } = await viem.sendDeploymentTransaction(
         contractName,
         constructorArgs,
+        libraries ? { libraries } : undefined,
       );
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: deploymentTransaction.hash,
@@ -332,11 +336,18 @@ async function runLiveDeploy() {
       fixedPriceInitData,
     ]);
 
+    const ascendingHoldLib = await deployStep(viem, "AscendingHoldLib", "AscendingHoldLib", []);
+    const ascendingOpenLib = await deployStep(viem, "AscendingOpenLib", "AscendingOpenLib", []);
+    const ascendingLibraries = {
+      AscendingHoldLib: ascendingHoldLib.address,
+      AscendingOpenLib: ascendingOpenLib.address,
+    };
     const ascendingImpl = await deployStep(
       viem,
       "AscendingConsignment impl",
       "AscendingConsignment",
       [],
+      ascendingLibraries,
     );
     const ascendingInitData = encodeFunctionData({
       abi: AscendingConsignmentAbi,
@@ -353,7 +364,8 @@ async function runLiveDeploy() {
         ASCENDING_MAX_DURATION,
         ASCENDING_EXTENSION_WINDOW,
         ASCENDING_MIN_INCREMENT_BPS,
-        ASCENDING_PROTECTION_WINDOW,
+        ASCENDING_MIN_PROTECTION_WINDOW,
+        ASCENDING_MAX_PROTECTION_WINDOW,
         ASCENDING_ABANDONMENT_WINDOW,
         deployerAddress,
         commerceGuardian,
@@ -485,6 +497,8 @@ async function runLiveDeploy() {
       karPassport: Number(karPassport.blockNumber),
       fixedPriceConsignmentImpl: Number(fixedPriceImpl.blockNumber),
       fixedPriceConsignment: Number(fixedPriceProxy.blockNumber),
+      ascendingHoldLib: Number(ascendingHoldLib.blockNumber),
+      ascendingOpenLib: Number(ascendingOpenLib.blockNumber),
       ascendingConsignmentImpl: Number(ascendingImpl.blockNumber),
       ascendingConsignment: Number(ascendingProxy.blockNumber),
       bridgeGateway: Number(gateway.blockNumber),
@@ -498,6 +512,8 @@ async function runLiveDeploy() {
       karProStaking: staking.address,
       fixedPriceConsignment: fixedPriceProxy.address,
       fixedPriceConsignmentImpl: fixedPriceImpl.address,
+      ascendingHoldLib: ascendingHoldLib.address,
+      ascendingOpenLib: ascendingOpenLib.address,
       ascendingConsignment: ascendingProxy.address,
       ascendingConsignmentImpl: ascendingImpl.address,
       commerceGuardian,
@@ -520,6 +536,8 @@ async function runLiveDeploy() {
         karPassport: karPassport.txHash,
         fixedPriceConsignmentImpl: fixedPriceImpl.txHash,
         fixedPriceConsignment: fixedPriceProxy.txHash,
+        ascendingHoldLib: ascendingHoldLib.txHash,
+        ascendingOpenLib: ascendingOpenLib.txHash,
         ascendingConsignmentImpl: ascendingImpl.txHash,
         ascendingConsignment: ascendingProxy.txHash,
         bridgeGateway: gateway.txHash,
@@ -536,6 +554,8 @@ async function runLiveDeploy() {
     console.log(`  KarProStaking:            ${staking.address}`);
     console.log(`  KarPassport:              ${karPassport.address}`);
     console.log(`  FixedPriceConsignment:    ${fixedPriceProxy.address}`);
+    console.log(`  AscendingHoldLib:         ${ascendingHoldLib.address}`);
+    console.log(`  AscendingOpenLib:         ${ascendingOpenLib.address}`);
     console.log(`  AscendingConsignment:     ${ascendingProxy.address}`);
     console.log(`  commerceGuardian:         ${commerceGuardian}`);
     console.log(`  KarPassportBridgeGateway: ${gateway.address}`);

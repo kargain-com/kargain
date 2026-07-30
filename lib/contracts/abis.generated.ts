@@ -6352,6 +6352,11 @@ export const AscendingConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "ProtectionOutOfBounds",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
     "type": "error"
   },
@@ -6531,7 +6536,13 @@ export const AscendingConsignmentAbi = [
       {
         "indexed": false,
         "internalType": "uint40",
-        "name": "protectionWindow",
+        "name": "minProtectionWindow",
+        "type": "uint40"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint40",
+        "name": "maxProtectionWindow",
         "type": "uint40"
       },
       {
@@ -7660,7 +7671,12 @@ export const AscendingConsignmentAbi = [
           },
           {
             "internalType": "uint40",
-            "name": "protectionWindow",
+            "name": "minProtectionWindow",
+            "type": "uint40"
+          },
+          {
+            "internalType": "uint40",
+            "name": "maxProtectionWindow",
             "type": "uint40"
           },
           {
@@ -8290,7 +8306,12 @@ export const AscendingConsignmentAbi = [
       },
       {
         "internalType": "uint40",
-        "name": "protectionWindow_",
+        "name": "minProtectionWindow_",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "maxProtectionWindow_",
         "type": "uint40"
       },
       {
@@ -8676,6 +8697,11 @@ export const AscendingConsignmentAbi = [
         "internalType": "uint40",
         "name": "duration",
         "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "protectionWindow_",
+        "type": "uint40"
       }
     ],
     "name": "openAscendingDirect",
@@ -8698,6 +8724,11 @@ export const AscendingConsignmentAbi = [
       {
         "internalType": "uint40",
         "name": "duration",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "protectionWindow_",
         "type": "uint40"
       }
     ],
@@ -8831,7 +8862,7 @@ export const AscendingConsignmentAbi = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "token",
+        "name": "",
         "type": "address"
       }
     ],
@@ -9024,7 +9055,12 @@ export const AscendingConsignmentAbi = [
       },
       {
         "internalType": "uint40",
-        "name": "protectionWindow_",
+        "name": "minProtectionWindow_",
+        "type": "uint40"
+      },
+      {
+        "internalType": "uint40",
+        "name": "maxProtectionWindow_",
         "type": "uint40"
       },
       {

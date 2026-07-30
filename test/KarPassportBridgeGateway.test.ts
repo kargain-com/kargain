@@ -634,7 +634,8 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         maxDuration: ASC_MAX_DURATION,
         extensionWindow: ASC_EXTENSION,
         minIncrementBps: ASC_MIN_INCREMENT_BPS,
-        protectionWindow: ASC_PROTECTION,
+        minProtectionWindow: ASC_PROTECTION,
+        maxProtectionWindow: ASC_PROTECTION * 10n,
         abandonmentWindow: ASC_ABANDONMENT,
         owner: admin.account.address,
         guardian: admin.account.address,
@@ -646,7 +647,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         account: seller.account,
       });
       await ascending.write.openAscendingDirect(
-        [tokenId, ZERO, ASC_RESERVE, ASC_DURATION],
+        [tokenId, ZERO, ASC_RESERVE, ASC_DURATION, ASC_PROTECTION],
         { account: seller.account },
       );
       await ascending.write.bid([tokenId, ASC_RESERVE], {
@@ -845,7 +846,8 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       maxDuration: ASC_MAX_DURATION,
       extensionWindow: ASC_EXTENSION,
       minIncrementBps: ASC_MIN_INCREMENT_BPS,
-      protectionWindow: ASC_PROTECTION,
+      minProtectionWindow: ASC_PROTECTION,
+      maxProtectionWindow: ASC_PROTECTION * 10n,
       abandonmentWindow: ASC_ABANDONMENT,
       owner: admin.account.address,
       guardian: admin.account.address,
@@ -856,7 +858,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     await hub.stack.passport.write.setApprovalForAll([ascending.address, true], {
       account: seller.account,
     });
-    await ascending.write.openAscendingDirect([tokenId, ZERO, ASC_RESERVE, ASC_DURATION], {
+    await ascending.write.openAscendingDirect([tokenId, ZERO, ASC_RESERVE, ASC_DURATION, ASC_PROTECTION], {
       account: seller.account,
     });
     await ascending.write.bid([tokenId, ASC_RESERVE], {

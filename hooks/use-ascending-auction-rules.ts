@@ -14,8 +14,8 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 const STALE_MS = 300_000;
 
 /**
- * Mode-level Ascending `auctionRules()` — duration bounds, extension,
- * protection, abandonment, increment, and challenge bond.
+ * Mode-level Ascending `auctionRules()` — duration/protection bounds,
+ * extension, abandonment, increment, and challenge bond.
  */
 export function useAscendingAuctionRules(args: {
   chainId: number;

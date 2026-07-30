@@ -388,7 +388,8 @@ export const commerceMode = onchainTable("commerce_mode", (t) => ({
   maxDuration: t.integer().notNull().default(0),
   extensionWindow: t.integer().notNull().default(0),
   minIncrementBps: t.integer().notNull().default(0),
-  protectionWindow: t.integer().notNull().default(0),
+  minProtectionWindow: t.integer().notNull().default(0),
+  maxProtectionWindow: t.integer().notNull().default(0),
   abandonmentWindow: t.integer().notNull().default(0),
   challengeBond: t.bigint().notNull().default(0n),
   /** FixedPrice max feed staleness. */

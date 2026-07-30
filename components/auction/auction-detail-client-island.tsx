@@ -172,6 +172,11 @@ export function AuctionDetailClientIsland({
               paused={detail.paused}
               extensionWindow={detail.extensionWindow}
               extensionFlash={liveSignals.extensionFlash}
+              protectionWindowSec={
+                detail.protectionWindow != null
+                  ? Number(detail.protectionWindow)
+                  : null
+              }
             />
           )}
 
@@ -199,6 +204,11 @@ export function AuctionDetailClientIsland({
               chainId={chainId}
               tokenId={tokenId}
               auction={auction}
+              protectionWindowSec={
+                detail.protectionWindow != null
+                  ? Number(detail.protectionWindow)
+                  : null
+              }
             />
           )}
 

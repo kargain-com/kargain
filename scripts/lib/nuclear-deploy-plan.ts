@@ -34,6 +34,8 @@ export const NUCLEAR_DEPLOY_STEPS = [
   "KarPassport",
   "FixedPriceConsignmentImpl",
   "FixedPriceConsignmentProxy",
+  "AscendingHoldLib",
+  "AscendingOpenLib",
   "AscendingConsignmentImpl",
   "AscendingConsignmentProxy",
   "addEncumbranceSourceFixedPrice",
