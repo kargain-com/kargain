@@ -9,14 +9,14 @@ pragma solidity ^0.8.28;
 //   Pre-release: -rc.N for release candidates, remove on mainnet deploy
 //   Immutable contracts (KarPassport, KarProPass, KarProStaking):
 //     any change = new deployment = bump MINOR or MAJOR
-//   Upgradeable contracts (MarketplaceEscrow):
+//   Upgradeable contracts (FixedPriceConsignment, AscendingConsignment):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
 /// @title Timelock48h
 /// @notice OpenZeppelin TimelockController with a fixed 48-hour minimum delay for Kargain governance.
-/// @dev Used as `MarketplaceEscrow.upgradeAuthority`. Proposer schedules; executor executes after delay.
+/// @dev Used as the mode contracts' `upgradeAuthority`. Proposer schedules; executor executes after delay.
 /// @custom:version 1.0.0-rc.1
 contract Timelock48h is TimelockController {
     string public constant VERSION = "1.0.0-rc.1";

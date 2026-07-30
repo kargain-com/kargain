@@ -403,7 +403,7 @@ export function auctionBlocksListingCommerce(
 }
 
 /**
- * Fixed-price listing blocks auction create/authorize (custody: NFT in MarketplaceEscrow).
+ * Fixed-price listing blocks auction create/authorize (custody: NFT in FixedPriceConsignment).
  * Fail-closed while chain `isListed` is unread so listed lots never flash Start auction.
  */
 export function marketplaceListingBlocksAuction(input: {

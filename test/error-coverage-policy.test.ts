@@ -25,16 +25,6 @@ export type ErrorCoverageEntry = {
 /** Production contracts → error declaration source + suites that count for coverage. */
 export const ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [
   {
-    contract: "AuctionEscrow",
-    errorSource: "interfaces/IAuctionEscrow.sol",
-    suiteFiles: ["AuctionEscrowV1.test.ts"],
-  },
-  {
-    contract: "MarketplaceEscrow",
-    errorSource: "MarketplaceEscrow.sol",
-    suiteFiles: ["MarketplaceEscrowV2.test.ts"],
-  },
-  {
     contract: "KarPassport",
     errorSource: "KarPassport.sol",
     suiteFiles: [
@@ -210,33 +200,24 @@ export function buildErrorCoverageReport(): {
     const source = fs.readFileSync(sourcePath, "utf8");
     let errors = parseErrorNames(source);
 
-    // ClaimablePayouts errors are inherited by the four money-moving contracts.
+    // ClaimablePayouts errors are inherited by the money-moving contracts.
     // Erc20Admission errors apply only where tokens enter (not KarPassport).
-    if (
-      entry.contract === "AuctionEscrow" ||
-      entry.contract === "MarketplaceEscrow" ||
-      entry.contract === "KarPassport" ||
-      entry.contract === "KarProStaking"
-    ) {
+    if (entry.contract === "KarPassport" || entry.contract === "KarProStaking") {
       const claimSource = fs.readFileSync(
         path.join(CONTRACTS_DIR, "lib/ClaimablePayouts.sol"),
         "utf8",
       );
       errors = [...new Set([...errors, ...parseErrorNames(claimSource)])].sort();
     }
-    if (
-      entry.contract === "AuctionEscrow" ||
-      entry.contract === "MarketplaceEscrow" ||
-      entry.contract === "KarProStaking"
-    ) {
+    if (entry.contract === "KarProStaking") {
       const admissionSource = fs.readFileSync(
         path.join(CONTRACTS_DIR, "lib/Erc20Admission.sol"),
         "utf8",
       );
-      // TokenDecimalsUnavailable is only reachable via MarketplaceEscrow.approvePaymentToken.
+      // TokenDecimalsUnavailable is reachable only via FixedPriceConsignment / AscendingConsignment
+      // requireDecimals — KarProStaking.setStakeToken only calls requireConforming.
       const admissionErrors = parseErrorNames(admissionSource).filter(
-        (name) =>
-          name !== "TokenDecimalsUnavailable" || entry.contract === "MarketplaceEscrow",
+        (name) => name !== "TokenDecimalsUnavailable",
       );
       errors = [...new Set([...errors, ...admissionErrors])].sort();
     }

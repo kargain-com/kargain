@@ -1,33 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useReadContract,
-  useWriteContract,
-} from "wagmi";
+import { useAccount, useChainId, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
+import { useMandate } from "@/hooks/use-mandate";
+import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import {
-  auctionReserveMeetsOwnerMin,
-  isAuctionAuthUsableForCreate,
-  MAX_AGENT_FEE_BPS,
-  parseAuctionAgentAuthorization,
-} from "@/lib/auction/auction-agent";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import {
   auctionAssetLabelFromAddress,
   parseOwnerMinAsset,
 } from "@/lib/auction/owner-min-asset";
-import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { computeSellerNet } from "@/lib/marketplace/seller-net";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
-  auctionEscrowAddress,
-  usdcAddress,
-} from "@/lib/web3/deployment-addresses";
+  agentedPriceMeetsFloor,
+  computeAgentedSplit,
+} from "@/lib/commerce/agented-split";
+import { compensationFormLabel } from "@/lib/commerce/denomination";
+import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -41,19 +35,9 @@ type Props = {
 const THREE_DAYS = 3 * 24 * 60 * 60;
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
 
-function parseCommissionBps(input: string): number | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const pct = Number(trimmed);
-  if (!Number.isFinite(pct) || pct < 0 || pct > 30) return null;
-  const bps = Math.round(pct * 100);
-  if (bps > MAX_AGENT_FEE_BPS) return null;
-  return bps;
-}
-
 /**
- * Agent `createAuctionOnBehalf` — asset locked to chain authorization.
- * Chain-reads `auctionAgentAuthorizations` on mount (U2).
+ * Agent `openAscendingFromMandate` — asset, floor and compensation are fixed
+ * by the owner's mandate; the agent chooses only reserve and duration.
  */
 export function AgentCreateAuctionPanel({
   chainId,
@@ -67,13 +51,15 @@ export function AgentCreateAuctionPanel({
 
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
-  const [commissionInput, setCommissionInput] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
   const busy = phase !== "idle";
 
-  const escrow = auctionEscrowAddress(chainId);
-  const usdc = usdcAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const { paused: modePaused } = useCommerceModePaused({
+    mode: "ascending",
+    chainId,
+  });
   const tid = useMemo(() => {
     try {
       return BigInt(tokenId);
@@ -82,86 +68,65 @@ export function AgentCreateAuctionPanel({
     }
   }, [tokenId]);
 
-  const { data: authRaw, isPending: authPending } = useReadContract({
-    address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "auctionAgentAuthorizations",
-    args: [tid],
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(escrow && tokenId) },
+  const { mandate, platformFeeBps, isPending: mandatePending } = useMandate({
+    mode: "ascending",
+    chainId,
+    tokenId,
   });
 
-  const { data: platformFeeBpsRaw } = useReadContract({
-    address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "platformFeeBps",
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(escrow) },
-  });
-
-  const auth = useMemo(
-    () => parseAuctionAgentAuthorization(authRaw),
-    [authRaw],
-  );
-  const platformFeeBps =
-    platformFeeBpsRaw != null ? BigInt(platformFeeBpsRaw) : undefined;
   const nowSec = Math.floor(Date.now() / 1000);
-  const usable = isAuctionAuthUsableForCreate(auth, nowSec);
+  const usable = canAgentOpenFromMandate({
+    mandate,
+    agentAddress: address,
+    nowSeconds: nowSec,
+  });
 
-  const isAuthorizedAgent =
-    isConnected &&
-    Boolean(address && auth) &&
-    address!.toLowerCase() === auth!.agent.toLowerCase();
-
-  const assetLabel = auctionAssetLabelFromAddress(auth?.asset);
-
+  const assetLabel = auctionAssetLabelFromAddress(mandate?.asset);
   const reserve = useMemo(
     () => parseOwnerMinAsset(reserveStr, assetLabel),
     [reserveStr, assetLabel],
   );
-  const agentFeeBps = useMemo(
-    () => parseCommissionBps(commissionInput) ?? -1,
-    [commissionInput],
-  );
-  const validCommission = agentFeeBps >= 0;
 
-  const meetsMin = auctionReserveMeetsOwnerMin(
-    reserve,
-    validCommission ? agentFeeBps : -1,
+  const meetsFloor = agentedPriceMeetsFloor({
+    price: reserve,
+    floor: mandate?.floor ?? 0n,
+    compensationForm: mandate?.compensationForm ?? 0,
+    commissionBps: mandate?.commissionBps ?? 0,
     platformFeeBps,
-    auth?.ownerMinAsset ?? 0n,
-  );
+  });
 
   const breakdown =
-    reserve != null &&
-    validCommission &&
-    platformFeeBps != null &&
-    reserve > 0n
-      ? computeSellerNet(reserve, agentFeeBps, platformFeeBps)
+    reserve != null && reserve > 0n && mandate && platformFeeBps != null
+      ? computeAgentedSplit({
+          settled: reserve,
+          floor: mandate.floor,
+          compensationForm: mandate.compensationForm,
+          commissionBps: mandate.commissionBps,
+          platformFeeBps,
+        })
       : null;
 
   if (!escrow) return null;
 
-  if (authPending) {
+  if (mandatePending || mandate === undefined) {
     return (
       <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-        Loading authorization…
+        Loading mandate…
       </p>
     );
   }
 
-  if (!usable || !isAuthorizedAgent || !auth) {
+  if (!isConnected || !usable || !mandate) {
     return (
       <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-        You are not authorized to start an auction for this vehicle, or the
-        authorization expired.
+        You do not hold an active mandate for this vehicle, or it expired.
       </p>
     );
   }
 
   async function onCreate() {
     setTxError(null);
-    if (!escrow || !auth || !usable) return;
+    if (!escrow || !mandate || !usable) return;
 
     const durationSec = durationDays * 24 * 60 * 60;
     if (durationSec < THREE_DAYS || durationSec > SEVEN_DAYS) {
@@ -172,31 +137,21 @@ export function AgentCreateAuctionPanel({
       setTxError("Enter a valid reserve amount.");
       return;
     }
-    if (!validCommission) {
-      setTxError("Enter a commission between 0% and 30%.");
-      return;
-    }
     if (platformFeeBps == null) {
       setTxError("Loading platform fee…");
       return;
     }
-    if (!meetsMin) {
-      setTxError(
-        txErrorMessage(new Error("BelowOwnerMinAsset")),
-      );
-      return;
-    }
-    if (assetLabel === "USDC" && !usdc) {
-      setTxError("USDC is not configured on this chain.");
+    if (!meetsFloor) {
+      setTxError(txErrorMessage(new Error("BelowFloor")));
       return;
     }
 
     const succeeded = await runTx(() =>
       writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "createAuctionOnBehalf",
-        args: [tid, auth.asset, reserve, durationSec, agentFeeBps],
+        abi: AscendingConsignmentAbi,
+        functionName: "openAscendingFromMandate",
+        args: [tid, reserve, durationSec],
         chainId: wagmiChainId(chainId),
       }),
     );
@@ -205,6 +160,8 @@ export function AgentCreateAuctionPanel({
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+      {modePaused === true ? <CommercePausedNotice mode="ascending" /> : null}
+
       <div>
         <p className="font-sans text-xs font-medium uppercase tracking-[0.12em] text-text-tertiary">
           Start auction on behalf
@@ -214,9 +171,13 @@ export function AgentCreateAuctionPanel({
           <span className="font-mono tabular-nums text-text-primary">
             {assetLabel}
           </span>
-          . Owner minimum{" "}
+          . Owner floor{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(auth.ownerMinAsset, assetLabel)}
+            {formatAuctionAmount(mandate.floor, assetLabel)}
+          </span>
+          . Compensation{" "}
+          <span className="text-text-primary">
+            {compensationFormLabel(mandate.compensationForm)}
           </span>
           .
         </p>
@@ -274,30 +235,6 @@ export function AgentCreateAuctionPanel({
         </select>
       </div>
 
-      <div className="space-y-2">
-        <label
-          htmlFor="agent-auction-commission"
-          className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary"
-        >
-          Your commission (%)
-        </label>
-        <input
-          id="agent-auction-commission"
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0–30"
-          value={commissionInput}
-          onChange={(e) => setCommissionInput(e.target.value)}
-          disabled={busy || isWriting}
-          className={cn(
-            "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
-            "font-mono text-sm tabular-nums text-text-primary",
-            "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-          )}
-        />
-      </div>
-
       {breakdown && reserve != null && (
         <p className="rounded-md border border-border-default bg-bg-primary p-3 font-sans text-sm text-text-secondary">
           At reserve{" "}
@@ -306,20 +243,20 @@ export function AgentCreateAuctionPanel({
           </span>
           : you receive{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(breakdown.agentFee, assetLabel)}
+            {formatAuctionAmount(breakdown.agentAmount, assetLabel)}
           </span>
           , owner receives{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(breakdown.sellerNet, assetLabel)}
+            {formatAuctionAmount(breakdown.ownerAmount, assetLabel)}
           </span>
-          . Your commission is fixed for the whole auction.
+          .
         </p>
       )}
 
-      {reserve != null && validCommission && platformFeeBps != null && !meetsMin && (
+      {reserve != null && platformFeeBps != null && !meetsFloor && (
         <p className="text-sm text-status-error" role="alert">
-          At this reserve the owner would receive less than their guaranteed
-          minimum. Raise the reserve or lower the commission.
+          At this reserve the owner would receive less than their mandate floor.
+          Raise the reserve.
         </p>
       )}
 
@@ -344,11 +281,11 @@ export function AgentCreateAuctionPanel({
         type="button"
         className="w-full"
         disabled={
+          modePaused === true ||
           busy ||
           isWriting ||
           !reserveStr.trim() ||
-          !validCommission ||
-          !meetsMin ||
+          !meetsFloor ||
           platformFeeBps == null
         }
         onClick={() => void onCreate()}

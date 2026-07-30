@@ -1,33 +1,38 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IAuctionEscrow} from "../interfaces/IAuctionEscrow.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 interface IClaimWithdraw {
     function withdrawClaim(address asset) external;
 }
 
-/// @notice Contract bidder that reverts on native receive until `acceptEth` is set — tests claim credits.
+interface IAscendingBiddable {
+    function bid(uint256 tokenId, uint128 amount) external payable;
+    function withdrawClaim(address asset) external;
+}
+
+/// @notice Contract bidder that reverts on native receive until `acceptEth` is set — tests claim credits
+/// against `AscendingConsignment` outbid refunds.
 contract RevertingBidder {
-    IAuctionEscrow public immutable escrow;
+    IAscendingBiddable public immutable mode;
     bool public acceptEth;
 
-    constructor(IAuctionEscrow escrow_) {
-        escrow = escrow_;
+    constructor(IAscendingBiddable mode_) {
+        mode = mode_;
     }
 
     function setAcceptEth(bool value) external {
         acceptEth = value;
     }
 
-    /// @notice Place a native bid through the escrow.
+    /// @notice Place a native bid through the mode.
     function bidNative(uint256 tokenId) external payable {
-        escrow.bid{value: msg.value}(tokenId, uint128(msg.value));
+        mode.bid{value: msg.value}(tokenId, uint128(msg.value));
     }
 
     function withdrawClaim(address asset) external {
-        escrow.withdrawClaim(asset);
+        mode.withdrawClaim(asset);
     }
 
     receive() external payable {
@@ -173,29 +178,17 @@ contract RevertingRecipient {
             price
         );
     }
-
-    /// @notice Owner-only helper: approve escrow and authorize agent (msg.sender to escrow = this contract).
-    function authorizeAgentForSelf(
-        address passport,
-        address escrow,
-        uint256 tokenId,
-        address agent,
-        address asset
-    ) external {
-        IERC721(passport).setApprovalForAll(escrow, true);
-        IAuctionEscrow(escrow).authorizeAuctionAgent(tokenId, agent, 0, asset, 0);
-    }
 }
 
-/// @notice Malicious bidder that attempts reentrancy during outbid refund.
+/// @notice Malicious bidder that attempts reentrancy during outbid refund on `AscendingConsignment`.
 contract ReentrantBidder {
-    IAuctionEscrow public immutable escrow;
+    IAscendingBiddable public immutable mode;
     uint256 public targetTokenId;
     uint128 public nextAmount;
     bool public reentering;
 
-    constructor(IAuctionEscrow escrow_) {
-        escrow = escrow_;
+    constructor(IAscendingBiddable mode_) {
+        mode = mode_;
     }
 
     function configure(uint256 tokenId, uint128 amount) external {
@@ -204,14 +197,14 @@ contract ReentrantBidder {
     }
 
     function bidNative(uint256 tokenId, uint128 amount) external payable {
-        escrow.bid{value: msg.value}(tokenId, amount);
+        mode.bid{value: msg.value}(tokenId, amount);
     }
 
     receive() external payable {
         if (reentering) return;
         if (nextAmount > 0) {
             reentering = true;
-            escrow.bid{value: nextAmount}(targetTokenId, nextAmount);
+            mode.bid{value: nextAmount}(targetTokenId, nextAmount);
             reentering = false;
         }
     }

@@ -27,6 +27,8 @@ type Props = {
   disabled?: boolean;
   /** When false, only the settlement explainer + note are shown. */
   showAskingFields?: boolean;
+  /** Currency is fixed for the life of a consignment — hide when re-pricing. */
+  showCurrencyField?: boolean;
   /** When false, hide direct-payment instructions block. */
   showSettlementFields?: boolean;
 };
@@ -42,6 +44,7 @@ export function ListingSellerSettlementPanel({
   priceInputId = "asking-price",
   disabled = false,
   showAskingFields = true,
+  showCurrencyField = true,
   showSettlementFields = true,
 }: Props) {
   const currencyOptions = listingCurrencyCodesForChain(chainId);
@@ -63,6 +66,7 @@ export function ListingSellerSettlementPanel({
             />
           </div>
 
+          {showCurrencyField && (
           <div className="space-y-2">
             <Label htmlFor={`${priceInputId}-currency`}>Currency</Label>
             <Select
@@ -85,6 +89,7 @@ export function ListingSellerSettlementPanel({
               </SelectContent>
             </Select>
           </div>
+          )}
         </>
       )}
 
@@ -96,7 +101,8 @@ export function ListingSellerSettlementPanel({
         <div className="space-y-1.5 border-b border-border-default pb-3">
           <p className="font-sans text-sm text-text-primary">On Kargain</p>
           <p className="font-sans text-xs text-text-secondary">
-            Buyers pay in ETH or USDC. You receive crypto in your wallet after the sale.
+            Buyers pay in the settlement asset of the listing. You receive it in your
+            wallet after the sale.
           </p>
         </div>
         )}

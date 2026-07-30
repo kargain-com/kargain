@@ -1,7 +1,7 @@
 -- Clean reindex after a contract redeploy or ponder.schema.ts change (Base Sepolia 84532).
 --
 -- When to run:
---   1. KarPassport and/or MarketplaceEscrow addresses changed (Phase 5 v1.1 redeploy)
+--   1. KarPassport and/or FixedPrice/Ascending consignment addresses changed
 --   2. ponder.schema.ts changed (e.g. G1 trust fields, fuel/body/trans denorm)
 --   3. You set PONDER_START_BLOCK_84532 from deployments/84532.json (indexFromBlock)
 --

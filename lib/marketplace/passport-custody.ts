@@ -1,6 +1,6 @@
 import { getAddress } from "viem";
 
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
+import { commerceModeAddresses } from "@/lib/commerce/mode";
 
 export type PassportCustody = {
   profileAddress: `0x${string}`;
@@ -23,13 +23,11 @@ export function resolvePassportCustody({
   listing,
 }: ResolvePassportCustodyInput): PassportCustody {
   const owner = getAddress(passportOwner);
-  const market = marketplaceAddress(chainId);
+  const modes = Object.values(commerceModeAddresses(chainId)).map((a) =>
+    a.toLowerCase(),
+  );
 
-  if (
-    listing?.active &&
-    market &&
-    owner.toLowerCase() === market.toLowerCase()
-  ) {
+  if (listing?.active && modes.includes(owner.toLowerCase())) {
     return {
       profileAddress: getAddress(listing.seller),
       custodyAddress: owner,

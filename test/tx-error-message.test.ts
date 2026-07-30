@@ -39,13 +39,6 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps NotSeller", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotSeller()")),
-      "Only the seller of this sale can do this.",
-    );
-  });
-
   it("maps NotSellerOrAgent", () => {
     assert.equal(
       txErrorMessage(new Error("reverted with custom error NotSellerOrAgent()")),
@@ -60,59 +53,10 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps NoAgent", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error NoAgent()")),
-      "This sale has no agent. Use the direct seller action instead.",
-    );
-  });
-
-  it("maps ListingHasAgent", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error ListingHasAgent()")),
-      "This sale has an agent. Use the agent cancel or delist path instead.",
-    );
-  });
-
-  it("maps AuctionHasAgent", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error AuctionHasAgent()")),
-      "This auction has an agent. Use the agent cancel path instead.",
-    );
-  });
-
   it("maps NoClaim", () => {
     assert.equal(
       txErrorMessage(new Error("reverted with custom error NoClaim()")),
       "There is no pending claim to withdraw for this asset.",
-    );
-  });
-
-  it("NotSellerOrAgent is not confused with NotSeller", () => {
-    assert.equal(
-      txErrorMessage(new Error("Custom error: NotSellerOrAgent()")),
-      "Only the seller or listing agent can confirm this payment.",
-    );
-  });
-
-  it("maps RefundPending", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error RefundPending()")),
-      "A failed-sale refund is pending for this vehicle.",
-    );
-  });
-
-  it("maps RefundNotPending", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error RefundNotPending()")),
-      "No failed-sale refund is pending for this vehicle.",
-    );
-  });
-
-  it("maps NotActive", () => {
-    assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotActive()")),
-      "This listing is not active.",
     );
   });
 
@@ -123,10 +67,24 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps HoldReleased", () => {
+  it("maps MandateExpired", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error HoldReleased()")),
-      "The payment hold has already been released.",
+      txErrorMessage(new Error("reverted with custom error MandateExpired()")),
+      "This mandate has expired. Grant a new one to open a consignment.",
+    );
+  });
+
+  it("maps LiveConsignment", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error LiveConsignment()")),
+      "Finish or return the live consignment before changing the mandate.",
+    );
+  });
+
+  it("maps LeaveChainRefused", () => {
+    assert.equal(
+      txErrorMessage(new Error("reverted with custom error LeaveChainRefused()")),
+      "This passport cannot leave the chain right now (encumbrance refused).",
     );
   });
 });

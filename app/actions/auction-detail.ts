@@ -2,13 +2,16 @@
 
 import {
   filterBidsForAuction,
-  mapPonderAuctionBid,
   mapPonderAuctionRow,
   type AuctionBid,
   type AuctionRow,
-  type PonderAuctionBidRaw,
-  type PonderAuctionRaw,
 } from "@/lib/auction/map-ponder-auction";
+import { consignmentToAuctionRaw } from "@/lib/commerce/auction-view";
+import {
+  mapConsignmentBidRows,
+  type PonderConsignmentBidRow,
+  type PonderConsignmentRow,
+} from "@/lib/commerce/ponder-consignment";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type AuctionDetailResult =
@@ -24,29 +27,32 @@ export type AuctionBidsResult = {
   ponderError?: string;
 };
 
-type PonderBidsResponse = {
-  bids: PonderAuctionBidRaw[];
-  total: number;
-  page: number;
-  limit: number;
+type BidsResponse = {
+  bids?: PonderConsignmentBidRow[];
+  total?: number;
+  page?: number;
+  limit?: number;
 };
 
 export async function getAuctionDetail(
   tokenId: string,
 ): Promise<AuctionDetailResult> {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/auctions/${tokenId}`);
+    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}`);
+    url.searchParams.set("mode", "ascending");
+
+    const res = await ponderFetch(url.toString());
     if (res.status === 404) {
       return { ok: true, auction: null };
     }
     if (!res.ok) {
       return { ok: true, auction: null, ponderError: "PONDER_UNAVAILABLE" };
     }
-    const raw = (await res.json()) as PonderAuctionRaw;
+    const raw = (await res.json()) as PonderConsignmentRow;
     if (!raw?.tokenId) {
       return { ok: true, auction: null };
     }
-    return { ok: true, auction: mapPonderAuctionRow(raw) };
+    return { ok: true, auction: mapPonderAuctionRow(consignmentToAuctionRaw(raw)) };
   } catch {
     return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
@@ -57,7 +63,7 @@ export async function getAuctionBids(
   opts?: {
     page?: number;
     limit?: number;
-    /** U11 — filter bids older than this auction's createdAt. */
+    /** Drop bids from prior lots on the same passport. */
     auctionCreatedAt?: bigint | string | number;
   },
 ): Promise<AuctionBidsResult> {
@@ -65,7 +71,7 @@ export async function getAuctionBids(
   const limit = opts?.limit ?? 50;
 
   try {
-    const url = new URL(`${ponderBaseUrl()}/auctions/${tokenId}/bids`);
+    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}/bids`);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
 
@@ -81,8 +87,16 @@ export async function getAuctionBids(
       };
     }
 
-    const data = (await res.json()) as PonderBidsResponse;
-    let bids = (data.bids ?? []).map(mapPonderAuctionBid);
+    const data = (await res.json()) as BidsResponse;
+    let bids: AuctionBid[] = mapConsignmentBidRows(data.bids).map((bid) => ({
+      id: bid.id,
+      tokenId: bid.tokenId,
+      bidder: bid.bidder,
+      amount: bid.amount,
+      endsAt: bid.endsAt,
+      refunded: bid.refunded,
+      timestamp: BigInt(bid.timestamp),
+    }));
 
     if (opts?.auctionCreatedAt != null) {
       const createdAt =
@@ -93,14 +107,13 @@ export async function getAuctionBids(
     }
 
     const total = data.total ?? bids.length;
-    const totalPages = Math.max(1, Math.ceil(total / (data.limit || limit)));
 
     return {
       ok: true,
       bids,
       total,
       page: data.page ?? page,
-      totalPages,
+      totalPages: Math.max(1, Math.ceil(total / (data.limit || limit))),
     };
   } catch {
     return {

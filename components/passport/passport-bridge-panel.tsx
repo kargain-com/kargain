@@ -10,19 +10,18 @@ import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
 import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import type { CommerceMode } from "@/lib/commerce/mode";
 import {
   bridgeActionCopy,
   bridgeBlockReasonCopy,
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
-  type BridgeListingState,
 } from "@/lib/passport/bridge-surface";
 import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
-import type { PassportStatus } from "@/lib/types/ponder";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
@@ -32,18 +31,21 @@ type Props = {
   chainId: number;
   tokenId: string;
   passportOwner: `0x${string}`;
-  passportStatus: PassportStatus;
-  listingState: BridgeListingState;
-  auctionBlocks: boolean | undefined;
+  /** `may(tokenId, LeaveChain)`; `undefined` fails closed. */
+  mayLeaveChain: boolean | undefined;
+  /** Mode holding a live consignment, when one does — drives block copy. */
+  liveConsignmentMode: CommerceMode | null;
+  /** Bonded verification challenge open on the passport. */
+  challengeOpen: boolean | undefined;
 };
 
 export function PassportBridgePanel({
   chainId,
   tokenId,
   passportOwner,
-  passportStatus,
-  listingState,
-  auctionBlocks,
+  mayLeaveChain,
+  liveConsignmentMode,
+  challengeOpen,
 }: Props) {
   const router = useRouter();
   const handedOffRef = useRef(false);
@@ -90,9 +92,9 @@ export function PassportBridgePanel({
   const surface = deriveBridgeSurface({
     isOwner: Boolean(isOwner),
     chainId,
-    listingState,
-    auctionBlocks,
-    passportStatus,
+    mayLeaveChain,
+    liveConsignmentMode,
+    challengeOpen: challengeOpen === true,
     transitActive,
   });
 

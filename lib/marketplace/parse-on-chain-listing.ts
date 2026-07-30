@@ -54,9 +54,35 @@ function toRow(
   };
 }
 
+export type FixedPriceListingFields = {
+  /** `ConsignmentPhase` — `Offered` (1) is the only listed phase. */
+  phase: number | undefined;
+  seller: string | undefined;
+  price: bigint | undefined;
+  /** `bytes32` currency code from `consignmentDenominationOf`. */
+  currencyCode: unknown;
+};
+
 /**
- * Decode MarketplaceEscrow `listings(tokenId)` — v2 struct:
- * seller, fiatPrice1e8, active, agent, ownerMinPrice1e8, agentFeeBps, currencyCode
+ * Assemble the browse/detail listing row from `FixedPriceConsignment`
+ * per-token getters. Returns `null` while the phase read is unresolved so
+ * callers keep commerce CTAs hidden (fail closed).
+ */
+export function buildOnChainListing(
+  fields: FixedPriceListingFields,
+): OnChainListingRow | null {
+  if (fields.phase == null) return null;
+  return toRow(
+    (fields.seller as `0x${string}` | undefined) ?? zeroAddress,
+    fields.price ?? 0n,
+    fields.phase === 1,
+    fields.currencyCode,
+  );
+}
+
+/**
+ * Decode a legacy escrow-shaped listing tuple. Retained for Ponder-sourced
+ * rows and tests; chain reads go through `buildOnChainListing`.
  */
 export function parseOnChainListing(raw: unknown): OnChainListingRow | null {
   if (raw == null) return null;

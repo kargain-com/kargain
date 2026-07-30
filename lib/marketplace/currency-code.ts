@@ -70,12 +70,12 @@ export function listingCurrencyCodesForChain(chainId: number): readonly ListingC
   return LISTING_CURRENCIES_BY_CHAIN[chainId] ?? DEFAULT_LISTING_CURRENCIES;
 }
 
-/** Encode ISO 4217 code for MarketplaceEscrow `currencyCode` (bytes32). */
+/** Encode ISO 4217 code for FixedPriceConsignment `currencyCode` (bytes32). */
 export function encodeCurrencyCode(iso: string): Hex {
   return stringToHex(iso, { size: 32 });
 }
 
-/** Decode ISO-style bytes32 currency code from MarketplaceEscrow events. */
+/** Decode ISO-style bytes32 currency code from FixedPriceConsignment events. */
 export function decodeCurrencyCode(code: Hex | string): string {
   const hex = code.startsWith("0x") ? code.slice(2) : code;
   if (hex.length !== 64) return "";

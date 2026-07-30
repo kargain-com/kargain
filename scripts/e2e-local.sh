@@ -8,7 +8,7 @@
 # Ponder runs on embedded PGlite in dev — Docker is NOT required. Sets
 # KARGAIN_E2E_STRICT=1 so an unreachable indexer fails the suite (not a silent skip).
 #
-# Requires deployments/31337.json to include auctionEscrow + auctionEscrowImpl
+# Requires deployments/31337.json to include fixedPriceConsignment + ascendingConsignment
 # (written by `pnpm deploy:local`).
 
 set -euo pipefail
@@ -53,7 +53,8 @@ eval "$(node --import tsx "$ROOT/scripts/lib/print-local-env.ts")"
 # Partial PONDER_* address exports break ponder.config (normalizeLocal needs the
 # full manifest). Ponder loads deployments/31337.json when these are unset.
 unset PONDER_KAR_PASSPORT_ADDRESS PONDER_KAR_PRO_PASS_ADDRESS PONDER_KAR_PRO_STAKING_ADDRESS \
-  PONDER_MARKETPLACE_ADDRESS PONDER_USDC_ADDRESS PONDER_NATIVE_FEED_ADDRESS
+  PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS PONDER_ASCENDING_CONSIGNMENT_ADDRESS \
+  PONDER_USDC_ADDRESS PONDER_NATIVE_FEED_ADDRESS
 export PONDER_ENABLE_LOCAL=1
 # Index only the Hardhat chain — `/ready` must not wait on a public Sepolia RPC.
 export PONDER_LOCAL_ONLY=1

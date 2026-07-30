@@ -16,8 +16,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
-| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; Nuclear dual-chain / C3; FX display layer (§6); agent consignment API + UI (§6) |
-| [indexer/MIGRATION-AUCTION.md](./indexer/MIGRATION-AUCTION.md) | AuctionEscrow tables (incl. agent auth), events, per-contract start blocks |
+| [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; Nuclear dual-chain / C3; FX display layer (§6) |
 | [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44434865** + Eth **11319840**) |
 
 ## UI

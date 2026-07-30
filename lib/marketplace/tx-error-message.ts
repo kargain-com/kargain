@@ -5,23 +5,9 @@ import { UserRejectedRequestError } from "viem";
  * distinct message. Resolution uses whole-identifier match + longest-name wins (no list order).
  */
 export const REVERT_COPY: Readonly<Record<string, string>> = {
-  AlreadyListed: "This vehicle is already listed. Delist it first.",
-  NotActive: "This listing is not active.",
   NotOwner: "Only the passport owner can do this.",
   NotSellerOrAgent: "Only the seller or listing agent can confirm this payment.",
-  NotSeller: "Only the seller of this sale can do this.",
   NotAgent: "Only the authorized agent can do this.",
-  NoAgent: "This sale has no agent. Use the direct seller action instead.",
-  ListingHasAgent:
-    "This sale has an agent. Use the agent cancel or delist path instead.",
-  AuctionHasAgent:
-    "This auction has an agent. Use the agent cancel path instead.",
-  CannotRaiseMinPrice: "New minimum must be lower than the current minimum.",
-  BelowOwnerMinPrice:
-    "Owner would receive less than their guaranteed minimum after fees. Lower commission or raise the asking price.",
-  AgentNotAuthorized:
-    "You are not authorized for this vehicle, or the authorization expired.",
-  AgentFeeTooHigh: "Commission cannot exceed 30%.",
   ReturnAlreadyRequested:
     "A return has already been requested. Check the countdown for when force return becomes available.",
   ReturnCooldownPending: "The 7-day return countdown has not finished yet.",
@@ -42,32 +28,17 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   BidTooLow:
     "Bid at least [min next bid] — the minimum step is [3]% above the current bid.",
   AuctionEnded: "This auction has ended. The page will update shortly.",
-  AuctionAlreadyStarted:
-    "The first bid has been placed — this auction can no longer be cancelled or recalled.",
   BidFromSeller: "Sellers cannot bid on their own auction.",
   BidFromAgent: "Agents cannot bid on their own auction.",
-  PassportNotVerified:
-    "Bidding requires a verified passport. This vehicle is currently unverified.",
-  PassportDisputed:
-    "Bidding requires a verified passport. This vehicle is currently disputed.",
   SettlementPending:
     "The previous sale of this vehicle is still settling. Try again after the hold ends.",
   WrongValue: "Native amount does not match. Refresh and try again.",
-  WrongAsset: "Payment asset does not match this auction. Refresh and try again.",
-  BelowOwnerMinAsset:
-    "At this reserve the owner would receive less than their guaranteed minimum. Raise the reserve or lower the commission.",
-  BondTooLow: "The dispute bond is [0.01 ETH]. Send the exact amount shown.",
-  HoldReleased: "The payment hold has already been released.",
   ContractPaused:
     "This contract is temporarily paused. Existing refunds and payouts are unaffected.",
   NotGuardian: "Only the pause guardian can pause this contract.",
   NoHold: "There is no open settlement hold for this vehicle.",
   DisputeActive:
     "A settlement dispute is still open. Wait for resolution or the auto-release timeout.",
-  HoldActive: "The settlement or abandoned-refund window has not finished yet.",
-  RefundNotPending: "No failed-sale refund is pending for this vehicle.",
-  RefundPending: "A failed-sale refund is pending for this vehicle.",
-  NotBuyer: "Only the winning buyer can do this.",
   LeaveChainRefused:
     "This passport cannot leave the chain right now (encumbrance refused).",
   NoClaim: "There is no pending claim to withdraw for this asset.",
@@ -97,27 +68,19 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotHomeToken: "This token id is not a home-chain passport.",
   TokenExists: "This passport id already exists.",
   PassportBridgedAway: "This passport is bridged away and cannot be used here.",
-  BadPrice: "Listing price is invalid.",
   FeeTooHigh: "Platform fee is above the allowed maximum.",
   StalePrice: "The price oracle answer is stale. Try again shortly.",
   BadOracleAnswer: "The price oracle returned an invalid answer.",
-  NotUpgradeAuthority: "Only the upgrade authority can do this.",
   CurrencyNotAvailableOnChain: "This listing currency is not available on this chain.",
   InvalidCurrencyCode: "That currency code cannot be registered as a listing feed.",
   InvalidFeed: "Currency feed address is invalid.",
   InvalidFeedDecimals: "Currency feed decimals are invalid.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   DirectEthNotAccepted: "Send ETH only through the supported payable functions.",
-  AuctionExists: "An auction already exists for this vehicle.",
-  NoAuction: "There is no active auction for this vehicle.",
-  AuctionNotStarted: "The auction has not started yet.",
   AuctionNotEnded: "The auction has not ended yet.",
-  UnsupportedAsset: "This settlement asset is not supported.",
   BadDuration: "Auction duration is outside the allowed range.",
   BadReserve: "Auction reserve must be greater than zero.",
   EscrowNotApproved: "Approve the escrow on your passport first.",
-  NoDispute: "There is no open settlement dispute for this vehicle.",
-  CannotResolveOwnDeal: "You cannot resolve a dispute on your own deal.",
   ZeroAddress: "Address cannot be zero.",
   BadConfig: "Configuration value is outside the allowed range.",
   NotRepresentationOwner: "Only the representation owner can do this.",
@@ -198,9 +161,9 @@ export function formatBidTooLowMessage(
   return `Bid at least ${minNextBidLabel} — the minimum step is ${pct}% above the current bid.`;
 }
 
-/** Bridge-context override for PassportDisputed (global map is auction-oriented). */
+/** Bridge-context override for LeaveChainRefused when a challenge is open. */
 export function formatPassportBridgeBlockedMessage(): string {
-  return "Resolve the dispute before bridging.";
+  return "Resolve the open challenge before bridging.";
 }
 
 export function txErrorMessage(err: unknown): string {

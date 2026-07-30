@@ -26,12 +26,8 @@ export type DeploymentBlocks = {
   karProPass?: number;
   karProStaking?: number;
   karPassport?: number;
-  marketplaceImpl?: number;
-  marketplace?: number;
   timelock?: number;
   bridgeGateway?: number;
-  auctionEscrow?: number;
-  auctionEscrowImpl?: number;
   fixedPriceConsignment?: number;
   fixedPriceConsignmentImpl?: number;
   ascendingConsignment?: number;
@@ -65,21 +61,16 @@ export type DeploymentManifest = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
-  marketplace: `0x${string}`;
-  marketplaceImpl: `0x${string}`;
   usdc?: `0x${string}`;
   nativeFeed?: `0x${string}`;
   eurFeed?: `0x${string}`;
   timelock?: `0x${string}`;
   platformRecipient?: `0x${string}`;
   deployer?: `0x${string}`;
-  /** On-chain MarketplaceEscrow.upgradeAuthority (timelock contract or deployer EOA). */
+  /** Timelock or deployer EOA recorded as manifest upgradeAuthority (historical manifests). */
   upgradeAuthority?: `0x${string}`;
   /** KarPassportBridgeGateway (nuclear commercial stack) */
   bridgeGateway?: `0x${string}`;
-  /** English reserve auction escrow (additive deploy) */
-  auctionEscrow?: `0x${string}`;
-  auctionEscrowImpl?: `0x${string}`;
   /** Commerce modes (UUPS; G3 guardian) */
   fixedPriceConsignment?: `0x${string}`;
   fixedPriceConsignmentImpl?: `0x${string}`;
@@ -120,9 +111,7 @@ export type PonderAddressBundle = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
-  marketplace: `0x${string}`;
-  marketplaceImpl?: `0x${string}`;
-  auctionEscrow?: `0x${string}`;
+  /** Commerce modes — filled at Nuclear #2; absent until then. */
   fixedPriceConsignment?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
 };
@@ -134,17 +123,10 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     karPassport: getAddress(raw.karPassport),
     karProPass: getAddress(raw.karProPass),
     karProStaking: getAddress(raw.karProStaking),
-    marketplace: getAddress(raw.marketplace),
-    marketplaceImpl: getAddress(raw.marketplaceImpl),
     usdc: getAddress(raw.usdc),
     nativeFeed: getAddress(raw.nativeFeed),
     timelock: getAddress(raw.timelock),
-    genesisAuthority: getAddress(raw.genesisAuthority),
     platformRecipient: getAddress(raw.platformRecipient),
-    ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
-    ...(raw.auctionEscrowImpl
-      ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) }
-      : {}),
     ...(raw.fixedPriceConsignment
       ? { fixedPriceConsignment: getAddress(raw.fixedPriceConsignment) }
       : {}),
@@ -182,8 +164,7 @@ function isCommercialManifestShape(raw: unknown): raw is DeploymentManifest {
   return (
     typeof raw === "object" &&
     raw !== null &&
-    typeof (raw as { karPassport?: unknown }).karPassport === "string" &&
-    typeof (raw as { marketplace?: unknown }).marketplace === "string"
+    typeof (raw as { karPassport?: unknown }).karPassport === "string"
   );
 }
 
@@ -202,15 +183,11 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
     karPassport: getAddress(raw.karPassport),
     karProPass: getAddress(raw.karProPass),
     karProStaking: getAddress(raw.karProStaking),
-    marketplace: getAddress(raw.marketplace),
-    marketplaceImpl: getAddress(raw.marketplaceImpl),
     ...(raw.usdc ? { usdc: getAddress(raw.usdc) } : {}),
     ...(raw.nativeFeed ? { nativeFeed: getAddress(raw.nativeFeed) } : {}),
     ...(raw.eurFeed ? { eurFeed: getAddress(raw.eurFeed) } : {}),
     ...(raw.deployer ? { deployer: getAddress(raw.deployer) } : {}),
     ...(raw.upgradeAuthority ? { upgradeAuthority: getAddress(raw.upgradeAuthority) } : {}),
-    ...(raw.auctionEscrow ? { auctionEscrow: getAddress(raw.auctionEscrow) } : {}),
-    ...(raw.auctionEscrowImpl ? { auctionEscrowImpl: getAddress(raw.auctionEscrowImpl) } : {}),
     ...(raw.fixedPriceConsignment
       ? { fixedPriceConsignment: getAddress(raw.fixedPriceConsignment) }
       : {}),
@@ -325,16 +302,10 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     karPassport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
     karProPass: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
     karProStaking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,
-    marketplace: process.env.PONDER_MARKETPLACE_ADDRESS,
-    marketplaceImpl: process.env.PONDER_MARKETPLACE_IMPL_ADDRESS,
     usdc: process.env.PONDER_USDC_ADDRESS,
     nativeFeed: process.env.PONDER_NATIVE_FEED_ADDRESS,
     timelock: process.env.PONDER_TIMELOCK_ADDRESS,
-    genesisAuthority: process.env.PONDER_GENESIS_AUTHORITY_ADDRESS ?? process.env.PONDER_TIMELOCK_ADDRESS,
     platformRecipient: process.env.PONDER_PLATFORM_RECIPIENT_ADDRESS,
-    ...(process.env.PONDER_AUCTION_ESCROW_ADDRESS
-      ? { auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}` }
-      : {}),
     ...(process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS
       ? {
           fixedPriceConsignment: process.env
@@ -350,7 +321,7 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     deployedAt: "",
   };
 
-  const hasEnv = Boolean(fromEnv.karPassport && fromEnv.marketplace);
+  const hasEnv = Boolean(fromEnv.karPassport);
   if (hasEnv) {
     return normalizeLocal(fromEnv as LocalStackAddresses);
   }
@@ -380,9 +351,6 @@ export function ponderAddressesFromCommercialManifest(
     karPassport: manifest.karPassport,
     karProPass: manifest.karProPass,
     karProStaking: manifest.karProStaking,
-    marketplace: manifest.marketplace,
-    ...(manifest.marketplaceImpl ? { marketplaceImpl: manifest.marketplaceImpl } : {}),
-    ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
     ...(manifest.fixedPriceConsignment
       ? { fixedPriceConsignment: manifest.fixedPriceConsignment }
       : {}),

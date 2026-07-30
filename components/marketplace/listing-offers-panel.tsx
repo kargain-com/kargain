@@ -10,11 +10,11 @@ import { useListingOffers } from "@/hooks/use-listing-offers";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
 import type { ListingOffer } from "@/lib/nostr/listing-offers";
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { formatRelativeTime } from "@/lib/format/relative-time";
@@ -142,7 +142,7 @@ export function ListingOffersPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = marketplaceAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
@@ -161,7 +161,7 @@ export function ListingOffersPanel({
         const succeeded = await runTx(() =>
           writeContractAsync({
             address: market,
-            abi: MarketplaceEscrowAbi,
+            abi: FixedPriceConsignmentAbi,
             functionName: "confirmExternalPayment",
             args: [tid, buyer],
           }),

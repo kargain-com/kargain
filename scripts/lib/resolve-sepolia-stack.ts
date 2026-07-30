@@ -31,13 +31,11 @@ export type ResolvedCommercialStack = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
-  marketplace: `0x${string}`;
-  marketplaceImpl: `0x${string}`;
   usdc: `0x${string}`;
   nativeFeed: `0x${string}`;
   timelock?: `0x${string}`;
   bridgeGateway?: `0x${string}`;
-  auctionEscrow?: `0x${string}`;
+  /** Commerce modes — filled at Nuclear #2; absent until then. */
   fixedPriceConsignment?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   indexFromBlock: number;
@@ -48,7 +46,6 @@ const CORE_ENV_KEYS = [
   "PONDER_KAR_PASSPORT_ADDRESS",
   "PONDER_KAR_PRO_PASS_ADDRESS",
   "PONDER_KAR_PRO_STAKING_ADDRESS",
-  "PONDER_MARKETPLACE_ADDRESS",
 ] as const;
 
 function parseStartBlockEnv(chainId: number): number | undefined {
@@ -76,13 +73,10 @@ function stackFromCommitted(chainId: number): ResolvedCommercialStack {
     karPassport: active.karPassport,
     karProPass: active.karProPass,
     karProStaking: active.karProStaking,
-    marketplace: active.marketplace,
-    marketplaceImpl: active.marketplaceImpl,
     usdc: active.usdc,
     nativeFeed: active.nativeFeed,
     timelock: active.timelock,
     bridgeGateway: active.bridgeGateway,
-    auctionEscrow: active.auctionEscrow,
     ...(active.fixedPriceConsignment
       ? { fixedPriceConsignment: active.fixedPriceConsignment }
       : {}),
@@ -106,13 +100,10 @@ function stackFromManifest(
     karPassport: manifest.karPassport,
     karProPass: manifest.karProPass,
     karProStaking: manifest.karProStaking,
-    marketplace: manifest.marketplace,
-    marketplaceImpl: manifest.marketplaceImpl,
     usdc: manifest.usdc ?? committed.usdc,
     nativeFeed: manifest.nativeFeed ?? committed.nativeFeed,
     ...(manifest.timelock ? { timelock: manifest.timelock } : {}),
     ...(manifest.bridgeGateway ? { bridgeGateway: manifest.bridgeGateway } : {}),
-    ...(manifest.auctionEscrow ? { auctionEscrow: manifest.auctionEscrow } : {}),
     ...(manifest.fixedPriceConsignment
       ? { fixedPriceConsignment: manifest.fixedPriceConsignment }
       : {}),
@@ -125,15 +116,14 @@ function stackFromManifest(
 }
 
 /**
- * Debug overrides for hub (84532) only — all four core PONDER_* addresses required.
+ * Debug overrides for hub (84532) only — all three core PONDER_* addresses required.
  * Do not invent per-chain env maps here; Eth uses manifest → committed.
  */
 function stackFromEnv84532(): ResolvedCommercialStack | null {
   const karPassport = process.env.PONDER_KAR_PASSPORT_ADDRESS;
   const karProPass = process.env.PONDER_KAR_PRO_PASS_ADDRESS;
   const karProStaking = process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-  const marketplace = process.env.PONDER_MARKETPLACE_ADDRESS;
-  if (!karPassport || !karProPass || !karProStaking || !marketplace) return null;
+  if (!karPassport || !karProPass || !karProStaking) return null;
 
   const committed = requireCommercialActive(HUB_CHAIN_ID);
   const manifest = loadSepoliaDeployment();
@@ -149,19 +139,12 @@ function stackFromEnv84532(): ResolvedCommercialStack | null {
     karPassport: getAddress(karPassport as `0x${string}`),
     karProPass: getAddress(karProPass as `0x${string}`),
     karProStaking: getAddress(karProStaking as `0x${string}`),
-    marketplace: getAddress(marketplace as `0x${string}`),
-    marketplaceImpl: process.env.PONDER_MARKETPLACE_IMPL_ADDRESS
-      ? getAddress(process.env.PONDER_MARKETPLACE_IMPL_ADDRESS as `0x${string}`)
-      : base.marketplaceImpl,
     usdc: process.env.PONDER_USDC_ADDRESS
       ? getAddress(process.env.PONDER_USDC_ADDRESS as `0x${string}`)
       : base.usdc,
     nativeFeed: process.env.PONDER_NATIVE_FEED_ADDRESS
       ? getAddress(process.env.PONDER_NATIVE_FEED_ADDRESS as `0x${string}`)
       : base.nativeFeed,
-    auctionEscrow: process.env.PONDER_AUCTION_ESCROW_ADDRESS
-      ? getAddress(process.env.PONDER_AUCTION_ESCROW_ADDRESS as `0x${string}`)
-      : base.auctionEscrow,
     fixedPriceConsignment: process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS
       ? getAddress(process.env.PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS as `0x${string}`)
       : base.fixedPriceConsignment,
@@ -177,9 +160,6 @@ export function ponderAddressesFromStack(stack: ResolvedCommercialStack): Ponder
     karPassport: stack.karPassport,
     karProPass: stack.karProPass,
     karProStaking: stack.karProStaking,
-    marketplace: stack.marketplace,
-    marketplaceImpl: stack.marketplaceImpl,
-    ...(stack.auctionEscrow ? { auctionEscrow: stack.auctionEscrow } : {}),
     ...(stack.fixedPriceConsignment
       ? { fixedPriceConsignment: stack.fixedPriceConsignment }
       : {}),
@@ -247,16 +227,10 @@ export function resolveSepoliaBlocksForPonder(): DeploymentBlocks {
 
 type AddressField = keyof Pick<
   ResolvedCommercialStack,
-  "karPassport" | "karProPass" | "karProStaking" | "marketplace" | "marketplaceImpl"
+  "karPassport" | "karProPass" | "karProStaking"
 >;
 
-const COMPARE_FIELDS: AddressField[] = [
-  "karPassport",
-  "karProPass",
-  "karProStaking",
-  "marketplace",
-  "marketplaceImpl",
-];
+const COMPARE_FIELDS: AddressField[] = ["karPassport", "karProPass", "karProStaking"];
 
 /** Warn when local manifest diverges from committed fallbacks (common VPS drift). */
 export function manifestCommittedDrift(chainId: number = HUB_CHAIN_ID): string[] {
@@ -296,8 +270,6 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
     `  Generation:     ${stack.generation}`,
     `  indexFromBlock: ${stack.indexFromBlock}`,
     `  karPassport:    ${stack.karPassport}`,
-    `  marketplace:    ${stack.marketplace}`,
-    `  auctionEscrow:  ${stack.auctionEscrow ?? "(none)"}`,
     `  fixedPrice:     ${stack.fixedPriceConsignment ?? "(none — Nuclear #2)"}`,
     `  ascending:      ${stack.ascendingConsignment ?? "(none — Nuclear #2)"}`,
     `  gateway:        ${stack.bridgeGateway ?? "(none)"}`,
@@ -305,8 +277,6 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
     `Ethereum Sepolia (11155111) — source: ${eth.source}`,
     `  indexFromBlock: ${eth.indexFromBlock}`,
     `  karPassport:    ${eth.karPassport}`,
-    `  marketplace:    ${eth.marketplace}`,
-    `  auctionEscrow:  ${eth.auctionEscrow ?? "(none)"}`,
     `  fixedPrice:     ${eth.fixedPriceConsignment ?? "(none — Nuclear #2)"}`,
     `  ascending:      ${eth.ascendingConsignment ?? "(none — Nuclear #2)"}`,
     `  gateway:        ${eth.bridgeGateway ?? "(none)"}`,

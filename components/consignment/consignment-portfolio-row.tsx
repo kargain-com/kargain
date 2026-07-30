@@ -14,7 +14,7 @@ export type ConsignmentPortfolioRowProps = {
   chainId: number;
   href: string;
   statusLabel: string;
-  trackLabel: "Fixed price" | "Auction";
+  trackLabel: "Fixed price" | "Ascending" | "Auction";
   peerAddress?: string | null;
   peerLabel?: "Agent" | "Owner";
   make?: string | null;

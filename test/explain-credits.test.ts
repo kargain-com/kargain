@@ -16,14 +16,14 @@ describe("explainClaimFromCredits", () => {
       [
         {
           amount: parseEther("1"),
-          reasonCode: "auction.outbid_refund",
+          reasonCode: "passport.dispute_deposit",
           asset: zeroAddress,
         },
       ],
       NATIVE_DISPLAY,
     );
     assert.match(text, /1 ETH/);
-    assert.match(text, /auction bid refund/i);
+    assert.match(text, /dispute deposit/i);
     assert.equal(text.includes("\n"), false);
   });
 
@@ -32,12 +32,12 @@ describe("explainClaimFromCredits", () => {
       [
         {
           amount: 100n,
-          reasonCode: "auction.outbid_refund",
+          reasonCode: "passport.dispute_deposit",
           asset: zeroAddress,
         },
         {
           amount: 50n,
-          reasonCode: "auction.settlement_payout",
+          reasonCode: "staking.stake_refund",
           asset: zeroAddress,
         },
       ],
@@ -46,9 +46,9 @@ describe("explainClaimFromCredits", () => {
     const lines = text.split("\n");
     assert.equal(lines.length, 2);
     assert.match(lines[0]!, /100 ETH/);
-    assert.match(lines[0]!, /auction bid refund/i);
+    assert.match(lines[0]!, /dispute deposit/i);
     assert.match(lines[1]!, /50 ETH/);
-    assert.match(lines[1]!, /auction sale payout/i);
+    assert.match(lines[1]!, /KarPro stake refund/i);
   });
 
   it("keeps duplicate reasons as separate lines", () => {
@@ -56,12 +56,12 @@ describe("explainClaimFromCredits", () => {
       [
         {
           amount: 10n,
-          reasonCode: "marketplace.settlement_payout",
+          reasonCode: "passport.rescue",
           asset: zeroAddress,
         },
         {
           amount: 20n,
-          reasonCode: "marketplace.settlement_payout",
+          reasonCode: "passport.rescue",
           asset: zeroAddress,
         },
       ],

@@ -64,23 +64,23 @@ export function resolveOriginChainId(
 
 /**
  * Nav Auctions chain without hub invent:
- * - connected + wallet commercial with escrow → that chain
- * - connected + non-commercial (or commercial without escrow) → null (hide)
- * - guest → first commercial (sorted) that has auctionEscrow
+ * - connected + wallet commercial with the ascending mode → that chain
+ * - connected + non-commercial (or commercial without the mode) → null (hide)
+ * - guest → first commercial (sorted) that has the ascending mode deployed
  */
 export function resolveAuctionsNavChainId(input: {
   walletChainId: number | undefined;
   isConnected: boolean;
-  hasAuctionEscrow: (chainId: number) => boolean;
+  hasAscendingMode: (chainId: number) => boolean;
 }): number | null {
-  const { walletChainId, isConnected, hasAuctionEscrow } = input;
+  const { walletChainId, isConnected, hasAscendingMode } = input;
   if (isConnected) {
     const commercial = resolveWalletCommercialChainId(walletChainId);
     if (commercial == null) return null;
-    return hasAuctionEscrow(commercial) ? commercial : null;
+    return hasAscendingMode(commercial) ? commercial : null;
   }
   for (const id of commercialChainIds()) {
-    if (hasAuctionEscrow(id)) return id;
+    if (hasAscendingMode(id)) return id;
   }
   return null;
 }

@@ -4,7 +4,7 @@ Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
 Messaging and payments without intermediaries. Including Lightning for verification fees and seller settlement notes.
 
-**Multi-chain platform** — identical Nuclear stacks on Base Sepolia (84532) and Ethereum Sepolia (11155111): KarPassport v1.3, marketplace, auctions, KarPro, and `KarPassportBridgeGateway`. Commerce follows the passport’s custody chain. Mainnet stays gated on the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative).
+**Multi-chain platform** — identical Nuclear stacks on Base Sepolia (84532) and Ethereum Sepolia (11155111): KarPassport, KarPro, FixedPrice/Ascending commerce modes, and `KarPassportBridgeGateway`. Commerce follows the passport’s custody chain. Mainnet stays gated on the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative).
 
 MIT License · Open Source
 
@@ -18,8 +18,8 @@ Kargain combines on-chain vehicle passports, professional verification, and escr
 |-------|------|
 | **KarPassport** | Permissionless NFT mint; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED lifecycle |
 | **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`); verification fees (ETH / USDC / Lightning) |
-| **MarketplaceEscrow** | Listings in registered fiat codes, native/ERC-20 checkout, agent consignment, external payment confirmation |
-| **AuctionEscrow** | English reserve auctions with settlement hold (browse at `/auctions`) |
+| **FixedPriceConsignment** | Fixed-price listings, agent mandates, native/ERC-20 checkout, external payment confirmation |
+| **AscendingConsignment** | English ascending auctions with settlement hold (browse at `/auctions`) |
 | **Bridge** | Symmetric `KarPassportBridgeGateway` hub↔spoke (Base Sepolia ↔ Ethereum Sepolia); trust resets on every crossing |
 | **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (profiles, comments, watchlist, notifications), XMTP messaging, Lightning (LNURL-pay + optional NWC) |
 
@@ -118,10 +118,8 @@ node --import tsx --test test/*.test.ts
 pnpm deploy:sepolia          # nuclear stack on Base Sepolia (84532)
 pnpm deploy:sepolia:eth      # identical nuclear stack on Ethereum Sepolia (11155111)
 pnpm deploy:nuclear:dry-run  # print 84532 vs 11155111 parameter parity (no txs)
-pnpm deploy:auction          # additive AuctionEscrow (legacy manifests without auction)
-pnpm upgrade:auction         # Timelock UUPS upgrade (pass -- --deploy-impl | --schedule | --execute)
 pnpm smoke:sepolia
-pnpm verify:sepolia          # Basescan best-effort; use --auction-only after auction deploy / upgrade impl
+pnpm verify:sepolia
 ```
 
 After compile: `node scripts/export-abis.mjs`

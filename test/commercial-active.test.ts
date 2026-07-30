@@ -23,10 +23,6 @@ describe("COMMERCIAL_ACTIVE registry", () => {
       requireCommercialActive(ETH).karPassport,
       "0x6378469256907D7DC14BBfce0261ceDE22314507",
     );
-    assert.equal(
-      requireCommercialActive(ETH).marketplace,
-      "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
-    );
   });
 
   it("SEPOLIA_ACTIVE aliases COMMERCIAL_ACTIVE[84532]", () => {
@@ -57,24 +53,22 @@ describe("resolveCommercialStack committed fallback", () => {
       passport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
       pro: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
       staking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,
-      market: process.env.PONDER_MARKETPLACE_ADDRESS,
     };
     try {
       delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
       delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
       delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-      delete process.env.PONDER_MARKETPLACE_ADDRESS;
 
       const eth = resolveCommercialStack(ETH);
       assert.ok(eth.source === "committed" || eth.source === "manifest");
       assert.equal(eth.karPassport, "0x6378469256907D7DC14BBfce0261ceDE22314507");
-      assert.equal(eth.marketplace, "0x4FC74e0B7eE0A741707A553D43Efff68126D198B");
       assert.equal(eth.indexFromBlock, 11_319_840);
       assert.equal(eth.bridgeGateway, "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB");
 
       const bundle = ponderAddressesFromStack(eth);
       assert.equal(bundle.karPassport, eth.karPassport);
-      assert.equal(bundle.auctionEscrow, eth.auctionEscrow);
+      assert.equal(bundle.fixedPriceConsignment, undefined);
+      assert.equal(bundle.ascendingConsignment, undefined);
 
       const hub = resolveCommercialStack(HUB);
       assert.ok(hub.source === "committed" || hub.source === "manifest" || hub.source === "env");
@@ -86,8 +80,6 @@ describe("resolveCommercialStack committed fallback", () => {
       else delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
       if (prev.staking) process.env.PONDER_KAR_PRO_STAKING_ADDRESS = prev.staking;
       else delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-      if (prev.market) process.env.PONDER_MARKETPLACE_ADDRESS = prev.market;
-      else delete process.env.PONDER_MARKETPLACE_ADDRESS;
     }
   });
 
@@ -108,7 +100,6 @@ describe("resolveCommercialStack committed fallback", () => {
       delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
       delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
       delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-      delete process.env.PONDER_MARKETPLACE_ADDRESS;
       const eth = resolveCommercialStack(ETH);
       assert.equal(eth.source, "committed");
       assert.equal(eth.karPassport, requireCommercialActive(ETH).karPassport);

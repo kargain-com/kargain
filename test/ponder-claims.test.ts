@@ -38,13 +38,13 @@ describe("claim ids", () => {
 });
 
 describe("inferClaimReason", () => {
-  it("maps auction bid selector to outbid refund", () => {
+  it("maps passport withdraw selector to dispute deposit", () => {
     assert.equal(
       inferClaimReason({
-        role: "auction",
-        txInput: "0x4cafdb15" + "00".repeat(64),
+        role: "passport",
+        txInput: "0x2e1a7d4d" + "00".repeat(64),
       }),
-      "auction.outbid_refund",
+      "passport.dispute_deposit",
     );
   });
 
@@ -57,8 +57,8 @@ describe("inferClaimReason", () => {
 
   it("falls back by role when selector unknown", () => {
     assert.equal(
-      inferClaimReason({ role: "marketplace", txInput: "0xdeadbeef" }),
-      "marketplace.settlement_payout",
+      inferClaimReason({ role: "ascending", txInput: "0xdeadbeef" }),
+      "unknown",
     );
   });
 
@@ -88,13 +88,13 @@ describe("ponder claim projection", () => {
       account,
       asset: zeroAddress,
       amount: 100n,
-      role: "auction",
-      txInput: "0x4cafdb15",
+      role: "passport",
+      txInput: "0xc877714f",
       txHash: "0xaaa",
       logIndex: 0,
       timestamp: 10n,
     });
-    assert.equal(credit1.reasonCode, "auction.outbid_refund");
+    assert.equal(credit1.reasonCode, "passport.rescue");
 
     const bal1 = pendingClaimAfterCredit({ existing: null, credit: credit1 });
     assert.equal(bal1.amount, 100n);
@@ -105,12 +105,13 @@ describe("ponder claim projection", () => {
       account,
       asset: zeroAddress,
       amount: 50n,
-      role: "auction",
-      txInput: "0x4d68282f",
+      role: "passport",
+      txInput: "0x2e1a7d4d",
       txHash: "0xbbb",
       logIndex: 1,
       timestamp: 20n,
     });
+    assert.equal(credit2.reasonCode, "passport.dispute_deposit");
     const bal2 = pendingClaimAfterCredit({ existing: bal1, credit: credit2 });
     assert.equal(bal2.amount, 150n);
     // Balance reasonCode is a denormalized last-credit hint — not product truth.
@@ -132,9 +133,9 @@ describe("ponder claim projection", () => {
       { decimals: null, symbol: null, nativeSymbol: "ETH" },
     );
     assert.match(explanation, /100 ETH/);
-    assert.match(explanation, /auction bid refund/i);
+    assert.match(explanation, /rescued excess eth/i);
     assert.match(explanation, /50 ETH/);
-    assert.match(explanation, /auction sale payout/i);
+    assert.match(explanation, /dispute deposit/i);
 
     const cleared = pendingClaimAfterWithdraw({ existing: bal2, timestamp: 30n });
     assert.equal(cleared.amount, 0n);

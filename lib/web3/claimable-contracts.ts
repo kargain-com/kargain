@@ -12,8 +12,6 @@ import {
 export const CLAIMABLE_STACK_KEYS = [
   "karPassport",
   "karProStaking",
-  "marketplace",
-  "auctionEscrow",
   "fixedPriceConsignment",
   "ascendingConsignment",
 ] as const;
@@ -23,16 +21,12 @@ export type ClaimableStackKey = (typeof CLAIMABLE_STACK_KEYS)[number];
 export type ClaimableContractRole =
   | "passport"
   | "staking"
-  | "marketplace"
-  | "auction"
   | "fixedPrice"
   | "ascending";
 
 const ROLE_BY_KEY: Record<ClaimableStackKey, ClaimableContractRole> = {
   karPassport: "passport",
   karProStaking: "staking",
-  marketplace: "marketplace",
-  auctionEscrow: "auction",
   fixedPriceConsignment: "fixedPrice",
   ascendingConsignment: "ascending",
 };

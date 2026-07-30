@@ -19,14 +19,6 @@ const PRODUCTION_CONTRACTS = [
     artifactPath: "artifacts/contracts/KarProPass.sol/KarProPass.json",
   },
   {
-    name: "MarketplaceEscrow",
-    artifactPath: "artifacts/contracts/MarketplaceEscrow.sol/MarketplaceEscrow.json",
-  },
-  {
-    name: "AuctionEscrow",
-    artifactPath: "artifacts/contracts/AuctionEscrow.sol/AuctionEscrow.json",
-  },
-  {
     name: "KarProStaking",
     artifactPath: "artifacts/contracts/KarProStaking.sol/KarProStaking.json",
   },

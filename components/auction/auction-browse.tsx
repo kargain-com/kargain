@@ -23,7 +23,7 @@ export function AuctionBrowse({ initialPage, chainId }: Props) {
   const now = useNow(60_000);
 
   const { data, isPending } = useQuery({
-    queryKey: ["auction-browse", chainId],
+    queryKey: ["ascending-browse", chainId],
     queryFn: () =>
       searchActiveAuctions({ chainId: chainId ?? undefined, limit: 48 }),
     initialData: initialPage,

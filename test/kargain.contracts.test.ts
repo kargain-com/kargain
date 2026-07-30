@@ -5,9 +5,9 @@ import { getAddress, type Hash, type PublicClient } from "viem";
 
 import {
   Category,
-  CURRENCY_USD,
   DISPUTE_DEPOSIT,
-  deployEscrowStack,
+  deployCommerceBaseStack,
+  deployFixedPriceConsignment,
   deployPassportStack,
   deployVerifierStack,
   increaseTime,
@@ -22,6 +22,32 @@ const TOKEN_ID_BASE = 31337n << 128n;
 const UNBONDING_PERIOD = 14n * 24n * 60n * 60n;
 
 const ZERO_ADDR = ZERO;
+
+const BYTES32_ZERO =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+/** Native-denominated open (kind 0 = asset). */
+const DENOM_NATIVE = { kind: 0, currencyCode: BYTES32_ZERO } as const;
+
+/**
+ * Passport + FixedPriceConsignment mode, registered as an encumbrance source. Opening a
+ * consignment requires the passport to be VERIFIED (§9 readiness), so `verifier` is joined
+ * as an active KarPro verifier ready to call `verifyPassport`.
+ */
+async function deployListedFixedPriceStack(viem: Parameters<typeof deployCommerceBaseStack>[0]) {
+  const base = await deployCommerceBaseStack(viem);
+  const { mode } = await deployFixedPriceConsignment(viem, {
+    passport: base.passport.address,
+    platformRecipient: base.admin.account.address,
+    feeBps: 250n,
+    nativeUsdFeed: base.nativeFeed.address,
+    maxFeedStaleness: 3600n,
+    owner: getAddress(base.timelock.address),
+    guardian: base.admin.account.address,
+  });
+  await base.passport.write.addEncumbranceSource([mode.address], { account: base.admin.account });
+  await joinVerifier(base.staking, base.stranger);
+  return { ...base, mode };
+}
 
 function revertsWith(errorName: string) {
   return (err: unknown) => {
@@ -981,16 +1007,19 @@ describe("KarPassport — setPassportURI", () => {
     );
   });
 
-  it("reverts NotOwner when listed in escrow", async () => {
+  it("reverts NotOwner when listed via FixedPriceConsignment", async () => {
     const { viem } = connection;
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const { seller, stranger, passport, mode } = await deployListedFixedPriceStack(viem);
     await passport.write.mintPassport([seller.account.address, "ar://listed"], {
       account: seller.account,
     });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: stranger.account });
+    await passport.write.setApprovalForAll([mode.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    await mode.write.openDirect([TOKEN_ID_BASE, DENOM_NATIVE, ZERO, 500n * 10n ** 8n], {
+      account: seller.account,
+    });
     await assert.rejects(
       passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: seller.account }),
       revertsWith("NotOwner"),
@@ -1338,16 +1367,19 @@ describe("KarPassport — records", () => {
     assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 1n);
   });
 
-  it("appendRecord reverts NotOwner when listed in escrow", async () => {
+  it("appendRecord reverts NotOwner when listed via FixedPriceConsignment", async () => {
     const { viem } = connection;
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
+    const { seller, stranger, passport, mode } = await deployListedFixedPriceStack(viem);
     await passport.write.mintPassport([seller.account.address, "ar://listed-record"], {
       account: seller.account,
     });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
+    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: stranger.account });
+    await passport.write.setApprovalForAll([mode.address, true], {
       account: seller.account,
     });
-    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
+    await mode.write.openDirect([TOKEN_ID_BASE, DENOM_NATIVE, ZERO, 500n * 10n ** 8n], {
+      account: seller.account,
+    });
     await assert.rejects(
       passport.write.appendRecord([TOKEN_ID_BASE, "service", "while listed", ""], {
         account: seller.account,
@@ -1497,221 +1529,6 @@ describe("Event completeness (G1/G2/G3)", () => {
     assert.equal(appended!.args.recordType, "attestation");
     assert.equal(appended!.args.description, "looks good");
     assert.equal(appended!.args.evidenceCID, "cid-attest");
-  });
-});
-
-// ─── MarketplaceEscrow ────────────────────────────────────────────────────────
-
-describe("MarketplaceEscrow", () => {
-  let connection: NetworkConnection;
-
-  beforeEach(async () => {
-    connection = await hardhat.network.connect();
-  });
-
-  afterEach(async () => {
-    await connection.close();
-  });
-
-  it("platformFeeBps equals constructor value", async () => {
-    const { viem } = connection;
-    const { marketplace, feeBps } = await deployEscrowStack(viem);
-    assert.equal(BigInt(await marketplace.read.platformFeeBps()), feeBps);
-    assert.equal(feeBps, 250n);
-  });
-
-  it("list, delist", async () => {
-    const { viem } = connection;
-    const { seller, passport, marketplace } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ar://list"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
-    let listing = await marketplace.read.listings([TOKEN_ID_BASE]);
-    assert.equal(listing[2], true);
-    await marketplace.write.delist([TOKEN_ID_BASE], { account: seller.account });
-    listing = await marketplace.read.listings([TOKEN_ID_BASE]);
-    assert.equal(listing[2], false);
-    assert.equal(
-      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
-      getAddress(seller.account.address),
-    );
-  });
-
-  it("buyWithNative with fee distribution", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, seller, buyer, passport, marketplace, feeBps } = await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ar://buy"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
-    const adminBefore = await publicClient.getBalance({ address: admin.account.address });
-    const sellerBefore = await publicClient.getBalance({ address: seller.account.address });
-    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
-    const fee = (gross * feeBps) / 10_000n;
-    const net = gross - fee;
-    assert.equal(
-      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
-      getAddress(buyer.account.address),
-    );
-    const adminAfter = await publicClient.getBalance({ address: admin.account.address });
-    const sellerAfter = await publicClient.getBalance({ address: seller.account.address });
-    assert.equal(adminAfter - adminBefore, fee);
-    assert.equal(sellerAfter - sellerBefore, net);
-  });
-
-  it("E5: buyer inherits passport status after buyWithNative", async () => {
-    const { viem } = connection;
-    const { seller, buyer, verifier, passport, marketplace, staking } =
-      await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ar://e5"], {
-      account: seller.account,
-    });
-    await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    const [statusBefore] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
-    assert.equal(statusBefore, 1);
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([TOKEN_ID_BASE, 500n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
-    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
-    const [statusAfter] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
-    assert.equal(statusAfter, statusBefore);
-    assert.equal(
-      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
-      getAddress(buyer.account.address),
-    );
-  });
-
-  it("buyWithUsdc with fee distribution", async () => {
-    const { viem } = connection;
-    const { admin, seller, buyer, passport, usdc, marketplace, feeBps } =
-      await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ar://u"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const usd1e8 = 200n * 10n ** 8n;
-    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithToken([TOKEN_ID_BASE, usdc.address]);
-    await usdc.write.mint([buyer.account.address, gross]);
-    await usdc.write.approve([marketplace.address, gross], { account: buyer.account });
-    const adminBefore = await usdc.read.balanceOf([admin.account.address]);
-    const sellerBefore = await usdc.read.balanceOf([seller.account.address]);
-    await marketplace.write.buyWithToken([TOKEN_ID_BASE, usdc.address], { account: buyer.account });
-    const fee = (gross * feeBps) / 10_000n;
-    const net = gross - fee;
-    const adminAfter = await usdc.read.balanceOf([admin.account.address]);
-    const sellerAfter = await usdc.read.balanceOf([seller.account.address]);
-    assert.equal(adminAfter - adminBefore, fee);
-    assert.equal(sellerAfter - sellerBefore, net);
-  });
-
-  it("pro seller (active verifier) pays proFeeBps", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, seller, buyer, passport, marketplace, feeBps, proFeeBps, staking } =
-      await deployEscrowStack(viem);
-    await joinVerifier(staking, seller, { category: Category.DEALER, name: "Pro Seller" });
-    await passport.write.mintPassport([seller.account.address, "ar://pro"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
-    const adminBefore = await publicClient.getBalance({ address: admin.account.address });
-    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
-    const proFee = (gross * proFeeBps) / 10_000n;
-    const platformFee = (gross * feeBps) / 10_000n;
-    assert.notEqual(proFee, platformFee);
-    const adminAfter = await publicClient.getBalance({ address: admin.account.address });
-    assert.equal(adminAfter - adminBefore, proFee);
-  });
-
-  it("seller who left loses pro-fee discount", async () => {
-    const { viem } = connection;
-    const publicClient = await viem.getPublicClient();
-    const { admin, seller, buyer, passport, marketplace, feeBps, proFeeBps, staking } =
-      await deployEscrowStack(viem);
-    await joinVerifier(staking, seller, { category: Category.DEALER, name: "Pro Seller" });
-    await passport.write.mintPassport([seller.account.address, "ar://pro-left"], {
-      account: seller.account,
-    });
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    const usd1e8 = 1000n * 10n ** 8n;
-    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
-    await marketplace.write.delist([TOKEN_ID_BASE], { account: seller.account });
-    await staking.write.leave([], { account: seller.account });
-    assert.equal(await staking.read.isActiveVerifier([seller.account.address]), false);
-    await marketplace.write.list([TOKEN_ID_BASE, usd1e8, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
-    const adminBefore = await publicClient.getBalance({ address: admin.account.address });
-    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
-    const platformFee = (gross * feeBps) / 10_000n;
-    const adminAfter = await publicClient.getBalance({ address: admin.account.address });
-    assert.equal(adminAfter - adminBefore, platformFee);
-    assert.notEqual(proFeeBps, feeBps);
-  });
-
-  it("DISPUTED passport can be listed and bought", async () => {
-    const { viem } = connection;
-    const { seller, buyer, verifier, passport, marketplace, staking } =
-      await deployEscrowStack(viem);
-    await passport.write.mintPassport([seller.account.address, "ar://disputed"], {
-      account: seller.account,
-    });
-    await joinVerifier(staking, verifier);
-    await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    await passport.write.open([TOKEN_ID_BASE], { account: seller.account, value: DISPUTE_DEPOSIT });
-    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
-    assert.equal(status, 2);
-    await passport.write.setApprovalForAll([marketplace.address, true], {
-      account: seller.account,
-    });
-    await marketplace.write.list([TOKEN_ID_BASE, 400n * 10n ** 8n, CURRENCY_USD], { account: seller.account });
-    const gross = await marketplace.read.quoteBuyWithNative([TOKEN_ID_BASE]);
-    await marketplace.write.buyWithNative([TOKEN_ID_BASE], { account: buyer.account, value: gross });
-    assert.equal(
-      getAddress(await passport.read.ownerOf([TOKEN_ID_BASE])),
-      getAddress(buyer.account.address),
-    );
-  });
-
-  it("upgrade without timelock authority reverts", async () => {
-    const { viem } = connection;
-    const { seller, marketplace } = await deployEscrowStack(viem);
-    const implementationV2 = await viem.deployContract("MarketplaceEscrow", [
-      (await marketplace.read.karPassport([])) as `0x${string}`,
-      (await marketplace.read.nativeUsdFeed([])) as `0x${string}`,
-      (await marketplace.read.karProStaking([])) as `0x${string}`,
-      (await marketplace.read.platformRecipient([])) as `0x${string}`,
-      250n,
-      100n,
-      3600n,
-    ]);
-    await assert.rejects(
-      marketplace.write.upgradeToAndCall([implementationV2.address, "0x"], {
-        account: seller.account,
-      }),
-    );
   });
 });
 

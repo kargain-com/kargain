@@ -11,9 +11,9 @@ import {
   type AuctionUiState,
 } from "@/lib/auction/map-ponder-auction";
 import {
-  deriveSettlementUiState,
-  isSettlementPollActive,
-} from "@/lib/auction/settlement-state";
+  deriveAscendingSettlementState,
+  isAscendingSettlementPollActive,
+} from "@/lib/commerce/settlement-state";
 import { effectiveReturnRequestedAt } from "@/lib/marketplace/listing-agent";
 import { useAuctionChainReads } from "@/hooks/use-auction-chain-reads";
 import { useDocumentVisible } from "@/hooks/use-document-visible";
@@ -51,7 +51,7 @@ export function useAuctionDetail({
   });
 
   const ponderQuery = useQuery({
-    queryKey: ["auction-detail", chainId, tokenId],
+    queryKey: ["consignment-detail", chainId, tokenId],
     queryFn: async () => {
       const result = await getAuctionDetail(tokenId);
       if (!result.ok) throw new Error(result.error);
@@ -80,16 +80,14 @@ export function useAuctionDetail({
       });
       if (isLiveAuctionUiState(state)) return 15_000;
 
-      // Settlement hold / dispute / refund — poll while non-terminal only.
+      // Settlement hold / challenge / reversal — poll while non-terminal only.
       if (state === "SETTLED") {
-        const settlementState = deriveSettlementUiState({
-          settlement: row.settlement,
-          hold: chain.hold,
+        const settlementState = deriveAscendingSettlementState({
+          hold: chain.holdSnapshot,
+          challenge: chain.challenge,
           nowSec: now,
-          disputeResolutionTimeoutSec:
-            chain.disputeResolutionTimeout ?? DEFAULT_DISPUTE_RESOLUTION_TIMEOUT,
         });
-        if (isSettlementPollActive(settlementState)) return 15_000;
+        if (isAscendingSettlementPollActive(settlementState)) return 15_000;
       }
       return false;
     },
@@ -226,9 +224,14 @@ export function useAuctionDetail({
     uiState: merged.uiState,
     now,
     hold: chain.hold,
+    /** Settlement hold in commerce shape (settlement panel). */
+    holdSnapshot: chain.holdSnapshot,
+    /** BondedChallenge opened against this lot, when any. */
+    challenge: chain.challenge,
+    challengeBond: chain.settlementDisputeBond,
     minIncrementBps: chain.minIncrementBps ?? 300,
     extensionWindow: chain.extensionWindow ?? 300n,
-    paused: chain.paused ?? false,
+    paused: chain.paused,
     settlementDisputeBond: chain.settlementDisputeBond,
     settlementHold: chain.settlementHold,
     disputeResolutionTimeout:

@@ -1,12 +1,10 @@
 import { createConfig } from "ponder";
 import {
   AscendingConsignmentAbi,
-  AuctionEscrowAbi,
   FixedPriceConsignmentAbi,
   KarPassportAbi,
   KarProPassAbi,
   KarProStakingAbi,
-  MarketplaceEscrowAbi,
 } from "./lib/contracts/abis.generated";
 import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
 
@@ -42,8 +40,6 @@ type DualContract =
   | "karPassport"
   | "karProPass"
   | "karProStaking"
-  | "marketplace"
-  | "auctionEscrow"
   | "fixedPriceConsignment"
   | "ascendingConsignment";
 
@@ -59,7 +55,6 @@ function dualEntry(
   });
 }
 
-const auctionOnHub = addresses.auctionEscrow;
 const fixedPriceAddress =
   addresses.fixedPriceConsignment ?? localAddresses?.fixedPriceConsignment;
 const ascendingAddress =
@@ -89,22 +84,6 @@ export default createConfig({
         localAddresses?.karProStaking,
       ),
     },
-    MarketplaceEscrow: {
-      abi: MarketplaceEscrowAbi,
-      ...dualEntry(addresses.marketplace, "marketplace", localAddresses?.marketplace),
-    },
-    ...(auctionOnHub
-      ? {
-          AuctionEscrow: {
-            abi: AuctionEscrowAbi,
-            ...dualEntry(
-              auctionOnHub,
-              "auctionEscrow",
-              localAddresses?.auctionEscrow,
-            ),
-          },
-        }
-      : {}),
     ...(fixedPriceAddress
       ? {
           FixedPriceConsignment: {

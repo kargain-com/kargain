@@ -2,9 +2,7 @@ import { encodeFunctionData, getAddress } from "viem";
 
 import {
   AscendingConsignmentAbi,
-  AuctionEscrowAbi,
   FixedPriceConsignmentAbi,
-  MarketplaceEscrowAbi,
 } from "../../lib/contracts/abis.generated.js";
 import { lzEndpointForChain } from "./chainlink-feeds.js";
 import { CONTRACT_VERSIONS } from "./contract-versions.js";
@@ -13,12 +11,11 @@ import {
   type DeploymentManifest,
 } from "./load-deployment.js";
 
-/** Platform fee — 0.1% (10 bps). Matches marketplace deploy + auction-design §9. */
+/** Platform fee — 0.1% (10 bps). Matches AscendingConsignment deploy + auction-design §9. */
 export const AUCTION_PLATFORM_FEE_BPS = 10n;
 
-/** Must match `scripts/deploy.ts` nuclear constants. */
+/** Must match `scripts/deploy.ts` nuclear constants (FixedPriceConsignment platform fee). */
 export const MARKETPLACE_FEE_BPS = 10n;
-export const MARKETPLACE_PRO_FEE_BPS = 0n;
 export const MARKETPLACE_MAX_FEED_STALENESS = 3600n;
 export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
 
@@ -60,33 +57,6 @@ export function timelockConstructorArgs(manifest: DeploymentManifest) {
   return [[deployer], [deployer], deployer] as const;
 }
 
-export function marketplaceImplConstructorArgs(manifest: DeploymentManifest) {
-  const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
-
-  return [
-    manifest.karPassport,
-    nativeFeed,
-    manifest.karProStaking,
-    platformRecipient,
-    MARKETPLACE_FEE_BPS,
-    MARKETPLACE_PRO_FEE_BPS,
-    MARKETPLACE_MAX_FEED_STALENESS,
-  ] as const;
-}
-
-export function marketplaceProxyConstructorArgs(manifest: DeploymentManifest) {
-  const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  const initData = encodeFunctionData({
-    abi: MarketplaceEscrowAbi,
-    functionName: "initialize",
-    args: [deployer],
-  });
-
-  return [manifest.marketplaceImpl, initData] as const;
-}
-
 export function karPassportBridgeGatewayConstructorArgs(
   manifest: DeploymentManifest,
 ) {
@@ -94,34 +64,6 @@ export function karPassportBridgeGatewayConstructorArgs(
   const lzEndpoint =
     manifest.layerZeroEndpoint ?? lzEndpointForChain(manifest.chainId);
   return [manifest.karPassport, lzEndpoint, deployer] as const;
-}
-
-export function auctionEscrowImplConstructorArgs(manifest: DeploymentManifest) {
-  const usdc = manifest.usdc ?? SEPOLIA_FALLBACK.usdc;
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
-
-  return [
-    manifest.karPassport,
-    usdc,
-    manifest.karProStaking,
-    platformRecipient,
-    AUCTION_PLATFORM_FEE_BPS,
-  ] as const;
-}
-
-export function auctionEscrowProxyConstructorArgs(manifest: DeploymentManifest) {
-  const timelock = manifest.timelock ?? SEPOLIA_FALLBACK.timelock;
-  if (!manifest.auctionEscrowImpl) {
-    throw new Error("Manifest missing auctionEscrowImpl for proxy verify args");
-  }
-  const initData = encodeFunctionData({
-    abi: AuctionEscrowAbi,
-    functionName: "initialize",
-    args: [timelock],
-  });
-
-  return [manifest.auctionEscrowImpl, initData] as const;
 }
 
 /** FixedPrice impl has empty constructor (`_disableInitializers` only). */
@@ -215,37 +157,11 @@ export const VERIFY_TARGETS = {
     addressKey: "karPassport" as const,
     buildArgs: karPassportConstructorArgs,
   },
-  marketplaceImpl: {
-    label: `MarketplaceEscrow impl (${CONTRACT_VERSIONS.MarketplaceEscrow})`,
-    contract: "contracts/MarketplaceEscrow.sol:MarketplaceEscrow",
-    addressKey: "marketplaceImpl" as const,
-    buildArgs: marketplaceImplConstructorArgs,
-  },
-  marketplaceProxy: {
-    label: `MarketplaceEscrow proxy (${CONTRACT_VERSIONS.MarketplaceEscrow})`,
-    contract:
-      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
-    addressKey: "marketplace" as const,
-    buildArgs: marketplaceProxyConstructorArgs,
-  },
   bridgeGateway: {
     label: `KarPassportBridgeGateway (${CONTRACT_VERSIONS.KarPassportBridgeGateway})`,
     contract: "contracts/KarPassportBridgeGateway.sol:KarPassportBridgeGateway",
     addressKey: "bridgeGateway" as const,
     buildArgs: karPassportBridgeGatewayConstructorArgs,
-  },
-  auctionEscrowImpl: {
-    label: `AuctionEscrow impl (${CONTRACT_VERSIONS.AuctionEscrow})`,
-    contract: "contracts/AuctionEscrow.sol:AuctionEscrow",
-    addressKey: "auctionEscrowImpl" as const,
-    buildArgs: auctionEscrowImplConstructorArgs,
-  },
-  auctionEscrowProxy: {
-    label: `AuctionEscrow proxy (${CONTRACT_VERSIONS.AuctionEscrow})`,
-    contract:
-      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
-    addressKey: "auctionEscrow" as const,
-    buildArgs: auctionEscrowProxyConstructorArgs,
   },
   fixedPriceConsignmentImpl: {
     label: `FixedPriceConsignment impl (${CONTRACT_VERSIONS.FixedPriceConsignment})`,

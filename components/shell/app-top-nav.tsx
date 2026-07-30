@@ -20,8 +20,8 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
 import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
+import { hasCommerceMode } from "@/lib/commerce/mode";
 import { resolveAuctionsNavChainId } from "@/lib/web3/chain-context";
-import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
 
 export function AppTopNav() {
   const path = usePathname();
@@ -38,7 +38,7 @@ export function AppTopNav() {
   const auctionsChainId = resolveAuctionsNavChainId({
     walletChainId,
     isConnected,
-    hasAuctionEscrow: (id) => Boolean(auctionEscrowAddress(id)),
+    hasAscendingMode: (id: number) => hasCommerceMode("ascending", id),
   });
   const auctionsEnabled = auctionsChainId != null;
 

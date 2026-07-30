@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   useAccount,
   useChainId,
-  useReadContract,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -12,35 +11,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { auctionTerminalMessage } from "@/lib/auction/auction-terminal-copy";
 import {
   endsAtDateTimeAttr,
   formatAuctionAmount,
   formatAuctionCountdownSeconds,
 } from "@/lib/auction/format-auction";
-import { auctionTerminalMessage } from "@/lib/auction/auction-terminal-copy";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
-import type { OnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import {
-  deriveSettlementUiState,
-  mergeSettlementSnapshot,
-  type SettlementUiState,
-} from "@/lib/auction/settlement-state";
+  deriveChallengeActions,
+  challengeWindowEndsAt,
+  JUDGE_OUTCOME,
+  type ChallengeSnapshot,
+} from "@/lib/commerce/challenge";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import type { AscendingHoldSnapshot } from "@/lib/commerce/parse-ascending";
 import {
-  AuctionEscrowAbi,
-  KarPassportAbi,
-  KarProStakingAbi,
-} from "@/lib/contracts/abis.generated";
+  ascendingSettlementCopy,
+  deriveAscendingSettlementActions,
+  deriveAscendingSettlementState,
+} from "@/lib/commerce/settlement-state";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   commerceConfirmedLabel,
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  auctionEscrowAddress,
-  karPassportAddress,
-  karProStakingAddress,
-} from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -48,40 +44,18 @@ type Props = {
   chainId: number;
   tokenId: string;
   auction: AuctionRow;
-  hold: OnChainHold | null;
+  hold: AscendingHoldSnapshot | null;
+  challenge: ChallengeSnapshot | null;
   /** Unix seconds from useNow. */
   now: number;
-  settlementDisputeBond: bigint | undefined;
-  settlementHold: bigint | undefined;
-  disputeResolutionTimeout: bigint;
+  /** Bond required to open a challenge on this lot. */
+  challengeBond: bigint | undefined;
   /** Auction island UI state — S8/S9 terminal readouts. */
   auctionUiState: "SETTLED" | "S8" | "S9";
-  /** Passport trust status — may change after the bid during HOLD. */
-  passportStatus: PassportStatus;
 };
 
-function PassportHoldTrustReadout({ status }: { status: PassportStatus }) {
-  if (status === "DISPUTED") {
-    return (
-      <p className="font-sans text-sm text-status-error" role="status">
-        Passport status changed to disputed after your bid. Settlement actions
-        below remain yours within this hold window.
-      </p>
-    );
-  }
-  if (status === "UNVERIFIED") {
-    return (
-      <p className="font-sans text-sm text-text-secondary" role="status">
-        Passport verification is no longer active since your bid. Settlement
-        actions below remain yours within this hold window.
-      </p>
-    );
-  }
-  return null;
-}
-
-function formatHoldDate(sec: bigint): { label: string; dateTime: string } {
-  const date = new Date(Number(sec) * 1000);
+function formatHoldDate(sec: number): { label: string; dateTime: string } {
+  const date = new Date(sec * 1000);
   return {
     label: date.toLocaleDateString("en-US", {
       year: "numeric",
@@ -92,223 +66,135 @@ function formatHoldDate(sec: bigint): { label: string; dateTime: string } {
   };
 }
 
-function sameAddress(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  if (!a || !b) return false;
-  return a.toLowerCase() === b.toLowerCase();
-}
-
 export function AuctionSettlementPanel({
   chainId,
   tokenId,
   auction,
   hold,
+  challenge,
   now,
-  settlementDisputeBond,
-  settlementHold,
-  disputeResolutionTimeout,
+  challengeBond,
   auctionUiState,
-  passportStatus,
 }: Props) {
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
-  const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
-    useTxSync(chainId);
+  const { runTx, busy, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
-  const escrow = auctionEscrowAddress(chainId);
-  const passport = karPassportAddress(chainId);
-  const staking = karProStakingAddress(chainId);
+  const mode = commerceModeAddress("ascending", chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const tid = BigInt(tokenId);
 
-  const snap = mergeSettlementSnapshot(auction.settlement, hold);
-  const settlementState: SettlementUiState =
-    auctionUiState === "S8"
-      ? "RELEASED"
-      : auctionUiState === "S9"
-        ? "NONE"
-        : deriveSettlementUiState({
-            settlement: auction.settlement,
-            hold,
-            nowSec: now,
-            disputeResolutionTimeoutSec: disputeResolutionTimeout,
-          });
-
-  const { data: isActiveVerifier } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "isActiveVerifier",
-    args: address ? [address] : undefined,
-    chainId: wagmiChainId(chainId),
-    query: {
-      enabled: Boolean(
-        staking && address && settlementState === "DISPUTED",
-      ),
-    },
+  const state = deriveAscendingSettlementState({ hold, challenge, nowSec: now });
+  const actions = deriveAscendingSettlementActions({
+    state,
+    hold,
+    viewer: address,
+    seller: auction.seller,
+    agent: auction.agent,
+  });
+  const challengeActions = deriveChallengeActions({
+    challenge,
+    viewer: address,
+    excludedJudges: [hold?.buyer, auction.seller, auction.agent],
+    subjectChallengeable: state === "HOLD",
+    nowSeconds: now,
   });
 
-  const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
-    address: passport,
-    abi: KarPassportAbi,
-    functionName: "isApprovedForAll",
-    args: address && escrow ? [address, escrow] : undefined,
-    chainId: wagmiChainId(chainId),
-    query: {
-      enabled: Boolean(
-        address &&
-          passport &&
-          escrow &&
-          settlementState === "REFUND_PENDING",
-      ),
-    },
-  });
-
-  const isBuyer = sameAddress(address, snap?.buyer);
-  const isSeller = sameAddress(address, auction.seller);
-  const isAgent = sameAddress(address, auction.agent);
-  const isParty = isBuyer || isSeller || isAgent;
-  const canResolve =
-    isActiveVerifier === true && !isParty && isConnected;
-
-  const bond =
-    settlementDisputeBond ??
-    (snap?.bond && snap.bond > 0n ? snap.bond : undefined);
-  const bondLabel = bond != null ? formatAuctionAmount(bond, "ETH") : null;
-  const grossLabel = snap
-    ? formatAuctionAmount(snap.gross, auction.assetLabel)
+  const grossLabel = hold
+    ? formatAuctionAmount(hold.gross, auction.assetLabel)
     : null;
+  const bondLabel =
+    challengeBond != null ? formatAuctionAmount(challengeBond, "ETH") : null;
+  const actionBusy = busy || isWriting;
 
-  const holdSec = settlementHold ?? 7n * 24n * 60n * 60n;
-  const abandonedEligibleAt =
-    snap && snap.refundPendingAt > 0n
-      ? snap.refundPendingAt + holdSec
-      : 0n;
-  const sellerCanClaimAbandoned =
-    isSeller &&
-    settlementState === "REFUND_PENDING" &&
-    abandonedEligibleAt > 0n &&
-    BigInt(now) >= abandonedEligibleAt;
-
-  async function ensureChain() {
-    if (wrongChain) {
-      await switchChainAsync({ chainId: wagmiChainId(chainId) });
+  async function run(
+    functionName:
+      | "confirmReceipt"
+      | "releaseFunds"
+      | "completeReversal"
+      | "abandonReversal"
+      | "conclude"
+      | "withdraw",
+  ) {
+    if (!mode) return;
+    setTxError(null);
+    try {
+      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      await runTx(() =>
+        writeContractAsync({
+          address: mode,
+          abi: AscendingConsignmentAbi,
+          functionName,
+          args: [tid],
+          chainId: wagmiChainId(chainId),
+        }),
+      );
+    } catch (err) {
+      setTxError(txErrorMessage(err));
     }
   }
 
-  async function onConfirmReceipt() {
-    if (!escrow) return;
-    setTxError(null);
-    await runTx(() =>
-      writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "confirmReceipt",
-        args: [BigInt(tokenId)],
-        chainId: wagmiChainId(chainId),
-      }),
-    );
-  }
-
-  async function onOpenDispute() {
-    if (!escrow || bond == null) {
-      setTxError("Dispute bond is still loading. Try again shortly.");
+  async function onOpenChallenge() {
+    if (!mode || challengeBond == null) {
+      setTxError("Challenge bond is still loading. Try again shortly.");
       return;
     }
     setTxError(null);
-    await runTx(() =>
-      writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "openSettlementDispute",
-        args: [BigInt(tokenId)],
-        value: bond,
-        chainId: wagmiChainId(chainId),
-      }),
-    );
+    try {
+      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      await runTx(() =>
+        writeContractAsync({
+          address: mode,
+          abi: AscendingConsignmentAbi,
+          functionName: "open",
+          args: [tid],
+          value: challengeBond,
+          chainId: wagmiChainId(chainId),
+        }),
+      );
+    } catch (err) {
+      setTxError(txErrorMessage(err));
+    }
   }
 
-  async function onReleaseFunds() {
-    if (!escrow) return;
+  async function onJudge(outcome: 0 | 1) {
+    if (!mode) return;
     setTxError(null);
-    await runTx(() =>
-      writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "releaseFunds",
-        args: [BigInt(tokenId)],
-        chainId: wagmiChainId(chainId),
-      }),
-    );
+    try {
+      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      await runTx(() =>
+        writeContractAsync({
+          address: mode,
+          abi: AscendingConsignmentAbi,
+          functionName: "judge",
+          args: [tid, outcome],
+          chainId: wagmiChainId(chainId),
+        }),
+      );
+    } catch (err) {
+      setTxError(txErrorMessage(err));
+    }
   }
 
-  async function onResolve(outcome: 0 | 1) {
-    if (!escrow) return;
-    setTxError(null);
-    await runTx(() =>
-      writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "resolveSettlementDispute",
-        args: [BigInt(tokenId), outcome],
-        chainId: wagmiChainId(chainId),
-      }),
-    );
-  }
+  const feedback = (
+    <>
+      {(txError ?? error) && (
+        <p className="font-sans text-sm text-status-error" role="alert">
+          {txError ?? error}
+        </p>
+      )}
+      {syncLagged && (
+        <p role="status" className="font-sans text-xs text-text-tertiary">
+          {TX_SYNC_LAG_ADVISORY}
+        </p>
+      )}
+    </>
+  );
 
-  async function onReturnAndRefund() {
-    await runFlow(async () => {
-      if (!escrow || !passport || !address) return;
-      setTxError(null);
-      try {
-        if (!approvedForAll) {
-          await ensureChain();
-          const approveHash = await writeContractAsync({
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "setApprovalForAll",
-            args: [escrow, true],
-            chainId: wagmiChainId(chainId),
-          });
-          await awaitReceipt(approveHash);
-          await refetchApproval();
-          return;
-        }
-        await runTx(() =>
-          writeContractAsync({
-            address: escrow,
-            abi: AuctionEscrowAbi,
-            functionName: "returnPassportAndRefund",
-            args: [BigInt(tokenId)],
-            chainId: wagmiChainId(chainId),
-          }),
-        );
-      } catch (err) {
-        setTxError(txErrorMessage(err));
-      }
-    });
-  }
-
-  async function onClaimAbandoned() {
-    if (!escrow) return;
-    setTxError(null);
-    await runTx(() =>
-      writeContractAsync({
-        address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "claimAbandonedRefund",
-        args: [BigInt(tokenId)],
-        chainId: wagmiChainId(chainId),
-      }),
-    );
-  }
-
-  const actionBusy = busy || isWriting;
-
-  // —— S9 cancelled / returned ——
+  // —— S9 withdrawn / recalled ——
   if (auctionUiState === "S9") {
     return (
       <div
@@ -322,15 +208,13 @@ export function AuctionSettlementPanel({
     );
   }
 
-  // —— S8 / RELEASED ——
-  if (settlementState === "RELEASED" || auctionUiState === "S8") {
+  // —— S8 released ——
+  if (auctionUiState === "S8") {
     const fees = auction.settlement;
     const gross = fees
       ? formatAuctionAmount(fees.gross, auction.assetLabel)
-      : grossLabel ?? "—";
-    const net = fees
-      ? formatAuctionAmount(fees.net, auction.assetLabel)
-      : "—";
+      : (grossLabel ?? "—");
+    const net = fees ? formatAuctionAmount(fees.net, auction.assetLabel) : "—";
     const agentFee = fees
       ? formatAuctionAmount(fees.agentFee, auction.assetLabel)
       : "—";
@@ -348,345 +232,206 @@ export function AuctionSettlementPanel({
           <span className="font-mono tabular-nums">{platformFee}</span>.
         </p>
         <p className="font-sans text-sm text-text-secondary">
-          Payouts that could not reach a wallet wait under Claims. Vehicle re-registration happens
-          off-chain — keep passport records updated after handover.
+          Payouts that could not reach a wallet wait under Claims. Vehicle
+          re-registration happens off-chain — keep passport records updated
+          after handover.
         </p>
       </div>
     );
   }
 
-  if (settlementState === "CLEARED" || settlementState === "NONE" || !snap) {
-    return null;
-  }
+  if (state === "NONE" || !hold) return null;
 
-  const releaseDate = formatHoldDate(snap.releaseAt);
-  const releaseCountdown = formatAuctionCountdownSeconds(snap.releaseAt, now);
-  const releaseAttr = endsAtDateTimeAttr(snap.releaseAt);
+  const protection = formatHoldDate(hold.protectionEndsAt);
+  const protectionCountdown = formatAuctionCountdownSeconds(
+    BigInt(hold.protectionEndsAt),
+    now,
+  );
+  const protectionAttr = endsAtDateTimeAttr(BigInt(hold.protectionEndsAt));
+  const challengeEndsAt = challengeWindowEndsAt(challenge);
 
-  // —— HOLD_RELEASABLE / DISPUTE_TIMED_OUT — permissionless release ——
-  if (
-    settlementState === "HOLD_RELEASABLE" ||
-    settlementState === "DISPUTE_TIMED_OUT"
-  ) {
-    return (
-      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="font-sans text-sm text-text-primary">
-          {settlementState === "DISPUTE_TIMED_OUT"
-            ? "The settlement dispute timed out without a resolution. Anyone can release payment to the seller."
-            : "The protection hold has ended. Anyone can release payment to the seller."}
+  return (
+    <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+      <p className="font-sans text-sm text-text-primary">
+        {ascendingSettlementCopy(state)}
+      </p>
+
+      {grossLabel && (
+        <p className="font-mono text-sm tabular-nums text-text-primary">
+          Held {grossLabel}
         </p>
-        {grossLabel && (
-          <p className="font-mono text-sm tabular-nums text-text-primary">
-            Held {grossLabel}
-          </p>
-        )}
-        {!isConnected ? (
-          <WalletLoginButton />
-        ) : (
-          <>
-            {(txError ?? error) && (
-              <p className="font-sans text-sm text-status-error" role="alert">
-                {txError ?? error}
-              </p>
-            )}
-            {syncLagged && (
-              <p role="status" className="font-sans text-xs text-text-tertiary">
-                {TX_SYNC_LAG_ADVISORY}
-              </p>
-            )}
+      )}
+
+      {state === "HOLD" && protectionAttr && (
+        <p className="font-sans text-xs text-text-secondary">
+          Releases in{" "}
+          <time
+            dateTime={protectionAttr}
+            className="font-mono tabular-nums text-text-primary"
+          >
+            {protectionCountdown}
+          </time>{" "}
+          ·{" "}
+          <time
+            dateTime={protection.dateTime}
+            className="font-mono tabular-nums text-text-primary"
+          >
+            {protection.label}
+          </time>
+        </p>
+      )}
+
+      {challenge && challengeEndsAt != null && (
+        <p className="font-sans text-xs text-status-error">
+          Challenge window ends{" "}
+          <time
+            dateTime={formatHoldDate(challengeEndsAt).dateTime}
+            className="font-mono tabular-nums"
+          >
+            {formatHoldDate(challengeEndsAt).label}
+          </time>
+        </p>
+      )}
+
+      {!isConnected ? (
+        <WalletLoginButton />
+      ) : (
+        <>
+          {feedback}
+
+          {actions.canConfirmReceipt && (
             <Button
               type="button"
               className="w-full"
-              disabled={actionBusy || !escrow}
-              onClick={() => void onReleaseFunds()}
+              disabled={actionBusy || !mode}
+              onClick={() => void run("confirmReceipt")}
+            >
+              {actionBusy ? "Confirming…" : "Confirm receipt"}
+            </Button>
+          )}
+
+          {actions.canReleaseFunds && (
+            <Button
+              type="button"
+              className="w-full"
+              disabled={actionBusy || !mode}
+              onClick={() => void run("releaseFunds")}
             >
               {actionBusy ? "Confirming…" : "Release payment"}
             </Button>
-          </>
-        )}
-      </div>
-    );
-  }
+          )}
 
-  // —— DISPUTED ——
-  if (settlementState === "DISPUTED") {
-    const autoReleaseAt = snap.disputedAt + disputeResolutionTimeout;
-    const autoDate = formatHoldDate(autoReleaseAt);
-    return (
-      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <div
-          className="rounded-md border border-status-error/40 bg-bg-primary p-3"
-          role="status"
-        >
-          <p className="font-sans text-sm text-status-error">Payout frozen</p>
-          <p className="mt-1 font-sans text-sm text-text-secondary">
-            If unresolved, payment auto-releases to the seller on{" "}
-            <time
-              dateTime={autoDate.dateTime}
-              className="font-mono tabular-nums text-text-primary"
+          {actions.canCompleteReversal && (
+            <Button
+              type="button"
+              className="w-full"
+              disabled={actionBusy || !mode}
+              onClick={() => void run("completeReversal")}
             >
-              {autoDate.label}
-            </time>
-            .
-          </p>
-        </div>
-        {grossLabel && (
-          <p className="font-mono text-sm tabular-nums text-text-primary">
-            Held {grossLabel}
-          </p>
-        )}
+              {actionBusy ? "Confirming…" : "Return passport and refund"}
+            </Button>
+          )}
 
-        {canResolve && (
-          <div className="space-y-3 border-t border-border-default pt-3">
-            <p className="font-sans text-sm text-text-secondary">
-              Resolve as an active KarPro. You are not a party to this sale.
-            </p>
-            {(txError ?? error) && (
-              <p className="font-sans text-sm text-status-error" role="alert">
-                {txError ?? error}
-              </p>
-            )}
-            {syncLagged && (
-              <p role="status" className="font-sans text-xs text-text-tertiary">
-                {TX_SYNC_LAG_ADVISORY}
-              </p>
-            )}
-            <div className="space-y-2">
+          {actions.canAbandonReversal && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={actionBusy || !mode}
+              onClick={() => void run("abandonReversal")}
+            >
+              {actionBusy ? "Confirming…" : "Abandon reversal"}
+            </Button>
+          )}
+
+          {challengeActions.canOpen && (
+            <div className="space-y-2 border-t border-border-default pt-3">
               <p className="font-sans text-xs text-text-secondary">
-                Release to seller pays out the held sale and sends the dispute
-                bond to you. Use only when delivery succeeded.
-              </p>
-              <Button
-                type="button"
-                className="w-full"
-                disabled={actionBusy || !escrow}
-                onClick={() => void onResolve(0)}
-              >
-                {actionBusy ? "Confirming…" : "Release to seller"}
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <p className="font-sans text-xs text-status-error">
-                Confirm failure freezes a refund path: the buyer must return the
-                passport to recover the sale amount plus bond. Irreversible
-                without buyer cooperation or the abandoned-refund timeout.
+                Opening a challenge locks a{" "}
+                <span className="font-mono tabular-nums text-text-primary">
+                  {bondLabel ?? "…"}
+                </span>{" "}
+                bond and freezes the protection clock. You get it back if the
+                challenge is upheld.
               </p>
               <Button
                 type="button"
                 variant="secondary"
                 className="w-full"
-                disabled={actionBusy || !escrow}
-                onClick={() => void onResolve(1)}
+                disabled={actionBusy || !mode || challengeBond == null}
+                onClick={() => void onOpenChallenge()}
               >
-                {actionBusy ? "Confirming…" : "Confirm failure"}
+                {actionBusy
+                  ? "Confirming…"
+                  : bondLabel
+                    ? `Open challenge (${bondLabel})`
+                    : "Open challenge"}
               </Button>
             </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+          )}
 
-  // —— REFUND_PENDING ——
-  if (settlementState === "REFUND_PENDING") {
-    const bondPart = formatAuctionAmount(snap.bond, "ETH");
-    const grossPart = formatAuctionAmount(snap.gross, auction.assetLabel);
-    return (
-      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="font-sans text-sm text-text-primary">
-          Sale marked as failed. Refund pending.
-        </p>
-        <p className="font-sans text-sm text-text-secondary">
-          Buyer refund is{" "}
-          <span className="font-mono tabular-nums text-text-primary">
-            {grossPart}
-          </span>{" "}
-          plus bond{" "}
-          <span className="font-mono tabular-nums text-text-primary">
-            {bondPart}
-          </span>{" "}
-          after the passport returns to the seller.
-        </p>
+          {challengeActions.canWithdraw && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={actionBusy || !mode}
+              onClick={() => void run("withdraw")}
+            >
+              {actionBusy ? "Confirming…" : "Withdraw challenge"}
+            </Button>
+          )}
 
-        {isBuyer && isConnected && (
-          <>
-            {(txError ?? error) && (
-              <p className="font-sans text-sm text-status-error" role="alert">
-                {txError ?? error}
-              </p>
-            )}
-            {syncLagged && (
-              <p role="status" className="font-sans text-xs text-text-tertiary">
-                {TX_SYNC_LAG_ADVISORY}
-              </p>
-            )}
+          {challengeActions.canConclude && (
             <Button
               type="button"
               className="w-full"
-              disabled={actionBusy || !escrow || !passport}
-              onClick={() => void onReturnAndRefund()}
+              disabled={actionBusy || !mode}
+              onClick={() => void run("conclude")}
             >
-              {actionBusy
-                ? "Confirming…"
-                : !approvedForAll
-                  ? "Approve passport"
-                  : "Return passport and refund"}
+              {actionBusy ? "Confirming…" : "Conclude challenge"}
             </Button>
-          </>
-        )}
+          )}
 
-        {isSeller && isConnected && (
-          <>
-            {!sellerCanClaimAbandoned && abandonedEligibleAt > 0n && (
+          {challengeActions.canJudge && (
+            <div className="space-y-3 border-t border-border-default pt-3">
               <p className="font-sans text-sm text-text-secondary">
-                If the buyer does not return the passport, you can claim payment
-                after{" "}
-                <time
-                  dateTime={formatHoldDate(abandonedEligibleAt).dateTime}
-                  className="font-mono tabular-nums text-text-primary"
-                >
-                  {formatHoldDate(abandonedEligibleAt).label}
-                </time>
-                . Keeping the vehicle keeps the deal — the buyer keeps the
-                passport and you receive the held sale proceeds.
+                Judge this challenge as an independent party. You are not the
+                buyer, seller, agent, or challenger.
               </p>
-            )}
-            {sellerCanClaimAbandoned && (
-              <>
-                <p className="font-sans text-sm text-text-secondary">
-                  Keeping the vehicle keeps the deal. Claim abandoned payment to
-                  receive the held proceeds while the buyer keeps the passport.
+              <div className="space-y-2">
+                <p className="font-sans text-xs text-text-secondary">
+                  Upholding the challenge starts a reversal: the buyer returns
+                  the passport to recover the sale amount plus bond.
                 </p>
-                {(txError ?? error) && (
-                  <p className="font-sans text-sm text-status-error" role="alert">
-                    {txError ?? error}
-                  </p>
-                )}
-                {syncLagged && (
-                  <p role="status" className="font-sans text-xs text-text-tertiary">
-                    {TX_SYNC_LAG_ADVISORY}
-                  </p>
-                )}
                 <Button
                   type="button"
                   className="w-full"
-                  disabled={actionBusy || !escrow}
-                  onClick={() => void onClaimAbandoned()}
+                  disabled={actionBusy || !mode}
+                  onClick={() => void onJudge(JUDGE_OUTCOME.Upheld)}
                 >
-                  {actionBusy ? "Confirming…" : "Claim abandoned refund"}
+                  {actionBusy ? "Confirming…" : "Uphold challenge"}
                 </Button>
-              </>
-            )}
-          </>
-        )}
-
-        {!isBuyer && !isSeller && (
-          <p className="font-sans text-sm text-text-secondary">
-            Waiting for the buyer to return the passport for a full refund, or
-            for the seller abandoned-refund window.
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // —— HOLD (S6) ——
-  if (settlementState === "HOLD") {
-    return (
-      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
-        <PassportHoldTrustReadout status={passportStatus} />
-        {isBuyer ? (
-          <>
-            <p className="font-sans text-sm text-text-primary">
-              <span className="font-mono tabular-nums">{grossLabel}</span> is
-              held for your protection until{" "}
-              <time
-                dateTime={releaseDate.dateTime}
-                className="font-mono tabular-nums"
-              >
-                {releaseDate.label}
-              </time>
-              . Confirm receipt to release payment early, or open a dispute if
-              the vehicle was not delivered as sold.
-            </p>
-            {releaseAttr && (
-              <p className="font-sans text-xs text-text-secondary">
-                Releases in{" "}
-                <time
-                  dateTime={releaseAttr}
-                  className="font-mono tabular-nums text-text-primary"
-                >
-                  {releaseCountdown}
-                </time>
-              </p>
-            )}
-            {!isConnected ? (
-              <WalletLoginButton />
-            ) : (
-              <>
-                {(txError ?? error) && (
-                  <p
-                    className="font-sans text-sm text-status-error"
-                    role="alert"
-                  >
-                    {txError ?? error}
-                  </p>
-                )}
-                {syncLagged && (
-                  <p role="status" className="font-sans text-xs text-text-tertiary">
-                    {TX_SYNC_LAG_ADVISORY}
-                  </p>
-                )}
+              </div>
+              <div className="space-y-2">
+                <p className="font-sans text-xs text-text-secondary">
+                  Rejecting the challenge resumes the protection clock and
+                  forfeits the challenger&apos;s bond.
+                </p>
                 <Button
                   type="button"
+                  variant="secondary"
                   className="w-full"
-                  disabled={actionBusy || !escrow}
-                  onClick={() => void onConfirmReceipt()}
+                  disabled={actionBusy || !mode}
+                  onClick={() => void onJudge(JUDGE_OUTCOME.Rejected)}
                 >
-                  {actionBusy ? "Confirming…" : "Confirm receipt"}
+                  {actionBusy ? "Confirming…" : "Reject challenge"}
                 </Button>
-                <div className="space-y-2 border-t border-border-default pt-3">
-                  <p className="font-sans text-xs text-text-secondary">
-                    Opening a dispute locks a{" "}
-                    <span className="font-mono tabular-nums text-text-primary">
-                      {bondLabel ?? "…"}
-                    </span>{" "}
-                    bond, even for USDC auctions. You get it back if the dispute
-                    is confirmed.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    disabled={actionBusy || !escrow || bond == null}
-                    onClick={() => void onOpenDispute()}
-                  >
-                    {actionBusy
-                      ? "Confirming…"
-                      : bondLabel
-                        ? `Open dispute (${bondLabel})`
-                        : "Open dispute"}
-                  </Button>
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <p className="font-sans text-sm text-text-secondary">
-            Payment is released when the buyer confirms receipt, or
-            automatically on{" "}
-            <time
-              dateTime={releaseDate.dateTime}
-              className="font-mono tabular-nums text-text-primary"
-            >
-              {releaseDate.label}
-            </time>
-            .
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return null;
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }

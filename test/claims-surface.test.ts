@@ -41,12 +41,12 @@ describe("formatClaimAmount", () => {
 });
 
 describe("claimableContractsForChain", () => {
-  it("returns four claimable contracts on commercial chains", () => {
+  it("omits commerce modes when unset (Nuclear #2 pending)", () => {
     const hub = claimableContractsForChain(84532);
-    assert.equal(hub.length, 4);
+    assert.equal(hub.length, 2);
     assert.deepEqual(
       hub.map((c) => c.key).sort(),
-      ["auctionEscrow", "karPassport", "karProStaking", "marketplace"].sort(),
+      ["karPassport", "karProStaking"].sort(),
     );
     assert.equal(claimableContractsForChain(1).length, 0);
   });

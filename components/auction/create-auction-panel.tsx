@@ -10,18 +10,22 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
-import { parseOnChainHold } from "@/lib/auction/parse-on-chain-auction";
-import { AuctionEscrowAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
+import {
+  AscendingConsignmentAbi,
+  KarPassportAbi,
+} from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import type { PassportStatus } from "@/lib/types/ponder";
 import {
-  auctionEscrowAddress,
   karPassportAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -31,8 +35,8 @@ import { cn } from "@/lib/utils";
 type Props = {
   chainId: number;
   tokenId: string;
-  passportStatus: PassportStatus;
-  listingActive: boolean;
+  /** Derived by the sell surface: `may(OpenConsignment)` and no live sale. */
+  canOpen: boolean;
   isOwner: boolean;
   isActiveVerifier: boolean;
 };
@@ -43,8 +47,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60;
 export function CreateAuctionPanel({
   chainId,
   tokenId,
-  passportStatus,
-  listingActive,
+  canOpen,
   isOwner,
   isActiveVerifier,
 }: Props) {
@@ -58,11 +61,15 @@ export function CreateAuctionPanel({
   const [durationDays, setDurationDays] = useState(3);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const escrow = auctionEscrowAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
   const usdc = usdcAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const busy = phase !== "idle";
+  const { paused: modePaused } = useCommerceModePaused({
+    mode: "ascending",
+    chainId,
+  });
 
   const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
     address: passport,
@@ -73,38 +80,44 @@ export function CreateAuctionPanel({
     query: { enabled: Boolean(address && passport && escrow) },
   });
 
-  const { data: holdRaw } = useReadContract({
+  const { data: unresolvedSettlement } = useReadContract({
     address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "holds",
+    abi: AscendingConsignmentAbi,
+    functionName: "hasUnresolvedSettlement",
     args: [BigInt(tokenId)],
     chainId: wagmiChainId(chainId),
     query: { enabled: Boolean(escrow && tokenId) },
   });
 
-  const hold = parseOnChainHold(holdRaw);
-  const settlementPending = Boolean(hold?.open && hold.releaseAt !== 0n);
+  const { data: protectionEndsAt } = useReadContract({
+    address: escrow,
+    abi: AscendingConsignmentAbi,
+    functionName: "holdProtectionEndsAt",
+    args: [BigInt(tokenId)],
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(escrow && unresolvedSettlement === true) },
+  });
+
+  const settlementPending = unresolvedSettlement === true;
+  const releaseAt =
+    typeof protectionEndsAt === "bigint" ? protectionEndsAt : 0n;
   const settlementDate =
-    settlementPending && hold
-      ? (() => {
-          const date = new Date(Number(hold.releaseAt) * 1000);
-          return {
-            label: date.toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            }),
-            dateTime: endsAtDateTimeAttr(hold.releaseAt),
-          };
-        })()
+    settlementPending && releaseAt > 0n
+      ? {
+          label: new Date(Number(releaseAt) * 1000).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          }),
+          dateTime: endsAtDateTimeAttr(releaseAt),
+        }
       : null;
 
   const canShow =
     isConnected &&
     isOwner &&
     isActiveVerifier &&
-    passportStatus === "VERIFIED" &&
-    !listingActive &&
+    canOpen &&
     Boolean(escrow && passport);
 
   if (!canShow) return null;
@@ -125,6 +138,10 @@ export function CreateAuctionPanel({
   async function onCreate() {
     setFormError(null);
     if (!escrow) return;
+    if (modePaused === true) {
+      setFormError(commercePausedAnnouncementForMode("ascending"));
+      return;
+    }
     if (settlementPending) {
       setFormError(
         "The previous sale of this vehicle is still settling. Try again after the hold ends.",
@@ -163,8 +180,8 @@ export function CreateAuctionPanel({
       const asset = assetKind === "ETH" ? zeroAddress : usdc!;
       return writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "createAuction",
+        abi: AscendingConsignmentAbi,
+        functionName: "openAscendingDirect",
         args: [BigInt(tokenId), asset, reserve, durationSec],
         chainId: wagmiChainId(chainId),
       });
@@ -173,6 +190,8 @@ export function CreateAuctionPanel({
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+      {modePaused === true ? <CommercePausedNotice mode="ascending" /> : null}
+
       {settlementPending && settlementDate && (
         <div className={elevatedAdvisoryPanel} role="status">
           <p className={cn("font-sans", elevatedAdvisoryText)}>
@@ -294,7 +313,7 @@ export function CreateAuctionPanel({
       <Button
         type="button"
         className="w-full"
-        disabled={busy || !reserveStr.trim() || settlementPending}
+        disabled={busy || !reserveStr.trim() || settlementPending || modePaused === true}
         onClick={() => void onCreate()}
       >
         {phase === "indexing"

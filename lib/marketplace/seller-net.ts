@@ -1,4 +1,4 @@
-/** Mirrors MarketplaceEscrow._checkSellerNet — raw 1e8 arithmetic, no FX conversion. */
+/** Mirrors FixedPriceConsignment seller-net floor check — raw 1e8 arithmetic, no FX conversion. */
 
 export const MAX_AGENT_FEE_BPS = 3000;
 

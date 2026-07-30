@@ -10,43 +10,36 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import {
   SellerNetCalculator,
-  sellerNetSatisfied,
+  agentedPriceMeetsFloor,
 } from "@/components/marketplace/seller-net-calculator";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { COMPENSATION_FORM } from "@/lib/commerce/denomination";
+import type { MandateSnapshot } from "@/lib/commerce/mandate";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
-  encodeCurrencyCode,
   listingCurrencyCodesForChain,
   type ListingCurrencyCode,
 } from "@/lib/marketplace/currency-code";
-import { MAX_AGENT_FEE_BPS } from "@/lib/marketplace/seller-net";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
   chainId: number;
   tokenId: string;
-  ownerMinPrice1e8: bigint;
+  /** Mandate snapshot — floor, denomination and compensation are fixed by it. */
+  mandate: MandateSnapshot;
   platformFeeBps: bigint | null | undefined;
   wallet: `0x${string}`;
   onSuccess: () => void;
 };
-
-function parseCommissionBps(input: string): number | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const pct = Number(trimmed);
-  if (!Number.isFinite(pct) || pct < 0 || pct > 30) return null;
-  const bps = Math.round(pct * 100);
-  if (bps > MAX_AGENT_FEE_BPS) return null;
-  return bps;
-}
 
 function parsePrice1e8(input: string): bigint | null {
   if (!input.trim()) return null;
@@ -59,10 +52,15 @@ function parsePrice1e8(input: string): bigint | null {
   }
 }
 
+/**
+ * Agent opens a fixed-price consignment from the owner's mandate. Asset,
+ * denomination, floor and compensation come from the mandate snapshot; the
+ * agent only chooses the asking price.
+ */
 export function AgentListOnBehalfPanel({
   chainId,
   tokenId,
-  ownerMinPrice1e8,
+  mandate,
   platformFeeBps,
   wallet,
   onSuccess,
@@ -75,99 +73,99 @@ export function AgentListOnBehalfPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = marketplaceAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
+  const { paused: modePaused } = useCommerceModePaused({
+    mode: "fixedPrice",
+    chainId,
+  });
   const listingCurrency: ListingCurrencyCode =
     listingCurrencyCodesForChain(chainId)[0] ?? "USD";
 
   const [priceInput, setPriceInput] = useState("");
-  const [commissionInput, setCommissionInput] = useState("");
   const [settlementNote, setSettlementNote] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
   const price1e8 = useMemo(() => parsePrice1e8(priceInput), [priceInput]);
-  const agentFeeBps = useMemo(
-    () => parseCommissionBps(commissionInput) ?? -1,
-    [commissionInput],
-  );
-  const validCommission = agentFeeBps >= 0;
 
-  const canSubmitNet = sellerNetSatisfied(
-    price1e8,
-    validCommission ? agentFeeBps : -1,
+  const meetsFloor = agentedPriceMeetsFloor({
+    price: price1e8,
+    floor: mandate.floor,
+    compensationForm: mandate.compensationForm,
+    commissionBps: mandate.commissionBps,
     platformFeeBps,
-    ownerMinPrice1e8,
-  );
+  });
 
   const isAgentWallet =
     isConnected && address?.toLowerCase() === wallet.toLowerCase();
 
   const submitDisabledReason = useMemo(() => {
+    if (modePaused === true) return null;
     if (!isAgentWallet) return "Connect the agent wallet to list this vehicle.";
-    if (!market) return "Marketplace not configured for this chain.";
+    if (!market) return "Fixed price sales are not available on this chain.";
     if (platformFeeBps == null) return "Loading platform fee…";
     if (price1e8 == null) return "Enter a valid asking price.";
-    if (!validCommission) return "Enter a commission between 0% and 30%.";
-    if (!canSubmitNet) {
-      return "Owner minimum not met — raise the price or lower your commission.";
-    }
+    if (!meetsFloor) return "Mandate floor not met — raise the price.";
     return null;
-  }, [
-    isAgentWallet,
-    market,
-    platformFeeBps,
-    price1e8,
-    validCommission,
-    canSubmitNet,
-  ]);
+  }, [modePaused, isAgentWallet, market, platformFeeBps, price1e8, meetsFloor]);
 
   const runListOnBehalf = useCallback(async () => {
-    if (!market || !canSubmitNet || price1e8 == null || !validCommission) return;
+    if (!market || !meetsFloor || price1e8 == null) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const noteBytes = settlementNote.trim()
-        ? stringToHex(settlementNote.trim())
-        : ("0x" as const);
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "listOnBehalf",
+          abi: FixedPriceConsignmentAbi,
+          functionName: "openFromMandate",
           args: [
             tid,
+            {
+              kind: mandate.denominationKind,
+              currencyCode: mandate.currencyCode,
+            },
             price1e8,
-            encodeCurrencyCode(listingCurrency),
-            agentFeeBps,
-            noteBytes,
           ],
         }),
       );
       if (!succeeded) return;
+      const note = settlementNote.trim();
+      if (note) {
+        await runTx(() =>
+          writeContractAsync({
+            address: market,
+            abi: FixedPriceConsignmentAbi,
+            functionName: "setSettlementNote",
+            args: [tid, stringToHex(note)],
+          }),
+        );
+      }
       onSuccess();
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
   }, [
     market,
-    canSubmitNet,
+    meetsFloor,
     price1e8,
-    validCommission,
     wrongChain,
     switchChainAsync,
     wc,
+    mandate.denominationKind,
+    mandate.currencyCode,
     settlementNote,
     writeContractAsync,
     tid,
-    listingCurrency,
-    agentFeeBps,
     onSuccess,
     runTx,
   ]);
 
   return (
     <div className="mt-3 space-y-3 border-t border-border-default pt-3">
+      {modePaused === true ? <CommercePausedNotice mode="fixedPrice" /> : null}
+
       <div className="space-y-2">
         <Label htmlFor={`list-price-${tokenId}`}>
           Asking price ({listingCurrency})
@@ -178,26 +176,16 @@ export function AgentListOnBehalfPanel({
           placeholder="42,000"
           value={priceInput}
           onChange={(e) => setPriceInput(e.target.value)}
-          disabled={busy}
+          disabled={busy || modePaused === true}
           className="border-border-default bg-bg-card"
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor={`list-commission-${tokenId}`}>Your commission (%)</Label>
-        <Input
-          id={`list-commission-${tokenId}`}
-          inputMode="decimal"
-          placeholder="5"
-          value={commissionInput}
-          onChange={(e) => setCommissionInput(e.target.value)}
-          disabled={busy}
-          className="border-border-default bg-bg-card"
-        />
-        {commissionInput.trim() && !validCommission && (
-          <p className="text-xs text-status-error">Commission must be between 0% and 30%.</p>
-        )}
-      </div>
+      <p className="font-sans text-xs text-text-secondary">
+        {mandate.compensationForm === COMPENSATION_FORM.Margin
+          ? "You keep everything above the owner's floor, after the platform fee."
+          : `Your commission is fixed by the mandate at ${(mandate.commissionBps / 100).toFixed(2)}%.`}
+      </p>
 
       <div className="space-y-2">
         <Label htmlFor={`list-settlement-${tokenId}`}>
@@ -216,9 +204,10 @@ export function AgentListOnBehalfPanel({
 
       <SellerNetCalculator
         price1e8={price1e8}
-        agentFeeBps={validCommission ? agentFeeBps : 0}
+        floor1e8={mandate.floor}
+        compensationForm={mandate.compensationForm}
+        commissionBps={mandate.commissionBps}
         platformFeeBps={platformFeeBps}
-        ownerMinPrice1e8={ownerMinPrice1e8}
         currencyCode={listingCurrency}
       />
 
@@ -240,7 +229,7 @@ export function AgentListOnBehalfPanel({
       <Button
         type="button"
         className="w-full"
-        disabled={busy || Boolean(submitDisabledReason)}
+        disabled={busy || modePaused === true || Boolean(submitDisabledReason)}
         onClick={() => void runListOnBehalf()}
       >
         {busy ? "Confirming…" : "List for sale"}

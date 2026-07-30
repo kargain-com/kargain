@@ -1,4 +1,4 @@
-/** Mirrors MarketplaceEscrow._RETURN_COOLDOWN — 7 days in seconds. */
+/** Mirrors Recall.RECALL_COOLDOWN — 7 days in seconds. */
 
 export const RETURN_COOLDOWN_SECONDS = 604_800n;
 

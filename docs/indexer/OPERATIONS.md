@@ -81,10 +81,9 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
+| **Commerce cutover + Nuclear #2 (July 2026 — step 10)** | Drop legacy `marketplace_*` / `auction_*` tables **and** ship consignment commerce (`consignment`, `mandate`, `challenge`, `commerce_*`) with live mode addresses — **one full reindex** when Nuclear #2 deploys the mode stack ([OPERATIONS.md](./OPERATIONS.md)). **§15.2 step 5 alone** removed escrow app/indexer consumers but leaves **production commerce inert** (fail-closed) until Nuclear #2 registers mode contracts — do **not** reindex production for cutover code alone. |
 | **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; hub **44434865** + Eth **11319840** (**VPS done July 22, 2026**) |
-| AuctionEscrow indexer (July 2026) | New `auction` tables — **reindex required**; Nuclear hub auction start from manifest `blocks.auctionEscrow` |
-| Auction agent authorizations (b2, July 2026) | `auction_agent_authorization` — **full reindex required** |
-| Delegation notifications (July 2026) | Authorization owner and lifecycle timestamps — **full reindex required** |
+| Delegation notifications (July 2026) | Superseded — mandate grants feed `mandate.granted` notifications on the consignment surface |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Place location columns (Geo Phase C, July 2026) | `locationPlaceId` + `locationCountryCode` on `passport` — **full reindex required** so historical URI metadata backfills; older label-only rows keep empty placeId until owner re-saves |
 | Verifier place columns (Geo Phase E, July 2026) | `locationLabel` + `locationPlaceId` + `locationCountryCode` on `verifier` from KarPro Arweave — **full reindex required**; empty until replay / verifier re-saves profile |
@@ -93,7 +92,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trust layer challenge terminals (July 2026+) | `KarPassport:ChallengeConcluded` (and `ChallengeJudged` / `ChallengeWithdrawn`) → UNVERIFIED/VERIFIED + `lastDisputeTerminal` — **full reindex** with Nuclear #2 (legacy live ABI: `DisputeExpired`) |
 | Passport `lastDisputeTerminal` (July 2026) | Distinguishes confirm / reject / expire / withdraw for lapse UX + notifications — **full reindex** with Nuclear #2 |
 | ClaimablePayouts projection (July 2026) | `pending_claim` + `claim_credit` tables; `ClaimRecorded` / `ClaimWithdrawn` on Auction / Marketplace / KarPassport / KarProStaking — **full reindex** with Nuclear #2 |
-| Commerce modes (FixedPrice / Ascending, July 2026) | New `consignment` / `ascending_terms` / `consignment_bid` / `consignment_hold` / `challenge` / `mandate` / `consignment_settlement` / `commerce_claim*` / `commerce_mode` / payment+currency tables — **full reindex required** when schema deploys; **live mode addresses/start blocks deferred to Nuclear #2** (local Hardhat indexes after `deploy:local`) |
+| Commerce modes schema (July 2026) | New `consignment` / `ascending_terms` / `consignment_bid` / `consignment_hold` / `challenge` / `mandate` / `consignment_settlement` / `commerce_claim*` / `commerce_mode` / payment+currency tables — bundled with **Nuclear #2** full reindex (not step 5 alone); local Hardhat indexes after `pnpm deploy:local` |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
@@ -109,7 +108,7 @@ Examples that **do not** require reindex:
 - Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
-- Owner consignment read API (July 2026): `ownerIdx` on `agent_authorization` / `auction_agent_authorization` + `GET /owners/:address/authorizations` (+ auction) — **redeploy ponder image only**; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
+- Owner consignment read API (July 2026): superseded by consignment mandate routes — **redeploy ponder image only** when schema unchanged; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
 
 ---
 
@@ -255,7 +254,7 @@ PONDER_START_BLOCK_11155111=11319840
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
-Optional advanced overrides (84532 only): `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_MARKETPLACE_ADDRESS`, `PONDER_AUCTION_ESCROW_ADDRESS`, … only when debugging.
+Optional advanced overrides (84532 only): `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_KAR_PRO_PASS_ADDRESS`, `PONDER_KAR_PRO_STAKING_ADDRESS`, `PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS`, `PONDER_ASCENDING_CONSIGNMENT_ADDRESS`, … only when debugging.
 
 **Per-contract start blocks:** from `COMMERCIAL_ACTIVE[chainId].blocks` (or local manifest when present). Confirm with `pnpm ponder:config` after pull.
 
@@ -285,16 +284,14 @@ Wait until logs show:
 ```bash
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
 curl -si https://ponder.kargain.com/status | head -20
-curl -s https://ponder.kargain.com/listings | jq '.total'
-curl -s https://ponder.kargain.com/auctions | jq '.total'   # 0 until first AuctionCreated — OK after auction reindex
-# after b2 reindex (empty until first AuctionAgentAuthorized):
-# curl -s "https://ponder.kargain.com/agents/0x…/auction-authorizations" | jq '.total'
-curl -s https://ponder.kargain.com/listings/facets | jq '.statusCounts'
+curl -s https://ponder.kargain.com/passports | jq '.total'
+curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until live mode addresses register (deferred to Nuclear #2)
+curl -s https://ponder.kargain.com/challenges | jq '.total'
 curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
-curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/authorizations?hasActiveListing=false' | jq '.total, .page, .limit'
+curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/mandates?active=false' | jq '.total, .page, .limit'
 ```
 
-Replace `<tokenId>` with a known minted passport. The agent authorizations line expects a valid empty filtered response (`total: 0`) when the address has no consignments — not an unfiltered list (confirms `?hasActiveListing` is live). `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
+Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
 
 ---
 

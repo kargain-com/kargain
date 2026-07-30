@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { zeroAddress } from "viem";
 
-import type { AuctionAgentAuth } from "../lib/auction/auction-agent.ts";
+import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
+import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import {
   deriveSellSurface,
   type SellSurfaceFlags,
@@ -10,184 +11,189 @@ import {
 } from "../lib/passport/sell-surface.ts";
 
 const AGENT = "0x1111111111111111111111111111111111111111" as const;
+const OWNER = "0x2222222222222222222222222222222222222222" as const;
 const NOW = 2_000_000_000;
 
 const allHidden: SellSurfaceFlags = {
-  showList: false,
-  showDelegate: false,
-  showMarketplaceAuthCard: false,
-  showAuctionCreate: false,
-  showAuctionAuthorize: false,
-  showAuctionAuthCard: false,
-  showAuctionRequirementNote: false,
+  showFixedPriceOpen: false,
+  showFixedPriceGrant: false,
+  showFixedPriceMandateCard: false,
+  showAscendingOpen: false,
+  showAscendingGrant: false,
+  showAscendingMandateCard: false,
+  showAscendingRunnerNote: false,
 };
 
-const inactiveAuctionAuth: AuctionAgentAuth = {
-  agent: AGENT,
-  expiry: 0n,
-  asset: zeroAddress,
-  ownerMinAsset: 1n,
-  active: false,
-};
+function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
+  return {
+    mode,
+    tokenId: "1",
+    agent: zeroAddress,
+    expiry: 0,
+    asset: zeroAddress,
+    denominationKind: DENOMINATION_KIND.Fiat,
+    currencyCode: "0x5553440000000000000000000000000000000000000000000000000000000000",
+    floor: 0n,
+    compensationForm: COMPENSATION_FORM.Commission,
+    commissionBps: 0,
+    active: false,
+  };
+}
 
-function input(
-  overrides: Partial<SellSurfaceInput> = {},
-): SellSurfaceInput {
+function activeMandate(
+  mode: "fixedPrice" | "ascending",
+  overrides: Partial<MandateSnapshot> = {},
+): MandateSnapshot {
+  return {
+    ...inactiveMandate(mode),
+    agent: AGENT,
+    floor: 1_000_000_00n,
+    active: true,
+    ...overrides,
+  };
+}
+
+function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
   return {
     isOwner: true,
-    listingState: "inactive",
-    auctionBlocks: false,
-    auctionEscrowConfigured: true,
-    passportStatus: "VERIFIED",
+    hasLiveConsignment: false,
+    fixedPriceConfigured: true,
+    ascendingConfigured: true,
+    mayOpenConsignment: true,
     isActiveVerifier: false,
-    marketplaceAuthActive: false,
-    auctionAuth: { value: inactiveAuctionAuth, now: NOW },
+    fixedPriceMandate: { value: null, now: NOW },
+    ascendingMandate: { value: null, now: NOW },
     ...overrides,
   };
 }
 
 describe("deriveSellSurface", () => {
-  it("shows the auction requirement note for an unverified owner", () => {
+  it("hides everything for a non-owner", () => {
+    assert.deepEqual(deriveSellSurface(input({ isOwner: false })), allHidden);
+  });
+
+  it("hides everything while a live consignment exists", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ passportStatus: "UNVERIFIED" })),
-      {
-        ...allHidden,
-        showList: true,
-        showDelegate: true,
-        showAuctionRequirementNote: true,
-      },
+      deriveSellSurface(input({ hasLiveConsignment: true })),
+      allHidden,
     );
   });
 
-  it("shows the auction requirement note for a disputed owner", () => {
-    assert.equal(
-      deriveSellSurface(input({ passportStatus: "DISPUTED" }))
-        .showAuctionRequirementNote,
-      true,
+  it("fails closed while live-consignment or may facts are unresolved", () => {
+    assert.deepEqual(
+      deriveSellSurface(input({ hasLiveConsignment: undefined })),
+      allHidden,
+    );
+    assert.deepEqual(
+      deriveSellSurface(input({ mayOpenConsignment: undefined })),
+      allHidden,
+    );
+    assert.deepEqual(
+      deriveSellSurface(input({ mayOpenConsignment: false })),
+      allHidden,
     );
   });
 
-  it("hides the auction requirement note when escrow is unconfigured", () => {
-    assert.equal(
-      deriveSellSurface(input({
-        passportStatus: "UNVERIFIED",
-        auctionEscrowConfigured: false,
-      })).showAuctionRequirementNote,
-      false,
-    );
-  });
-
-  it("shows list, delegation, and auction authorization for a private owner", () => {
+  it("shows fixed-price open and ascending grant for a private owner", () => {
     assert.deepEqual(deriveSellSurface(input()), {
       ...allHidden,
-      showList: true,
-      showDelegate: true,
-      showAuctionAuthorize: true,
+      showFixedPriceOpen: true,
+      showFixedPriceGrant: true,
+      showAscendingGrant: true,
+      showAscendingRunnerNote: true,
     });
   });
 
-  it("replaces auction authorization with create for a KarPro owner", () => {
+  it("replaces ascending grant with open for a KarPro owner", () => {
+    assert.deepEqual(deriveSellSurface(input({ isActiveVerifier: true })), {
+      ...allHidden,
+      showFixedPriceOpen: true,
+      showFixedPriceGrant: true,
+      showAscendingOpen: true,
+    });
+  });
+
+  it("shows a fixed-price mandate card when a standing grant exists", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ isActiveVerifier: true })),
+      deriveSellSurface(
+        input({
+          fixedPriceMandate: {
+            value: activeMandate("fixedPrice"),
+            now: NOW,
+          },
+        }),
+      ),
       {
         ...allHidden,
-        showList: true,
-        showDelegate: true,
-        showAuctionCreate: true,
+        showFixedPriceOpen: true,
+        showFixedPriceMandateCard: true,
+        showAscendingGrant: true,
+        showAscendingRunnerNote: true,
       },
     );
   });
 
-  it("replaces delegation with the marketplace authorization card", () => {
+  it("keeps an expired mandate as a management card", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ marketplaceAuthActive: true })),
+      deriveSellSurface(
+        input({
+          fixedPriceMandate: {
+            value: activeMandate("fixedPrice", { expiry: NOW - 1 }),
+            now: NOW,
+          },
+        }),
+      ),
       {
         ...allHidden,
-        showList: true,
-        showMarketplaceAuthCard: true,
-        showAuctionAuthorize: true,
+        showFixedPriceOpen: true,
+        showFixedPriceMandateCard: true,
+        showAscendingGrant: true,
+        showAscendingRunnerNote: true,
       },
     );
   });
 
-  it("replaces auction authorization with an active authorization card", () => {
-    const activeAuth = { ...inactiveAuctionAuth, active: true };
+  it("shows an ascending mandate card when a standing grant exists", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ auctionAuth: { value: activeAuth, now: NOW } })),
+      deriveSellSurface(
+        input({
+          ascendingMandate: {
+            value: activeMandate("ascending"),
+            now: NOW,
+          },
+          isActiveVerifier: true,
+        }),
+      ),
       {
         ...allHidden,
-        showList: true,
-        showDelegate: true,
-        showAuctionAuthCard: true,
+        showFixedPriceOpen: true,
+        showFixedPriceGrant: true,
+        showAscendingMandateCard: true,
       },
     );
   });
 
-  it("keeps an expired active auction authorization as a status card", () => {
-    const expiredAuth = {
-      ...inactiveAuctionAuth,
-      active: true,
-      expiry: BigInt(NOW - 1),
-    };
-    assert.deepEqual(
-      deriveSellSurface(input({ auctionAuth: { value: expiredAuth, now: NOW } })),
-      {
-        ...allHidden,
-        showList: true,
-        showDelegate: true,
-        showAuctionAuthCard: true,
-      },
-    );
+  it("hides ascending actions when ascending is not configured", () => {
+    const flags = deriveSellSurface(input({ ascendingConfigured: false }));
+    assert.equal(flags.showAscendingOpen, false);
+    assert.equal(flags.showAscendingGrant, false);
+    assert.equal(flags.showAscendingRunnerNote, false);
+    assert.equal(flags.showFixedPriceOpen, true);
   });
 
-  it("hides the panel for an active listing", () => {
-    assert.deepEqual(
-      deriveSellSurface(input({ listingState: "active" })),
-      allHidden,
+  it("hides grant CTAs while mandate reads are unresolved", () => {
+    const flags = deriveSellSurface(
+      input({
+        fixedPriceMandate: undefined,
+        ascendingMandate: undefined,
+        isActiveVerifier: true,
+      }),
     );
+    assert.equal(flags.showFixedPriceOpen, true);
+    assert.equal(flags.showFixedPriceGrant, false);
+    assert.equal(flags.showAscendingOpen, false);
+    assert.equal(flags.showAscendingGrant, false);
   });
 
-  it("hides the panel when auction commerce owns the rail", () => {
-    assert.deepEqual(
-      deriveSellSurface(input({ auctionBlocks: true })),
-      allHidden,
-    );
-  });
-
-  it("hides the panel for a non-owner", () => {
-    assert.deepEqual(
-      deriveSellSurface(input({ isOwner: false })),
-      allHidden,
-    );
-  });
-
-  it("fails closed while listing, auction, or authorization facts are unresolved", () => {
-    assert.deepEqual(
-      deriveSellSurface(input({ listingState: "pending" })),
-      allHidden,
-    );
-    assert.deepEqual(
-      deriveSellSurface(input({ listingState: "failure" })),
-      allHidden,
-    );
-    assert.deepEqual(
-      deriveSellSurface(input({ auctionBlocks: undefined })),
-      allHidden,
-    );
-
-    const unresolvedMarketplace = deriveSellSurface(
-      input({ marketplaceAuthActive: undefined }),
-    );
-    assert.equal(unresolvedMarketplace.showList, true);
-    assert.equal(unresolvedMarketplace.showDelegate, false);
-    assert.equal(unresolvedMarketplace.showMarketplaceAuthCard, false);
-
-    const unresolvedAuction = deriveSellSurface(
-      input({ auctionAuth: undefined }),
-    );
-    assert.equal(unresolvedAuction.showList, true);
-    assert.equal(unresolvedAuction.showAuctionCreate, false);
-    assert.equal(unresolvedAuction.showAuctionAuthorize, false);
-    assert.equal(unresolvedAuction.showAuctionAuthCard, false);
-  });
+  void OWNER; // retained for future owner-address fixtures
 });

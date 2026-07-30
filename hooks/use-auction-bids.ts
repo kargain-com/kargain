@@ -31,7 +31,7 @@ export function useAuctionBids({
   const liveGate = isLiveAuctionUiState(uiState) && visible;
 
   const query = useInfiniteQuery({
-    queryKey: ["auction-bids", tokenId, String(auctionCreatedAt)],
+    queryKey: ["consignment-bids", tokenId, String(auctionCreatedAt)],
     queryFn: async ({ pageParam }) => {
       const result = await getAuctionBids(tokenId, {
         page: pageParam,

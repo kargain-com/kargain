@@ -550,7 +550,7 @@ Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-fo
 
 ### 4.16 Marketplace listing detail
 
-Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx). On-chain listing rows decoded via [`parse-on-chain-listing.ts`](../lib/marketplace/parse-on-chain-listing.ts) (MarketplaceEscrow v2 struct; `active` at tuple index 2).
+Implementation: [`listing-detail-client-island.tsx`](../components/marketplace/listing-detail-client-island.tsx) + [`listing-buy-panel.tsx`](../components/marketplace/listing-buy-panel.tsx). On-chain consignment rows decoded via [`parse-on-chain-listing.ts`](../lib/marketplace/parse-on-chain-listing.ts) (FixedPriceConsignment offered phase; live check via `consignmentPhase`).
 
 Sentence case in UI copy. No `font-bold` / `font-semibold` on disclosure labels.
 
@@ -711,9 +711,9 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 
 ### 4.18 Auction commerce
 
-Reserve auctions on AuctionEscrow. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `auctionEscrowAddress(chainId)` — top nav on all breakpoints (`GavelIcon` icon-only below `md`).
+Reserve auctions on AscendingConsignment. **Canonical lot URL** remains `/marketplace/[tokenId]`; browse at `/auctions`. Module domain: [`lib/auction/`](../lib/auction/). Nav link gated by `ascendingConsignmentAddress(chainId)` — top nav on all breakpoints (`GavelIcon` icon-only below `md`).
 
-**г-1 + г-2 + г-3 + г-4 shipped:** browse, native + USDC bid, direct KarPro create, permissionless Finalize, agent authorize / create-on-behalf / cancel / return + U7, settlement hold / dispute / refund (S6–S9) + U8/U9, consigned-tab auction sections, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order. **Auction UI initiative complete.** AuctionEscrow `2.0.0-draft`: passport status decoupled after first bid; `settle` uses `transferFrom` (infallible on receiver); no void/S9 `VOIDED` surface.
+**г-1 + г-2 + г-3 + г-4 shipped** (retargeted to Ascending in commerce cutover §15.2 step 5): browse, native + USDC bid, direct KarPro create, settle / BondedChallenge hold, mandate grant / open-from-mandate, recall, extension flash / outbid toast / InstrumentTimeline bid history / mobile commerce order.
 
 #### Unified owner sell group
 
@@ -881,6 +881,22 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
 | Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
 
+### 4.20 Commerce pause (G3 ops)
+
+Ops-only emergency stop for FixedPrice / Ascending modes ([commerce-model §G3](./research/commerce-model-2026.md)). Not product navigation.
+
+| Surface | Contract |
+|---------|----------|
+| Route | [`/ops/commerce-pause`](../app/ops/commerce-pause/page.tsx) — not in top nav, bottom nav, or footer |
+| Reachability | Direct URL; quiet mono **Commerce pause →** on own profile only when the connected wallet is `guardian()` on ≥1 resolved mode ([`commerce-guardian-ops-link.tsx`](../components/commerce/commerce-guardian-ops-link.tsx)) |
+| Grid | One Level B `instrumentReadoutPanel` per resolved `(commercialChainIds × COMMERCE_MODES)` via [`commerceModeAddress`](../lib/commerce/mode.ts) — no chain/mode literals |
+| Reads | Chain only: `paused` / `guardian` / `owner` ([`use-commerce-pause-ops.ts`](../hooks/use-commerce-pause-ops.ts)). Never indexer for pause UX |
+| Pause CTA | Offered only when connected === guardian and mode is running ([`deriveGuardianPauseControl`](../lib/commerce/pause-surface.ts)); withheld from owner and strangers |
+| Confirm | Dialog states what stops (mode-specific open + buy/bid) and what continues (settlement, claims, withdrawals, recall, challenges); unpause is timelock-only copy |
+| Write | `useTxSync(chainId).runTx` → `pause()`; no unpause button — show owner address + [`UNPAUSE_HINT`](../lib/commerce/pause-surface.ts) while paused |
+| User notice | [`CommercePausedNotice`](../components/commerce/commerce-paused-notice.tsx) on open / bid / buy before the wallet attempt when chain `paused === true`; disable those CTAs. Pending/failed reads do not invent paused — `ContractPaused` remains the backstop |
+| Chrome | Informational §10.3: `border-border-default` + `text-text-secondary` on `bg-bg-surface` — not `accent-warm`, not `status-error` |
+
 ---
 
 ## 5. Motion
@@ -1040,7 +1056,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
 | Caution / advisory (display-only) | `border-status-warning` (or `border-status-warning/40` where a softer panel is needed) | `text-status-warning` (icon); body may use `text-text-primary` / `text-text-secondary` | Non-gating caution — see sub-table below |
 | Purchase / external payment confirmed | `border-status-success/40` (`commerceConfirmedPanel`) | `text-status-success` (`commerceConfirmedLabel`) | Post-confirmation commerce only — §12.7 |
-| Informational (prior dispute resolved, verification lapsed, indexer sync, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute closed, verification lapsed after window, indexer sync pending, KarPro challenges banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up, profile identity relink card) — `border-border-default` / `text-text-secondary` — Not accent. Lapsed verification is **not** an error state. Do not upgrade to `status-warning` without a product decision changing their meaning. |
+| Informational (prior dispute resolved, verification lapsed, indexer sync, commerce pause, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute closed, verification lapsed after window, indexer sync pending, KarPro challenges banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up, profile identity relink card, **G3 commerce pause** notice on open/bid/buy and ops readout) — `border-border-default` / `text-text-secondary` — Not accent. Lapsed verification and a paused selling mode are **not** error states. Do not upgrade to `status-warning` without a product decision changing their meaning. |
 
 #### Gated acknowledgments (`status-error`)
 
@@ -1529,4 +1545,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.94 (July 2026 — Passport verification challenge via BondedChallenge open/withdraw/judge/conclude). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.95 (July 2026 — G3 commerce pause ops surface + chain-sourced paused notices on open/bid/buy). Update when tokens, app shell, or component contracts change.*

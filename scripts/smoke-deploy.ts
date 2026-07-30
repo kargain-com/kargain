@@ -1,7 +1,6 @@
-import { getAddress, zeroAddress } from "viem";
+import { getAddress } from "viem";
 
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
-import { currencyCodeBytes32 } from "./lib/chainlink-feeds.js";
 import {
   requireSepoliaDeployment,
   SEPOLIA_CHAIN_ID,
@@ -39,7 +38,6 @@ async function main() {
 
     const timelock = manifest.timelock;
     const adapter = manifest.bridgeGateway;
-    const usdc = getAddress(manifest.usdc ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e");
 
     if (!timelock || !adapter) {
       console.error("Manifest missing timelock or bridgeGateway");
@@ -49,21 +47,30 @@ async function main() {
     const passport = await viem.getContractAt("KarPassport", manifest.karPassport);
     const proPass = await viem.getContractAt("KarProPass", manifest.karProPass);
     const staking = await viem.getContractAt("KarProStaking", manifest.karProStaking);
-    const marketplace = await viem.getContractAt("MarketplaceEscrow", manifest.marketplace);
     const timelockContract = await viem.getContractAt("Timelock48h", timelock);
     const onftAdapter = await viem.getContractAt("KarPassportBridgeGateway", adapter);
-    const auctionEscrow = manifest.auctionEscrow
-      ? await viem.getContractAt("AuctionEscrow", manifest.auctionEscrow)
+    // Commerce cutover Phase 1: modes are optional until Nuclear #2 (fail closed).
+    const fixedPrice = manifest.fixedPriceConsignment
+      ? await viem.getContractAt("FixedPriceConsignment", manifest.fixedPriceConsignment)
+      : null;
+    const ascending = manifest.ascendingConsignment
+      ? await viem.getContractAt("AscendingConsignment", manifest.ascendingConsignment)
       : null;
 
     const results: CheckResult[] = [];
+    let idCounter = 0;
+    const nextId = () => {
+      idCounter += 1;
+      return String.fromCharCode(96 + idCounter);
+    };
 
     const check = async (
-      id: string,
+      label: string,
       pass: boolean,
       expected: string,
       actual: string,
     ) => {
+      const id = `${nextId()}. ${label}`;
       results.push({ id, pass, expected, actual });
       console.log(`${pass ? "PASS" : "FAIL"} ${id}`);
       if (!pass) {
@@ -72,34 +79,40 @@ async function main() {
       }
     };
 
-    const versionChecks: Array<{ id: string; name: keyof typeof CONTRACT_VERSIONS; read: () => Promise<string> }> =
+    const versionChecks: Array<{ name: keyof typeof CONTRACT_VERSIONS; read: () => Promise<string> }> =
       [
-        { id: "a", name: "KarPassport", read: () => passport.read.VERSION([]) as Promise<string> },
-        { id: "b", name: "KarProStaking", read: () => staking.read.VERSION([]) as Promise<string> },
-        { id: "c", name: "KarProPass", read: () => proPass.read.VERSION([]) as Promise<string> },
-        { id: "d", name: "MarketplaceEscrow", read: () => marketplace.read.VERSION([]) as Promise<string> },
-        { id: "e", name: "Timelock48h", read: () => timelockContract.read.VERSION([]) as Promise<string> },
+        { name: "KarPassport", read: () => passport.read.VERSION([]) as Promise<string> },
+        { name: "KarProStaking", read: () => staking.read.VERSION([]) as Promise<string> },
+        { name: "KarProPass", read: () => proPass.read.VERSION([]) as Promise<string> },
+        { name: "Timelock48h", read: () => timelockContract.read.VERSION([]) as Promise<string> },
         // Live 84532 still hosts ProxyONFT721Adapter until C2 gateway cutover.
-        { id: "f", name: "ProxyONFT721Adapter", read: () => onftAdapter.read.VERSION([]) as Promise<string> },
-        ...(auctionEscrow
+        { name: "ProxyONFT721Adapter", read: () => onftAdapter.read.VERSION([]) as Promise<string> },
+        ...(fixedPrice
           ? [
               {
-                id: "g",
-                name: "AuctionEscrow" as const,
-                read: () => auctionEscrow.read.VERSION([]) as Promise<string>,
+                name: "FixedPriceConsignment" as const,
+                read: () => fixedPrice.read.VERSION([]) as Promise<string>,
+              },
+            ]
+          : []),
+        ...(ascending
+          ? [
+              {
+                name: "AscendingConsignment" as const,
+                read: () => ascending.read.VERSION([]) as Promise<string>,
               },
             ]
           : []),
       ];
 
-    for (const { id, name, read } of versionChecks) {
+    for (const { name, read } of versionChecks) {
       let actual: string;
       try {
         actual = await read();
       } catch {
         if (name === "KarProPass" && manifest.unchanged?.includes("karProPass")) {
           await check(
-            `${id}. VERSION ${name} (reused — no on-chain VERSION())`,
+            `VERSION ${name} (reused — no on-chain VERSION())`,
             true,
             CONTRACT_VERSIONS[name],
             "reused v1 contract",
@@ -109,21 +122,12 @@ async function main() {
         throw new Error(`${name}.VERSION() reverted`);
       }
       const expected = CONTRACT_VERSIONS[name];
-      await check(`${id}. VERSION ${name}`, actual === expected, expected, actual);
+      await check(`VERSION ${name}`, actual === expected, expected, actual);
     }
-
-    const marketplaceUpgradeId = auctionEscrow ? "h" : "g";
-    const upgradeAuthority = getAddress((await marketplace.read.upgradeAuthority([])) as `0x${string}`);
-    await check(
-      `${marketplaceUpgradeId}. upgradeAuthority == timelock`,
-      upgradeAuthority === getAddress(timelock),
-      getAddress(timelock),
-      upgradeAuthority,
-    );
 
     const proPassStaking = getAddress((await proPass.read.staking([])) as `0x${string}`);
     await check(
-      `${auctionEscrow ? "i" : "h"}. KarProPass.staking`,
+      "KarProPass.staking",
       proPassStaking === getAddress(manifest.karProStaking),
       getAddress(manifest.karProStaking),
       proPassStaking,
@@ -133,7 +137,7 @@ async function main() {
       (await passport.read.karProStakingAddress([])) as `0x${string}`,
     );
     await check(
-      `${auctionEscrow ? "j" : "i"}. KarPassport.karProStakingAddress`,
+      "KarPassport.karProStakingAddress",
       passportStaking === getAddress(manifest.karProStaking),
       getAddress(manifest.karProStaking),
       passportStaking,
@@ -141,64 +145,67 @@ async function main() {
 
     const tokenIdOffset = (await passport.read.tokenIdOffset([])) as bigint;
     await check(
-      `${auctionEscrow ? "k" : "j"}. KarPassport.tokenIdOffset`,
+      "KarPassport.tokenIdOffset",
       tokenIdOffset === EXPECTED_TOKEN_ID_OFFSET,
       EXPECTED_TOKEN_ID_OFFSET.toString(),
       tokenIdOffset.toString(),
     );
     console.log(`  tokenIdOffset: ${tokenIdOffset.toString()}`);
 
-    const marketplacePassport = getAddress((await marketplace.read.karPassport([])) as `0x${string}`);
-    await check(
-      `${auctionEscrow ? "l" : "k"}. MarketplaceEscrow.karPassport`,
-      marketplacePassport === getAddress(manifest.karPassport),
-      getAddress(manifest.karPassport),
-      marketplacePassport,
-    );
+    if (fixedPrice) {
+      const fixedPriceOwner = getAddress((await fixedPrice.read.owner([])) as `0x${string}`);
+      await check(
+        "FixedPriceConsignment.owner == timelock",
+        fixedPriceOwner === getAddress(timelock),
+        getAddress(timelock),
+        fixedPriceOwner,
+      );
 
-    const platformFeeBps = (await marketplace.read.platformFeeBps([])) as number;
-    await check(
-      `${auctionEscrow ? "m" : "l"}. platformFeeBps`,
-      platformFeeBps === 10,
-      "10",
-      String(platformFeeBps),
-    );
-
-    const paused = (await marketplace.read.paused([])) as boolean;
-    await check(`${auctionEscrow ? "n" : "m"}. paused`, paused === false, "false", String(paused));
-
-    const usdFeed = (await marketplace.read.currencyFeeds([currencyCodeBytes32("USD")])) as `0x${string}`;
-    await check(
-      `${auctionEscrow ? "o" : "n"}. currencyFeeds(USD)`,
-      usdFeed === zeroAddress,
-      zeroAddress,
-      usdFeed,
-    );
-
-    const paymentCfg = (await marketplace.read.paymentTokens([usdc])) as readonly [
-      `0x${string}`,
-      boolean,
-    ];
-    await check(
-      `${auctionEscrow ? "p" : "o"}. paymentTokens(USDC).enabled`,
-      paymentCfg[1] === true,
-      "true",
-      String(paymentCfg[1]),
-    );
-
-    if (auctionEscrow) {
-      const auctionUpgradeAuthority = getAddress(
-        (await auctionEscrow.read.upgradeAuthority([])) as `0x${string}`,
+      const fixedPricePassport = getAddress(
+        (await fixedPrice.read.karPassport([])) as `0x${string}`,
       );
       await check(
-        "q. AuctionEscrow.upgradeAuthority == timelock",
-        auctionUpgradeAuthority === getAddress(timelock),
-        getAddress(timelock),
-        auctionUpgradeAuthority,
+        "FixedPriceConsignment.karPassport",
+        fixedPricePassport === getAddress(manifest.karPassport),
+        getAddress(manifest.karPassport),
+        fixedPricePassport,
       );
 
-      const auctionActive = (await auctionEscrow.read.isAuctionActive([0n])) as boolean;
-      await check("r. AuctionEscrow.isAuctionActive(0)", auctionActive === false, "false", String(auctionActive));
+      const fixedPricePaused = (await fixedPrice.read.paused([])) as boolean;
+      await check(
+        "FixedPriceConsignment.paused",
+        fixedPricePaused === false,
+        "false",
+        String(fixedPricePaused),
+      );
+    }
+
+    if (ascending) {
+      const ascendingOwner = getAddress((await ascending.read.owner([])) as `0x${string}`);
+      await check(
+        "AscendingConsignment.owner == timelock",
+        ascendingOwner === getAddress(timelock),
+        getAddress(timelock),
+        ascendingOwner,
+      );
+
+      const ascendingPassport = getAddress(
+        (await ascending.read.karPassport([])) as `0x${string}`,
+      );
+      await check(
+        "AscendingConsignment.karPassport",
+        ascendingPassport === getAddress(manifest.karPassport),
+        getAddress(manifest.karPassport),
+        ascendingPassport,
+      );
+
+      const ascendingPaused = (await ascending.read.paused([])) as boolean;
+      await check(
+        "AscendingConsignment.paused",
+        ascendingPaused === false,
+        "false",
+        String(ascendingPaused),
+      );
     }
 
     const passed = results.filter((r) => r.pass).length;

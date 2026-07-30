@@ -10,9 +10,9 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
@@ -32,7 +32,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = marketplaceAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
@@ -49,8 +49,8 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "agentDelist",
+          abi: FixedPriceConsignmentAbi,
+          functionName: "agentWithdraw",
           args: [tid],
         }),
       );

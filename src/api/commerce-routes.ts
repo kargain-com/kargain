@@ -1,11 +1,13 @@
 /**
- * Commerce-mode HTTP routes for FixedPrice / Ascending cutover consumers.
- * Old /listings /auctions /accounts/:address/claims routes are untouched.
+ * Commerce-mode HTTP routes: consignment browse/detail, mandates, claims,
+ * and the shared BondedChallenge feed. Legacy /accounts/:address/claims
+ * (pending_claim / claim_credit) stays in src/api/index.ts, untouched.
  */
 
 import { db } from "ponder:api";
 import {
   ascendingTerms,
+  challenge,
   commerceClaim,
   commerceClaimCredit,
   consignment,
@@ -507,6 +509,87 @@ export function registerCommerceRoutes(app: Hono): void {
     return c.json(
       jsonBody({
         claims,
+        total: totalRow[0]?.value ?? 0,
+        page,
+        limit,
+      }),
+    );
+  });
+
+  /** BondedChallenge rows shared by KarPassport disputes and AscendingConsignment. */
+  app.get("/challenges", async (c) => {
+    const page = parsePage(c.req.query("page"));
+    const limit = parseLimit(c.req.query("limit"));
+    const offset = (page - 1) * limit;
+    const instance = c.req.query("instance");
+    const status = c.req.query("status");
+    const subjectId = c.req.query("subjectId");
+    const challengerParam = c.req.query("challenger");
+    const chainId = parseOptionalChainId(c.req.query("chainId"));
+
+    const conditions = [];
+    if (instance === "passport" || instance === "ascending") {
+      conditions.push(eq(challenge.instance, instance));
+    }
+    if (status) {
+      conditions.push(eq(challenge.status, status));
+    }
+    if (subjectId) {
+      conditions.push(eq(challenge.subjectId, subjectId));
+    }
+    if (challengerParam) {
+      const challenger = parseAddressParam(challengerParam);
+      if (!challenger) return c.json({ error: "Invalid challenger" }, 400);
+      conditions.push(eq(challenge.challenger, challenger));
+    }
+    if (chainId !== undefined) {
+      conditions.push(eq(challenge.chainId, chainId));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select()
+        .from(challenge)
+        .where(where)
+        .orderBy(desc(challenge.openedAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ value: count() }).from(challenge).where(where),
+    ]);
+
+    const challenges =
+      instance === "passport"
+        ? await Promise.all(
+            rows.map(async (row) => {
+              const pass = (
+                await db
+                  .select()
+                  .from(passport)
+                  .where(eq(passport.id, row.subjectId))
+                  .limit(1)
+              )[0];
+              return {
+                ...row,
+                passport: pass
+                  ? {
+                      status: pass.status,
+                      coverPhotoUri: pass.coverPhotoUri,
+                      make: pass.make,
+                      model: pass.model,
+                      year: pass.year,
+                      vin: pass.vin,
+                      custodyChain: pass.custodyChain,
+                    }
+                  : null,
+              };
+            }),
+          )
+        : rows;
+
+    return c.json(
+      jsonBody({
+        challenges,
         total: totalRow[0]?.value ?? 0,
         page,
         limit,

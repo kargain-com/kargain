@@ -1,20 +1,22 @@
 "use server";
 
 import { getAddress } from "viem";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
+import { getConsignments } from "@/app/actions/commerce-consignments";
+import { consignmentRecordToListingInput } from "@/lib/commerce/listing-view";
+import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
+import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
 import {
-  mapAgentListingToRow,
+  mapPonderListingToRow,
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
-import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
-import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
   VerifierRow,
 } from "@/lib/types/ponder";
+import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type ProShowroomPassport = {
   tokenId: string;
@@ -48,6 +50,7 @@ export type ProShowroomData = {
 type PonderListingRaw = {
   id?: string;
   tokenId?: string;
+  chainId?: number;
   seller?: string;
   fiatPrice1e8?: string | number;
   fiatCurrency?: number;
@@ -68,7 +71,28 @@ type PonderListingRaw = {
 };
 
 function mapListingRaw(listing: PonderListingRaw) {
-  return mapAgentListingToRow(listing);
+  return mapPonderListingToRow({
+    id: String(listing.id ?? listing.tokenId ?? ""),
+    tokenId: String(listing.tokenId ?? listing.id ?? ""),
+    chainId: Number(listing.chainId ?? 0),
+    seller: String(listing.seller ?? ""),
+    fiatPrice1e8: listing.fiatPrice1e8 ?? "0",
+    fiatCurrency: listing.fiatCurrency,
+    active: listing.active === true,
+    listedAt: listing.listedAt ?? "0",
+    passportStatus: listing.passportStatus,
+    make: listing.make,
+    model: listing.model,
+    year: listing.year,
+    mileageKm: listing.mileageKm,
+    fuelType: listing.fuelType,
+    bodyType: listing.bodyType,
+    transmission: listing.transmission,
+    tokenUri: listing.tokenUri,
+    coverPhotoUri: listing.coverPhotoUri,
+    duplicateVin: listing.duplicateVin,
+    verifier: listing.verifier,
+  });
 }
 
 function mapVerifierRow(
@@ -111,13 +135,12 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   let verificationFee = 0n;
 
   try {
-    const [activeOnChain, verifierData, listingsRes, consignmentsRes] = await Promise.all([
+    const [activeOnChain, verifierData, listingsRes, consignmentsPage] =
+      await Promise.all([
       isActiveVerifierOnCommercialChains(address),
       fetchVerifierPublicData(address),
       ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
-      ponderFetch(
-        `${ponderBaseUrl()}/agents/${address}/listings?active=true&limit=100`,
-      ),
+      getConsignments({ agent: address, live: true, page: 1, limit: 100 }),
     ]);
 
     isActiveVerifier = activeOnChain === true;
@@ -149,14 +172,12 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
         .map(mapListingRaw);
     }
 
-    if (consignmentsRes.ok) {
-      const data = (await consignmentsRes.json()) as {
-        listings?: PonderListingRaw[];
-        total?: number;
-      };
-      activeConsignments = (data.listings ?? []).map(mapListingRaw);
-      activeConsignmentTotal = data.total ?? activeConsignments.length;
-    }
+    activeConsignments = consignmentsPage.rows.map((row) =>
+      mapPonderListingToRow(consignmentRecordToListingInput(row)),
+    );
+    activeConsignmentTotal = consignmentsPage.ponderError
+      ? 0
+      : consignmentsPage.total;
   } catch {
     /* return partial data with address */
   }

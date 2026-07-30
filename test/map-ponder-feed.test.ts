@@ -6,12 +6,12 @@ import { mapPonderFeedItems } from "../lib/notifications/map-ponder-feed.ts";
 const OWNER = "0x1111111111111111111111111111111111111111";
 
 describe("mapPonderFeedItems delegation grants", () => {
-  it("maps marketplace delegation as a high-priority passport notification", () => {
+  it("maps a mandate grant as a high-priority passport notification", () => {
     const [item] = mapPonderFeedItems(
       [
         {
-          id: "agent.authorized:1:101",
-          type: "agent.authorized",
+          id: "mandate.granted:1:101",
+          type: "mandate.granted",
           tokenId: "1",
           timestamp: "101",
           actor: OWNER,
@@ -21,8 +21,8 @@ describe("mapPonderFeedItems delegation grants", () => {
     );
 
     assert.deepEqual(item, {
-      id: "agent.authorized:1:101",
-      type: "agent.authorized",
+      id: "mandate.granted:1:101",
+      type: "mandate.granted",
       source: "ponder",
       timestamp: 101,
       read: false,
@@ -39,12 +39,12 @@ describe("mapPonderFeedItems delegation grants", () => {
     });
   });
 
-  it("maps auction authorization and respects the read watermark", () => {
+  it("respects the read watermark", () => {
     const [item] = mapPonderFeedItems(
       [
         {
-          id: "auction_agent.authorized:2:200",
-          type: "auction_agent.authorized",
+          id: "mandate.granted:2:200",
+          type: "mandate.granted",
           tokenId: "2",
           timestamp: "200",
           actor: OWNER,
@@ -53,8 +53,7 @@ describe("mapPonderFeedItems delegation grants", () => {
       200,
     );
 
-    assert.equal(item.type, "auction_agent.authorized");
-    assert.equal(item.body, "You were authorized to run a reserve auction");
+    assert.equal(item.type, "mandate.granted");
     assert.equal(item.priority, "high");
     assert.equal(item.href, "/marketplace/2");
     assert.deepEqual(item.actor, { address: OWNER });

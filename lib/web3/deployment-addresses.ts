@@ -1,47 +1,55 @@
 import { getAddress } from "viem";
 
 import { commercialActive } from "./commercial-active";
-import { SEPOLIA_HISTORICAL_DENYLIST } from "./sepolia-addresses";
+import {
+  ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST,
+  SEPOLIA_HISTORICAL_DENYLIST,
+} from "./sepolia-addresses";
 
 /** Base Sepolia (84532) */
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
+
+/** Ethereum Sepolia (11155111) */
+export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
 
 /** Hardhat localhost (persistent node) */
 export const LOCALHOST_CHAIN_ID = 31337;
 
 type AddressKey =
   | "karPassport"
-  | "marketplace"
   | "karProPass"
   | "karProStaking"
   | "usdc"
   | "nativeFeed"
   | "eurFeed";
 
-type OptionalV2Key = "timelock" | "bridgeGateway" | "auctionEscrow";
+type OptionalV2Key = "timelock" | "bridgeGateway";
 
-const ENV_SINGLE: Record<AddressKey | OptionalV2Key, string> = {
+/** Commerce modes — filled at Nuclear #2; absent until then (SPEC §I.9.x). */
+type OptionalModeKey = "fixedPriceConsignment" | "ascendingConsignment";
+
+const ENV_SINGLE: Record<AddressKey | OptionalV2Key | OptionalModeKey, string> = {
   karPassport: "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
-  marketplace: "NEXT_PUBLIC_MARKETPLACE_ADDRESS",
   karProPass: "NEXT_PUBLIC_KAR_PRO_PASS_ADDRESS",
   karProStaking: "NEXT_PUBLIC_KAR_PRO_STAKING_ADDRESS",
   usdc: "NEXT_PUBLIC_USDC_ADDRESS",
   timelock: "NEXT_PUBLIC_TIMELOCK_ADDRESS",
   bridgeGateway: "NEXT_PUBLIC_BRIDGE_GATEWAY_ADDRESS",
-  auctionEscrow: "NEXT_PUBLIC_AUCTION_ESCROW_ADDRESS",
+  fixedPriceConsignment: "NEXT_PUBLIC_FIXED_PRICE_CONSIGNMENT_ADDRESS",
+  ascendingConsignment: "NEXT_PUBLIC_ASCENDING_CONSIGNMENT_ADDRESS",
   nativeFeed: "NEXT_PUBLIC_NATIVE_FEED_ADDRESS",
   eurFeed: "NEXT_PUBLIC_EUR_FEED_ADDRESS",
 };
 
-const ENV_BY_CHAIN: Record<AddressKey | OptionalV2Key, string> = {
+const ENV_BY_CHAIN: Record<AddressKey | OptionalV2Key | OptionalModeKey, string> = {
   karPassport: "NEXT_PUBLIC_KAR_PASSPORT_BY_CHAIN",
-  marketplace: "NEXT_PUBLIC_MARKETPLACE_BY_CHAIN",
   karProPass: "NEXT_PUBLIC_KAR_PRO_PASS_BY_CHAIN",
   karProStaking: "NEXT_PUBLIC_KAR_PRO_STAKING_BY_CHAIN",
   usdc: "NEXT_PUBLIC_USDC_BY_CHAIN",
   timelock: "NEXT_PUBLIC_TIMELOCK_BY_CHAIN",
   bridgeGateway: "NEXT_PUBLIC_BRIDGE_GATEWAY_BY_CHAIN",
-  auctionEscrow: "NEXT_PUBLIC_AUCTION_ESCROW_BY_CHAIN",
+  fixedPriceConsignment: "NEXT_PUBLIC_FIXED_PRICE_CONSIGNMENT_BY_CHAIN",
+  ascendingConsignment: "NEXT_PUBLIC_ASCENDING_CONSIGNMENT_BY_CHAIN",
   nativeFeed: "NEXT_PUBLIC_NATIVE_FEED_BY_CHAIN",
   eurFeed: "NEXT_PUBLIC_EUR_FEED_BY_CHAIN",
 };
@@ -76,10 +84,6 @@ export function karPassportAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("karPassport", chainId);
 }
 
-export function marketplaceAddress(chainId: number): `0x${string}` | undefined {
-  return resolveAddress("marketplace", chainId);
-}
-
 export function karProPassAddress(chainId: number): `0x${string}` | undefined {
   return resolveAddress("karProPass", chainId);
 }
@@ -100,11 +104,10 @@ export function bridgeGatewayAddress(chainId: number): `0x${string}` | undefined
   return resolveOptionalAddress("bridgeGateway", chainId);
 }
 
-export function auctionEscrowAddress(chainId: number): `0x${string}` | undefined {
-  return resolveOptionalAddress("auctionEscrow", chainId);
-}
-
-function resolveOptionalAddress(key: OptionalV2Key, chainId: number): `0x${string}` | undefined {
+function resolveOptionalAddress(
+  key: OptionalV2Key | OptionalModeKey,
+  chainId: number,
+): `0x${string}` | undefined {
   const chainKey = String(chainId);
 
   const byChain = parseJsonMap(
@@ -122,6 +125,16 @@ function resolveOptionalAddress(key: OptionalV2Key, chainId: number): `0x${strin
   return undefined;
 }
 
+/** Commerce mode — filled at Nuclear #2; fails closed (`undefined`) until then. */
+export function fixedPriceConsignmentAddress(chainId: number): `0x${string}` | undefined {
+  return resolveOptionalAddress("fixedPriceConsignment", chainId);
+}
+
+/** Commerce mode — filled at Nuclear #2; fails closed (`undefined`) until then. */
+export function ascendingConsignmentAddress(chainId: number): `0x${string}` | undefined {
+  return resolveOptionalAddress("ascendingConsignment", chainId);
+}
+
 export function chainlinkNativeUsdFeed(chainId: number): `0x${string}` | undefined {
   return resolveAddress("nativeFeed", chainId);
 }
@@ -131,7 +144,9 @@ export function chainlinkEurUsdFeed(chainId: number): `0x${string}` | undefined 
 }
 
 function historicalDenylist(chainId: number): readonly `0x${string}`[] {
-  return chainId === BASE_SEPOLIA_CHAIN_ID ? SEPOLIA_HISTORICAL_DENYLIST : [];
+  if (chainId === BASE_SEPOLIA_CHAIN_ID) return SEPOLIA_HISTORICAL_DENYLIST;
+  if (chainId === ETHEREUM_SEPOLIA_CHAIN_ID) return ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST;
+  return [];
 }
 
 /**
@@ -144,11 +159,11 @@ export function kargainContractDenylist(chainId: number): readonly `0x${string}`
   if (!active) return [];
   return [
     active.karPassport,
-    active.marketplace,
     active.karProPass,
     active.karProStaking,
     active.bridgeGateway,
-    active.auctionEscrow,
+    ...(active.fixedPriceConsignment ? [active.fixedPriceConsignment] : []),
+    ...(active.ascendingConsignment ? [active.ascendingConsignment] : []),
     ...historicalDenylist(chainId),
   ];
 }

@@ -10,6 +10,7 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -18,15 +19,13 @@ import { formatExtensionHelp } from "@/lib/auction/auction-live-signals";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auction";
 import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
-import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
+import { isZeroAddress } from "@/lib/commerce/consignment";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   formatBidTooLowMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
-import {
-  auctionEscrowAddress,
-  usdcAddress,
-} from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +65,8 @@ type Props = {
   auction: AuctionRow;
   uiState: AuctionUiState;
   minIncrementBps: number;
-  paused: boolean;
+  /** Chain `paused()` — `undefined` while unread (do not invent running). */
+  paused: boolean | undefined;
   /** Chain extensionWindow seconds — drives live help copy. */
   extensionWindow?: bigint;
   /** Transient extension line (synced with readout flash). */
@@ -92,9 +92,14 @@ export function AuctionBidPanel({
   const [amountStr, setAmountStr] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
-  const escrow = auctionEscrowAddress(chainId);
-  const usdc = usdcAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
   const isUsdcAuction = auction.assetLabel === "USDC";
+  const usdc =
+    isUsdcAuction &&
+    auction.asset.startsWith("0x") &&
+    !isZeroAddress(auction.asset)
+      ? (auction.asset as `0x${string}`)
+      : undefined;
   const assetLabel = auction.assetLabel;
 
   const { data: ethBalance } = useBalance({
@@ -151,8 +156,9 @@ export function AuctionBidPanel({
 
   const disabledReason = (() => {
     if (!escrow) return "Auctions are not available on this chain.";
-    if (isUsdcAuction && !usdc) return "USDC is not configured on this chain.";
-    if (paused) return "Auctions are temporarily paused. Existing refunds and payouts are unaffected.";
+    if (isUsdcAuction && !usdc)
+      return "The settlement token for this lot is unavailable.";
+    if (paused === true) return null;
     if (ended) return "This auction has ended. The page will update shortly.";
     if (isSeller || isAgent) return "Sellers and agents cannot bid on their own auction.";
     if (wrongChain) return "Switch to the correct network to bid.";
@@ -169,6 +175,7 @@ export function AuctionBidPanel({
 
   const bidDisabled =
     !isConnected ||
+    paused === true ||
     Boolean(disabledReason) ||
     busy ||
     isWriting ||
@@ -202,7 +209,7 @@ export function AuctionBidPanel({
 
       if (isUsdcAuction) {
         if (!usdc) {
-          setTxError("USDC is not configured on this chain.");
+          setTxError("The settlement token for this lot is unavailable.");
           return;
         }
         if (usdcBalance != null && usdcBalance < amount) {
@@ -235,7 +242,7 @@ export function AuctionBidPanel({
           () =>
             writeContractAsync({
               address: escrow,
-              abi: AuctionEscrowAbi,
+              abi: AscendingConsignmentAbi,
               functionName: "bid",
               args: [BigInt(tokenId), amount],
               value: isUsdcAuction ? 0n : amount,
@@ -265,6 +272,8 @@ export function AuctionBidPanel({
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
+      {paused === true ? <CommercePausedNotice mode="ascending" /> : null}
+
       {isLeading && (
         <p className="font-sans text-sm font-medium text-text-primary">
           You are the highest bidder.
@@ -365,7 +374,7 @@ export function AuctionBidPanel({
         </div>
         {escrow && (
           <p className="font-sans text-xs text-text-secondary">
-            Escrow contract{" "}
+            Ascending consignment contract{" "}
             <EnsWalletLink
               address={escrow}
               className="font-mono text-xs text-text-secondary"

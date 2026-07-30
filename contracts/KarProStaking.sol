@@ -9,7 +9,7 @@ pragma solidity ^0.8.28;
 //   Pre-release: -rc.N for release candidates, remove on mainnet deploy
 //   Immutable contracts (KarPassport, KarProPass, KarProStaking):
 //     any change = new deployment = bump MINOR or MAJOR
-//   Upgradeable contracts (MarketplaceEscrow):
+//   Upgradeable contracts (FixedPriceConsignment, AscendingConsignment):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 //   Amend-in-place: ship VERSION stays until it exists on a commercial chain
 

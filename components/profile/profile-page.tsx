@@ -1,11 +1,9 @@
 "use client";
 
 import {
-  ArrowRightIcon,
   CircleCheckIcon,
   GlobeIcon,
   ShieldCheckIcon,
-  ShieldWarningIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -21,21 +19,19 @@ import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
 import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-stats-band";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
+import { ProfileChallengesPanel } from "@/components/challenges/challenges-client";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
+import { CommerceGuardianOpsLink } from "@/components/commerce/commerce-guardian-ops-link";
 import { ProfileClaimsTab } from "@/components/claims/profile-claims-tab";
 import { ConsignedVehiclesTab } from "@/components/profile/consigned-vehicles-tab";
 import { DelegatedVehiclesTab } from "@/components/profile/delegated-vehicles-tab";
 import { ProfilePassportCard } from "@/components/profile/profile-passport-card";
-import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
-import { useNow } from "@/hooks/use-now";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
-import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
-import { PASSPORT_DISPUTE_WINDOW_SECONDS } from "@/lib/passport/dispute-surface";
 import {
   ctaLink,
   monoLink,
@@ -66,9 +62,8 @@ import type {
   ProfileListingRow,
   ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
-import { buildVehicleLabel } from "@/lib/passport/vehicle-label";
 import { shortChainName } from "@/lib/web3/supported-chains";
-import { navShortAddress, shortAddress } from "@/lib/web3/wallet-display";
+import { navShortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = ProfilePassportRow;
 
@@ -80,7 +75,7 @@ type TabId =
   | "delegated"
   | "saved"
   | "verified"
-  | "disputes"
+  | "challenges"
   | "consigned"
   | "attestations"
   | "claims";
@@ -121,7 +116,7 @@ function buildTabList(
     delegated: number;
     verified: number;
     attestations: number;
-    disputes: number;
+    challenges: number;
     consigned: number;
     claims: number;
   },
@@ -146,7 +141,7 @@ function buildTabList(
     tabs.push({ id: "attestations", label: countLabel("Attestations", counts.attestations) });
   }
   if (isOwner && isActiveVerifier) {
-    tabs.push({ id: "disputes", label: countLabel("Disputes", counts.disputes) });
+    tabs.push({ id: "challenges", label: countLabel("Challenges", counts.challenges) });
     tabs.push({
       id: "consigned",
       label: countLabel("Consigned vehicles", counts.consigned),
@@ -161,6 +156,7 @@ function tabFromSearchParams(
 ): TabId {
   const raw = searchParams.get("tab");
   const ids = new Set(tabs.map((t) => t.id));
+  if (raw === "disputes") return "challenges";
   if (raw && ids.has(raw as TabId)) return raw as TabId;
   return "passports";
 }
@@ -292,113 +288,6 @@ function AttestationRow({
   );
 }
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
-function isNonemptyDisputer(address: string): boolean {
-  const trimmed = address.trim();
-  return trimmed.length > 0 && trimmed.toLowerCase() !== ZERO_ADDRESS;
-}
-
-function DisputeCard({
-  dispute,
-  chainId,
-}: {
-  dispute: DisputedPassportRow;
-  chainId: number;
-}) {
-  const nowSec = useNow(1_000);
-  const vehicleLabel = buildVehicleLabel(dispute.year, dispute.make, dispute.model);
-  const reason = dispute.disputeReason.trim();
-  const openedAt = dispute.disputeOpenedAt;
-  const windowEndsAt =
-    openedAt > 0 ? openedAt + PASSPORT_DISPUTE_WINDOW_SECONDS : 0;
-  const remaining =
-    windowEndsAt > 0 && nowSec < windowEndsAt ? windowEndsAt - nowSec : 0;
-  const windowElapsed = windowEndsAt > 0 && nowSec >= windowEndsAt;
-  const openedLabel =
-    Number.isFinite(openedAt) && openedAt > 0
-      ? formatRelativeTime(new Date(openedAt * 1000))
-      : "";
-  const showDisputer = isNonemptyDisputer(dispute.lastDisputer);
-
-  return (
-    <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ShieldWarningIcon
-            size={16}
-            className="shrink-0 text-status-error"
-            aria-hidden
-          />
-          <PassportStatusBadge status="DISPUTED" />
-        </div>
-        <PassportIdLabel
-          tokenId={dispute.tokenId}
-          chainId={chainId}
-          prefix="none"
-          variant="mono"
-          className="text-text-tertiary"
-        />
-      </div>
-
-      {vehicleLabel && (
-        <p className="font-sans text-sm text-text-primary">{vehicleLabel}</p>
-      )}
-
-      {reason && (
-        <p className="line-clamp-2 font-sans text-sm text-text-secondary">
-          &ldquo;{reason}&rdquo;
-        </p>
-      )}
-
-      <p className="font-sans text-sm text-text-secondary">
-        You verified this passport, so you cannot resolve this challenge. An
-        independent KarPro must decide, or the window ends in a lapse.
-      </p>
-
-      {windowEndsAt > 0 && (
-        <p className="font-sans text-xs text-text-secondary">
-          {windowElapsed ? (
-            <>Window ended — verification will lapse when the dispute is concluded.</>
-          ) : (
-            <>
-              Window ends in{" "}
-              <span className="font-mono tabular-nums">
-                {formatReturnCountdown(BigInt(remaining))}
-              </span>
-            </>
-          )}
-        </p>
-      )}
-
-      {(openedLabel || showDisputer) && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {openedLabel && (
-            <span className="font-mono text-xs text-text-tertiary tabular-nums">
-              {openedLabel}
-            </span>
-          )}
-          {showDisputer && (
-            <span className="font-mono text-xs text-text-secondary tabular-nums">
-              Disputed by {shortAddress(dispute.lastDisputer)}
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between gap-3 border-t border-border-default pt-1">
-        <Link
-          href={`/marketplace/${dispute.tokenId}?chain=${chainId}`}
-          className="ml-auto inline-flex items-center gap-1 font-sans text-sm text-text-secondary transition-colors hover:text-text-primary"
-        >
-          View passport
-          <ArrowRightIcon size={14} aria-hidden />
-        </Link>
-      </div>
-    </div>
-  );
-}
-
 export function ProfilePage({
   wallet,
   chainId,
@@ -470,7 +359,7 @@ export function ProfilePage({
         delegated: delegatedCount ?? 0,
         verified: verifiedPassports.length,
         attestations: attestations.length,
-        disputes: disputedPassports.length,
+        challenges: disputedPassports.length,
         consigned: consignedCount ?? 0,
         claims: isOwner ? claimsTotal : 0,
       }),
@@ -567,6 +456,8 @@ export function ProfilePage({
 
         {isOwner && <AccountSetupBanner />}
 
+        {isOwner && <CommerceGuardianOpsLink />}
+
         <ProfileVerifierStatsBand
           wallet={wallet}
           isActiveVerifier={isActiveVerifier}
@@ -587,8 +478,7 @@ export function ProfilePage({
           subjectIsKarPro={isActiveVerifier}
           subjectName={subjectName}
           subjectWallet={wallet}
-          openDisputeCount={disputedPassports.length}
-          onTabChange={(tab) => setTab(tab as TabId)}
+          openChallengeCount={disputedPassports.length}
         />
 
         {ponderErr && (
@@ -755,28 +645,16 @@ export function ProfilePage({
             </section>
           )}
 
-          {activeTab === "disputes" && isOwner && isActiveVerifier && (
+          {activeTab === "challenges" && isOwner && isActiveVerifier && (
             <section
               role="tabpanel"
-              id="profile-panel-disputes"
-              aria-labelledby="profile-tab-disputes"
+              id="profile-panel-challenges"
+              aria-labelledby="profile-tab-challenges"
             >
-              <p className={cn(serialLabel, "mb-4")}>Challenges on your verifications</p>
-              {disputedPassports.length === 0 ? (
-                <EmptyState
-                  variant="content"
-                  level="B"
-                  icon={CircleCheckIcon}
-                  title="No open disputes"
-                  className="py-8"
-                />
-              ) : (
-                <div className="grid gap-3">
-                  {disputedPassports.map((p) => (
-                    <DisputeCard key={p.tokenId} dispute={p} chainId={chainId} />
-                  ))}
-                </div>
-              )}
+              <ProfileChallengesPanel
+                chainId={chainId}
+                subjectTokenIds={disputedPassports.map((p) => p.tokenId)}
+              />
             </section>
           )}
 

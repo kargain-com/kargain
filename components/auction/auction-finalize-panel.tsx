@@ -7,8 +7,8 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
-import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
@@ -23,7 +23,7 @@ export function AuctionFinalizePanel({ chainId, tokenId, auction }: Props) {
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";
 
-  const escrow = auctionEscrowAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
   const finalBid =
     auction.highestBid > 0n
       ? formatAuctionAmount(auction.highestBid, auction.assetLabel)
@@ -34,7 +34,7 @@ export function AuctionFinalizePanel({ chainId, tokenId, auction }: Props) {
     await runTx(() =>
       writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
+        abi: AscendingConsignmentAbi,
         functionName: "settle",
         args: [BigInt(tokenId)],
         chainId: wagmiChainId(chainId),

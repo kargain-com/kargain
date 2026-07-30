@@ -70,14 +70,14 @@ describe("resolveCustodyCommerceChainId / resolveOriginChainId", () => {
 });
 
 describe("resolveAuctionsNavChainId", () => {
-  const hasEscrow = (id: number) => id === 84532 || id === 11155111;
+  const hasAscending = (id: number) => id === 84532 || id === 11155111;
 
-  it("connected on Eth with escrow → Eth (not hub)", () => {
+  it("connected on Eth with ascending mode → Eth (not hub)", () => {
     assert.equal(
       resolveAuctionsNavChainId({
         walletChainId: 11155111,
         isConnected: true,
-        hasAuctionEscrow: hasEscrow,
+        hasAscendingMode: hasAscending,
       }),
       11155111,
     );
@@ -88,40 +88,40 @@ describe("resolveAuctionsNavChainId", () => {
       resolveAuctionsNavChainId({
         walletChainId: 1,
         isConnected: true,
-        hasAuctionEscrow: hasEscrow,
+        hasAscendingMode: hasAscending,
       }),
       null,
     );
   });
 
-  it("connected commercial without escrow → null", () => {
+  it("connected commercial without ascending mode → null", () => {
     assert.equal(
       resolveAuctionsNavChainId({
         walletChainId: 84532,
         isConnected: true,
-        hasAuctionEscrow: () => false,
+        hasAscendingMode: () => false,
       }),
       null,
     );
   });
 
-  it("guest → first commercial with escrow", () => {
+  it("guest → first commercial with ascending mode", () => {
     assert.equal(
       resolveAuctionsNavChainId({
         walletChainId: undefined,
         isConnected: false,
-        hasAuctionEscrow: hasEscrow,
+        hasAscendingMode: hasAscending,
       }),
       84532,
     );
   });
 
-  it("guest with no escrow anywhere → null", () => {
+  it("guest with no ascending mode anywhere → null", () => {
     assert.equal(
       resolveAuctionsNavChainId({
         walletChainId: undefined,
         isConnected: false,
-        hasAuctionEscrow: () => false,
+        hasAscendingMode: () => false,
       }),
       null,
     );

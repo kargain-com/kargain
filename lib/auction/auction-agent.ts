@@ -35,7 +35,7 @@ function asAddress(value: string): `0x${string}` {
   }
 }
 
-/** Decode `AuctionEscrow.auctionAgentAuthorizations(tokenId)` (object or tuple). */
+/** Decode AscendingConsignment mandate agent authorization (object or tuple). */
 export function parseAuctionAgentAuthorization(
   raw: unknown,
 ): AuctionAgentAuth | null {
@@ -105,7 +105,7 @@ export function isAuctionAuthUsableForCreate(
 
 /**
  * True when `reserve − agentFee − platformFee >= ownerMinAsset`.
- * Mirrors AuctionEscrow / BelowOwnerMinAsset.
+ * Mirrors AscendingConsignment BelowOwnerMinAsset.
  */
 export function auctionReserveMeetsOwnerMin(
   reserve: bigint | null,

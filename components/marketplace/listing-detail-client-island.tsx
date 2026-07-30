@@ -10,23 +10,21 @@ import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-a
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { ListingMakeOfferButton } from "@/components/marketplace/listing-make-offer-button";
 import { ListingOffersPanel } from "@/components/marketplace/listing-offers-panel";
-import { OwnerReturnRequestPanel } from "@/components/marketplace/owner-return-request-panel";
+import { OwnerRecallPanel } from "@/components/commerce/owner-recall-panel";
 import { SellerContactButton } from "@/components/marketplace/seller-contact-button";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
+import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
 import {
   commerceConfirmedLabel,
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
-import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
-import { parseMarketplaceAgentAuthorization } from "@/lib/marketplace/agent-authorization";
-import {
-  resolveEffectiveListing,
-  type ChainListingRead,
-} from "@/lib/marketplace/effective-listing";
+import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { commerceModeAddress, hasCommerceMode } from "@/lib/commerce/mode";
+import { isZeroAddress } from "@/lib/commerce/consignment";
+import { effectiveRecallRequestedAt } from "@/lib/commerce/recall";
+import { resolveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
-import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
-import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 import { getNostrPool } from "@/lib/nostr/nostr-client";
 import {
@@ -36,11 +34,7 @@ import {
 } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
-import {
-  karPassportAddress,
-  marketplaceAddress,
-  auctionEscrowAddress,
-} from "@/lib/web3/deployment-addresses";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type ListingProp = {
@@ -87,86 +81,47 @@ export function ListingDetailClientIsland({
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
-  const market = marketplaceAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
-  const {
-    data: chainReads,
-    isLoading: isChainReadsLoading,
-    refetch: refetchChainReads,
-  } = useReadContracts({
-    contracts:
-      passport && market
-        ? [
-            {
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "ownerOf",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "listings",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "agentAuthorizations",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "returnRequestedAt",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "settlementNotes",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
+  const { data: ownerRead, refetch: refetchOwner } = useReadContracts({
+    contracts: passport
+      ? [
+          {
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "ownerOf",
+            args: [tid],
+            chainId: wc,
+          },
+        ]
+      : [],
   });
 
-  const onChainOwner = chainReads?.[0]?.result as `0x${string}` | undefined;
-  const listingRead = chainReads?.[1];
-  const chainListingRead: ChainListingRead =
-    listingRead?.status === "success"
-      ? "success"
-      : listingRead?.status === "failure"
-        ? "failure"
-        : "pending";
-  const chainRow = parseOnChainListing(
-    listingRead?.status === "success" ? listingRead.result : null,
-  );
-  const agentAuthRaw = parseMarketplaceAgentAuthorization(
-    chainReads?.[2]?.result,
-  );
-  const chainReturnRequestedAt = chainReads?.[3]?.result as bigint | undefined;
-  const directPaymentNote = decodeSettlementNote(chainReads?.[4]?.result).trim();
+  const commerce = useListingChainReads({ chainId, tokenId });
+  const market = commerce.market;
+
+  const onChainOwner = ownerRead?.[0]?.result as `0x${string}` | undefined;
+  const directPaymentNote = commerce.settlementNote;
   const hasDirectPayment = directPaymentNote.length > 0;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
-  const agentAuth = useMemo(() => {
-    if (agentAuthRaw?.active !== true) return null;
-    return agentAuthRaw;
-  }, [agentAuthRaw]);
+  const chainAgent =
+    commerce.agent && !isZeroAddress(commerce.agent) ? commerce.agent : undefined;
 
-  const agentAuthActive = agentAuth?.active === true;
+  const refetchChainReads = useCallback(() => {
+    void refetchOwner();
+    void commerce.refetch();
+  }, [refetchOwner, commerce]);
 
   const effectiveListing = useMemo(
-    () => resolveEffectiveListing(chainListingRead, chainRow, listing),
-    [chainListingRead, chainRow, listing],
+    () =>
+      resolveEffectiveListing(
+        commerce.chainListingRead,
+        commerce.listing,
+        listing,
+      ),
+    [commerce.chainListingRead, commerce.listing, listing],
   );
 
   const listingActive = Boolean(effectiveListing?.active);
@@ -188,10 +143,13 @@ export function ListingDetailClientIsland({
     address.toLowerCase() === listingSeller.toLowerCase(),
   );
 
+  const agentAddress = chainAgent ?? (listing?.agent as `0x${string}` | undefined);
+  const listingHasAgent = hasListingAgent(agentAddress);
+
   const isAgent = Boolean(
     address &&
-      hasListingAgent(listing?.agent) &&
-      address.toLowerCase() === listing!.agent!.toLowerCase(),
+      listingHasAgent &&
+      address.toLowerCase() === agentAddress!.toLowerCase(),
   );
 
   const isOwner = isOnChainNftOwner(address, effectiveOwner);
@@ -222,19 +180,21 @@ export function ListingDetailClientIsland({
     market && address && listingActive && isSeller,
   );
 
-  const showReturnFlow = Boolean(
-    isOwner && listingActive && hasListingAgent(listing?.agent),
+  const showRecallFlow = Boolean(isOwner && listingActive && listingHasAgent);
+  const recallRequestedAt = effectiveRecallRequestedAt(
+    listing?.returnRequestedAt,
+    commerce.recallRequestedAt,
   );
 
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const showDelistBeforeAuctionHint = Boolean(
-    listingActive && isSeller && auctionEscrowAddress(chainId),
+    listingActive && isSeller && hasCommerceMode("ascending", chainId),
   );
 
   const externalPaymentDate = formatChainTimestamp(listing?.externalPaymentConfirmedAt);
 
   const handleOfferConfirmed = useCallback(() => {
-    void refetchChainReads();
+    refetchChainReads();
     router.refresh();
   }, [refetchChainReads, router]);
 
@@ -250,7 +210,7 @@ export function ListingDetailClientIsland({
           hadDispute={hadDispute}
           directPaymentNote={directPaymentNote}
         />
-      ) : isChainReadsLoading && market ? (
+      ) : commerce.isLoading && market ? (
         <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
           Checking listing…
         </p>
@@ -288,13 +248,13 @@ export function ListingDetailClientIsland({
           tokenId={tokenId}
           sellerAddress={listingSeller}
           sellerNostrPubkey={sellerNostrPubkey}
-          agentAddress={listing?.agent}
+          agentAddress={agentAddress}
         />
       )}
 
-      {listingActive && hasListingAgent(listing?.agent) && (
+      {listingActive && listingHasAgent && agentAddress && (
         <ListingAgentBuyerAttribution
-          agentAddress={listing!.agent as `0x${string}`}
+          agentAddress={agentAddress}
           chainId={chainId}
         />
       )}
@@ -314,14 +274,14 @@ export function ListingDetailClientIsland({
           />
         )}
 
-      {showReturnFlow && (
-        <OwnerReturnRequestPanel
+      {showRecallFlow && (
+        <OwnerRecallPanel
+          mode="fixedPrice"
           chainId={chainId}
           tokenId={tokenId}
-          ponderReturnRequestedAt={listing?.returnRequestedAt}
-          chainReturnRequestedAt={chainReturnRequestedAt}
-          agentAuthActive={agentAuthActive}
-          onChanged={() => void refetchChainReads()}
+          recallRequestedAt={recallRequestedAt}
+          hasAgent={listingHasAgent}
+          onChanged={refetchChainReads}
         />
       )}
 

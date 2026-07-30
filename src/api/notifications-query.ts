@@ -1,17 +1,9 @@
 import { db } from "ponder:api";
-import {
-  agentAuthorization,
-  auctionAgentAuthorization,
-  claimCredit,
-  marketplaceListing,
-  passport,
-  passportRecord,
-} from "ponder:schema";
+import { claimCredit, mandate, passport, passportRecord } from "ponder:schema";
 import { and, desc, eq, gt } from "ponder";
 import { getAddress } from "viem";
 
 import type { PonderFeedItem } from "../../lib/notifications/types";
-import { authorizationNotificationItems } from "../lib/ponder-agent-authorization";
 import { claimRecordedNotificationItems } from "../lib/ponder-claims";
 
 export type PonderDb = typeof db;
@@ -105,73 +97,34 @@ export async function buildNotificationFeed(
     }
   }
 
-  const sellerListings = await ponderDb
-    .select()
-    .from(marketplaceListing)
-    .where(eq(marketplaceListing.seller, normalizedAddress));
-
-  for (const l of sellerListings) {
-    if (l.soldAt > since && l.soldAt > 0n) {
-      items.push({
-        id: feedId("listing.sold", l.tokenId, l.soldAt),
-        type: "listing.sold",
-        tokenId: l.tokenId,
-        timestamp: String(l.soldAt),
-        actor: l.buyer || undefined,
-      });
-    }
-  }
-
   const checksumAddress = getAddress(normalizedAddress);
-  const [marketplaceAuthorizations, auctionAuthorizations] =
-    await Promise.all([
-      ponderDb
-        .select({
-          tokenId: agentAuthorization.tokenId,
-          owner: agentAuthorization.owner,
-          agent: agentAuthorization.agent,
-          active: agentAuthorization.active,
-          authorizedAt: agentAuthorization.authorizedAt,
-        })
-        .from(agentAuthorization)
-        .where(
-          and(
-            eq(agentAuthorization.agent, checksumAddress),
-            eq(agentAuthorization.active, true),
-            gt(agentAuthorization.authorizedAt, since),
-          ),
-        ),
-      ponderDb
-        .select({
-          tokenId: auctionAgentAuthorization.tokenId,
-          owner: auctionAgentAuthorization.owner,
-          agent: auctionAgentAuthorization.agent,
-          active: auctionAgentAuthorization.active,
-          authorizedAt: auctionAgentAuthorization.authorizedAt,
-        })
-        .from(auctionAgentAuthorization)
-        .where(
-          and(
-            eq(auctionAgentAuthorization.agent, checksumAddress),
-            eq(auctionAgentAuthorization.active, true),
-            gt(auctionAgentAuthorization.authorizedAt, since),
-          ),
-        ),
-    ]);
-  items.push(
-    ...authorizationNotificationItems(
-      marketplaceAuthorizations,
-      "agent.authorized",
-      checksumAddress,
-      since,
-    ),
-    ...authorizationNotificationItems(
-      auctionAuthorizations,
-      "auction_agent.authorized",
-      checksumAddress,
-      since,
-    ),
-  );
+
+  const mandateGrants = await ponderDb
+    .select({
+      tokenId: mandate.tokenId,
+      owner: mandate.owner,
+      mode: mandate.mode,
+      grantedAt: mandate.grantedAt,
+    })
+    .from(mandate)
+    .where(
+      and(
+        eq(mandate.agent, checksumAddress),
+        eq(mandate.active, true),
+        gt(mandate.grantedAt, since),
+      ),
+    );
+
+  for (const m of mandateGrants) {
+    items.push({
+      id: feedId("mandate.granted", m.tokenId, m.grantedAt),
+      type: "mandate.granted",
+      tokenId: m.tokenId,
+      timestamp: String(m.grantedAt),
+      actor: m.owner || undefined,
+      meta: { mode: m.mode },
+    });
+  }
 
   const claimCredits = await ponderDb
     .select()

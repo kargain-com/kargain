@@ -11,9 +11,9 @@
 | Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; **VPS full reindex** required to repair historical false positives ([OPERATIONS.md](./OPERATIONS.md)) |
 | Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` (July 2026 dispute surface) — expire ≠ Confirm for product; **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
 | ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
-| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` API for FixedPrice/Ascending — **local proven**; **live addresses = Nuclear #2**; **VPS full reindex** when schema ships ([OPERATIONS.md](./OPERATIONS.md)) |
+| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate routes — **local proven**; **live addresses + production reindex = Nuclear #2 step 10** ([OPERATIONS.md](./OPERATIONS.md)). Step 5 cutover alone leaves production commerce **inert** (fail-closed). |
 
-Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **AuctionEscrow** indexing is documented in [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md). This document remains as reference for the v2 mapping and FX display work (§6).
+Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **July 2026:** the `MarketplaceEscrow` / `AuctionEscrow` schema and handlers described in §1–§3 below (`marketplace_listing`, `marketplace_sale`, `agent_authorization`, `auction*`, `currency_feed`) have been **removed** — commerce lives entirely in the FixedPrice/Ascending consignment surface (§3's commerce-modes note, and [indexer/README.md](./README.md)). This document remains as historical reference for the v1→v2 event mapping and for the FX display work (§6).
 
 ### Nuclear dual-chain (C3)
 
@@ -21,7 +21,7 @@ Identical commercial stacks on Base Sepolia (**84532**) and Ethereum Sepolia (**
 
 **Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook) · [SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)
 
-**Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. `2.0.0-rc.1` for MarketplaceEscrow). Indexer migration follows generation, not semver major alone.
+**Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. `2.1.0-rc.1` for FixedPriceConsignment / AscendingConsignment). Indexer migration follows generation, not semver major alone.
 
 ---
 
@@ -162,16 +162,10 @@ upserting the new grant. `AgentRevoked`, `Delisted`, `AgentDelisted`, `Sale`,
 clear by setting the indexed row inactive. Term changes advance `updatedAt`
 without advancing `authorizedAt`.
 
-**July 2026 schema addition:** `owner`, lifecycle timestamps, and
-`authorizedAt` require a **full reindex** before delegation notifications are
-live. `auction_agent_authorization.authorizedAt` is added in the same replay.
-Use [OPERATIONS.md](./OPERATIONS.md).
-
-**HTTP API (June–July 2026):** `GET /agents/:address/authorizations`,
-`GET /agents/:address/listings`, and delegation grant items on
-`GET /notifications/:address` — see
-[indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
-Owner-facing authorization status on listing detail still reads the contract.
+**July 2026: table removed.** `agent_authorization` (and its HTTP routes) was
+dropped along with the rest of the `MarketplaceEscrow` surface. Mandate grants
+now feed `mandate.granted` on `GET /notifications/:address` — see
+[indexer/README.md](./README.md).
 
 ### New table: `currency_feed`
 
@@ -249,26 +243,9 @@ Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 
-### Agent consignment HTTP API — ✅ shipped June–July 2026
+### Agent consignment HTTP API — superseded July 2026
 
-Agent-scoped browse for the **Consigned vehicles** profile tab and **Active consignments** pro showroom section. Read-only queries in [`src/api/index.ts`](../../src/api/index.ts). **Redeploy ponder image only** — `agentIdx` on `agent_authorization.agent` and `marketplace_listing.agent`; no `ponder-reindex.sql` expected (if `MigrationError` on VPS, see [OPERATIONS.md](./OPERATIONS.md)).
-
-| Route | Purpose |
-|-------|---------|
-| `GET /agents/:address/authorizations` | Paginated active authorizations; `hasActiveListing` per row; optional `?hasActiveListing=true\|false` (filtered `total`) |
-| `GET /agents/:address/listings` | Paginated listings where `agent` matches; optional `?active=true\|false` |
-
-**Owner-symmetric reads (July 2026):** `GET /owners/:address/authorizations` and `GET /owners/:address/auction-authorizations` mirror the agent filters (`hasActiveListing` / `awaiting`) with `ownerIdx` — **redeploy only**, no reindex. Per-passport owner writes still use chain `agentAuthorizations(tokenId)`.
-
-**Awaiting-listing UI** uses `?hasActiveListing=false` (not client-side
-fetch-all). **Owner authorization UI** still reads
-`agentAuthorizations(tokenId)` on-chain — not these routes. Ponder mirrors
-revoke, replacement authorization, and terminal storage clears; the dashboard
-continues to chain-read authorization truth as a fail-closed client guard.
-
-**Buyer UI (July 2026):** `agent` on listing responses powers browse-card and detail attribution; buyers see agent identity, not `agentFeeBps` or `ownerMinPrice1e8`. See [design-spec.md](../design-spec.md) §4.16.
-
-Details: [indexer/README.md](./README.md#agent-consignment-routes--shipped-junejuly-2026).
+The `agent_authorization` / `marketplace_listing` agent routes described above (`GET /agents/:address/authorizations`, `GET /agents/:address/listings`, `GET /owners/:address/authorizations`, …) were removed with the rest of the `MarketplaceEscrow` surface. The equivalent consignment-era routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`, `GET /agents/:address/consignments`) live in [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) — see [indexer/README.md](./README.md).
 
 ### Commerce modes (FixedPrice / Ascending) — ✅ schema July 2026
 
@@ -289,4 +266,4 @@ Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedCha
 
 ---
 
-*Last updated: July 1, 2026 — agent consignment buyer display; complete loop documented in design-spec §4.16.*
+*Last updated: July 30, 2026 — commerce cutover step 5; consignment surface is sole live commerce indexer path.*

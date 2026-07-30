@@ -15,8 +15,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACTS_DIR = path.join(ROOT, "contracts");
 
 const CLAIMABLE_INHERITORS = new Set([
-  "AuctionEscrow",
-  "MarketplaceEscrow",
   "KarPassport",
   "KarProStaking",
   "FixedPriceConsignment",
@@ -24,8 +22,6 @@ const CLAIMABLE_INHERITORS = new Set([
 ]);
 
 const ERC20_ADMISSION_CONTRACTS = new Set([
-  "AuctionEscrow",
-  "MarketplaceEscrow",
   "KarProStaking",
   "FixedPriceConsignment",
   "AscendingConsignment",
@@ -98,16 +94,40 @@ describe("tx-error-message coverage", () => {
     }
   });
 
-  it("NotSellerOrAgent wins over NotSeller", () => {
+  it("NotSellerOrAgent resolves to its own copy", () => {
     assert.equal(
       resolveRevertCopy("reverted with custom error NotSellerOrAgent()"),
       REVERT_COPY.NotSellerOrAgent,
     );
   });
 
-  it("AuctionHasAgent and ListingHasAgent have distinct copy", () => {
-    assert.notEqual(REVERT_COPY.AuctionHasAgent, REVERT_COPY.ListingHasAgent);
-    assert.match(REVERT_COPY.AuctionHasAgent!, /auction/i);
-    assert.match(REVERT_COPY.ListingHasAgent!, /sale|delist|agent cancel/i);
+  it("NotConsignmentSeller wins over NotConsignmentRunner substrings", () => {
+    assert.equal(
+      resolveRevertCopy("reverted with custom error NotConsignmentSeller()"),
+      REVERT_COPY.NotConsignmentSeller,
+    );
+    assert.notEqual(
+      REVERT_COPY.NotConsignmentSeller,
+      REVERT_COPY.NotConsignmentRunner,
+    );
+  });
+
+  it("mapper carries no copy for retired escrow errors", () => {
+    for (const retired of [
+      "AlreadyListed",
+      "AuctionExists",
+      "NoAuction",
+      "AgentNotAuthorized",
+      "RefundPending",
+      "RefundNotPending",
+      "NotSeller",
+      "NoAgent",
+      "ListingHasAgent",
+      "AuctionHasAgent",
+      "NotActive",
+      "HoldReleased",
+    ]) {
+      assert.equal(REVERT_COPY[retired], undefined, `${retired} must be removed`);
+    }
   });
 });

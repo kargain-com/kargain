@@ -5,12 +5,13 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInView } from "framer-motion";
 import type { Address } from "viem";
 
-import { getAgentListings } from "@/app/actions/agent-consignment";
+import { getConsignments } from "@/app/actions/commerce-consignments";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { consignmentRecordToListingInput } from "@/lib/commerce/listing-view";
 import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
-import { mapAgentListingToRow } from "@/lib/marketplace/map-ponder-listing";
+import { mapPonderListingToRow } from "@/lib/marketplace/map-ponder-listing";
 
 const PAGE_SIZE = 20;
 
@@ -32,20 +33,26 @@ export function ProActiveConsignmentsClient({
   } = useInfiniteQuery({
     queryKey: ["pro-active-consignments", address],
     queryFn: async ({ pageParam }) => {
-      return getAgentListings(address, pageParam as number, PAGE_SIZE, true);
+      return getConsignments({
+        agent: address,
+        live: true,
+        page: pageParam as number,
+        limit: PAGE_SIZE,
+      });
     },
     initialPageParam: 1,
     getNextPageParam: (last) => {
       if (last.ponderError) return undefined;
-      const totalPages = Math.ceil(last.total / last.limit);
-      if (last.page < totalPages) return last.page + 1;
+      if (last.page < last.totalPages) return last.page + 1;
       return undefined;
     },
   });
 
   const rows = useMemo(() => {
-    const listings = data?.pages.flatMap((page) => page.listings) ?? [];
-    return listings.map((listing) => mapAgentListingToRow(listing));
+    const consignments = data?.pages.flatMap((page) => page.rows) ?? [];
+    return consignments.map((row) =>
+      mapPonderListingToRow(consignmentRecordToListingInput(row)),
+    );
   }, [data]);
 
   const ponderError = data?.pages[0]?.ponderError;
@@ -61,6 +68,7 @@ export function ProActiveConsignmentsClient({
         level="B"
         title="Indexer unavailable"
         description="Active consignments could not be loaded right now."
+        role="alert"
       />
     );
   }

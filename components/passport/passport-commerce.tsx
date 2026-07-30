@@ -1,27 +1,19 @@
 "use client";
 
-import { useReadContract } from "wagmi";
-
 import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportBridgePanel } from "@/components/passport/passport-bridge-panel";
 import { PassportSellPanel } from "@/components/passport/passport-sell-panel";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { useAuctionDetail } from "@/hooks/use-auction-detail";
+import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import {
   auctionBlocksListingCommerce,
   marketplaceListingBlocksAuction,
   type AuctionRow,
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
-import type { BridgeListingState } from "@/lib/passport/bridge-surface";
 import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  auctionEscrowAddress,
-  marketplaceAddress,
-} from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type ListingProp = {
@@ -46,9 +38,8 @@ type Props = {
 };
 
 /**
- * Passport commerce rail: fixed-price listing XOR live auction (design-spec §4.18).
- * Chain `isListed` + live auction uiState drive the mutex; create auction is never
- * offered while MarketplaceEscrow holds the NFT.
+ * Passport commerce rail: fixed-price XOR ascending (design-spec §4.18).
+ * Live consignment + `may` drive the mutex — never status-as-permission.
  */
 export function PassportCommerce({
   chainId,
@@ -60,27 +51,12 @@ export function PassportCommerce({
   duplicateVin,
   hadDispute,
 }: Props) {
-  const market = marketplaceAddress(chainId);
-  const escrow = auctionEscrowAddress(chainId);
-  const tid = BigInt(tokenId);
-
-  const {
-    data: isListed,
-    isPending: isListedPending,
-    isError: isListedError,
-  } = useReadContract({
-    address: market,
-    abi: MarketplaceEscrowAbi,
-    functionName: "isListed",
-    args: [tid],
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(market) },
-  });
+  const facts = usePassportCommerceFacts({ chainId, tokenId });
 
   const listingBlocksAuction = marketplaceListingBlocksAuction({
-    ponderActive: Boolean(listing?.active),
-    chainIsListed: isListed,
-    chainListedPending: Boolean(market) && isListedPending,
+    ponderActive: Boolean(listing?.active) || Boolean(facts.fixedPrice.live),
+    chainIsListed: facts.fixedPrice.live === true,
+    chainListedPending: facts.fixedPrice.configured && facts.fixedPrice.live === undefined,
   });
 
   const detail = useAuctionDetail({
@@ -88,7 +64,7 @@ export function PassportCommerce({
     tokenId,
     initialAuction,
     passportStatus,
-    enabled: Boolean(escrow),
+    enabled: facts.ascending.configured,
   });
 
   const auctionOwnsCommerce = auctionBlocksListingCommerce(
@@ -98,36 +74,21 @@ export function PassportCommerce({
   const auctionHoldOpen = Boolean(
     detail.hold?.open && detail.hold.releaseAt !== 0n,
   );
-  const auctionBlocksSellSurface =
-    !escrow
-      ? false
-      : auctionOwnsCommerce || Boolean(detail.auction?.active) || auctionHoldOpen
-        ? true
-        : !detail.commerceReadResolved || detail.ponderPending
-          ? undefined
-          : false;
-
-  const bridgeListingState: BridgeListingState = !market
-    ? "failure"
-    : isListedPending
-      ? "pending"
-      : isListedError
-        ? "failure"
-        : isListed === true
-          ? "active"
-          : isListed === false
-            ? "inactive"
-            : "failure";
+  const ascendingLive =
+    facts.ascending.live === true ||
+    auctionOwnsCommerce ||
+    Boolean(detail.auction?.active) ||
+    auctionHoldOpen;
 
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
       <WatchlistButton tokenId={tokenId} />
-      {auctionOwnsCommerce ? (
+      {ascendingLive ? (
         <AuctionDetailClientIsland
           chainId={chainId}
           tokenId={tokenId}
           passportOwner={passportOwner}
-          passportStatus={passportStatus}
+          canOpenConsignment={facts.mayOpenConsignment === true}
           listingBlocksAuction={listingBlocksAuction}
           detail={detail}
         />
@@ -137,7 +98,7 @@ export function PassportCommerce({
             chainId={chainId}
             tokenId={tokenId}
             passportOwner={passportOwner}
-            passportStatus={passportStatus}
+            canOpenConsignment={facts.mayOpenConsignment === true}
             listingBlocksAuction={listingBlocksAuction}
             detail={detail}
           />
@@ -153,11 +114,8 @@ export function PassportCommerce({
           <PassportSellPanel
             chainId={chainId}
             tokenId={tokenId}
-            listing={listing}
             passportOwner={passportOwner}
-            passportStatus={passportStatus}
-            auctionBlocks={auctionBlocksSellSurface}
-            hasActiveAuction={Boolean(detail.auction?.active)}
+            facts={facts}
             now={detail.now}
           />
         </>
@@ -166,9 +124,9 @@ export function PassportCommerce({
         chainId={chainId}
         tokenId={tokenId}
         passportOwner={passportOwner}
-        passportStatus={passportStatus}
-        listingState={bridgeListingState}
-        auctionBlocks={auctionBlocksSellSurface}
+        mayLeaveChain={facts.mayLeaveChain}
+        liveConsignmentMode={facts.liveConsignmentMode}
+        challengeOpen={facts.challengeOpen}
       />
     </div>
   );

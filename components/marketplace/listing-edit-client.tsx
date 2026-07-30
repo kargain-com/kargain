@@ -12,33 +12,35 @@ import {
 } from "wagmi";
 
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
+import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
+import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
+import { hasCommerceMode } from "@/lib/commerce/mode";
 import {
   encodeCurrencyCode,
   listingCurrencyCodesForChain,
   type ListingCurrencyCode,
 } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
-import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
-import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   AUCTION_REQUIRES_VERIFICATION_HINT,
   DELIST_BEFORE_AUCTION_HINT,
 } from "@/lib/auction/sale-form-copy";
 import {
+  FixedPriceConsignmentAbi,
   KarPassportAbi,
-  MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
-  auctionEscrowAddress,
+  ascendingConsignmentAddress,
   karPassportAddress,
-  marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 
@@ -69,59 +71,47 @@ export function ListingEditClient({
   const [log, setLog] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
-  const market = marketplaceAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
   const { data: reads, refetch: refetchReads } = useReadContracts({
-    contracts:
-      passport && market
-        ? [
-            {
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "ownerOf",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "getApproved",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "listings",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "settlementNotes",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
+    contracts: passport
+      ? [
+          {
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "ownerOf",
+            args: [tid],
+            chainId: wc,
+          },
+          {
+            address: passport,
+            abi: KarPassportAbi,
+            functionName: "getApproved",
+            args: [tid],
+            chainId: wc,
+          },
+        ]
+      : [],
   });
+
+  const commerce = useListingChainReads({ chainId, tokenId });
+  const market = commerce.market;
 
   const ownerOf = reads?.[0]?.result as `0x${string}` | undefined;
   const approved = reads?.[1]?.result as `0x${string}` | undefined;
-  const listingOnChain = reads?.[2]?.result;
-  const settlementNoteRaw = reads?.[3]?.result;
-  const refetchListing = refetchReads;
 
-  const row = parseOnChainListing(listingOnChain);
+  const refetchListing = useCallback(async () => {
+    await Promise.all([refetchReads(), commerce.refetch()]);
+  }, [refetchReads, commerce]);
+
+  const row = commerce.listing;
   const active = row?.active ?? false;
   const seller = row?.seller;
   const fiatPrice1e8 = row?.fiatPrice1e8 ?? 0n;
   const listedFiat = row?.fiatCurrency ?? 0;
 
-  const onChainNote = decodeSettlementNote(settlementNoteRaw);
+  const onChainNote = commerce.settlementNote;
 
   useEffect(() => {
     if (onChainNote) setSettlementNote(onChainNote);
@@ -150,7 +140,7 @@ export function ListingEditClient({
         (await runTx(() =>
           writeContractAsync({
             address: market,
-            abi: MarketplaceEscrowAbi,
+            abi: FixedPriceConsignmentAbi,
             functionName: "setSettlementNote",
             args: [tid, stringToHex(note.trim())],
             chainId: wc,
@@ -167,8 +157,8 @@ export function ListingEditClient({
     const succeeded = await runTx(() =>
       writeContractAsync({
         address: market,
-        abi: MarketplaceEscrowAbi,
-        functionName: "delist",
+        abi: FixedPriceConsignmentAbi,
+        functionName: "ownerWithdraw",
         args: [tid],
         chainId: wc,
       }),
@@ -212,13 +202,23 @@ export function ListingEditClient({
         return;
       }
       setLog("Listing…");
+      const openArgs = [
+        tid,
+        {
+          kind: DENOMINATION_KIND.Fiat,
+          currencyCode: encodeCurrencyCode(askingCurrency),
+        },
+        // Native settlement; the asking price is denominated in fiat.
+        ZERO_ADDRESS,
+        amount,
+      ] as const;
       try {
         if (settlementNote.trim()) {
           const hash = await writeContractAsync({
             address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "list",
-            args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+            abi: FixedPriceConsignmentAbi,
+            functionName: "openDirect",
+            args: openArgs,
           });
           await awaitReceipt(hash);
           setLog("Saving payment instructions…");
@@ -227,9 +227,9 @@ export function ListingEditClient({
           const succeeded = await runTx(() =>
             writeContractAsync({
               address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "list",
-              args: [tid, amount, encodeCurrencyCode(askingCurrency)],
+              abi: FixedPriceConsignmentAbi,
+              functionName: "openDirect",
+              args: openArgs,
             }),
           );
           if (!succeeded) return;
@@ -260,51 +260,27 @@ export function ListingEditClient({
 
   const runUpdatePrice = useCallback(async () => {
     await runFlow(async () => {
-      if (!canDelist || !market || !passport) return;
+      if (!canDelist || !market) return;
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
       const amount = parseUnits(priceInput || "0", 8);
       if (amount <= 0n) {
         setLog("Enter a valid asking price.");
         return;
       }
-      setLog("Updating price (delist + relist)…");
+      setLog("Updating price…");
       try {
-        let hash = await writeContractAsync({
-          address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "delist",
-          args: [tid],
-        });
-        await awaitReceipt(hash);
-        if (!isApproved) {
-          hash = await writeContractAsync({
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "approve",
-            args: [market, tid],
-          });
-          await awaitReceipt(hash);
-        }
-        if (settlementNote.trim()) {
-          hash = await writeContractAsync({
+        const succeeded = await runTx(() =>
+          writeContractAsync({
             address: market,
-            abi: MarketplaceEscrowAbi,
-            functionName: "list",
-            args: [tid, amount, encodeCurrencyCode(askingCurrency)],
-          });
-          await awaitReceipt(hash);
+            abi: FixedPriceConsignmentAbi,
+            functionName: "setPrice",
+            args: [tid, amount],
+          }),
+        );
+        if (!succeeded) return;
+        if (settlementNote.trim()) {
           setLog("Saving payment instructions…");
           if (!(await saveSettlementNote(settlementNote))) return;
-        } else {
-          const succeeded = await runTx(() =>
-            writeContractAsync({
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "list",
-              args: [tid, amount, encodeCurrencyCode(askingCurrency)],
-            }),
-          );
-          if (!succeeded) return;
         }
         await refetchListing();
         setLog("Price updated.");
@@ -316,18 +292,14 @@ export function ListingEditClient({
     canDelist,
     wrongChain,
     market,
-    passport,
     priceInput,
-    askingCurrency,
     settlementNote,
-    isApproved,
     tid,
     wc,
     refetchListing,
     saveSettlementNote,
     switchChainAsync,
     writeContractAsync,
-    awaitReceipt,
     runTx,
     runFlow,
   ]);
@@ -415,7 +387,7 @@ export function ListingEditClient({
       {active && isSeller && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Delist</h2>
-          {auctionEscrowAddress(chainId) ? (
+          {ascendingConsignmentAddress(chainId) ? (
             <p className="font-sans text-sm text-text-secondary" role="status">
               {auctionHint}
             </p>
@@ -483,8 +455,11 @@ export function ListingEditClient({
       {!active && isOwner && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">List for sale</h2>
+          {commerce.paused === true ? (
+            <CommercePausedNotice mode="fixedPrice" />
+          ) : null}
           {!isApproved && (
-            <Button type="button" variant="outline" disabled={actionsPending} onClick={() => void runApprove()}>
+            <Button type="button" variant="outline" disabled={actionsPending || commerce.paused === true} onClick={() => void runApprove()}>
               {actionsPending ? "Confirming…" : "Approve marketplace"}
             </Button>
           )}
@@ -498,9 +473,9 @@ export function ListingEditClient({
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-new"
-            disabled={actionsPending}
+            disabled={actionsPending || commerce.paused === true}
           />
-          <Button type="button" disabled={actionsPending || !isApproved} onClick={() => void runList()}>
+          <Button type="button" disabled={actionsPending || !isApproved || commerce.paused === true} onClick={() => void runList()}>
             {actionsPending ? "Confirming…" : "List for sale"}
           </Button>
         </section>

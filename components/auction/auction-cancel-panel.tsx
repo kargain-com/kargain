@@ -4,10 +4,10 @@ import { useAccount, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { hasAuctionAgent } from "@/lib/auction/auction-agent";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
-import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
+import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 
 type Props = {
   chainId: number;
@@ -16,8 +16,8 @@ type Props = {
 };
 
 /**
- * S1 cancel — seller `cancelAuction` / agent `agentCancelAuction`.
- * Visible only while `startedAt == 0`.
+ * Pre-bid exit — owner `ownerWithdraw` / agent `agentWithdraw`.
+ * Visible only while the lot is still offered and unbid.
  */
 export function AuctionCancelPanel({
   chainId,
@@ -30,14 +30,13 @@ export function AuctionCancelPanel({
 
   const busy = phase !== "idle";
 
-  const escrow = auctionEscrowAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
 
-  const isSeller =
-    Boolean(address) &&
-    address!.toLowerCase() === auction.seller.toLowerCase();
+  const isSeller = addressesMatch(auction.seller, address);
   const isAgent =
-    Boolean(address && hasAuctionAgent(auction.agent)) &&
-    address!.toLowerCase() === auction.agent!.toLowerCase();
+    auction.agent != null &&
+    !isZeroAddress(auction.agent) &&
+    addressesMatch(auction.agent, address);
 
   if (!escrow || auction.startedAt !== 0n || (!isSeller && !isAgent)) {
     return null;
@@ -48,8 +47,8 @@ export function AuctionCancelPanel({
     await runTx(() =>
       writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: isAgent ? "agentCancelAuction" : "cancelAuction",
+        abi: AscendingConsignmentAbi,
+        functionName: isAgent ? "agentWithdraw" : "ownerWithdraw",
         args: [BigInt(tokenId)],
       }),
     );

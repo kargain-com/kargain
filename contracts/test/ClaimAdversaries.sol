@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IAuctionEscrow} from "../interfaces/IAuctionEscrow.sol";
 
 interface IClaimWithdraw {
     function withdrawClaim(address asset) external;
@@ -51,33 +50,6 @@ contract GasBurningRecipient {
     function claimStake(address staking) external {
         (bool ok,) = staking.call(abi.encodeWithSignature("claimStake()"));
         require(ok, "claimStake failed");
-    }
-}
-
-/// @notice Auction bidder that burns gas on outbid refund receive.
-contract GasBurningBidder {
-    IAuctionEscrow public immutable escrow;
-    bool public acceptEth;
-
-    constructor(IAuctionEscrow escrow_) {
-        escrow = escrow_;
-    }
-
-    function setAcceptEth(bool value) external {
-        acceptEth = value;
-    }
-
-    function bidNative(uint256 tokenId) external payable {
-        escrow.bid{value: msg.value}(tokenId, uint128(msg.value));
-    }
-
-    function withdrawClaim(address asset) external {
-        IClaimWithdraw(address(escrow)).withdrawClaim(asset);
-    }
-
-    receive() external payable {
-        if (acceptEth) return;
-        while (true) {}
     }
 }
 

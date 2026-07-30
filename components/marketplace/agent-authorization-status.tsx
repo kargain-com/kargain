@@ -17,38 +17,34 @@ import {
 import { Label } from "@/components/ui/label";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import type { MandateSnapshot } from "@/lib/commerce/mandate";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { listingCurrencyCodesForChain } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { marketplaceAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-
-type AgentAuth = {
-  agent: `0x${string}`;
-  expiry: bigint;
-  ownerMinPrice1e8: bigint;
-  active: boolean;
-};
 
 type Props = {
   chainId: number;
   tokenId: string;
-  agentAuth: AgentAuth;
+  /** Fixed-price mandate read from the mode contract. */
+  mandate: MandateSnapshot;
+  /** A live consignment blocks revoke — recall it first. */
   listingActive: boolean;
   onChanged: () => void;
 };
 
-function formatExpiry(expiry: bigint): string {
-  if (expiry === 0n) return "No expiration";
-  return new Date(Number(expiry) * 1000).toLocaleDateString();
+function formatExpiry(expiry: number): string {
+  if (expiry === 0) return "No expiration";
+  return new Date(expiry * 1000).toLocaleDateString();
 }
 
 export function AgentAuthorizationStatus({
   chainId,
   tokenId,
-  agentAuth,
+  mandate,
   listingActive,
   onChanged,
 }: Props) {
@@ -59,21 +55,20 @@ export function AgentAuthorizationStatus({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = marketplaceAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
-  // UI label only: reflects registered listing currencies on this chain today.
-  // The contract does NOT store currency on authorizeAgent — ownerMinPrice1e8 is a raw
-  // scalar compared in whatever currency the agent picks at listOnBehalf.
+  // The mandate stores its own denomination; this label reflects the codes the
+  // chain can settle today.
   const currencyCode = listingCurrencyCodesForChain(chainId)[0] ?? "USD";
-  const { displayName, isKarPro, profileHref } = usePeerIdentity(agentAuth.agent);
+  const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent);
 
   const [lowerOpen, setLowerOpen] = useState(false);
   const [lowerInput, setLowerInput] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
-  const currentMin = agentAuth.ownerMinPrice1e8;
+  const currentMin = mandate.floor;
 
   const resetLowerDialog = useCallback(() => {
     setLowerInput("");
@@ -107,8 +102,8 @@ export function AgentAuthorizationStatus({
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "updateOwnerMinPrice",
+          abi: FixedPriceConsignmentAbi,
+          functionName: "lowerFloor",
           args: [tid, newMin],
         }),
       );
@@ -140,8 +135,8 @@ export function AgentAuthorizationStatus({
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "revokeAgent",
+          abi: FixedPriceConsignmentAbi,
+          functionName: "revoke",
           args: [tid],
         }),
       );
@@ -169,7 +164,7 @@ export function AgentAuthorizationStatus({
           Delegated to
         </p>
         <div className="mt-2 flex items-center gap-3">
-          <IdentityAvatar address={agentAuth.agent} size={40} alt={displayName} />
+          <IdentityAvatar address={mandate.agent} size={40} alt={displayName} />
           <div className="min-w-0">
             <Link
               href={profileHref}
@@ -197,7 +192,7 @@ export function AgentAuthorizationStatus({
         </div>
         <div className="flex justify-between gap-4">
           <dt className="text-text-secondary">Authorization</dt>
-          <dd className="text-text-primary">{formatExpiry(agentAuth.expiry)}</dd>
+          <dd className="text-text-primary">{formatExpiry(mandate.expiry)}</dd>
         </div>
       </dl>
 

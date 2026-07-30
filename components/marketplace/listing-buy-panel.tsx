@@ -1,8 +1,8 @@
 "use client";
 
-import { CircleInformationIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
+import { erc20Abi, formatUnits, isAddressEqual, zeroAddress } from "viem";
 import {
   useAccount,
   useBalance,
@@ -15,56 +15,24 @@ import {
 } from "wagmi";
 
 import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { DirectPaymentNote } from "@/components/marketplace/direct-payment-note";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useClaimAssetMeta } from "@/hooks/use-claim-asset-meta";
+import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
-import { marketplaceAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
-
-const ETH_SCALE = 1_000_000_000_000_000_000n;
-const USDC_SCALE = 1_000_000n;
-
-const ERC20_ABI = [
-  {
-    type: "function",
-    name: "allowance",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
-
-type PaymentMethod = "ETH" | "USDC";
 
 type Props = {
   chainId: number;
@@ -76,64 +44,35 @@ type Props = {
   directPaymentNote?: string;
 };
 
-function formatEth4FromWei(ethWei: bigint): string {
-  const neg = ethWei < 0n;
-  const v = neg ? -ethWei : ethWei;
-  const whole = v / ETH_SCALE;
-  const fracRaw = v % ETH_SCALE;
-  let frac4 = (fracRaw + 5_000_000_000_000_000n) / 10_000_000_000_000_000n;
-  let wholePart = whole;
-  if (frac4 === 10_000n) {
-    wholePart += 1n;
-    frac4 = 0n;
-  }
-  const core = `${wholePart.toString()}.${frac4.toString().padStart(4, "0")}`;
-  return `${neg ? `-${core}` : core} ETH`;
-}
-
-function formatUsdc2(amount: bigint): string {
-  const neg = amount < 0n;
-  const v = neg ? -amount : amount;
-  const whole = v / USDC_SCALE;
-  const fracRaw = v % USDC_SCALE;
-  let frac2 = (fracRaw + 5_000n) / 10_000n;
-  let wholePart = whole;
-  if (frac2 === 100n) {
-    wholePart += 1n;
-    frac2 = 0n;
-  }
-  const core = `${wholePart.toString()}.${frac2.toString().padStart(2, "0")}`;
-  return `${neg ? `-${core}` : core} USDC`;
-}
-
-function formatEthUsdRate(listingUsd1e8: bigint, nativeQuote: bigint): string {
-  const ethUsd1e8 = (listingUsd1e8 * ETH_SCALE) / nativeQuote;
-  const whole = ethUsd1e8 / 100_000_000n;
-  const fracRaw = ethUsd1e8 % 100_000_000n;
-  let frac2 = (fracRaw + 500_000n) / 1_000_000n;
-  let wholePart = whole;
-  if (frac2 === 100n) {
-    wholePart += 1n;
-    frac2 = 0n;
-  }
-  return `1 ETH = $${wholePart.toLocaleString("en-US")}.${frac2.toString().padStart(2, "0")}`;
-}
-
-function quoteFieldValue(loading: boolean, unavailable: boolean, formatted: string): string {
-  if (loading) return "—";
-  if (unavailable) return "Unavailable";
-  return formatted;
-}
-
-function DisclosureRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function DisclosureRow({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="font-sans text-xs text-text-tertiary">{label}</span>
-      <span className={cn("font-mono text-sm text-text-primary text-right", valueClassName)}>{value}</span>
+      <span
+        className={cn(
+          "font-mono text-sm text-text-primary text-right",
+          valueClassName,
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
+/**
+ * Buyer checkout for a fixed-price consignment. The settlement asset is fixed
+ * when the sale opens: native when the asset is the zero address, otherwise an
+ * approved ERC-20.
+ */
 export function ListingBuyPanel({
   chainId,
   tokenId,
@@ -149,275 +88,201 @@ export function ListingBuyPanel({
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
   const [riskOpen, setRiskOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ETH");
   const [txError, setTxError] = useState<string | null>(null);
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
-  const market = marketplaceAddress(chainId);
-  const usdc = usdcAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const wc = wagmiChainId(chainId);
   const wrongChain = walletChain !== chainId;
   const tid = BigInt(tokenId);
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
+  const { paused: modePaused } = useCommerceModePaused({
+    mode: "fixedPrice",
+    chainId,
+  });
 
   const { data: settlementNoteRaw } = useReadContract({
     address: market,
-    abi: MarketplaceEscrowAbi,
+    abi: FixedPriceConsignmentAbi,
     functionName: "settlementNotes",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(market) && directPaymentNoteProp === undefined },
+    query: {
+      enabled: Boolean(market) && directPaymentNoteProp === undefined,
+    },
   });
 
   const directPaymentNote =
     directPaymentNoteProp ?? decodeSettlementNote(settlementNoteRaw).trim();
 
-  const { data: quoteData, isLoading: isQuotesLoading } = useReadContracts({
-    contracts:
-      market && usdc
-        ? [
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "quoteBuyWithNative",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "quoteBuyWithToken",
-              args: [tid, usdc],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "listingUsd1e8",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
+  const { data: saleReads, isLoading: isQuoteLoading } = useReadContracts({
+    contracts: market
+      ? [
+          {
+            address: market,
+            abi: FixedPriceConsignmentAbi,
+            functionName: "quoteBuy",
+            args: [tid],
+            chainId: wc,
+          },
+          {
+            address: market,
+            abi: FixedPriceConsignmentAbi,
+            functionName: "consignmentAssetOf",
+            args: [tid],
+            chainId: wc,
+          },
+        ]
+      : [],
   });
 
-  const nativeRead = quoteData?.[0];
-  const usdcRead = quoteData?.[1];
-  const listingUsdRead = quoteData?.[2];
+  const quoteRead = saleReads?.[0];
+  const assetRead = saleReads?.[1];
 
-  const nativeQuote =
-    nativeRead?.status === "success" && nativeRead.result != null
-      ? (nativeRead.result as bigint)
+  const quote =
+    quoteRead?.status === "success" && quoteRead.result != null
+      ? (quoteRead.result as bigint)
       : undefined;
-  const usdcQuote =
-    usdcRead?.status === "success" && usdcRead.result != null
-      ? (usdcRead.result as bigint)
-      : undefined;
-  const listingUsd1e8 =
-    listingUsdRead?.status === "success" && listingUsdRead.result != null
-      ? (listingUsdRead.result as bigint)
+  const asset =
+    assetRead?.status === "success"
+      ? (assetRead.result as `0x${string}`)
       : undefined;
 
-  const nativeUnavailable =
-    nativeRead?.status === "failure" || (!isQuotesLoading && nativeQuote == null);
-  const usdcUnavailable =
-    usdcRead?.status === "failure" || (!isQuotesLoading && usdcQuote == null);
+  const quoteUnavailable =
+    quoteRead?.status === "failure" || (!isQuoteLoading && quote == null);
+  const isNative = asset != null && isAddressEqual(asset, zeroAddress);
+  const assetMeta = useClaimAssetMeta({
+    chainId: wc,
+    asset: asset ?? zeroAddress,
+    isNative: asset == null || isNative,
+  });
 
-  const { data: allowance, isLoading: isAllowanceLoading, refetch: refetchAllowance } = useReadContract({
-    address: usdc,
-    abi: ERC20_ABI,
+  const {
+    data: allowance,
+    isLoading: isAllowanceLoading,
+    refetch: refetchAllowance,
+  } = useReadContract({
+    address: asset,
+    abi: erc20Abi,
     functionName: "allowance",
     args: address && market ? [address, market] : undefined,
     chainId: wc,
-    query: {
-      enabled: Boolean(usdc && address && market),
-    },
+    query: { enabled: Boolean(asset && !isNative && address && market) },
   });
 
-  const { data: usdcBalance } = useReadContract({
-    address: usdc,
-    abi: ERC20_ABI,
+  const { data: erc20Balance } = useReadContract({
+    address: asset,
+    abi: erc20Abi,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     chainId: wc,
-    query: {
-      enabled: Boolean(usdc && address),
-    },
+    query: { enabled: Boolean(asset && !isNative && address) },
   });
 
-  const { data: ethBalance } = useBalance({
+  const { data: nativeBalance } = useBalance({
     address,
     chainId: wc,
-    query: { enabled: Boolean(address) },
+    query: { enabled: Boolean(address && isNative) },
   });
 
   const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
-  const marketOk = Boolean(market);
-  const isSeller =
-    Boolean(address && listing.seller && address.toLowerCase() === listing.seller.toLowerCase());
+  const isSeller = Boolean(
+    address &&
+      listing.seller &&
+      address.toLowerCase() === listing.seller.toLowerCase(),
+  );
 
   const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listingCurrency)}`;
-  const isEurListing = listingCurrency === 1;
 
-  const needsUsdcApproval = useMemo(() => {
-    if (allowance == null || usdcQuote == null) return false;
-    return allowance < usdcQuote;
-  }, [allowance, usdcQuote]);
+  const needsApproval = useMemo(() => {
+    if (isNative || allowance == null || quote == null) return false;
+    return allowance < quote;
+  }, [isNative, allowance, quote]);
 
-  const insufficientEthBalance =
-    paymentMethod === "ETH" &&
-    ethBalance != null &&
-    nativeQuote != null &&
-    ethBalance.value < nativeQuote;
-
-  const insufficientUsdcBalance =
-    paymentMethod === "USDC" &&
-    usdcBalance != null &&
-    usdcQuote != null &&
-    usdcBalance < usdcQuote;
-
-  const canSimulateNative = useMemo(
-    () =>
-      Boolean(
-        address &&
-          market &&
-          !nativeUnavailable &&
-          nativeQuote != null &&
-          ethBalance != null &&
-          ethBalance.value >= nativeQuote,
-      ),
-    [address, market, nativeUnavailable, nativeQuote, ethBalance],
-  );
-
-  const canSimulateUsdc = useMemo(
-    () =>
-      Boolean(
-        address &&
-          market &&
-          usdc &&
-          !usdcUnavailable &&
-          usdcQuote != null &&
-          !needsUsdcApproval &&
-          usdcBalance != null &&
-          usdcBalance >= usdcQuote,
-      ),
-    [address, market, usdc, usdcUnavailable, usdcQuote, needsUsdcApproval, usdcBalance],
-  );
-
-  const { error: simulateNativeError } = useSimulateContract({
-    address: market,
-    abi: MarketplaceEscrowAbi,
-    functionName: "buyWithNative",
-    args: [tid],
-    value: nativeQuote,
-    chainId: wc,
-    query: { enabled: canSimulateNative },
-  });
-
-  const { error: simulateUsdcError } = useSimulateContract({
-    address: market,
-    abi: MarketplaceEscrowAbi,
-    functionName: "buyWithToken",
-    args: usdc ? [tid, usdc] : undefined,
-    chainId: wc,
-    query: { enabled: canSimulateUsdc },
-  });
-
-  const buyNative = useCallback(async () => {
-    if (!market || nativeQuote == null) return;
-    try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
-      if (simulateNativeError) {
-        setTxError(txErrorMessage(simulateNativeError));
-        return;
-      }
-      const succeeded = await runTx(() =>
-        writeContractAsync({
-          address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "buyWithNative",
-          args: [tid],
-          value: nativeQuote,
-        }),
-      );
-      if (succeeded) router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
-    } catch (err) {
-      setTxError(txErrorMessage(err));
+  const insufficientBalance = useMemo(() => {
+    if (quote == null) return false;
+    if (isNative) {
+      return nativeBalance != null && nativeBalance.value < quote;
     }
-  }, [
-    chainId,
-    market,
-    nativeQuote,
-    router,
-    simulateNativeError,
-    switchChainAsync,
-    tid,
-    tokenId,
-    wc,
-    wrongChain,
-    writeContractAsync,
-    runTx,
-  ]);
+    return erc20Balance != null && erc20Balance < quote;
+  }, [quote, isNative, nativeBalance, erc20Balance]);
 
-  const buyUsdc = useCallback(async () => {
-    if (!market || !usdc || usdcQuote == null) return;
+  const canSimulate = Boolean(
+    address &&
+      market &&
+      quote != null &&
+      !quoteUnavailable &&
+      !needsApproval &&
+      !insufficientBalance,
+  );
+
+  const { error: simulateError } = useSimulateContract({
+    address: market,
+    abi: FixedPriceConsignmentAbi,
+    functionName: "buy",
+    args: [tid],
+    value: isNative ? quote : 0n,
+    chainId: wc,
+    query: { enabled: canSimulate },
+  });
+
+  const executeBuy = useCallback(async () => {
+    setTxError(null);
+    if (!market || quote == null) return;
     try {
       if (wrongChain) await switchChainAsync?.({ chainId: wc });
 
-      const currentAllowance = allowance ?? 0n;
-      if (currentAllowance < usdcQuote) {
+      if (!isNative && asset && (allowance ?? 0n) < quote) {
         const hash = await writeContractAsync({
-          address: usdc,
-          abi: ERC20_ABI,
+          address: asset,
+          abi: erc20Abi,
           functionName: "approve",
-          args: [market, usdcQuote],
+          args: [market, quote],
         });
         await awaitReceipt(hash);
         await refetchAllowance();
         return;
       }
 
-      if (simulateUsdcError) {
-        setTxError(txErrorMessage(simulateUsdcError));
+      if (simulateError) {
+        setTxError(txErrorMessage(simulateError));
         return;
       }
 
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "buyWithToken",
-          args: [tid, usdc],
+          abi: FixedPriceConsignmentAbi,
+          functionName: "buy",
+          args: [tid],
+          value: isNative ? quote : 0n,
         }),
       );
-      if (succeeded) router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
+      if (succeeded) {
+        router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
+      }
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
   }, [
-    allowance,
-    chainId,
     market,
-    router,
-    simulateUsdcError,
-    switchChainAsync,
-    tid,
-    tokenId,
-    usdc,
-    usdcQuote,
-    wc,
+    quote,
     wrongChain,
+    switchChainAsync,
+    wc,
+    isNative,
+    asset,
+    allowance,
     writeContractAsync,
-    refetchAllowance,
     awaitReceipt,
+    refetchAllowance,
+    simulateError,
     runTx,
+    tid,
+    router,
+    tokenId,
+    chainId,
   ]);
-
-  const executeBuy = useCallback(async () => {
-    setTxError(null);
-    if (paymentMethod === "ETH") await buyNative();
-    else await buyUsdc();
-  }, [paymentMethod, buyNative, buyUsdc]);
 
   const handleBuyClick = () => {
     if (requiresRiskAck) {
@@ -428,46 +293,29 @@ export function ListingBuyPanel({
     void executeBuy();
   };
 
-  const ethYouPay = quoteFieldValue(
-    isQuotesLoading,
-    nativeUnavailable,
-    nativeQuote != null ? formatEth4FromWei(nativeQuote) : "",
-  );
-
-  const ethRate =
-    !isQuotesLoading &&
-    !nativeUnavailable &&
-    nativeQuote != null &&
-    listingUsd1e8 != null &&
-    nativeQuote > 0n
-      ? formatEthUsdRate(listingUsd1e8, nativeQuote)
-      : quoteFieldValue(isQuotesLoading, nativeUnavailable, "");
-
-  const usdcYouPay = quoteFieldValue(
-    isQuotesLoading,
-    usdcUnavailable,
-    usdcQuote != null ? formatUsdc2(usdcQuote) : "",
-  );
+  const youPay = (() => {
+    if (isQuoteLoading) return "—";
+    if (quoteUnavailable || quote == null) return "Unavailable";
+    const decimals = assetMeta.decimals ?? 18;
+    const symbol = assetMeta.symbol ?? assetMeta.nativeSymbol;
+    return `${formatUnits(quote, decimals)} ${symbol}`;
+  })();
 
   const buyDisabled =
+    modePaused === true ||
     isPending ||
     phase !== "idle" ||
-    (paymentMethod === "ETH"
-      ? nativeUnavailable || nativeQuote == null || insufficientEthBalance
-      : !usdc ||
-        usdcUnavailable ||
-        usdcQuote == null ||
-        isAllowanceLoading ||
-        insufficientUsdcBalance);
+    quote == null ||
+    quoteUnavailable ||
+    insufficientBalance ||
+    (!isNative && isAllowanceLoading);
 
   const buyLabel =
     phase !== "idle"
       ? "Confirming…"
-      : paymentMethod === "USDC" && needsUsdcApproval
-        ? "Approve USDC"
+      : needsApproval
+        ? `Approve ${assetMeta.symbol ?? "token"}`
         : "Buy now";
-
-  const usdcOptionDisabled = !usdc || (usdcUnavailable && !isQuotesLoading);
 
   const priceBlock = (
     <div className="rounded-md border border-border-default bg-bg-surface p-4 space-y-2">
@@ -478,7 +326,7 @@ export function ListingBuyPanel({
         label="asking"
       />
       <p className="font-sans text-xs text-text-secondary">
-        Checkout on Kargain is in ETH or USDC.
+        Checkout settles in {assetMeta.symbol ?? assetMeta.nativeSymbol}.
       </p>
     </div>
   );
@@ -530,7 +378,10 @@ export function ListingBuyPanel({
           <p className="text-sm text-text-secondary">
             Switch to {shortChainName(chainId)}
           </p>
-          <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
+          <Button
+            type="button"
+            onClick={() => void switchChainAsync?.({ chainId: wc })}
+          >
             Switch network
           </Button>
         </div>
@@ -538,11 +389,13 @@ export function ListingBuyPanel({
     );
   }
 
-  if (!marketOk) {
+  if (!market) {
     return (
       <div className="space-y-3">
         {priceBlock}
-        <p className="text-sm text-status-error">Marketplace not configured for this chain.</p>
+        <p className="text-sm text-status-error">
+          Fixed price sales are not available on this chain.
+        </p>
       </div>
     );
   }
@@ -556,111 +409,45 @@ export function ListingBuyPanel({
           showLabel
           label="asking"
         />
-        <p className="font-sans text-xs text-text-secondary">
-          Checkout on Kargain is in ETH or USDC.
-        </p>
 
         {directPaymentBlock}
 
-        <div className="flex rounded-sm border border-border-default p-0.5">
-          <button
-            type="button"
-            onClick={() => {
-              setTxError(null);
-              setPaymentMethod("ETH");
-            }}
-            className={cn(
-              "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
-              paymentMethod === "ETH"
-                ? "border-border-hover bg-bg-surface text-text-primary"
-                : "border-transparent bg-transparent text-text-secondary",
-            )}
-          >
-            Pay with ETH
-          </button>
-          <button
-            type="button"
-            disabled={usdcOptionDisabled}
-            onClick={() => {
-              setTxError(null);
-              setPaymentMethod("USDC");
-            }}
-            className={cn(
-              "flex-1 h-9 rounded-sm border font-sans text-sm font-medium transition-colors duration-200",
-              paymentMethod === "USDC"
-                ? "border-border-hover bg-bg-surface text-text-primary"
-                : "border-transparent bg-transparent text-text-secondary",
-              usdcOptionDisabled && "cursor-not-allowed opacity-50",
-            )}
-          >
-            Pay with USDC
-          </button>
-        </div>
+        {modePaused === true ? (
+          <CommercePausedNotice mode="fixedPrice" />
+        ) : null}
 
         <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <DisclosureRow label="Seller receives" value={sellerReceives} />
-
-          {paymentMethod === "ETH" ? (
-            <>
-              <DisclosureRow
-                label="You pay"
-                value={ethYouPay}
-                valueClassName="text-xs text-text-secondary"
-              />
-              <DisclosureRow
-                label="Rate at settlement"
-                value={ethRate}
-                valueClassName="text-xs text-text-secondary"
-              />
-              {isEurListing && (
-                <div className="flex gap-2 rounded-sm bg-bg-surface p-2">
-                  <CircleInformationIcon size={14} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
-                  <p className="font-sans text-xs text-text-secondary">
-                    Price is set in EUR. ETH amount is calculated at current EUR/USD/ETH rates and
-                    locked at transaction time.
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <DisclosureRow
-                label="You pay"
-                value={usdcYouPay}
-                valueClassName="text-xs text-text-secondary"
-              />
-              <DisclosureRow
-                label="Rate at settlement"
-                value={
-                  isQuotesLoading
-                    ? "—"
-                    : usdcUnavailable
-                      ? "Unavailable"
-                      : "1 USDC ≈ 1 USD · Rate locked at transaction"
-                }
-                valueClassName="text-xs text-text-secondary"
-              />
-              {isEurListing && (
-                <div className="flex gap-2 rounded-sm bg-bg-surface p-2">
-                  <CircleInformationIcon size={14} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
-                  <p className="font-sans text-xs text-text-secondary">
-                    Price is set in EUR. USDC amount is calculated at current EUR/USD rate and locked
-                    at transaction time.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
+          <DisclosureRow
+            label="You pay"
+            value={youPay}
+            valueClassName="text-xs text-text-secondary"
+          />
+          <DisclosureRow
+            label="Rate at settlement"
+            value={
+              isQuoteLoading
+                ? "—"
+                : quoteUnavailable
+                  ? "Unavailable"
+                  : "Locked at transaction time"
+            }
+            valueClassName="text-xs text-text-secondary"
+          />
         </div>
 
-        <Button type="button" className="w-full" disabled={buyDisabled} onClick={handleBuyClick}>
+        <Button
+          type="button"
+          className="w-full"
+          disabled={buyDisabled}
+          onClick={handleBuyClick}
+        >
           {buyLabel}
         </Button>
-        {insufficientEthBalance && (
-          <p className="text-sm text-text-secondary">Insufficient ETH balance.</p>
-        )}
-        {insufficientUsdcBalance && (
-          <p className="text-sm text-text-secondary">Insufficient USDC balance.</p>
+        {insufficientBalance && (
+          <p className="text-sm text-text-secondary">
+            Insufficient {assetMeta.symbol ?? assetMeta.nativeSymbol} balance.
+          </p>
         )}
         {(txError ?? error) && (
           <p className="text-sm text-status-error" role="alert">

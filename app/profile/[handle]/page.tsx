@@ -4,8 +4,7 @@ import { cache, Suspense } from "react";
 import { getAddress } from "viem";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
-import { getAgentConsignmentCount } from "@/app/actions/agent-consignment";
-import { getOwnerDelegatedCount } from "@/app/actions/owner-consignment";
+import { getAgentMandateCount, getOwnerMandateCount } from "@/app/actions/commerce-mandates";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
 import {
@@ -71,19 +70,10 @@ export default async function PublicProfilePage({
 
   let consignedCount: number | null = null;
   if (isActiveVerifier) {
-    const countResult = await getAgentConsignmentCount(wallet);
-    if (countResult.count != null && !countResult.ponderError) {
-      consignedCount = countResult.count;
-    }
+    consignedCount = await getAgentMandateCount(wallet);
   }
 
-  let delegatedCount: number | null = null;
-  {
-    const countResult = await getOwnerDelegatedCount(wallet);
-    if (countResult.count != null && !countResult.ponderError) {
-      delegatedCount = countResult.count;
-    }
-  }
+  const delegatedCount = await getOwnerMandateCount(wallet);
 
   let ponderErr: string | null = null;
   let passports: NonNullable<ReturnType<typeof mapProfilePassport>>[] = [];

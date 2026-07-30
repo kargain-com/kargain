@@ -13,8 +13,7 @@ export type ProfileActionBannerProps = {
   subjectIsKarPro: boolean;
   subjectName: string;
   subjectWallet: Address;
-  openDisputeCount: number;
-  onTabChange: (tab: string) => void;
+  openChallengeCount: number;
 };
 
 export function ProfileActionBanner({
@@ -23,8 +22,7 @@ export function ProfileActionBanner({
   subjectIsKarPro,
   subjectName,
   subjectWallet,
-  openDisputeCount,
-  onTabChange,
+  openChallengeCount,
 }: ProfileActionBannerProps) {
   const { reachable, isLoading } = usePeerMessagingReachability(
     !isOwner && isConnected && subjectIsKarPro ? subjectWallet : undefined,
@@ -68,23 +66,17 @@ export function ProfileActionBanner({
     );
   }
 
-  if (openDisputeCount > 0) {
-    const passportLabel = openDisputeCount === 1 ? "passport" : "passports";
+  if (openChallengeCount > 0) {
+    const passportLabel = openChallengeCount === 1 ? "passport" : "passports";
     return (
       <div className="flex items-center gap-4 rounded-md border border-border-default bg-bg-surface p-4">
         <WarningIcon size={20} className="shrink-0 text-text-secondary" aria-hidden />
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
-          {openDisputeCount} {passportLabel} with open challenges on your
+          {openChallengeCount} {passportLabel} with open challenges on your
           verifications. You cannot resolve them — an independent KarPro must.
         </p>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="shrink-0"
-          onClick={() => onTabChange("disputes")}
-        >
-          View challenges
+        <Button variant="secondary" size="sm" className="shrink-0" asChild>
+          <Link href="/challenges">View challenges</Link>
         </Button>
       </div>
     );

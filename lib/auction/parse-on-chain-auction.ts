@@ -1,8 +1,13 @@
 import { getAddress, zeroAddress } from "viem";
 
+/**
+ * Chain view-model for an ascending lot, assembled from `AscendingConsignment`
+ * per-token getters (consignment slot + snapshotted auction terms).
+ */
 export type OnChainAuction = {
   seller: `0x${string}`;
   agent: `0x${string}`;
+  /** Commission bps when the lot pays an agent a commission. */
   agentFeeBps: number;
   asset: `0x${string}`;
   /** Empty string when native ETH (address(0)). */
@@ -17,6 +22,11 @@ export type OnChainAuction = {
   active: boolean;
 };
 
+/**
+ * Settlement hold on an ascending lot. `disputedAt` / `bond` carry the
+ * BondedChallenge opened against the lot; `refundPendingAt` is the reversal
+ * abandonment deadline.
+ */
 export type OnChainHold = {
   buyer: `0x${string}`;
   gross: bigint;
@@ -28,36 +38,43 @@ export type OnChainHold = {
   open: boolean;
 };
 
-type AuctionTuple = readonly [
-  `0x${string}`,
-  `0x${string}`,
-  number | bigint,
-  `0x${string}`,
-  bigint,
-  bigint,
-  bigint | number,
-  bigint | number,
-  bigint | number,
-  `0x${string}`,
-  bigint,
-  boolean,
-];
+export type AscendingAuctionFields = {
+  phase: number | undefined;
+  seller: string | undefined;
+  agent: string | undefined;
+  commissionBps: number | undefined;
+  asset: string | undefined;
+  reserve: bigint | undefined;
+  floor: bigint | undefined;
+  duration: bigint | number | undefined;
+  openedAt: bigint | number | undefined;
+  endsAt: bigint | number | undefined;
+  highestBidder: string | undefined;
+  highestBid: bigint | undefined;
+};
 
-type HoldTuple = readonly [
-  `0x${string}`,
-  bigint,
-  bigint | number,
-  bigint | number,
-  bigint,
-  bigint | number,
-];
+export type AscendingHoldFields = {
+  buyer: string | undefined;
+  gross: bigint | undefined;
+  protectionEndsAt: bigint | number | undefined;
+  reversalPending: boolean | undefined;
+  abandonmentDeadline: bigint | number | undefined;
+  challengeOpenedAt: bigint | number | undefined;
+  challengeBond: bigint | undefined;
+};
 
-function asBigInt(value: bigint | number | string): bigint {
+function asBigInt(value: bigint | number | string | undefined): bigint {
+  if (value == null) return 0n;
   if (typeof value === "bigint") return value;
-  return BigInt(value);
+  try {
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
 }
 
-function asAddress(value: string): `0x${string}` {
+function asAddress(value: string | undefined): `0x${string}` {
+  if (!value) return zeroAddress;
   try {
     return getAddress(value);
   } catch {
@@ -65,86 +82,53 @@ function asAddress(value: string): `0x${string}` {
   }
 }
 
-/** Decode `AuctionEscrow.auctions(tokenId)` result (object or positional tuple). */
-export function parseOnChainAuction(raw: unknown): OnChainAuction | null {
-  if (raw == null) return null;
+/**
+ * Assemble the lot view-model. Returns `null` when the consignment slot is
+ * empty (phase `None`) so callers keep commerce CTAs hidden.
+ */
+export function buildOnChainAuction(
+  fields: AscendingAuctionFields,
+): OnChainAuction | null {
+  if (fields.phase == null) return null;
+  const asset = asAddress(fields.asset);
+  const highestBid = fields.highestBid ?? 0n;
+  const endsAt = asBigInt(fields.endsAt);
 
-  if (Array.isArray(raw) && raw.length >= 12) {
-    const t = raw as unknown as AuctionTuple;
-    const asset = asAddress(String(t[3]));
-    return {
-      seller: asAddress(String(t[0])),
-      agent: asAddress(String(t[1])),
-      agentFeeBps: Number(t[2]),
-      asset,
-      assetNormalized: asset === zeroAddress ? "" : asset,
-      reserve: asBigInt(t[4]),
-      ownerMinAsset: asBigInt(t[5]),
-      duration: asBigInt(t[6]),
-      startedAt: asBigInt(t[7]),
-      endsAt: asBigInt(t[8]),
-      highestBidder: asAddress(String(t[9])),
-      highestBid: asBigInt(t[10]),
-      active: Boolean(t[11]),
-    };
-  }
-
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    const o = raw as Record<string, unknown>;
-    if (o.seller == null || o.reserve == null) return null;
-    const asset = asAddress(String(o.asset ?? zeroAddress));
-    return {
-      seller: asAddress(String(o.seller)),
-      agent: asAddress(String(o.agent ?? zeroAddress)),
-      agentFeeBps: Number(o.agentFeeBps ?? 0),
-      asset,
-      assetNormalized: asset === zeroAddress ? "" : asset,
-      reserve: asBigInt(o.reserve as bigint | number | string),
-      ownerMinAsset: asBigInt((o.ownerMinAsset ?? 0) as bigint | number | string),
-      duration: asBigInt((o.duration ?? 0) as bigint | number | string),
-      startedAt: asBigInt((o.startedAt ?? 0) as bigint | number | string),
-      endsAt: asBigInt((o.endsAt ?? 0) as bigint | number | string),
-      highestBidder: asAddress(String(o.highestBidder ?? zeroAddress)),
-      highestBid: asBigInt((o.highestBid ?? 0) as bigint | number | string),
-      active: Boolean(o.active),
-    };
-  }
-
-  return null;
+  return {
+    seller: asAddress(fields.seller),
+    agent: asAddress(fields.agent),
+    agentFeeBps: Number(fields.commissionBps ?? 0),
+    asset,
+    assetNormalized: asset === zeroAddress ? "" : asset,
+    reserve: fields.reserve ?? 0n,
+    ownerMinAsset: fields.floor ?? 0n,
+    duration: asBigInt(fields.duration),
+    startedAt: highestBid > 0n ? asBigInt(fields.openedAt) : 0n,
+    endsAt,
+    highestBidder: asAddress(fields.highestBidder),
+    highestBid,
+    // Offered (1) is the only live phase; Closed / Returned end the lot.
+    active: fields.phase === 1,
+  };
 }
 
-/** Decode `AuctionEscrow.holds(tokenId)` result. */
-export function parseOnChainHold(raw: unknown): OnChainHold | null {
-  if (raw == null) return null;
+/** Assemble the settlement hold; `null` when no buyer is held. */
+export function buildOnChainHold(
+  fields: AscendingHoldFields,
+): OnChainHold | null {
+  const buyer = asAddress(fields.buyer);
+  if (buyer === zeroAddress) return null;
+  const releaseAt = asBigInt(fields.protectionEndsAt);
 
-  if (Array.isArray(raw) && raw.length >= 6) {
-    const t = raw as unknown as HoldTuple;
-    const releaseAt = asBigInt(t[2]);
-    return {
-      buyer: asAddress(String(t[0])),
-      gross: asBigInt(t[1]),
-      releaseAt,
-      disputedAt: asBigInt(t[3]),
-      bond: asBigInt(t[4]),
-      refundPendingAt: asBigInt(t[5]),
-      open: releaseAt !== 0n,
-    };
-  }
-
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    const o = raw as Record<string, unknown>;
-    if (o.buyer == null || o.releaseAt == null) return null;
-    const releaseAt = asBigInt(o.releaseAt as bigint | number | string);
-    return {
-      buyer: asAddress(String(o.buyer)),
-      gross: asBigInt((o.gross ?? 0) as bigint | number | string),
-      releaseAt,
-      disputedAt: asBigInt((o.disputedAt ?? 0) as bigint | number | string),
-      bond: asBigInt((o.bond ?? 0) as bigint | number | string),
-      refundPendingAt: asBigInt((o.refundPendingAt ?? 0) as bigint | number | string),
-      open: releaseAt !== 0n,
-    };
-  }
-
-  return null;
+  return {
+    buyer,
+    gross: fields.gross ?? 0n,
+    releaseAt,
+    disputedAt: asBigInt(fields.challengeOpenedAt),
+    bond: fields.challengeBond ?? 0n,
+    refundPendingAt: fields.reversalPending
+      ? asBigInt(fields.abandonmentDeadline)
+      : 0n,
+    open: releaseAt !== 0n,
+  };
 }

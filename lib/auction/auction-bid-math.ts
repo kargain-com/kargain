@@ -1,5 +1,5 @@
 /**
- * Minimum next bid for AuctionEscrow.
+ * Minimum next bid for AscendingConsignment.
  * Mirrors Solidity: first bid must be ≥ reserve; later bids
  * `highestBid + (highestBid * minIncrementBps) / 10_000` (floor division).
  */

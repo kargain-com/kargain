@@ -23,29 +23,13 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
   justification: string;
 }[] = [
   {
-    error: "AgentNotAuthorized",
-    contracts: ["AuctionEscrow", "MarketplaceEscrow"],
-    justification:
-      "Caller is not an in-window authorized agent (!active / wrong agent / expired); zero-agent is ZeroAddress",
-  },
-  {
-    error: "HoldActive",
-    contracts: ["AuctionEscrow"],
-    justification: "A settlement or abandoned-refund clock has not elapsed",
-  },
-  {
-    error: "DisputeActive",
-    contracts: ["AuctionEscrow"],
-    justification: "Dispute already open or resolution window still open",
-  },
-  {
     error: "BidTooLow",
-    contracts: ["AuctionEscrow", "AscendingConsignment"],
+    contracts: ["AscendingConsignment"],
     justification: "Amount below first-bid reserve or below min next bid",
   },
   {
     error: "BadConfig",
-    contracts: ["AuctionEscrow", "AscendingConsignment"],
+    contracts: ["AscendingConsignment"],
     justification: "Config value out of allowed bounds or zero where forbidden",
   },
   {
@@ -55,7 +39,7 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
   },
   {
     error: "BadOracleAnswer",
-    contracts: ["MarketplaceEscrow", "FixedPriceConsignment"],
+    contracts: ["FixedPriceConsignment"],
     justification: "Oracle answer or derived rate non-positive",
   },
   {
@@ -74,13 +58,8 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
     justification: "Admission probe call fails or returndata is non-conforming",
   },
   {
-    error: "BadPrice",
-    contracts: ["MarketplaceEscrow"],
-    justification: "Zero listing / update price (any zero-price variable)",
-  },
-  {
     error: "WrongValue",
-    contracts: ["AuctionEscrow", "MarketplaceEscrow", "FixedPriceConsignment"],
+    contracts: ["FixedPriceConsignment"],
     justification: "msg.value does not match the required native amount (or must be zero)",
   },
   {
@@ -92,11 +71,6 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
     error: "NotVerifier",
     contracts: ["KarProStaking"],
     justification: "Caller stake row is inactive",
-  },
-  {
-    error: "AgentFeeTooHigh",
-    contracts: ["MarketplaceEscrow", "AuctionEscrow"],
-    justification: "Agent fee bps above protocol max",
   },
   {
     error: "CannotResolveOwnDispute",
@@ -297,14 +271,7 @@ export function findUnjustifiedMultiCondition(
   const byContractError = new Map<string, Set<string>>();
   for (const site of sites) {
     const contract = path.basename(site.file, ".sol");
-    // Interfaces: map IAuctionEscrow → AuctionEscrow for allowlist
-    const mapped =
-      contract === "IAuctionEscrow"
-        ? "AuctionEscrow"
-        : contract === "IMarketplaceEscrow"
-          ? "MarketplaceEscrow"
-          : contract;
-    const key = allowlistKey(mapped, site.error);
+    const key = allowlistKey(contract, site.error);
     const set = byContractError.get(key) ?? new Set();
     set.add(site.normalized);
     byContractError.set(key, set);
@@ -365,8 +332,6 @@ describe("error-name-truth-policy", () => {
       const rel = path.relative(CONTRACTS_DIR, file);
       sites.push(...collectRevertSites(fs.readFileSync(file, "utf8"), rel));
     }
-    // Attribute interface revert sites to implementing contract files by also
-    // scanning AuctionEscrow for IAuctionEscrow errors (sites live in .sol bodies).
     const allowlist = buildAllowlistSet();
     const violations = findUnjustifiedMultiCondition(sites, allowlist);
     assert.deepEqual(

@@ -28,22 +28,28 @@ import {
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import {
-  hasAuctionAgent,
-  isAuctionAuthExpired,
-  parseAuctionAgentAuthorization,
-} from "@/lib/auction/auction-agent";
+import { useMandate } from "@/hooks/use-mandate";
 import {
   endsAtDateTimeAttr,
   formatAuctionAmount,
 } from "@/lib/auction/format-auction";
-import { parseOnChainHold } from "@/lib/auction/parse-on-chain-auction";
 import {
   isValidOwnerMinAsset,
   parseOwnerMinAsset,
   type AuctionAssetLabel,
 } from "@/lib/auction/owner-min-asset";
-import { AuctionEscrowAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { isZeroAddress } from "@/lib/commerce/consignment";
+import {
+  COMPENSATION_FORM,
+  DENOMINATION_KIND,
+  ZERO_CURRENCY_CODE,
+} from "@/lib/commerce/denomination";
+import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import {
+  AscendingConsignmentAbi,
+  KarPassportAbi,
+} from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
@@ -52,7 +58,6 @@ import {
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
-  auctionEscrowAddress,
   karPassportAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -111,7 +116,7 @@ export function AuthorizeAuctionAgentDialog({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const passport = karPassportAddress(chainId);
-  const escrow = auctionEscrowAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
   const usdc = usdcAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== wc;
@@ -151,48 +156,49 @@ export function AuthorizeAuctionAgentDialog({
     query: { enabled: open },
   });
 
-  const { data: authRaw, refetch: refetchAuth } = useReadContract({
+  const { mandate: chainAuth, refetch: refetchAuth } = useMandate({
+    mode: "ascending",
+    chainId,
+    tokenId,
+    enabled: open,
+  });
+
+  const { data: unresolvedSettlement } = useReadContract({
     address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "auctionAgentAuthorizations",
+    abi: AscendingConsignmentAbi,
+    functionName: "hasUnresolvedSettlement",
     args: [tid],
     chainId: wc,
     query: { enabled: Boolean(open && escrow) },
   });
 
-  const { data: holdRaw } = useReadContract({
+  const { data: protectionEndsAt } = useReadContract({
     address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "holds",
+    abi: AscendingConsignmentAbi,
+    functionName: "holdProtectionEndsAt",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(open && escrow) },
+    query: { enabled: Boolean(open && escrow && unresolvedSettlement === true) },
   });
 
-  const hold = parseOnChainHold(holdRaw);
-  const settlementPending = Boolean(hold?.open && hold.releaseAt !== 0n);
+  const settlementPending = unresolvedSettlement === true;
+  const releaseAt = typeof protectionEndsAt === "bigint" ? protectionEndsAt : 0n;
   const settlementDateLabel =
-    settlementPending && hold
-      ? new Date(Number(hold.releaseAt) * 1000).toLocaleDateString("en-US", {
+    settlementPending && releaseAt > 0n
+      ? new Date(Number(releaseAt) * 1000).toLocaleDateString("en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",
         })
       : null;
   const settlementDateTime =
-    settlementPending && hold ? endsAtDateTimeAttr(hold.releaseAt) : undefined;
-
-  const chainAuth = useMemo(
-    () => parseAuctionAgentAuthorization(authRaw),
-    [authRaw],
-  );
+    settlementPending && releaseAt > 0n
+      ? endsAtDateTimeAttr(releaseAt)
+      : undefined;
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const authActive =
-    Boolean(chainAuth?.active) && hasAuctionAgent(chainAuth?.agent);
-  const authExpired = chainAuth
-    ? isAuctionAuthExpired(chainAuth.expiry, nowSec)
-    : false;
+  const authActive = mandateHasAgent(chainAuth);
+  const authExpired = isMandateExpired(chainAuth, nowSec);
   const showRevoke = authActive && !hasActiveAuction;
 
   const approvedForToken =
@@ -310,13 +316,13 @@ export function AuthorizeAuctionAgentDialog({
     const succeeded = await runTx(() =>
       writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "revokeAuctionAgent",
+        abi: AscendingConsignmentAbi,
+        functionName: "revoke",
         args: [tid],
       }),
     );
     if (succeeded) {
-      await refetchAuth();
+      refetchAuth();
       onAuthorized?.();
       handleOpenChange(false);
     }
@@ -371,9 +377,21 @@ export function AuthorizeAuctionAgentDialog({
     const succeeded = await runTx(() =>
       writeContractAsync({
         address: escrow,
-        abi: AuctionEscrowAbi,
-        functionName: "authorizeAuctionAgent",
-        args: [tid, selectedAgent.address, expiry, asset, ownerMinAsset],
+        abi: AscendingConsignmentAbi,
+        functionName: "grant",
+        args: [
+          tid,
+          selectedAgent.address as `0x${string}`,
+          expiry,
+          asset,
+          // Auction floors are denominated in the settlement asset itself.
+          {
+            kind: DENOMINATION_KIND.Asset,
+            currencyCode: ZERO_CURRENCY_CODE,
+          },
+          ownerMinAsset,
+          { form: COMPENSATION_FORM.Margin, commissionBps: 0 },
+        ],
       }),
     );
     if (succeeded) {
@@ -445,10 +463,10 @@ export function AuthorizeAuctionAgentDialog({
                 {authExpired ? " · expired" : ""}
               </p>
               <p className="font-mono text-sm tabular-nums text-text-primary">
-                Min{" "}
+                Floor{" "}
                 {formatAuctionAmount(
-                  chainAuth.ownerMinAsset,
-                  chainAuth.asset === zeroAddress ? "ETH" : "USDC",
+                  chainAuth.floor,
+                  isZeroAddress(chainAuth.asset) ? "ETH" : "USDC",
                 )}
               </p>
             </div>

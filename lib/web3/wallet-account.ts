@@ -2,14 +2,12 @@ import { getAddress } from "viem";
 
 import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
 import {
-  auctionEscrowAddress,
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
   karPassportAddress,
   karProPassAddress,
   karProStakingAddress,
   kargainContractDenylist,
-  marketplaceAddress,
   bridgeGatewayAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -44,14 +42,12 @@ function normalizeAddress(address: string): `0x${string}` | null {
 export function allProtocolAddresses(chainId: number): `0x${string}`[] {
   const candidates = [
     karPassportAddress(chainId),
-    marketplaceAddress(chainId),
     karProPassAddress(chainId),
     karProStakingAddress(chainId),
     usdcAddress(chainId),
     chainlinkNativeUsdFeed(chainId),
     chainlinkEurUsdFeed(chainId),
     bridgeGatewayAddress(chainId),
-    auctionEscrowAddress(chainId),
   ];
 
   candidates.push(...kargainContractDenylist(chainId));

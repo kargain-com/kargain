@@ -18,7 +18,6 @@ import { SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
 import { SEPOLIA_FALLBACK } from "../scripts/lib/load-deployment.ts";
 
 const SEPOLIA_DEPLOYER = SEPOLIA_FALLBACK.deployer;
-const HUB = COMMERCIAL_ACTIVE[84532]!;
 const SPOKE = COMMERCIAL_ACTIVE[11155111]!;
 
 describe("classifyBytecode", () => {
@@ -78,9 +77,10 @@ describe("isProtocolAddress", () => {
 });
 
 describe("isProtocolAddressOnCommercialChains", () => {
-  it("flags hub marketplace via commercial union", () => {
+  it("flags hub historical marketplace via commercial union", () => {
+    const legacyMarketplace = SEPOLIA_HISTORICAL_DENYLIST[11];
     assert.equal(
-      isProtocolAddressOnCommercialChains(HUB.marketplace),
+      isProtocolAddressOnCommercialChains(legacyMarketplace),
       true,
     );
   });
@@ -137,8 +137,9 @@ describe("isMessageablePeer", () => {
 });
 
 describe("isMessageablePeerOnCommercialChains", () => {
-  it("rejects hub marketplace", () => {
-    assert.equal(isMessageablePeerOnCommercialChains(HUB.marketplace), false);
+  it("rejects hub historical marketplace", () => {
+    const legacyMarketplace = SEPOLIA_HISTORICAL_DENYLIST[11];
+    assert.equal(isMessageablePeerOnCommercialChains(legacyMarketplace), false);
   });
 
   it("rejects spoke KarPassport", () => {

@@ -8,6 +8,8 @@ import {
   filtersFromSearchParams,
   marketFiltersToApiInput,
 } from "@/lib/marketplace/filter-params";
+import { consignmentToListingInput } from "@/lib/commerce/listing-view";
+import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
 import {
   mapPonderListingToRow,
   type MarketplaceListingRow as MarketplaceListingRowType,
@@ -62,40 +64,17 @@ export type MarketplaceListingsResult = {
 };
 
 
-type PonderListing = {
-  id: string;
-  tokenId: string;
-  chainId: number;
-  seller: string;
-  fiatPrice1e8: string | number;
-  fiatCurrency: number;
-  active: boolean;
-  listedAt: string | number;
-  passportStatus?: string;
-  make?: string;
-  model?: string;
-  year?: number;
-  mileageKm?: number;
-  fuelType?: string;
-  bodyType?: string;
-  transmission?: string;
-  tokenUri?: string;
-  coverPhotoUri?: string;
-  duplicateVin?: boolean;
-  verifier?: string;
-  agent?: string;
-  lastDisputer?: string;
-};
-
-type PonderListingsResponse = {
-  listings: PonderListing[];
-  total: number;
-  page: number;
-  limit: number;
+type ConsignmentsResponse = {
+  consignments?: PonderConsignmentRow[];
+  total?: number;
+  page?: number;
+  limit?: number;
 };
 
 function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
-  const url = new URL(`${ponderBaseUrl()}/listings`);
+  const url = new URL(`${ponderBaseUrl()}/consignments`);
+  url.searchParams.set("mode", "fixedPrice");
+  url.searchParams.set("live", "true");
   url.searchParams.set("page", String(p.page));
   url.searchParams.set("limit", String(p.limit));
   url.searchParams.set("verifiedFirst", "true");
@@ -149,15 +128,17 @@ export async function searchMarketplaceListings(
         ponderError: "PONDER_UNAVAILABLE",
       };
     }
-    const data = (await res.json()) as PonderListingsResponse;
-    const rows = data.listings.map(mapPonderListingToRow);
-    const totalPages = data.total > 0 ? Math.ceil(data.total / p.limit) : 0;
+    const data = (await res.json()) as ConsignmentsResponse;
+    const rows = (data.consignments ?? []).map((row) =>
+      mapPonderListingToRow(consignmentToListingInput(row)),
+    );
+    const total = data.total ?? rows.length;
     return {
       ok: true,
       rows,
-      total: data.total,
-      page: data.page,
-      totalPages,
+      total,
+      page: data.page ?? p.page,
+      totalPages: total > 0 ? Math.ceil(total / p.limit) : 0,
     };
   } catch {
     return {
@@ -192,14 +173,14 @@ export async function getProfileData(address: string) {
   try {
     const [passportsRes, listingsRes] = await Promise.all([
       ponderFetch(`${ponderBaseUrl()}/profile/${address}/passports`),
-      ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
+      ponderFetch(`${ponderBaseUrl()}/profile/${address}/consignments`),
     ]);
     return {
       passports: passportsRes.ok
         ? ((await passportsRes.json()) as { passports: unknown[] }).passports
         : [],
       listings: listingsRes.ok
-        ? ((await listingsRes.json()) as { listings: unknown[] }).listings
+        ? ((await listingsRes.json()) as { consignments: unknown[] }).consignments
         : [],
     };
   } catch {
@@ -240,7 +221,7 @@ export async function getPassportsByVerifier(
 
 export async function fetchMarketplaceStats() {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/listings/stats`);
+    const res = await ponderFetch(`${ponderBaseUrl()}/consignments/stats`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -250,7 +231,7 @@ export async function fetchMarketplaceStats() {
 
 export async function fetchListingFacets() {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/listings/facets`);
+    const res = await ponderFetch(`${ponderBaseUrl()}/consignments/facets`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -262,11 +243,14 @@ export async function loadFavoriteListingCards(tokenIds: string[]) {
   const rows = await Promise.all(
     tokenIds.map(async (tokenId) => {
       try {
-        const res = await ponderFetch(`${ponderBaseUrl()}/listings/${tokenId}`);
+        const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}`);
+        url.searchParams.set("mode", "fixedPrice");
+        const res = await ponderFetch(url.toString());
         if (!res.ok) return null;
-        const listing = (await res.json()) as PonderListing;
-        if (!listing.active) return null;
-        return mapPonderListingToRow(listing);
+        const row = (await res.json()) as PonderConsignmentRow;
+        const input = consignmentToListingInput(row);
+        if (!input.active) return null;
+        return mapPonderListingToRow(input);
       } catch {
         return null;
       }

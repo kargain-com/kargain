@@ -25,17 +25,21 @@ import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { sansLink } from "@/lib/design/instrument-classes";
-import { KarPassportAbi, MarketplaceEscrowAbi } from "@/lib/contracts/abis.generated";
+import {
+  COMPENSATION_FORM,
+  CURRENCY_CODE_USD,
+  DENOMINATION_KIND,
+} from "@/lib/commerce/denomination";
+import { commerceModeAddress } from "@/lib/commerce/mode";
+import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
+import { FixedPriceConsignmentAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
   listingCurrencyCodesForChain,
   type ListingCurrencyCode,
 } from "@/lib/marketplace/currency-code";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import {
-  karPassportAddress,
-  marketplaceAddress,
-} from "@/lib/web3/deployment-addresses";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -96,7 +100,7 @@ export function AuthorizeAgentDialog({
   const busy = isPending || phase !== "idle";
 
   const passport = karPassportAddress(chainId);
-  const market = marketplaceAddress(chainId);
+  const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
@@ -283,9 +287,21 @@ export function AuthorizeAgentDialog({
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
-          abi: MarketplaceEscrowAbi,
-          functionName: "authorizeAgent",
-          args: [tid, selectedAgent.address, expiry, ownerMinPrice],
+          abi: FixedPriceConsignmentAbi,
+          functionName: "grant",
+          args: [
+            tid,
+            selectedAgent.address as `0x${string}`,
+            expiry,
+            // Native settlement; the price is denominated in USD.
+            ZERO_ADDRESS,
+            {
+              kind: DENOMINATION_KIND.Fiat,
+              currencyCode: CURRENCY_CODE_USD,
+            },
+            ownerMinPrice,
+            { form: COMPENSATION_FORM.Margin, commissionBps: 0 },
+          ],
         }),
       );
       if (!succeeded) return;

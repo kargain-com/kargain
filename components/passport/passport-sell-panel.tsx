@@ -2,319 +2,260 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 
 import { AuctionAgentAuthorizationStatus } from "@/components/auction/auction-agent-authorization-status";
 import { AuthorizeAuctionAgentDialog } from "@/components/auction/authorize-auction-agent-dialog";
 import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
+import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { Button } from "@/components/ui/button";
+import type { PassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
+import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import type { AuctionAgentAuth } from "@/lib/auction/auction-agent";
 import {
-  AuctionEscrowAbi,
   KarPassportAbi,
   KarProStakingAbi,
-  MarketplaceEscrowAbi,
 } from "@/lib/contracts/abis.generated";
-import { parseAuctionAgentAuthorization } from "@/lib/auction/auction-agent";
-import { AUCTION_REQUIRES_VERIFICATION_HINT } from "@/lib/auction/sale-form-copy";
-import { parseMarketplaceAgentAuthorization } from "@/lib/marketplace/agent-authorization";
-import { resolveEffectiveListing } from "@/lib/marketplace/effective-listing";
-import { parseOnChainListing } from "@/lib/marketplace/parse-on-chain-listing";
+import {
+  mandateHasAgent,
+  type MandateSnapshot,
+} from "@/lib/commerce/mandate";
+import { deriveSellSurface } from "@/lib/passport/sell-surface";
 import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import {
-  deriveSellSurface,
-  type SellListingState,
-} from "@/lib/passport/sell-surface";
-import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  auctionEscrowAddress,
   karPassportAddress,
   karProStakingAddress,
-  marketplaceAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-type ListingProp = {
-  active: boolean;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  seller: `0x${string}`;
-};
+function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
+  return {
+    agent: mandate.agent,
+    expiry: BigInt(mandate.expiry),
+    asset: mandate.asset,
+    ownerMinAsset: mandate.floor,
+    active: mandate.active,
+  };
+}
 
 type Props = {
   chainId: number;
   tokenId: string;
-  listing: ListingProp | null;
   passportOwner: `0x${string}`;
-  passportStatus: PassportStatus;
-  /** `undefined` means shared auction truth is still unresolved. */
-  auctionBlocks: boolean | undefined;
-  hasActiveAuction: boolean;
+  facts: PassportCommerceFacts;
   now: number;
 };
 
+/**
+ * Owner sell group for FixedPrice + Ascending modes (mandate grant / open).
+ * Permission is `may(OpenConsignment)` + no live consignment — not trust status.
+ */
 export function PassportSellPanel({
   chainId,
   tokenId,
-  listing,
   passportOwner,
-  passportStatus,
-  auctionBlocks,
-  hasActiveAuction,
+  facts,
   now,
 }: Props) {
   const { address, isConnected } = useAccount();
-  const [marketplaceDialogOpen, setMarketplaceDialogOpen] = useState(false);
-  const [auctionDialogOpen, setAuctionDialogOpen] = useState(false);
+  const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
+  const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
   const passport = karPassportAddress(chainId);
-  const market = marketplaceAddress(chainId);
-  const auctionEscrow = auctionEscrowAddress(chainId);
   const staking = karProStakingAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
-
-  const {
-    data: marketplaceReads,
-    refetch: refetchMarketplaceReads,
-  } = useReadContracts({
-    contracts:
-      passport && market
-        ? [
-            {
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "ownerOf",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "listings",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              address: market,
-              abi: MarketplaceEscrowAbi,
-              functionName: "agentAuthorizations",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
-    query: {
-      enabled: Boolean(isConnected && address && passport && market),
-    },
+  const { paused: fixedPricePaused } = useCommerceModePaused({
+    mode: "fixedPrice",
+    chainId,
+  });
+  const { paused: ascendingPaused } = useCommerceModePaused({
+    mode: "ascending",
+    chainId,
   });
 
-  const {
-    data: auctionAuthRaw,
-    isSuccess: auctionAuthSuccess,
-  } = useReadContract({
-    address: auctionEscrow,
-    abi: AuctionEscrowAbi,
-    functionName: "auctionAgentAuthorizations",
+  const { data: onChainOwner, refetch: refetchOwner } = useReadContract({
+    address: passport,
+    abi: KarPassportAbi,
+    functionName: "ownerOf",
     args: [tid],
     chainId: wc,
-    query: {
-      enabled: Boolean(isConnected && address && auctionEscrow),
-    },
+    query: { enabled: Boolean(passport) },
   });
 
-  const {
-    data: activeVerifier,
-    isSuccess: activeVerifierSuccess,
-  } = useReadContract({
+  const { data: isActiveVerifier, refetch: refetchVerifier } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
     chainId: wc,
-    query: {
-      enabled: Boolean(isConnected && address && staking),
-    },
+    query: { enabled: Boolean(staking && address) },
   });
 
-  const ownerRead = marketplaceReads?.[0];
-  const listingRead = marketplaceReads?.[1];
-  const marketplaceAuthRead = marketplaceReads?.[2];
-  const onChainOwner =
-    ownerRead?.status === "success"
-      ? (ownerRead.result as `0x${string}`)
-      : undefined;
   const effectiveOwner = resolveEffectiveOnChainOwner(
-    onChainOwner,
+    onChainOwner as `0x${string}` | undefined,
     passportOwner,
   );
   const isOwner =
-    ownerRead?.status === "success" &&
+    isConnected &&
+    address != null &&
     isOnChainNftOwner(address, effectiveOwner);
 
-  const chainListing = parseOnChainListing(
-    listingRead?.status === "success" ? listingRead.result : null,
-  );
-  const effectiveListing =
-    listingRead?.status === "success"
-      ? resolveEffectiveListing("success", chainListing, listing)
-      : null;
-  const listingState: SellListingState =
-    !passport || !market || listingRead?.status === "failure"
-      ? "failure"
-      : listingRead?.status === "success"
-        ? effectiveListing
-          ? "active"
-          : "inactive"
-        : "pending";
-
-  const marketplaceAuth =
-    marketplaceAuthRead?.status === "success"
-      ? parseMarketplaceAgentAuthorization(marketplaceAuthRead.result)
-      : null;
-  const marketplaceAuthActive =
-    marketplaceAuthRead?.status === "success"
-      ? marketplaceAuth?.active === true
-      : undefined;
-  const auctionAuth = auctionAuthSuccess
-    ? parseAuctionAgentAuthorization(auctionAuthRaw)
-    : null;
-
-  const flags = deriveSellSurface({
-    isOwner,
-    listingState,
-    auctionBlocks,
-    auctionEscrowConfigured: Boolean(auctionEscrow),
-    passportStatus,
-    isActiveVerifier: activeVerifierSuccess
-      ? activeVerifier === true
-      : undefined,
-    marketplaceAuthActive,
-    auctionAuth: auctionAuthSuccess
-      ? { value: auctionAuth, now }
-      : undefined,
+  const surface = deriveSellSurface({
+    isOwner: Boolean(isOwner),
+    hasLiveConsignment: facts.hasLiveConsignment,
+    fixedPriceConfigured: facts.fixedPrice.configured,
+    ascendingConfigured: facts.ascending.configured,
+    mayOpenConsignment: facts.mayOpenConsignment,
+    isActiveVerifier:
+      isActiveVerifier === undefined ? undefined : isActiveVerifier === true,
+    fixedPriceMandate:
+      facts.fixedPrice.mandate === undefined
+        ? undefined
+        : { value: facts.fixedPrice.mandate, now },
+    ascendingMandate:
+      facts.ascending.mandate === undefined
+        ? undefined
+        : { value: facts.ascending.mandate, now },
   });
 
-  const showPanel = Object.values(flags).some(Boolean);
-  if (!showPanel) return null;
-
-  const refetchMarketplace = () => {
-    void refetchMarketplaceReads();
+  const refetch = () => {
+    facts.refetch();
+    void refetchOwner();
+    void refetchVerifier();
   };
-  const showAuctionRow =
-    flags.showAuctionCreate ||
-    flags.showAuctionAuthorize ||
-    flags.showAuctionAuthCard ||
-    flags.showAuctionRequirementNote;
+
+  if (!isOwner) return null;
+
+  const fixedMandate = facts.fixedPrice.mandate;
+  const ascendingMandate = facts.ascending.mandate;
+  const anyVisible =
+    surface.showFixedPriceOpen ||
+    surface.showFixedPriceGrant ||
+    surface.showFixedPriceMandateCard ||
+    surface.showAscendingOpen ||
+    surface.showAscendingGrant ||
+    surface.showAscendingMandateCard ||
+    surface.showAscendingRunnerNote;
+
+  if (!anyVisible) {
+    if (facts.mayOpenConsignment === false) {
+      return (
+        <p className="text-sm text-text-secondary">
+          This passport cannot open a consignment right now.
+        </p>
+      );
+    }
+    if (!facts.fixedPrice.configured && !facts.ascending.configured) {
+      return (
+        <p className="text-sm text-text-secondary">
+          Commerce modes are not deployed on this network yet.
+        </p>
+      );
+    }
+    return null;
+  }
 
   return (
-    <section className="rounded-md border border-border-default bg-bg-card p-4">
-      <h2 className="font-sans text-base font-medium text-text-primary">
-        Sell this vehicle
-      </h2>
+    <div className="space-y-4 rounded-md border border-border-subtle bg-bg-surface p-4">
+      <h2 className="text-sm tracking-wide text-text-secondary">Sell</h2>
 
-      <div className="mt-4 divide-y divide-border-default">
-        {flags.showList && (
-          <div className="space-y-3 pb-4">
-            <p className="font-sans text-sm text-text-secondary">Fixed price</p>
-            <Button asChild variant="secondary" className="w-full">
+      {fixedPricePaused === true || ascendingPaused === true ? (
+        <CommercePausedNotice />
+      ) : null}
+
+      {surface.showFixedPriceOpen ? (
+        <div className="space-y-2">
+          {fixedPricePaused === true ? null : (
+            <Button asChild variant="secondary" className="w-full sm:w-auto">
               <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
-                List for sale
+                Open fixed-price consignment
               </Link>
             </Button>
-          </div>
-        )}
+          )}
+        </div>
+      ) : null}
 
-        {(flags.showDelegate || flags.showMarketplaceAuthCard) && (
-          <div className="space-y-3 py-4">
-            <p className="font-sans text-sm text-text-secondary">Delegation</p>
-            {flags.showMarketplaceAuthCard && marketplaceAuth ? (
-              <AgentAuthorizationStatus
-                chainId={chainId}
-                tokenId={tokenId}
-                agentAuth={marketplaceAuth}
-                listingActive={false}
-                onChanged={refetchMarketplace}
-              />
-            ) : (
-              flags.showDelegate && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => setMarketplaceDialogOpen(true)}
-                >
-                  Delegate to a pro
-                </Button>
-              )
-            )}
-          </div>
-        )}
-
-        {showAuctionRow && (
-          <div className="space-y-3 pt-4">
-            <p className="font-sans text-sm text-text-secondary">Auction</p>
-            {flags.showAuctionRequirementNote ? (
-              <p
-                className="font-sans text-sm text-text-secondary"
-                role="status"
-              >
-                {AUCTION_REQUIRES_VERIFICATION_HINT}
-              </p>
-            ) : flags.showAuctionAuthCard && auctionAuth ? (
-              <AuctionAgentAuthorizationStatus
-                authorization={auctionAuth}
-                now={now}
-                onManage={() => setAuctionDialogOpen(true)}
-              />
-            ) : flags.showAuctionCreate ? (
-              <CreateAuctionPanel
-                chainId={chainId}
-                tokenId={tokenId}
-                passportStatus={passportStatus}
-                listingActive={false}
-                isOwner
-                isActiveVerifier
-              />
-            ) : (
-              flags.showAuctionAuthorize && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => setAuctionDialogOpen(true)}
-                >
-                  Authorize auction agent
-                </Button>
-              )
-            )}
-          </div>
-        )}
-      </div>
-
-      {flags.showDelegate && (
-        <AuthorizeAgentDialog
+      {surface.showFixedPriceMandateCard &&
+      fixedMandate &&
+      mandateHasAgent(fixedMandate) ? (
+        <AgentAuthorizationStatus
           chainId={chainId}
           tokenId={tokenId}
-          open={marketplaceDialogOpen}
-          onOpenChange={setMarketplaceDialogOpen}
-          onAuthorized={refetchMarketplace}
+          mandate={fixedMandate}
+          listingActive={facts.fixedPrice.live === true}
+          onChanged={refetch}
         />
-      )}
+      ) : null}
 
-      {(flags.showAuctionAuthorize || flags.showAuctionAuthCard) && (
-        <AuthorizeAuctionAgentDialog
+      {surface.showFixedPriceGrant ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => setFixedPriceDialogOpen(true)}
+        >
+          Grant fixed-price mandate
+        </Button>
+      ) : null}
+
+      {surface.showAscendingRunnerNote ? (
+        <p className="text-sm text-text-secondary">
+          Ascending auctions are opened by an active KarPro verifier. Grant a
+          mandate to let a pro run the lot for you.
+        </p>
+      ) : null}
+
+      {surface.showAscendingMandateCard &&
+      ascendingMandate &&
+      mandateHasAgent(ascendingMandate) ? (
+        <AuctionAgentAuthorizationStatus
+          authorization={ascendingMandateAsAuth(ascendingMandate)}
+          now={now}
+          onManage={() => setAscendingDialogOpen(true)}
+        />
+      ) : null}
+
+      {surface.showAscendingOpen ? (
+        <CreateAuctionPanel
           chainId={chainId}
           tokenId={tokenId}
-          open={auctionDialogOpen}
-          onOpenChange={setAuctionDialogOpen}
-          hasActiveAuction={hasActiveAuction}
+          canOpen={facts.mayOpenConsignment === true && facts.hasLiveConsignment === false}
+          isOwner
+          isActiveVerifier={isActiveVerifier === true}
         />
-      )}
-    </section>
+      ) : null}
+
+      {surface.showAscendingGrant ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => setAscendingDialogOpen(true)}
+        >
+          Grant ascending mandate
+        </Button>
+      ) : null}
+
+      <AuthorizeAgentDialog
+        chainId={chainId}
+        tokenId={tokenId}
+        open={fixedPriceDialogOpen}
+        onOpenChange={setFixedPriceDialogOpen}
+        onAuthorized={refetch}
+      />
+      <AuthorizeAuctionAgentDialog
+        chainId={chainId}
+        tokenId={tokenId}
+        open={ascendingDialogOpen}
+        onOpenChange={setAscendingDialogOpen}
+        onAuthorized={refetch}
+      />
+    </div>
   );
 }

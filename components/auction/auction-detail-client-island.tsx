@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
 import { AuctionBidHistory } from "@/components/auction/auction-bid-history";
@@ -10,21 +10,16 @@ import { AuctionFinalizePanel } from "@/components/auction/auction-finalize-pane
 import { AuctionReadoutPanel } from "@/components/auction/auction-readout-panel";
 import { AuctionReturnAdvisory } from "@/components/auction/auction-return-advisory";
 import { AuctionSettlementPanel } from "@/components/auction/auction-settlement-panel";
-import { OwnerAuctionReturnPanel } from "@/components/auction/owner-auction-return-panel";
+import { OwnerRecallPanel } from "@/components/commerce/owner-recall-panel";
 import { StatusToast } from "@/components/ui/status-toast";
 import { useAuctionBids } from "@/hooks/use-auction-bids";
 import type { useAuctionDetail } from "@/hooks/use-auction-detail";
 import { useAuctionLiveSignals } from "@/hooks/use-auction-live-signals";
-import {
-  hasAuctionAgent,
-  isAuctionAuthUsableForCreate,
-  parseAuctionAgentAuthorization,
-} from "@/lib/auction/auction-agent";
+import { useMandate } from "@/hooks/use-mandate";
 import { auctionBlocksListingCommerce } from "@/lib/auction/map-ponder-auction";
-import { AuctionEscrowAbi } from "@/lib/contracts/abis.generated";
-import type { PassportStatus } from "@/lib/types/ponder";
-import { auctionEscrowAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
+import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
+import { commerceModeAddress } from "@/lib/commerce/mode";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
 
@@ -32,9 +27,10 @@ type Props = {
   chainId: number;
   tokenId: string;
   passportOwner: `0x${string}`;
-  passportStatus: PassportStatus;
+  /** `may(tokenId, OpenConsignment)` — fail closed while unresolved. */
+  canOpenConsignment: boolean;
   /**
-   * Marketplace fixed-price listing active (or unread — fail-closed).
+   * Fixed-price consignment live (or unread — fail-closed).
    * Blocks create/authorize; suppresses “Checking auction…” flash.
    */
   listingBlocksAuction: boolean;
@@ -50,12 +46,12 @@ export function AuctionDetailClientIsland({
   chainId,
   tokenId,
   passportOwner,
-  passportStatus,
+  canOpenConsignment,
   listingBlocksAuction,
   detail,
 }: Props) {
   const { address, isConnected } = useAccount();
-  const escrow = auctionEscrowAddress(chainId);
+  const escrow = commerceModeAddress("ascending", chainId);
 
   const auction = detail.auction;
   const uiState = detail.uiState;
@@ -81,38 +77,28 @@ export function AuctionDetailClientIsland({
     !auctionBlocksListingCommerce(uiState, auction?.active ?? false) &&
     !(auction?.active);
 
-  const isOwner =
-    Boolean(address) &&
-    address!.toLowerCase() === passportOwner.toLowerCase();
+  const isOwner = addressesMatch(passportOwner, address);
 
-  /** Single on-demand auth read for agent CTA (not always-on batch). */
-  const { data: authRaw } = useReadContract({
-    address: escrow,
-    abi: AuctionEscrowAbi,
-    functionName: "auctionAgentAuthorizations",
-    args: [BigInt(tokenId)],
-    chainId: wagmiChainId(chainId),
-    query: {
-      enabled: Boolean(
-        escrow &&
-          address &&
-          noBlockingAuction &&
-          !listingBlocksAuction &&
-          passportStatus === "VERIFIED",
-      ),
-    },
+  /** On-demand mandate read for the agent CTA (not part of the lot batch). */
+  const { mandate } = useMandate({
+    mode: "ascending",
+    chainId,
+    tokenId,
+    enabled: Boolean(
+      address && noBlockingAuction && !listingBlocksAuction && canOpenConsignment,
+    ),
   });
 
-  const chainAuth = parseAuctionAgentAuthorization(authRaw);
   const showAgentCreate =
     isConnected &&
-    Boolean(address) &&
-    isAuctionAuthUsableForCreate(chainAuth, detail.now) &&
-    chainAuth != null &&
-    address!.toLowerCase() === chainAuth.agent.toLowerCase() &&
+    canAgentOpenFromMandate({
+      mandate,
+      agentAddress: address,
+      nowSeconds: detail.now,
+    }) &&
     noBlockingAuction &&
     !listingBlocksAuction &&
-    passportStatus === "VERIFIED";
+    canOpenConsignment;
 
   const showLiveCommerce =
     auction &&
@@ -128,13 +114,10 @@ export function AuctionDetailClientIsland({
   const returnAt = auction?.returnRequestedAt ?? 0n;
   const showReturnAdvisory =
     Boolean(showLiveCommerce && preStart && returnAt > 0n);
-  const showOwnerReturn =
-    Boolean(
-      showLiveCommerce &&
-        isOwner &&
-        preStart &&
-        hasAuctionAgent(auction?.agent),
-    );
+  const hasAgent = Boolean(auction?.agent && !isZeroAddress(auction.agent));
+  const showOwnerReturn = Boolean(
+    showLiveCommerce && isOwner && preStart && hasAgent,
+  );
 
   const bids = useAuctionBids({
     tokenId,
@@ -201,11 +184,13 @@ export function AuctionDetailClientIsland({
           )}
 
           {showOwnerReturn && (
-            <OwnerAuctionReturnPanel
+            <OwnerRecallPanel
+              mode="ascending"
               chainId={chainId}
               tokenId={tokenId}
-              returnRequestedAt={returnAt}
-              preStart={preStart}
+              recallRequestedAt={returnAt}
+              hasAgent={hasAgent}
+              onChanged={detail.refetch}
             />
           )}
 
@@ -224,13 +209,11 @@ export function AuctionDetailClientIsland({
               chainId={chainId}
               tokenId={tokenId}
               auction={auction}
-              hold={detail.hold}
+              hold={detail.holdSnapshot}
+              challenge={detail.challenge}
               now={detail.now}
-              settlementDisputeBond={detail.settlementDisputeBond}
-              settlementHold={detail.settlementHold}
-              disputeResolutionTimeout={detail.disputeResolutionTimeout}
+              challengeBond={detail.challengeBond}
               auctionUiState={uiState as "SETTLED" | "S8" | "S9"}
-              passportStatus={passportStatus}
             />
           )}
 

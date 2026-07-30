@@ -1,16 +1,10 @@
-import type { PassportStatus } from "@/lib/types/ponder";
+import type { CommerceMode } from "@/lib/commerce/mode";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 
-export type BridgeListingState =
-  | "pending"
-  | "failure"
-  | "active"
-  | "inactive";
-
 export type BridgeBlockReason =
-  | "listed"
-  | "auction"
-  | "disputed"
+  | "consigned"
+  | "challenged"
+  | "refused"
   | "unresolved";
 
 export type BridgeSurfaceMode = "hidden" | "action";
@@ -26,10 +20,15 @@ export type BridgeSurfaceInput = {
   isOwner: boolean;
   /** Custody chain — where the token lives now. */
   chainId: number;
-  listingState: BridgeListingState;
-  /** `undefined` means auction truth is unresolved — fail closed. */
-  auctionBlocks: boolean | undefined;
-  passportStatus: PassportStatus;
+  /**
+   * `may(tokenId, LeaveChain)` from KarPassport — the authoritative gate.
+   * `undefined` means unresolved: fail closed.
+   */
+  mayLeaveChain: boolean | undefined;
+  /** Live consignment mode, when known, so the block copy can be specific. */
+  liveConsignmentMode?: CommerceMode | null;
+  /** Open passport challenge (bonded verification challenge). */
+  challengeOpen?: boolean;
   /**
    * Active bridge transit for this token (src burn/lock — wallet may no longer
    * own the NFT). Keeps the panel visible with canBridge false.
@@ -73,11 +72,7 @@ export function deriveBridgeSurface(
     return { ...HIDDEN };
   }
 
-  if (
-    input.listingState === "pending" ||
-    input.listingState === "failure" ||
-    input.auctionBlocks === undefined
-  ) {
+  if (input.mayLeaveChain === undefined) {
     return {
       visible: true,
       mode: "action",
@@ -86,32 +81,14 @@ export function deriveBridgeSurface(
     };
   }
 
-  // Trust state first: DISPUTED surfaces over listed/auction when both apply.
-  if (input.passportStatus === "DISPUTED") {
-    return {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "disputed",
-    };
-  }
-
-  if (input.listingState === "active") {
-    return {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "listed",
-    };
-  }
-
-  if (input.auctionBlocks === true) {
-    return {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "auction",
-    };
+  if (input.mayLeaveChain === false) {
+    // Challenge first: it outranks commerce when both apply.
+    const reason: BridgeBlockReason = input.challengeOpen
+      ? "challenged"
+      : input.liveConsignmentMode
+        ? "consigned"
+        : "refused";
+    return { visible: true, mode: "action", canBridge: false, blockReason: reason };
   }
 
   if (input.transitActive) {
@@ -130,14 +107,14 @@ export function bridgeBlockReasonCopy(
   reason: BridgeBlockReason,
 ): string {
   switch (reason) {
-    case "listed":
-      return "Delist this vehicle before bridging.";
-    case "auction":
-      return "Finish or cancel the auction before bridging.";
-    case "disputed":
-      return "Resolve the dispute before bridging.";
+    case "consigned":
+      return "Close the open consignment before bridging.";
+    case "challenged":
+      return "Resolve the open challenge before bridging.";
+    case "refused":
+      return "This passport cannot leave the chain right now.";
     case "unresolved":
-      return "Waiting for listing and auction status…";
+      return "Waiting for chain permission…";
   }
 }
 

@@ -1,6 +1,4 @@
 import { config as loadEnv } from "dotenv";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { getAddress } from "viem";
 
 import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
@@ -20,27 +18,17 @@ import {
 loadEnv({ path: ".env.local" });
 loadEnv();
 
-const PENDING_AUCTION_IMPL_PATH = join(
-  process.cwd(),
-  "deployments/84532.pending-auction-impl.json",
-);
-
+/** Commerce cutover Phase 1: legacy escrows retired — FixedPrice/Ascending modes only. */
 const FULL_VERIFY_ORDER: HubVerifyTargetKey[] = [
   "timelock",
   "karProStaking",
   "karPassport",
-  "marketplaceImpl",
-  "marketplaceProxy",
   "bridgeGateway",
-  "auctionEscrowImpl",
-  "auctionEscrowProxy",
   "fixedPriceConsignmentImpl",
   "fixedPriceConsignmentProxy",
   "ascendingConsignmentImpl",
   "ascendingConsignmentProxy",
 ];
-
-const AUCTION_VERIFY_ORDER: HubVerifyTargetKey[] = ["auctionEscrowImpl", "auctionEscrowProxy"];
 
 type VerifyStatus = VerifyRunResult | "missing" | "failed";
 
@@ -55,19 +43,6 @@ function hardhatNetworkForChain(chainId: number): string {
   return chainId === 11155111 ? "ethereumSepolia" : "baseSepolia";
 }
 
-function pendingAuctionImplAddress(): `0x${string}` | null {
-  if (!existsSync(PENDING_AUCTION_IMPL_PATH)) return null;
-  try {
-    const raw = JSON.parse(readFileSync(PENDING_AUCTION_IMPL_PATH, "utf8")) as {
-      auctionEscrowImpl?: string;
-    };
-    if (!raw.auctionEscrowImpl) return null;
-    return getAddress(raw.auctionEscrowImpl);
-  } catch {
-    return null;
-  }
-}
-
 async function verifyTarget(
   key: HubVerifyTargetKey,
   manifest: DeploymentManifest,
@@ -77,18 +52,9 @@ async function verifyTarget(
   explorerUrl: string,
 ): Promise<VerifyStatus> {
   const target = VERIFY_TARGETS[key];
-  let addressSource = "manifest";
-  let rawAddress = manifest[target.addressKey as keyof DeploymentManifest] as
+  const rawAddress = manifest[target.addressKey as keyof DeploymentManifest] as
     | `0x${string}`
     | undefined;
-
-  if (key === "auctionEscrowImpl" && manifest.chainId === 84532) {
-    const pendingAddr = pendingAuctionImplAddress();
-    if (pendingAddr) {
-      rawAddress = pendingAddr;
-      addressSource = "pending";
-    }
-  }
 
   if (!rawAddress) {
     console.log(`\n${target.label}`);
@@ -101,9 +67,6 @@ async function verifyTarget(
 
   console.log(`\n${target.label}`);
   console.log(`  Address: ${address}`);
-  if (addressSource === "pending") {
-    console.log(`  Source:  pending file (${PENDING_AUCTION_IMPL_PATH})`);
-  }
   console.log(`  Explorer: ${explorerUrl}/address/${address}`);
 
   if (!force) {
@@ -143,7 +106,6 @@ function parseVerifyArgv(argv: string[]) {
   return {
     force: argv.includes("--force"),
     strict: argv.includes("--strict"),
-    auctionOnly: argv.includes("--auction-only"),
     eth: argv.includes("--eth") || argv.includes("--chain=11155111"),
   };
 }
@@ -159,7 +121,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { force, strict, auctionOnly, eth } = parseVerifyArgv(process.argv.slice(2));
+  const { force, strict, eth } = parseVerifyArgv(process.argv.slice(2));
   let manifest: DeploymentManifest;
   try {
     manifest = eth
@@ -171,21 +133,20 @@ async function main() {
     process.exit(1);
   }
 
-  const order = auctionOnly ? AUCTION_VERIFY_ORDER : FULL_VERIFY_ORDER;
+  const order = FULL_VERIFY_ORDER;
   const explorer = explorerForChain(manifest.chainId);
   const network = hardhatNetworkForChain(manifest.chainId);
 
   console.log(`${explorer.name} verification for Kargain`);
   console.log(`Generation: ${manifest.generation}`);
   console.log(`Chain: ${manifest.chainId} (hardhat network ${network})`);
-  if (auctionOnly) {
-    console.log("Scope:    auction targets only (--auction-only)");
-  }
   console.log(`KarPassport:         ${manifest.karPassport}`);
-  console.log(`Marketplace proxy:   ${manifest.marketplace}`);
   console.log(`Timelock:            ${manifest.timelock ?? "(missing)"}`);
-  if (manifest.auctionEscrow) {
-    console.log(`AuctionEscrow proxy: ${manifest.auctionEscrow}`);
+  if (manifest.fixedPriceConsignment) {
+    console.log(`FixedPriceConsignment proxy: ${manifest.fixedPriceConsignment}`);
+  }
+  if (manifest.ascendingConsignment) {
+    console.log(`AscendingConsignment proxy:  ${manifest.ascendingConsignment}`);
   }
   if (manifest.bridgeGateway) {
     console.log(`Bridge gateway:      ${manifest.bridgeGateway}`);

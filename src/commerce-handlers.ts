@@ -5,10 +5,10 @@
  * Scope: contracts/FixedPriceConsignment.sol, contracts/AscendingConsignment.sol,
  * and their shared bases (ConsignmentBase, Mandate, Recall, BondedChallenge,
  * ClaimablePayouts). Live registration deferred to Nuclear #2 — see
- * ponder.schema.ts comment above the `consignment` table. Never projects into
- * marketplace_* / auction_* tables, and never writes pending_claim / claim_credit
- * (those stay owned by src/index.ts's role-based ClaimRecorded/ClaimWithdrawn
- * handlers for AuctionEscrow / MarketplaceEscrow / KarPassport / KarProStaking).
+ * ponder.schema.ts comment above the `consignment` table. Never writes
+ * pending_claim / claim_credit (those stay owned by src/index.ts's
+ * role-based ClaimRecorded/ClaimWithdrawn handlers for KarPassport /
+ * KarProStaking). The legacy marketplace_* / auction_* schema and handlers have been removed.
  *
  * ClaimRecorded ordering note (why `pendingTxCauses` backfills instead of
  * reading forward): every payout in these contracts routes through

@@ -4,10 +4,8 @@ import { EditPassportWizard } from "@/components/passport/edit-passport-wizard";
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
-import {
-  karPassportAddress,
-  marketplaceAddress,
-} from "@/lib/web3/deployment-addresses";
+import { commerceModeAddresses } from "@/lib/commerce/mode";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { getPublicClient } from "@/lib/web3/public-client";
 
@@ -36,9 +34,11 @@ export default async function EditPassportPage({
 
   const chainId = passport.custodyChain;
   const passportAddr = karPassportAddress(chainId);
-  const market = marketplaceAddress(chainId);
+  const modeCustodians = Object.values(commerceModeAddresses(chainId)).map(
+    (address) => address.toLowerCase(),
+  );
 
-  if (passportAddr && market) {
+  if (passportAddr && modeCustodians.length > 0) {
     try {
       const client = getPublicClient(chainId);
       const owner = await client.readContract({
@@ -47,7 +47,7 @@ export default async function EditPassportPage({
         functionName: "ownerOf",
         args: [BigInt(tokenId)],
       });
-      if (owner.toLowerCase() === market.toLowerCase()) {
+      if (modeCustodians.includes(owner.toLowerCase())) {
         notFound();
       }
     } catch {

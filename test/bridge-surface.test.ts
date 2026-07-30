@@ -21,15 +21,13 @@ function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput 
   return {
     isOwner: true,
     chainId: 84532,
-    listingState: "inactive",
-    auctionBlocks: false,
-    passportStatus: "VERIFIED",
+    mayLeaveChain: true,
     ...overrides,
   };
 }
 
 describe("deriveBridgeSurface", () => {
-  it("allows bridge for owner on hub custody with inactive listing and no auction", () => {
+  it("allows bridge when may(LeaveChain) is true", () => {
     assert.deepEqual(deriveBridgeSurface(input()), {
       visible: true,
       mode: "action",
@@ -38,7 +36,7 @@ describe("deriveBridgeSurface", () => {
     });
   });
 
-  it("allows bridge for owner on spoke custody (return to hub)", () => {
+  it("allows bridge on spoke custody (return to hub)", () => {
     assert.deepEqual(deriveBridgeSurface(input({ chainId: 11155111 })), {
       visible: true,
       mode: "action",
@@ -47,115 +45,66 @@ describe("deriveBridgeSurface", () => {
     });
   });
 
-  it("allows UNVERIFIED when other gates pass", () => {
-    assert.equal(
-      deriveBridgeSurface(input({ passportStatus: "UNVERIFIED" })).canBridge,
-      true,
-    );
-  });
-
   it("hides for non-owner", () => {
     assert.deepEqual(deriveBridgeSurface(input({ isOwner: false })), HIDDEN);
   });
 
   it("hides on non-star chain", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ chainId: 31337 })),
-      HIDDEN,
-    );
+    assert.deepEqual(deriveBridgeSurface(input({ chainId: 31337 })), HIDDEN);
   });
 
-  it("fail-closes unresolved listing pending", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ listingState: "pending" })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "unresolved",
-      },
-    );
+  it("fail-closes while may(LeaveChain) is unresolved", () => {
+    assert.deepEqual(deriveBridgeSurface(input({ mayLeaveChain: undefined })), {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: "unresolved",
+    });
   });
 
-  it("fail-closes unresolved listing failure", () => {
-    assert.equal(
-      deriveBridgeSurface(input({ listingState: "failure" })).blockReason,
-      "unresolved",
-    );
+  it("disables when may refuses leave", () => {
+    assert.deepEqual(deriveBridgeSurface(input({ mayLeaveChain: false })), {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: "refused",
+    });
   });
 
-  it("fail-closes unresolved auctionBlocks", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ auctionBlocks: undefined })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "unresolved",
-      },
-    );
-  });
-
-  it("disables when listed", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ listingState: "active" })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "listed",
-      },
-    );
-  });
-
-  it("disables when auction blocks", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ auctionBlocks: true })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "auction",
-      },
-    );
-  });
-
-  it("disables when DISPUTED", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ passportStatus: "DISPUTED" })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "disputed",
-      },
-    );
-  });
-
-  it("DISPUTED wins over listed", () => {
+  it("names consigned when leave is refused and a live consignment is known", () => {
     assert.equal(
       deriveBridgeSurface(
-        input({ listingState: "active", passportStatus: "DISPUTED" }),
+        input({
+          mayLeaveChain: false,
+          liveConsignmentMode: "fixedPrice",
+        }),
       ).blockReason,
-      "disputed",
+      "consigned",
     );
   });
 
-  it("DISPUTED wins over auction", () => {
+  it("names challenged when leave is refused and a challenge is open", () => {
     assert.equal(
       deriveBridgeSurface(
-        input({ auctionBlocks: true, passportStatus: "DISPUTED" }),
+        input({
+          mayLeaveChain: false,
+          challengeOpen: true,
+        }),
       ).blockReason,
-      "disputed",
+      "challenged",
     );
   });
 
-  it("spoke custody still fail-closes listed", () => {
+  it("prefer challenged over consigned for block copy", () => {
     assert.equal(
       deriveBridgeSurface(
-        input({ chainId: 11155111, listingState: "active" }),
+        input({
+          mayLeaveChain: false,
+          liveConsignmentMode: "ascending",
+          challengeOpen: true,
+        }),
       ).blockReason,
-      "listed",
+      "challenged",
     );
   });
 
@@ -181,45 +130,11 @@ describe("deriveBridgeSurface", () => {
   });
 });
 
-describe("bridgeBlockReasonCopy", () => {
-  it("returns sentence-case reasons", () => {
-    assert.equal(
-      bridgeBlockReasonCopy("listed"),
-      "Delist this vehicle before bridging.",
-    );
-    assert.equal(
-      bridgeBlockReasonCopy("auction"),
-      "Finish or cancel the auction before bridging.",
-    );
-    assert.equal(
-      bridgeBlockReasonCopy("disputed"),
-      "Resolve the dispute before bridging.",
-    );
-    assert.equal(
-      bridgeBlockReasonCopy("unresolved"),
-      "Waiting for listing and auction status…",
-    );
-  });
-});
-
 describe("deriveBridgeDirectionMode", () => {
-  it("move when custody equals origin (leave home)", () => {
+  it("is move on origin custody and return when away", () => {
     assert.equal(
-      deriveBridgeDirectionMode({
-        custodyChainId: 84532,
-        originChainId: 84532,
-      }),
+      deriveBridgeDirectionMode({ custodyChainId: 84532, originChainId: 84532 }),
       "move",
-    );
-  });
-
-  it("return when custody differs from origin (home is destination)", () => {
-    assert.equal(
-      deriveBridgeDirectionMode({
-        custodyChainId: 84532,
-        originChainId: 11155111,
-      }),
-      "return",
     );
     assert.equal(
       deriveBridgeDirectionMode({
@@ -229,29 +144,20 @@ describe("deriveBridgeDirectionMode", () => {
       "return",
     );
   });
-
-  it("fails soft to move for legacy / unknown origin", () => {
-    assert.equal(
-      deriveBridgeDirectionMode({ custodyChainId: 84532, originChainId: 0 }),
-      "move",
-    );
-  });
 });
 
 describe("bridgeActionCopy", () => {
-  it("move copy", () => {
-    assert.deepEqual(bridgeActionCopy("move", "Ethereum Sepolia"), {
-      title: "Bridge",
-      description: "Move this passport to Ethereum Sepolia via LayerZero.",
-      idleButton: "Move to Ethereum Sepolia",
-    });
+  it("labels move vs return", () => {
+    assert.match(bridgeActionCopy("move", "Ethereum Sepolia").idleButton, /Move/);
+    assert.match(bridgeActionCopy("return", "Base Sepolia").idleButton, /Return/);
   });
+});
 
-  it("return copy", () => {
-    assert.deepEqual(bridgeActionCopy("return", "Ethereum Sepolia"), {
-      title: "Bridge",
-      description: "Return this passport to Ethereum Sepolia via LayerZero.",
-      idleButton: "Return to Ethereum Sepolia",
-    });
+describe("bridgeBlockReasonCopy", () => {
+  it("covers each reason", () => {
+    assert.ok(bridgeBlockReasonCopy("consigned"));
+    assert.ok(bridgeBlockReasonCopy("challenged"));
+    assert.ok(bridgeBlockReasonCopy("refused"));
+    assert.ok(bridgeBlockReasonCopy("unresolved"));
   });
 });

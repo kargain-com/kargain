@@ -4,7 +4,6 @@
 |----------|-----------|-------------------|
 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
-| [MIGRATION-AUCTION.md](./MIGRATION-AUCTION.md) | **Reference** | AuctionEscrow events, per-contract start block **44080895**, auction + agent-auth tables |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
 **Production (July 2026 Nuclear):** [ponder.kargain.com](https://ponder.kargain.com) indexes full commercial stacks on **84532** (hub `indexFromBlock` **44434865**) and **11155111** (Eth `indexFromBlock` **11319840`). **C3 dual-chain** adds `chainId` / `custodyChain` and chain-scoped verifier keys — **full reindex required** after deploy ([OPERATIONS.md](./OPERATIONS.md)).
@@ -28,16 +27,16 @@ Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12
 |-------|---------|
 | `passport.chainId` | Immutable origin (`tokenId >> 128`) |
 | `passport.custodyChain` | Network where the usable instance lives |
-| listing / sale / auction / record / uri-history `chainId` | Network of the emitting event |
+| `consignment` / `challenge` / `passport_record` / `passport_uri_history` `chainId` | Network of the emitting event |
 | `verifier.id` | `` `${chainId}-${address.toLowerCase()}` `` |
 
-Browse: `GET /listings?custodyChain=84532` (optional). Passport detail returns `records[]` / `uriHistory[]` with per-row `chainId` (UNION by global `tokenId`). Verifier detail: prefer `GET /verifiers/:address?chainId=84532`.
+Browse: `GET /consignments?chainId=84532` (optional). Passport detail returns `records[]` / `uriHistory[]` with per-row `chainId` (UNION by global `tokenId`). Verifier detail: prefer `GET /verifiers/:address?chainId=84532`.
 
 ## Commerce modes API (FixedPrice / Ascending — July 2026)
 
-New tables and routes for `FixedPriceConsignment` and `AscendingConsignment`. **Do not** project into `marketplace_*` / `auction_*`. Old escrow routes stay until cutover.
+Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts): **`GET /consignments*`** browse, **`GET /agents|owners/.../mandates`** portfolio, **`GET /challenges`** (BondedChallenge feed), and commerce claims. The legacy `MarketplaceEscrow` / `AuctionEscrow` schema and HTTP surface (`marketplace_listing`, `auction`, `GET /listings`, `GET /auctions*`, …) have been removed — there is no dual-write path.
 
-**Live registration** of mode addresses on commercial chains is **deferred to Nuclear #2**. Local Hardhat (`PONDER_ENABLE_LOCAL=1` after `pnpm deploy:local`) registers both modes. **VPS full reindex required** when this schema ships ([OPERATIONS.md](./OPERATIONS.md)).
+**Production state (post step 5):** app and indexer code target consignment routes only, but **live mode addresses are absent** from `COMMERCIAL_ACTIVE` until **Nuclear #2** — production commerce stays **inert** (fail-closed) until then. Do **not** run a VPS reindex for step 5 alone; reindex triggers with Nuclear #2 step 10 ([OPERATIONS.md](./OPERATIONS.md)).
 
 | Identity | Format |
 |----------|--------|
@@ -47,107 +46,39 @@ New tables and routes for `FixedPriceConsignment` and `AscendingConsignment`. **
 | `challenge.id` | `` `${chainId}-${instanceContract}-${subjectId}-${txHash}-${logIndex}` `` |
 | `commerce_claim.id` | `` `${chainId}-${contract}-${account}-${asset}` `` (new surface; not `pending_claim`) |
 
-| Route | Cutover consumer |
-|-------|------------------|
-| `GET /consignments` | Marketplace + auctions browse (`mode`, `active`, `seller`, `agent`, `chainId`) |
-| `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred) |
-| `GET /consignments/:id` | History deep link (“sale N”) |
-| `GET /consignments/:id/bids` | Ascending bid history |
-| `GET /agents/:address/mandates` | Agent portfolio |
-| `GET /owners/:address/mandates` | Owner delegated tab |
-| `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
-| `GET /accounts/:address/commerce-claims` | Profile Claims (transitional; old `/accounts/:address/claims` untouched) |
-
-No standalone `/challenges`, `/holds`, or `/commerce-mode` routes — embed in consignment detail / chain reads until a consumer exists.
-
-## Auction API (July 2026)
-
-AuctionEscrow on each commercial chain from that chain’s manifest. Response rows include `chainId` (+ passport `custodyChain` when enriched).
-
 | Route | Purpose |
 |-------|---------|
-| `GET /auctions` | Browse auctions (`page`, `limit`; optional `?active=true\|false`, `?seller=`, `?agent=`) |
-| `GET /auctions/:tokenId` | Auction detail + passport enrichment + `settlement` when present |
-| `GET /auctions/:tokenId/bids` | Bid history (`page`, `limit`; newest first) |
-| `GET /profile/:address/auctions` | Auctions where `seller` matches address |
-| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires active auction) |
-| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner; same enrichment + `?awaiting=` as the agent route |
+| `GET /consignments` | Browse (`mode`, `active`, `seller`, `agent`, `chainId`) |
+| `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred, else latest historical) |
+| `GET /consignments/:id` | Deep link by append-only id (“sale N”) |
+| `GET /consignments/:id/bids` | Ascending bid history |
+| `GET /agents/:address/mandates` | Agent portfolio (`?active=`) |
+| `GET /owners/:address/mandates` | Owner delegated tab (`?active=`) |
+| `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
+| `GET /accounts/:address/commerce-claims` | Profile Claims (transitional; legacy `/accounts/:address/claims` untouched) |
+| `GET /commerce-claim-credits` | Whole-table credit scan for local E2E (optional `?reasonCode=`) |
+| `GET /challenges` | `BondedChallenge` feed shared by KarPassport disputes and `AscendingConsignment` — `?instance=passport\|ascending`, `?status=`, `?subjectId=`, `?challenger=`, `?chainId=`, `page`, `limit`; `instance=passport` rows include a denormalized `passport` object |
+
+No standalone `/holds` or `/commerce-mode` routes — embed in consignment detail / chain reads until a consumer exists.
 
 ## Verifier lifecycle (bounded indexing)
 
 Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error). KarPro Arweave metadata denorms `slug` plus Place fields (`locationLabel`, `locationPlaceId`, `locationCountryCode`) on mint/profile update (empty when incomplete or missing).
 
-## Listing API fields (v2 + C3)
-
-Ponder stores `chainId`, `currencyCode`, `agent`, `agentFeeBps`, `returnRequestedAt`, and `externalPaymentConfirmedAt` on listings. Browse/detail also expose passport `custodyChain` / `originChainId`. Listing enrichment includes passport `locationLabel`, `locationPlaceId`, and `locationCountryCode` (denormalized from Arweave metadata; empty place fields until URI has a Place selection). HTTP API also returns legacy `fiatCurrency` integer (0–10 display enum via [`legacyFiatFromCurrencyCode`](../../lib/marketplace/currency-code.ts); **84532 listings are USD → `0`**) for browse/buy UI compat.
-
-**Buyer UI:** `agent` on `GET /listings` drives consignment attribution on browse cards and listing detail ([`design-spec.md`](../design-spec.md) §4.16). `agentFeeBps` and `ownerMinPrice1e8` are indexed for agent/owner flows only — not exposed to buyers.
-
-### `GET /listings` — FX + custody query parameters
-
-Optional query params for cross-currency **price filter and sort** (stateless API layer — **redeploy only**, no schema reindex; see [OPERATIONS.md](./OPERATIONS.md) “Do not reindex”).
-
-| Param | Purpose |
-|-------|---------|
-| `custodyChain` | Filter browse to passports whose usable instance is on this chain id (C3) |
-| `placeId` | Exact gazetteer place id (`photon:osm:…`) from passport metadata — city PlacePicker filter (Geo Phase C); not free-text |
-| `priceCurrency` | Display currency for `priceMin` / `priceMax` bounds (USD, EUR, ETH, BTC, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY) |
-| `eurUsdRate`, `ethUsdRate`, `btcUsdRate` | Chainlink/CoinGecko rates (1e8 string, USD per 1 unit; `btcUsd` from CoinGecko `exchange_rates.usd`) |
-| `cnyUsdRate`, `inrUsdRate`, `brlUsdRate`, `idrUsdRate`, `audUsdRate`, `aedUsdRate`, `krwUsdRate`, `rubUsdRate`, `jpyUsdRate` | CoinGecko `exchange_rates` derived rates (June 2026 display layer) |
-
-Rates are parsed via [`parseFxRatesFromQuery`](../../lib/marketplace/price-normalize.ts) / [`fx-rate-registry.ts`](../../lib/marketplace/fx-rate-registry.ts) in [`filterAndSortListings`](../../src/api/index.ts). Backward-compatible: old frontends sending only `eurUsdRate` / `ethUsdRate` still work. CoinGecko fiat/crypto browse filters need **indexer + frontend** deployed together; **USD** price filter does not.
-
-### Agent consignment routes — ✅ shipped June–July 2026
-
-Read-only agent-scoped queries in
-[`src/api/index.ts`](../../src/api/index.ts). The July 2026 authorization
-lifecycle timestamps and persisted marketplace owner require a **full reindex**
-before delegation notifications are live; see
-[OPERATIONS.md](./OPERATIONS.md).
-
-| Route | Purpose |
-|-------|---------|
-| `GET /agents/:address/authorizations` | Active authorizations for agent; `{ authorizations, total, page, limit }`; each row includes `hasActiveListing`; optional `?hasActiveListing=true\|false` filters before pagination (`total` reflects filter) |
-| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations; passport enrichment; `hasActiveAuction` per row; optional `?awaiting=true\|false` (excludes / requires `auction.active`); pagination same envelope |
-| `GET /agents/:address/listings` | Listings where `agent` matches; same pagination envelope; optional `?active=true\|false`; enrichment matches `GET /profile/:address/listings` |
-| `GET /owners/:address/authorizations` | Active authorizations **granted by** owner; same envelope + `hasActiveListing` filters; rows include `owner` + `agent`; listing join uses `seller === owner` (**redeploy only** — `ownerIdx`) |
-| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner; same shape as agent auction-authorizations (`?awaiting=`, passport enrich) |
-
-`:address` validated with `isAddress`; queries use checksum `getAddress()` to match chain-indexed rows.
-
-**Owner authorization UI** still reads `agentAuthorizations(tokenId)` on-chain
-for per-passport writes — owner list routes feed the delegated portfolio (read).
-Ponder mirrors replacement grants, revokes, and terminal storage clears for
-agent- and owner-facing queries and notifications.
-
-Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisputeTerminal`, …) and nullable `disputeDeposit` (set on `ChallengeOpened` / legacy `DisputeDepositPaid`, cleared on challenge terminals). `lastDisputeTerminal` is `confirm` | `reject` | `expire` | `withdraw` | `""` — distinguishes expire-lapse from Confirm for product copy. Owner feed: `passport.dispute_expired` when terminal is expire; `passport.dispute_resolved` for confirm/reject. Nuclear #2 ABIs use BondedChallenge `Challenge*` events (see MIGRATION-V2).
+Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisputeTerminal`, …) and nullable `disputeDeposit` (set on `ChallengeOpened` / legacy `DisputeDepositPaid`, cleared on challenge terminals). `lastDisputeTerminal` is `confirm` | `reject` | `expire` | `withdraw` | `""` — distinguishes expire-lapse from Confirm for product copy. Owner feed: `passport.dispute_expired` when terminal is expire; `passport.dispute_resolved` for confirm/reject. BondedChallenge `Challenge*` events also populate the shared `challenge` table — see `GET /challenges` above.
 
 ## HTTP API
 
-Custom routes live in [`src/api/index.ts`](../../src/api/index.ts). Bigints are serialized as strings in JSON.
+Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, verifier, notifications, legacy claims) and [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) (consignments, mandates, challenges, commerce claims — see table above). Bigints are serialized as strings in JSON.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /listings` | Browse and filter (optional FX query params for cross-currency filter/sort) |
-| `GET /auctions` | Browse auctions (optional `active`, `seller`, `agent` filters) |
-| `GET /auctions/:tokenId` | Auction detail + settlement |
-| `GET /auctions/:tokenId/bids` | Bid history |
-| `GET /listings/stats` | Aggregate listing stats |
-| `GET /listings/facets` | Filter facets (make, status, condition, …) |
-| `GET /listings/:tokenId` | Listing detail |
-| `GET /listings/batch` | Batch listing lookup |
-| `GET /passports/:tokenId` | Passport detail |
-| `GET /passports/batch` | Batch passport lookup |
+| `GET /passports` | Browse/filter passports (`owner`, `verifier`, `status`, `vin`, `verifiedFirst`) |
+| `GET /passports/:tokenId` | Passport detail + `records[]` + `uriHistory[]` |
+| `GET /passports/batch` | Batch passport lookup (`?ids=`) |
 | `GET /profile/:address/passports` | Passports owned by address |
-| `GET /profile/:address/listings` | Listings by seller |
-| `GET /profile/:address/auctions` | Auctions by seller |
-| `GET /agents/:address/authorizations` | Active consignment authorizations for agent (`page`, `limit`; `hasActiveListing` per row; optional `?hasActiveListing=true\|false`) |
-| `GET /agents/:address/auction-authorizations` | Active auction agent authorizations (`page`, `limit`; passport enrichment; `hasActiveAuction`; optional `?awaiting=true\|false`) |
-| `GET /agents/:address/listings` | Listings where agent matches (`page`, `limit`; optional `?active=true\|false`) |
-| `GET /owners/:address/authorizations` | Active authorizations granted by owner (`page`, `limit`; `hasActiveListing`; optional filter) |
-| `GET /owners/:address/auction-authorizations` | Active auction authorizations granted by owner (`page`, `limit`; `?awaiting=`; passport enrichment) |
-| `GET /notifications/:address` | Notification feed, including active marketplace delegation and reserve-auction authorization grants |
-| `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); optional `?chainId=`; each claim includes `credits[]` from `claim_credit` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
+| `GET /notifications/:address` | Notification feed, including active mandate grants (`mandate.granted`) |
+| `GET /accounts/:address/claims` | Outstanding legacy ClaimablePayouts balances (`amount > 0`); optional `?chainId=`; each claim includes `credits[]` from `claim_credit` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |

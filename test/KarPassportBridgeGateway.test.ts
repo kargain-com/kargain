@@ -33,7 +33,7 @@ import {
 import {
   DISPUTE_DEPOSIT,
   deployAscendingConsignment,
-  deployEscrowStack,
+  deployCommerceBaseStack,
   deployFixedPriceConsignment,
   increaseTime,
   joinVerifier,
@@ -179,7 +179,7 @@ async function stopImpersonating(publicClient: PublicClient, address: Address) {
 }
 
 type ChainSide = {
-  stack: Awaited<ReturnType<typeof deployEscrowStack>>;
+  stack: Awaited<ReturnType<typeof deployCommerceBaseStack>>;
   gateway: DeployedContract;
   endpoint: EndpointMock;
   publicClient: PublicClient;
@@ -200,7 +200,7 @@ async function deploySide(
 ): Promise<ChainSide> {
   const connection = await hardhat.network.connect(networkName);
   const viem = connection.viem as ViemSuite;
-  const stack = await deployEscrowStack(viem);
+  const stack = await deployCommerceBaseStack(viem);
   const [wallet] = await viem.getWalletClients();
   const publicClient = await viem.getPublicClient();
 
@@ -362,7 +362,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       eid: number,
       chainId: bigint,
     ): Promise<ChainSide> {
-      const stack = await deployEscrowStack(viem);
+      const stack = await deployCommerceBaseStack(viem);
       const [wallet] = await viem.getWalletClients();
       const publicClient = await viem.getPublicClient();
       assert.equal(BigInt(await publicClient.getChainId()), chainId);
@@ -1130,18 +1130,17 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     assert.equal(await pair.hub.gateway.read.VERSION(), "1.3.0-rc.1");
   });
 
-  it("gateway source and ABI have no commerce / status leave refs", () => {
+  it("gateway leave path is may-only (no status / listing leave probes)", () => {
     const src = readFileSync(
       path.join(repoRoot, "contracts/KarPassportBridgeGateway.sol"),
       "utf8",
     );
+    assert.ok(src.includes("LeaveChain"), "gateway source must reference LeaveChain");
+    assert.ok(/\bmay\s*\(/.test(src), "gateway source must call may(");
     for (const banned of [
-      "marketplace",
-      "auctionEscrow",
       "passportStatus",
       "isListed",
       "holds(",
-      "IMarketplaceEscrow",
       "IAuctionHold",
       "IKarPassportStatus",
       "ListedInMarketplace",
@@ -1155,8 +1154,6 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       abi.filter((e) => e.type === "error" || e.type === "function").map((e) => e.name),
     );
     for (const banned of [
-      "marketplace",
-      "auctionEscrow",
       "ListedInMarketplace",
       "InSettlementHold",
       "PassportDisputed",

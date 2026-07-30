@@ -10,7 +10,7 @@ pragma solidity ^0.8.28;
  *      Cooldown is a non-governed constant (carried 7 days from existing escrows).
  */
 abstract contract Recall {
-    /// @dev Carried from MarketplaceEscrow / AuctionEscrow `_RETURN_COOLDOWN`. Model §11 leaves the duration unnamed.
+    /// @dev Carried from legacy commerce recall cooldown. Model §11 leaves the duration unnamed.
     uint256 internal constant RECALL_COOLDOWN = 7 days;
 
     mapping(uint256 tokenId => uint256) internal recallRequestedAt;
