@@ -41,7 +41,8 @@ async function main() {
     const stack = await deployCommerceBaseStack(viem);
 
     const guardian = stack.admin.account.address;
-    const owner = getAddress(stack.timelock.address);
+    const deployer = getAddress(stack.admin.account.address);
+    const timelockOwner = getAddress(stack.timelock.address);
 
     // Toggleable sink for mode platform / Ascending forfeit — E2E forces ClaimRecorded.
     console.log("Deploying commerce payout sink (RevertingRecipient)…");
@@ -49,18 +50,18 @@ async function main() {
     await sink.write.setAcceptEth([true]);
     const modePlatform = getAddress(sink.address);
 
-    console.log("Deploying FixedPriceConsignment…");
+    console.log("Deploying FixedPriceConsignment (owner=deployer)…");
     const fixedPrice = await deployFixedPriceConsignment(viem, {
       passport: stack.passport.address,
       platformRecipient: modePlatform,
       feeBps: MARKETPLACE_FEE_BPS,
       nativeUsdFeed: stack.nativeFeed.address,
       maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
-      owner,
+      owner: deployer,
       guardian,
     });
 
-    console.log("Deploying AscendingConsignment…");
+    console.log("Deploying AscendingConsignment (owner=deployer)…");
     const ascending = await deployAscendingConsignment(viem, {
       passport: stack.passport.address,
       karProStaking: stack.staking.address,
@@ -75,7 +76,7 @@ async function main() {
       minIncrementBps: ASCENDING_MIN_INCREMENT_BPS,
       protectionWindow: ASCENDING_PROTECTION_WINDOW,
       abandonmentWindow: ASCENDING_ABANDONMENT_WINDOW,
-      owner,
+      owner: deployer,
       guardian,
     });
 
@@ -96,7 +97,25 @@ async function main() {
       fixedPrice: fixedPrice.proxy.address,
       ascending: ascending.proxy.address,
     });
-    console.log("Encumbrance sources registered (manifest write refused without this).");
+    console.log("Encumbrance sources registered.");
+
+    console.log("Admitting USDC on both modes…");
+    const zeroFeed = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+    await fixedPrice.mode.write.approvePaymentToken([stack.usdc.address, zeroFeed], {
+      account: stack.admin.account,
+    });
+    await ascending.mode.write.approvePaymentToken([stack.usdc.address], {
+      account: stack.admin.account,
+    });
+
+    console.log("Handing mode ownership to Timelock…");
+    await fixedPrice.mode.write.transferOwnership([timelockOwner], {
+      account: stack.admin.account,
+    });
+    await ascending.mode.write.transferOwnership([timelockOwner], {
+      account: stack.admin.account,
+    });
+    console.log("Mode ownership handed off (manifest write refused without register).");
 
     const deployment = stackToDeploymentAddresses(
       {

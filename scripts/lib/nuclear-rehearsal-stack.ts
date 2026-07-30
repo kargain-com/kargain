@@ -1,6 +1,6 @@
 /**
  * Nuclear-shaped local stack for Hardhat rehearsal (mirrors scripts/deploy.ts order).
- * Modes initialize with owner = Timelock48h; passport/staking hand off after register.
+ * Modes initialize with owner = deployer; USDC admitted before Timelock handoff.
  */
 
 import { createRequire } from "node:module";
@@ -34,7 +34,10 @@ import {
   type ViemSuite,
   type WalletClient,
 } from "./local-stack.js";
-import { assertSourcesRegistered } from "./nuclear-ordering.js";
+import {
+  assertPaymentTokensAdmitted,
+  assertSourcesRegistered,
+} from "./nuclear-ordering.js";
 
 const require = createRequire(import.meta.url);
 const endpointArtifactPath = require
@@ -45,13 +48,15 @@ const endpointArtifact = JSON.parse(readFileSync(endpointArtifactPath, "utf8")) 
   bytecode: Hex;
 };
 
+const ZERO = "0x0000000000000000000000000000000000000000" as const;
+
 /** Local EndpointV2Mock eid (arbitrary; rehearsal never sends messages). */
 export const REHEARSAL_LZ_EID = 1;
 
 export type NuclearRehearsalStack = {
   /** Deployer / Timelock proposer+executor (passport Ownable before handoff). */
   deployer: WalletClient;
-  /** Distinct from Timelock owner — G3 pause only. */
+  /** Distinct from Timelock owner — G3 pause + revoke. */
   guardian: WalletClient;
   seller: WalletClient;
   verifier: WalletClient;
@@ -73,6 +78,14 @@ export type NuclearRehearsalStack = {
   platformRecipient: `0x${string}`;
 };
 
+function paymentTokenEnabled(cfg: unknown): boolean {
+  if (Array.isArray(cfg)) return Boolean(cfg[2]);
+  if (cfg && typeof cfg === "object" && "enabled" in cfg) {
+    return Boolean((cfg as { enabled: boolean }).enabled);
+  }
+  return false;
+}
+
 async function deployEndpointMock(viem: ViemSuite, deployer: WalletClient) {
   const publicClient = await viem.getPublicClient();
   const hash = await deployer.deployContract({
@@ -92,9 +105,8 @@ async function deployEndpointMock(viem: ViemSuite, deployer: WalletClient) {
 }
 
 /**
- * Deploy in Nuclear #2 order. Passport Ownable starts as deployer, then registers
- * modes, binds gateway, hands passport + staking to Timelock48h.
- * Mode proxies are owned by Timelock from initialize.
+ * Deploy in Nuclear #2 order: mode proxies (owner=deployer) → register → admit USDC →
+ * gateway → mode ownership handoff → passport/staking handoff.
  */
 export async function deployNuclearRehearsalStack(
   viem: ViemSuite,
@@ -108,6 +120,7 @@ export async function deployNuclearRehearsalStack(
   const base = await deployCommerceBaseStack(viem);
   const { passport, staking, proPass, usdc, nativeFeed, timelock } = base;
   const platformRecipient = getAddress(deployer.account.address);
+  const deployerAddress = getAddress(deployer.account.address);
 
   const fp = await deployFixedPriceConsignment(viem, {
     passport: passport.address,
@@ -115,7 +128,7 @@ export async function deployNuclearRehearsalStack(
     feeBps: MARKETPLACE_FEE_BPS,
     nativeUsdFeed: nativeFeed.address,
     maxFeedStaleness: MARKETPLACE_MAX_FEED_STALENESS,
-    owner: getAddress(timelock.address),
+    owner: deployerAddress,
     guardian: getAddress(guardian.account.address),
   });
 
@@ -133,7 +146,7 @@ export async function deployNuclearRehearsalStack(
     minIncrementBps: ASCENDING_MIN_INCREMENT_BPS,
     protectionWindow: ASCENDING_PROTECTION_WINDOW,
     abandonmentWindow: ASCENDING_ABANDONMENT_WINDOW,
-    owner: getAddress(timelock.address),
+    owner: deployerAddress,
     guardian: getAddress(guardian.account.address),
   });
 
@@ -154,6 +167,22 @@ export async function deployNuclearRehearsalStack(
     ascending: asc.proxy.address,
   });
 
+  await fp.mode.write.approvePaymentToken([usdc.address, ZERO], {
+    account: deployer.account,
+  });
+  await asc.mode.write.approvePaymentToken([usdc.address], {
+    account: deployer.account,
+  });
+  assertPaymentTokensAdmitted({
+    fixedPriceUsdcEnabled: paymentTokenEnabled(
+      await fp.mode.read.paymentTokens([usdc.address]),
+    ),
+    ascendingUsdcEnabled: Boolean(
+      await asc.mode.read.paymentTokenEnabled([usdc.address]),
+    ),
+    usdc: usdc.address,
+  });
+
   const endpoint = await deployEndpointMock(viem, deployer);
   const gateway = await viem.deployContract("KarPassportBridgeGateway", [
     passport.address,
@@ -162,6 +191,14 @@ export async function deployNuclearRehearsalStack(
   ]);
 
   await passport.write.setBridgeGateway([gateway.address], { account: deployer.account });
+
+  await fp.mode.write.transferOwnership([timelock.address], {
+    account: deployer.account,
+  });
+  await asc.mode.write.transferOwnership([timelock.address], {
+    account: deployer.account,
+  });
+
   await passport.write.transferOwnership([timelock.address], { account: deployer.account });
   await staking.write.transferOwnership([timelock.address], { account: deployer.account });
 

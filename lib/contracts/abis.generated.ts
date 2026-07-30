@@ -3902,6 +3902,11 @@ export const FixedPriceConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "ModeNotEncumbranceSource",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoClaim",
     "type": "error"
   },
@@ -3943,6 +3948,11 @@ export const FixedPriceConsignmentAbi = [
   {
     "inputs": [],
     "name": "NotGuardian",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotGuardianOrOwner",
     "type": "error"
   },
   {
@@ -6170,6 +6180,11 @@ export const AscendingConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "ModeNotEncumbranceSource",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoActiveDispute",
     "type": "error"
   },
@@ -6246,6 +6261,11 @@ export const AscendingConsignmentAbi = [
   {
     "inputs": [],
     "name": "NotGuardian",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotGuardianOrOwner",
     "type": "error"
   },
   {

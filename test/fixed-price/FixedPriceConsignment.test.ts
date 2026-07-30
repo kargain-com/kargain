@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
-import { parseEther, stringToHex, padHex } from "viem";
+import { getAddress, parseEther, stringToHex, padHex } from "viem";
 
 import hardhat from "hardhat";
 import {
@@ -127,7 +127,7 @@ describe("FixedPriceConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
   });
 
   it("source carries no verifier-admission / staking gate symbols (N2)", () => {
@@ -319,13 +319,15 @@ describe("FixedPriceConsignment", () => {
     );
   });
 
-  it("asset-denom ERC-20: PaymentTokenNotSupported when not admitted", async () => {
+  it("asset-denom ERC-20: PaymentTokenNotSupported when not admitted at open", async () => {
     const tok = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
     await mintAndApprove(TOKEN);
-    await mode.write.openDirect([TOKEN, DENOM_ASSET, tok.address, 1_000n], {
-      account: owner.account,
-    });
-    await assert.rejects(mode.read.quoteBuy([TOKEN]), revertsWith("PaymentTokenNotSupported"));
+    await assert.rejects(
+      mode.write.openDirect([TOKEN, DENOM_ASSET, tok.address, 1_000n], {
+        account: owner.account,
+      }),
+      revertsWith("PaymentTokenNotSupported"),
+    );
   });
 
   it("WrongValue when native msg.value mismatches quote", async () => {
@@ -635,10 +637,128 @@ describe("FixedPriceConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
     assert.equal(await mode.read.consignmentPriceOf([TOKEN]), priceBefore);
     void modeImpl;
+  });
+
+  // ---- Encumbrance registration gate + G3 revoke ----
+
+  it("ModeNotEncumbranceSource: direct and mandate open refuse when unregistered", async () => {
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await mintAndApprove(TOKEN);
+    await assert.rejects(
+      mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, parseEther("0.5"), COMP_MARGIN],
+      { account: owner.account },
+    );
+    await assert.rejects(
+      mode.write.openFromMandate([TOKEN, DENOM_ASSET, parseEther("1")], {
+        account: agent.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+  });
+
+  it("open succeeds once registered; refused again after source removed", async () => {
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await mintAndApprove(TOKEN);
+    await assert.rejects(
+      mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+    await passport.write.setEncumbranceSource([mode.address, true]);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+      account: owner.account,
+    });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+    await mode.write.ownerWithdraw([TOKEN], { account: owner.account });
+
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    const token2 = TOKEN + 1n;
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openDirect([token2, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+  });
+
+  it("live consignment still buys after encumbrance source removed", async () => {
+    const price = parseEther("1");
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, price], { account: owner.account });
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 2);
+    assert.equal(
+      ((await passport.read.ownerOf([TOKEN])) as string).toLowerCase(),
+      buyer.account.address.toLowerCase(),
+    );
+  });
+
+  it("G3 revoke: guardian can revoke, cannot approve; mid-sale buy still settles", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+
+    await assert.rejects(
+      mode.write.approvePaymentToken([usdc.address, ZERO], { account: guardian.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await assert.rejects(
+      mode.write.revokePaymentToken([usdc.address], { account: stranger.account }),
+      revertsWith("NotGuardianOrOwner"),
+    );
+
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
+      account: owner.account,
+    });
+    await mode.write.revokePaymentToken([usdc.address], { account: guardian.account });
+    const cfg = (await mode.read.paymentTokens([usdc.address])) as
+      | { feed: string; decimals: number; enabled: boolean }
+      | readonly [string, number, boolean];
+    const enabled = Array.isArray(cfg) ? cfg[2] : cfg.enabled;
+    const decimals = Array.isArray(cfg) ? cfg[1] : cfg.decimals;
+    assert.equal(enabled, false);
+    assert.equal(Number(decimals), 6);
+
+    const quote = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    assert.equal(quote, 100n * 10n ** 6n);
+    await usdc.write.mint([buyer.account.address, quote]);
+    await usdc.write.approve([mode.address, quote], { account: buyer.account });
+    await mode.write.buy([TOKEN], { account: buyer.account });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 2);
+
+    // New open in revoked asset refused.
+    const token2 = TOKEN + 1n;
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openDirect([token2, DENOM_USD, usdc.address, FIAT_100_USD], {
+        account: owner.account,
+      }),
+      revertsWith("PaymentTokenNotSupported"),
+    );
+
+    // Owner can revoke and re-approve.
+    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    await mode.write.revokePaymentToken([usdc.address], { account: owner.account });
+    const afterOwnerRevoke = (await mode.read.paymentTokens([usdc.address])) as
+      | { enabled: boolean }
+      | readonly unknown[];
+    assert.equal(
+      Array.isArray(afterOwnerRevoke) ? afterOwnerRevoke[2] : afterOwnerRevoke.enabled,
+      false,
+    );
   });
 
   describe("accountability event surface (args vs chain state)", () => {
@@ -705,5 +825,296 @@ describe("FixedPriceConsignment", () => {
       assert.equal(p.newPrice, parseEther("2"));
       assert.equal(await mode.read.consignmentPriceOf([TOKEN]), p.newPrice);
     });
+  });
+
+  // ---- PA1: undeliverable split legs become claims (buy → _paySplit → _payNative) ----
+
+  function splitLegs(price: bigint, commissionBps: bigint) {
+    const platformLeg = (price * PLATFORM_FEE_BPS) / 10_000n;
+    const agentLeg = (price * commissionBps) / 10_000n;
+    const ownerLeg = price - platformLeg - agentLeg;
+    return { platformLeg, agentLeg, ownerLeg };
+  }
+
+  async function mintToContract(
+    tokenId: bigint,
+    seller: DeployedContract,
+  ) {
+    await passport.write.mint([seller.address, tokenId], { account: owner.account });
+    await passport.write.setMay([tokenId, INTENT_OPEN, true]);
+    await seller.write.approvePassport([passport.address, mode.address, true]);
+  }
+
+  it("PA1: reverting owner leg credits claim; withdraw after accept", async () => {
+    const price = parseEther("1");
+    const { platformLeg, ownerLeg } = splitLegs(price, 0n);
+    const seller = await viem.deployContract("RevertingRecipient", []);
+    await seller.write.setAcceptEth([false]);
+
+    await mintToContract(TOKEN, seller);
+    await seller.write.openFixedDirect([
+      mode.address,
+      TOKEN,
+      0,
+      BYTES32_ZERO,
+      ZERO,
+      price,
+    ]);
+
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+
+    assert.equal(getAddress(await passport.read.ownerOf([TOKEN])), getAddress(buyer.account.address));
+    assert.equal(await mode.read.pendingClaims([seller.address, ZERO]), ownerLeg);
+    assert.equal(await mode.read.totalPendingNative(), ownerLeg);
+    assert.equal(
+      (await publicClient.getBalance({ address: platform.account.address })) - platformBefore,
+      platformLeg,
+    );
+
+    await seller.write.setAcceptEth([true]);
+    await seller.write.withdrawClaim([mode.address, ZERO]);
+    assert.equal(await mode.read.pendingClaims([seller.address, ZERO]), 0n);
+    assert.equal(await mode.read.totalPendingNative(), 0n);
+  });
+
+  it("PA1: reverting agent leg credits claim; withdraw after accept", async () => {
+    const price = parseEther("1");
+    const commissionBps = 500n;
+    const { platformLeg, agentLeg, ownerLeg } = splitLegs(price, commissionBps);
+    const agentSink = await viem.deployContract("RevertingRecipient", []);
+    await agentSink.write.setAcceptEth([false]);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [
+        TOKEN,
+        agentSink.address,
+        0n,
+        ZERO,
+        DENOM_ASSET,
+        price / 2n,
+        { form: 1, commissionBps: Number(commissionBps) },
+      ],
+      { account: owner.account },
+    );
+    await agentSink.write.openFixedFromMandate([
+      mode.address,
+      TOKEN,
+      0,
+      BYTES32_ZERO,
+      price,
+    ]);
+
+    const ownerBefore = await publicClient.getBalance({ address: owner.account.address });
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+
+    assert.equal(getAddress(await passport.read.ownerOf([TOKEN])), getAddress(buyer.account.address));
+    assert.equal(await mode.read.pendingClaims([agentSink.address, ZERO]), agentLeg);
+    assert.equal(await mode.read.totalPendingNative(), agentLeg);
+    assert.equal(
+      (await publicClient.getBalance({ address: owner.account.address })) - ownerBefore,
+      ownerLeg,
+    );
+    assert.equal(
+      (await publicClient.getBalance({ address: platform.account.address })) - platformBefore,
+      platformLeg,
+    );
+
+    await agentSink.write.setAcceptEth([true]);
+    await agentSink.write.withdrawClaim([mode.address, ZERO]);
+    assert.equal(await mode.read.pendingClaims([agentSink.address, ZERO]), 0n);
+    assert.equal(await mode.read.totalPendingNative(), 0n);
+  });
+
+  it("PA1: reverting platform leg credits claim; withdraw after accept", async () => {
+    const price = parseEther("1");
+    const { platformLeg, ownerLeg } = splitLegs(price, 0n);
+    const platformSink = await viem.deployContract("RevertingRecipient", []);
+    await platformSink.write.setAcceptEth([false]);
+
+    const deployed = await deployFixedPriceConsignment(viem, {
+      passport: passport.address,
+      platformRecipient: platformSink.address,
+      feeBps: PLATFORM_FEE_BPS,
+      nativeUsdFeed: nativeFeed.address,
+      maxFeedStaleness: MAX_STALENESS,
+      owner: owner.account.address,
+      guardian: guardian.account.address,
+    });
+    mode = deployed.mode;
+
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, price], { account: owner.account });
+
+    const ownerBefore = await publicClient.getBalance({ address: owner.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+
+    assert.equal(getAddress(await passport.read.ownerOf([TOKEN])), getAddress(buyer.account.address));
+    assert.equal(await mode.read.pendingClaims([platformSink.address, ZERO]), platformLeg);
+    assert.equal(await mode.read.totalPendingNative(), platformLeg);
+    assert.equal(
+      (await publicClient.getBalance({ address: owner.account.address })) - ownerBefore,
+      ownerLeg,
+    );
+
+    await platformSink.write.setAcceptEth([true]);
+    await platformSink.write.withdrawClaim([mode.address, ZERO]);
+    assert.equal(await mode.read.pendingClaims([platformSink.address, ZERO]), 0n);
+    assert.equal(await mode.read.totalPendingNative(), 0n);
+  });
+
+  it("PA1: all three legs reverting credit exact claims; withdraw each", async () => {
+    const price = parseEther("1");
+    const commissionBps = 500n;
+    const { platformLeg, agentLeg, ownerLeg } = splitLegs(price, commissionBps);
+    assert.equal(platformLeg + agentLeg + ownerLeg, price);
+
+    const seller = await viem.deployContract("RevertingRecipient", []);
+    const agentSink = await viem.deployContract("RevertingRecipient", []);
+    const platformSink = await viem.deployContract("RevertingRecipient", []);
+    await seller.write.setAcceptEth([false]);
+    await agentSink.write.setAcceptEth([false]);
+    await platformSink.write.setAcceptEth([false]);
+
+    const deployed = await deployFixedPriceConsignment(viem, {
+      passport: passport.address,
+      platformRecipient: platformSink.address,
+      feeBps: PLATFORM_FEE_BPS,
+      nativeUsdFeed: nativeFeed.address,
+      maxFeedStaleness: MAX_STALENESS,
+      owner: owner.account.address,
+      guardian: guardian.account.address,
+    });
+    mode = deployed.mode;
+
+    await mintToContract(TOKEN, seller);
+    await seller.write.grantFixed([
+      mode.address,
+      TOKEN,
+      agentSink.address,
+      0n,
+      ZERO,
+      0,
+      BYTES32_ZERO,
+      price / 2n,
+      1,
+      Number(commissionBps),
+    ]);
+    await agentSink.write.openFixedFromMandate([
+      mode.address,
+      TOKEN,
+      0,
+      BYTES32_ZERO,
+      price,
+    ]);
+
+    await mode.write.buy([TOKEN], { account: buyer.account, value: price });
+
+    assert.equal(getAddress(await passport.read.ownerOf([TOKEN])), getAddress(buyer.account.address));
+    assert.equal(await mode.read.pendingClaims([seller.address, ZERO]), ownerLeg);
+    assert.equal(await mode.read.pendingClaims([agentSink.address, ZERO]), agentLeg);
+    assert.equal(await mode.read.pendingClaims([platformSink.address, ZERO]), platformLeg);
+    assert.equal(await mode.read.totalPendingNative(), price);
+
+    await seller.write.setAcceptEth([true]);
+    await agentSink.write.setAcceptEth([true]);
+    await platformSink.write.setAcceptEth([true]);
+    await seller.write.withdrawClaim([mode.address, ZERO]);
+    await agentSink.write.withdrawClaim([mode.address, ZERO]);
+    await platformSink.write.withdrawClaim([mode.address, ZERO]);
+
+    assert.equal(await mode.read.pendingClaims([seller.address, ZERO]), 0n);
+    assert.equal(await mode.read.pendingClaims([agentSink.address, ZERO]), 0n);
+    assert.equal(await mode.read.pendingClaims([platformSink.address, ZERO]), 0n);
+    assert.equal(await mode.read.totalPendingNative(), 0n);
+  });
+
+  // ---- Payment-token admission refusals ----
+
+  async function paymentTokenEnabled(token: `0x${string}`): Promise<boolean> {
+    const cfg = (await mode.read.paymentTokens([token])) as {
+      enabled: boolean;
+    };
+    // Public mapping returns tuple or object depending on viem decode.
+    if (typeof cfg === "object" && cfg !== null && "enabled" in cfg) {
+      return Boolean(cfg.enabled);
+    }
+    const row = cfg as unknown as readonly [string, number, boolean];
+    return Boolean(row[2]);
+  }
+
+  it("TokenHasNoCode on approvePaymentToken; retry still refuses; conforming admits", async () => {
+    const eoa = stranger.account.address;
+    await assert.rejects(
+      mode.write.approvePaymentToken([eoa, ZERO], { account: owner.account }),
+      revertsWith("TokenHasNoCode"),
+    );
+    assert.equal(await paymentTokenEnabled(eoa), false);
+    await assert.rejects(
+      mode.write.approvePaymentToken([eoa, ZERO], { account: owner.account }),
+      revertsWith("TokenHasNoCode"),
+    );
+
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    assert.equal(await paymentTokenEnabled(usdc.address), true);
+  });
+
+  it("TokenDecimalsUnavailable on approvePaymentToken; retry still refuses", async () => {
+    const bad = await viem.deployContract("NoDecimalsErc20", []);
+    await assert.rejects(
+      mode.write.approvePaymentToken([bad.address, ZERO], { account: owner.account }),
+      revertsWith("TokenDecimalsUnavailable"),
+    );
+    assert.equal(await paymentTokenEnabled(bad.address), false);
+    await assert.rejects(
+      mode.write.approvePaymentToken([bad.address, ZERO], { account: owner.account }),
+      revertsWith("TokenDecimalsUnavailable"),
+    );
+  });
+
+  it("StalePrice at admit when payment-token feed is stale; retry still refuses until fresh", async () => {
+    const tok = await viem.deployContract("MockERC20Decimals", ["T", "T", 18]);
+    const feed = await viem.deployContract("MockV3Aggregator", [8, ETH_USD_1E8]);
+    await increaseTime(publicClient, MAX_STALENESS + 1n);
+
+    await assert.rejects(
+      mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account }),
+      revertsWith("StalePrice"),
+    );
+    assert.equal(await paymentTokenEnabled(tok.address), false);
+    await assert.rejects(
+      mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account }),
+      revertsWith("StalePrice"),
+    );
+
+    await feed.write.setAnswer([ETH_USD_1E8]);
+    await mode.write.approvePaymentToken([tok.address, feed.address], { account: owner.account });
+    assert.equal(await paymentTokenEnabled(tok.address), true);
+  });
+
+  it("zero feed: USD-stable peg — $100 fiat quotes 100e6 USDC without oracle", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
+    const cfg = (await mode.read.paymentTokens([usdc.address])) as {
+      feed: string;
+      decimals: number;
+      enabled: boolean;
+    };
+    const feedAddr =
+      typeof cfg === "object" && cfg !== null && "feed" in cfg
+        ? (cfg.feed as string)
+        : ((cfg as unknown as readonly [string, number, boolean])[0] as string);
+    assert.equal(getAddress(feedAddr), getAddress(ZERO));
+    assert.equal(await paymentTokenEnabled(usdc.address), true);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.openDirect([TOKEN, DENOM_USD, usdc.address, FIAT_100_USD], {
+      account: owner.account,
+    });
+    const quote = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    assert.equal(quote, 100n * 10n ** 6n);
   });
 });

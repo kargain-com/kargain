@@ -58,8 +58,11 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 | `GET /accounts/:address/commerce-claims` | Profile Claims (transitional; legacy `/accounts/:address/claims` untouched) |
 | `GET /commerce-claim-credits` | Whole-table credit scan for local E2E (optional `?reasonCode=`) |
 | `GET /challenges` | `BondedChallenge` feed shared by KarPassport disputes and `AscendingConsignment` — `?instance=passport\|ascending`, `?status=`, `?subjectId=`, `?challenger=`, `?chainId=`, `page`, `limit`; `instance=passport` rows include a denormalized `passport` object |
+| `GET /commerce-modes` | Mode pause/guardian/rules projection (`?chainId=`, `?mode=fixedPrice\|ascending`, `?paused=`, `page`, `limit`) |
+| `GET /commerce-payment-tokens` | Admitted payment tokens (`?chainId=`, `?modeContract=`, `?active=`, `page`, `limit`); soft-revoke → `active=false` |
+| `GET /commerce-currency-feeds` | FixedPrice fiat currency → feed registry (`?chainId=`, `?modeContract=`, `?currencyCode=`, `page`, `limit`) |
 
-No standalone `/holds` or `/commerce-mode` routes — embed in consignment detail / chain reads until a consumer exists.
+Holds and ascending terms stay **embedded** in `GET /consignments/:id` (no standalone `/holds`). `vin_index` is an internal write-side index that drives product via `passport.duplicateVin` — not a missing HTTP surface.
 
 ## Verifier lifecycle (bounded indexing)
 

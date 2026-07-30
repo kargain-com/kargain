@@ -18,7 +18,9 @@ import {Recall} from "./Recall.sol";
  *      (settlement challenge is ascending/HELD-only). Settlement notes / external confirmation
  *      belong to fixed mode, not here (§4.4).
  *
- *      G3 pause: guardian pauses immediately; owner (timelock) unpauses. Pause gates opening only
+ *      G3: operations that only reduce exposure are immediate (guardian); operations that expand
+ *      or restore exposure wait (owner / timelock). Guardian pauses and may revoke payment tokens;
+ *      owner alone unpauses, approves tokens, and replaces the guardian. Pause gates opening only
  *      on this base; modes gate bid/buy themselves. Settlement, claims, recall, challenge never pause.
  */
 abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, ReentrancyGuard, OwnableUpgradeable {
@@ -74,6 +76,7 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     address public guardian;
 
     error OpenConsignmentRefused();
+    error ModeNotEncumbranceSource();
     error NotOffered();
     error NotDirectConsignment();
     error BelowFloor();
@@ -81,6 +84,8 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     error NotConsignmentRunner();
     error ContractPaused();
     error NotGuardian();
+    /// @dev Caller is neither the guardian nor the owner (e.g. soft-revoke).
+    error NotGuardianOrOwner();
 
     event Paused(address account);
     event Unpaused(address account);
@@ -456,14 +461,17 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
 
     // ---- Instance hooks (encumbrance + custody) ----
 
-    /// @dev Passport permission for a named intent (E0). Production will call IKarPassportEncumbrance.may.
+    /// @dev Passport permission for a named intent (E0). Production calls IKarPassportEncumbrance.may.
     function _may(uint256 tokenId, IKarPassportEncumbrance.Intent intent) internal view virtual returns (bool);
+
+    /// @dev Live registry membership for this mode. Registration can be revoked — never cache.
+    function _isSelfEncumbranceSource() internal view virtual returns (bool);
 
     function _takeCustody(uint256 tokenId, address from) internal virtual;
 
     function _releaseCustody(uint256 tokenId, address to) internal virtual;
 
-    /// @dev Mode-specific opening gates (ascending N2/N4). FixedPrice leaves no-op.
+    /// @dev Mode-specific opening gates (ascending N2/N4; FixedPrice payment admission).
     function _requireModeOpen(
         uint256 tokenId,
         address runner,
@@ -477,7 +485,10 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     // ---- Internals ----
 
     /// @dev Internal so ascending can open with a duration term the base signature does not carry.
+    ///      Registration is checked here (shared by both modes and both mandate kinds) so an
+    ///      unregistered mode cannot open while LeaveChain would be blind to its live lots.
     function _requireCanOpen(uint256 tokenId, address owner_) internal view {
+        if (!_isSelfEncumbranceSource()) revert ModeNotEncumbranceSource();
         if (!_may(tokenId, IKarPassportEncumbrance.Intent.OpenConsignment)) revert OpenConsignmentRefused();
         if (isLiveConsignment(tokenId)) revert LiveConsignment();
         if (!isEscrowApproved(tokenId, owner_)) revert EscrowNotApproved();

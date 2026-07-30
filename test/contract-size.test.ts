@@ -80,6 +80,14 @@ describe("EIP-170 production contract size", () => {
         `${row.name} deployed bytecode ${row.bytes} bytes exceeds EIP-170 limit ${EIP170_MAX}`,
       );
     }
+    const fp = rows.find((r) => r.name === "FixedPriceConsignment");
+    const asc = rows.find((r) => r.name === "AscendingConsignment");
+    assert.ok(fp && asc);
+    const fpHead = EIP170_MAX - fp.bytes;
+    const ascHead = EIP170_MAX - asc.bytes;
+    process.stdout.write(
+      `\nModes: FixedPrice ${fp.bytes} (headroom ${fpHead}) · Ascending ${asc.bytes} (headroom ${ascHead}) · combined headroom ${fpHead + ascHead}\n`,
+    );
     process.stdout.write(`Limit: ${EIP170_MAX} (EIP-170)\n\n`);
   });
 });

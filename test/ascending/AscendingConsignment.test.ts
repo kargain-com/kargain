@@ -219,7 +219,7 @@ describe("AscendingConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
   });
 
   // ---- N2 KarPro by behaviour (not source scan) ----
@@ -1133,9 +1133,116 @@ describe("AscendingConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
     assert.equal(await mode.read.auctionEndsAt([TOKEN]), endsAt);
     assert.equal(await mode.read.auctionHighestBid([TOKEN]), RESERVE);
+  });
+
+  // ---- Encumbrance registration gate + G3 revoke ----
+
+  it("ModeNotEncumbranceSource: direct and mandate open refuse when unregistered", async () => {
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await activate(owner);
+    await mintAndApprove();
+    await assert.rejects(
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, parseEther("0.5"), COMP_MARGIN],
+      { account: owner.account },
+    );
+    await activate(agent);
+    await assert.rejects(
+      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION], {
+        account: agent.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+  });
+
+  it("open succeeds once registered; refused again after source removed", async () => {
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await activate(owner);
+    await mintAndApprove();
+    await assert.rejects(
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+    await passport.write.setEncumbranceSource([mode.address, true]);
+    await mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION], {
+      account: owner.account,
+    });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+    await mode.write.ownerWithdraw([TOKEN], { account: owner.account });
+
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    const token2 = TOKEN + 1n;
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openAscendingDirect([token2, ZERO, RESERVE, DURATION], {
+        account: owner.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+  });
+
+  it("live consignment still settles after encumbrance source removed", async () => {
+    await openDirect();
+    await firstBid();
+    await passport.write.setEncumbranceSource([mode.address, false]);
+    await settleAfterEnd();
+    assert.equal(await mode.read.hasUnresolvedSettlement([TOKEN]), true);
+    await increaseTime(publicClient, PROTECTION + 2n);
+    await mode.write.releaseFunds([TOKEN], { account: stranger.account });
+    assert.equal(await mode.read.hasUnresolvedSettlement([TOKEN]), false);
+  });
+
+  it("G3 revoke: guardian can revoke, cannot approve; mid-sale bid+settle still works", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await mode.write.approvePaymentToken([usdc.address], { account: owner.account });
+
+    await assert.rejects(
+      mode.write.approvePaymentToken([usdc.address], { account: guardian.account }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    await assert.rejects(
+      mode.write.revokePaymentToken([usdc.address], { account: stranger.account }),
+      revertsWith("NotGuardianOrOwner"),
+    );
+
+    await activate(owner);
+    await mintAndApprove();
+    const reserve = 100n * 10n ** 6n;
+    await mode.write.openAscendingDirect([TOKEN, usdc.address, reserve, DURATION], {
+      account: owner.account,
+    });
+    await mode.write.revokePaymentToken([usdc.address], { account: guardian.account });
+    assert.equal(await mode.read.paymentTokenEnabled([usdc.address]), false);
+
+    await usdc.write.mint([buyer.account.address, reserve * 2n]);
+    await usdc.write.approve([mode.address, reserve * 2n], { account: buyer.account });
+    await mode.write.bid([TOKEN, reserve], { account: buyer.account });
+    await settleAfterEnd();
+    assert.equal(await mode.read.hasUnresolvedSettlement([TOKEN]), true);
+
+    // New open in revoked asset refused.
+    const token2 = TOKEN + 1n;
+    await mintAndApprove(token2);
+    await assert.rejects(
+      mode.write.openAscendingDirect([token2, usdc.address, reserve, DURATION], {
+        account: owner.account,
+      }),
+      revertsWith("PaymentTokenNotSupported"),
+    );
+
+    await mode.write.approvePaymentToken([usdc.address], { account: owner.account });
+    await mode.write.revokePaymentToken([usdc.address], { account: owner.account });
+    assert.equal(await mode.read.paymentTokenEnabled([usdc.address]), false);
   });
 
   describe("accountability event surface (args vs chain state)", () => {
@@ -1322,5 +1429,35 @@ describe("AscendingConsignment", () => {
     process.stdout.write(`| bid (first) | ${bidReceipt.gasUsed} |\n`);
     process.stdout.write(`| bid (outbid) | ${outReceipt.gasUsed} |\n`);
     process.stdout.write(`| settle | ${settleReceipt.gasUsed} |\n\n`);
+  });
+
+  async function ascendingTokenEnabled(token: `0x${string}`): Promise<boolean> {
+    return Boolean(await mode.read.paymentTokenEnabled([token]));
+  }
+
+  it("TokenHasNoCode on approvePaymentToken; retry still refuses", async () => {
+    const eoa = stranger.account.address;
+    await assert.rejects(
+      mode.write.approvePaymentToken([eoa], { account: owner.account }),
+      revertsWith("TokenHasNoCode"),
+    );
+    assert.equal(await ascendingTokenEnabled(eoa), false);
+    await assert.rejects(
+      mode.write.approvePaymentToken([eoa], { account: owner.account }),
+      revertsWith("TokenHasNoCode"),
+    );
+  });
+
+  it("TokenDecimalsUnavailable on approvePaymentToken; retry still refuses", async () => {
+    const bad = await viem.deployContract("NoDecimalsErc20", []);
+    await assert.rejects(
+      mode.write.approvePaymentToken([bad.address], { account: owner.account }),
+      revertsWith("TokenDecimalsUnavailable"),
+    );
+    assert.equal(await ascendingTokenEnabled(bad.address), false);
+    await assert.rejects(
+      mode.write.approvePaymentToken([bad.address], { account: owner.account }),
+      revertsWith("TokenDecimalsUnavailable"),
+    );
   });
 });

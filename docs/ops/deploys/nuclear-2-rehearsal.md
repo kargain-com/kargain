@@ -1,13 +1,13 @@
 # Nuclear #2 — full-stack deploy rehearsal runbook (84532 + 11155111)
 
-Operator steps for the next commercial Nuclear wave. **Cursor never runs live txs** — execute these yourself. Local proof lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts` (schedule → wait 48h → execute through Timelock48h).
+Operator steps for the next commercial Nuclear wave. **Cursor never runs live txs** — execute these yourself. Local proof lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts` (construction admission + Timelock expand/restore path).
 
 | | |
 |--|--|
-| Scope | Timelock → KarPro → Passport → FixedPrice + Ascending (owner=Timelock, guardian=`COMMERCE_GUARDIAN`) → encumbrance register → gateway → handoff → Timelock-gated admission + ops |
+| Scope | Timelock → KarPro → Passport → FixedPrice + Ascending (**owner=deployer**) → encumbrance register → **USDC admission** → gateway → **mode ownership handoff** → passport/staking handoff → post-handoff Timelock ops |
 | Chains | Base Sepolia **84532** and Ethereum Sepolia **11155111** (identical protocol params) |
 | Script | `pnpm deploy:sepolia` / `pnpm deploy:sepolia:eth` → [`scripts/deploy.ts`](../../../scripts/deploy.ts) |
-| Dry-run | `pnpm deploy:nuclear:dry-run` (parity + structural encumbrance order; no txs) |
+| Dry-run | `pnpm deploy:nuclear:dry-run` (parity + structural encumbrance/admission order; no txs) |
 | Local rehearsal | `pnpm hardhat test test/nuclear-rehearsal.test.ts` |
 | Spec | [SPEC §I.10](../../contracts/SPEC.md#i10-deploy-sequence) |
 
@@ -17,17 +17,19 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 
 - `.env.local`: `DEPLOYER_PRIVATE_KEY`, `COMMERCE_GUARDIAN` (EOA **distinct** from deployer and from Timelock)
 - `pnpm compile`; `pnpm deploy:nuclear:dry-run` green
-- Guardian key available for pause ops; deployer is Timelock proposer + executor on both chains
-- Do **not** open consignments until both modes show `isEncumbranceSource(mode) == true`
+- Guardian key available for **pause** and **soft-revoke**; deployer is Timelock proposer + executor on both chains
+- Modes refuse `open*` unless `isEncumbranceSource(mode)` (bytecode + tooling)
 
 ---
 
-## Structural vs checklist ordering
+## Structural ordering (all abort the run)
 
 | Constraint | Enforcement |
 |------------|-------------|
-| Mode proxies → `addEncumbranceSource` ×2 → gateway → handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run; live/local deploy **aborts** if `isEncumbranceSource` is false before gateway |
-| Do not open consignments before register | **Checklist** — Solidity `open*` does **not** require `isEncumbranceSource(this)`; LeaveChain would be blind if you skip register. Reason: no bytecode gate without a contract change (reported, not fixed in step 9) |
+| Mode proxies → `addEncumbranceSource` ×2 → admit USDC → gateway → mode handoff → passport handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run |
+| Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
+| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes |
+| Open requires live encumbrance source | On-chain `ModeNotEncumbranceSource` in `ConsignmentBase._requireCanOpen` |
 
 ---
 
@@ -39,7 +41,7 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 pnpm deploy:nuclear:dry-run
 ```
 
-Confirm shared params, step list, and Timelock owner-ops list. Abort if encumbrance ordering assert fails.
+Confirm shared params, step list (includes admission + mode handoff), Timelock expand/restore ops, and guardian-immediate ops. Abort if ordering assert fails.
 
 ### 2. Deploy Base Sepolia (84532)
 
@@ -47,7 +49,12 @@ Confirm shared params, step list, and Timelock owner-ops list. Abort if encumbra
 pnpm deploy:sepolia
 ```
 
-Expect console: `✓ encumbrance sources registered (refusing gateway until this holds)`. Record manifest `deployments/84532.json` addresses + `blocks.*` / `indexFromBlock`.
+Expect console:
+
+- `✓ encumbrance sources registered (refusing gateway until this holds)`
+- `✓ USDC admitted on both modes (refusing handoff until this holds)`
+
+Record manifest `deployments/84532.json` addresses + `blocks.*` / `indexFromBlock`.
 
 ### 3. Deploy Ethereum Sepolia (11155111)
 
@@ -64,41 +71,29 @@ For FixedPrice, Ascending, KarPassport, KarProStaking:
 - `owner()` == Timelock48h
 - Mode `guardian()` == `COMMERCE_GUARDIAN` (≠ Timelock, ≠ deployer)
 - Passport `isEncumbranceSource(fixedPrice)` and `isEncumbranceSource(ascending)` are true
+- Both modes: USDC payment token **enabled** (admitted at construction)
 - `bridgeGateway()` bound
 
-Prove guardian can `pause()`; deployer / guardian **cannot** `unpause()` — only Timelock schedule/execute `unpause`.
+Prove guardian can `pause()` and `revokePaymentToken(usdc)` (soft-disable); guardian **cannot** `approvePaymentToken` / `unpause` — only Timelock schedule/execute those.
 
-### 5. Timelock-gated admission (required before USD ERC-20 sales)
+### 5. Post-handoff Timelock ops (feeds / re-approve / rules)
 
-Modes initialize with **owner = Timelock**. Deployer cannot call `approvePaymentToken`.
+Initial USDC admission is **already done at deploy**. Use Timelock for later expands/restores:
 
-On each chain, schedule → wait `getMinDelay()` (48h) → execute:
+| Target | Example |
+|--------|---------|
+| FixedPrice | `setCurrencyFeed`, `setMaxFeedStaleness`, re-`approvePaymentToken`, `unpause`, `setGuardian`, UUPS |
+| Ascending | `setAuctionRules`, re-`approvePaymentToken`, `unpause`, `setGuardian`, UUPS |
+| KarPassport | `addEncumbranceSource` / `removeEncumbranceSource` (post-handoff) |
 
-| Target | Calldata |
-|--------|----------|
-| FixedPrice | `approvePaymentToken(usdc, address(0))` |
-| Ascending | `approvePaymentToken(usdc)` |
-
-Salt scheme (example):
-
-```text
-keccak256(toBytes(`kargain:${chainId}:FixedPrice:approvePaymentToken:${usdcLower}`))
-```
-
-Predecessor: `bytes32(0)`. Delay: `timelock.getMinDelay()`.
+Schedule → wait `getMinDelay()` (48h) → execute.
 
 **Feed freshness:** `setCurrencyFeed` / feed-bearing `approvePaymentToken` run `_validateFeed` at **execute** time. Live Chainlink aggregators stay fresh across 48h. Do not point Timelock ops at a static mock feed without refreshing it before execute.
 
-### 6. Optional Timelock ops (rehearsed locally)
+### 6. Guardian-immediate ops (no delay)
 
-Same schedule → wait → execute path. Local suite proved each of:
-
-- FixedPrice / Ascending: `unpause`, `setGuardian`, `upgradeToAndCall`, payment approve/revoke
-- FixedPrice: `setCurrencyFeed`, `setMaxFeedStaleness`
-- Ascending: `setAuctionRules`
-- KarPassport: `addEncumbranceSource` / `removeEncumbranceSource` (post-handoff)
-
-Encode with production ABIs (`lib/contracts/abis.generated.ts`). Upgrade salt should include new impl + VERSION.
+- `pause` / soft-`revokePaymentToken` on either mode
+- Soft-revoke keeps decimals/feed so **in-flight** buy/bid/settle still complete; **new** opens in that asset fail until Timelock re-approves
 
 ### 7. Cutover app + indexer (after both manifests)
 
@@ -118,7 +113,7 @@ pnpm deploy:local
 ./scripts/e2e-local.sh
 ```
 
-Local deploy also **aborts** if encumbrance register fails before writing the manifest.
+Local deploy also **aborts** if encumbrance register or USDC admission fails before writing the manifest.
 
 ### 9. Bridge wire (after both commercial stacks)
 
@@ -129,19 +124,20 @@ pnpm bridge:wire             # when ready
 
 ---
 
-## Rehearsal findings (do not silently “fix” in ops)
+## Rehearsal findings (closed / retained)
 
-1. **`approvePaymentToken` at deploy is impossible as deployer** — owner is Timelock from the proxy create tx. SPEC §I.10 corrected; ops must schedule admission.
-2. **Open without register remains possible on-chain** — tooling refuses a late/missing register; bytecode does not. Checklist until a future Solidity gate (stop-and-report if product requires the gate).
-3. **`setCurrencyFeed` freshness is evaluated at Timelock execute** — live feeds OK; static feeds go stale across 48h.
+1. **~~`approvePaymentToken` at deploy impossible as deployer~~** — **closed.** Modes initialize with `owner=deployer`; admission runs before Timelock handoff.
+2. **~~Open without register~~** — **closed.** Bytecode `ModeNotEncumbranceSource` + tooling abort.
+3. **`setCurrencyFeed` freshness is evaluated at Timelock execute** — live feeds OK; static feeds go stale across 48h. **Retained.**
+
+**Misplaced-ops (report only — not moved):** `removeEncumbranceSource` and clearing a currency feed reduce LeaveChain / quote surface but stay Timelock-delayed (shared with expand paths).
 
 ---
 
 ## Post-deploy checklist
 
 - [ ] Both manifests committed; `COMMERCIAL_ACTIVE` updated
-- [ ] Guardian pause smoke on each mode
-- [ ] USDC approved via Timelock on both modes / both chains
+- [ ] Guardian pause + soft-revoke smoke on each mode
+- [ ] USDC enabled on both modes / both chains (construction admission)
 - [ ] Ponder reindexed; `/ready` + `/status`
-- [ ] No consignment opened before encumbrance register (checklist)
 - [ ] Bridge wire when both chains live

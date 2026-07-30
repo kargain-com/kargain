@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
+import {IEncumbranceRegistry} from "./interfaces/IEncumbranceRegistry.sol";
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
 import {BondedChallenge} from "./lib/BondedChallenge.sol";
 import {ConsignmentBase} from "./lib/ConsignmentBase.sol";
@@ -24,8 +25,10 @@ interface IKarProActive {
  *      Settlement challenge is BondedChallenge — this contract supplies eligibility, exclusions,
  *      forfeit recipient, and the four handlers only. No second challenge state machine here.
  *
- *      UUPS; owner = timelock; guardian pauses (G3). Pause gates ascending open + bid only —
- *      never settle, hold exit, challenge terminals, claims, or recall.
+ *      UUPS; owner = timelock after Nuclear handoff; guardian pauses and may revoke payment tokens (G3).
+ *      Pause gates ascending open + bid only — never settle, hold exit, challenge terminals, claims,
+ *      or recall. Payment admission is checked at open; in-flight bids pull the snapshotted asset
+ *      without re-checking the live registry after soft revoke.
  */
 contract AscendingConsignment is
     ConsignmentBase,
@@ -36,7 +39,7 @@ contract AscendingConsignment is
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.1.0-rc.1";
+    string public constant VERSION = "2.2.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
 
@@ -242,8 +245,11 @@ contract AscendingConsignment is
         emit PaymentTokenApproved(token);
     }
 
-    function revokePaymentToken(address token) external onlyOwner {
-        delete paymentTokenEnabled[token];
+    /// @notice Soft-disable a payment token (G3 reduce-exposure). Guardian or owner.
+    /// @dev Open consignments keep bidding/settling; new opens re-check the live flag.
+    function revokePaymentToken(address token) external {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardianOrOwner();
+        paymentTokenEnabled[token] = false;
         emit PaymentTokenRevoked(token);
     }
 
@@ -654,6 +660,10 @@ contract AscendingConsignment is
         return IKarPassportEncumbrance(address(karPassport)).may(tokenId, intent);
     }
 
+    function _isSelfEncumbranceSource() internal view override returns (bool) {
+        return IEncumbranceRegistry(address(karPassport)).isEncumbranceSource(address(this));
+    }
+
     function _takeCustody(uint256 tokenId, address from) internal override {
         karPassport.transferFrom(from, address(this), tokenId);
     }
@@ -734,7 +744,7 @@ contract AscendingConsignment is
             if (msg.value != amount) revert WrongValue();
         } else {
             if (msg.value != 0) revert DirectEthNotAccepted();
-            if (!paymentTokenEnabled[asset]) revert PaymentTokenNotSupported();
+            // Admission was checked at open; soft-revoked tokens must still accept in-flight bids.
             IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
         }
     }

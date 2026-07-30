@@ -28,7 +28,7 @@ import {
 import {
   assertNuclearEncumbranceOrdering,
   assertSourcesRegistered,
-  CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER,
+  ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE,
 } from "../scripts/lib/nuclear-ordering.js";
 import {
   deployNuclearRehearsalStack,
@@ -85,7 +85,7 @@ function asTimelock(c: NuclearRehearsalStack["timelock"]): TimelockClient {
   return c as unknown as TimelockClient;
 }
 
-describe("Nuclear #2 deployment rehearsal", () => {
+describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
   let connection: Connection;
   let stack: NuclearRehearsalStack;
   let executedOps: string[];
@@ -120,7 +120,7 @@ describe("Nuclear #2 deployment rehearsal", () => {
     await connection.close();
   });
 
-  it("structural: plan encumbrance order; bad order fails; checklist documented", () => {
+  it("structural: plan encumbrance+admission order; bad order fails; on-chain open gate documented", () => {
     assertNuclearEncumbranceOrdering(NUCLEAR_DEPLOY_STEPS);
     assert.throws(
       () =>
@@ -131,7 +131,11 @@ describe("Nuclear #2 deployment rehearsal", () => {
           "KarPassportBridgeGateway",
           "addEncumbranceSourceFixedPrice",
           "addEncumbranceSourceAscending",
+          "approvePaymentTokenFixedPrice",
+          "approvePaymentTokenAscending",
           "setBridgeGateway",
+          "transferFixedPriceOwnership",
+          "transferAscendingOwnership",
           "transferPassportOwnership",
         ]),
       /addEncumbranceSource must complete before KarPassportBridgeGateway/,
@@ -146,7 +150,7 @@ describe("Nuclear #2 deployment rehearsal", () => {
         }),
       /Encumbrance not registered for FixedPrice/,
     );
-    assert.ok(CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER.includes("isEncumbranceSource"));
+    assert.ok(ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE.includes("ModeNotEncumbranceSource"));
   });
 
   it("ownership: modes + passport + staking owned by Timelock; guardian distinct", async () => {
@@ -174,11 +178,19 @@ describe("Nuclear #2 deployment rehearsal", () => {
   });
 
   it("atomic init: proxy state live after deploy; re-initialize reverts", async () => {
-    assert.equal(await stack.fixedPrice.read.VERSION(), "2.1.0-rc.1");
-    assert.equal(await stack.ascending.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await stack.fixedPrice.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.2.0-rc.1");
     assert.equal(
       getAddress((await stack.fixedPrice.read.owner([])) as string),
       getAddress(stack.timelock.address),
+    );
+    assert.ok(
+      paymentEnabled(await stack.fixedPrice.read.paymentTokens([stack.usdc.address])),
+      "USDC admitted at deploy before handoff",
+    );
+    assert.equal(
+      await stack.ascending.read.paymentTokenEnabled([stack.usdc.address]),
+      true,
     );
 
     await assert.rejects(
@@ -400,6 +412,16 @@ describe("Nuclear #2 deployment rehearsal", () => {
     assert.equal(await stack.ascending.read.paymentTokenEnabled([stack.usdc.address]), false);
 
     await viaTimelock(
+      "Ascending.approvePaymentToken(re)",
+      stack.ascending.address,
+      encodeFunctionData({
+        abi: AscendingConsignmentAbi,
+        functionName: "approvePaymentToken",
+        args: [stack.usdc.address],
+      }),
+    );
+
+    await viaTimelock(
       "Ascending.setGuardian",
       stack.ascending.address,
       encodeFunctionData({
@@ -504,7 +526,7 @@ describe("Nuclear #2 deployment rehearsal", () => {
       encodeUpgradeToAndCall(nextImpl.address),
     );
 
-    assert.equal(await stack.ascending.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.2.0-rc.1");
     assert.equal(await stack.ascending.read.auctionEndsAt([tokenId]), endsAt);
     assert.equal(await stack.ascending.read.auctionHighestBid([tokenId]), high);
     assert.equal(
@@ -540,43 +562,131 @@ describe("Nuclear #2 deployment rehearsal", () => {
       stack.fixedPrice.address,
       encodeUpgradeToAndCall(nextImpl.address),
     );
-    assert.equal(await stack.fixedPrice.read.VERSION(), "2.1.0-rc.1");
+    assert.equal(await stack.fixedPrice.read.VERSION(), "2.2.0-rc.1");
     assert.equal(await stack.fixedPrice.read.consignmentPhase([tokenId]), 1);
     assert.equal(await stack.fixedPrice.read.consignmentPriceOf([tokenId]), price);
   });
 
-  it("finding checklist: open without register remains possible on bytecode (not fixed)", async () => {
-    // Documented finding — rehearsal does not change Solidity. Prove the shape still holds:
-    // isEncumbranceSource is advisory for open; LeaveChain consults the registry.
-    assert.ok(
-      CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER.includes("Register both modes"),
-      "checklist must stay attached to the open-without-register finding",
+  it("G3 guardian revoke; ModeNotEncumbranceSource blocks open when unregistered", async () => {
+    // Guardian can soft-revoke; stranger cannot; guardian cannot approve.
+    await stack.fixedPrice.write.revokePaymentToken([stack.usdc.address], {
+      account: stack.guardian.account,
+    });
+    assert.equal(
+      paymentEnabled(await stack.fixedPrice.read.paymentTokens([stack.usdc.address])),
+      false,
+    );
+    await assert.rejects(
+      stack.fixedPrice.write.approvePaymentToken([stack.usdc.address, ZERO], {
+        account: stack.guardian.account,
+      }),
+      revertsWith("OwnableUnauthorizedAccount"),
+    );
+    // Restore via Timelock (owner).
+    await viaTimelock(
+      "FixedPrice.approvePaymentToken(guardian-restore)",
+      stack.fixedPrice.address,
+      encodeFunctionData({
+        abi: FixedPriceConsignmentAbi,
+        functionName: "approvePaymentToken",
+        args: [stack.usdc.address, ZERO],
+      }),
+    );
+
+    // Unregistered mode cannot open (bytecode gate).
+    const mock = await connection.viem.deployContract("MockEncumbranceSource", []);
+    await viaTimelock(
+      "KarPassport.addEncumbranceSource(temp)",
+      stack.passport.address,
+      encodeFunctionData({
+        abi: KarPassportAbi,
+        functionName: "addEncumbranceSource",
+        args: [mock.address],
+      }),
+    );
+    // Removing FixedPrice from registry: open must refuse.
+    await viaTimelock(
+      "KarPassport.removeEncumbranceSource(fp-gate)",
+      stack.passport.address,
+      encodeFunctionData({
+        abi: KarPassportAbi,
+        functionName: "removeEncumbranceSource",
+        args: [stack.fixedPrice.address],
+      }),
+    );
+    assert.equal(
+      await stack.passport.read.isEncumbranceSource([stack.fixedPrice.address]),
+      false,
+    );
+    const tokenId = await mintPassport(
+      stack.passport,
+      stack.seller,
+      stack.seller.account.address,
+      "ar://gate-unregistered",
+    );
+    await stack.passport.write.verifyPassport([tokenId], {
+      account: stack.verifier.account,
+    });
+    await stack.passport.write.setApprovalForAll([stack.fixedPrice.address, true], {
+      account: stack.seller.account,
+    });
+    await assert.rejects(
+      stack.fixedPrice.write.openDirect([tokenId, DENOM_ASSET, ZERO, parseEther("1")], {
+        account: stack.seller.account,
+      }),
+      revertsWith("ModeNotEncumbranceSource"),
+    );
+    // Restore FixedPrice registration for any later consumers.
+    await viaTimelock(
+      "KarPassport.addEncumbranceSource(fp-restore)",
+      stack.passport.address,
+      encodeFunctionData({
+        abi: KarPassportAbi,
+        functionName: "addEncumbranceSource",
+        args: [stack.fixedPrice.address],
+      }),
+    );
+    // Clean up temp mock source.
+    await viaTimelock(
+      "KarPassport.removeEncumbranceSource(temp)",
+      stack.passport.address,
+      encodeFunctionData({
+        abi: KarPassportAbi,
+        functionName: "removeEncumbranceSource",
+        args: [mock.address],
+      }),
     );
   });
 
-  it("report: every rehearsed delayed op executed through Timelock", () => {
-    const required = [
+  it("report: Timelock covers expand/restore ops; guardian revoke is immediate", () => {
+    const requiredTimelock = [
       "FixedPrice.unpause",
       "Ascending.unpause",
       "FixedPrice.approvePaymentToken",
       "FixedPrice.setCurrencyFeed",
       "FixedPrice.setMaxFeedStaleness",
-      "FixedPrice.revokePaymentToken",
       "FixedPrice.setGuardian",
       "Ascending.setAuctionRules",
       "Ascending.approvePaymentToken",
-      "Ascending.revokePaymentToken",
       "Ascending.setGuardian",
       "KarPassport.addEncumbranceSource",
       "KarPassport.removeEncumbranceSource",
       "Ascending.upgradeToAndCall",
       "FixedPrice.upgradeToAndCall",
     ];
-    for (const op of required) {
+    for (const op of requiredTimelock) {
       assert.ok(
         executedOps.some((e) => e === op || e.startsWith(`${op}(`)),
         `missing Timelock execution evidence for ${op}; got: ${executedOps.join(", ")}`,
       );
     }
+    // Owner may still revoke via Timelock (covered in FixedPrice/Ascending admin its);
+    // G3 immediate path is guardian revoke in the dedicated it above.
+    assert.ok(
+      executedOps.some(
+        (e) => e === "FixedPrice.revokePaymentToken" || e.startsWith("FixedPrice.revokePaymentToken("),
+      ),
+      "owner Timelock revoke path should still be exercised",
+    );
   });
 });

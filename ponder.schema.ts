@@ -415,7 +415,7 @@ export const commercePaymentToken = onchainTable(
   }),
 );
 
-/** FixedPrice currency feeds — separate from legacy unread currency_feed. */
+/** FixedPrice fiat currency → Chainlink feed registry projection. */
 export const commerceCurrencyFeed = onchainTable("commerce_currency_feed", (t) => ({
   id: t.text().primaryKey(),
   chainId: t.integer().notNull(),

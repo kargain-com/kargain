@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.1.0-rc.1`, AscendingConsignment `2.1.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.2.0-rc.1`, AscendingConsignment `2.2.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -51,8 +51,8 @@
 | KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
-| FixedPriceConsignment | `2.1.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
-| AscendingConsignment | `2.1.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
+| FixedPriceConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
+| AscendingConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
 
 **Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** until Nuclear #2 refreshes the stack ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
 
@@ -185,11 +185,22 @@ A state transition a party can be held to must leave a log complete enough to re
 
 `CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
 
-FixedPriceConsignment `VERSION` **`2.1.0-rc.1`**. AscendingConsignment `VERSION` **`2.1.0-rc.1`**.
+FixedPriceConsignment `VERSION` **`2.2.0-rc.1`**. AscendingConsignment `VERSION` **`2.2.0-rc.1`**.
 
-**Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `protectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve/revoke stay separate. Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
+**Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `protectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
-**EIP-170:** Ascending deployed bytecode **24179** (limit 24576, headroom **397**) after consolidating public rule getters + admin setters — accountability event surface unchanged.
+**EIP-170:** Ascending deployed bytecode **24309** (limit 24576, headroom **267**); FixedPrice **17847** (headroom **6729**). Combined mode headroom **6996**. Accountability event surface unchanged.
+
+**Open gate:** `_requireCanOpen` refuses unless `IEncumbranceRegistry(passport).isEncumbranceSource(address(this))` — `ModeNotEncumbranceSource`. Registration is not answered inside `may` (previews stay bool / `SourceUnanswerable` only).
+
+**Mode authority (G3):**
+
+| Op | Authority |
+|----|-----------|
+| `pause` | Guardian (`NotGuardian`) |
+| `revokePaymentToken` | Guardian **or** owner (Timelock) — soft-disable; in-flight buy/bid/settle keep stored config (`NotGuardianOrOwner`) |
+| `unpause` / `approvePaymentToken` / `setGuardian` / UUPS / `setAuctionRules` / `setCurrencyFeed` / `setMaxFeedStaleness` | Owner (Timelock) |
+| Passport `addEncumbranceSource` / `removeEncumbranceSource` / `setDisputeDeposit` / `rescueExcessEth` | Owner (Timelock); `setBridgeGateway` one-shot |
 
 **Encumbrance:** `may(tokenId, Intent)` combines readiness (`OpenConsignment` requires VERIFIED; `LeaveChain` always) with intrinsic challenge + governed external sources. Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
 
@@ -348,12 +359,18 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 | Mode | VERSION | Role |
 |------|---------|------|
-| FixedPriceConsignment | `2.1.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; agent commission splits |
-| AscendingConsignment | `2.1.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
+| FixedPriceConsignment | `2.2.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; agent commission splits |
+| AscendingConsignment | `2.2.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
-**Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, §15 cutover).
+**Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
-**Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges` — [indexer/README.md](../indexer/README.md).
+**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). VERSION amend-in-place `2.2.0-rc.1`.
+
+**FixedPrice payment-token feed:** `approvePaymentToken(token, feed)` with `feed == address(0)` means the token is treated as **USD-stable** — fiat amounts convert as `(usd1e8 × 10^decimals) / 1e8` with no Chainlink read. A non-zero `feed` must pass admit-time `_validateFeed` (freshness included) and is read again at quote/buy. Nuclear deploy admits USDC with zero feed for this peg.
+
+**Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
+
+**Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges`, config mirrors `GET /commerce-modes` / `/commerce-payment-tokens` / `/commerce-currency-feeds` — [indexer/README.md](../indexer/README.md).
 
 **Live addresses:** mode proxies are **absent** from `COMMERCIAL_ACTIVE` until **Nuclear #2** registers them and Ponder mode start blocks. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
 
@@ -375,7 +392,7 @@ OpenZeppelin `TimelockController` with fixed **`MIN_DELAY_SECONDS = 48 hours`**.
 | Executor | Execute after delay |
 | Admin | Optional; renounce after setup (`address(0)` in constructor to skip) |
 
-Used as **owner / UUPS authority** on commerce mode proxies (`FixedPriceConsignment`, `AscendingConsignment`) after deploy handoff. KarPassport / KarProPass / KarProStaking remain immutable — timelock governs mode upgrades, feed registry, and guardian pause config.
+Used as **owner / UUPS authority** on commerce mode proxies (`FixedPriceConsignment`, `AscendingConsignment`) after deploy handoff. KarPassport / KarProPass / KarProStaking remain immutable — timelock governs mode upgrades, feed registry, approve, and guardian replacement. Guardian may pause and soft-revoke payment tokens immediately.
 
 ---
 
@@ -588,27 +605,29 @@ Nuclear cutover July 21, 2026 · KarPassport **`1.3.0-rc.1`** · `indexFromBlock
 3. Deploy **KarProStaking** (pass address + owner); `minStakeNative` = contract default **0.05 ETH**.
 4. **`KarProPass.setStaking(staking)`**.
 5. Deploy **KarPassport** `1.8.0-rc.1` (staking, owner, `disputeDeposit` = **0.01 ETH**, **`platformRecipient`**).
-6. Deploy **FixedPriceConsignment** impl + ERC1967Proxy → `initialize(…, owner=timelock, guardian=COMMERCE_GUARDIAN, …)`; **USD-only** currency registry at init (native USD feed). **`approvePaymentToken(usdc, address(0))` is not callable by the deployer** — mode owner is the Timelock from the proxy create tx; schedule + execute that admission through Timelock48h (see Nuclear #2 runbook). Live Chainlink feeds stay fresh across the delay; `_validateFeed` runs at **execute** time.
-7. Deploy **AscendingConsignment** impl + ERC1967Proxy → `initialize(…, owner=timelock, guardian=COMMERCE_GUARDIAN, …)`.
-8. **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** on KarPassport while Ownable is still deployer — **deploy scripts abort if `isEncumbranceSource` is false** before gateway deploy. **Only then** open consignments ([§12.6](#126-outbound-guards)). **Checklist (not bytecode):** `open*` does not require `isEncumbranceSource(this)` — an operator who skips register can still open while LeaveChain stays blind; do not skip.
-9. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only).
-10. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
-11. **Ownable handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
-12. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
+6. Deploy **FixedPriceConsignment** impl + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`; **USD-only** currency registry at init (native USD feed).
+7. Deploy **AscendingConsignment** impl + ERC1967Proxy → `initialize(…, owner=deployer, guardian=COMMERCE_GUARDIAN, …)`.
+8. **`addEncumbranceSource(fixedPrice)`** and **`addEncumbranceSource(ascending)`** on KarPassport while Ownable is still deployer — **deploy scripts abort if `isEncumbranceSource` is false** before gateway. On-chain `open*` also refuses unless the mode is a live source (`ModeNotEncumbranceSource`).
+9. **`approvePaymentToken`** on both modes while deployer still owns them (FixedPrice: USDC + `address(0)` feed for USD-stable; Ascending: USDC). Scripts abort if admission read-back fails. **Post-handoff** approve / `setCurrencyFeed` still go through Timelock48h — `_validateFeed` runs at **execute** time (live Chainlink stays fresh across the delay).
+10. Deploy **KarPassportBridgeGateway** `1.3.0-rc.1` (**passport**, LZ endpoint, delegate only).
+11. **`KarPassport.setBridgeGateway(gateway)`** (one-time bind).
+12. **Mode ownership handoff:** `FixedPrice.transferOwnership(timelock)` then `Ascending.transferOwnership(timelock)` — scripts abort if owners ≠ Timelock.
+13. **Passport / staking handoff:** `KarPassport.transferOwnership(timelock)` then `KarProStaking.transferOwnership(timelock)`.
+14. **Configure LayerZero peers** (separate `pnpm bridge:wire`) — testnet EIDs to testnet only; mainnet to mainnet only.
 
 **Retired:** steps that deployed `MarketplaceEscrow` / `AuctionEscrow` were removed in commerce cutover §15.2 step 5. **`pnpm deploy:auction`** and **`pnpm upgrade:auction`** are removed — do not redeploy legacy escrows.
 
-After step 11, Timelock48h owns these ops (48h delay):
+After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps immediate pause + soft-revoke:
 
-| Contract | Owner-gated ops now behind Timelock48h |
-|----------|----------------------------------------|
-| KarPassport | `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
-| KarProStaking | `setMinStakeNative`, `setStakeToken` |
-| FixedPriceConsignment / AscendingConsignment | UUPS upgrades, feed/token registry, pause guardian config, ascending rule setters — via proxy **owner = timelock** |
+| Contract | Authority |
+|----------|-----------|
+| KarPassport | Timelock: `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
+| KarProStaking | Timelock: `setMinStakeNative`, `setStakeToken` |
+| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken`, `setGuardian`, UUPS, feeds / staleness / `setAuctionRules` |
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + gateway addresses (`fixedPriceConsignment`, `ascendingConsignment`, `bridgeGateway`).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · USD-only currency registry at mode deploy · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for mode pause. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `maxFeedStaleness` 3600 · `minStakeNative` 0.05 ETH · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke. Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 

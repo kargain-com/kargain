@@ -39,7 +39,7 @@ describe("nuclear deploy plan", () => {
     assert.equal(base.params.platformRecipient, eth.params.platformRecipient);
   });
 
-  it("step list includes modes + encumbrance before gateway, then ownership handoff (no escrow steps)", () => {
+  it("step list includes modes + encumbrance + admit before gateway, then mode handoff then ownership handoff (no escrow steps)", () => {
     assertNuclearEncumbranceOrdering(base.steps);
     assert.deepEqual([...base.steps], [...NUCLEAR_DEPLOY_STEPS]);
     const fixedImplIdx = base.steps.indexOf("FixedPriceConsignmentImpl");
@@ -48,15 +48,21 @@ describe("nuclear deploy plan", () => {
     const ascendingIdx = base.steps.indexOf("AscendingConsignmentProxy");
     const encFixedIdx = base.steps.indexOf("addEncumbranceSourceFixedPrice");
     const encAscIdx = base.steps.indexOf("addEncumbranceSourceAscending");
+    const admitFixedIdx = base.steps.indexOf("approvePaymentTokenFixedPrice");
+    const admitAscIdx = base.steps.indexOf("approvePaymentTokenAscending");
     const gatewayIdx = base.steps.indexOf("KarPassportBridgeGateway");
     const bindIdx = base.steps.indexOf("setBridgeGateway");
+    const fpOwnIdx = base.steps.indexOf("transferFixedPriceOwnership");
+    const ascOwnIdx = base.steps.indexOf("transferAscendingOwnership");
     const passportOwnIdx = base.steps.indexOf("transferPassportOwnership");
     const stakingOwnIdx = base.steps.indexOf("transferStakingOwnership");
     assert.ok(fixedIdx === fixedImplIdx + 1 && ascendingImplIdx === fixedIdx + 1);
     assert.ok(ascendingIdx === ascendingImplIdx + 1);
     assert.ok(encFixedIdx === ascendingIdx + 1 && encAscIdx === encFixedIdx + 1);
-    assert.ok(gatewayIdx === encAscIdx + 1 && bindIdx === gatewayIdx + 1);
-    assert.ok(passportOwnIdx === bindIdx + 1 && stakingOwnIdx === passportOwnIdx + 1);
+    assert.ok(admitFixedIdx === encAscIdx + 1 && admitAscIdx === admitFixedIdx + 1);
+    assert.ok(gatewayIdx === admitAscIdx + 1 && bindIdx === gatewayIdx + 1);
+    assert.ok(fpOwnIdx === bindIdx + 1 && ascOwnIdx === fpOwnIdx + 1);
+    assert.ok(passportOwnIdx === ascOwnIdx + 1 && stakingOwnIdx === passportOwnIdx + 1);
   });
 
   it("tokenIdOffset is chainId << 128", () => {

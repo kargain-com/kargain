@@ -35,7 +35,10 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   WrongValue: "Native amount does not match. Refresh and try again.",
   ContractPaused:
     "This contract is temporarily paused. Existing refunds and payouts are unaffected.",
-  NotGuardian: "Only the pause guardian can pause this contract.",
+  NotGuardian: "Only the commerce guardian can do this.",
+  NotGuardianOrOwner: "Only the commerce guardian or the contract owner can do this.",
+  ModeNotEncumbranceSource:
+    "This selling mode is not registered as an encumbrance source on the passport.",
   NoHold: "There is no open settlement hold for this vehicle.",
   DisputeActive:
     "A settlement dispute is still open. Wait for resolution or the auto-release timeout.",

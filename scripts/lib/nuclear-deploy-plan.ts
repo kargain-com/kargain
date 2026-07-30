@@ -38,8 +38,12 @@ export const NUCLEAR_DEPLOY_STEPS = [
   "AscendingConsignmentProxy",
   "addEncumbranceSourceFixedPrice",
   "addEncumbranceSourceAscending",
+  "approvePaymentTokenFixedPrice",
+  "approvePaymentTokenAscending",
   "KarPassportBridgeGateway",
   "setBridgeGateway",
+  "transferFixedPriceOwnership",
+  "transferAscendingOwnership",
   "transferPassportOwnership",
   "transferStakingOwnership",
 ] as const;

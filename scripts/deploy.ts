@@ -1,8 +1,9 @@
 /**
  * Nuclear full-stack deploy for commercial chains 84532 | 11155111.
  * Sequence: Timelock → KarProPass → Staking → Passport →
- * FixedPrice + Ascending (encumbrance sources) →
- * KarPassportBridgeGateway → setBridgeGateway → ownership handoff.
+ * FixedPrice + Ascending (deployer-owned) → encumbrance register →
+ * payment-token admission → KarPassportBridgeGateway → setBridgeGateway →
+ * mode ownership handoff → passport/staking handoff.
  *
  * Commerce cutover Phase 1: legacy escrow contracts are no longer part
  * of the nuclear deploy — modes only (SPEC §I.9.x, Nuclear #2 pending).
@@ -28,9 +29,11 @@ import {
 } from "./lib/nuclear-deploy-plan.js";
 import {
   assertNuclearEncumbranceOrdering,
+  assertPaymentTokensAdmitted,
   assertSourcesRegistered,
-  CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER,
+  NUCLEAR_GUARDIAN_IMMEDIATE_OPS,
   NUCLEAR_TIMELOCK_OWNER_OPS,
+  ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE,
 } from "./lib/nuclear-ordering.js";
 import {
   commercialDeploymentPath,
@@ -208,15 +211,19 @@ function printDryRunCompare() {
   }
   console.log("\nExternals sourced from CHAINLINK_FEEDS / LZ_ENDPOINT_V2_BY_CHAIN only.");
   console.log(
-    "\nEncumbrance ordering: proxies → addEncumbranceSource ×2 → gateway → handoff (structural).",
+    "\nOrdering: proxies → register ×2 → admit USDC ×2 → gateway → mode handoff → passport/staking handoff (structural).",
   );
-  console.log(`Checklist (not bytecode): ${CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER}`);
+  console.log(`On-chain open gate: ${ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE}`);
+  console.log("Guardian immediate ops (G3 reduce-exposure):");
+  for (const op of NUCLEAR_GUARDIAN_IMMEDIATE_OPS) {
+    console.log(`  - ${op}`);
+  }
   console.log("Post-handoff Timelock48h owner ops (schedule → wait → execute):");
   for (const op of NUCLEAR_TIMELOCK_OWNER_OPS) {
     console.log(`  - ${op}`);
   }
   console.log(
-    "\nNote: mode proxies initialize with owner=timelock; approvePaymentToken cannot run as deployer EOA — schedule after proxy deploy (Nuclear #2 runbook).",
+    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
   );
 }
 
@@ -304,7 +311,7 @@ async function runLiveDeploy() {
         MARKETPLACE_FEE_BPS,
         externals.nativeUsdFeed,
         MARKETPLACE_MAX_FEED_STALENESS,
-        timelock.address,
+        deployerAddress,
         commerceGuardian,
       ],
     });
@@ -336,7 +343,7 @@ async function runLiveDeploy() {
         ASCENDING_MIN_INCREMENT_BPS,
         ASCENDING_PROTECTION_WINDOW,
         ASCENDING_ABANDONMENT_WINDOW,
-        timelock.address,
+        deployerAddress,
         commerceGuardian,
       ],
     });
@@ -369,6 +376,38 @@ async function runLiveDeploy() {
     });
     console.log("  ✓ encumbrance sources registered (refusing gateway until this holds)");
 
+    const fixedPrice = await viem.getContractAt(
+      "FixedPriceConsignment",
+      fixedPriceProxy.address,
+    );
+    const ascending = await viem.getContractAt(
+      "AscendingConsignment",
+      ascendingProxy.address,
+    );
+    const zeroFeed = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+    await writeStep(viem, `FixedPrice.approvePaymentToken(USDC) → ${externals.usdc}`, () =>
+      fixedPrice.write.approvePaymentToken([externals.usdc, zeroFeed], {
+        account: deployer.account,
+      }),
+    );
+    await writeStep(viem, `Ascending.approvePaymentToken(USDC) → ${externals.usdc}`, () =>
+      ascending.write.approvePaymentToken([externals.usdc], {
+        account: deployer.account,
+      }),
+    );
+    const fpCfg = await fixedPrice.read.paymentTokens([externals.usdc]);
+    const fpEnabled = Array.isArray(fpCfg)
+      ? Boolean(fpCfg[2])
+      : Boolean((fpCfg as { enabled: boolean }).enabled);
+    assertPaymentTokensAdmitted({
+      fixedPriceUsdcEnabled: fpEnabled,
+      ascendingUsdcEnabled: Boolean(
+        await ascending.read.paymentTokenEnabled([externals.usdc]),
+      ),
+      usdc: externals.usdc,
+    });
+    console.log("  ✓ USDC admitted on both modes (refusing handoff until this holds)");
+
     const gateway = await deployStep(
       viem,
       "KarPassportBridgeGateway",
@@ -384,6 +423,21 @@ async function runLiveDeploy() {
     );
     if (boundGateway !== getAddress(gateway.address)) {
       throw new Error(`bridgeGateway mismatch: ${boundGateway} vs ${gateway.address}`);
+    }
+
+    await writeStep(viem, "FixedPrice.transferOwnership → Timelock48h", () =>
+      fixedPrice.write.transferOwnership([timelock.address], { account: deployer.account }),
+    );
+    await writeStep(viem, "Ascending.transferOwnership → Timelock48h", () =>
+      ascending.write.transferOwnership([timelock.address], { account: deployer.account }),
+    );
+    const fpOwner = getAddress((await fixedPrice.read.owner([])) as `0x${string}`);
+    const ascOwner = getAddress((await ascending.read.owner([])) as `0x${string}`);
+    if (fpOwner !== getAddress(timelock.address)) {
+      throw new Error(`FixedPrice owner should be timelock, got ${fpOwner}`);
+    }
+    if (ascOwner !== getAddress(timelock.address)) {
+      throw new Error(`Ascending owner should be timelock, got ${ascOwner}`);
     }
 
     const stakingContract = await viem.getContractAt("KarProStaking", staking.address);
@@ -404,9 +458,6 @@ async function runLiveDeploy() {
       throw new Error(`KarProStaking owner should be timelock, got ${stakingOwner}`);
     }
 
-    // FixedPrice/Ascending are Ownable proxies initialized with `timelock.address`
-    // directly — no separate on-chain upgradeAuthority() getter to verify (unlike
-    // the retired pre-modes escrow UUPS pattern).
     const upgradeAuthority = getAddress(timelock.address);
 
     const blocks = {

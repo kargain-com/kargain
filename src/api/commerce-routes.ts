@@ -10,6 +10,9 @@ import {
   challenge,
   commerceClaim,
   commerceClaimCredit,
+  commerceCurrencyFeed,
+  commerceMode,
+  commercePaymentToken,
   consignment,
   consignmentBid,
   consignmentHold,
@@ -590,6 +593,132 @@ export function registerCommerceRoutes(app: Hono): void {
     return c.json(
       jsonBody({
         challenges,
+        total: totalRow[0]?.value ?? 0,
+        page,
+        limit,
+      }),
+    );
+  });
+
+  /** Indexed mode pause/guardian/rules mirror (ops + Nuclear readiness). */
+  app.get("/commerce-modes", async (c) => {
+    const page = parsePage(c.req.query("page"));
+    const limit = parseLimit(c.req.query("limit"));
+    const offset = (page - 1) * limit;
+    const chainId = parseOptionalChainId(c.req.query("chainId"));
+    const mode = c.req.query("mode");
+    const paused = parseOptionalBoolean(c.req.query("paused"));
+
+    const conditions = [];
+    if (chainId !== undefined) conditions.push(eq(commerceMode.chainId, chainId));
+    if (mode === "fixedPrice" || mode === "ascending") {
+      conditions.push(eq(commerceMode.mode, mode));
+    }
+    if (paused !== undefined) conditions.push(eq(commerceMode.paused, paused));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select()
+        .from(commerceMode)
+        .where(where)
+        .orderBy(asc(commerceMode.modeContract))
+        .limit(limit)
+        .offset(offset),
+      db.select({ value: count() }).from(commerceMode).where(where),
+    ]);
+
+    return c.json(
+      jsonBody({
+        modes: rows,
+        total: totalRow[0]?.value ?? 0,
+        page,
+        limit,
+      }),
+    );
+  });
+
+  /** Admitted payment tokens per mode (soft-revoke → active=false). */
+  app.get("/commerce-payment-tokens", async (c) => {
+    const page = parsePage(c.req.query("page"));
+    const limit = parseLimit(c.req.query("limit"));
+    const offset = (page - 1) * limit;
+    const chainId = parseOptionalChainId(c.req.query("chainId"));
+    const modeContractParam = c.req.query("modeContract");
+    const active = parseOptionalBoolean(c.req.query("active"));
+
+    const conditions = [];
+    if (chainId !== undefined) {
+      conditions.push(eq(commercePaymentToken.chainId, chainId));
+    }
+    if (modeContractParam) {
+      const modeContract = parseAddressParam(modeContractParam);
+      if (!modeContract) return c.json({ error: "Invalid modeContract" }, 400);
+      conditions.push(eq(commercePaymentToken.modeContract, modeContract));
+    }
+    if (active !== undefined) {
+      conditions.push(eq(commercePaymentToken.active, active));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select()
+        .from(commercePaymentToken)
+        .where(where)
+        .orderBy(asc(commercePaymentToken.token))
+        .limit(limit)
+        .offset(offset),
+      db.select({ value: count() }).from(commercePaymentToken).where(where),
+    ]);
+
+    return c.json(
+      jsonBody({
+        paymentTokens: rows,
+        total: totalRow[0]?.value ?? 0,
+        page,
+        limit,
+      }),
+    );
+  });
+
+  /** FixedPrice fiat currency → Chainlink feed registry projection. */
+  app.get("/commerce-currency-feeds", async (c) => {
+    const page = parsePage(c.req.query("page"));
+    const limit = parseLimit(c.req.query("limit"));
+    const offset = (page - 1) * limit;
+    const chainId = parseOptionalChainId(c.req.query("chainId"));
+    const modeContractParam = c.req.query("modeContract");
+    const currencyCode = c.req.query("currencyCode");
+
+    const conditions = [];
+    if (chainId !== undefined) {
+      conditions.push(eq(commerceCurrencyFeed.chainId, chainId));
+    }
+    if (modeContractParam) {
+      const modeContract = parseAddressParam(modeContractParam);
+      if (!modeContract) return c.json({ error: "Invalid modeContract" }, 400);
+      conditions.push(eq(commerceCurrencyFeed.modeContract, modeContract));
+    }
+    if (currencyCode) {
+      conditions.push(eq(commerceCurrencyFeed.currencyCode, currencyCode));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select()
+        .from(commerceCurrencyFeed)
+        .where(where)
+        .orderBy(asc(commerceCurrencyFeed.currencyCode))
+        .limit(limit)
+        .offset(offset),
+      db.select({ value: count() }).from(commerceCurrencyFeed).where(where),
+    ]);
+
+    return c.json(
+      jsonBody({
+        currencyFeeds: rows,
         total: totalRow[0]?.value ?? 0,
         page,
         limit,

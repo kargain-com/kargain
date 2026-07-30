@@ -169,9 +169,17 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
       harness.write.pause({ account: stranger.account }),
       revertsWith("NotGuardian"),
     );
+    await assert.rejects(
+      harness.write.requireGuardianOrOwner({ account: stranger.account }),
+      revertsWith("NotGuardianOrOwner"),
+    );
     await harness.write.pause({ account: owner.account }); // owner is also guardian in harness ctor
     await assert.rejects(openDirect(), revertsWith("ContractPaused"));
     await harness.write.unpause({ account: owner.account });
+
+    await harness.write.setSelfEncumbranceRegistered([false]);
+    await assert.rejects(openDirect(), revertsWith("ModeNotEncumbranceSource"));
+    await harness.write.setSelfEncumbranceRegistered([true]);
 
     await harness.write.setMayOpen([TOKEN_DIRECT, false]);
     await assert.rejects(openDirect(), revertsWith("OpenConsignmentRefused"));

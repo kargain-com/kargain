@@ -1,8 +1,8 @@
 /**
- * Error name-truth policy — one error name, one predicate family (polarity / allowlist).
+ * Error name-truth policy — one error name, one predicate family (polarity /
+ * multi-condition families / NotX underassertion).
  *
- * Money-path outcome testing: see header of `error-coverage-policy.test.ts` — assert
- * amounts under adversarial inputs; this suite does not prove branch inertness.
+ * Money-path outcome testing: see header of `error-coverage-policy.test.ts`.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,10 +14,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACTS_DIR = path.join(ROOT, "contracts");
 
 /**
- * Names that legitimately guard ≥2 distinct normalized predicates under one truthful
- * English predicate. Keep small — growth means the naming rule is being bent.
+ * One truthful English family that legitimately covers ≥2 distinct normalized
+ * predicates. Keep small — growth means the naming rule is being bent.
  */
-export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
+export const ERROR_MULTI_CONDITION_FAMILIES: readonly {
   error: string;
   contracts: readonly string[];
   justification: string;
@@ -68,23 +68,56 @@ export const ERROR_MULTI_CONDITION_ALLOWLIST: readonly {
     justification: "Action not allowed for the passport's current Status",
   },
   {
-    error: "NotVerifier",
-    contracts: ["KarProStaking"],
-    justification: "Caller stake row is inactive",
-  },
-  {
     error: "CannotResolveOwnDispute",
     contracts: ["KarPassport"],
     justification:
       "Caller is a party to the dispute (opener, passport owner, or recorded passportVerifier) — mirrors CannotResolveOwnDeal",
   },
+  // Newly visible after paren-depth extraction (same English families; were silent drops).
+  {
+    error: "ZeroAddress",
+    contracts: [
+      "FixedPriceConsignment",
+      "KarPassport",
+      "KarPassportBridgeGateway",
+      "ConsignmentBase",
+    ],
+    justification: "Required address argument is the zero address",
+  },
+  {
+    error: "TransferFailed",
+    contracts: ["ClaimablePayouts"],
+    justification: "Native send failed or ERC-20 transfer probe returned false",
+  },
+  {
+    error: "NotBinding",
+    contracts: ["AscendingConsignment"],
+    justification: "Settle refused — phase not binding or auction endsAt unset",
+  },
 ] as const;
 
-/** `if (<cond>) revert <Name>(...);` — ignores multi-line conditions. */
-const IF_REVERT_RE =
-  /if\s*\(([^)]+)\)\s*revert\s+([A-Za-z0-9_]+)\s*(?:\(|;)/g;
+/**
+ * Same logical predicate spelled differently so the normaliser cannot unify them.
+ * Never use this list to excuse a real underassertion or polarity clash.
+ */
+export const ERROR_NORMALISER_ALIASES: readonly {
+  error: string;
+  contracts: readonly string[];
+  justification: string;
+}[] = [
+  {
+    error: "NotVerifier",
+    contracts: ["KarProStaking"],
+    justification: "Caller stake row inactive — !s.active vs !stakes[msg.sender].active",
+  },
+] as const;
+
+/** @deprecated Prefer ERROR_MULTI_CONDITION_FAMILIES; kept for any external imports. */
+export const ERROR_MULTI_CONDITION_ALLOWLIST = ERROR_MULTI_CONDITION_FAMILIES;
 
 type Site = { file: string; error: string; raw: string; normalized: string };
+
+type RawIfRevert = { condition: string; error: string; index: number };
 
 function listSoliditySources(): string[] {
   const out: string[] = [];
@@ -104,22 +137,74 @@ function listSoliditySources(): string[] {
 }
 
 /**
+ * Extract balanced `(...)` starting at `openParenIndex` (must point at `(`).
+ * Returns inner content and end index after the closing `)`.
+ */
+export function extractBalancedParens(
+  source: string,
+  openParenIndex: number,
+): { inner: string; end: number } | null {
+  if (source[openParenIndex] !== "(") return null;
+  let depth = 0;
+  for (let i = openParenIndex; i < source.length; i++) {
+    const ch = source[i]!;
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        return { inner: source.slice(openParenIndex + 1, i), end: i + 1 };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Same-line `if (<cond>) revert <Name>(...);` with paren-depth condition parse.
+ * Multi-line conditions are out of scope (by design).
+ */
+export function extractSameLineIfReverts(source: string): RawIfRevert[] {
+  const out: RawIfRevert[] = [];
+  const ifRe = /\bif\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = ifRe.exec(source)) !== null) {
+    const openIdx = m.index + m[0]!.length - 1;
+    const bal = extractBalancedParens(source, openIdx);
+    if (!bal) continue;
+    // Remainder of the physical line after the condition's closing `)`.
+    const after = source.slice(bal.end);
+    const lineEnd = after.search(/[\r\n]/);
+    const restOfLine = lineEnd === -1 ? after : after.slice(0, lineEnd);
+    const rev = restOfLine.match(/^\s*revert\s+([A-Za-z0-9_]+)\s*(?:\(|;)/);
+    if (!rev) continue;
+    out.push({
+      condition: bal.inner.trim(),
+      error: rev[1]!,
+      index: m.index,
+    });
+  }
+  return out;
+}
+
+/**
  * Normalize a Solidity boolean condition to a polarity-comparable key.
  * Returns empty string when the condition is too complex for this checker.
  */
 export function normalizePredicate(raw: string): string {
   let s = raw.replace(/\s+/g, " ").trim();
-  // Strip outer parens
   while (s.startsWith("(") && s.endsWith(")")) {
-    s = s.slice(1, -1).trim();
+    const inner = s.slice(1, -1).trim();
+    // Only strip if outer parens are balanced matching pair
+    if (extractBalancedParens(`(${inner})`, 0)?.inner === inner) {
+      s = inner;
+    } else {
+      break;
+    }
   }
 
-  // Collapse address(0) / bytes32(0)
   s = s.replace(/address\s*\(\s*0\s*\)/g, "0");
   s = s.replace(/bytes32\s*\(\s*0\s*\)/g, "0");
 
-  // Negation forms → positive with bang prefix on comparison
-  // Keep compound with || / && as opaque multi-keys (sorted parts)
   if (s.includes("||") || s.includes("&&")) {
     const parts = s.split(/\s*(\|\||&&)\s*/);
     const norms = parts
@@ -140,23 +225,19 @@ function normalizeSimple(s: string): string {
   s = s.replace(/address\s*\(\s*0\s*\)/g, "0");
   s = s.replace(/bytes32\s*\(\s*0\s*\)/g, "0");
 
-  // bang-prefix
   if (s.startsWith("!")) {
     const inner = s.slice(1).trim();
-    // !x.active → treat as field truth polarity
     return `!${inner}`;
   }
 
   const cmp = s.match(/^(.+?)\s*(==|!=|>|>=|<|<=)\s*(.+)$/);
   if (!cmp) {
-    // bare truthy (e.g. paused, listings[tokenId].active)
     return s;
   }
   let lhs = cmp[1]!.trim();
   let op = cmp[2]!;
   let rhs = cmp[3]!.trim();
 
-  // Flip so constant is on the right when possible
   if (/^(0|true|false|\d+)$/.test(lhs) && !/^(0|true|false|\d+)$/.test(rhs)) {
     const flip: Record<string, string> = {
       "==": "==",
@@ -170,7 +251,6 @@ function normalizeSimple(s: string): string {
     op = flip[op] ?? op;
   }
 
-  // Commutative == / != : sort operands so `a != b` and `b != a` collapse
   if (op === "==" || op === "!=") {
     if (lhs.localeCompare(rhs) > 0) {
       [lhs, rhs] = [rhs, lhs];
@@ -190,7 +270,6 @@ export function oppositePredicate(normalized: string): string | null {
 
   const cmp = normalized.match(/^(.+?) ([=!<>]=?) (.+)$/);
   if (!cmp) {
-    // bare → bang
     return `!${normalized}`;
   }
   const lhs = cmp[1]!;
@@ -211,29 +290,99 @@ export function oppositePredicate(normalized: string): string | null {
 
 export function collectRevertSites(source: string, fileLabel: string): Site[] {
   const sites: Site[] = [];
-  IF_REVERT_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = IF_REVERT_RE.exec(source)) !== null) {
-    const raw = match[1]!.trim();
-    const error = match[2]!;
-    const normalized = normalizePredicate(raw);
+  for (const raw of extractSameLineIfReverts(source)) {
+    const normalized = normalizePredicate(raw.condition);
     if (!normalized) continue;
-    sites.push({ file: fileLabel, error, raw, normalized });
+    sites.push({
+      file: fileLabel,
+      error: raw.error,
+      raw: raw.condition,
+      normalized,
+    });
   }
   return sites;
 }
 
-function contractLabelFromPath(filePath: string): string {
-  return path.basename(filePath, ".sol");
+/**
+ * Roles named by a `NotX` / `NotXOrY` error (lowercased stems).
+ * Returns null if the name is not a Not* role form.
+ */
+export function rolesFromNotErrorName(error: string): string[] | null {
+  if (!error.startsWith("Not") || error.length <= 3) return null;
+  // Skip Not* that are not role gates (NotOffered, NotBinding, NotActive, …)
+  // Underassertion rule only applies when the condition is msg.sender role compounds.
+  const body = error.slice(3);
+  return body
+    .split("Or")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Extract role stems from `msg.sender != <role>` / `msg.sender != <role>()` conjuncts.
+ * Returns null if the condition is not a pure && of such conjuncts (≥2).
+ */
+export function senderRoleStemsFromCondition(raw: string): string[] | null {
+  let s = raw.replace(/\s+/g, " ").trim();
+  while (s.startsWith("(") && s.endsWith(")")) {
+    const inner = s.slice(1, -1).trim();
+    if (extractBalancedParens(`(${inner})`, 0)?.inner === inner) s = inner;
+    else break;
+  }
+  if (!s.includes("&&") || s.includes("||")) return null;
+  const parts = s.split(/\s*&&\s*/).map((p) => p.trim());
+  if (parts.length < 2) return null;
+  const stems: string[] = [];
+  for (const part of parts) {
+    const m = part.match(
+      /^msg\.sender\s*!=\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\s*\))?\s*$/,
+    );
+    if (!m) return null;
+    stems.push(m[1]!.toLowerCase());
+  }
+  return stems.sort();
+}
+
+/**
+ * `NotGuardian` understates `msg.sender != guardian && msg.sender != owner()` —
+ * the name asserts a subset of the roles the condition actually admits.
+ */
+export function findNotRoleUnderassertions(sites: Site[]): string[] {
+  const violations: string[] = [];
+  for (const site of sites) {
+    const named = rolesFromNotErrorName(site.error);
+    if (!named) continue;
+    const stems = senderRoleStemsFromCondition(site.raw);
+    if (!stems || stems.length < 2) continue;
+    // Map owner() → owner already via stem capture.
+    const namedSet = new Set(named);
+    const missing = stems.filter((s) => !namedSet.has(s));
+    if (missing.length > 0) {
+      violations.push(
+        `${site.file} ${site.error}: condition admits roles [${stems.join(", ")}] but name only claims [${named.join(", ")}] — missing [${missing.join(", ")}]`,
+      );
+    }
+  }
+  return violations;
 }
 
 function allowlistKey(contract: string, error: string): string {
   return `${contract}::${error}`;
 }
 
-function buildAllowlistSet(): Set<string> {
+function buildFamilyAllowlistSet(): Set<string> {
   const set = new Set<string>();
-  for (const entry of ERROR_MULTI_CONDITION_ALLOWLIST) {
+  for (const entry of ERROR_MULTI_CONDITION_FAMILIES) {
+    for (const c of entry.contracts) {
+      set.add(allowlistKey(c, entry.error));
+    }
+  }
+  return set;
+}
+
+function buildNormaliserAliasSet(): Set<string> {
+  const set = new Set<string>();
+  for (const entry of ERROR_NORMALISER_ALIASES) {
     for (const c of entry.contracts) {
       set.add(allowlistKey(c, entry.error));
     }
@@ -244,10 +393,9 @@ function buildAllowlistSet(): Set<string> {
 export function findPolarityViolations(sites: Site[]): string[] {
   const byError = new Map<string, Site[]>();
   for (const site of sites) {
-    const key = site.error;
-    const list = byError.get(key) ?? [];
+    const list = byError.get(site.error) ?? [];
     list.push(site);
-    byError.set(key, list);
+    byError.set(site.error, list);
   }
   const violations: string[] = [];
   for (const [error, list] of byError) {
@@ -266,7 +414,8 @@ export function findPolarityViolations(sites: Site[]): string[] {
 
 export function findUnjustifiedMultiCondition(
   sites: Site[],
-  allowlist: Set<string>,
+  families: Set<string>,
+  aliases: Set<string>,
 ): string[] {
   const byContractError = new Map<string, Set<string>>();
   for (const site of sites) {
@@ -279,15 +428,81 @@ export function findUnjustifiedMultiCondition(
   const violations: string[] = [];
   for (const [key, norms] of byContractError) {
     if (norms.size < 2) continue;
-    if (allowlist.has(key)) continue;
+    if (families.has(key)) continue;
+    if (aliases.has(key)) continue; // still counted separately; not a "family" miss
     violations.push(
-      `${key}: ${norms.size} distinct predicates without allowlist entry — ${[...norms].join(" | ")}`,
+      `${key}: ${norms.size} distinct predicates without family/alias entry — ${[...norms].join(" | ")}`,
     );
   }
   return violations;
 }
 
+/** Alias entries that still have ≥2 distinct norms after extraction (still needed). */
+export function findStillNeededAliases(
+  sites: Site[],
+  aliases: Set<string>,
+): { needed: string[]; obsolete: string[] } {
+  const byContractError = new Map<string, Set<string>>();
+  for (const site of sites) {
+    const contract = path.basename(site.file, ".sol");
+    const key = allowlistKey(contract, site.error);
+    const set = byContractError.get(key) ?? new Set();
+    set.add(site.normalized);
+    byContractError.set(key, set);
+  }
+  const needed: string[] = [];
+  const obsolete: string[] = [];
+  for (const key of aliases) {
+    const norms = byContractError.get(key);
+    if (norms && norms.size >= 2) needed.push(key);
+    else obsolete.push(key);
+  }
+  return { needed, obsolete };
+}
+
 describe("error-name-truth-policy", () => {
+  it("paren-depth extractor captures owner() inside revoke-style gates", () => {
+    const fixture = `
+      contract Demo {
+        function revoke() external {
+          if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        }
+      }
+    `;
+    const raw = extractSameLineIfReverts(fixture);
+    assert.equal(raw.length, 1);
+    assert.match(raw[0]!.condition, /owner\(\)/);
+    const sites = collectRevertSites(fixture, "Demo.sol");
+    assert.equal(sites.length, 1);
+  });
+
+  it("detects NotX underassertion when name omits a role the condition admits", () => {
+    const fixture = `
+      contract Demo {
+        function revoke() external {
+          if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        }
+      }
+    `;
+    const sites = collectRevertSites(fixture, "Demo.sol");
+    const hits = findNotRoleUnderassertions(sites);
+    assert.ok(hits.length >= 1);
+    assert.match(hits[0]!, /NotGuardian/);
+    assert.match(hits[0]!, /owner/);
+  });
+
+  it("NotGuardianOrOwner matches guardian+owner compound", () => {
+    const fixture = `
+      contract Demo {
+        function revoke() external {
+          if (msg.sender != guardian && msg.sender != owner()) revert NotGuardianOrOwner();
+        }
+      }
+    `;
+    const sites = collectRevertSites(fixture, "Demo.sol");
+    assert.deepEqual(findNotRoleUnderassertions(sites), []);
+  });
+
   it("detects a name guarding a condition and its negation (fixture)", () => {
     const fixture = `
       contract Demo {
@@ -316,6 +531,27 @@ describe("error-name-truth-policy", () => {
     assert.equal(findPolarityViolations(sites).length, 0);
   });
 
+  it("every same-line if-revert is collected (no nested-paren silent drops)", () => {
+    for (const file of listSoliditySources()) {
+      const source = fs.readFileSync(file, "utf8");
+      const extracted = extractSameLineIfReverts(source);
+      // Re-scan with a line-oriented check: each physical line containing both
+      // `if (` and `revert Name` must appear in extracted.
+      const lines = source.split(/\r?\n/);
+      let expected = 0;
+      for (const line of lines) {
+        if (/\bif\s*\(/.test(line) && /\brevert\s+[A-Za-z0-9_]+/.test(line)) {
+          expected++;
+        }
+      }
+      assert.equal(
+        extracted.length,
+        expected,
+        `${path.relative(CONTRACTS_DIR, file)}: extracted ${extracted.length} same-line if-reverts, line scan expected ${expected}`,
+      );
+    }
+  });
+
   it("production contracts have no polarity contradictions", () => {
     const sites: Site[] = [];
     for (const file of listSoliditySources()) {
@@ -326,28 +562,82 @@ describe("error-name-truth-policy", () => {
     assert.deepEqual(violations, [], violations.join("\n"));
   });
 
-  it("multi-condition names are allowlisted with justifications", () => {
+  it("NotX role underassertion is empty on production sources", () => {
     const sites: Site[] = [];
     for (const file of listSoliditySources()) {
       const rel = path.relative(CONTRACTS_DIR, file);
       sites.push(...collectRevertSites(fs.readFileSync(file, "utf8"), rel));
     }
-    const allowlist = buildAllowlistSet();
-    const violations = findUnjustifiedMultiCondition(sites, allowlist);
+    const violations = findNotRoleUnderassertions(sites);
     assert.deepEqual(
       violations,
       [],
-      `Unjustified multi-condition errors (add split or allowlist):\n${violations.join("\n")}`,
+      `NotX underassertion (rename to match roles, do not allowlist):\n${violations.join("\n")}`,
     );
   });
 
-  it("allowlist stays small", () => {
-    assert.ok(
-      ERROR_MULTI_CONDITION_ALLOWLIST.length <= 16,
-      `allowlist grew to ${ERROR_MULTI_CONDITION_ALLOWLIST.length}; prefer splits`,
+  it("multi-condition names are family- or alias-listed with justifications", () => {
+    const sites: Site[] = [];
+    for (const file of listSoliditySources()) {
+      const rel = path.relative(CONTRACTS_DIR, file);
+      sites.push(...collectRevertSites(fs.readFileSync(file, "utf8"), rel));
+    }
+    const families = buildFamilyAllowlistSet();
+    const aliases = buildNormaliserAliasSet();
+    const violations = findUnjustifiedMultiCondition(sites, families, aliases);
+    assert.deepEqual(
+      violations,
+      [],
+      `Unjustified multi-condition errors (split name or add to families — never aliases for real families):\n${violations.join("\n")}`,
     );
-    for (const entry of ERROR_MULTI_CONDITION_ALLOWLIST) {
+  });
+
+  it("allowlist split: families vs normaliser aliases stay small and justified", () => {
+    assert.ok(
+      ERROR_MULTI_CONDITION_FAMILIES.length <= 16,
+      `families grew to ${ERROR_MULTI_CONDITION_FAMILIES.length}; prefer splits`,
+    );
+    assert.ok(
+      ERROR_NORMALISER_ALIASES.length <= 8,
+      `aliases grew to ${ERROR_NORMALISER_ALIASES.length}; prefer normaliser fix`,
+    );
+    for (const entry of ERROR_MULTI_CONDITION_FAMILIES) {
       assert.ok(entry.justification.trim().length > 10, entry.error);
     }
+    for (const entry of ERROR_NORMALISER_ALIASES) {
+      assert.ok(entry.justification.trim().length > 10, entry.error);
+    }
+    // No overlap between lists
+    const famKeys = new Set(
+      ERROR_MULTI_CONDITION_FAMILIES.flatMap((e) =>
+        e.contracts.map((c) => allowlistKey(c, e.error)),
+      ),
+    );
+    for (const entry of ERROR_NORMALISER_ALIASES) {
+      for (const c of entry.contracts) {
+        assert.ok(
+          !famKeys.has(allowlistKey(c, entry.error)),
+          `${entry.error} must not appear in both families and aliases`,
+        );
+      }
+    }
+  });
+
+  it("normaliser aliases are still needed after extraction (or empty obsolete list)", () => {
+    const sites: Site[] = [];
+    for (const file of listSoliditySources()) {
+      const rel = path.relative(CONTRACTS_DIR, file);
+      sites.push(...collectRevertSites(fs.readFileSync(file, "utf8"), rel));
+    }
+    const { needed, obsolete } = findStillNeededAliases(
+      sites,
+      buildNormaliserAliasSet(),
+    );
+    assert.deepEqual(
+      obsolete,
+      [],
+      `Obsolete normaliser aliases (remove from ERROR_NORMALISER_ALIASES): ${obsolete.join(", ")}`,
+    );
+    assert.ok(needed.length === ERROR_NORMALISER_ALIASES.length);
   });
 });

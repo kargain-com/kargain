@@ -2,8 +2,9 @@
  * Nuclear #2 ordering invariants — pure checks for plan + deploy scripts.
  *
  * Encumbrance registration must follow both mode proxies and precede gateway
- * bind / ownership handoff. A run that registers late fails here rather than
- * proceeding to a stack where `may` is blind to live consignments.
+ * bind. Payment-token admission must complete while the deployer still owns the
+ * modes, before Timelock handoff. A run that registers late or hands off before
+ * admission fails here rather than proceeding.
  */
 
 import { NUCLEAR_DEPLOY_STEPS, type NuclearDeployStep } from "./nuclear-deploy-plan.js";
@@ -15,19 +16,29 @@ export const NUCLEAR_ENCUMBRANCE_REGISTER_STEPS = [
 ] as const satisfies readonly NuclearDeployStep[];
 
 /**
+ * Guardian-immediate reduce-exposure ops (G3). Not delayed.
+ * Owner (Timelock) may also revoke; guardian may not approve.
+ */
+export const NUCLEAR_GUARDIAN_IMMEDIATE_OPS = [
+  "FixedPrice.pause",
+  "FixedPrice.revokePaymentToken",
+  "Ascending.pause",
+  "Ascending.revokePaymentToken",
+] as const;
+
+/**
  * Owner-gated ops that sit behind Timelock48h after Nuclear handoff.
- * Modes initialize with owner = timelock, so these never run as the deployer EOA.
+ * Initial payment-token admission runs as deployer before handoff; post-handoff
+ * approve / feed changes go through Timelock.
  */
 export const NUCLEAR_TIMELOCK_OWNER_OPS = [
   "FixedPrice.approvePaymentToken",
-  "FixedPrice.revokePaymentToken",
   "FixedPrice.setCurrencyFeed",
   "FixedPrice.setMaxFeedStaleness",
   "FixedPrice.setGuardian",
   "FixedPrice.unpause",
   "FixedPrice.upgradeToAndCall",
   "Ascending.approvePaymentToken",
-  "Ascending.revokePaymentToken",
   "Ascending.setAuctionRules",
   "Ascending.setGuardian",
   "Ascending.unpause",
@@ -43,8 +54,7 @@ export const NUCLEAR_TIMELOCK_OWNER_OPS = [
 export type NuclearTimelockOwnerOp = (typeof NUCLEAR_TIMELOCK_OWNER_OPS)[number];
 
 /**
- * Fail if encumbrance registration is missing or out of order relative to
- * mode proxies and gateway bind.
+ * Fail if encumbrance registration / admission / handoff are missing or out of order.
  */
 export function assertNuclearEncumbranceOrdering(
   steps: readonly string[] = NUCLEAR_DEPLOY_STEPS,
@@ -58,8 +68,12 @@ export function assertNuclearEncumbranceOrdering(
   const ascendingProxy = idx("AscendingConsignmentProxy");
   const regFixed = idx("addEncumbranceSourceFixedPrice");
   const regAscending = idx("addEncumbranceSourceAscending");
+  const admitFixed = idx("approvePaymentTokenFixedPrice");
+  const admitAscending = idx("approvePaymentTokenAscending");
   const gateway = idx("KarPassportBridgeGateway");
   const setGateway = idx("setBridgeGateway");
+  const handoffFixed = idx("transferFixedPriceOwnership");
+  const handoffAscending = idx("transferAscendingOwnership");
   const handoffPassport = idx("transferPassportOwnership");
 
   if (!(ascendingProxy < regFixed && ascendingProxy < regAscending)) {
@@ -77,9 +91,24 @@ export function assertNuclearEncumbranceOrdering(
       "Nuclear ordering: addEncumbranceSource must complete before setBridgeGateway",
     );
   }
+  if (!(admitFixed < handoffFixed && admitAscending < handoffAscending)) {
+    throw new Error(
+      "Nuclear ordering: approvePaymentToken must complete before mode ownership handoff",
+    );
+  }
   if (!(regFixed < handoffPassport && regAscending < handoffPassport)) {
     throw new Error(
       "Nuclear ordering: addEncumbranceSource must complete before passport ownership handoff",
+    );
+  }
+  if (!(admitFixed < handoffPassport && admitAscending < handoffPassport)) {
+    throw new Error(
+      "Nuclear ordering: payment-token admission must complete before passport ownership handoff",
+    );
+  }
+  if (!(handoffFixed < handoffPassport && handoffAscending < handoffPassport)) {
+    throw new Error(
+      "Nuclear ordering: mode ownership handoff must precede passport ownership handoff",
     );
   }
 }
@@ -107,11 +136,28 @@ export function assertSourcesRegistered(input: {
 }
 
 /**
- * Checklist-only constraint (cannot fail the script without a Solidity gate):
- * `openDirect` / `openAscending*` do not require `isEncumbranceSource(address(this))`.
- * An operator who skips registration can still open consignments while LeaveChain
- * stays blind. Nuclear runbook must not skip register; optional future bytecode
- * gate is a finding, not a silent assumption.
+ * On-chain assertion after deployer admission. Must hold before mode handoff.
  */
-export const CHECKLIST_ONCHAIN_OPEN_WITHOUT_REGISTER =
-  "On-chain open does not require isEncumbranceSource(this). Register both modes before any consignment opens — enforced in deploy scripts, not bytecode.";
+export function assertPaymentTokensAdmitted(input: {
+  fixedPriceUsdcEnabled: boolean;
+  ascendingUsdcEnabled: boolean;
+  usdc: string;
+}): void {
+  if (!input.fixedPriceUsdcEnabled) {
+    throw new Error(
+      `FixedPrice payment token not admitted for ${input.usdc} — refusing mode ownership handoff`,
+    );
+  }
+  if (!input.ascendingUsdcEnabled) {
+    throw new Error(
+      `Ascending payment token not admitted for ${input.usdc} — refusing mode ownership handoff`,
+    );
+  }
+}
+
+/**
+ * Bytecode open requires `isEncumbranceSource(this)` (ConsignmentBase._requireCanOpen).
+ * Tooling register + on-chain gate are independent custody guards.
+ */
+export const ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE =
+  "On-chain open requires isEncumbranceSource(this) — ModeNotEncumbranceSource if unregistered. Deploy scripts also abort if register is missing before gateway.";

@@ -95,6 +95,22 @@ contract ConsignmentBaseHarness is ConsignmentBase {
         return mayPermit[tokenId][intent];
     }
 
+    /// @dev Harness is not a passport registry member — open tests stub this as registered.
+    function _isSelfEncumbranceSource() internal view override returns (bool) {
+        return selfEncumbranceRegistered;
+    }
+
+    bool public selfEncumbranceRegistered = true;
+
+    function setSelfEncumbranceRegistered(bool registered) external {
+        selfEncumbranceRegistered = registered;
+    }
+
+    /// @dev Mirrors mode soft-revoke authority for error-coverage of `NotGuardianOrOwner`.
+    function requireGuardianOrOwner() external view {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardianOrOwner();
+    }
+
     function _takeCustody(uint256 tokenId, address from) internal override {
         custodyHolder[tokenId] = address(this);
         // from is the passport owner at open; recorded for assertions only.
