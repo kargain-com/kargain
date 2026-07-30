@@ -46,7 +46,6 @@ export function EnsAvatar({ address, size = 40, className, fill }: Props) {
   if (avatarUrl) {
     return (
       <span aria-hidden className={layout}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={avatarUrl}
           alt=""

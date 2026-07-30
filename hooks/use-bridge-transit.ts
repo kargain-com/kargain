@@ -73,6 +73,8 @@ export function useBridgeTransit(opts: {
   );
 
   const record = useMemo(() => {
+    // External-store bump — forces recompute when transit records change.
+    void storeVersion;
     if (!address || !enabled) return null;
     return getBridgeTransit(address, tokenId);
   }, [address, enabled, storeVersion, tokenId]);
@@ -153,14 +155,7 @@ export function useBridgeTransit(opts: {
     return () => {
       controller.abort();
     };
-  }, [
-    address,
-    enabled,
-    reconcileOnce,
-    record?.phase,
-    record?.sentAt,
-    tokenId,
-  ]);
+  }, [address, enabled, reconcileOnce, record, tokenId]);
 
   const dstName = record ? shortChainName(record.dstChainId) : "";
   const ui = record ? deriveBridgeTransitUi(record, dstName) : null;

@@ -322,6 +322,8 @@ export function ProfilePage({
   }, [address, isOwner, passports]);
 
   const passportTransitOverlays = useMemo(() => {
+    // External-store bump — forces recompute when transit records change.
+    void transitStoreVersion;
     if (!isOwner || !address) return new Map<string, { badge: string; hrefChainId: number }>();
     const map = new Map<string, { badge: string; hrefChainId: number }>();
     for (const p of passports) {

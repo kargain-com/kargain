@@ -67,6 +67,12 @@ const eslintConfig = [
           ],
         },
       ],
+      // Native <img> is intentional: Arweave/gateway covers, ENS/Nostr avatars,
+      // data-URL QR plates, chain icons, and Satori OG (ImageResponse) cannot
+      // use next/image without remote allowlists and layout changes. Brand
+      // chrome uses CSS mask (KargainLogo), not next/image. Do not re-add
+      // per-file eslint-disable for this rule.
+      "@next/next/no-img-element": "off",
       // NS-2: kind:0 NIP-39 ethereum identity tag queries must use the attested
       // profile resolver only — unverified #i reads allow profile spoofing.
       "no-restricted-syntax": [

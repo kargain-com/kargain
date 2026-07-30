@@ -38,7 +38,6 @@ export function PhotoThumbGrid({
           key={item.id}
           className="relative aspect-square overflow-hidden rounded-md border border-border-default bg-bg-surface"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={item.src}
             alt={item.alt}

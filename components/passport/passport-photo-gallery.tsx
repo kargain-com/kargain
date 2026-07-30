@@ -226,7 +226,6 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             className="block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
             aria-label="View full screen"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={mainUrl} alt="" className="h-full w-full object-cover" />
           </button>
 
@@ -269,7 +268,6 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
               aria-label={`Photo ${index + 1}`}
               aria-current={index === selected ? "true" : undefined}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt="" className="h-full w-full object-cover" />
             </button>
           ))}
@@ -305,7 +303,6 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             onTouchMove={hasMultiple ? swipe.onTouchMove : undefined}
             onTouchEnd={hasMultiple ? swipe.onTouchEnd : undefined}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={mainUrl} alt="" className="max-h-full max-w-full object-contain" />
             {hasMultiple && (
               <>

@@ -977,7 +977,7 @@ Decorative icons: `aria-hidden="true"`. Meaningful icon-only controls: `aria-lab
 - **Contrast:** `text-text-primary` on `bg-bg-primary` must meet **WCAG 2.1 AA** (4.5:1 body, 3:1 large text). Secondary text on primary background must still meet 4.5:1 for body-sized copy; use `text-text-secondary` only for non-essential supporting text at `text-sm` or larger when contrast allows.
 - **Reduced motion:** All Framer Motion sequences must call `useReducedMotion()` and skip or shorten transforms.
 - **Language:** `lang="en"` on `<html>` in [`app/layout.tsx`](../app/layout.tsx). English-only copy throughout (no locale routing or `lib/i18n/`).
-- **Images:** Meaningful `alt` text; decorative images `alt=""`. Brand logo uses CSS mask (`KargainLogo`), not `next/image`. Favicon is SVG (`/kargain-logo.svg`); OG image via `app/opengraph-image.tsx`.
+- **Images:** Meaningful `alt` text; decorative images `alt=""`. Brand logo uses CSS mask (`KargainLogo`), not `next/image`. Favicon is SVG (`/kargain-logo.svg`); OG image via `app/opengraph-image.tsx`. Commerce/media, avatars, QR plates, chain icons, and OG use native `<img>` — `@next/next/no-img-element` is off once in `eslint.config.mjs` (Arweave/gateway URLs, data-URLs, Satori); do not re-add per-file disables.
 
 ---
 
@@ -1551,4 +1551,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.100 (July 2026 — FixedPrice sell pairings from commerce resolvers; P4 Fiat×token feed gate in UI). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.101 (July 2026 — native `<img>` policy via ESLint once; commerce media/avatars/QR/OG). Update when tokens, app shell, or component contracts change.*

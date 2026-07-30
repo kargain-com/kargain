@@ -52,7 +52,6 @@ export function AuctionCard({ row, now }: Props) {
       >
         <div className={LISTING_CARD_IMAGE_FRAME}>
           {row.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={row.imageUrl}
               alt={row.title}

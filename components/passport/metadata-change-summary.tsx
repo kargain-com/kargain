@@ -43,7 +43,6 @@ function PhotoChangeRow({ change }: { change: PhotosDisplayChange }) {
               key={`${thumb.src}-${index}`}
               className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border-default bg-bg-surface"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={thumb.src} alt={thumb.alt} className="h-full w-full object-cover" />
             </div>
           ))}

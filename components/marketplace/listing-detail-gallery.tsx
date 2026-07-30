@@ -38,7 +38,6 @@ export function ListingDetailGallery({ urls, prevLabel, nextLabel, altBase }: Pr
   return (
     <div className="space-y-3">
       <div className="relative overflow-hidden rounded-md border border-border-default bg-bg-surface">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={current}
           alt={`${altBase} — ${i + 1} of ${safe.length}`}
@@ -83,7 +82,6 @@ export function ListingDetailGallery({ urls, prevLabel, nextLabel, altBase }: Pr
                 aria-label={`Show image ${idx + 1}`}
                 aria-current={idx === i}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={u} alt="" className="h-16 w-24 object-cover" />
               </button>
             </li>

@@ -57,7 +57,6 @@ function QrCodeImage({
 
   return (
     <div className={cn("bg-white p-3 rounded-lg w-fit", className)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={dataUrl} width={size} height={size} alt={ariaLabel} />
     </div>
   );

@@ -80,7 +80,6 @@ export function ProfilePassportCard({
     >
       <div className={LISTING_CARD_IMAGE_FRAME}>
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageUrl}
             alt={title}

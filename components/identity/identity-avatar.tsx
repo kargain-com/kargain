@@ -48,7 +48,6 @@ function IdentityAvatarContent({
 
   if (nostrPicture && !nostrFailed) {
     return (
-      /* eslint-disable-next-line @next/next/no-img-element */
       <img
         src={nostrPicture}
         alt={alt}
