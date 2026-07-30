@@ -1112,7 +1112,7 @@ describe("FixedPriceConsignment", () => {
 
   // ---- P4: measured feed for fiat; feedless asset-only; monotonic feed ----
 
-  it("P4: fiat open in feedless token refused; asset denom opens and settles", async () => {
+  it("P4: zero-feed admission proceeds; fiat open refused; asset denom opens and settles", async () => {
     const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
     await mode.write.approvePaymentToken([usdc.address, ZERO], { account: owner.account });
     assert.equal(await paymentTokenEnabled(usdc.address), true);

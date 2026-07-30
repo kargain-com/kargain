@@ -70,7 +70,7 @@ export type NuclearDeployPlan = {
   /** Chain-specific externals — only from verified tables. */
   externals: {
     usdc: `0x${string}`;
-    /** FixedPrice payment-token feed; zero → refuse admit (no silent peg). */
+    /** FixedPrice payment-token feed; zero → admit asset-only + announce fiat unavailable. */
     usdcUsdFeed: `0x${string}`;
     nativeUsdFeed: `0x${string}`;
     layerZeroEndpoint: `0x${string}`;

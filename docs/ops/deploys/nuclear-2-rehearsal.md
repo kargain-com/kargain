@@ -41,8 +41,8 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 | Mode proxies → `addEncumbranceSource` ×2 → admit USDC → gateway → mode handoff → passport handoff | **Structural** — `assertNuclearEncumbranceOrdering` in plan/dry-run |
 | AscendingHoldLib → AscendingOpenLib → AscendingConsignmentImpl → Proxy | **Structural** — linked libraries before Ascending impl; manifest stores `ascendingHoldLib` / `ascendingOpenLib` |
 | Register before gateway | Live/local deploy **aborts** if `isEncumbranceSource` is false |
-| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not enabled on both modes **and** FixedPrice USDC feed ≠ 0 |
-| FixedPrice USDC/USD feed present | `requireUsdcUsdFeed` — chain without `CHAINLINK_FEEDS.usdcUsdFeed` **refuses** FixedPrice USDC admit (no silent peg). Base Sepolia (84532) has none today; Eth Sepolia has Chainlink USDC/USD. Mainnet rows (`1`, `8453`) carry verified feeds for future config but are **not** Nuclear targets (`isCommercialChainId` → 84532\|11155111 only) |
+| Admit before mode ownership handoff | Live/local deploy **aborts** if USDC not **enabled** on both modes, or FixedPrice feed read-back ≠ configured `usdcUsdFeed` (including zero) |
+| FixedPrice USDC/USD feed | `resolveUsdcUsdFeedForAdmit` — non-zero feed → admit with measured oracle; **zero feed → admit asset-only and announce fiat unavailable** (never invent a feed / silent peg). Base Sepolia (84532) has **no** Chainlink USDC/USD (RPC-probed 2026-07-30). Eth Sepolia has `0xA2F78…270E`. Mainnet rows (`1`, `8453`) carry verified feeds for future config but are **not** Nuclear targets (`isCommercialChainId` → 84532\|11155111 only) |
 | Open requires live encumbrance source | On-chain `ModeNotEncumbranceSource` in `ConsignmentBase._requireCanOpen` |
 
 ---
@@ -55,7 +55,12 @@ Operator steps for the next commercial Nuclear wave. **Cursor never runs live tx
 pnpm deploy:nuclear:dry-run
 ```
 
-Confirm shared params, step list (includes admission + mode handoff), Timelock expand/restore ops, and guardian-immediate ops. Abort if ordering assert fails.
+Confirm shared params, step list (includes admission + mode handoff), Timelock expand/restore ops, and guardian-immediate ops. Expect:
+
+- `84532: admit USDC with feed 0x0…0` plus a `LIMITATION:` line that fiat-denominated USDC sales are unavailable
+- `11155111: <feed> — admit OK with measured feed`
+
+Abort if ordering assert fails.
 
 ### 2. Deploy Base Sepolia (84532)
 
@@ -66,9 +71,18 @@ pnpm deploy:sepolia
 Expect console:
 
 - `✓ encumbrance sources registered (refusing gateway until this holds)`
-- `✓ USDC admitted on both modes (refusing handoff until this holds)`
+- `✓ USDC admitted on both modes (FixedPrice feed zero — fiat unavailable; asset-denominated only)` plus the same `LIMITATION:` announcement
+- Do **not** expect a deploy abort solely because `usdcUsdFeed` is zero
 
 Record manifest `deployments/84532.json` addresses + `blocks.*` / `indexFromBlock`.
+
+**Deployment-record notes for 84532 (write into the ops deploy log):**
+
+- Fiat-denominated sales in USDC are unavailable on Base Sepolia because no Chainlink USDC/USD aggregator exists on 84532 (probed 2026-07-30).
+- Fiat-denominated USDC sales are exercised on **Ethereum Sepolia (11155111)** with feed `0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E`.
+- Base **mainnet** carries a verified USDC/USD feed at `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` (config only — not a Nuclear target).
+- The untested pairing is Base Sepolia × fiat USDC, which corresponds to no production configuration.
+- Path forward: Timelock `approvePaymentToken(USDC, feed)` with a real aggregator when one appears; once set, feed is **monotonic** and cannot be cleared. Do **not** deploy a mock / private-key price contract on any commercial chain.
 
 ### 3. Deploy Ethereum Sepolia (11155111)
 
@@ -76,7 +90,7 @@ Record manifest `deployments/84532.json` addresses + `blocks.*` / `indexFromBloc
 pnpm deploy:sepolia:eth
 ```
 
-Same checks. Manifest `deployments/11155111.json`.
+Same structural checks. FixedPrice USDC admit uses the measured feed. Manifest `deployments/11155111.json`.
 
 ### 4. Ownership shape (read back on each chain)
 
@@ -85,7 +99,8 @@ For FixedPrice, Ascending, KarPassport, KarProStaking:
 - `owner()` == Timelock48h
 - Mode `guardian()` == `COMMERCE_GUARDIAN` (≠ Timelock, ≠ deployer)
 - Passport `isEncumbranceSource(fixedPrice)` and `isEncumbranceSource(ascending)` are true
-- Both modes: USDC payment token **enabled** (admitted at construction); FixedPrice `paymentTokens(USDC).feed` **non-zero** (measured USDC/USD)
+- Both modes: USDC payment token **enabled** (admitted at construction)
+- FixedPrice `paymentTokens(USDC).feed`: **non-zero** on 11155111; **zero** on 84532 (asset-only — announced)
 - `bridgeGateway()` bound
 
 Prove guardian can `pause()` and `revokePaymentToken(usdc)` (soft-disable); guardian **cannot** `approvePaymentToken` / `unpause` — only Timelock schedule/execute those.
@@ -104,12 +119,12 @@ Schedule → wait `getMinDelay()` (48h) → execute.
 
 **Feed freshness:** `setCurrencyFeed` / feed-bearing `approvePaymentToken` run `_validateFeed` at **execute** time. Live Chainlink aggregators stay fresh across 48h. Do not point Timelock ops at a static mock feed without refreshing it before execute.
 
-**Chain without USDC/USD feed:** FixedPrice Nuclear admit **aborts** (`requireUsdcUsdFeed`). Do not pass `address(0)` as a peg. Ascending admit (asset-only) does not need a payment-token feed. Populating mainnet `usdcUsdFeed` in `CHAINLINK_FEEDS` does **not** enable `pnpm deploy:sepolia`-style Nuclear on mainnet — commercial allowlist stays testnet-only until §7.6 clears.
+**Chain without USDC/USD feed:** Nuclear **admits** USDC with `feed=0` and announces fiat unavailable. Do not pass a fabricated address as a peg. Ascending admit (asset-only) does not need a payment-token feed. Populating mainnet `usdcUsdFeed` in `CHAINLINK_FEEDS` does **not** enable `pnpm deploy:sepolia`-style Nuclear on mainnet — commercial allowlist stays testnet-only until §7.6 clears.
 
 ### 6. Guardian-immediate ops (no delay)
 
 - `pause` / soft-`revokePaymentToken` on either mode
-- Soft-revoke keeps decimals/feed so **in-flight** buy/bid/settle still complete via the **measured** feed (not a $1 peg); **new** opens in that asset fail until Timelock re-approves with a non-zero feed
+- Soft-revoke keeps decimals/feed so **in-flight** buy/bid/settle still complete via the **measured** feed when one was set; **new** opens in that asset fail until Timelock re-approves with a non-zero feed (84532 starts with no feed — soft-revoke still disables new opens)
 
 ### 7. Cutover app + indexer (after both manifests)
 
@@ -129,7 +144,7 @@ pnpm deploy:local
 ./scripts/e2e-local.sh
 ```
 
-Local deploy also **aborts** if encumbrance register or USDC admission fails before writing the manifest.
+Local deploy also **aborts** if encumbrance register or USDC admission fails before writing the manifest. Local stack uses a mock `$1` feed for FixedPrice fiat paths in tests only — never on commercial chains.
 
 ### 9. Bridge wire (after both commercial stacks)
 
@@ -145,6 +160,7 @@ pnpm bridge:wire             # when ready
 1. **~~`approvePaymentToken` at deploy impossible as deployer~~** — **closed.** Modes initialize with `owner=deployer`; admission runs before Timelock handoff.
 2. **~~Open without register~~** — **closed.** Bytecode `ModeNotEncumbranceSource` + tooling abort.
 3. **`setCurrencyFeed` freshness is evaluated at Timelock execute** — live feeds OK; static feeds go stale across 48h. **Retained.**
+4. **~~Zero `usdcUsdFeed` aborted whole Nuclear deploy~~** — **closed.** Tooling admits with feed=0 and announces fiat unavailable; contracts refuse fiat open/quote (`PaymentTokenFeedRequired`).
 
 **Misplaced-ops (report only — not moved):** `removeEncumbranceSource` and clearing a currency feed reduce LeaveChain / quote surface but stay Timelock-delayed (shared with expand paths).
 
@@ -154,6 +170,7 @@ pnpm bridge:wire             # when ready
 
 - [ ] Both manifests committed; `COMMERCIAL_ACTIVE` updated
 - [ ] Guardian pause + soft-revoke smoke on each mode
-- [ ] USDC enabled on both modes / both chains (construction admission)
+- [ ] USDC enabled on both modes / both chains (construction admission); 84532 FixedPrice feed zero + limitation recorded; 11155111 feed non-zero
 - [ ] Ponder reindexed; `/ready` + `/status`
 - [ ] Bridge wire when both chains live
+- [ ] First public fiat-USDC lot preferred on **11155111** until Base Sepolia has a real USDC/USD aggregator

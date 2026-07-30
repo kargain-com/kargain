@@ -7,6 +7,7 @@ import {
   planIrysUpload,
   supportedIrysChainIds,
 } from "../lib/storage/irys-upload-plan.ts";
+import { rpcUrlForChain } from "../lib/web3/supported-chains.ts";
 
 describe("planIrysUpload", () => {
   it("plans Base Sepolia as base-eth + Irys devnet", () => {
@@ -14,7 +15,7 @@ describe("planIrysUpload", () => {
     assert.equal(plan.paymentToken, "base-eth");
     assert.equal(plan.bundlerUrl, IRYS_DEVNET_BUNDLER_URL);
     assert.equal(plan.devnet, true);
-    assert.equal(plan.rpcUrl, "https://sepolia.base.org");
+    assert.equal(plan.rpcUrl, rpcUrlForChain(84532));
   });
 
   it("plans Ethereum Sepolia as ethereum + Irys devnet", () => {
@@ -22,7 +23,7 @@ describe("planIrysUpload", () => {
     assert.equal(plan.paymentToken, "ethereum");
     assert.equal(plan.bundlerUrl, IRYS_DEVNET_BUNDLER_URL);
     assert.equal(plan.devnet, true);
-    assert.equal(plan.rpcUrl, "https://ethereum-sepolia-rpc.publicnode.com");
+    assert.equal(plan.rpcUrl, rpcUrlForChain(11155111));
   });
 
   it("fail-closed for unknown and mainnet chains", () => {

@@ -11,7 +11,8 @@ export type ChainFeedConfig = {
   usdc: `0x${string}`;
   /**
    * Chainlink USDC/USD aggregator for FixedPrice fiat conversion.
-   * `0x0…0` means none — Nuclear FixedPrice USDC admit must abort (no silent peg).
+   * `0x0…0` means none — Nuclear still admits USDC with feed=0 (asset-only);
+   * fiat opens are refused on-chain (`PaymentTokenFeedRequired`). Never invent a feed.
    */
   usdcUsdFeed: `0x${string}`;
   currencies: CurrencyFeedEntry[];
@@ -27,7 +28,9 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
     chainId: 84532,
     nativeUsdFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
     usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    // No Chainlink USDC/USD aggregator on Base Sepolia (verified 2026-07-30).
+    // No Chainlink USDC/USD aggregator on Base Sepolia (RPC-probed 2026-07-30:
+    // mainnet Base feed, Eth Sepolia feed, and claimed Base Sepolia candidates
+    // all have no bytecode on 84532; ETH/USD + BTC/USD feeds respond).
     usdcUsdFeed: "0x0000000000000000000000000000000000000000",
     currencies: [{ code: "USD", feed: "0x0000000000000000000000000000000000000000" }],
   },
@@ -154,17 +157,42 @@ export function getChainFeedConfig(chainId: number): ChainFeedConfig {
   };
 }
 
-const ZERO_FEED = "0x0000000000000000000000000000000000000000" as const;
+export const ZERO_USDC_USD_FEED =
+  "0x0000000000000000000000000000000000000000" as const;
 
-/** Nuclear FixedPrice USDC admit — refuse silent USD peg when no aggregator is configured. */
-export function requireUsdcUsdFeed(
+/**
+ * Exact deploy/dry-run limitation line when Nuclear admits USDC with feed=0.
+ * Must stay visible — never treat zero as a silent $1 peg.
+ */
+export function usdcFiatUnavailableAnnouncement(chainId: number): string {
+  return (
+    `Fiat-denominated sales in USDC are unavailable on chain ${chainId}: ` +
+    `no USDC/USD Chainlink aggregator is configured (usdcUsdFeed is zero). ` +
+    `Asset-denominated USDC sales remain available. ` +
+    `Timelock may later approvePaymentToken with a non-zero feed; once set, the feed cannot be cleared.`
+  );
+}
+
+export type UsdcUsdFeedAdmitResolution = {
+  feed: `0x${string}`;
+  /** Non-null when admitting with zero feed — deploy/dry-run must print this. */
+  fiatLimitation: string | null;
+};
+
+/**
+ * Nuclear FixedPrice USDC admit resolution.
+ * Non-zero feed → admit with measured oracle. Zero feed → admit asset-only and announce
+ * the fiat limitation (contracts already refuse fiat open/quote via PaymentTokenFeedRequired).
+ */
+export function resolveUsdcUsdFeedForAdmit(
   usdcUsdFeed: `0x${string}`,
   chainId: number,
-): `0x${string}` {
-  if (usdcUsdFeed.toLowerCase() === ZERO_FEED) {
-    throw new Error(
-      `FixedPrice USDC admit requires a USDC/USD Chainlink feed on chain ${chainId}; none configured — refusing silent peg`,
-    );
+): UsdcUsdFeedAdmitResolution {
+  if (usdcUsdFeed.toLowerCase() === ZERO_USDC_USD_FEED) {
+    return {
+      feed: ZERO_USDC_USD_FEED,
+      fiatLimitation: usdcFiatUnavailableAnnouncement(chainId),
+    };
   }
-  return getAddress(usdcUsdFeed);
+  return { feed: getAddress(usdcUsdFeed), fiatLimitation: null };
 }

@@ -110,7 +110,8 @@ describe("nuclear deploy plan", () => {
     );
 
     assert.notEqual(base.externals.usdc.toLowerCase(), eth.externals.usdc.toLowerCase());
-    // 84532 has no USDC/USD feed; Eth Sepolia does — FixedPrice admit refuse vs OK.
+    // 84532 has no USDC/USD feed — Nuclear admits USDC asset-only + announces fiat unavailable.
+    // Eth Sepolia has a measured feed — fiat USDC available.
     assert.equal(
       base.externals.usdcUsdFeed,
       "0x0000000000000000000000000000000000000000",

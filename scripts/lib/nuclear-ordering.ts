@@ -151,13 +151,17 @@ export function assertSourcesRegistered(input: {
 
 /**
  * On-chain assertion after deployer admission. Must hold before mode handoff.
+ * Zero FixedPrice feed is allowed (asset-only USDC); fiat is refused on-chain.
+ * When `expectedFixedPriceUsdcFeed` is set, read-back must match (including zero).
  */
 export function assertPaymentTokensAdmitted(input: {
   fixedPriceUsdcEnabled: boolean;
   ascendingUsdcEnabled: boolean;
   usdc: string;
-  /** FixedPrice payment-token feed; required non-zero for Nuclear USDC. */
+  /** Read-back FixedPrice payment-token feed (may be zero). */
   fixedPriceUsdcFeed?: string;
+  /** Plan/configured feed — assert read-back identity when both provided. */
+  expectedFixedPriceUsdcFeed?: string;
 }): void {
   if (!input.fixedPriceUsdcEnabled) {
     throw new Error(
@@ -169,13 +173,15 @@ export function assertPaymentTokensAdmitted(input: {
       `Ascending payment token not admitted for ${input.usdc} — refusing mode ownership handoff`,
     );
   }
-  if (input.fixedPriceUsdcFeed !== undefined) {
-    const zero = "0x0000000000000000000000000000000000000000";
-    if (input.fixedPriceUsdcFeed.toLowerCase() === zero) {
-      throw new Error(
-        `FixedPrice USDC feed is zero for ${input.usdc} — refusing silent peg / mode ownership handoff`,
-      );
-    }
+  if (
+    input.fixedPriceUsdcFeed !== undefined &&
+    input.expectedFixedPriceUsdcFeed !== undefined &&
+    input.fixedPriceUsdcFeed.toLowerCase() !==
+      input.expectedFixedPriceUsdcFeed.toLowerCase()
+  ) {
+    throw new Error(
+      `FixedPrice USDC feed mismatch for ${input.usdc}: got ${input.fixedPriceUsdcFeed}, expected ${input.expectedFixedPriceUsdcFeed}`,
+    );
   }
 }
 

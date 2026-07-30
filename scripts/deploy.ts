@@ -21,7 +21,7 @@ import {
 } from "../lib/contracts/abis.generated.js";
 import {
   isCommercialChainId,
-  requireUsdcUsdFeed,
+  resolveUsdcUsdFeedForAdmit,
   verifyFeedBytecode,
 } from "./lib/chainlink-feeds.js";
 import {
@@ -221,11 +221,12 @@ function printDryRunCompare() {
   console.log(`On-chain open gate: ${ONCHAIN_OPEN_REQUIRES_ENCUMBRANCE_SOURCE}`);
   console.log("\nFixedPrice USDC/USD feed (P4 — no silent peg):");
   for (const plan of [base, eth]) {
-    try {
-      requireUsdcUsdFeed(plan.externals.usdcUsdFeed, plan.chainId);
-      console.log(`  ${plan.chainId}: ${plan.externals.usdcUsdFeed} — admit OK`);
-    } catch (err) {
-      console.log(`  ${plan.chainId}: REFUSE admit — ${err instanceof Error ? err.message : err}`);
+    const admit = resolveUsdcUsdFeedForAdmit(plan.externals.usdcUsdFeed, plan.chainId);
+    if (admit.fiatLimitation) {
+      console.log(`  ${plan.chainId}: admit USDC with feed ${admit.feed}`);
+      console.log(`    LIMITATION: ${admit.fiatLimitation}`);
+    } else {
+      console.log(`  ${plan.chainId}: ${admit.feed} — admit OK with measured feed`);
     }
   }
   console.log("Guardian immediate ops (G3 reduce-exposure):");
@@ -237,7 +238,7 @@ function printDryRunCompare() {
     console.log(`  - ${op}`);
   }
   console.log(
-    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. FixedPrice requires a non-zero USDC/USD feed (monotonic — cannot clear later). Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
+    "\nNote: mode proxies initialize with owner=deployer; USDC admission runs before Timelock handoff. Zero usdcUsdFeed admits asset-only USDC and announces the fiat limitation (never a silent peg). Non-zero feed enables fiat; once set, feed is monotonic and cannot be cleared. Post-handoff approve / setCurrencyFeed still go through Timelock — `_validateFeed` runs at execute.",
   );
 }
 
@@ -273,8 +274,13 @@ async function runLiveDeploy() {
     await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
     await assertExternalBytecode(publicClient, "usdc", externals.usdc);
     await assertExternalBytecode(publicClient, "layerZeroEndpoint", externals.layerZeroEndpoint);
-    const usdcUsdFeed = requireUsdcUsdFeed(externals.usdcUsdFeed, chainId);
-    await assertExternalBytecode(publicClient, "usdcUsdFeed", usdcUsdFeed);
+    const usdcAdmit = resolveUsdcUsdFeedForAdmit(externals.usdcUsdFeed, chainId);
+    const usdcUsdFeed = usdcAdmit.feed;
+    if (usdcAdmit.fiatLimitation) {
+      console.log(`LIMITATION: ${usdcAdmit.fiatLimitation}`);
+    } else {
+      await assertExternalBytecode(publicClient, "usdcUsdFeed", usdcUsdFeed);
+    }
 
     const [deployer] = await viem.getWalletClients();
     const deployerAddress = getAddress(deployer.account.address);
@@ -285,6 +291,7 @@ async function runLiveDeploy() {
     console.log(`Guardian: ${commerceGuardian}`);
     console.log(`Registry: ${plan.registry}`);
     console.log(`USDC:     ${externals.usdc}`);
+    console.log(`USDC/USD: ${usdcUsdFeed}${usdcAdmit.fiatLimitation ? " (asset-only — fiat unavailable)" : ""}`);
     console.log(`LZ:       ${externals.layerZeroEndpoint}`);
     console.log("");
 
@@ -435,8 +442,18 @@ async function runLiveDeploy() {
       ),
       usdc: externals.usdc,
       fixedPriceUsdcFeed: fpFeed,
+      expectedFixedPriceUsdcFeed: usdcUsdFeed,
     });
-    console.log("  ✓ USDC admitted on both modes (FixedPrice feed non-zero; refusing handoff until this holds)");
+    if (usdcAdmit.fiatLimitation) {
+      console.log(
+        "  ✓ USDC admitted on both modes (FixedPrice feed zero — fiat unavailable; asset-denominated only)",
+      );
+      console.log(`    LIMITATION: ${usdcAdmit.fiatLimitation}`);
+    } else {
+      console.log(
+        "  ✓ USDC admitted on both modes (FixedPrice feed non-zero; refusing handoff until this holds)",
+      );
+    }
 
     const gateway = await deployStep(
       viem,

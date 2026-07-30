@@ -188,6 +188,7 @@ export async function deployNuclearRehearsalStack(
     ),
     usdc: usdc.address,
     fixedPriceUsdcFeed: usdcUsdFeed.address,
+    expectedFixedPriceUsdcFeed: usdcUsdFeed.address,
   });
 
   const endpoint = await deployEndpointMock(viem, deployer);
