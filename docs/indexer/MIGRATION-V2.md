@@ -7,11 +7,11 @@
 | VPS env + contract addresses (June 2026 v2) | ✅ Complete — reindex from **43399242** ([ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)) — **superseded for production by Nuclear below** |
 | v1 ghost index data | ✅ Cleared after production reindex |
 | Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
-| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — VPS **full reindex** from hub **44434865** + Eth **11319840** ([OPERATIONS.md](./OPERATIONS.md)) |
-| Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; **VPS full reindex** required to repair historical false positives ([OPERATIONS.md](./OPERATIONS.md)) |
-| Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` (July 2026 dispute surface) — expire ≠ Confirm for product; **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
-| ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **full reindex** with Nuclear #2 ([OPERATIONS.md](./OPERATIONS.md)) |
-| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate routes — **local proven**; **live addresses + production reindex = Nuclear #2 step 10** ([OPERATIONS.md](./OPERATIONS.md)). Step 5 cutover alone leaves production commerce **inert** (fail-closed). |
+| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — VPS reindex July 22 from hub **44434865** + Eth **11319840**; **superseded by Nuclear #2** hub **44833462** + Eth **11384136** ([OPERATIONS.md](./OPERATIONS.md)) |
+| Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; repaired by Nuclear #2 reindex ([OPERATIONS.md](./OPERATIONS.md)) |
+| Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` — expire ≠ Confirm for product; **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
+| ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
+| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — **live addresses + VPS full reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)). |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **July 2026:** the `MarketplaceEscrow` / `AuctionEscrow` schema and handlers described in §1–§3 below (`marketplace_listing`, `marketplace_sale`, `agent_authorization`, `auction*`, `currency_feed`) have been **removed** — commerce lives entirely in the FixedPrice/Ascending consignment surface (§3's commerce-modes note, and [indexer/README.md](./README.md)). This document remains as historical reference for the v1→v2 event mapping and for the FX display work (§6).
 
@@ -214,7 +214,7 @@ Generation v2 is a **fresh deploy** at new addresses — v1.x event history stay
 2. ~~Update `ponder.schema.ts` + reindex~~ — ✅ (reindex after VPS deploy)
 3. ~~Rewrite handlers in `src/index.ts` for generation v2 events~~ — ✅
 4. ~~Set `PONDER_START_BLOCK_84532`~~ — ✅ **43399242** on production VPS
-5. Deploy Ponder; smoke `GET /listings`, `GET /passports/:tokenId` after mint/list on v2
+5. Deploy Ponder; smoke `GET /consignments`, `GET /passports/:tokenId` after mint/open on Nuclear modes
 6. ~~Update `lib/web3/sepolia-addresses.ts`~~ — ✅
 
 ### Deferred (phase 2) — ✅ complete
@@ -239,7 +239,7 @@ Generation v2 allows listing in any registered fiat `currencyCode`. The app disp
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-Browse filter/sort: optional `*UsdRate` query params on `GET /listings` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY (and EUR/ETH/BTC). All non-USD display currencies require live CoinGecko (or Chainlink for EUR/ETH) rates — no hardcoded peg fallbacks. **Redeploy ponder image only** — no `ponder-reindex.sql`.
+Browse filter/sort: optional `*UsdRate` query params on `GET /consignments` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY (and EUR/ETH/BTC) when the browse path forwards them. All non-USD display currencies require live CoinGecko (or Chainlink for EUR/ETH) rates — no hardcoded peg fallbacks. Legacy `GET /listings` was removed with MarketplaceEscrow.
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 
@@ -251,9 +251,9 @@ The `agent_authorization` / `marketplace_listing` agent routes described above (
 
 Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedChallenge` / mode-specific surfaces feed new tables (`consignment`, `ascending_terms`, `consignment_bid`, `consignment_hold`, `challenge`, `mandate`, `consignment_settlement`, `commerce_claim` + `commerce_claim_credit`, `commerce_mode`, `commerce_payment_token`, `commerce_currency_feed`). Claim reasons come from **same-tx event correlation**, not tx selectors. Floor/commission lowers update the **consignment** snapshot, not the standing mandate.
 
-**FixedPrice oracle projection (July 2026, `2.3.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. **Full reindex** with Nuclear #2 redeploy.
+**FixedPrice oracle projection (July 2026, `2.3.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. **Nuclear #2 full reindex done** July 30.
 
-**Addresses:** optional slots on the same `resolveCommercialStack` path as auction escrow. **Live commercial registration = Nuclear #2.** Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
+**Addresses:** FixedPrice + Ascending on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #2. Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
 
 **HTTP:** see [indexer/README.md](./README.md#commerce-modes-api-fixedprice--ascending--july-2026). Old escrow tables/handlers/routes untouched — no compatibility projection.
 

@@ -37,9 +37,9 @@ async function main() {
     }
 
     const timelock = manifest.timelock;
-    const adapter = manifest.bridgeGateway;
+    const bridgeGatewayAddr = manifest.bridgeGateway;
 
-    if (!timelock || !adapter) {
+    if (!timelock || !bridgeGatewayAddr) {
       console.error("Manifest missing timelock or bridgeGateway");
       process.exit(1);
     }
@@ -48,8 +48,10 @@ async function main() {
     const proPass = await viem.getContractAt("KarProPass", manifest.karProPass);
     const staking = await viem.getContractAt("KarProStaking", manifest.karProStaking);
     const timelockContract = await viem.getContractAt("Timelock48h", timelock);
-    const onftAdapter = await viem.getContractAt("KarPassportBridgeGateway", adapter);
-    // Commerce cutover Phase 1: modes are optional until Nuclear #2 (fail closed).
+    const bridgeGateway = await viem.getContractAt(
+      "KarPassportBridgeGateway",
+      bridgeGatewayAddr,
+    );
     const fixedPrice = manifest.fixedPriceConsignment
       ? await viem.getContractAt("FixedPriceConsignment", manifest.fixedPriceConsignment)
       : null;
@@ -85,8 +87,10 @@ async function main() {
         { name: "KarProStaking", read: () => staking.read.VERSION([]) as Promise<string> },
         { name: "KarProPass", read: () => proPass.read.VERSION([]) as Promise<string> },
         { name: "Timelock48h", read: () => timelockContract.read.VERSION([]) as Promise<string> },
-        // Live 84532 still hosts ProxyONFT721Adapter until C2 gateway cutover.
-        { name: "ProxyONFT721Adapter", read: () => onftAdapter.read.VERSION([]) as Promise<string> },
+        {
+          name: "KarPassportBridgeGateway",
+          read: () => bridgeGateway.read.VERSION([]) as Promise<string>,
+        },
         ...(fixedPrice
           ? [
               {

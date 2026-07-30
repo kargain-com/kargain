@@ -7,9 +7,9 @@ export const CONTRACT_VERSIONS = {
   KarProStaking: "2.0.0-rc.1",
   Timelock48h: "1.0.0-rc.1",
   KarPassportBridgeGateway: "1.3.0-rc.1",
-  /** @deprecated C2 — removed thin ONFT; kept for historical smoke key lookups */
+  /** @deprecated C2 — removed thin ONFT; retained for verify/historical label lookups */
   KarPassportONFT721: "1.0.0-rc.1",
-  /** @deprecated C2 — removed adapter; kept for historical smoke key lookups */
+  /** @deprecated C2 — removed adapter; retained for verify/historical label lookups */
   ProxyONFT721Adapter: "1.1.0-rc.1",
   FixedPriceConsignment: "2.3.0-rc.1",
   AscendingConsignment: "2.2.0-rc.1",

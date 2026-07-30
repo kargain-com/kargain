@@ -128,7 +128,7 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Production indexer
 
-- API: https://ponder.kargain.com (dual commercial chains; Nuclear hub from block **44434865**, Eth from **11319840**)
+- API: https://ponder.kargain.com (dual commercial chains; Nuclear #2 hub from block **44833462**, Eth from **11384136**)
 - Stack: `docker compose up -d` · diagnostic: `pnpm ponder:config`
 - Reindex after schema changes: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 

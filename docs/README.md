@@ -17,7 +17,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
 | [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; Nuclear dual-chain / C3; FX display layer (§6) |
-| [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44434865** + Eth **11319840**) |
+| [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44833462** + Eth **11384136**) |
 
 ## UI
 

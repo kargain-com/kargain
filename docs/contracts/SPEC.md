@@ -34,7 +34,7 @@
 
 **Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility.
 
-**Amend-in-place until on-chain:** Source `VERSION` strings are the **Nuclear #2 ship numbers**. Until a given contract's ship version exists on a commercial chain, further pre-deploy changes **amend that VERSION in place** (do not accumulate unused `-rc.N` / `-draft` history). Live I.9 addresses may still show older Nuclear cutover versions until Nuclear #2 full-stack redeploy.
+**Amend-in-place while shipping a VERSION:** Source `VERSION` strings in `CONTRACT_VERSIONS` must match Solidity. Nuclear #2 ship VERSIONS are **live** on I.9 (July 30, 2026). Further pre-deploy changes to an already-shipped VERSION amend that string in place (do not accumulate unused `-rc.N` / `-draft` history).
 
 ---
 
@@ -54,9 +54,9 @@
 | FixedPriceConsignment | `2.3.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
 | AscendingConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
 
-**Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** until Nuclear #2 refreshes the stack ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
+**Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** after Nuclear #2 ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
 
-Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for smoke key lookups only — retired by §I.12.
+Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must match Solidity `VERSION` constants). Historical thin ONFT / `ProxyONFT721Adapter` retained in `CONTRACT_VERSIONS` for verify/historical label lookups only — retired by §I.12; live smoke uses `KarPassportBridgeGateway`.
 
 ### v1.x → generation v2 summary
 
@@ -392,13 +392,13 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 
 **Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges`, config mirrors `GET /commerce-modes` / `/commerce-payment-tokens` / `/commerce-currency-feeds` — [indexer/README.md](../indexer/README.md).
 
-**Live addresses:** mode proxies are **absent** from `COMMERCIAL_ACTIVE` until **Nuclear #2** registers them and Ponder mode start blocks. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
+**Live addresses:** FixedPrice + Ascending proxies are on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #2 (July 30, 2026); Ponder indexes from hub **44833462** / Eth **11384136**. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
 
 **Accountability events:** ConsignmentOpened / MandateGranted / RecallRequested / ChallengeOpened / … — see KarPassport § commerce mode events above.
 
 #### Retired — MarketplaceEscrow
 
-`MarketplaceEscrow` Solidity, app consumers, and Ponder `marketplace_*` tables were **removed** in commerce cutover §15.2 step 5 (July 2026). July 2026 Nuclear proxies remain on-chain at [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532) until Nuclear #2 refreshes the stack; the app **denylists** them via `kargainContractDenylist(chainId)` — no new listings. Historical v1 marketplace behavior: [Part II.7](#ii7-marketplace-unchanged-in-phase-1).
+`MarketplaceEscrow` Solidity, app consumers, and Ponder `marketplace_*` tables were **removed** in commerce cutover §15.2 step 5 (July 2026). July 2026 Nuclear proxies remain on-chain at [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532) and are **denylisted** after Nuclear #2; the app uses `kargainContractDenylist(chainId)` — no new listings. Historical v1 marketplace behavior: [Part II.7](#ii7-marketplace-unchanged-in-phase-1).
 
 ---
 
@@ -699,7 +699,7 @@ URI is embedded on **every** send (both directions) and written by the receiver:
 
 The gateway asks one permission question: **`KarPassport.may(tokenId, LeaveChain)`**. If false (or if a registered source is unanswerable → `SourceUnanswerable`), debit reverts **`LeaveChainRefused`**. The gateway holds **no** marketplace/auction references and does **not** read `passportStatus` (E2/E5).
 
-LeaveChain is refused when: an intrinsic verification challenge is active; a registered FixedPrice live consignment forbids; a registered Ascending unresolved settlement forbids; or a registered source cannot answer (E6). Idle UNVERIFIED passports may leave (verification is not required to travel). Legacy escrow-listed NFTs on denylisted retired proxies are an ops concern only until Nuclear #2 refreshes the stack — the gateway reads **`may(LeaveChain)`**, not escrow custody.
+LeaveChain is refused when: an intrinsic verification challenge is active; a registered FixedPrice live consignment forbids; a registered Ascending unresolved settlement forbids; or a registered source cannot answer (E6). Idle UNVERIFIED passports may leave (verification is not required to travel). Legacy escrow-listed NFTs on denylisted retired proxies are an ops concern only (those proxies are not in `COMMERCIAL_ACTIVE`) — the gateway reads **`may(LeaveChain)`**, not escrow custody.
 
 ### 12.7 Bridge entrypoints (gateway-only)
 

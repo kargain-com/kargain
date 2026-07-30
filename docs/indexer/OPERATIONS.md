@@ -6,26 +6,26 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 ---
 
-## Production state (Nuclear dual-chain — July 2026)
+## Production state (Nuclear #2 dual-chain — July 2026)
 
-Nuclear full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One full `ponder-reindex.sql` backfills **both** networks.
+Nuclear #2 full stacks on **84532** (hub) and **11155111** (Ethereum Sepolia). One full `ponder-reindex.sql` backfills **both** networks. **VPS full reindex done July 30, 2026.**
 
 | Item | Value |
 |------|--------|
-| Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **44434865** |
-| Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11319840** |
-| Hub start block | `PONDER_START_BLOCK_84532=44434865` |
-| Eth start block | `PONDER_START_BLOCK_11155111=11319840` |
+| Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **44833462** |
+| Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11384136** |
+| Hub start block | `PONDER_START_BLOCK_84532=44833462` |
+| Eth start block | `PONDER_START_BLOCK_11155111=11384136` |
 | Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
 | Eth RPC | `PONDER_RPC_URL_11155111` (Alchemy/Infura/QuickNode; PublicNode often 403) · `PONDER_MAX_RPS_11155111` default **5** |
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
 | Docker | `docker compose build ponder` after code pull + post-build prune |
 
-**C3 schema (July 2026):** `chainId` on listing/sale/auction/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`. **`PassportBridgeMinted` does not project `VerificationReset` accounting** (`verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` come only from on-chain `VerificationReset`).
+**C3 schema (July 2026):** `chainId` on commerce/passport/records/uri-history/verifier; `passport.chainId` (origin) + `passport.custodyChain` + `custodyUpdatedAt` (monotonic gate); verifier PK `` `${chainId}-${address}` ``. Bridge handlers: `PassportBridgeMinted` / `CustodyLockSet(false)` drive `custodyChain` only when `event.block.timestamp >= custodyUpdatedAt`. **`PassportBridgeMinted` does not project `VerificationReset` accounting** (`verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` come only from on-chain `VerificationReset`).
 
 **Omnichain ordering:** `ponder.config.ts` sets `ordering: "omnichain"`. Cross-chain consistency for owner/status/uri waits on both networks (**consistency > liveness**). Custody is additionally fail-closed via the monotonic `custodyUpdatedAt` gate if one chain lags and delivers a stale bridge-mint after a fresher unlock.
 
-Historical June 2026 v2 cutover used start block **43399242** (pre-Nuclear) — superseded by Nuclear hub **44434865**. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
+Historical June 2026 v2 cutover used start block **43399242**; July 21 Nuclear hub **44434865** / Eth **11319840** — both superseded by Nuclear #2 hub **44833462** / Eth **11384136**. Cutover record: [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md).
 
 **Handlers:** dual-chain event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
 
@@ -38,8 +38,8 @@ Historical June 2026 v2 cutover used start block **43399242** (pre-Nuclear) — 
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
 PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
-PONDER_START_BLOCK_84532=44434865
-PONDER_START_BLOCK_11155111=11319840
+PONDER_START_BLOCK_84532=44833462
+PONDER_START_BLOCK_11155111=11384136
 # Optional per-chain RPS (defaults 10 / 5):
 # PONDER_MAX_RPS_84532=10
 # PONDER_MAX_RPS_11155111=5
@@ -61,7 +61,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 
 | When | Start blocks |
 |------|----------------|
-| One-time backfill after `ponder-reindex.sql` | Hub **44434865** + Eth **11319840** (or checkpoints) |
+| One-time backfill after `ponder-reindex.sql` | Hub **44833462** + Eth **11384136** (or checkpoints) |
 | Steady production (after sync) | **Same numeric values** — do not set `latest` |
 | Fresh deploy after schema wipe | Reset both to manifest `indexFromBlock` when running `ponder-reindex.sql` again |
 
@@ -81,20 +81,20 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| **Commerce cutover + Nuclear #2 (July 2026 — step 10)** | Drop legacy `marketplace_*` / `auction_*` tables **and** ship consignment commerce (`consignment`, `mandate`, `challenge`, `commerce_*`) with live mode addresses — **one full reindex** when Nuclear #2 deploys the mode stack ([OPERATIONS.md](./OPERATIONS.md)). **§15.2 step 5 alone** removed escrow app/indexer consumers but leaves **production commerce inert** (fail-closed) until Nuclear #2 registers mode contracts — do **not** reindex production for cutover code alone. |
-| **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; hub **44434865** + Eth **11319840** (**VPS done July 22, 2026**) |
+| **Commerce cutover + Nuclear #2 (July 2026 — step 10)** | Drop legacy `marketplace_*` / `auction_*` tables **and** ship consignment commerce (`consignment`, `mandate`, `challenge`, `commerce_*`) with live mode addresses — **one full reindex**. **VPS done July 30, 2026** (hub **44833462** + Eth **11384136**). §15.2 step 5 alone was never a production reindex trigger. |
+| **Nuclear dual-chain / C3 (July 2026)** | `chainId` / `custodyChain` + verifier `${chainId}-${address}` + ethereumSepolia in `ponder.config` — **full reindex**; superseded start blocks **44434865** / **11319840** (VPS July 22) → Nuclear #2 **44833462** / **11384136** |
 | Delegation notifications (July 2026) | Superseded — mandate grants feed `mandate.granted` notifications on the consignment surface |
 | Filter facet columns | `condition`, `vehicleType`, `colour`, `locationLabel` (June 2026 UI session) |
 | Place location columns (Geo Phase C, July 2026) | `locationPlaceId` + `locationCountryCode` on `passport` — **full reindex required** so historical URI metadata backfills; older label-only rows keep empty placeId until owner re-saves |
 | Verifier place columns (Geo Phase E, July 2026) | `locationLabel` + `locationPlaceId` + `locationCountryCode` on `verifier` from KarPro Arweave — **full reindex required**; empty until replay / verifier re-saves profile |
 | Bridge mint trust accounting (July 2026) | `PassportBridgeMinted` must not write `verificationResetCount` / `lastVerificationResetAt` / `uri_history.verificationReset` (only on-chain `VerificationReset`) — **full reindex required** to repair historical false positives |
-| Verifier `stakeAsset` address (July 2026) | `verifier.stakeAsset` integer → text address (`0x0` = native); `VerifierJoined` asset arg address — **full reindex** with Nuclear #2 |
-| Trust layer challenge terminals (July 2026+) | `KarPassport:ChallengeConcluded` (and `ChallengeJudged` / `ChallengeWithdrawn`) → UNVERIFIED/VERIFIED + `lastDisputeTerminal` — **full reindex** with Nuclear #2 (legacy live ABI: `DisputeExpired`) |
-| Passport `lastDisputeTerminal` (July 2026) | Distinguishes confirm / reject / expire / withdraw for lapse UX + notifications — **full reindex** with Nuclear #2 |
-| ClaimablePayouts projection (July 2026) | `pending_claim` + `claim_credit` tables; `ClaimRecorded` / `ClaimWithdrawn` on Auction / Marketplace / KarPassport / KarProStaking — **full reindex** with Nuclear #2 |
-| Commerce modes schema (July 2026) | New `consignment` / `ascending_terms` / `consignment_bid` / `consignment_hold` / `challenge` / `mandate` / `consignment_settlement` / `commerce_claim*` / `commerce_mode` / payment+currency tables — bundled with **Nuclear #2** full reindex (not step 5 alone); local Hardhat indexes after `pnpm deploy:local` |
-| Commerce mode protection bounds (July 2026) | `commerce_mode.protectionWindow` → `minProtectionWindow` + `maxProtectionWindow` (`AuctionRulesSet` reshape) — **full reindex** with Nuclear #2; lot `ascending_terms.protectionWindow` meaning unchanged |
-| FixedPrice per-feed staleness (July 2026) | `commerce_mode.nativeUsdStalenessTolerance`; `stalenessTolerance` on `commerce_payment_token` / `commerce_currency_feed`; event `NativeUsdStalenessToleranceSet` replaces `MaxFeedStalenessSet` — **full reindex** with Nuclear #2 FixedPrice `2.3.0-rc.1` redeploy |
+| Verifier `stakeAsset` address (July 2026) | `verifier.stakeAsset` integer → text address (`0x0` = native); `VerifierJoined` asset arg address — **full reindex** with Nuclear #2 (**done** July 30) |
+| Trust layer challenge terminals (July 2026+) | `KarPassport:ChallengeConcluded` (and `ChallengeJudged` / `ChallengeWithdrawn`) → UNVERIFIED/VERIFIED + `lastDisputeTerminal` — **full reindex** with Nuclear #2 (**done** July 30) |
+| Passport `lastDisputeTerminal` (July 2026) | Distinguishes confirm / reject / expire / withdraw for lapse UX + notifications — **full reindex** with Nuclear #2 (**done** July 30) |
+| ClaimablePayouts projection (July 2026) | `pending_claim` + `claim_credit` tables; `ClaimRecorded` / `ClaimWithdrawn` on KarPassport / KarProStaking / commerce modes — **full reindex** with Nuclear #2 (**done** July 30) |
+| Commerce modes schema (July 2026) | `consignment` / `ascending_terms` / `consignment_bid` / `consignment_hold` / `challenge` / `mandate` / `consignment_settlement` / `commerce_claim*` / `commerce_mode` / payment+currency tables — **Nuclear #2 full reindex done** July 30; local Hardhat indexes after `pnpm deploy:local` |
+| Commerce mode protection bounds (July 2026) | `commerce_mode.minProtectionWindow` + `maxProtectionWindow` (`AuctionRulesSet`) — **full reindex** with Nuclear #2 (**done** July 30); lot `ascending_terms.protectionWindow` meaning unchanged |
+| FixedPrice per-feed staleness (July 2026) | `commerce_mode.nativeUsdStalenessTolerance`; `stalenessTolerance` on `commerce_payment_token` / `commerce_currency_feed`; event `NativeUsdStalenessToleranceSet` — **full reindex** with Nuclear #2 FixedPrice `2.3.0-rc.1` (**done** July 30) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
@@ -249,8 +249,8 @@ Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optiona
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
 PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
-PONDER_START_BLOCK_84532=44434865
-PONDER_START_BLOCK_11155111=11319840
+PONDER_START_BLOCK_84532=44833462
+PONDER_START_BLOCK_11155111=11384136
 # PONDER_MAX_RPS_84532=10
 # PONDER_MAX_RPS_11155111=5
 DATABASE_URL=...                    # Postgres for Ponder
@@ -287,7 +287,8 @@ Wait until logs show:
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
 curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/passports | jq '.total'
-curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until live mode addresses register (deferred to Nuclear #2)
+curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until first Nuclear #2 consignment opens
+curl -s https://ponder.kargain.com/commerce-payment-tokens | jq '.total'   # expect 4 after Nuclear #2 reindex (USDC × 2 modes × 2 chains)
 curl -s https://ponder.kargain.com/challenges | jq '.total'
 curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDeposit'
 curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/mandates?active=false' | jq '.total, .page, .limit'
