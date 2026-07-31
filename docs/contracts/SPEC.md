@@ -380,13 +380,38 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 
 | Parameter | Default | Notes |
 |-----------|---------|--------|
-| Extension window | **900 seconds** | Live — applies from the next bid |
-| Minimum increment | **300 bps** | Live — applies from the next bid |
+| Extension window | **900 seconds** | Captured into `AuctionTerms` at open; storage change affects later lots only |
+| Minimum increment | **300 bps** | Captured into `AuctionTerms` at open; storage change affects later lots only |
 | Duration bounds | **3–30 days** | Checked at open; Timelock `setAuctionRules` |
-| Protection window | **7 days** | Snapshotted into hold at `settle` |
-| Settlement challenge window | **30 days** | Ascending BondedChallenge instance (distinct from KarPassport verification **14 days**) |
+| Protection bounds | **7–45 days** | Bounds, not a value — the opener chooses within them at open (`protectionWindow_`), captured into `AuctionTerms`, applied at `settle` |
+| Settlement challenge window | **14 days** | Ascending BondedChallenge instance — **same length** as KarPassport verification (model §7.3: discovery time lives in the protection hold, not in a second long clock) |
 | Abandonment window | **30 days** | Fixed when reversal becomes pending |
 | Challenge bond | **0.01 ETH** | Exact match at `open` |
+
+Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Every governing term of a running lot is a snapshot** — governance storage is read only when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot: …" / "snapshot: minIncrementBps frozen at open…").
+
+#### Parameter provenance — what to read, and from where
+
+One table per question a screen can ask. **A screen showing the terms of a specific lot never reads `auctionRules()`; a screen where someone is choosing terms reads nothing else.** Mixing the two is the defect this table exists to prevent.
+
+| Parameter | Fixed when | Governance surface | Per-subject getter | Read from |
+|---|---|---|---|---|
+| Duration | chosen at open, within bounds | `auctionRules().min/maxDuration` | `auctionDuration(tokenId)` | create → bounds · lot → getter |
+| Extension window | captured at open | `auctionRules().extensionWindow` | `auctionExtensionWindow(tokenId)` | lot → getter |
+| Minimum increment | captured at open | `auctionRules().minIncrementBps` | `auctionMinIncrementBps(tokenId)` | bid panel → getter |
+| Protection window | **chosen at open**, within bounds (H1) | `auctionRules().min/maxProtectionWindow` | `auctionProtectionWindow(tokenId)`; after `settle` the *deadline* is `holdProtectionEndsAt(tokenId)` | create → bounds · lot → getter · hold → deadline |
+| Abandonment window | captured at open; deadline set when reversal becomes pending | `auctionRules().abandonmentWindow` | `auctionAbandonmentWindow(tokenId)`, then `holdAbandonmentWindow` / `holdAbandonmentDeadline(tokenId)` | reversal panel → deadline |
+| Settlement challenge bond | rotatable; captured into `Challenge` at open | `auctionRules().challengeBond` | `challengeBondAmount(subjectId)` | pre-open → `auctionRules()` · open → getter |
+| **Settlement challenge window** | **one-shot at `initialize`; immutable per instance** | **none — not in `setAuctionRules`** | `challengeWindowDuration(subjectId)`, **zero unless a challenge is open** | pre-open → **no getter exists**, use the deploy record · post-open → getter, or Ponder `challenge.windowDuration` from `ChallengeOpened` |
+| Verification challenge window | compile-time constant | none | `KarPassport.DISPUTE_WINDOW` (public constant) | anywhere |
+| Verification challenge bond | rotatable; captured into `Challenge` at open | `KarPassport.disputeDeposit` (public) | `challengeBondAmount(tokenId)` | pre-open → `disputeDeposit` · open → getter |
+| Platform fee bps | snapshotted into the consignment at open | `platformFeeBps` (public, live) | in `ConsignmentOpened`; storage cleared on close | lot → event/indexer |
+| Recall cooldown | compile-time constant, not governed | none | `recallCooldown()` | anywhere |
+
+Two traps this table encodes:
+
+- **After `settle`, `AuctionTerms` is deleted** (`AscendingHoldLib.settle`), so every lot getter above returns zero for a completed lot. Terms of a finished auction come from `AscendingTermsSnapshotted` via the indexer — never from chain. The protection *deadline* is the exception: it lives on the `Hold` and survives.
+- **The settlement challenge window has no readable source before a challenge exists.** It is deploy-time configuration with no getter and no governance path. Any pre-open display is a committed value that must be labelled as such, and it will drift the first time a chain is deployed with a different one. Tracked for correction with the next Ascending implementation change.
 
 **Settlement challenge vs protection:** a challenge may open only while the protection hold is active; opening freezes remaining protection; the challenge window then bounds judgement. KarPassport verification challenges use a separate BondedChallenge instance with a **14-day** window ([verification challenge](#verification-challenge-bondedchallenge-instance)).
 
