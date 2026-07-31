@@ -9,7 +9,7 @@ import {
   challengeInstanceLabel,
   challengeStatusLabel,
   challengeSubjectHref,
-  challengeWindowSummary,
+  challengeWindowFeedLine,
 } from "@/lib/commerce/challenge-display";
 import type { ChallengeRecord } from "@/lib/commerce/ponder-consignment";
 import {
@@ -50,7 +50,10 @@ export function ChallengeRow({
     challenge.openedAt > 0
       ? formatRelativeTime(new Date(challenge.openedAt * 1000))
       : "";
-  const { elapsed, remainingSec } = challengeWindowSummary(challenge, nowSec);
+  const { phase, remainingSec, elapsedCopy } = challengeWindowFeedLine(
+    challenge,
+    nowSec,
+  );
   const href = challengeSubjectHref(challenge);
   const coverUri = challenge.coverPhotoUri
     ? resolveUri(challenge.coverPhotoUri, challenge.chainId)
@@ -119,16 +122,16 @@ export function ChallengeRow({
 
           {challenge.status === "open" && challenge.windowDuration > 0 && (
             <p className="font-sans text-xs text-text-secondary">
-              {elapsed ? (
-                <>Window ended — conclude or judge on the passport.</>
-              ) : (
+              {phase === "elapsed" && elapsedCopy ? (
+                <>{elapsedCopy}</>
+              ) : phase === "active" ? (
                 <>
                   Window ends in{" "}
                   <span className="font-mono tabular-nums">
                     {formatReturnCountdown(BigInt(remainingSec))}
                   </span>
                 </>
-              )}
+              ) : null}
             </p>
           )}
 

@@ -1,8 +1,8 @@
 import {
-  challengeWindowEndsAt,
-  challengeWindowPhase,
+  challengeElapsedFeedCopy,
+  deriveChallengePhase,
   type ChallengeSnapshot,
-} from "@/lib/commerce/challenge";
+} from "@/lib/challenge";
 import type {
   ChallengeInstance,
   ChallengeRecord,
@@ -36,7 +36,7 @@ export function challengeToSnapshot(row: ChallengeRecord): ChallengeSnapshot {
     subjectId: row.subjectId,
     challenger: row.challenger,
     bondAmount: row.bondAmount,
-    windowDuration: row.windowDuration,
+    windowDuration: row.windowDuration > 0 ? row.windowDuration : null,
     openedAt: row.openedAt,
   };
 }
@@ -49,18 +49,34 @@ export function challengeSubjectHref(row: ChallengeRecord): string {
   return `/marketplace/${row.subjectId}?chain=${chain}`;
 }
 
-export function challengeWindowSummary(
+/**
+ * Window readout for a feed row — phase from the sole derivation.
+ * Elapsed copy never offers judge (absent after the window).
+ */
+export function challengeWindowFeedLine(
   row: ChallengeRecord,
   nowSec: number,
-): { elapsed: boolean; remainingSec: number; endsAt: number | null } {
+): {
+  phase: "none" | "active" | "elapsed";
+  unresolved: boolean;
+  remainingSec: number;
+  endsAt: number;
+  elapsedCopy: string | null;
+} {
   const snapshot = challengeToSnapshot(row);
-  const endsAt = challengeWindowEndsAt(snapshot);
-  const phase = challengeWindowPhase(snapshot, nowSec);
-  const remainingSec =
-    endsAt != null && phase === "active" ? Math.max(0, endsAt - nowSec) : 0;
+  const result = deriveChallengePhase({
+    openedAt: snapshot.openedAt,
+    windowDuration: snapshot.windowDuration,
+    nowSec,
+  });
+  const instanceId =
+    row.instance === "passport" ? "verification" : "settlement";
   return {
-    elapsed: phase === "elapsed",
-    remainingSec,
-    endsAt,
+    phase: result.phase,
+    unresolved: result.unresolved,
+    remainingSec: result.windowRemainingSec,
+    endsAt: result.windowEndsAt,
+    elapsedCopy:
+      result.phase === "elapsed" ? challengeElapsedFeedCopy(instanceId) : null,
   };
 }

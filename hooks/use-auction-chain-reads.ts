@@ -11,7 +11,7 @@ import {
 import {
   parseChallenge,
   type ChallengeSnapshot,
-} from "@/lib/commerce/challenge";
+} from "@/lib/challenge";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import {
   parseAscendingHold,

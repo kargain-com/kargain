@@ -1,7 +1,7 @@
 import {
   type ChallengeSnapshot,
-  challengeWindowPhase,
-} from "@/lib/commerce/challenge";
+  deriveChallengePhase,
+} from "@/lib/challenge";
 import { addressesMatch } from "@/lib/commerce/consignment";
 import type { AscendingHoldSnapshot } from "@/lib/commerce/parse-ascending";
 
@@ -16,6 +16,8 @@ export type AscendingSettlementState =
   | "HOLD_RELEASABLE"
   | "CHALLENGED"
   | "CHALLENGE_ELAPSED"
+  /** Challenge open but window/openedAt unreadable — no timed transition. */
+  | "CHALLENGE_UNRESOLVED"
   | "REVERSAL_PENDING"
   | "REVERSAL_EXPIRED";
 
@@ -29,6 +31,7 @@ export type DeriveAscendingSettlementInput = {
  * Precedence: reversal → challenge → protection countdown.
  * A frozen protection remainder (set when a challenge opens) keeps the hold in
  * `CHALLENGED` rather than letting the clock run out underneath the challenge.
+ * Phase comes only from `deriveChallengePhase` (fail closed).
  */
 export function deriveAscendingSettlementState(
   input: DeriveAscendingSettlementInput,
@@ -44,9 +47,13 @@ export function deriveAscendingSettlementState(
   }
 
   if (challenge) {
-    return challengeWindowPhase(challenge, nowSec) === "active"
-      ? "CHALLENGED"
-      : "CHALLENGE_ELAPSED";
+    const phase = deriveChallengePhase({
+      openedAt: challenge.openedAt,
+      windowDuration: challenge.windowDuration,
+      nowSec,
+    });
+    if (phase.unresolved) return "CHALLENGE_UNRESOLVED";
+    return phase.phase === "active" ? "CHALLENGED" : "CHALLENGE_ELAPSED";
   }
 
   if (hold.frozenRemaining > 0) return "HOLD";
@@ -60,7 +67,12 @@ export function deriveAscendingSettlementState(
 export function isAscendingSettlementPollActive(
   state: AscendingSettlementState,
 ): boolean {
-  return state === "HOLD" || state === "CHALLENGED" || state === "REVERSAL_PENDING";
+  return (
+    state === "HOLD" ||
+    state === "CHALLENGED" ||
+    state === "CHALLENGE_UNRESOLVED" ||
+    state === "REVERSAL_PENDING"
+  );
 }
 
 /** Available, or blocked with a named cause mirroring the entry-point guards. */
@@ -166,7 +178,9 @@ export function deriveAscendingSettlementActions(input: {
     Boolean(viewer && addressesMatch(seller, viewer)) ||
     Boolean(viewer && addressesMatch(agent, viewer));
   const challengeOpen =
-    state === "CHALLENGED" || state === "CHALLENGE_ELAPSED";
+    state === "CHALLENGED" ||
+    state === "CHALLENGE_ELAPSED" ||
+    state === "CHALLENGE_UNRESOLVED";
 
   let confirmReceipt: SettlementActionGate<ConfirmReceiptBlockCause>;
   if (!viewer || !isBuyer) {
@@ -254,6 +268,8 @@ export function ascendingSettlementCopy(state: AscendingSettlementState): string
       return "A bonded challenge is open. The protection clock is frozen.";
     case "CHALLENGE_ELAPSED":
       return "The challenge window has passed without a judgement. Anyone can conclude it.";
+    case "CHALLENGE_UNRESOLVED":
+      return "A bonded challenge is open. Challenge window details are still loading.";
     case "REVERSAL_PENDING":
       return "A reversal is in progress. The buyer must return the passport.";
     case "REVERSAL_EXPIRED":

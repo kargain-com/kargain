@@ -528,7 +528,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 **Header details:** seal `sublabel` (DISPUTED → `under review`; VERIFIED → short verifier); dispute line → `?tab=records`; MRZ all breakpoints. VIN in attributes uses `InstrumentFrame` with `w-fit max-w-full` (brackets hug the VIN string, not the full section width).
 
-**Passport dispute Actions** ([`dispute-surface.ts`](../lib/passport/dispute-surface.ts) + [`passport-actions-panel.tsx`](../components/passport/passport-actions-panel.tsx)): 14-day window readout from recorded open time + chain `DISPUTE_WINDOW` / `challengeOpenedAt`; Upheld/Rejected (`judge`) only for independent active KarPro (not opener/owner/recorded verifier) **while the window is active**; withdraw only opener while window active; permissionless **Conclude dispute** (`conclude`) after window — no judge after the deadline; honest bond destinations (upheld → opener, rejected/expired → platform); undelivered returns use Claims via receipt `ClaimRecorded`. Trust banners: lapse (`lastDisputeTerminal=expire`) and upheld confirm are informational (§10.3), not `status-error`. Timeline shows a derived terminal tick for expire/confirm/reject/withdraw.
+**Bonded challenge Actions** ([`lib/challenge/`](../lib/challenge/) + [`passport-actions-panel.tsx`](../components/passport/passport-actions-panel.tsx) / [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx)): one derivation for verification and settlement instances. Phase from opening timestamp + captured window only — unreadable inputs fail closed (no invented active window). Actions are available or blocked with named causes (`party_excluded` vs `not_qualified` stay distinct). Judge only while the window is active; after the window only **Conclude** (`conclude`) — never judge. Terminal consequence copy comes from the instance definition (verification: lapse/stand; settlement: reversal pending / seller paid). Bond returns at uphold inside the judge tx; settled amount returns on reversal completion. Undeliverable payouts disclose Claims. Trust banners: lapse (`lastDisputeTerminal` expire/expired) and upheld are informational (§10.3), not `status-error`. Deadlines and amounts are factual readouts; disputed chrome uses `status-error`, not the trust accent.
 
 **Owner actions** still use on-chain `ownerOf` ([`passport-owner.ts`](../lib/passport/passport-owner.ts)); Ponder `passport.owner` is SSR fallback only.
 
@@ -773,8 +773,9 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | Surface | Behavior |
 |---------|----------|
 | USDC bid | [`auction-bid-panel.tsx`](../components/auction/auction-bid-panel.tsx) — allowance → `approve(escrow, amount)` → `bid` with `value: 0`; balance preflight; amount in 6-decimal units |
-| Settlement panel | [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx) — role-gated hold / challenge / reversal / S8–S9 |
-| State derive | [`lib/commerce/settlement-state.ts`](../lib/commerce/settlement-state.ts) — pure Modes states + per-action **available \| blocked(cause)** gates |
+| Settlement panel | [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx) — role-gated hold / challenge / reversal / S8–S9; challenge actions + terminal copy from [`lib/challenge/`](../lib/challenge/) |
+| Challenge derivation | [`lib/challenge/`](../lib/challenge/) — sole phase/actions/terminals for verification + settlement instances (available\|blocked causes) |
+| State derive | [`lib/commerce/settlement-state.ts`](../lib/commerce/settlement-state.ts) — pure Modes states + per-action **available \| blocked(cause)** gates; challenge phase via `lib/challenge` |
 | Passport approval | [`use-passport-approval.ts`](../hooks/use-passport-approval.ts) — sole ERC-721 passport approval owner for any spender (modes + bridge gateway); create-auction, complete-reversal, listing edit, both authorize dialogs, bridge. ERC-20 payment `approve` is a different rule. |
 | U8 | Dispute bond always **native ETH** from chain challenge bond, even on USDC lots — labeled in Open challenge CTA |
 | U9 | Create + authorize disable when unresolved settlement + settlement-window advisory |
@@ -837,7 +838,10 @@ Canonical ascending claim strings: [`lib/auction/ascending-public-claims.ts`](..
 | Timelock bounds retune | Rule retunes go through Timelock by design; no product ops UI for `setAuctionRules` — accepted decision, not backlog. |
 | Hold — buyer | [amount] is held for your protection until [date]. Confirm receipt to release payment early, or open a challenge if the vehicle was not delivered as sold. |
 | Hold — seller/agent | Payment is released when the buyer confirms receipt, or automatically on [date]. |
-| Challenge bond | Opening a challenge locks a [bond] bond and freezes the protection clock. You get it back if the challenge is upheld for you. |
+| Challenge bond | Opening a challenge locks a [bond] bond and freezes the protection clock. Bond returns on uphold in the judging transaction. |
+| Challenge reject | Rejecting pays the seller and closes the sale. Bond goes to the platform — not a return of the protection hold. Claims if undeliverable. |
+| Challenge uphold | Upholding starts a reversal. Bond returns in this transaction; settled amount on passport return. |
+| Challenge conclude | Conclude without merits: seller is paid and the sale closes. Bond to platform. |
 | Released (S8) | Sale complete. [gross] split: seller [net] · agent [fee] · platform [fee]. |
 | Cancelled (S9) | The auction was cancelled before any qualifying bid. The vehicle returned to the owner. |
 | Returned (S9) | The owner recalled this vehicle before any qualifying bid. |

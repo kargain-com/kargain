@@ -7,10 +7,10 @@ import {
   type RecordSeverity,
 } from "@/lib/passport/record-types";
 import {
-  disputeTerminalTimelineDescription,
-  disputeTerminalTimelineLabel,
-} from "@/lib/passport/dispute-trust-copy";
-import { parseDisputeTerminal } from "@/lib/passport/dispute-surface";
+  challengeTerminalTimelineDescription,
+  challengeTerminalTimelineLabel,
+  parseChallengeTerminal,
+} from "@/lib/challenge";
 import type { PonderPassportRecord } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -66,13 +66,13 @@ export function PassportRecordsTimeline({
   sectionId,
 }: Props) {
   const ctx = { passportOwner, lastDisputer, disputeReason };
-  const terminal = parseDisputeTerminal(lastDisputeTerminal);
+  const terminal = parseChallengeTerminal(lastDisputeTerminal);
   const terminalTs =
-    terminal === "withdraw"
+    terminal === "withdrawn"
       ? disputeWithdrawnAt
       : lastDisputeResolvedAt;
-  const terminalLabel = disputeTerminalTimelineLabel(terminal);
-  const terminalDescription = disputeTerminalTimelineDescription(terminal);
+  const terminalLabel = challengeTerminalTimelineLabel(terminal);
+  const terminalDescription = challengeTerminalTimelineDescription(terminal);
 
   const rows: TimelineRow[] = [];
   if (

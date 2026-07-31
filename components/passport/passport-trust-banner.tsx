@@ -1,6 +1,6 @@
 import { CircleInformationIcon, WarningIcon } from "@/components/ui/icons";
 
-import { disputeTrustCopyKind } from "@/lib/passport/dispute-trust-copy";
+import { challengeTrustCopyKind } from "@/lib/challenge";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +48,7 @@ export function PassportTrustBanner({
     );
   }
 
-  const kind = disputeTrustCopyKind({
+  const kind = challengeTrustCopyKind({
     status,
     hadDispute,
     lastDisputeTerminal,

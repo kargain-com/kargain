@@ -20,11 +20,12 @@ import {
 } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import {
-  deriveChallengeActions,
-  challengeWindowEndsAt,
   JUDGE_OUTCOME,
+  SETTLEMENT_INSTANCE,
+  deriveChallengeSurface,
+  isAvailable,
   type ChallengeSnapshot,
-} from "@/lib/commerce/challenge";
+} from "@/lib/challenge";
 import { addressesMatch } from "@/lib/commerce/consignment";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import type { AscendingHoldSnapshot } from "@/lib/commerce/parse-ascending";
@@ -38,12 +39,17 @@ import {
   deriveAscendingSettlementState,
   isCompleteReversalActionable,
 } from "@/lib/commerce/settlement-state";
-import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import {
+  AscendingConsignmentAbi,
+  KarProStakingAbi,
+} from "@/lib/contracts/abis.generated";
 import {
   commerceConfirmedLabel,
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +102,31 @@ export function AuctionSettlementPanel({
   const mode = commerceModeAddress("ascending", chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const tid = BigInt(tokenId);
+  const staking = karProStakingAddress(chainId);
+  const wc = wagmiChainId(chainId);
+
+  const verifierReads = useKeyedReadContracts({
+    contracts:
+      address && staking
+        ? [
+            {
+              key: "isActiveVerifier" as const,
+              address: staking,
+              abi: KarProStakingAbi,
+              functionName: "isActiveVerifier",
+              args: [address],
+              chainId: wc,
+            },
+          ]
+        : [],
+  });
+  const verifierEntry = verifierReads.entry("isActiveVerifier");
+  const isActiveVerifier: boolean | undefined =
+    verifierEntry?.status === "success"
+      ? verifierEntry.result === true
+      : address
+        ? undefined
+        : false;
 
   const state = deriveAscendingSettlementState({ hold, challenge, nowSec: now });
 
@@ -123,12 +154,15 @@ export function AuctionSettlementPanel({
     passportOwner: passportTokenOwner,
     modeApproved,
   });
-  const challengeActions = deriveChallengeActions({
+  const challengeSurface = deriveChallengeSurface(SETTLEMENT_INSTANCE, {
     challenge,
-    viewer: address,
-    excludedJudges: [hold?.buyer, auction.seller, auction.agent],
+    wallet: address,
+    isActiveVerifier,
+    buyer: hold?.buyer,
+    seller: auction.seller,
+    agent: auction.agent,
     subjectChallengeable: state === "HOLD",
-    nowSeconds: now,
+    nowSec: now,
   });
 
   const isBuyer =
@@ -298,7 +332,8 @@ export function AuctionSettlementPanel({
     now,
   );
   const protectionAttr = endsAtDateTimeAttr(BigInt(hold.protectionEndsAt));
-  const challengeEndsAt = challengeWindowEndsAt(challenge);
+  const challengeEndsAt =
+    challengeSurface.windowEndsAt > 0 ? challengeSurface.windowEndsAt : null;
 
   const abandonment =
     hold.abandonmentDeadline > 0
@@ -476,15 +511,16 @@ export function AuctionSettlementPanel({
             </Button>
           )}
 
-          {challengeActions.canOpen && (
+          {isAvailable(challengeSurface.open) && (
             <div className="space-y-2 border-t border-border-default pt-3">
               <p className="font-sans text-xs text-text-secondary">
                 Opening a challenge locks a{" "}
                 <span className="font-mono tabular-nums text-text-primary">
                   {bondLabel ?? "…"}
                 </span>{" "}
-                bond and freezes the protection clock. You get it back if the
-                challenge is upheld.
+                bond and freezes the protection clock. You get the bond back if
+                the challenge is upheld (in the judging transaction). If a return
+                cannot be delivered, it waits under Claims.
               </p>
               <Button
                 type="button"
@@ -502,7 +538,7 @@ export function AuctionSettlementPanel({
             </div>
           )}
 
-          {challengeActions.canWithdraw && (
+          {isAvailable(challengeSurface.withdraw) && (
             <Button
               type="button"
               variant="outline"
@@ -514,27 +550,31 @@ export function AuctionSettlementPanel({
             </Button>
           )}
 
-          {challengeActions.canConclude && (
-            <Button
-              type="button"
-              className="w-full"
-              disabled={actionBusy || !mode}
-              onClick={() => void run("conclude")}
-            >
-              {actionBusy ? "Confirming…" : "Conclude challenge"}
-            </Button>
+          {isAvailable(challengeSurface.conclude) && (
+            <div className="space-y-2 border-t border-border-default pt-3">
+              <p className="font-sans text-xs text-text-secondary">
+                {challengeSurface.terminals.expired.concludeCopy}
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                disabled={actionBusy || !mode}
+                onClick={() => void run("conclude")}
+              >
+                {actionBusy ? "Confirming…" : "Conclude challenge"}
+              </Button>
+            </div>
           )}
 
-          {challengeActions.canJudge && (
+          {isAvailable(challengeSurface.judge) && (
             <div className="space-y-3 border-t border-border-default pt-3">
               <p className="font-sans text-sm text-text-secondary">
-                Judge this challenge as an independent party. You are not the
-                buyer, seller, agent, or challenger.
+                Judge this challenge as an independent active KarPro. You are not
+                the buyer, seller, agent, or challenger.
               </p>
               <div className="space-y-2">
                 <p className="font-sans text-xs text-text-secondary">
-                  Upholding the challenge starts a reversal: the buyer returns
-                  the passport to recover the sale amount plus bond.
+                  {challengeSurface.terminals.upheld.judgeCopy}
                 </p>
                 <Button
                   type="button"
@@ -547,8 +587,7 @@ export function AuctionSettlementPanel({
               </div>
               <div className="space-y-2">
                 <p className="font-sans text-xs text-text-secondary">
-                  Rejecting the challenge resumes the protection clock and
-                  forfeits the challenger&apos;s bond.
+                  {challengeSurface.terminals.rejected.judgeCopy}
                 </p>
                 <Button
                   type="button"
@@ -562,6 +601,15 @@ export function AuctionSettlementPanel({
               </div>
             </div>
           )}
+
+          {challengeSurface.exclusionCopy &&
+            challenge &&
+            !isAvailable(challengeSurface.judge) &&
+            challengeSurface.phase === "active" && (
+              <p className="font-sans text-xs text-text-secondary">
+                {challengeSurface.exclusionCopy}
+              </p>
+            )}
         </>
       )}
     </div>

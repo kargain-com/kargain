@@ -38,10 +38,11 @@ import {
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import {
-  deriveDisputeSurface,
-  disputeExclusionCopy,
-  PASSPORT_DISPUTE_WINDOW_SECONDS,
-} from "@/lib/passport/dispute-surface";
+  VERIFICATION_INSTANCE,
+  deriveChallengeSurface,
+  isAvailable,
+  parseChallenge,
+} from "@/lib/challenge";
 import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
@@ -207,7 +208,7 @@ export function PassportActionsPanel({
   const chainWindowSec =
     disputeWindowEntry?.status === "success" && disputeWindowEntry.result != null
       ? Number(disputeWindowEntry.result)
-      : PASSPORT_DISPUTE_WINDOW_SECONDS;
+      : undefined;
   const chainOpenedAt =
     challengeOpenedEntry?.status === "success" &&
     challengeOpenedEntry.result != null
@@ -221,19 +222,29 @@ export function PassportActionsPanel({
         ? indexerOpenedAt
         : 0;
 
+  const challenge =
+    status === "DISPUTED" && effectiveOpenedAt > 0
+      ? parseChallenge(tokenId, {
+          challenger: lastDisputer,
+          openedAt: effectiveOpenedAt,
+          windowDuration: chainWindowSec,
+          bondAmount: disputeDeposit ?? 0n,
+        })
+      : null;
+
   const nowSec = useNow(status === "DISPUTED" ? 1_000 : 60_000);
-  const disputeSurface = deriveDisputeSurface({
-    status,
-    disputeOpenedAt: effectiveOpenedAt,
-    disputeWindowSec: chainWindowSec,
-    nowSec,
+  const challengeSurface = deriveChallengeSurface(VERIFICATION_INSTANCE, {
+    challenge,
     wallet: address,
     isActiveVerifier,
+    passportStatus: status,
     owner: passportOwner,
     recordedVerifier,
     opener: lastDisputer,
+    nowSec,
+    requireDisputedStatus: true,
   });
-  const exclusionCopy = disputeExclusionCopy(disputeSurface.exclusionReason);
+  const exclusionCopy = challengeSurface.exclusionCopy;
 
   useEffect(() => {
     if (!recordAddedSuccess) return;
@@ -551,16 +562,16 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isConnected && disputeSurface.canOpen && (
+      {isConnected && isAvailable(challengeSurface.open) && (
         <div className="space-y-2">
           {disputeDepositLoading ? (
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
           ) : disputeDeposit != null ? (
             <p className="text-xs text-text-secondary">
-              Opening locks a {formatEther(disputeDeposit)} ETH deposit for 14 days. Withdraw
-              before the window ends returns it to you. Confirm returns it to the opener. Reject or
-              expiry sends it to the platform. If a return cannot be delivered, it waits under
-              Claims.
+              Opening locks a {formatEther(disputeDeposit)} ETH deposit for the challenge
+              window. Withdraw before the window ends returns it to you. Uphold returns it to
+              the opener. Reject or expiry sends it to the platform. If a return cannot be
+              delivered, it waits under Claims.
             </p>
           ) : null}
           <Button
@@ -587,37 +598,37 @@ export function PassportActionsPanel({
               )
             }
           >
-            Open dispute
+            Open challenge
           </Button>
         </div>
       )}
 
       {status === "DISPUTED" && (
         <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-3">
-          {disputeSurface.windowPhase === "active" && (
+          {challengeSurface.phase === "active" && (
             <p className="text-sm text-text-secondary">
-              Dispute window ends{" "}
+              Challenge window ends{" "}
               <time
                 className="font-mono tabular-nums text-text-primary"
-                dateTime={new Date(disputeSurface.windowEndsAt * 1000).toISOString()}
+                dateTime={new Date(challengeSurface.windowEndsAt * 1000).toISOString()}
               >
-                {new Date(disputeSurface.windowEndsAt * 1000).toLocaleString(undefined, {
+                {new Date(challengeSurface.windowEndsAt * 1000).toLocaleString(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })}
               </time>
               {" · "}
               <span className="font-mono tabular-nums">
-                {formatReturnCountdown(BigInt(disputeSurface.windowRemainingSec))}
+                {formatReturnCountdown(BigInt(challengeSurface.windowRemainingSec))}
               </span>{" "}
               left. If no independent KarPro decides by then, verification lapses and the deposit
               goes to the platform.
             </p>
           )}
-          {disputeSurface.windowPhase === "elapsed" && (
+          {challengeSurface.phase === "elapsed" && (
             <p className="text-sm text-text-secondary">
-              The dispute window has ended. Anyone may conclude the dispute so verification
-              lapses. The deposit goes to the platform. Merits resolution is no longer available.
+              The challenge window has ended. Anyone may conclude so verification
+              lapses. The deposit goes to the platform. Judging is no longer available.
             </p>
           )}
           {exclusionCopy && (
@@ -626,12 +637,11 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && disputeSurface.canResolve && (
+      {status === "DISPUTED" && isAvailable(challengeSurface.judge) && (
         <div className="flex flex-col gap-2">
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
-              The verification was incorrect. Status becomes unverified. The opener’s deposit
-              returns to them — if it cannot be delivered, it waits as a claim for them.
+              {challengeSurface.terminals.upheld.judgeCopy}
             </p>
             <Button
               type="button"
@@ -646,17 +656,16 @@ export function PassportActionsPanel({
                       args: [tid, 0],
                       chainId: wc,
                     }),
-                  "Dispute confirmed. Passport is now unverified.",
+                  "Challenge upheld. Passport is now unverified.",
                 )
               }
             >
-              Confirm dispute
+              Uphold challenge
             </Button>
           </div>
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
-              The verification stands. Status stays verified. The deposit goes to the platform —
-              never to the resolver.
+              {challengeSurface.terminals.rejected.judgeCopy}
             </p>
             <Button
               type="button"
@@ -672,17 +681,17 @@ export function PassportActionsPanel({
                       args: [tid, 1],
                       chainId: wc,
                     }),
-                  "Dispute rejected. Verification stands.",
+                  "Challenge rejected. Verification stands.",
                 )
               }
             >
-              Reject dispute
+              Reject challenge
             </Button>
           </div>
         </div>
       )}
 
-      {status === "DISPUTED" && disputeSurface.canWithdraw && (
+      {status === "DISPUTED" && isAvailable(challengeSurface.withdraw) && (
         <div className="space-y-2">
           {disputeDeposit != null && (
             <p className="text-xs text-text-secondary">
@@ -706,21 +715,20 @@ export function PassportActionsPanel({
                     args: [tid],
                     chainId: wc,
                   }),
-                "Dispute withdrawn. Your deposit was released.",
-                "Dispute withdrawn. Your deposit could not be delivered and is waiting under Claims.",
+                "Challenge withdrawn. Your deposit was released.",
+                "Challenge withdrawn. Your deposit could not be delivered and is waiting under Claims.",
               )
             }
           >
-            Withdraw my dispute
+            Withdraw my challenge
           </Button>
         </div>
       )}
 
-      {status === "DISPUTED" && disputeSurface.canExpire && (
+      {status === "DISPUTED" && isAvailable(challengeSurface.conclude) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
-            Conclude without a merits judgment. Verification lapses (not a penalty to the owner) —
-            a fresh inspection restores it. The deposit goes to the platform.
+            {challengeSurface.terminals.expired.concludeCopy}
           </p>
           <Button
             type="button"
@@ -737,11 +745,11 @@ export function PassportActionsPanel({
                     args: [tid],
                     chainId: wc,
                   }),
-                "Dispute concluded. Verification lapsed — a fresh inspection restores it.",
+                "Challenge concluded. Verification lapsed — a fresh inspection restores it.",
               )
             }
           >
-            Conclude dispute
+            Conclude challenge
           </Button>
         </div>
       )}
