@@ -41,12 +41,17 @@ describe("formatClaimAmount", () => {
 });
 
 describe("claimableContractsForChain", () => {
-  it("omits commerce modes when unset (Nuclear #2 pending)", () => {
+  it("includes passport, staking, and both commerce modes on Nuclear commercial stacks", () => {
     const hub = claimableContractsForChain(84532);
-    assert.equal(hub.length, 2);
+    assert.equal(hub.length, 4);
     assert.deepEqual(
       hub.map((c) => c.key).sort(),
-      ["karPassport", "karProStaking"].sort(),
+      [
+        "ascendingConsignment",
+        "fixedPriceConsignment",
+        "karPassport",
+        "karProStaking",
+      ].sort(),
     );
     assert.equal(claimableContractsForChain(1).length, 0);
   });

@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
 
 import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
 } from "@/lib/web3/deployment-addresses";
 import { fxRateChainId } from "@/lib/web3/chain-context";
+import {
+  useKeyedReadContracts,
+  type KeyedContract,
+} from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -28,7 +31,9 @@ const AGGREGATOR_V3_ABI = [
   },
 ] as const;
 
-function isValidFeedAddress(address: `0x${string}` | undefined): address is `0x${string}` {
+function isValidFeedAddress(
+  address: `0x${string}` | undefined,
+): address is `0x${string}` {
   return Boolean(address && address.toLowerCase() !== ZERO_ADDRESS);
 }
 
@@ -51,16 +56,12 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
   const nativeFeed = chainlinkNativeUsdFeed(fxChain);
   const eurFeed = chainlinkEurUsdFeed(fxChain);
 
-  const contracts = useMemo(() => {
-    const reads: Array<{
-      address: `0x${string}`;
-      abi: typeof AGGREGATOR_V3_ABI;
-      functionName: "latestRoundData";
-      chainId: typeof chainId;
-    }> = [];
+  const contracts = useMemo((): KeyedContract[] => {
+    const reads: KeyedContract[] = [];
 
     if (isValidFeedAddress(nativeFeed)) {
       reads.push({
+        key: "ethUsd",
         address: nativeFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
@@ -69,6 +70,7 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
     }
     if (isValidFeedAddress(eurFeed)) {
       reads.push({
+        key: "eurUsd",
         address: eurFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
@@ -79,10 +81,7 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
     return reads;
   }, [chainId, nativeFeed, eurFeed]);
 
-  const hasNative = isValidFeedAddress(nativeFeed);
-  const hasEur = isValidFeedAddress(eurFeed);
-
-  const { data, isLoading } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: {
       enabled: enabled && contracts.length > 0,
@@ -90,25 +89,17 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
     },
   });
 
-  let ethUsd: bigint | null = null;
-  let eurUsd: bigint | null = null;
+  const ethEntry = reads.entry("ethUsd");
+  const eurEntry = reads.entry("eurUsd");
 
-  if (data) {
-    let index = 0;
-    if (hasNative) {
-      const read = data[index];
-      if (read?.status === "success") {
-        ethUsd = parseAnswer(read.result);
-      }
-      index += 1;
-    }
-    if (hasEur) {
-      const read = data[index];
-      if (read?.status === "success") {
-        eurUsd = parseAnswer(read.result);
-      }
-    }
-  }
+  const ethUsd =
+    ethEntry?.status === "success" ? parseAnswer(ethEntry.result) : null;
+  const eurUsd =
+    eurEntry?.status === "success" ? parseAnswer(eurEntry.result) : null;
 
-  return { ethUsd, eurUsd, isLoading: enabled && contracts.length > 0 && isLoading };
+  return {
+    ethUsd,
+    eurUsd,
+    isLoading: enabled && contracts.length > 0 && reads.isLoading,
+  };
 }

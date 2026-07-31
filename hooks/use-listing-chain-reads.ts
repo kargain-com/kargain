@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
 
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
@@ -11,13 +10,10 @@ import {
   type OnChainListingRow,
 } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 15_000;
-
-type ContractReadResult =
-  | { status: "success"; result: unknown }
-  | { status: "failure"; error: unknown };
 
 /**
  * Batched `FixedPriceConsignment` reads for one token: consignment slot,
@@ -56,15 +52,17 @@ export function useListingChainReads(input: {
         "settlementNotes",
       ] as const
     ).map((functionName) => ({
+      key: functionName,
       address: market,
       abi: FixedPriceConsignmentAbi,
       functionName,
-      args: [tid] as readonly unknown[],
+      args: [tid] as const,
       chainId: wc,
     }));
     return [
       ...perToken,
       {
+        key: "paused" as const,
         address: market,
         abi: FixedPriceConsignmentAbi,
         functionName: "paused" as const,
@@ -74,26 +72,20 @@ export function useListingChainReads(input: {
     ];
   }, [readsEnabled, market, tid, wc]);
 
-  const { data, isLoading, refetch } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: { enabled: readsEnabled, staleTime: STALE_MS },
   });
 
-  const results = data as ReadonlyArray<ContractReadResult> | undefined;
-  const value = (index: number): unknown => {
-    const entry = results?.[index];
-    return entry?.status === "success" ? entry.result : undefined;
-  };
-
-  const phaseRead = results?.[0];
+  const phaseEntry = reads.entry("consignmentPhase");
   const chainListingRead: ChainListingRead =
-    phaseRead?.status === "success"
+    phaseEntry?.status === "success"
       ? "success"
-      : phaseRead?.status === "failure"
+      : phaseEntry?.status === "failure"
         ? "failure"
         : "pending";
 
-  const denomination = value(3) as
+  const denomination = reads.get("consignmentDenominationOf") as
     | { currencyCode?: string }
     | readonly [number, string]
     | undefined;
@@ -101,14 +93,16 @@ export function useListingChainReads(input: {
     ? denomination[1]
     : (denomination as { currencyCode?: string } | undefined)?.currencyCode;
 
+  const phaseRaw = reads.get("consignmentPhase");
   const listing: OnChainListingRow | null = buildOnChainListing({
-    phase: value(0) == null ? undefined : Number(value(0)),
-    seller: value(1) as string | undefined,
-    price: value(2) as bigint | undefined,
+    phase: phaseRaw == null ? undefined : Number(phaseRaw),
+    seller: reads.asString("consignmentSellerOf"),
+    price: reads.asBigint("consignmentPriceOf"),
     currencyCode,
   });
 
-  const agentRaw = value(4);
+  const agentRaw = reads.get("consignmentAgentOf");
+  const pausedRaw = reads.get("paused");
 
   return {
     /** Fixed-price mode contract; `undefined` disables every write. */
@@ -116,11 +110,11 @@ export function useListingChainReads(input: {
     listing,
     chainListingRead,
     agent: typeof agentRaw === "string" ? (agentRaw as `0x${string}`) : undefined,
-    recallRequestedAt: value(5) as bigint | undefined,
-    settlementNote: decodeSettlementNote(value(6)).trim(),
+    recallRequestedAt: reads.asBigint("recallRequestTimestamp"),
+    settlementNote: decodeSettlementNote(reads.get("settlementNotes")).trim(),
     /** Mode-level G3 pause — chain only; `undefined` while unread/failed. */
-    paused: value(7) == null ? undefined : value(7) === true,
-    isLoading: readsEnabled && isLoading,
-    refetch,
+    paused: pausedRaw == null ? undefined : pausedRaw === true,
+    isLoading: readsEnabled && reads.isLoading,
+    refetch: reads.refetch,
   };
 }

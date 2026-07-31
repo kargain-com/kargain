@@ -1,8 +1,8 @@
 "use client";
 
 import { erc20Abi } from "viem";
-import { useReadContracts } from "wagmi";
 
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
 export type ClaimAssetMeta = {
@@ -21,23 +21,27 @@ export function useClaimAssetMeta(params: {
   const chain = getViemChain(chainId);
   const nativeSymbol = chain?.nativeCurrency.symbol ?? "ETH";
 
-  const { data } = useReadContracts({
+  const reads = useKeyedReadContracts({
     allowFailure: true,
     query: { enabled: !isNative },
-    contracts: [
-      {
-        address: asset,
-        abi: erc20Abi,
-        functionName: "decimals",
-        chainId,
-      },
-      {
-        address: asset,
-        abi: erc20Abi,
-        functionName: "symbol",
-        chainId,
-      },
-    ],
+    contracts: isNative
+      ? []
+      : [
+          {
+            key: "decimals" as const,
+            address: asset,
+            abi: erc20Abi,
+            functionName: "decimals",
+            chainId,
+          },
+          {
+            key: "symbol" as const,
+            address: asset,
+            abi: erc20Abi,
+            functionName: "symbol",
+            chainId,
+          },
+        ],
   });
 
   if (isNative) {
@@ -48,8 +52,8 @@ export function useClaimAssetMeta(params: {
     };
   }
 
-  const decimalsRaw = data?.[0]?.status === "success" ? data[0].result : null;
-  const symbolRaw = data?.[1]?.status === "success" ? data[1].result : null;
+  const decimalsRaw = reads.get("decimals") ?? null;
+  const symbolRaw = reads.get("symbol") ?? null;
   const decimals =
     typeof decimalsRaw === "number"
       ? decimalsRaw

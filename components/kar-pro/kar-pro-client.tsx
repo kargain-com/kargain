@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { KarProCommonsSection } from "@/components/kar-pro/kar-pro-commons-section";
 import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership-section";
@@ -22,6 +22,7 @@ import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function KarProClient({
@@ -37,26 +38,23 @@ export function KarProClient({
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;
 
-  const { data: reads, refetch } = useReadContracts({
-    contracts: staking && wc != null
+  const stakingReads = useKeyedReadContracts({
+    contracts: staking && wc != null && address
       ? [
-          ...(address
-            ? [
-                {
-                  address: staking,
-                  abi: KarProStakingAbi,
-                  functionName: "isActiveVerifier" as const,
-                  args: [address] as const,
-                  chainId: wc,
-                },
-              ]
-            : []),
+          {
+            key: "isActiveVerifier" as const,
+            address: staking,
+            abi: KarProStakingAbi,
+            functionName: "isActiveVerifier" as const,
+            args: [address] as const,
+            chainId: wc,
+          },
         ]
       : [],
     query: { enabled: Boolean(staking && address && chainId != null) },
   });
 
-  const isActiveVerifier = (reads?.[0]?.result as boolean | undefined) === true;
+  const isActiveVerifier = stakingReads.get("isActiveVerifier") === true;
   const { snapshot } = useMessagingSession();
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
 
@@ -72,15 +70,15 @@ export function KarProClient({
   });
 
   const handleJoinSuccess = () => {
-    void refetch().then((result) => {
-      const active = result.data?.[0]?.result === true;
+    void stakingReads.refetch().then((result) => {
+      const active = result.get("isActiveVerifier") === true;
       onVerifierStatusChange?.(active);
     });
   };
 
   const handleLeave = () => {
-    void refetch().then((result) => {
-      const active = result.data?.[0]?.result === true;
+    void stakingReads.refetch().then((result) => {
+      const active = result.get("isActiveVerifier") === true;
       onVerifierStatusChange?.(active);
     });
   };

@@ -57,7 +57,7 @@ import {
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { useReadContracts } from "wagmi";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Props = {
   tokenId: string;
@@ -134,11 +134,12 @@ export function PassportActionsPanel({
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
-  const { data: reads } = useReadContracts({
+  const verifierReads = useKeyedReadContracts({
     contracts:
       passport && staking && address
         ? [
             {
+              key: "isActiveVerifier" as const,
               address: staking,
               abi: KarProStakingAbi,
               functionName: "isActiveVerifier",
@@ -149,16 +150,18 @@ export function PassportActionsPanel({
         : [],
   });
 
-  const { data: disputeReads } = useReadContracts({
+  const disputeReads = useKeyedReadContracts({
     contracts: passport
       ? [
           {
+            key: "disputeWindow" as const,
             address: passport,
             abi: KarPassportAbi,
             functionName: "DISPUTE_WINDOW",
             chainId: wc,
           },
           {
+            key: "challengeOpenedAt" as const,
             address: passport,
             abi: KarPassportAbi,
             functionName: "challengeOpenedAt",
@@ -182,10 +185,10 @@ export function PassportActionsPanel({
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
-  const verifierRead = reads?.[0];
+  const verifierEntry = verifierReads.entry("isActiveVerifier");
   const isActiveVerifier: boolean | undefined =
-    verifierRead?.status === "success"
-      ? verifierRead.result === true
+    verifierEntry?.status === "success"
+      ? verifierEntry.result === true
       : address
         ? undefined
         : false;
@@ -199,13 +202,16 @@ export function PassportActionsPanel({
     listingSeller,
   });
 
+  const disputeWindowEntry = disputeReads.entry("disputeWindow");
+  const challengeOpenedEntry = disputeReads.entry("challengeOpenedAt");
   const chainWindowSec =
-    disputeReads?.[0]?.status === "success" && disputeReads[0].result != null
-      ? Number(disputeReads[0].result)
+    disputeWindowEntry?.status === "success" && disputeWindowEntry.result != null
+      ? Number(disputeWindowEntry.result)
       : PASSPORT_DISPUTE_WINDOW_SECONDS;
   const chainOpenedAt =
-    disputeReads?.[1]?.status === "success" && disputeReads[1].result != null
-      ? Number(disputeReads[1].result)
+    challengeOpenedEntry?.status === "success" &&
+    challengeOpenedEntry.result != null
+      ? Number(challengeOpenedEntry.result)
       : 0;
   const indexerOpenedAt = Number.parseInt(disputeOpenedAt, 10);
   const effectiveOpenedAt =

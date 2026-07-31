@@ -4,7 +4,7 @@ import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-agent-buyer-attribution";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
@@ -35,6 +35,7 @@ import {
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type ListingProp = {
@@ -84,10 +85,11 @@ export function ListingDetailClientIsland({
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
-  const { data: ownerRead, refetch: refetchOwner } = useReadContracts({
+  const ownerReads = useKeyedReadContracts({
     contracts: passport
       ? [
           {
+            key: "ownerOf" as const,
             address: passport,
             abi: KarPassportAbi,
             functionName: "ownerOf",
@@ -97,11 +99,12 @@ export function ListingDetailClientIsland({
         ]
       : [],
   });
+  const refetchOwner = ownerReads.refetch;
 
   const commerce = useListingChainReads({ chainId, tokenId });
   const market = commerce.market;
 
-  const onChainOwner = ownerRead?.[0]?.result as `0x${string}` | undefined;
+  const onChainOwner = ownerReads.get("ownerOf") as `0x${string}` | undefined;
   const directPaymentNote = commerce.settlementNote;
   const hasDirectPayment = directPaymentNote.length > 0;
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);

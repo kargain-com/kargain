@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import type { Filter } from "nostr-tools";
-import { useReadContracts } from "wagmi";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { COMMONS_CONFIRMATIONS_POLICY } from "@/lib/nostr/app-event-store";
@@ -16,6 +15,10 @@ import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscript
 import { attestedPubkeysForAddresses } from "@/lib/nostr/resolve-attested-profile";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { commercialChainIds } from "@/lib/web3/chain-context";
+import {
+  useKeyedReadContracts,
+  type KeyedContract,
+} from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
@@ -90,23 +93,18 @@ export function useCommonsConfirmations(
   });
 
   // Gate 2 — isActiveVerifier OR across commercial chains (wagmi-cached).
-  const verifierContracts = useMemo(() => {
-    const contracts: Array<{
-      address: `0x${string}`;
-      abi: typeof KarProStakingAbi;
-      functionName: "isActiveVerifier";
-      args: readonly [`0x${string}`];
-      chainId: ReturnType<typeof wagmiChainId>;
-    }> = [];
+  const verifierContracts = useMemo((): KeyedContract[] => {
+    const contracts: KeyedContract[] = [];
     for (const cid of commercialChainIds()) {
       const staking = karProStakingAddress(cid);
       if (!staking) continue;
       for (const attester of attesters) {
         contracts.push({
+          key: `active:${cid}:${attester}`,
           address: staking,
           abi: KarProStakingAbi,
           functionName: "isActiveVerifier",
-          args: [attester] as const,
+          args: [attester],
           chainId: wagmiChainId(cid),
         });
       }
@@ -114,27 +112,27 @@ export function useCommonsConfirmations(
     return contracts;
   }, [attesters]);
 
-  const { data: verifierReads, isPending: verifierPending } = useReadContracts({
+  const verifierReads = useKeyedReadContracts({
     contracts: verifierContracts,
     query: { enabled: verifierContracts.length > 0 },
   });
+  const verifierPending = verifierReads.isPending;
 
   const activeVerifierByAttester = useMemo(() => {
     const map = new Map<string, boolean>();
-    const commercialCount = commercialChainIds().filter((cid) =>
+    const chainIds = commercialChainIds().filter((cid) =>
       Boolean(karProStakingAddress(cid)),
-    ).length;
-    attesters.forEach((attester, attesterIndex) => {
+    );
+    for (const attester of attesters) {
       let active = false;
-      for (let c = 0; c < commercialCount; c++) {
-        const readIndex = c * attesters.length + attesterIndex;
-        if (verifierReads?.[readIndex]?.result === true) {
+      for (const cid of chainIds) {
+        if (verifierReads.get(`active:${cid}:${attester}`) === true) {
           active = true;
           break;
         }
       }
       map.set(attester, active);
-    });
+    }
     return map;
   }, [attesters, verifierReads]);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount } from "wagmi";
 import type { Address } from "viem";
 
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/commerce/mode";
 import { normalizeAddress } from "@/lib/commerce/pause-surface";
 import { commercialChainIds } from "@/lib/web3/chain-context";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 30_000;
@@ -26,8 +27,11 @@ export function useIsCommerceGuardian(enabled = true): {
   const { address: connected } = useAccount();
 
   const targets = useMemo(() => {
-    const out: { chainId: number; address: Address; mode: (typeof COMMERCE_MODES)[number] }[] =
-      [];
+    const out: {
+      chainId: number;
+      address: Address;
+      mode: (typeof COMMERCE_MODES)[number];
+    }[] = [];
     for (const chainId of commercialChainIds()) {
       for (const mode of COMMERCE_MODES) {
         const address = commerceModeAddress(mode, chainId);
@@ -40,6 +44,7 @@ export function useIsCommerceGuardian(enabled = true): {
   const contracts = useMemo(
     () =>
       targets.map(({ chainId, mode, address }) => ({
+        key: `${chainId}:${mode}:guardian`,
         address,
         abi: commerceModeAbi(mode),
         functionName: "guardian" as const,
@@ -48,7 +53,7 @@ export function useIsCommerceGuardian(enabled = true): {
     [targets],
   );
 
-  const { data, isPending } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: {
       enabled: Boolean(enabled && connected && targets.length > 0),
@@ -58,16 +63,18 @@ export function useIsCommerceGuardian(enabled = true): {
 
   const connectedNorm = normalizeAddress(connected);
   const isGuardian = useMemo(() => {
-    if (!connectedNorm || !data) return false;
-    return data.some((entry) => {
-      if (entry.status !== "success") return false;
+    if (!connectedNorm) return false;
+    return reads.entries.some((entry) => {
+      if (entry?.status !== "success") return false;
       const g = normalizeAddress(entry.result as string);
       return g != null && g === connectedNorm;
     });
-  }, [data, connectedNorm]);
+  }, [reads.entries, connectedNorm]);
 
   return {
     isGuardian,
-    isPending: Boolean(enabled && connected && targets.length > 0 && isPending),
+    isPending: Boolean(
+      enabled && connected && targets.length > 0 && reads.isPending,
+    ),
   };
 }

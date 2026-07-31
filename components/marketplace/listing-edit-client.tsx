@@ -6,7 +6,6 @@ import { parseUnits, stringToHex } from "viem";
 import {
   useAccount,
   useChainId,
-  useReadContracts,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -43,6 +42,7 @@ import {
   karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Props = {
   tokenId: string;
@@ -108,10 +108,11 @@ export function ListingEditClient({
     }
   }, [openOptions.assets, settlementAsset, denominationKind]);
 
-  const { data: reads, refetch: refetchReads } = useReadContracts({
+  const ownershipReads = useKeyedReadContracts({
     contracts: passport
       ? [
           {
+            key: "ownerOf" as const,
             address: passport,
             abi: KarPassportAbi,
             functionName: "ownerOf",
@@ -119,6 +120,7 @@ export function ListingEditClient({
             chainId: wc,
           },
           {
+            key: "getApproved" as const,
             address: passport,
             abi: KarPassportAbi,
             functionName: "getApproved",
@@ -132,12 +134,12 @@ export function ListingEditClient({
   const commerce = useListingChainReads({ chainId, tokenId });
   const market = commerce.market;
 
-  const ownerOf = reads?.[0]?.result as `0x${string}` | undefined;
-  const approved = reads?.[1]?.result as `0x${string}` | undefined;
+  const ownerOf = ownershipReads.get("ownerOf") as `0x${string}` | undefined;
+  const approved = ownershipReads.get("getApproved") as `0x${string}` | undefined;
 
   const refetchListing = useCallback(async () => {
-    await Promise.all([refetchReads(), commerce.refetch()]);
-  }, [refetchReads, commerce]);
+    await Promise.all([ownershipReads.refetch(), commerce.refetch()]);
+  }, [ownershipReads, commerce]);
 
   const row = commerce.listing;
   const active = row?.active ?? false;

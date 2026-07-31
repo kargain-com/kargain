@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount } from "wagmi";
 import type { Address } from "viem";
 
 import {
@@ -17,6 +17,10 @@ import {
   type GuardianPauseControl,
 } from "@/lib/commerce/pause-surface";
 import { commercialChainIds } from "@/lib/web3/chain-context";
+import {
+  useKeyedReadContracts,
+  type KeyedContract,
+} from "@/lib/web3/keyed-multicall";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 15_000;
@@ -33,10 +37,6 @@ export type CommercePauseOpsRow = {
   owner: Address | undefined;
   control: GuardianPauseControl;
 };
-
-type ContractReadResult =
-  | { status: "success"; result: unknown }
-  | { status: "failure"; error: unknown };
 
 type Target = {
   chainId: number;
@@ -62,13 +62,12 @@ export function useCommercePauseOps() {
     return out;
   }, []);
 
-  const contracts = useMemo(() => {
+  const contracts = useMemo((): KeyedContract[] => {
     return targets.flatMap(({ chainId, mode, address }) => {
       const wc = wagmiChainId(chainId);
       const abi = commerceModeAbi(mode);
-      return (
-        ["paused", "guardian", "owner"] as const
-      ).map((functionName) => ({
+      return (["paused", "guardian", "owner"] as const).map((functionName) => ({
+        key: `${chainId}:${mode}:${functionName}`,
         address,
         abi,
         functionName,
@@ -77,7 +76,7 @@ export function useCommercePauseOps() {
     });
   }, [targets]);
 
-  const { data, isPending, isFetching, refetch } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: {
       enabled: targets.length > 0,
@@ -85,14 +84,12 @@ export function useCommercePauseOps() {
     },
   });
 
-  const results = data as ReadonlyArray<ContractReadResult> | undefined;
-
   const rows: CommercePauseOpsRow[] = useMemo(() => {
-    return targets.map((target, i) => {
-      const base = i * 3;
-      const pausedEntry = results?.[base];
-      const guardianEntry = results?.[base + 1];
-      const ownerEntry = results?.[base + 2];
+    return targets.map((target) => {
+      const base = `${target.chainId}:${target.mode}`;
+      const pausedEntry = reads.entry(`${base}:paused`);
+      const guardianEntry = reads.entry(`${base}:guardian`);
+      const ownerEntry = reads.entry(`${base}:owner`);
       const paused =
         pausedEntry?.status === "success"
           ? pausedEntry.result === true
@@ -123,16 +120,16 @@ export function useCommercePauseOps() {
         }),
       };
     });
-  }, [targets, results, connected]);
+  }, [targets, reads, connected]);
 
   const isGuardianOnAny = rows.some((row) => row.control.role === "guardian");
 
   return {
     rows,
     isEmpty: targets.length === 0,
-    isPending: targets.length > 0 && isPending,
-    isFetching,
+    isPending: targets.length > 0 && reads.isPending,
+    isFetching: reads.isFetching,
     isGuardianOnAny,
-    refetch,
+    refetch: reads.refetch,
   };
 }

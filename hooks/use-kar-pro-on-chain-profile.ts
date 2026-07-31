@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useReadContracts } from "wagmi";
 
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import {
@@ -15,6 +14,7 @@ import {
   karProPassAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useKarProOnChainProfile(
@@ -31,10 +31,11 @@ export function useKarProOnChainProfile(
 
   const passTokenId = address ? proPassTokenIdFromAddress(address) : 0n;
 
-  const { data: reads, isPending: readsPending } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts: readsEnabled
       ? [
           {
+            key: "passData" as const,
             address: proPass!,
             abi: KarProPassAbi,
             functionName: "getProPassData" as const,
@@ -42,6 +43,7 @@ export function useKarProOnChainProfile(
             chainId: wc!,
           },
           {
+            key: "stake" as const,
             address: staking!,
             abi: KarProStakingAbi,
             functionName: "stakes" as const,
@@ -53,15 +55,21 @@ export function useKarProOnChainProfile(
     query: { enabled: readsEnabled },
   });
 
-  const passRead = reads?.[0];
-  const stakeRead = reads?.[1];
+  const passEntry = reads.entry("passData");
+  const stakeEntry = reads.entry("stake");
   const passData =
-    passRead?.status === "success"
-      ? (passRead.result as readonly [string, number, string, string, bigint])
+    passEntry?.status === "success"
+      ? (passEntry.result as readonly [string, number, string, string, bigint])
       : undefined;
   const stakeData =
-    stakeRead?.status === "success"
-      ? (stakeRead.result as readonly [`0x${string}`, bigint, bigint, boolean, bigint])
+    stakeEntry?.status === "success"
+      ? (stakeEntry.result as readonly [
+          `0x${string}`,
+          bigint,
+          bigint,
+          boolean,
+          bigint,
+        ])
       : undefined;
 
   const passHolder = passData?.[0];
@@ -71,12 +79,16 @@ export function useKarProOnChainProfile(
   const issuedAtTimestamp = passData?.[4];
   const stakeActive = stakeData?.[3] === true;
   const hasPass =
-    Boolean(passHolder && passHolder !== "0x0000000000000000000000000000000000000000") &&
+    Boolean(
+      passHolder &&
+        passHolder !== "0x0000000000000000000000000000000000000000",
+    ) &&
     typeof category === "number" &&
     typeof name === "string" &&
     typeof metadataURI === "string";
 
-  const chainFieldsReady = readsEnabled && !readsPending && hasPass && stakeActive;
+  const chainFieldsReady =
+    readsEnabled && !reads.isPending && hasPass && stakeActive;
 
   const { data: slug, isPending: slugPending } = useQuery({
     queryKey: ["kar-pro-slug", chainId ?? 0, metadataURI],
@@ -89,7 +101,7 @@ export function useKarProOnChainProfile(
     return { profile: null, isLoading: false };
   }
 
-  if (readsPending) {
+  if (reads.isPending) {
     return { profile: null, isLoading: true };
   }
 

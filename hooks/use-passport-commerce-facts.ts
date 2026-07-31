@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
 
 import {
   CONSIGNMENT_PHASE,
@@ -17,11 +16,11 @@ import {
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import {
+  useKeyedReadContracts,
+  type KeyedContract,
+} from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-
-type ReadResult =
-  | { status: "success"; result: unknown }
-  | { status: "failure"; error: unknown };
 
 const MANDATE_FUNCTIONS = [
   "mandateActive",
@@ -34,6 +33,8 @@ const MANDATE_FUNCTIONS = [
   "mandateCompensationForm",
   "mandateCommissionBps",
 ] as const;
+
+type ModePrefix = "fp" | "asc";
 
 export type CommerceModeFacts = {
   /** `false` when the mode is not deployed on this chain. */
@@ -85,16 +86,11 @@ export function usePassportCommerceFacts(input: {
     }
   }, [tokenId]);
 
-  const contracts = useMemo(() => {
+  const contracts = useMemo((): KeyedContract[] => {
     if (!enabled || !passport) return [];
-    const calls: {
-      address: `0x${string}`;
-      abi: typeof KarPassportAbi | typeof FixedPriceConsignmentAbi | typeof AscendingConsignmentAbi;
-      functionName: string;
-      args: readonly unknown[];
-      chainId: number;
-    }[] = [
+    const calls: KeyedContract[] = [
       {
+        key: "mayOpen",
         address: passport,
         abi: KarPassportAbi,
         functionName: "may",
@@ -102,6 +98,7 @@ export function usePassportCommerceFacts(input: {
         chainId: wc,
       },
       {
+        key: "mayLeave",
         address: passport,
         abi: KarPassportAbi,
         functionName: "may",
@@ -109,6 +106,7 @@ export function usePassportCommerceFacts(input: {
         chainId: wc,
       },
       {
+        key: "challengeOpenedAt",
         address: passport,
         abi: KarPassportAbi,
         functionName: "challengeOpenedAt",
@@ -118,6 +116,7 @@ export function usePassportCommerceFacts(input: {
     ];
     if (fixedPrice) {
       calls.push({
+        key: "fp.phase",
         address: fixedPrice,
         abi: FixedPriceConsignmentAbi,
         functionName: "consignmentPhase",
@@ -126,6 +125,7 @@ export function usePassportCommerceFacts(input: {
       });
       for (const functionName of MANDATE_FUNCTIONS) {
         calls.push({
+          key: `fp.${functionName}`,
           address: fixedPrice,
           abi: FixedPriceConsignmentAbi,
           functionName,
@@ -136,6 +136,7 @@ export function usePassportCommerceFacts(input: {
     }
     if (ascending) {
       calls.push({
+        key: "asc.phase",
         address: ascending,
         abi: AscendingConsignmentAbi,
         functionName: "consignmentPhase",
@@ -144,6 +145,7 @@ export function usePassportCommerceFacts(input: {
       });
       for (const functionName of MANDATE_FUNCTIONS) {
         calls.push({
+          key: `asc.${functionName}`,
           address: ascending,
           abi: AscendingConsignmentAbi,
           functionName,
@@ -155,48 +157,47 @@ export function usePassportCommerceFacts(input: {
     return calls;
   }, [enabled, passport, fixedPrice, ascending, tid, wc]);
 
-  const { data, isPending, refetch } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: { enabled: contracts.length > 0, staleTime: 15_000 },
   });
 
-  const results = data as ReadonlyArray<ReadResult> | undefined;
-  const at = (index: number): unknown => {
-    const entry = results?.[index];
-    return entry?.status === "success" ? entry.result : undefined;
-  };
-
-  const fixedPriceBase = fixedPrice ? 3 : -1;
-  const ascendingBase = ascending ? (fixedPrice ? 13 : 3) : -1;
-
   const readModeFacts = (
     mode: CommerceMode,
-    base: number,
+    prefix: ModePrefix,
     configured: boolean,
   ): CommerceModeFacts => {
-    if (!configured || base < 0) {
+    if (!configured) {
       return { configured: false, live: false, mandate: null };
     }
-    const rawPhase = at(base);
+    const rawPhase = reads.get(`${prefix}.phase`);
     const phase =
       rawPhase == null ? null : parseConsignmentPhase(Number(rawPhase));
-    const activeRead = at(base + 1);
+    const activeRead = reads.get(`${prefix}.mandateActive`);
     const mandate =
       activeRead == null
         ? undefined
         : parseMandate(mode, tokenId, {
             active: activeRead === true,
-            agent: at(base + 2) as string | undefined,
-            expiry: at(base + 3) as bigint | undefined,
-            asset: at(base + 4) as string | undefined,
-            denominationKind:
-              at(base + 5) == null ? undefined : Number(at(base + 5)),
-            currencyCode: at(base + 6) as string | undefined,
-            floor: at(base + 7) as bigint | undefined,
-            compensationForm:
-              at(base + 8) == null ? undefined : Number(at(base + 8)),
-            commissionBps:
-              at(base + 9) == null ? undefined : Number(at(base + 9)),
+            agent: reads.get(`${prefix}.mandateAgent`) as string | undefined,
+            expiry: reads.get(`${prefix}.mandateExpiry`) as bigint | undefined,
+            asset: reads.get(`${prefix}.mandateAsset`) as string | undefined,
+            denominationKind: (() => {
+              const v = reads.get(`${prefix}.mandateDenominationKind`);
+              return v == null ? undefined : Number(v);
+            })(),
+            currencyCode: reads.get(`${prefix}.mandateCurrencyCode`) as
+              | string
+              | undefined,
+            floor: reads.get(`${prefix}.mandateFloor`) as bigint | undefined,
+            compensationForm: (() => {
+              const v = reads.get(`${prefix}.mandateCompensationForm`);
+              return v == null ? undefined : Number(v);
+            })(),
+            commissionBps: (() => {
+              const v = reads.get(`${prefix}.mandateCommissionBps`);
+              return v == null ? undefined : Number(v);
+            })(),
           });
     return {
       configured: true,
@@ -205,12 +206,16 @@ export function usePassportCommerceFacts(input: {
     };
   };
 
-  const fixedPriceFacts = readModeFacts("fixedPrice", fixedPriceBase, Boolean(fixedPrice));
-  const ascendingFacts = readModeFacts("ascending", ascendingBase, Boolean(ascending));
+  const fixedPriceFacts = readModeFacts(
+    "fixedPrice",
+    "fp",
+    Boolean(fixedPrice),
+  );
+  const ascendingFacts = readModeFacts("ascending", "asc", Boolean(ascending));
 
-  const mayOpen = at(0);
-  const mayLeave = at(1);
-  const challengeOpenedAt = at(2);
+  const mayOpen = reads.get("mayOpen");
+  const mayLeave = reads.get("mayLeave");
+  const challengeOpenedAt = reads.get("challengeOpenedAt");
 
   const anyUnresolved =
     fixedPriceFacts.live === undefined || ascendingFacts.live === undefined;
@@ -230,12 +235,14 @@ export function usePassportCommerceFacts(input: {
     mayOpenConsignment: mayOpen == null ? undefined : mayOpen === true,
     mayLeaveChain: mayLeave == null ? undefined : mayLeave === true,
     challengeOpen:
-      challengeOpenedAt == null ? undefined : BigInt(String(challengeOpenedAt)) > 0n,
+      challengeOpenedAt == null
+        ? undefined
+        : BigInt(String(challengeOpenedAt)) > 0n,
     liveConsignmentMode,
     hasLiveConsignment,
-    isPending: contracts.length > 0 && isPending,
+    isPending: contracts.length > 0 && reads.isPending,
     refetch: () => {
-      void refetch();
+      void reads.refetch();
     },
   };
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
 
 import { parseMandate, type MandateSnapshot } from "@/lib/commerce/mandate";
 import {
@@ -9,11 +8,8 @@ import {
   commerceModeAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-
-type ReadResult =
-  | { status: "success"; result: unknown }
-  | { status: "failure"; error: unknown };
 
 const MANDATE_FUNCTIONS = [
   "mandateActive",
@@ -59,34 +55,30 @@ export function useMandate(input: {
     if (!enabled || !address) return [];
     return [
       ...MANDATE_FUNCTIONS.map((functionName) => ({
+        key: functionName,
         address,
         abi,
         functionName,
-        args: [tid] as readonly unknown[],
+        args: [tid] as const,
         chainId: wc,
       })),
       {
+        key: "platformFeeBps" as const,
         address,
         abi,
         functionName: "platformFeeBps",
-        args: [] as readonly unknown[],
+        args: [] as const,
         chainId: wc,
       },
     ];
   }, [enabled, address, abi, tid, wc]);
 
-  const { data, isPending, refetch } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: { enabled: contracts.length > 0, staleTime: 15_000 },
   });
 
-  const results = data as ReadonlyArray<ReadResult> | undefined;
-  const at = (index: number): unknown => {
-    const entry = results?.[index];
-    return entry?.status === "success" ? entry.result : undefined;
-  };
-
-  const activeRead = at(0);
+  const activeRead = reads.get("mandateActive");
   const mandate =
     !address || activeRead == null
       ? address
@@ -94,24 +86,33 @@ export function useMandate(input: {
         : null
       : parseMandate(mode, tokenId, {
           active: activeRead === true,
-          agent: at(1) as string | undefined,
-          expiry: at(2) as bigint | undefined,
-          asset: at(3) as string | undefined,
-          denominationKind: at(4) == null ? undefined : Number(at(4)),
-          currencyCode: at(5) as string | undefined,
-          floor: at(6) as bigint | undefined,
-          compensationForm: at(7) == null ? undefined : Number(at(7)),
-          commissionBps: at(8) == null ? undefined : Number(at(8)),
+          agent: reads.asString("mandateAgent"),
+          expiry: reads.asBigint("mandateExpiry"),
+          asset: reads.asString("mandateAsset"),
+          denominationKind: (() => {
+            const v = reads.get("mandateDenominationKind");
+            return v == null ? undefined : Number(v);
+          })(),
+          currencyCode: reads.asString("mandateCurrencyCode"),
+          floor: reads.asBigint("mandateFloor"),
+          compensationForm: (() => {
+            const v = reads.get("mandateCompensationForm");
+            return v == null ? undefined : Number(v);
+          })(),
+          commissionBps: (() => {
+            const v = reads.get("mandateCommissionBps");
+            return v == null ? undefined : Number(v);
+          })(),
         });
 
-  const feeRaw = at(9);
+  const feeRaw = reads.get("platformFeeBps");
 
   return {
     mandate,
     platformFeeBps: feeRaw == null ? undefined : BigInt(String(feeRaw)),
-    isPending: contracts.length > 0 && isPending,
+    isPending: contracts.length > 0 && reads.isPending,
     refetch: () => {
-      void refetch();
+      void reads.refetch();
     },
   };
 }

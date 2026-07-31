@@ -8,7 +8,6 @@ import {
   useBalance,
   useChainId,
   useReadContract,
-  useReadContracts,
   useSimulateContract,
   useSwitchChain,
   useWriteContract,
@@ -33,6 +32,7 @@ import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -116,10 +116,11 @@ export function ListingBuyPanel({
   const directPaymentNote =
     directPaymentNoteProp ?? decodeSettlementNote(settlementNoteRaw).trim();
 
-  const { data: saleReads, isLoading: isQuoteLoading } = useReadContracts({
+  const saleReads = useKeyedReadContracts({
     contracts: market
       ? [
           {
+            key: "quoteBuy" as const,
             address: market,
             abi: FixedPriceConsignmentAbi,
             functionName: "quoteBuy",
@@ -127,6 +128,7 @@ export function ListingBuyPanel({
             chainId: wc,
           },
           {
+            key: "consignmentAssetOf" as const,
             address: market,
             abi: FixedPriceConsignmentAbi,
             functionName: "consignmentAssetOf",
@@ -136,21 +138,22 @@ export function ListingBuyPanel({
         ]
       : [],
   });
+  const isQuoteLoading = saleReads.isLoading;
 
-  const quoteRead = saleReads?.[0];
-  const assetRead = saleReads?.[1];
+  const quoteEntry = saleReads.entry("quoteBuy");
+  const assetEntry = saleReads.entry("consignmentAssetOf");
 
   const quote =
-    quoteRead?.status === "success" && quoteRead.result != null
-      ? (quoteRead.result as bigint)
+    quoteEntry?.status === "success" && quoteEntry.result != null
+      ? (quoteEntry.result as bigint)
       : undefined;
   const asset =
-    assetRead?.status === "success"
-      ? (assetRead.result as `0x${string}`)
+    assetEntry?.status === "success"
+      ? (assetEntry.result as `0x${string}`)
       : undefined;
 
   const quoteUnavailable =
-    quoteRead?.status === "failure" || (!isQuoteLoading && quote == null);
+    quoteEntry?.status === "failure" || (!isQuoteLoading && quote == null);
   const isNative = asset != null && isAddressEqual(asset, zeroAddress);
   const assetMeta = useClaimAssetMeta({
     chainId: wc,

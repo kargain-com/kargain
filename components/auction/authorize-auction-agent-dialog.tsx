@@ -6,7 +6,6 @@ import {
   useAccount,
   useChainId,
   useReadContract,
-  useReadContracts,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -64,6 +63,7 @@ import {
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Step = "approval" | "agent" | "terms";
 
@@ -133,11 +133,12 @@ export function AuthorizeAuctionAgentDialog({
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
 
-  const { data: approvalReads, refetch: refetchApproval } = useReadContracts({
+  const approvalReads = useKeyedReadContracts({
     contracts:
       passport && mode && address
         ? [
             {
+              key: "getApproved" as const,
               address: passport,
               abi: KarPassportAbi,
               functionName: "getApproved",
@@ -145,6 +146,7 @@ export function AuthorizeAuctionAgentDialog({
               chainId: wc,
             },
             {
+              key: "isApprovedForAll" as const,
               address: passport,
               abi: KarPassportAbi,
               functionName: "isApprovedForAll",
@@ -155,6 +157,7 @@ export function AuthorizeAuctionAgentDialog({
         : [],
     query: { enabled: open },
   });
+  const refetchApproval = approvalReads.refetch;
 
   const { mandate: chainAuth, refetch: refetchAuth } = useMandate({
     mode: "ascending",
@@ -203,9 +206,10 @@ export function AuthorizeAuctionAgentDialog({
 
   const approvedForToken =
     mode &&
-    approvalReads?.[0]?.result &&
-    (approvalReads[0].result as string).toLowerCase() === mode.toLowerCase();
-  const approvedForAll = approvalReads?.[1]?.result === true;
+    approvalReads.get("getApproved") &&
+    (approvalReads.get("getApproved") as string).toLowerCase() ===
+      mode.toLowerCase();
+  const approvedForAll = approvalReads.get("isApprovedForAll") === true;
   const isModeApproved = Boolean(approvedForToken || approvedForAll);
 
   const displayStep: Step =

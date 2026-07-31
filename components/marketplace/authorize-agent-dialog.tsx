@@ -5,7 +5,6 @@ import { parseUnits } from "viem";
 import {
   useAccount,
   useChainId,
-  useReadContracts,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -40,6 +39,7 @@ import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Step = "approval" | "agent" | "terms";
 
@@ -113,11 +113,12 @@ export function AuthorizeAgentDialog({
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
 
-  const { data: approvalReads, refetch: refetchApproval } = useReadContracts({
+  const approvalReads = useKeyedReadContracts({
     contracts:
       passport && market && address
         ? [
             {
+              key: "getApproved" as const,
               address: passport,
               abi: KarPassportAbi,
               functionName: "getApproved",
@@ -125,6 +126,7 @@ export function AuthorizeAgentDialog({
               chainId: wc,
             },
             {
+              key: "isApprovedForAll" as const,
               address: passport,
               abi: KarPassportAbi,
               functionName: "isApprovedForAll",
@@ -135,12 +137,14 @@ export function AuthorizeAgentDialog({
         : [],
     query: { enabled: open },
   });
+  const refetchApproval = approvalReads.refetch;
 
   const approvedForToken =
     market &&
-    approvalReads?.[0]?.result &&
-    (approvalReads[0].result as string).toLowerCase() === market.toLowerCase();
-  const approvedForAll = approvalReads?.[1]?.result === true;
+    approvalReads.get("getApproved") &&
+    (approvalReads.get("getApproved") as string).toLowerCase() ===
+      market.toLowerCase();
+  const approvedForAll = approvalReads.get("isApprovedForAll") === true;
   const isMarketplaceApproved = Boolean(approvedForToken || approvedForAll);
 
   const displayStep: Step =

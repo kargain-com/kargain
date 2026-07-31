@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
 
 import {
   buildOnChainAuction,
@@ -19,14 +18,41 @@ import {
   type AscendingHoldSnapshot,
 } from "@/lib/commerce/parse-ascending";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 30_000;
 const CONFIG_STALE_MS = 300_000;
 
-type ContractReadResult =
-  | { status: "success"; result: unknown }
-  | { status: "failure"; error: unknown };
+const PER_TOKEN = [
+  "consignmentPhase",
+  "consignmentSellerOf",
+  "consignmentAgentOf",
+  "consignmentCommissionBpsOf",
+  "mandateAsset",
+  "consignmentPriceOf",
+  "consignmentFloorOf",
+  "auctionDuration",
+  "consignmentOpenedAt",
+  "auctionEndsAt",
+  "auctionHighestBidder",
+  "auctionHighestBid",
+  "auctionMinIncrementBps",
+  "auctionExtensionWindow",
+  "holdBuyer",
+  "holdGross",
+  "holdProtectionEndsAt",
+  "holdReversalPending",
+  "holdAbandonmentDeadline",
+  "challengeOpenedAt",
+  "challengeBondAmount",
+  "challengeWindowDuration",
+  "recallRequestTimestamp",
+  "isBinding",
+  "holdFrozenRemaining",
+  "challengeChallenger",
+  "auctionProtectionWindow",
+] as const;
 
 type UseAuctionChainReadsArgs = {
   chainId: number;
@@ -56,62 +82,29 @@ export function useAuctionChainReads({
 
   const readsEnabled = Boolean(enabled && mode && tokenId);
 
-  const perToken = useMemo(
-    () =>
-      [
-        "consignmentPhase",
-          "consignmentSellerOf",
-          "consignmentAgentOf",
-          "consignmentCommissionBpsOf",
-          "mandateAsset",
-          "consignmentPriceOf",
-          "consignmentFloorOf",
-          "auctionDuration",
-          "consignmentOpenedAt",
-          "auctionEndsAt",
-          "auctionHighestBidder",
-          "auctionHighestBid",
-          "auctionMinIncrementBps",
-          "auctionExtensionWindow",
-          "holdBuyer",
-          "holdGross",
-          "holdProtectionEndsAt",
-          "holdReversalPending",
-          "holdAbandonmentDeadline",
-          "challengeOpenedAt",
-          "challengeBondAmount",
-          "challengeWindowDuration",
-        "recallRequestTimestamp",
-        "isBinding",
-        "holdFrozenRemaining",
-        "challengeChallenger",
-        "auctionProtectionWindow",
-      ] as const,
-    [],
-  );
-
   const contracts = useMemo(() => {
     if (!readsEnabled || !mode) return [];
-    const perTokenCalls = perToken.map((functionName) => ({
-      address: mode,
-      abi: AscendingConsignmentAbi,
-      functionName,
-      args: [tokenIdBig],
-      chainId: wc,
-    }));
     return [
-      ...perTokenCalls,
+      ...PER_TOKEN.map((functionName) => ({
+        key: functionName,
+        address: mode,
+        abi: AscendingConsignmentAbi,
+        functionName,
+        args: [tokenIdBig] as const,
+        chainId: wc,
+      })),
       {
+        key: "paused" as const,
         address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "paused",
-        args: [],
+        args: [] as const,
         chainId: wc,
       },
     ];
-  }, [readsEnabled, mode, perToken, tokenIdBig, wc]);
+  }, [readsEnabled, mode, tokenIdBig, wc]);
 
-  const { data, isPending, isFetching, refetch } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts,
     query: {
       enabled: readsEnabled,
@@ -122,70 +115,52 @@ export function useAuctionChainReads({
     },
   });
 
-  const results = data as ReadonlyArray<ContractReadResult> | undefined;
-
-  const value = (index: number): unknown => {
-    const entry = results?.[index];
-    return entry?.status === "success" ? entry.result : undefined;
-  };
-
-  const asBig = (index: number): bigint | undefined => {
-    const raw = value(index);
-    if (raw == null) return undefined;
-    return typeof raw === "bigint" ? raw : BigInt(raw as number);
-  };
-  const asNum = (index: number): number | undefined => {
-    const raw = value(index);
-    return raw == null ? undefined : Number(raw);
-  };
-  const asStr = (index: number): string | undefined => {
-    const raw = value(index);
-    return typeof raw === "string" ? raw : undefined;
-  };
-
   const auction: OnChainAuction | null = buildOnChainAuction({
-    phase: asNum(0),
-    seller: asStr(1),
-    agent: asStr(2),
-    commissionBps: asNum(3),
-    asset: asStr(4),
-    reserve: asBig(5),
-    floor: asBig(6),
-    duration: asBig(7),
-    openedAt: asBig(8),
-    endsAt: asBig(9),
-    highestBidder: asStr(10),
-    highestBid: asBig(11),
+    phase: reads.asNumber("consignmentPhase"),
+    seller: reads.asString("consignmentSellerOf"),
+    agent: reads.asString("consignmentAgentOf"),
+    commissionBps: reads.asNumber("consignmentCommissionBpsOf"),
+    asset: reads.asString("mandateAsset"),
+    reserve: reads.asBigint("consignmentPriceOf"),
+    floor: reads.asBigint("consignmentFloorOf"),
+    duration: reads.asBigint("auctionDuration"),
+    openedAt: reads.asBigint("consignmentOpenedAt"),
+    endsAt: reads.asBigint("auctionEndsAt"),
+    highestBidder: reads.asString("auctionHighestBidder"),
+    highestBid: reads.asBigint("auctionHighestBid"),
   });
 
   const hold: OnChainHold | null = buildOnChainHold({
-    buyer: asStr(14),
-    gross: asBig(15),
-    protectionEndsAt: asBig(16),
-    reversalPending: value(17) === true,
-    abandonmentDeadline: asBig(18),
-    challengeOpenedAt: asBig(19),
-    challengeBond: asBig(20),
+    buyer: reads.asString("holdBuyer"),
+    gross: reads.asBigint("holdGross"),
+    protectionEndsAt: reads.asBigint("holdProtectionEndsAt"),
+    reversalPending: reads.get("holdReversalPending") === true,
+    abandonmentDeadline: reads.asBigint("holdAbandonmentDeadline"),
+    challengeOpenedAt: reads.asBigint("challengeOpenedAt"),
+    challengeBond: reads.asBigint("challengeBondAmount"),
   });
 
   const holdSnapshot: AscendingHoldSnapshot | null = parseAscendingHold({
-    buyer: asStr(14),
-    gross: asBig(15),
-    protectionEndsAt: asBig(16),
-    frozenRemaining: asBig(24),
-    reversalPending: value(17) === true,
-    abandonmentDeadline: asBig(18),
+    buyer: reads.asString("holdBuyer"),
+    gross: reads.asBigint("holdGross"),
+    protectionEndsAt: reads.asBigint("holdProtectionEndsAt"),
+    frozenRemaining: reads.asBigint("holdFrozenRemaining"),
+    reversalPending: reads.get("holdReversalPending") === true,
+    abandonmentDeadline: reads.asBigint("holdAbandonmentDeadline"),
   });
 
   const challenge: ChallengeSnapshot | null = parseChallenge(tokenId, {
-    challenger: asStr(25),
-    bondAmount: asBig(20),
-    windowDuration: asBig(21),
-    openedAt: asBig(19),
+    challenger: reads.asString("challengeChallenger"),
+    bondAmount: reads.asBigint("challengeBondAmount"),
+    windowDuration: reads.asBigint("challengeWindowDuration"),
+    openedAt: reads.asBigint("challengeOpenedAt"),
   });
 
   const commerceReadResolved =
-    results?.[0]?.status === "success" && results?.[14]?.status === "success";
+    reads.entry("consignmentPhase")?.status === "success" &&
+    reads.entry("holdBuyer")?.status === "success";
+
+  const pausedRaw = reads.get("paused");
 
   return {
     /** Ascending mode contract; `undefined` disables every write. */
@@ -196,21 +171,21 @@ export function useAuctionChainReads({
     holdSnapshot,
     /** BondedChallenge opened against this lot, when any. */
     challenge,
-    minIncrementBps: asNum(12),
-    extensionWindow: asBig(13),
+    minIncrementBps: reads.asNumber("auctionMinIncrementBps"),
+    extensionWindow: reads.asBigint("auctionExtensionWindow"),
     /** Lot snapshotted protection length (seconds) — not live mode bounds. */
-    protectionWindow: asBig(26),
-    paused: value(27) == null ? undefined : value(27) === true,
+    protectionWindow: reads.asBigint("auctionProtectionWindow"),
+    paused: pausedRaw == null ? undefined : pausedRaw === true,
     /** Recall request timestamp — owner cooldown before `forceRecall`. */
-    returnRequestedAt: asBig(22),
-    isBinding: value(23) === true,
-    settlementDisputeBond: asBig(20),
-    settlementHold: asBig(16),
+    returnRequestedAt: reads.asBigint("recallRequestTimestamp"),
+    isBinding: reads.get("isBinding") === true,
+    settlementDisputeBond: reads.asBigint("challengeBondAmount"),
+    settlementHold: reads.asBigint("holdProtectionEndsAt"),
     /** Challenge window in seconds — replaces the escrow dispute timeout. */
-    disputeResolutionTimeout: asBig(21),
+    disputeResolutionTimeout: reads.asBigint("challengeWindowDuration"),
     commerceReadResolved,
-    isPending: readsEnabled && isPending,
-    isFetching,
-    refetch,
+    isPending: readsEnabled && reads.isPending,
+    isFetching: reads.isFetching,
+    refetch: reads.refetch,
   };
 }

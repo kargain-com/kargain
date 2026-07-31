@@ -1,9 +1,8 @@
 "use client";
 
-import { useReadContracts } from "wagmi";
-
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -18,22 +17,25 @@ export function VerifierInactiveBadge({ chainId, verifier, className }: Props) {
   const staking = karProStakingAddress(chainId);
   const hasVerifier = normalized && normalized !== ZERO;
 
-  const { data } = useReadContracts({
+  const reads = useKeyedReadContracts({
     contracts:
       staking && hasVerifier
         ? [
             {
+              key: "isActiveVerifier" as const,
               address: staking,
               abi: KarProStakingAbi,
               functionName: "isActiveVerifier",
               args: [verifier as `0x${string}`],
+              chainId,
             },
           ]
         : [],
   });
 
-  const isActive = data?.[0]?.result === true;
-  if (!hasVerifier || isActive || data?.[0]?.result === undefined) {
+  const activeRaw = reads.get("isActiveVerifier");
+  const isActive = activeRaw === true;
+  if (!hasVerifier || isActive || activeRaw === undefined) {
     return null;
   }
 
