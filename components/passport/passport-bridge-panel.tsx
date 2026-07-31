@@ -110,6 +110,7 @@ export function PassportBridgePanel({
   } = useBridge(
     chainId,
     dstChainId ?? chainId,
+    tokenId,
   );
 
   const scanUrl = liveScanUrl ?? transitScanUrl;

@@ -748,7 +748,7 @@ Reserve auctions on AscendingConsignment. **Canonical lot URL** remains `/market
 
 #### Derived states (blueprint S#)
 
-Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Chain `returnRequestedAt` merges over Ponder for S2. Settlement sub-states from [`settlement-state.ts`](../lib/auction/settlement-state.ts) (Ponder settlement ∪ chain `holds` ∪ timeouts).
+Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Chain `returnRequestedAt` merges over Ponder for S2. Modes settlement sub-states from [`lib/commerce/settlement-state.ts`](../lib/commerce/settlement-state.ts) (chain hold + challenge + now). Legacy escrow derive remains in [`lib/auction/settlement-state.ts`](../lib/auction/settlement-state.ts) for historical types only.
 
 | State | Condition | Commerce |
 |-------|-----------|----------|
@@ -757,27 +757,39 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S3** | Live bidding | Bid panel; no cancel |
 | **S4** | Live + passport `DISPUTED` | Bid **enabled**; quiet `status-error` advisory (trust chroma only — not a block) |
 | **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle` (always; passport status ignored) |
-| **S6 / HOLD** | `SETTLED`, before `releaseAt`, no challenge | Buyer: Confirm receipt · Open challenge; passport status change readout when DISPUTED/UNVERIFIED; others: informational payout date + same passport readout |
-| **HOLD_RELEASABLE** | `now ≥ releaseAt`, no challenge | Permissionless **Release payment** |
+| **S6 / HOLD** | `SETTLED`, before protection end, no challenge | Buyer: Confirm receipt · Open challenge; passport status change readout when DISPUTED/UNVERIFIED; others: informational payout date + same passport readout |
+| **HOLD_RELEASABLE** | Protection elapsed, no challenge | Buyer/seller/agent: **Release payment** |
 | **S7 / CHALLENGE** | Settlement challenge open | *Payout frozen*; challenge window; minimal verifier resolve |
-| **CHALLENGE_TIMED_OUT** | Challenge window elapsed | Permissionless conclude / release path |
-| **REFUND_PENDING** | ConfirmFailure / reversal | Buyer: approve passport → return for refund; seller: abandon after abandonment window |
+| **CHALLENGE_ELAPSED** | Challenge window elapsed | Permissionless conclude |
+| **REVERSAL_PENDING** | Upheld challenge; abandonment deadline running | See Modes reversal surface below |
+| **REVERSAL_EXPIRED** | `now ≥ abandonmentDeadline` | Permissionless **Abandon reversal** (seller paid as failed challenge) |
 | **S8** | `RELEASED` | Split readout (platform / agent / seller) + post-sale checklist |
 | **S9** | `CANCELLED`\|`RETURNED` | Distinct terminal copy per phase (see catalog); no bids-refunded claim for cancel/return |
 
 **Mutex:** auction island XOR listing buy panel (`PassportCommerce`). Live auction `uiState` hides the entire owner sell group; chain listing truth hides all new sale-start choices while Marketplace holds the NFT — create requires delist first (custody/`NotOwner`). Auction creation/authorization also stays hidden while `holds.releaseAt ≠ 0` (U9). An unlisted KarPro sees **List for sale** and the direct create panel together inside **Sell this vehicle** (sale-form choice). Seller (listed) sees the status-aware neutral hint from the catalog above under Delist on the edit page when auction escrow is deployed. If Ponder status is unavailable, the page keeps the existing delist-before-auction hint and adds no error surface.
 
-#### Settlement (г-3)
+#### Settlement (г-3 + Modes reversal)
 
 | Surface | Behavior |
 |---------|----------|
 | USDC bid | [`auction-bid-panel.tsx`](../components/auction/auction-bid-panel.tsx) — allowance → `approve(escrow, amount)` → `bid` with `value: 0`; balance preflight; amount in 6-decimal units |
-| Settlement panel | [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx) — role-gated S6–S9 / refund / minimal resolver |
-| State derive | [`settlement-state.ts`](../lib/auction/settlement-state.ts) — pure `HOLD`…`CLEARED` from settlement + `holds` + timeouts |
-| U8 | Dispute bond always **native ETH** from chain `settlementDisputeBond`, even on USDC lots — labeled in Open dispute CTA |
-| U9 | Create + authorize disable when `holds(tokenId).releaseAt ≠ 0` + settlement-window advisory |
+| Settlement panel | [`auction-settlement-panel.tsx`](../components/auction/auction-settlement-panel.tsx) — role-gated hold / challenge / reversal / S8–S9 |
+| State derive | [`lib/commerce/settlement-state.ts`](../lib/commerce/settlement-state.ts) — pure Modes states + per-action **available \| blocked(cause)** gates |
+| Passport approval | [`use-passport-approval.ts`](../hooks/use-passport-approval.ts) — sole ERC-721 passport approval owner for any spender (modes + bridge gateway); create-auction, complete-reversal, listing edit, both authorize dialogs, bridge. ERC-20 payment `approve` is a different rule. |
+| U8 | Dispute bond always **native ETH** from chain challenge bond, even on USDC lots — labeled in Open challenge CTA |
+| U9 | Create + authorize disable when unresolved settlement + settlement-window advisory |
 | Resolver (minimal) | Visible only when connected wallet is active KarPro **and** not buyer/seller/agent |
-| Poll | Detail 15s while settlement `HOLD` / `DISPUTED` / `REFUND_PENDING` and tab visible; never after `RELEASED` / `CLEARED` |
+| Poll | Detail 15s while settlement `HOLD` / `CHALLENGED` / `REVERSAL_PENDING` and tab visible |
+
+#### Modes reversal-pending (buyer-facing)
+
+| Element | Contract |
+|---------|----------|
+| Body (buyer) | Two moments: bond already returned when the challenge was judged; settled amount returns on passport return. Claims fallback: *If the refund cannot be delivered, it waits under Claims.* |
+| Deadline (all) | Absolute date + live countdown from chain `hold.abandonmentDeadline` (Instrument Layer mono/`tabular-nums`; no trust accent). Consequence: if missed, anyone can abandon and the seller is paid as though the challenge had failed. |
+| Return CTA | Offered when complete-reversal gate is `available` or blocked `not_approved`. Approve-then-act via shared approval owner + `runTx(completeReversal)`. Labels: *Approving passport…* / *Confirming…* / *Return passport and refund*. |
+| Not holder | Gate `not_holder` — no CTA. Copy: reversal is no longer possible because this wallet no longer holds the passport; abandonment remains the outcome. |
+| Gate causes | `no_hold` / `no_reversal_pending` / `not_buyer` / `not_holder` / `not_approved` / `reads_unresolved` (fail-closed while owner or approval unread) |
 
 #### Live polish (г-4)
 
@@ -793,7 +805,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 
 | Surface | Behavior |
 |---------|----------|
-| Authorize | Unified sell group opens [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — approve auction escrow → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; active authorization becomes an always-visible neutral status card; **Manage** opens inline **Revoke** when no active auction |
+| Authorize | Unified sell group opens [`authorize-auction-agent-dialog.tsx`](../components/auction/authorize-auction-agent-dialog.tsx) — shared passport approval (for-all or token) → KarPro picker → asset + `ownerMinAsset` in **asset units** (U4) → `authorizeAuctionAgent`; active authorization becomes an always-visible neutral status card; **Manage** opens inline **Revoke** when no active auction |
 | Create on behalf | [`agent-create-auction-panel.tsx`](../components/auction/agent-create-auction-panel.tsx) — chain-read auth (U2); asset locked; reserve / 3–7 d / commission ≤ 30%; net preview at reserve; blocked when `BelowOwnerMinAsset` |
 | Cancel (S1) | [`auction-cancel-panel.tsx`](../components/auction/auction-cancel-panel.tsx) — seller `cancelAuction` / agent `agentCancelAuction` while `startedAt == 0` |
 | Owner return | [`owner-recall-panel.tsx`](../components/commerce/owner-recall-panel.tsx) — `requestRecall` → chain `recallCooldown` countdown → `forceRecall` (pre-start / OFFERED) |
@@ -870,7 +882,7 @@ Canonical ascending claim strings: [`lib/auction/ascending-public-claims.ts`](..
 | FX / discussion / live signals | Reuse nav FX + existing discussion rail; **0** new oracle or Nostr/XMTP subscriptions; extension flash + outbid toast derive from existing detail refetch only |
 | No websockets | — |
 
-Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts) · [`settlement-state.ts`](../lib/auction/settlement-state.ts).
+Implementation: [`components/auction/`](../components/auction/) · [`hooks/use-auction-detail.ts`](../hooks/use-auction-detail.ts) · [`hooks/use-passport-approval.ts`](../hooks/use-passport-approval.ts) · [`auction-bid-math.ts`](../lib/auction/auction-bid-math.ts) · [`auction-agent.ts`](../lib/auction/auction-agent.ts) · [`lib/commerce/settlement-state.ts`](../lib/commerce/settlement-state.ts).
 
 ### 4.19 Passport bridge panel
 
@@ -880,10 +892,10 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 |---------|----------|
 | Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx); commerce `chainId` = Ponder `passport.custodyChain` |
 | Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; star custody chain (84532 or 11155111); listing inactive; auction not blocking; not DISPUTED; fail-closed when listing or auction reads are unresolved; DISPUTED wins over listed/auction for `blockReason` |
-| Direction | `useBridge(custodyChain, counterpart)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
+| Direction | `useBridge(custodyChain, counterpart, tokenId)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
 | Transit | First-class in-flight lifecycle ([`bridge-transit.ts`](../lib/passport/bridge-transit.ts) + store + [`use-bridge-transit.ts`](../hooks/use-bridge-transit.ts)): persist intent on src receipt; keep panel visible after burn/lock (`transitActive` on [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts)); stepper Sent → In transit → Arrived; dst `ownerOf` poll remains delivery gate; `router.replace(?chain=dst)` on delivery; clear when Ponder `custodyChain === dst`. Own profile passport tiles show **In transit to** / **Returning to** on the reserved state line and keep the tile |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
-| Flow | Approve (if needed) → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
+| Flow | Passport approval via shared `usePassportApproval` (gateway spender) if needed → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); LayerZero Scan GUID link when available |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy |
 | Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
 
@@ -1551,4 +1563,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.101 (July 2026 — native `<img>` policy via ESLint once; commerce media/avatars/QR/OG). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.103 (July 2026 — passport ERC-721 approval consolidated to `usePassportApproval` for any spender incl. bridge). Update when tokens, app shell, or component contracts change.*

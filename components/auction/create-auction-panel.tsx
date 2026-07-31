@@ -12,8 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
-import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import { usePassportApproval } from "@/hooks/use-passport-approval";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
 import {
   ASCENDING_RESERVE_HELP,
@@ -26,19 +27,13 @@ import {
 } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
-import {
-  AscendingConsignmentAbi,
-  KarPassportAbi,
-} from "@/lib/contracts/abis.generated";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import {
-  karPassportAddress,
-  usdcAddress,
-} from "@/lib/web3/deployment-addresses";
+import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +53,7 @@ export function CreateAuctionPanel({
   isOwner,
   isActiveVerifier,
 }: Props) {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const walletChainId = useChainId();
   const { writeContractAsync } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
@@ -70,7 +65,6 @@ export function CreateAuctionPanel({
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const passport = karPassportAddress(chainId);
   const usdc = usdcAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const busy = phase !== "idle";
@@ -97,13 +91,15 @@ export function CreateAuctionPanel({
       ? protectionOptions[0]!
       : protectionDays;
 
-  const { data: approvedForAll, refetch: refetchApproval } = useReadContract({
-    address: passport,
-    abi: KarPassportAbi,
-    functionName: "isApprovedForAll",
-    args: address && mode ? [address, mode] : undefined,
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(address && passport && mode) },
+  const {
+    isApproved,
+    step: approvalStep,
+    ensureApproved,
+  } = usePassportApproval({
+    chainId,
+    tokenId,
+    spender: mode,
+    enabled: Boolean(isConnected && isOwner && mode),
   });
 
   const { data: unresolvedSettlement } = useReadContract({
@@ -144,22 +140,9 @@ export function CreateAuctionPanel({
     isOwner &&
     isActiveVerifier &&
     canOpen &&
-    Boolean(mode && passport);
+    Boolean(mode);
 
   if (!canShow) return null;
-
-  async function ensureApproval() {
-    if (!passport || !mode || approvedForAll) return;
-    const hash = await writeContractAsync({
-      address: passport,
-      abi: KarPassportAbi,
-      functionName: "setApprovalForAll",
-      args: [mode, true],
-      chainId: wagmiChainId(chainId),
-    });
-    await awaitReceipt(hash);
-    await refetchApproval();
-  }
 
   async function onCreate() {
     setFormError(null);
@@ -227,7 +210,7 @@ export function CreateAuctionPanel({
     }
 
     await runTx(async () => {
-      await ensureApproval();
+      await ensureApproved(awaitReceipt);
       const asset = assetKind === "ETH" ? zeroAddress : usdc!;
       return writeContractAsync({
         address: mode,
@@ -412,10 +395,10 @@ export function CreateAuctionPanel({
         {phase === "indexing"
           ? "Confirming…"
           : busy
-          ? approvedForAll
-            ? "Confirming…"
-            : "Approving passport…"
-          : "Start auction"}
+            ? approvalStep === "approving" || isApproved !== true
+              ? "Approving passport…"
+              : "Confirming…"
+            : "Start auction"}
       </Button>
     </div>
   );

@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useMandate } from "@/hooks/use-mandate";
+import { usePassportApproval } from "@/hooks/use-passport-approval";
 import {
   endsAtDateTimeAttr,
   formatAuctionAmount,
@@ -45,10 +46,7 @@ import {
 } from "@/lib/commerce/denomination";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
-import {
-  AscendingConsignmentAbi,
-  KarPassportAbi,
-} from "@/lib/contracts/abis.generated";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
@@ -56,14 +54,10 @@ import {
   sansLink,
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import {
-  karPassportAddress,
-  usdcAddress,
-} from "@/lib/web3/deployment-addresses";
+import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Step = "approval" | "agent" | "terms";
 
@@ -115,7 +109,6 @@ export function AuthorizeAuctionAgentDialog({
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
-  const passport = karPassportAddress(chainId);
   const mode = commerceModeAddress("ascending", chainId);
   const usdc = usdcAddress(chainId);
   const tid = BigInt(tokenId);
@@ -133,31 +126,16 @@ export function AuthorizeAuctionAgentDialog({
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
 
-  const approvalReads = useKeyedReadContracts({
-    contracts:
-      passport && mode && address
-        ? [
-            {
-              key: "getApproved" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "getApproved",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              key: "isApprovedForAll" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "isApprovedForAll",
-              args: [address, mode],
-              chainId: wc,
-            },
-          ]
-        : [],
-    query: { enabled: open },
+  const {
+    isApproved: isModeApproved,
+    approveForAll,
+    approveToken,
+  } = usePassportApproval({
+    chainId,
+    tokenId,
+    spender: mode,
+    enabled: open && Boolean(mode && address),
   });
-  const refetchApproval = approvalReads.refetch;
 
   const { mandate: chainAuth, refetch: refetchAuth } = useMandate({
     mode: "ascending",
@@ -203,14 +181,6 @@ export function AuthorizeAuctionAgentDialog({
   const authActive = mandateHasAgent(chainAuth);
   const authExpired = isMandateExpired(chainAuth, nowSec);
   const showRevoke = authActive && !hasActiveAuction;
-
-  const approvedForToken =
-    mode &&
-    approvalReads.get("getApproved") &&
-    (approvalReads.get("getApproved") as string).toLowerCase() ===
-      mode.toLowerCase();
-  const approvedForAll = approvalReads.get("isApprovedForAll") === true;
-  const isModeApproved = Boolean(approvedForToken || approvedForAll);
 
   const displayStep: Step =
     step === "approval" && isModeApproved ? "agent" : step;
@@ -258,61 +228,28 @@ export function AuthorizeAuctionAgentDialog({
   }, [open, displayStep, verifiers.length, showRevoke]);
 
   const runSetApprovalForAll = useCallback(async () => {
-    if (!passport || !mode) return;
+    if (!mode) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "setApprovalForAll",
-        args: [mode, true],
-      });
-      await awaitReceipt(hash);
-      await refetchApproval();
+      await approveForAll(awaitReceipt);
       setStep("agent");
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [
-    passport,
-    mode,
-    wrongChain,
-    switchChainAsync,
-    wc,
-    writeContractAsync,
-    awaitReceipt,
-    refetchApproval,
-  ]);
+  }, [mode, wrongChain, switchChainAsync, wc, approveForAll, awaitReceipt]);
 
   const runApproveToken = useCallback(async () => {
-    if (!passport || !mode) return;
+    if (!mode) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "approve",
-        args: [mode, tid],
-      });
-      await awaitReceipt(hash);
-      await refetchApproval();
+      await approveToken(awaitReceipt);
       setStep("agent");
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [
-    passport,
-    mode,
-    wrongChain,
-    switchChainAsync,
-    wc,
-    writeContractAsync,
-    awaitReceipt,
-    tid,
-    refetchApproval,
-  ]);
+  }, [mode, wrongChain, switchChainAsync, wc, approveToken, awaitReceipt]);
 
   const runRevoke = useCallback(async () => {
     if (!mode || hasActiveAuction) return;

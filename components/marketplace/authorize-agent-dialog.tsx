@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { sansLink } from "@/lib/design/instrument-classes";
 import {
   COMPENSATION_FORM,
@@ -31,15 +32,13 @@ import {
 } from "@/lib/commerce/denomination";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
-import { FixedPriceConsignmentAbi, KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
 type Step = "approval" | "agent" | "terms";
 
@@ -96,7 +95,6 @@ export function AuthorizeAgentDialog({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const passport = karPassportAddress(chainId);
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
@@ -113,39 +111,16 @@ export function AuthorizeAgentDialog({
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
 
-  const approvalReads = useKeyedReadContracts({
-    contracts:
-      passport && market && address
-        ? [
-            {
-              key: "getApproved" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "getApproved",
-              args: [tid],
-              chainId: wc,
-            },
-            {
-              key: "isApprovedForAll" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "isApprovedForAll",
-              args: [address, market],
-              chainId: wc,
-            },
-          ]
-        : [],
-    query: { enabled: open },
+  const {
+    isApproved: isMarketplaceApproved,
+    approveForAll,
+    approveToken,
+  } = usePassportApproval({
+    chainId,
+    tokenId,
+    spender: market,
+    enabled: open && Boolean(market && address),
   });
-  const refetchApproval = approvalReads.refetch;
-
-  const approvedForToken =
-    market &&
-    approvalReads.get("getApproved") &&
-    (approvalReads.get("getApproved") as string).toLowerCase() ===
-      market.toLowerCase();
-  const approvedForAll = approvalReads.get("isApprovedForAll") === true;
-  const isMarketplaceApproved = Boolean(approvedForToken || approvedForAll);
 
   const displayStep: Step =
     step === "approval" && isMarketplaceApproved ? "agent" : step;
@@ -191,61 +166,28 @@ export function AuthorizeAgentDialog({
   }, [open, step, verifiers.length]);
 
   const runSetApprovalForAll = useCallback(async () => {
-    if (!passport || !market) return;
+    if (!market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "setApprovalForAll",
-        args: [market, true],
-      });
-      await awaitReceipt(hash);
-      await refetchApproval();
+      await approveForAll(awaitReceipt);
       setStep("agent");
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [
-    passport,
-    market,
-    wrongChain,
-    switchChainAsync,
-    wc,
-    writeContractAsync,
-    refetchApproval,
-    awaitReceipt,
-  ]);
+  }, [market, wrongChain, switchChainAsync, wc, approveForAll, awaitReceipt]);
 
   const runApproveToken = useCallback(async () => {
-    if (!passport || !market) return;
+    if (!market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const hash = await writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "approve",
-        args: [market, tid],
-      });
-      await awaitReceipt(hash);
-      await refetchApproval();
+      await approveToken(awaitReceipt);
       setStep("agent");
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [
-    passport,
-    market,
-    wrongChain,
-    switchChainAsync,
-    wc,
-    writeContractAsync,
-    tid,
-    refetchApproval,
-    awaitReceipt,
-  ]);
+  }, [market, wrongChain, switchChainAsync, wc, approveToken, awaitReceipt]);
 
   const handleSelectAgent = useCallback((entry: VerifierDirectoryEntry) => {
     setSelectedAgent(entry);

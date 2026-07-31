@@ -229,6 +229,8 @@ export function useAuctionDetail({
     /** BondedChallenge opened against this lot, when any. */
     challenge: chain.challenge,
     challengeBond: chain.settlementDisputeBond,
+    /** Live passport `ownerOf` for reversal holder checks. */
+    passportTokenOwner: chain.passportTokenOwner,
     minIncrementBps: chain.minIncrementBps ?? 300,
     extensionWindow: chain.extensionWindow ?? 300n,
     /** Lot snapshotted protection length (seconds). */

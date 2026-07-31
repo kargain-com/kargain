@@ -223,6 +223,7 @@ export function AuctionDetailClientIsland({
               challenge={detail.challenge}
               now={detail.now}
               challengeBond={detail.challengeBond}
+              passportTokenOwner={detail.passportTokenOwner}
               auctionUiState={uiState as "SETTLED" | "S8" | "S9"}
             />
           )}

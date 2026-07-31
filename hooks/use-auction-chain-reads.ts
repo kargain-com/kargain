@@ -17,7 +17,11 @@ import {
   parseAscendingHold,
   type AscendingHoldSnapshot,
 } from "@/lib/commerce/parse-ascending";
-import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import {
+  AscendingConsignmentAbi,
+  KarPassportAbi,
+} from "@/lib/contracts/abis.generated";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -71,6 +75,7 @@ export function useAuctionChainReads({
   enabled = true,
 }: UseAuctionChainReadsArgs) {
   const mode = commerceModeAddress("ascending", chainId);
+  const passport = karPassportAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tokenIdBig = useMemo(() => {
     try {
@@ -84,7 +89,7 @@ export function useAuctionChainReads({
 
   const contracts = useMemo(() => {
     if (!readsEnabled || !mode) return [];
-    return [
+    const modeReads = [
       ...PER_TOKEN.map((functionName) => ({
         key: functionName,
         address: mode,
@@ -102,7 +107,19 @@ export function useAuctionChainReads({
         chainId: wc,
       },
     ];
-  }, [readsEnabled, mode, tokenIdBig, wc]);
+    if (!passport) return modeReads;
+    return [
+      ...modeReads,
+      {
+        key: "passportOwnerOf" as const,
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "ownerOf",
+        args: [tokenIdBig] as const,
+        chainId: wc,
+      },
+    ];
+  }, [readsEnabled, mode, passport, tokenIdBig, wc]);
 
   const reads = useKeyedReadContracts({
     contracts,
@@ -162,6 +179,18 @@ export function useAuctionChainReads({
 
   const pausedRaw = reads.get("paused");
 
+  const passportOwnerEntry = reads.entry("passportOwnerOf");
+  /** Current NFT holder; `undefined` unread, `null` failed/missing. */
+  const passportTokenOwner: string | null | undefined =
+    !passport || !readsEnabled
+      ? undefined
+      : passportOwnerEntry == null
+        ? undefined
+        : passportOwnerEntry.status === "success" &&
+            typeof passportOwnerEntry.result === "string"
+          ? passportOwnerEntry.result
+          : null;
+
   return {
     /** Ascending mode contract; `undefined` disables every write. */
     escrow: mode,
@@ -171,6 +200,8 @@ export function useAuctionChainReads({
     holdSnapshot,
     /** BondedChallenge opened against this lot, when any. */
     challenge,
+    /** Live `ownerOf` on the passport for this token (reversal holder check). */
+    passportTokenOwner,
     minIncrementBps: reads.asNumber("auctionMinIncrementBps"),
     extensionWindow: reads.asBigint("auctionExtensionWindow"),
     /** Lot snapshotted protection length (seconds) — not live mode bounds. */

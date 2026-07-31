@@ -19,6 +19,7 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useFixedPriceOpenOptions } from "@/hooks/use-fixed-price-open-options";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
+import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
 import {
   DENOMINATION_KIND,
@@ -119,14 +120,6 @@ export function ListingEditClient({
             args: [tid],
             chainId: wc,
           },
-          {
-            key: "getApproved" as const,
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "getApproved",
-            args: [tid],
-            chainId: wc,
-          },
         ]
       : [],
   });
@@ -134,12 +127,27 @@ export function ListingEditClient({
   const commerce = useListingChainReads({ chainId, tokenId });
   const market = commerce.market;
 
+  const {
+    isApproved,
+    approveToken,
+    approvalBusy,
+    refetch: refetchApproval,
+  } = usePassportApproval({
+    chainId,
+    tokenId,
+    spender: market,
+    enabled: Boolean(market && address),
+  });
+
   const ownerOf = ownershipReads.get("ownerOf") as `0x${string}` | undefined;
-  const approved = ownershipReads.get("getApproved") as `0x${string}` | undefined;
 
   const refetchListing = useCallback(async () => {
-    await Promise.all([ownershipReads.refetch(), commerce.refetch()]);
-  }, [ownershipReads, commerce]);
+    await Promise.all([
+      ownershipReads.refetch(),
+      commerce.refetch(),
+      refetchApproval(),
+    ]);
+  }, [ownershipReads, commerce, refetchApproval]);
 
   const row = commerce.listing;
   const active = row?.active ?? false;
@@ -161,9 +169,7 @@ export function ListingEditClient({
   const canDelist = Boolean(active && isSeller);
   const canList = Boolean(!active && isOwner && address);
 
-  const isApproved =
-    Boolean(market && approved && approved.toLowerCase() === market.toLowerCase());
-  const actionsPending = isPending || busy;
+  const actionsPending = isPending || busy || approvalBusy;
   const auctionHint =
     passportStatus !== undefined && passportStatus !== "VERIFIED"
       ? AUCTION_REQUIRES_VERIFICATION_HINT
@@ -218,27 +224,28 @@ export function ListingEditClient({
   ]);
 
   const runApprove = useCallback(async () => {
-    if (!address || !passport || !market) return;
+    if (!address || !market) return;
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setLog("Approving marketplace…");
     try {
-      const hash = await writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "approve",
-        args: [market, tid],
-      });
-      await awaitReceipt(hash);
-      await refetchListing();
+      await approveToken(awaitReceipt);
       setLog("Marketplace approved.");
     } catch (err) {
       setLog(txErrorMessage(err));
     }
-  }, [address, wrongChain, passport, market, tid, wc, refetchListing, switchChainAsync, writeContractAsync, awaitReceipt]);
+  }, [
+    address,
+    wrongChain,
+    market,
+    wc,
+    switchChainAsync,
+    approveToken,
+    awaitReceipt,
+  ]);
 
   const runList = useCallback(async () => {
     await runFlow(async () => {
-      if (!canList || !market) return;
+      if (!canList || !market || isApproved !== true) return;
       if (!openOptions.available) {
         setLog(openOptions.unavailableReason ?? "Cannot list on this chain.");
         return;
@@ -308,6 +315,7 @@ export function ListingEditClient({
     });
   }, [
     canList,
+    isApproved,
     wrongChain,
     market,
     openOptions,
@@ -536,12 +544,12 @@ export function ListingEditClient({
           {commerce.paused === true ? (
             <CommercePausedNotice mode="fixedPrice" />
           ) : null}
-          {!isApproved && (
+          {isApproved !== true && (
             <Button type="button" variant="outline" disabled={actionsPending || commerce.paused === true} onClick={() => void runApprove()}>
               {actionsPending ? "Confirming…" : "Approve fixed-price mode"}
             </Button>
           )}
-          {isApproved && <p className="text-xs text-text-secondary">Fixed-price mode approved.</p>}
+          {isApproved === true && <p className="text-xs text-text-secondary">Fixed-price mode approved.</p>}
           <p className="font-sans text-xs text-text-secondary">
             On an on-chain buy, payment splits immediately between you, any
             agent, and the platform — there is no protection window. Undeliverable
@@ -556,7 +564,7 @@ export function ListingEditClient({
             priceInputId="asking-price-new"
             disabled={actionsPending || commerce.paused === true}
           />
-          <Button type="button" disabled={actionsPending || !isApproved || commerce.paused === true || !openOptions.available} onClick={() => void runList()}>
+          <Button type="button" disabled={actionsPending || isApproved !== true || commerce.paused === true || !openOptions.available} onClick={() => void runList()}>
             {actionsPending ? "Confirming…" : "List for sale"}
           </Button>
         </section>

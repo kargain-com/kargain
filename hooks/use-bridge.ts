@@ -12,6 +12,7 @@ import {
   useWriteContract,
 } from "wagmi";
 
+import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { useTxSync } from "@/hooks/use-tx-sync";
 import {
   KarPassportAbi,
@@ -108,12 +109,13 @@ async function pollDstOwner(
 
 /**
  * Directional bridge hook. Defaults to hub→spoke so existing callers stay valid.
- * Spoke→hub: `useBridge(BRIDGE_SPOKE_CHAIN_ID)`.
+ * Spoke→hub: `useBridge(BRIDGE_SPOKE_CHAIN_ID, counterpart, tokenId)`.
  */
 export function useBridge(
   srcChainId: number = BRIDGE_HUB_CHAIN_ID,
   dstChainId: number =
     bridgeCounterpartChainId(srcChainId) ?? BRIDGE_SPOKE_CHAIN_ID,
+  tokenId: string = "",
 ) {
   const { address } = useAccount();
   const publicClient = usePublicClient({ chainId: wagmiChainId(srcChainId) });
@@ -131,6 +133,13 @@ export function useBridge(
   const adapter = bridgeAdapterAddress(srcChainId);
   const passport = karPassportAddress(srcChainId);
   const dstEid = bridgeDstEid(srcChainId);
+
+  const { isApproved, ensureApproved } = usePassportApproval({
+    chainId: srcChainId,
+    tokenId,
+    spender: adapter,
+    enabled: Boolean(adapter && tokenId),
+  });
 
   const error = localError ?? syncError;
   const busy = syncBusy || phase === "pending" || phase === "quoting";
@@ -216,23 +225,11 @@ export function useBridge(
           // One SendParam for quote + send (URI-length extraOptions must match fee).
           const sendParam = await buildSrcSendParam(tokenId, recipient);
 
-          const approved = (await publicClient.readContract({
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "isApprovedForAll",
-            args: [recipient, adapter],
-          })) as boolean;
-
-          if (!approved) {
+          if (isApproved !== true) {
             setPhase("approving");
-            const approveHash = await writeContractAsync({
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "setApprovalForAll",
-              args: [adapter, true],
-              chainId: wagmiChainId(srcChainId),
-            });
-            await awaitReceipt(approveHash, { mapError: mapBridgeError });
+            await ensureApproved((hash) =>
+              awaitReceipt(hash, { mapError: mapBridgeError }),
+            );
           }
 
           setPhase("quoting");
@@ -359,6 +356,8 @@ export function useBridge(
       buildSrcSendParam,
       dstChainId,
       dstEid,
+      ensureApproved,
+      isApproved,
       passport,
       publicClient,
       runFlow,
