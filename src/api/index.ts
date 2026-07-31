@@ -379,14 +379,6 @@ async function buildVerifierDetailResponse(id: string) {
 
   const verificationCount = verificationRow[0]?.total ?? 0;
 
-  const disputedPassports = await db
-    .select()
-    .from(passport)
-    .where(
-      and(eq(passport.status, "DISPUTED"), eq(passport.verifier, checksumVerifier)),
-    )
-    .orderBy(desc(passport.updatedAt));
-
   const verifiedPassports = await db
     .select()
     .from(passport)
@@ -417,7 +409,6 @@ async function buildVerifierDetailResponse(id: string) {
     leftAt: v.leftAt,
     verificationFee: v.verificationFee,
     verificationCount,
-    disputedPassports,
     verifiedPassports,
   });
 }

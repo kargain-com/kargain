@@ -43,7 +43,6 @@ describe("mapVerifierDetailToProfile", () => {
           metadataURI: "ar://meta",
         },
         stake: { active: true },
-        disputedPassports: [],
       },
       ADDRESS,
     );

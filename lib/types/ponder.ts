@@ -225,7 +225,6 @@ export type PonderVerifierDetail = {
   joinedAt: string;
   leftAt: string;
   verificationCount: number;
-  disputedPassports: PonderPassportDetail[];
   verifiedPassports: PonderPassportDetail[];
 };
 

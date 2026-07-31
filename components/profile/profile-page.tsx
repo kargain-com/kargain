@@ -11,7 +11,6 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type R
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import type {
-  DisputedPassportRow,
   KarProVerifierProfile,
 } from "@/lib/verifier/verifier-profile-types";
 import type { VerifierPublicPassportRow } from "@/lib/verifier/fetch-verifier-public-data";
@@ -19,7 +18,7 @@ import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
 import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-stats-band";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
-import { ProfileChallengesPanel } from "@/components/challenges/challenges-client";
+import { ProfileOutstandingTab } from "@/components/profile/profile-outstanding-tab";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { CommerceGuardianOpsLink } from "@/components/commerce/commerce-guardian-ops-link";
@@ -31,6 +30,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { useOutstandingObligations } from "@/hooks/use-outstanding-obligations";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
 import {
   ctaLink,
@@ -75,7 +75,7 @@ type TabId =
   | "delegated"
   | "saved"
   | "verified"
-  | "challenges"
+  | "outstanding"
   | "consigned"
   | "attestations"
   | "claims";
@@ -89,7 +89,6 @@ export type ProfilePageProps = {
   passports: ProfileOwnedPassport[];
   listings: ProfileListing[];
   verifiedPassports: VerifierPublicPassportRow[];
-  disputedPassports: DisputedPassportRow[];
   attestations: PonderVerifierAttestation[];
   ponderErr: string | null;
   consignedCount?: number | null;
@@ -116,7 +115,7 @@ function buildTabList(
     delegated: number;
     verified: number;
     attestations: number;
-    challenges: number;
+    outstanding: number | null;
     consigned: number;
     claims: number;
   },
@@ -131,6 +130,13 @@ function buildTabList(
       label: countLabel("Claims", counts.claims),
     });
     tabs.push({
+      id: "outstanding",
+      label:
+        counts.outstanding == null
+          ? "Outstanding"
+          : countLabel("Outstanding", counts.outstanding),
+    });
+    tabs.push({
       id: "delegated",
       label: countLabel("Delegated vehicles", counts.delegated),
     });
@@ -141,7 +147,6 @@ function buildTabList(
     tabs.push({ id: "attestations", label: countLabel("Attestations", counts.attestations) });
   }
   if (isOwner && isActiveVerifier) {
-    tabs.push({ id: "challenges", label: countLabel("Challenges", counts.challenges) });
     tabs.push({
       id: "consigned",
       label: countLabel("Consigned vehicles", counts.consigned),
@@ -156,7 +161,7 @@ function tabFromSearchParams(
 ): TabId {
   const raw = searchParams.get("tab");
   const ids = new Set(tabs.map((t) => t.id));
-  if (raw === "disputes") return "challenges";
+  if (raw === "disputes" || raw === "challenges") return "outstanding";
   if (raw && ids.has(raw as TabId)) return raw as TabId;
   return "passports";
 }
@@ -297,7 +302,6 @@ export function ProfilePage({
   passports,
   listings,
   verifiedPassports,
-  disputedPassports,
   attestations,
   ponderErr,
   consignedCount = null,
@@ -352,6 +356,11 @@ export function ProfilePage({
     (verifierProfile?.verificationCount ?? 0) > 0;
 
   const { total: claimsTotal } = usePendingClaims();
+  const { count: outstandingTotal } = useOutstandingObligations({
+      address: isOwner ? wallet : undefined,
+      isActiveVerifier: isOwner ? isActiveVerifier : false,
+      enabled: isOwner,
+    });
 
   const tabs = useMemo(
     () =>
@@ -361,7 +370,7 @@ export function ProfilePage({
         delegated: delegatedCount ?? 0,
         verified: verifiedPassports.length,
         attestations: attestations.length,
-        challenges: disputedPassports.length,
+        outstanding: outstandingTotal,
         consigned: consignedCount ?? 0,
         claims: isOwner ? claimsTotal : 0,
       }),
@@ -374,7 +383,7 @@ export function ProfilePage({
       delegatedCount,
       verifiedPassports.length,
       attestations.length,
-      disputedPassports.length,
+      outstandingTotal,
       consignedCount,
       claimsTotal,
     ],
@@ -480,7 +489,8 @@ export function ProfilePage({
           subjectIsKarPro={isActiveVerifier}
           subjectName={subjectName}
           subjectWallet={wallet}
-          openChallengeCount={disputedPassports.length}
+          outstandingCount={outstandingTotal}
+          outstandingHref={profileTabUrl(wallet, "outstanding")}
         />
 
         {ponderErr && (
@@ -647,15 +657,15 @@ export function ProfilePage({
             </section>
           )}
 
-          {activeTab === "challenges" && isOwner && isActiveVerifier && (
+          {activeTab === "outstanding" && isOwner && (
             <section
               role="tabpanel"
-              id="profile-panel-challenges"
-              aria-labelledby="profile-tab-challenges"
+              id="profile-panel-outstanding"
+              aria-labelledby="profile-tab-outstanding"
             >
-              <ProfileChallengesPanel
-                chainId={chainId}
-                subjectTokenIds={disputedPassports.map((p) => p.tokenId)}
+              <ProfileOutstandingTab
+                address={wallet}
+                isActiveVerifier={isActiveVerifier}
               />
             </section>
           )}

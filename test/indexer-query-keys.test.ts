@@ -26,6 +26,7 @@ const REQUIRED_COMMERCE_PREFIXES = [
   "owner-delegated-passports",
   "challenges",
   "pro-active-consignments",
+  "outstanding-obligations",
   "ponder-notifications",
   "owned-passport-token-ids",
   "kar-pro-verifier",

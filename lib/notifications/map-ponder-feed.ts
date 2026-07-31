@@ -30,6 +30,50 @@ const PONDER_TYPE_CONFIG: Record<
     body: "A dispute was opened on a passport you verified",
     priority: "normal",
   },
+  "commerce.bid_refunded": {
+    body: "You were outbid — your previous bid was refunded",
+    priority: "high",
+  },
+  "commerce.settled": {
+    body: "The auction settled — the protection window has started",
+    priority: "high",
+  },
+  "commerce.challenge_opened": {
+    body: "A settlement challenge was opened on your sale",
+    priority: "high",
+  },
+  "commerce.challenge_judged": {
+    body: "A challenge on your lot was judged",
+    priority: "high",
+  },
+  "commerce.challenge_concluded": {
+    body: "A challenge on your lot was concluded",
+    priority: "high",
+  },
+  "commerce.reversal_started": {
+    body: "A reversal started — the abandonment deadline is running",
+    priority: "high",
+  },
+  "commerce.recall_force_ready": {
+    body: "The recall cooldown has elapsed — you may force a return",
+    priority: "high",
+  },
+  "commerce.mode_paused": {
+    body: "A commerce mode is paused while you have something open",
+    priority: "high",
+  },
+  "commerce.protection_closing": {
+    body: "Your protection window is closing soon",
+    priority: "high",
+  },
+  "commerce.reversal_deadline_approaching": {
+    body: "Your reversal deadline is approaching",
+    priority: "high",
+  },
+  "commerce.challenge_window_closing": {
+    body: "A challenge window is closing soon",
+    priority: "high",
+  },
 };
 
 function isHexAddress(value: string): value is `0x${string}` {
@@ -115,14 +159,20 @@ function mapSingleItem(
     source: "ponder",
     timestamp,
     read: timestamp <= lastSeenAtPonder,
-    href: `/marketplace/${item.tokenId}`,
+    href:
+      typeof item.meta?.href === "string" && item.meta.href.startsWith("/")
+        ? item.meta.href
+        : `/marketplace/${item.tokenId}`,
     subject: {
       kind: "passport",
       tokenId: item.tokenId,
       title: formatPassportTitle(item.tokenId),
     },
     actor,
-    body: config.body,
+    body:
+      typeof item.meta?.body === "string" && item.meta.body.trim() !== ""
+        ? item.meta.body
+        : config.body,
     groupKey: passportGroupKey(item.tokenId),
     priority: config.priority,
   };

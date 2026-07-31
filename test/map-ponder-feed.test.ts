@@ -108,4 +108,38 @@ describe("mapPonderFeedItems delegation grants", () => {
     assert.equal(item.priority, "high");
     assert.equal(item.href, "/marketplace/9");
   });
+
+  it("maps commerce approaching + settled kinds with meta.href override", () => {
+    const [closing] = mapPonderFeedItems(
+      [
+        {
+          id: "commerce.protection_closing:42:1700000000",
+          type: "commerce.protection_closing",
+          tokenId: "42",
+          timestamp: "500",
+          meta: { href: "/auctions/42", body: "Custom closing body" },
+        },
+      ],
+      100,
+    );
+    assert.equal(closing.type, "commerce.protection_closing");
+    assert.equal(closing.href, "/auctions/42");
+    assert.equal(closing.body, "Custom closing body");
+    assert.equal(closing.priority, "high");
+
+    const [settled] = mapPonderFeedItems(
+      [
+        {
+          id: "commerce.settled:7:600",
+          type: "commerce.settled",
+          tokenId: "7",
+          timestamp: "600",
+        },
+      ],
+      100,
+    );
+    assert.equal(settled.type, "commerce.settled");
+    assert.match(settled.body, /protection window/i);
+    assert.equal(settled.href, "/marketplace/7");
+  });
 });

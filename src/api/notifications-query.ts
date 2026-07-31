@@ -1,18 +1,42 @@
 import { db } from "ponder:api";
-import { claimCredit, mandate, passport, passportRecord } from "ponder:schema";
-import { and, desc, eq, gt } from "ponder";
+import {
+  challenge,
+  claimCredit,
+  commerceClaimCredit,
+  commerceMode,
+  consignment,
+  consignmentHold,
+  mandate,
+  passport,
+  passportRecord,
+} from "ponder:schema";
+import { and, desc, eq, gt, inArray } from "ponder";
 import { getAddress } from "viem";
 
+import {
+  approachingNotificationId,
+  approachingNotificationKind,
+  deriveOutstandingObligations,
+  isApproachingDeadline,
+} from "../../lib/obligation";
+import { RECALL_COOLDOWN_SECONDS } from "../../lib/commerce/recall";
 import type { PonderFeedItem } from "../../lib/notifications/types";
 import { claimRecordedNotificationItems } from "../lib/ponder-claims";
+import { LIVE_PHASES } from "../lib/ponder-commerce";
+import { loadObligationFacts } from "./load-obligation-facts";
 
 export type PonderDb = typeof db;
 
 const ATTESTATION_RECORD_TYPE = "attestation";
 const RECORDS_PER_PASSPORT_CAP = 20;
+const LIVE_PHASE_LIST = [...LIVE_PHASES];
 
 function feedId(type: string, tokenId: string, timestamp: bigint): string {
   return `${type}:${tokenId}:${timestamp}`;
+}
+
+function auctionHref(tokenId: string): string {
+  return `/auctions/${tokenId}`;
 }
 
 export async function buildNotificationFeed(
@@ -58,8 +82,11 @@ export async function buildNotificationFeed(
           tokenId: p.id,
           timestamp: String(p.lastDisputeResolvedAt),
         });
-      } else if (terminal === "confirm" || terminal === "reject" || terminal === "") {
-        // "" = pre-terminal-tag rows until reindex; treat as resolved.
+      } else if (
+        terminal === "confirm" ||
+        terminal === "reject" ||
+        terminal === ""
+      ) {
         items.push({
           id: feedId("passport.dispute_resolved", p.id, p.lastDisputeResolvedAt),
           type: "passport.dispute_resolved",
@@ -68,8 +95,6 @@ export async function buildNotificationFeed(
           meta: terminal ? { terminal } : undefined,
         });
       }
-      // withdraw stamps lastDisputeResolvedAt? No — withdraw uses disputeWithdrawnAt only.
-      // confirm/reject/expire set lastDisputeResolvedAt.
     }
   }
 
@@ -80,7 +105,9 @@ export async function buildNotificationFeed(
       .where(eq(passportRecord.tokenId, p.id))
       .orderBy(desc(passportRecord.timestamp));
 
-    const recent = records.filter((r) => r.timestamp > since).slice(0, RECORDS_PER_PASSPORT_CAP);
+    const recent = records
+      .filter((r) => r.timestamp > since)
+      .slice(0, RECORDS_PER_PASSPORT_CAP);
     for (const r of recent) {
       const type =
         r.recordType === ATTESTATION_RECORD_TYPE
@@ -126,31 +153,76 @@ export async function buildNotificationFeed(
     });
   }
 
-  const claimCredits = await ponderDb
-    .select()
-    .from(claimCredit)
-    .where(
-      and(eq(claimCredit.account, checksumAddress), gt(claimCredit.timestamp, since)),
-    )
-    .orderBy(desc(claimCredit.timestamp))
-    .limit(limit);
+  const [legacyCredits, commerceCredits] = await Promise.all([
+    ponderDb
+      .select()
+      .from(claimCredit)
+      .where(
+        and(
+          eq(claimCredit.account, checksumAddress),
+          gt(claimCredit.timestamp, since),
+        ),
+      )
+      .orderBy(desc(claimCredit.timestamp))
+      .limit(limit),
+    ponderDb
+      .select()
+      .from(commerceClaimCredit)
+      .where(
+        and(
+          eq(commerceClaimCredit.account, checksumAddress),
+          gt(commerceClaimCredit.timestamp, since),
+        ),
+      )
+      .orderBy(desc(commerceClaimCredit.timestamp))
+      .limit(limit),
+  ]);
 
   items.push(
     ...claimRecordedNotificationItems(
-      claimCredits.map((r) => ({
-        id: r.id,
-        chainId: r.chainId,
-        contract: r.contract,
-        account: r.account,
-        asset: r.asset,
-        amount: r.amount,
-        reasonCode: r.reasonCode,
-        timestamp: r.timestamp,
-      })),
+      [
+        ...legacyCredits.map((r) => ({
+          id: r.id,
+          chainId: r.chainId,
+          contract: r.contract,
+          account: r.account,
+          asset: r.asset,
+          amount: r.amount,
+          reasonCode: r.reasonCode,
+          timestamp: r.timestamp,
+        })),
+        ...commerceCredits.map((r) => ({
+          id: r.id,
+          chainId: r.chainId,
+          contract: r.contract,
+          account: r.account,
+          asset: r.asset,
+          amount: r.amount,
+          reasonCode: r.reasonCode,
+          timestamp: r.timestamp,
+        })),
+      ],
       checksumAddress,
       since,
     ),
   );
+
+  for (const r of commerceCredits) {
+    if (r.reasonCode === "ascending.outbid_refund" && r.timestamp > since) {
+      // Cause event carries the lot via correlator; credit row has no tokenId —
+      // use contract-scoped id; href falls back to claims until lot is known.
+      items.push({
+        id: `commerce.bid_refunded:${r.id}`,
+        type: "commerce.bid_refunded",
+        tokenId: "0",
+        timestamp: String(r.timestamp),
+        meta: {
+          href: `/profile/${checksumAddress}?tab=claims`,
+          body: "You were outbid — your previous bid was refunded (see Claims if delivery failed).",
+        },
+      });
+    }
+  }
 
   const verifiedByMe = await ponderDb
     .select()
@@ -158,7 +230,11 @@ export async function buildNotificationFeed(
     .where(eq(passport.verifier, checksumAddress));
 
   for (const p of verifiedByMe) {
-    if (p.disputeOpenedAt > since && p.disputeOpenedAt > 0n && p.status === "DISPUTED") {
+    if (
+      p.disputeOpenedAt > since &&
+      p.disputeOpenedAt > 0n &&
+      p.status === "DISPUTED"
+    ) {
       items.push({
         id: feedId("verifier.dispute_on_verified", p.id, p.disputeOpenedAt),
         type: "verifier.dispute_on_verified",
@@ -168,6 +244,265 @@ export async function buildNotificationFeed(
         meta: p.disputeReason ? { reason: p.disputeReason } : undefined,
       });
     }
+  }
+
+  // --- Commerce event stamps ---
+
+  const myHolds = await ponderDb
+    .select()
+    .from(consignmentHold)
+    .where(eq(consignmentHold.buyer, checksumAddress));
+
+  for (const hold of myHolds) {
+    if (hold.createdAt > since && hold.createdAt > 0n) {
+      items.push({
+        id: feedId("commerce.settled", hold.tokenId, hold.createdAt),
+        type: "commerce.settled",
+        tokenId: hold.tokenId,
+        timestamp: String(hold.createdAt),
+        meta: { href: auctionHref(hold.tokenId) },
+      });
+    }
+    if (
+      hold.reversalStartedAt != null &&
+      hold.reversalStartedAt > since &&
+      hold.reversalStartedAt > 0n
+    ) {
+      items.push({
+        id: feedId(
+          "commerce.reversal_started",
+          hold.tokenId,
+          hold.reversalStartedAt,
+        ),
+        type: "commerce.reversal_started",
+        tokenId: hold.tokenId,
+        timestamp: String(hold.reversalStartedAt),
+        meta: { href: auctionHref(hold.tokenId) },
+      });
+    }
+  }
+
+  const [sellerLots, agentLots, buyerLots] = await Promise.all([
+    ponderDb
+      .select()
+      .from(consignment)
+      .where(
+        and(
+          eq(consignment.seller, checksumAddress),
+          inArray(consignment.phase, LIVE_PHASE_LIST),
+        ),
+      ),
+    ponderDb
+      .select()
+      .from(consignment)
+      .where(
+        and(
+          eq(consignment.agent, checksumAddress),
+          inArray(consignment.phase, LIVE_PHASE_LIST),
+        ),
+      ),
+    ponderDb
+      .select()
+      .from(consignment)
+      .where(
+        and(
+          eq(consignment.buyer, checksumAddress),
+          inArray(consignment.phase, LIVE_PHASE_LIST),
+        ),
+      ),
+  ]);
+
+  const partyTokenIds = [
+    ...new Set(
+      [...sellerLots, ...agentLots]
+        .filter((c) => c.mode === "ascending")
+        .map((c) => c.tokenId),
+    ),
+  ];
+
+  if (partyTokenIds.length > 0) {
+    const partyChallenges = await ponderDb
+      .select()
+      .from(challenge)
+      .where(
+        and(
+          eq(challenge.instance, "ascending"),
+          inArray(challenge.subjectId, partyTokenIds),
+        ),
+      );
+
+    for (const ch of partyChallenges) {
+      if (ch.openedAt > since && ch.openedAt > 0n) {
+        items.push({
+          id: feedId("commerce.challenge_opened", ch.subjectId, ch.openedAt),
+          type: "commerce.challenge_opened",
+          tokenId: ch.subjectId,
+          timestamp: String(ch.openedAt),
+          actor: ch.challenger,
+          meta: { href: auctionHref(ch.subjectId) },
+        });
+      }
+      if (
+        ch.terminalAt != null &&
+        ch.terminalAt > since &&
+        ch.terminalAt > 0n
+      ) {
+        if (ch.status === "judged") {
+          items.push({
+            id: feedId(
+              "commerce.challenge_judged",
+              ch.subjectId,
+              ch.terminalAt,
+            ),
+            type: "commerce.challenge_judged",
+            tokenId: ch.subjectId,
+            timestamp: String(ch.terminalAt),
+            actor: ch.judge || undefined,
+            meta: { href: auctionHref(ch.subjectId) },
+          });
+        } else if (ch.status === "concluded") {
+          items.push({
+            id: feedId(
+              "commerce.challenge_concluded",
+              ch.subjectId,
+              ch.terminalAt,
+            ),
+            type: "commerce.challenge_concluded",
+            tokenId: ch.subjectId,
+            timestamp: String(ch.terminalAt),
+            meta: { href: auctionHref(ch.subjectId) },
+          });
+        }
+      }
+    }
+  }
+
+  const myChallenges = await ponderDb
+    .select()
+    .from(challenge)
+    .where(
+      and(
+        eq(challenge.challenger, checksumAddress),
+        eq(challenge.instance, "ascending"),
+      ),
+    );
+
+  for (const ch of myChallenges) {
+    if (
+      ch.terminalAt != null &&
+      ch.terminalAt > since &&
+      ch.terminalAt > 0n
+    ) {
+      if (ch.status === "judged") {
+        items.push({
+          id: feedId("commerce.challenge_judged", ch.subjectId, ch.terminalAt),
+          type: "commerce.challenge_judged",
+          tokenId: ch.subjectId,
+          timestamp: String(ch.terminalAt),
+          actor: ch.judge || undefined,
+          meta: { href: auctionHref(ch.subjectId) },
+        });
+      } else if (ch.status === "concluded") {
+        items.push({
+          id: feedId(
+            "commerce.challenge_concluded",
+            ch.subjectId,
+            ch.terminalAt,
+          ),
+          type: "commerce.challenge_concluded",
+          tokenId: ch.subjectId,
+          timestamp: String(ch.terminalAt),
+          meta: { href: auctionHref(ch.subjectId) },
+        });
+      }
+    }
+  }
+
+  const recallLots = await ponderDb
+    .select()
+    .from(consignment)
+    .where(
+      and(
+        eq(consignment.seller, checksumAddress),
+        eq(consignment.phase, "offered"),
+      ),
+    );
+
+  const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  for (const lot of recallLots) {
+    if (lot.recallRequestedAt == null || lot.recallRequestedAt <= 0n) continue;
+    const readyAt = lot.recallRequestedAt + RECALL_COOLDOWN_SECONDS;
+    if (readyAt > since && readyAt <= nowSec) {
+      items.push({
+        id: feedId("commerce.recall_force_ready", lot.tokenId, readyAt),
+        type: "commerce.recall_force_ready",
+        tokenId: lot.tokenId,
+        timestamp: String(readyAt),
+        meta: { href: `/marketplace/${lot.tokenId}` },
+      });
+    }
+  }
+
+  const pausedModes = await ponderDb
+    .select()
+    .from(commerceMode)
+    .where(eq(commerceMode.paused, true));
+
+  if (pausedModes.length > 0) {
+    const liveAsParty = [...sellerLots, ...agentLots, ...buyerLots];
+
+    for (const mode of pausedModes) {
+      const hit = liveAsParty.find(
+        (c) =>
+          c.chainId === mode.chainId &&
+          c.modeContract.toLowerCase() === mode.modeContract.toLowerCase(),
+      );
+      if (!hit) continue;
+      const ts = hit.updatedAt > since ? hit.updatedAt : hit.openedAt;
+      if (ts > since) {
+        items.push({
+          id: feedId("commerce.mode_paused", hit.tokenId, ts),
+          type: "commerce.mode_paused",
+          tokenId: hit.tokenId,
+          timestamp: String(ts),
+          meta: {
+            href:
+              hit.mode === "ascending"
+                ? auctionHref(hit.tokenId)
+                : `/marketplace/${hit.tokenId}`,
+          },
+        });
+      }
+    }
+  }
+
+  // Approaching deadlines — same derivation as the Outstanding panel
+  try {
+    const facts = await loadObligationFacts(checksumAddress);
+    const derived = deriveOutstandingObligations(facts, {
+      address: checksumAddress,
+      nowSec: Number(nowSec),
+      isActiveVerifier: false,
+    });
+    if (derived.status === "ready") {
+      for (const obl of derived.items) {
+        if (!isApproachingDeadline(obl, Number(nowSec))) continue;
+        const kind = approachingNotificationKind(obl);
+        if (!kind || obl.deadlineSec == null) continue;
+        items.push({
+          id: approachingNotificationId(kind, obl.subjectId, obl.deadlineSec),
+          type: kind,
+          tokenId: obl.tokenId,
+          timestamp: String(nowSec),
+          meta: {
+            href: obl.href,
+            body: obl.consequence,
+          },
+        });
+      }
+    }
+  } catch {
+    // Approaching projection is best-effort; event stamps above still stand.
   }
 
   return items

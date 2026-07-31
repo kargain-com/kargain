@@ -28,7 +28,6 @@ describe("shouldPollKarProVerifierProfile", () => {
           joinedAt: 1,
           verificationCount: 0,
           verificationFee: 0n,
-          disputedPassports: [],
         },
         5,
         true,
@@ -75,7 +74,6 @@ describe("buildKarProProfileFromChain", () => {
     assert.equal(profile.active, true);
     assert.equal(profile.joinedAt, 1_700_000_000);
     assert.equal(profile.verificationCount, 0);
-    assert.deepEqual(profile.disputedPassports, []);
   });
 
   it("defaults slug to empty string", () => {

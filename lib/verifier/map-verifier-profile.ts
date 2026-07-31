@@ -1,9 +1,5 @@
-import type {
-  DisputedPassportRow,
-  KarProVerifierProfile,
-} from "@/lib/verifier/verifier-profile-types";
+import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
-import type { PassportStatus } from "@/lib/types/ponder";
 
 export function mapVerifierDetailToProfile(
   detail: Record<string, unknown>,
@@ -16,19 +12,6 @@ export function mapVerifierDetailToProfile(
     metadataURI?: string;
   };
   const stake = detail.stake as { active?: boolean };
-  const disputedRaw =
-    (detail.disputedPassports as
-      | Array<{
-          id?: string;
-          status?: string;
-          make?: string;
-          model?: string;
-          year?: number;
-          disputeReason?: string;
-          disputeOpenedAt?: string | number;
-          lastDisputer?: string;
-        }>
-      | undefined) ?? [];
 
   return {
     address: String(detail.address ?? address),
@@ -42,19 +25,5 @@ export function mapVerifierDetailToProfile(
     verificationFee: parseWeiString(
       detail.verificationFee as string | number | bigint | undefined | null,
     ),
-    disputedPassports: disputedRaw.map((p) => {
-      const year = Number(p.year ?? 0);
-      const disputeOpenedAt = Number(p.disputeOpenedAt ?? 0);
-      return {
-        tokenId: String(p.id ?? ""),
-        status: (p.status as PassportStatus) ?? "DISPUTED",
-        make: String(p.make ?? ""),
-        model: String(p.model ?? ""),
-        year: Number.isFinite(year) ? year : 0,
-        disputeReason: String(p.disputeReason ?? ""),
-        disputeOpenedAt: Number.isFinite(disputeOpenedAt) ? disputeOpenedAt : 0,
-        lastDisputer: String(p.lastDisputer ?? ""),
-      } satisfies DisputedPassportRow;
-    }),
   };
 }

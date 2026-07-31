@@ -12,6 +12,7 @@
 | Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` — expire ≠ Confirm for product; **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
 | ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
 | Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — **live addresses + VPS full reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)). |
+| Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — **full reindex required** after deploy ([OPERATIONS.md](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **July 2026:** the `MarketplaceEscrow` / `AuctionEscrow` schema and handlers described in §1–§3 below (`marketplace_listing`, `marketplace_sale`, `agent_authorization`, `auction*`, `currency_feed`) have been **removed** — commerce lives entirely in the FixedPrice/Ascending consignment surface (§3's commerce-modes note, and [indexer/README.md](./README.md)). This document remains as historical reference for the v1→v2 event mapping and for the FX display work (§6).
 

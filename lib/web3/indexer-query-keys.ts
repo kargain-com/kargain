@@ -26,6 +26,7 @@ export const INDEXER_QUERY_KEY_PREFIXES = [
   "owner-delegated-passports",
   "challenges",
   "pro-active-consignments",
+  "outstanding-obligations",
   "ponder-notifications",
   "owned-passport-token-ids",
   "kar-pro-verifier",

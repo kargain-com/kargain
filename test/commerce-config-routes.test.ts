@@ -11,12 +11,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROUTES = path.join(ROOT, "src/api/commerce-routes.ts");
 
 describe("commerce config HTTP readers", () => {
-  it("registers GET routes for mode / payment-token / currency-feed projections", () => {
+  it("registers GET routes for mode / payment-token / currency-feed / obligations", () => {
     const src = readFileSync(ROUTES, "utf8");
     for (const route of [
       '"/commerce-modes"',
       '"/commerce-payment-tokens"',
       '"/commerce-currency-feeds"',
+      '"/accounts/:address/obligations"',
     ]) {
       assert.ok(
         src.includes(`app.get(${route}`),

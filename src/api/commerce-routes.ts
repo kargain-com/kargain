@@ -27,6 +27,7 @@ import { getAddress, isAddress } from "viem";
 import { replaceBigInts } from "ponder";
 
 import { LIVE_PHASES } from "../lib/ponder-commerce";
+import { loadObligationFacts } from "./load-obligation-facts";
 
 function parsePage(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : 1;
@@ -99,6 +100,19 @@ async function enrichConsignment(row: typeof consignment.$inferSelect) {
 }
 
 export function registerCommerceRoutes(app: Hono): void {
+  /**
+   * Address-centric commerce facts for outstanding-obligation derivation.
+   * Union across all commercial chains; optional ?chainId= filter.
+   * Shape is a facts bag — consumers call deriveOutstandingObligations.
+   */
+  app.get("/accounts/:address/obligations", async (c) => {
+    const address = parseAddressParam(c.req.param("address"));
+    if (!address) return c.json({ error: "Invalid address" }, 400);
+    const chainId = parseOptionalChainId(c.req.query("chainId"));
+    const facts = await loadObligationFacts(address, chainId);
+    return c.json(jsonBody({ address, ...facts }));
+  });
+
   /** Browse — marketplace + auctions cutover. */
   app.get("/consignments", async (c) => {
     const page = parsePage(c.req.query("page"));

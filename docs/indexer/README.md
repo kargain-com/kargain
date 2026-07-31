@@ -56,6 +56,7 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 | `GET /owners/:address/mandates` | Owner delegated tab (`?active=`) |
 | `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
 | `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions passport/staking `pending_claim` and mode `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp: `id`, `amount`, `reasonCode`, `timestamp`); `{ claims, total, page, limit }` |
+| `GET /accounts/:address/obligations` | Facts bag for outstanding-obligation derivation (live consignments/holds/bids/challenges/passports/modes where the address is a party); union across commercial chains; optional `?chainId=`; `{ address, unresolved, consignments, holds, bids, challenges, passports, modes }` — clients call `deriveOutstandingObligations` (never invent outstanding locally) |
 | `GET /commerce-claim-credits` | Whole-table commerce credit scan for local E2E (optional `?reasonCode=`) |
 | `GET /challenges` | `BondedChallenge` feed shared by KarPassport disputes and `AscendingConsignment` — `?instance=passport\|ascending`, `?status=`, `?subjectId=`, `?challenger=`, `?chainId=`, `page`, `limit`; `instance=passport` rows include a denormalized `passport` object |
 | `GET /commerce-modes` | Mode pause/guardian/rules projection (`?chainId=`, `?mode=fixedPrice\|ascending`, `?paused=`, `page`, `limit`). FixedPrice rows expose `nativeUsdStalenessTolerance` (seconds). Ascending rows expose `minProtectionWindow` / `maxProtectionWindow` (opener bounds — **not** the lot hold length; lot hold is `ascending_terms.protectionWindow` on the consignment). |
@@ -80,8 +81,9 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 | `GET /passports/:tokenId` | Passport detail + `records[]` + `uriHistory[]` |
 | `GET /passports/batch` | Batch passport lookup (`?ids=`) |
 | `GET /profile/:address/passports` | Passports owned by address |
-| `GET /notifications/:address` | Notification feed, including active mandate grants (`mandate.granted`) |
+| `GET /notifications/:address` | Notification feed: passport/mandate/claims + commerce lifecycle (`commerce.*`) + approaching deadlines from obligation derivation; `claim.recorded` unions `claim_credit` + `commerce_claim_credit` |
 | `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions `pending_claim` + `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp); `{ claims, total, page, limit }` |
+| `GET /accounts/:address/obligations` | Address-centric commerce facts bag for Outstanding panel + approaching feed (see commerce table above) |
 | `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
 | `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
 | `GET /verifiers/by-slug/:slug` | Resolve slug → address |

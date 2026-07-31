@@ -182,6 +182,7 @@ export const consignment = onchainTable(
     tokenIdx: index().on(table.chainId, table.tokenId),
     sellerIdx: index().on(table.seller),
     agentIdx: index().on(table.agent),
+    buyerIdx: index().on(table.buyer),
     phaseIdx: index().on(table.chainId, table.mode, table.phase),
     liveIdx: index().on(table.chainId, table.modeContract, table.tokenId, table.phase),
   }),
@@ -221,29 +222,37 @@ export const consignmentBid = onchainTable(
   (table) => ({
     consignmentIdx: index().on(table.consignmentId),
     tokenIdx: index().on(table.tokenId),
+    bidderIdx: index().on(table.bidder),
     refundTxIdx: index().on(table.refundTxHash),
   }),
 );
 
 /** Ascending hold + reversal — PK = consignment id. */
-export const consignmentHold = onchainTable("consignment_hold", (t) => ({
-  id: t.text().primaryKey(),
-  consignmentId: t.text().notNull(),
-  chainId: t.integer().notNull(),
-  tokenId: t.text().notNull(),
-  buyer: t.text().notNull(),
-  gross: t.bigint().notNull(),
-  protectionEndsAt: t.bigint().notNull(),
-  /** active | receiptConfirmed | fundsReleased | reversalStarted | reversalCompleted | reversalAbandoned */
-  state: t.text().notNull().default("active"),
-  abandonmentDeadline: t.bigint(),
-  receiptConfirmedAt: t.bigint(),
-  fundsReleasedAt: t.bigint(),
-  reversalStartedAt: t.bigint(),
-  clearedAt: t.bigint(),
-  createdAt: t.bigint().notNull(),
-  updatedAt: t.bigint().notNull(),
-}));
+export const consignmentHold = onchainTable(
+  "consignment_hold",
+  (t) => ({
+    id: t.text().primaryKey(),
+    consignmentId: t.text().notNull(),
+    chainId: t.integer().notNull(),
+    tokenId: t.text().notNull(),
+    buyer: t.text().notNull(),
+    gross: t.bigint().notNull(),
+    protectionEndsAt: t.bigint().notNull(),
+    /** active | receiptConfirmed | fundsReleased | reversalStarted | reversalCompleted | reversalAbandoned */
+    state: t.text().notNull().default("active"),
+    abandonmentDeadline: t.bigint(),
+    receiptConfirmedAt: t.bigint(),
+    fundsReleasedAt: t.bigint(),
+    reversalStartedAt: t.bigint(),
+    clearedAt: t.bigint(),
+    createdAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    buyerIdx: index().on(table.buyer),
+    stateIdx: index().on(table.state),
+  }),
+);
 
 /**
  * BondedChallenge lifecycle — passport verification + ascending settlement.
@@ -277,6 +286,7 @@ export const challenge = onchainTable(
   (table) => ({
     subjectIdx: index().on(table.chainId, table.instanceContract, table.subjectId),
     statusIdx: index().on(table.status),
+    challengerIdx: index().on(table.challenger),
     terminalTxIdx: index().on(table.terminalTxHash),
   }),
 );
