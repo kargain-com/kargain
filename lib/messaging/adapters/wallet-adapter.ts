@@ -1,7 +1,7 @@
 import type { Address, WalletClient } from "viem";
 
 import {
-  canInitializeMessaging,
+  supportsPersonalSignIdentity,
   readAccountKind,
   readAccountKindOnCommercialChains,
   type WalletAccountKind,
@@ -85,7 +85,7 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
         const address = input.getAddress();
         if (client && address) {
           const kind = await refreshKind(address);
-          if (!canInitializeMessaging(kind)) {
+          if (!supportsPersonalSignIdentity(kind)) {
             throw new Error("Contract wallet cannot initialize messaging");
           }
           return;

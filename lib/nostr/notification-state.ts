@@ -3,7 +3,6 @@
 import { hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
-import { decryptAppPayloadV1, encryptAppPayloadV1 } from "@/lib/nostr/key-manager-crypto";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 import { publishSignedEvent } from "@/lib/nostr/publish-event";
 
@@ -23,12 +22,6 @@ const DEFAULT_STATE: NotificationState = {
 
 const NOTIFICATION_STATE_D = "kargain-notifications-v1";
 const KIND_APP_DATA = 30078;
-
-type ContentEnvelope = {
-  v: number;
-  iv: string;
-  cipher: string;
-};
 
 function toPrivateKeyBytes(privateKey: string): Uint8Array {
   const hex = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
@@ -59,12 +52,21 @@ function normalizeState(raw: unknown): NotificationState {
   };
 }
 
-function parseContentEnvelope(content: string): ContentEnvelope | null {
+/**
+ * Parse relay content. Accepts plaintext NotificationState JSON.
+ * Legacy address-AES envelopes ({ v, iv, cipher }) are ignored — fail closed to default.
+ */
+function parseRelayContent(content: string): NotificationState | null {
   try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    if (parsed.v !== 1) return null;
-    if (typeof parsed.iv !== "string" || typeof parsed.cipher !== "string") return null;
-    return { v: 1, iv: parsed.iv, cipher: parsed.cipher };
+    const parsed = JSON.parse(content) as unknown;
+    if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const obj = parsed as Record<string, unknown>;
+    // Former fake-crypto envelope — not readable without the deleted address key.
+    if ("iv" in obj && "cipher" in obj) return null;
+    if (!("lastSeenAt" in obj)) return null;
+    return normalizeState(parsed);
   } catch {
     return null;
   }
@@ -87,10 +89,7 @@ export function mergeNotificationStates(
 }
 
 /** Load state from NIP-78 relay. Never throws. Falls back to DEFAULT_STATE. */
-export async function loadNotificationState(
-  address: `0x${string}`,
-  pubkey: string,
-): Promise<NotificationState> {
+export async function loadNotificationState(pubkey: string): Promise<NotificationState> {
   try {
     if (!pubkey.trim()) return DEFAULT_STATE;
 
@@ -105,21 +104,18 @@ export async function loadNotificationState(
     const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
     if (!latest?.content) return DEFAULT_STATE;
 
-    const envelope = parseContentEnvelope(latest.content);
-    if (!envelope) return DEFAULT_STATE;
+    const remote = parseRelayContent(latest.content);
+    if (!remote) return DEFAULT_STATE;
 
-    const plaintext = await decryptAppPayloadV1(address, envelope.iv, envelope.cipher);
-    const parsed = JSON.parse(plaintext) as unknown;
-    return mergeNotificationStates(DEFAULT_STATE, normalizeState(parsed));
+    return mergeNotificationStates(DEFAULT_STATE, remote);
   } catch (err) {
     console.error("loadNotificationState failed", err);
     return DEFAULT_STATE;
   }
 }
 
-/** Encrypt and publish kind 30078 replacement. Never throws. */
+/** Publish kind 30078 replacement as signed plaintext. Never throws. */
 export async function saveNotificationState(
-  address: `0x${string}`,
   state: NotificationState,
   privateKey: string,
 ): Promise<void> {
@@ -127,8 +123,7 @@ export async function saveNotificationState(
     if (!privateKey.trim()) return;
 
     const normalized = normalizeState(state);
-    const { ivHex, cipherHex } = await encryptAppPayloadV1(address, JSON.stringify(normalized));
-    const content = JSON.stringify({ v: 1, iv: ivHex, cipher: cipherHex });
+    const content = JSON.stringify(normalized);
 
     const unsigned = {
       kind: KIND_APP_DATA,

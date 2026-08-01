@@ -7,7 +7,6 @@ import { useAccount, useReadContract, useWalletClient } from "wagmi";
 
 import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { IdentityHeader } from "@/components/identity/identity-header";
-import { IdentityRelinkCard } from "@/components/profile/identity-relink-card";
 import { MessagingSettingsSection } from "@/components/profile/messaging-settings-section";
 import { LightningWalletSection } from "@/components/profile/lightning-wallet-section";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,6 @@ import {
 } from "@/lib/nostr/build-profile-edit-patch";
 import { publishNostrProfile } from "@/lib/nostr/profile";
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
-import { useNostrKey } from "@/hooks/use-nostr-key";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -99,7 +97,6 @@ function KarProReadoutRow({
 export function ProfileEditClient() {
   const { address, isConnected, chainId: walletChainId } = useAccount();
   const { data: walletClient } = useWalletClient();
-  const { identityMismatch } = useNostrKey();
   const touchedRef = useRef<Set<ProfileEditFieldKey>>(new Set());
   const [dirty, setDirty] = useState(false);
 
@@ -192,7 +189,6 @@ export function ProfileEditClient() {
   }, []);
 
   const lud16Invalid = verifierResolvedNonVerifier && isLightningAddressInvalid(lud16);
-  const profileSaveBlocked = identityMismatch !== false;
 
   const onSave = useCallback(async () => {
     if (!walletClient || !address || saving) return;
@@ -269,8 +265,6 @@ export function ProfileEditClient() {
         proSlug={verifierProfile?.slug}
         showEditButton={false}
       />
-
-      <IdentityRelinkCard />
 
       <div className="flex flex-col gap-8">
         {/* Section 1 — Personal profile */}
@@ -412,20 +406,13 @@ export function ProfileEditClient() {
                 lud16Invalid ||
                 loading ||
                 verifierStatusPending ||
-                !dirty ||
-                profileSaveBlocked
+                !dirty
               }
               aria-busy={saving}
               onClick={() => void onSave()}
             >
               {saving ? "Saving…" : "Save profile"}
             </Button>
-
-            {profileSaveBlocked && (
-              <p className="text-sm text-text-secondary">
-                Reconnect your profile above to save changes.
-              </p>
-            )}
 
             {saveStatus !== "idle" && (
               <p

@@ -2,15 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  decryptPrivateKeyV1,
   decryptPrivateKeyV2,
   deriveNostrSkFromSignature,
-  encryptPrivateKeyV1,
   encryptPrivateKeyV2,
-  isV2Blob,
+  isIdentityBlob,
   nostrLinkMessage,
   skMatchesSignature,
-  type StoredEncryptedV1,
   type StoredEncryptedV2,
 } from "../lib/nostr/key-manager-crypto.ts";
 
@@ -42,55 +39,24 @@ describe("nostr key-manager crypto", () => {
     assert.notEqual(skA, skB);
   });
 
-  it("roundtrips v1 blob encryption with address-derived AES", async () => {
-    const sk = deriveNostrSkFromSignature(SIGNATURE_A);
-    const blob = await encryptPrivateKeyV1(ADDRESS_LOWER, sk);
-    const restored = await decryptPrivateKeyV1(ADDRESS_LOWER, blob);
-    assert.equal(restored, sk);
-    assert.equal(isV2Blob(blob), false);
-  });
-
-  it("roundtrips v2 blob encryption with signature-derived AES", async () => {
+  it("roundtrips identity blob encryption with signature-derived AES", async () => {
     const sk = deriveNostrSkFromSignature(SIGNATURE_A);
     const blob = await encryptPrivateKeyV2(SIGNATURE_A, ADDRESS_LOWER, sk);
     const restored = await decryptPrivateKeyV2(SIGNATURE_A, blob);
     assert.equal(restored, sk);
-    assert.equal(isV2Blob(blob), true);
+    assert.equal(isIdentityBlob(blob), true);
+    assert.ok(skMatchesSignature(restored, SIGNATURE_A));
   });
 
-  it("does not decrypt v1 ciphertext with v2 AES key", async () => {
+  it("rejects decrypt with a different signature", async () => {
     const sk = deriveNostrSkFromSignature(SIGNATURE_A);
-    const v1 = await encryptPrivateKeyV1(ADDRESS_LOWER, sk);
+    const blob = await encryptPrivateKeyV2(SIGNATURE_A, ADDRESS_LOWER, sk);
     await assert.rejects(async () => {
-      await decryptPrivateKeyV2(SIGNATURE_A, {
-        version: 2,
-        address: ADDRESS_LOWER,
-        ivHex: v1.ivHex,
-        cipherHex: v1.cipherHex,
-        createdAt: v1.createdAt,
-      });
+      await decryptPrivateKeyV2(SIGNATURE_B, blob);
     });
   });
 
-  it("migrates v1 blob to v2 without changing nostr sk", async () => {
-    const sk = deriveNostrSkFromSignature(SIGNATURE_A);
-    const v1: StoredEncryptedV1 = await encryptPrivateKeyV1(ADDRESS_LOWER, sk);
-    const fromV1 = await decryptPrivateKeyV1(ADDRESS_LOWER, v1);
-    assert.equal(fromV1, sk);
-
-    const v2: StoredEncryptedV2 = await encryptPrivateKeyV2(SIGNATURE_A, ADDRESS_LOWER, fromV1);
-    const fromV2 = await decryptPrivateKeyV2(SIGNATURE_A, v2);
-    assert.equal(fromV2, sk);
-    assert.ok(skMatchesSignature(fromV2, SIGNATURE_A));
-  });
-
-  it("detects v2 blobs by version field", () => {
-    const v1: StoredEncryptedV1 = {
-      address: ADDRESS_LOWER,
-      ivHex: "0x01",
-      cipherHex: "0x02",
-      createdAt: 1,
-    };
+  it("isIdentityBlob requires version 2 shape", () => {
     const v2: StoredEncryptedV2 = {
       version: 2,
       address: ADDRESS_LOWER,
@@ -98,7 +64,8 @@ describe("nostr key-manager crypto", () => {
       cipherHex: "0x02",
       createdAt: 1,
     };
-    assert.equal(isV2Blob(v1), false);
-    assert.equal(isV2Blob(v2), true);
+    assert.equal(isIdentityBlob(v2), true);
+    assert.equal(isIdentityBlob({ address: ADDRESS_LOWER, ivHex: "0x01", cipherHex: "0x02" }), false);
+    assert.equal(isIdentityBlob(null), false);
   });
 });

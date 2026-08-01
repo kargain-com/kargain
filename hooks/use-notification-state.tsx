@@ -96,7 +96,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const remote = await loadNotificationState(address as Address, nostrPubkey);
+        const remote = await loadNotificationState(nostrPubkey);
         const merged = mergeNotificationStates(local, remote);
         if (!cancelled) setState(merged);
       } catch (err) {
@@ -139,7 +139,6 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         void saveNotificationState(
-          address as Address,
           stateRef.current,
           key,
         );

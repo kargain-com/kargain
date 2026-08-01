@@ -151,8 +151,13 @@ export function messagingWalletError(kind: WalletAccountKind): string | null {
   return null;
 }
 
-/** Whether the connected wallet may attempt XMTP registration. */
-export function canInitializeMessaging(kind: WalletAccountKind): boolean {
+/**
+ * Whether this account may derive app identity from personal_sign.
+ * Contract accounts are refused: signatures are not ECDSA-recoverable for
+ * attestation and may be non-deterministic. Shared by XMTP messaging and
+ * Nostr key derivation — do not fork this predicate.
+ */
+export function supportsPersonalSignIdentity(kind: WalletAccountKind): boolean {
   return kind !== "contract";
 }
 

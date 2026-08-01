@@ -54,13 +54,13 @@ async function idbRemove(recordKey: string): Promise<void> {
   });
 }
 
-function lsFallbackKey(recordKey: string, legacyLocalStorageKey?: string): string {
-  return legacyLocalStorageKey ?? `kargain_secure_blob_fallback:${recordKey}`;
+function lsFallbackKey(recordKey: string): string {
+  return `kargain_secure_blob_fallback:${recordKey}`;
 }
 
-function localStorageGet<T>(recordKey: string, legacyLocalStorageKey?: string): T | null {
+function localStorageGet<T>(recordKey: string): T | null {
   requireBrowser();
-  const raw = window.localStorage.getItem(lsFallbackKey(recordKey, legacyLocalStorageKey));
+  const raw = window.localStorage.getItem(lsFallbackKey(recordKey));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
@@ -69,21 +69,14 @@ function localStorageGet<T>(recordKey: string, legacyLocalStorageKey?: string): 
   }
 }
 
-function localStorageSet<T>(
-  recordKey: string,
-  value: T,
-  legacyLocalStorageKey?: string,
-): void {
+function localStorageSet<T>(recordKey: string, value: T): void {
   requireBrowser();
-  window.localStorage.setItem(
-    lsFallbackKey(recordKey, legacyLocalStorageKey),
-    JSON.stringify(value),
-  );
+  window.localStorage.setItem(lsFallbackKey(recordKey), JSON.stringify(value));
 }
 
-function localStorageRemove(recordKey: string, legacyLocalStorageKey?: string): void {
+function localStorageRemove(recordKey: string): void {
   requireBrowser();
-  window.localStorage.removeItem(lsFallbackKey(recordKey, legacyLocalStorageKey));
+  window.localStorage.removeItem(lsFallbackKey(recordKey));
 }
 
 async function canUseIndexedDb(): Promise<boolean> {
@@ -95,60 +88,42 @@ async function canUseIndexedDb(): Promise<boolean> {
   }
 }
 
-export type SecureBlobOptions = {
-  /** Preserves legacy localStorage key names when migrating from inline storage. */
-  legacyLocalStorageKey?: string;
-};
-
-export async function getBlob<T>(
-  recordKey: string,
-  options?: SecureBlobOptions,
-): Promise<T | null> {
+export async function getBlob<T>(recordKey: string): Promise<T | null> {
   if (typeof window === "undefined") return null;
-  const legacy = options?.legacyLocalStorageKey;
   if (await canUseIndexedDb()) {
     try {
       return await idbGet<T>(recordKey);
     } catch {
-      return localStorageGet<T>(recordKey, legacy);
+      return localStorageGet<T>(recordKey);
     }
   }
-  return localStorageGet<T>(recordKey, legacy);
+  return localStorageGet<T>(recordKey);
 }
 
-export async function setBlob<T>(
-  recordKey: string,
-  value: T,
-  options?: SecureBlobOptions,
-): Promise<void> {
+export async function setBlob<T>(recordKey: string, value: T): Promise<void> {
   requireBrowser();
-  const legacy = options?.legacyLocalStorageKey;
   if (await canUseIndexedDb()) {
     try {
       await idbSet(recordKey, value);
       return;
     } catch {
-      localStorageSet(recordKey, value, legacy);
+      localStorageSet(recordKey, value);
       return;
     }
   }
-  localStorageSet(recordKey, value, legacy);
+  localStorageSet(recordKey, value);
 }
 
-export async function removeBlob(
-  recordKey: string,
-  options?: SecureBlobOptions,
-): Promise<void> {
+export async function removeBlob(recordKey: string): Promise<void> {
   if (typeof window === "undefined") return;
-  const legacy = options?.legacyLocalStorageKey;
   if (await canUseIndexedDb()) {
     try {
       await idbRemove(recordKey);
     } catch {
-      localStorageRemove(recordKey, legacy);
+      localStorageRemove(recordKey);
     }
   } else {
-    localStorageRemove(recordKey, legacy);
+    localStorageRemove(recordKey);
   }
-  localStorageRemove(recordKey, legacy);
+  localStorageRemove(recordKey);
 }

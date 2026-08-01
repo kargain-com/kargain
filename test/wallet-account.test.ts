@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   allProtocolAddresses,
-  canInitializeMessaging,
+  supportsPersonalSignIdentity,
   classifyBytecode,
   explorerAddressUrl,
   isMessageablePeer,
@@ -162,14 +162,14 @@ describe("messagingWalletError", () => {
   });
 });
 
-describe("canInitializeMessaging", () => {
+describe("supportsPersonalSignIdentity", () => {
   it("allows EOA and EIP-7702", () => {
-    assert.equal(canInitializeMessaging("eoa"), true);
-    assert.equal(canInitializeMessaging("eip7702"), true);
+    assert.equal(supportsPersonalSignIdentity("eoa"), true);
+    assert.equal(supportsPersonalSignIdentity("eip7702"), true);
   });
 
   it("blocks contract accounts", () => {
-    assert.equal(canInitializeMessaging("contract"), false);
+    assert.equal(supportsPersonalSignIdentity("contract"), false);
   });
 });
 

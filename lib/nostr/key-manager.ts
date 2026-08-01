@@ -1,36 +1,28 @@
 "use client";
 
 import {
-  decryptPrivateKeyV1,
   decryptPrivateKeyV2,
   deriveNostrSkFromSignature,
   encryptPrivateKeyV2,
-  isV2Blob,
+  isIdentityBlob,
   nostrLinkMessage,
   skMatchesSignature,
-  type StoredEncrypted,
-  type StoredEncryptedV1,
   type StoredEncryptedV2,
 } from "@/lib/nostr/key-manager-crypto";
-import { getBlob, setBlob } from "@/lib/nostr/secure-blob-store";
+import { getBlob, removeBlob, setBlob } from "@/lib/nostr/secure-blob-store";
+import {
+  supportsPersonalSignIdentity,
+  type WalletAccountKind,
+} from "@/lib/web3/wallet-account";
 
 const BLOB_KEY = "kargain_nostr_key_encrypted";
-const LS_FALLBACK_KEY = "kargain_nostr_key_encrypted_fallback";
 
-const identityBlobOptions = { legacyLocalStorageKey: LS_FALLBACK_KEY };
-
-type WalletSigner = {
+export type WalletSigner = {
   address: `0x${string}`;
   signMessage: (message: string) => Promise<`0x${string}`>;
+  /** When set, contract accounts are refused before any signature prompt. */
+  accountKind?: WalletAccountKind;
 };
-
-async function storageGet(): Promise<StoredEncrypted | null> {
-  return getBlob<StoredEncrypted>(BLOB_KEY, identityBlobOptions);
-}
-
-async function storageSet(blob: StoredEncrypted): Promise<void> {
-  await setBlob(BLOB_KEY, blob, identityBlobOptions);
-}
 
 function requireBrowser() {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
@@ -38,76 +30,68 @@ function requireBrowser() {
   }
 }
 
+function assertPersonalSignAccount(wallet: WalletSigner): void {
+  if (wallet.accountKind != null && !supportsPersonalSignIdentity(wallet.accountKind)) {
+    throw new Error("Contract wallets cannot derive a Nostr identity.");
+  }
+}
+
 async function signCanonicalMessage(wallet: WalletSigner): Promise<`0x${string}`> {
   return wallet.signMessage(nostrLinkMessage(wallet.address));
 }
 
-async function persistV2Blob(
+async function persistBlob(
   wallet: WalletSigner,
   signature: `0x${string}`,
   privateKeyHex: `0x${string}`,
 ): Promise<void> {
   const encrypted = await encryptPrivateKeyV2(signature, wallet.address, privateKeyHex);
-  await storageSet(encrypted);
+  await setBlob(BLOB_KEY, encrypted);
 }
 
-async function restoreFromV2Blob(
-  wallet: WalletSigner,
+/**
+ * Unlock a stored identity blob. Fail closed: never overwrite with a freshly
+ * derived key when decrypt fails or the plaintext does not match the signature.
+ */
+async function restoreFromBlob(
   existing: StoredEncryptedV2,
   signature: `0x${string}`,
 ): Promise<`0x${string}`> {
-  const derived = deriveNostrSkFromSignature(signature);
-  let privateKeyHex = derived;
+  let decrypted: `0x${string}`;
   try {
-    const decrypted = await decryptPrivateKeyV2(signature, existing);
-    privateKeyHex = skMatchesSignature(decrypted, signature) ? decrypted : derived;
+    decrypted = await decryptPrivateKeyV2(signature, existing);
   } catch {
-    // Corrupted v2 blob: use deterministic derive.
+    throw new Error(
+      "Stored Nostr key could not be unlocked with this wallet signature.",
+    );
   }
-
-  await persistV2Blob(wallet, signature, privateKeyHex);
-  return privateKeyHex;
-}
-
-async function migrateV1Blob(
-  wallet: WalletSigner,
-  existing: StoredEncryptedV1,
-): Promise<`0x${string}`> {
-  const privateKeyHex = await decryptPrivateKeyV1(wallet.address, existing);
-  const signature = await signCanonicalMessage(wallet);
-
-  if (!skMatchesSignature(privateKeyHex, signature)) {
-    const derived = deriveNostrSkFromSignature(signature);
-    await persistV2Blob(wallet, signature, derived);
-    return derived;
+  if (!skMatchesSignature(decrypted, signature)) {
+    throw new Error("Stored Nostr key does not match this wallet signature.");
   }
-
-  await persistV2Blob(wallet, signature, privateKeyHex);
-  return privateKeyHex;
+  return decrypted;
 }
 
 let pendingKeyPromise: Promise<`0x${string}`> | null = null;
 let pendingWalletAddress: string | null = null;
 
 async function createOrRestoreNostrKey(wallet: WalletSigner): Promise<`0x${string}`> {
-  const existing = await storageGet();
+  assertPersonalSignAccount(wallet);
 
-  if (existing && existing.address.toLowerCase() === wallet.address.toLowerCase()) {
-    if (isV2Blob(existing)) {
-      const signature = await signCanonicalMessage(wallet);
-      return restoreFromV2Blob(wallet, existing, signature);
-    }
-
-    try {
-      return await migrateV1Blob(wallet, existing);
-    } catch {
-      // Corrupted v1 blob: deterministic re-link below.
-    }
-  }
+  const existingRaw = await getBlob<unknown>(BLOB_KEY);
+  const existing =
+    isIdentityBlob(existingRaw) &&
+    existingRaw.address.toLowerCase() === wallet.address.toLowerCase()
+      ? existingRaw
+      : null;
 
   const signature = await signCanonicalMessage(wallet);
+
+  if (existing) {
+    return restoreFromBlob(existing, signature);
+  }
+
   const privateKeyHex = deriveNostrSkFromSignature(signature);
-  await persistV2Blob(wallet, signature, privateKeyHex);
+  await persistBlob(wallet, signature, privateKeyHex);
   return privateKeyHex;
 }
 
@@ -125,18 +109,8 @@ export async function getOrCreateNostrKey(wallet: WalletSigner): Promise<`0x${st
   return pendingKeyPromise;
 }
 
-export async function loadDecryptedKey(wallet: WalletSigner): Promise<`0x${string}` | null> {
-  requireBrowser();
-  const existing = await storageGet();
-  if (!existing) return null;
-  if (existing.address.toLowerCase() !== wallet.address.toLowerCase()) return null;
-  if (isV2Blob(existing)) return null;
-
-  try {
-    return await decryptPrivateKeyV1(wallet.address, existing);
-  } catch {
-    return null;
-  }
+/** Explicit destructive clear — never called automatically on signature drift. */
+export async function clearStoredNostrKey(): Promise<void> {
+  if (typeof window === "undefined") return;
+  await removeBlob(BLOB_KEY);
 }
-
-export type { WalletSigner };
