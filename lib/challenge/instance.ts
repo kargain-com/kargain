@@ -23,11 +23,12 @@ export type ChallengeInstanceId = "verification" | "settlement";
  * Ascending has no on-chain getter for the configured window before a challenge
  * exists — label any pre-open display as this deploy constant.
  * Matches `ASCENDING_CHALLENGE_WINDOW` in scripts/lib/verify-constructor-args.ts.
+ *
+ * Verification challenge window: do **not** mirror here. Read
+ * `KarPassport.DISPUTE_WINDOW` (public constant) on the custody chain; unread
+ * → fail closed (null window), never invent 14 days in TS.
  */
 export const SETTLEMENT_CHALLENGE_WINDOW_DEPLOY_SECONDS = 14 * 24 * 60 * 60;
-
-/** Matches KarPassport.DISPUTE_WINDOW when the chain read succeeds (14 days). */
-export const VERIFICATION_CHALLENGE_WINDOW_SECONDS = 14 * 24 * 60 * 60;
 
 export type ChallengeInstance = {
   readonly id: ChallengeInstanceId;

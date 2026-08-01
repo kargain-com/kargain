@@ -438,3 +438,32 @@ describe("settlement_withdraw_frozen_remainder", () => {
     );
   });
 });
+
+describe("verification challenge window — chain only (S19)", () => {
+  it("does not export a mirrored verification window constant", async () => {
+    const challenge = await import("@/lib/challenge");
+    assert.equal(
+      "VERIFICATION_CHALLENGE_WINDOW_SECONDS" in challenge,
+      false,
+      "app must not shadow KarPassport.DISPUTE_WINDOW with a TS seconds constant",
+    );
+    assert.ok(
+      "SETTLEMENT_CHALLENGE_WINDOW_DEPLOY_SECONDS" in challenge,
+      "labelled deploy constant for pre-open settlement window remains until S30 getters ship",
+    );
+  });
+
+  it("Actions reads DISPUTE_WINDOW from chain", () => {
+    const panel = fs.readFileSync(PASSPORT_ACTIONS, "utf8");
+    assert.match(
+      panel,
+      /functionName:\s*"DISPUTE_WINDOW"/,
+      "passport-actions-panel must read KarPassport.DISPUTE_WINDOW",
+    );
+    assert.doesNotMatch(
+      panel,
+      /VERIFICATION_CHALLENGE_WINDOW_SECONDS/,
+      "panel must not import a mirrored window constant",
+    );
+  });
+});

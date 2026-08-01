@@ -313,7 +313,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 ### I.4. KarProStaking (`2.0.0-rc.1`)
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
-- **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed.
+- **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed. **Product UI (intentional):** join offers **native only** (`KarProJoinForm` → `becomeVerifierNative`). The token path stays dormant until Timelock `setStakeToken` enables a stake asset — no join or ops UI for a governance-disabled capability. Do not build a token-join screen while `stakeToken` is unset.
 - **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Claim refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
 - **Two-phase leave:** `leave()` ends the role immediately (`active = false`, burn try/catch), sets `unlockAt = now + UNBONDING_PERIOD` (**14 days**, equal to passport `DISPUTE_WINDOW` by design). `claimStake()` after unlock pays via ClaimablePayouts (failed push → withdrawable claim). **No slashing** in this ship. There is **no** dispute↔leave coupling — a future slash design must use a monotonic “not before” unlock timestamp (bug → early unlock), never a decrementing challenge counter (bug → permanent lock).
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
@@ -403,7 +403,7 @@ One table per question a screen can ask. **A screen showing the terms of a speci
 | Abandonment window | captured at open; deadline set when reversal becomes pending | `auctionRules().abandonmentWindow` | `auctionAbandonmentWindow(tokenId)`, then `holdAbandonmentWindow` / `holdAbandonmentDeadline(tokenId)` | reversal panel → deadline |
 | Settlement challenge bond | rotatable; captured into `Challenge` at open | `auctionRules().challengeBond` | `challengeBondAmount(subjectId)` | pre-open → `auctionRules()` · open → getter |
 | **Settlement challenge window** | **one-shot at `initialize`; immutable per instance** | **none — not in `setAuctionRules`** | `challengeWindowDuration(subjectId)`, **zero unless a challenge is open** | pre-open → **no getter exists**, use the deploy record · post-open → getter, or Ponder `challenge.windowDuration` from `ChallengeOpened` |
-| Verification challenge window | compile-time constant | none | `KarPassport.DISPUTE_WINDOW` (public constant) | anywhere |
+| Verification challenge window | compile-time constant | none | `KarPassport.DISPUTE_WINDOW` (public constant) | anywhere — **chain read only**; never shadow with an app-side seconds constant |
 | Verification challenge bond | rotatable; captured into `Challenge` at open | `KarPassport.disputeDeposit` (public) | `challengeBondAmount(tokenId)` | pre-open → `disputeDeposit` · open → getter |
 | Platform fee bps | snapshotted into the consignment at open | `platformFeeBps` (public, live) | in `ConsignmentOpened`; storage cleared on close | lot → event/indexer |
 | Recall cooldown | compile-time constant, not governed | none | `recallCooldown()` | anywhere |
