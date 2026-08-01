@@ -31,8 +31,8 @@ abstract contract BondedChallenge is ClaimablePayouts, ReentrancyGuard {
 
     mapping(uint256 => Challenge) internal challenges;
 
-    address internal forfeitRecipient;
-    uint256 internal windowDuration;
+    address public forfeitRecipient;
+    uint256 public windowDuration;
     bool private _bondedChallengeConfigured;
 
     /// @notice Sum of bonds held in active challenges (rescue accounting).

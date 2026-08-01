@@ -57,9 +57,11 @@ contract AscendingConsignment is
     /// @dev Live auction rules (future opens / bids / settles). Read via `auctionRules()`.
     uint40 internal minDuration;
     uint40 internal maxDuration;
-    /// @dev Anti-sniping window. Mutable: applies from the next bid (B3) — never rewrites a captured endsAt alone.
+    /// @dev Anti-sniping window in live storage. Snapshotted into AuctionTerms at open — governance
+    ///      changes do not rewrite an already-open lot's extensionWindow or endsAt alone.
     uint40 internal extensionWindow;
-    /// @dev Minimum raise over the standing high bid, in bps. Mutable for subsequent bids (B3).
+    /// @dev Minimum raise over the standing high bid, in bps (live storage). Snapshotted at open;
+    ///      later setAuctionRules values apply only to subsequently opened lots.
     uint16 internal minIncrementBps;
     /// @dev Opener protection bounds. Lot hold length is snapshotted at open into AuctionTerms.
     uint40 internal minProtectionWindow;
@@ -110,6 +112,8 @@ contract AscendingConsignment is
     error SettlementPending();
     error PaymentTokenNotSupported();
     error DirectEthNotAccepted();
+    /// @dev ERC-20 pull delivered a different amount than requested (e.g. fee-on-transfer).
+    error ShortDelivery();
     error NotPassportHolder();
 
     event AuctionRulesSet(
@@ -697,7 +701,11 @@ contract AscendingConsignment is
             if (msg.value != amount) revert WrongValue();
         } else {
             if (msg.value != 0) revert DirectEthNotAccepted();
-            IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+            // Measure delivery: fee-on-transfer would otherwise record `amount` while holding less.
+            IERC20 token = IERC20(asset);
+            uint256 balanceBefore = token.balanceOf(address(this));
+            token.safeTransferFrom(msg.sender, address(this), amount);
+            if (token.balanceOf(address(this)) - balanceBefore != amount) revert ShortDelivery();
         }
     }
 

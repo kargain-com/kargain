@@ -678,6 +678,23 @@ describe("KarProStaking — params", () => {
     assert.equal(await staking.read.minStakeNative(), floor);
   });
 
+  it("S33: setStakeToken with zero minAmount reverts ZeroMinStake", async () => {
+    const { viem } = connection;
+    const { admin, staking } = await deployVerifierStack(viem);
+    const usdc = await viem.deployContract("MockUSDC", []);
+    await assert.rejects(
+      staking.write.setStakeToken([usdc.address, 0n], { account: admin.account }),
+      revertsWith("ZeroMinStake"),
+    );
+    assert.equal(await staking.read.stakeToken(), ZERO_ADDR);
+    assert.equal(await staking.read.minStakeToken(), 0n);
+
+    const tokenMin = 1_000_000n;
+    await staking.write.setStakeToken([usdc.address, tokenMin], { account: admin.account });
+    assert.equal(getAddress(await staking.read.stakeToken()), getAddress(usdc.address));
+    assert.equal(await staking.read.minStakeToken(), tokenMin);
+  });
+
   it("only owner can setStakeToken", async () => {
     const { viem } = connection;
     const { stranger, staking } = await deployVerifierStack(viem);

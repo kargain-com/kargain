@@ -178,6 +178,21 @@ describe("BondedChallenge (CH1–CH6)", () => {
     await unconfigured.write.open([2n], { account: vChallenger.account, value: BOND });
   });
 
+  it("S30: config windowDuration and forfeitRecipient are publicly readable before open", async () => {
+    assert.equal(await verification.read.windowDuration(), WINDOW_V);
+    assert.equal(
+      (await verification.read.forfeitRecipient()).toLowerCase(),
+      rejectPlatform.address.toLowerCase(),
+    );
+    assert.equal(await settlement.read.windowDuration(), WINDOW_S);
+    assert.equal(
+      (await settlement.read.forfeitRecipient()).toLowerCase(),
+      rejectPlatform.address.toLowerCase(),
+    );
+    // Per-challenge view stays zero until open; config getters are independent.
+    assert.equal(await settlement.read.challengeWindowDuration([99n]), 0n);
+  });
+
   it("judge qualification hook: NotQualifiedJudge before success when toggled", async () => {
     const subject = 50n;
     await verification.write.open([subject], { account: vChallenger.account, value: BOND });

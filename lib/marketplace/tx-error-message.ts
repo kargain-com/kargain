@@ -33,6 +33,8 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   SettlementPending:
     "The previous sale of this vehicle is still settling. Try again after the hold ends.",
   WrongValue: "Native amount does not match. Refresh and try again.",
+  ShortDelivery:
+    "The payment token delivered less than required. Fee-on-transfer tokens are not supported.",
   ContractPaused:
     "This contract is temporarily paused. Existing refunds and payouts are unaffected.",
   NotGuardian: "Only the commerce guardian can do this.",
@@ -61,6 +63,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   AlreadyVerifier: "This wallet is already an active verifier.",
   BelowMinStake: "Stake amount is below the current minimum.",
   BelowMinStakeFloor: "Minimum stake cannot go below the protocol floor.",
+  ZeroMinStake: "Token stake minimum cannot be zero.",
   TokenNotEnabled: "This stake token is not enabled.",
   NonexistentToken: "This passport does not exist.",
   NotActiveVerifier: "Only an active KarPro verifier can do this.",

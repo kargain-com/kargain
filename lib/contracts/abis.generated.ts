@@ -1405,6 +1405,19 @@ export const KarPassportAbi = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "forfeitRecipient",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -2169,6 +2182,19 @@ export const KarPassportAbi = [
     "name": "verifyPassport",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "windowDuration",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -3182,6 +3208,11 @@ export const KarProStakingAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "ZeroMinStake",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -4056,6 +4087,11 @@ export const FixedPriceConsignmentAbi = [
       }
     ],
     "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ShortDelivery",
     "type": "error"
   },
   {
@@ -6466,6 +6502,11 @@ export const AscendingConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "ShortDelivery",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TermsFixed",
     "type": "error"
   },
@@ -8084,6 +8125,19 @@ export const AscendingConsignmentAbi = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "forfeitRecipient",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -9272,6 +9326,19 @@ export const AscendingConsignmentAbi = [
     "name": "upgradeToAndCall",
     "outputs": [],
     "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "windowDuration",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {

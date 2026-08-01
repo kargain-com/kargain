@@ -37,7 +37,10 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
     using SafeERC20 for IERC20;
 
-    /// @notice Delay between leave (role ends) and claimStake (funds unlock). Equal to passport DISPUTE_WINDOW by design.
+    /// @notice Delay between leave (role ends) and claimStake (funds unlock).
+    /// @dev Duration equals passport `DISPUTE_WINDOW` by convention only. Role ends immediately on
+    ///      `leave` (`active = false`); `claimStake` checks elapsed time alone — there is no
+    ///      challenge-gated unlock and no dispute coupling until a future slashing design.
     uint256 public constant UNBONDING_PERIOD = 14 days;
 
     struct Stake {
@@ -67,6 +70,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
     error NoUnbond();
     error TokenNotEnabled();
     error BelowMinStakeFloor();
+    error ZeroMinStake();
     error ZeroAddress();
 
     event VerifierJoined(address indexed verifier, address asset, uint256 amount);
@@ -198,9 +202,10 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
     /// @notice Enables or updates optional ERC-20 staking.
     /// @param token Conforming ERC-20 token address (zero is rejected).
-    /// @param minAmount Minimum token amount required to join.
+    /// @param minAmount Minimum token amount required to join; must be > 0 (sybil floor parallel to native).
     function setStakeToken(address token, uint256 minAmount) external onlyOwner {
         Erc20Admission.requireConforming(token);
+        if (minAmount == 0) revert ZeroMinStake();
         stakeToken = token;
         minStakeToken = minAmount;
         emit StakeTokenSet(token, minAmount);

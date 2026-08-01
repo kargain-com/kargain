@@ -70,6 +70,8 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
     uint256[48] private __gap;
 
     error WrongValue();
+    /// @dev ERC-20 pull delivered a different amount than requested (e.g. fee-on-transfer).
+    error ShortDelivery();
     error StalePrice();
     error BadOracleAnswer();
     error EmptySettlementNote();
@@ -224,7 +226,11 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         } else {
             if (msg.value != 0) revert WrongValue();
             // Admission was checked at open; soft-revoked tokens must still settle in-flight sales.
-            IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+            // Measure delivery: fee-on-transfer would otherwise book `amount` while holding less.
+            IERC20 token = IERC20(asset);
+            uint256 balanceBefore = token.balanceOf(address(this));
+            token.safeTransferFrom(msg.sender, address(this), amount);
+            if (token.balanceOf(address(this)) - balanceBefore != amount) revert ShortDelivery();
         }
 
         if (c.denomination.kind == DenominationKind.Fiat && c.agent != address(0) && c.floor != 0) {

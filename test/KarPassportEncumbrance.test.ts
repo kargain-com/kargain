@@ -72,6 +72,17 @@ describe("KarPassport encumbrance + verification challenge", () => {
 
   // ---- Permission table ----
 
+  it("S30: challenge config windowDuration and forfeitRecipient match ctor", async () => {
+    const { viem } = connection;
+    const { passport, admin } = await deployPassportStack(viem);
+    assert.equal(await passport.read.windowDuration(), DISPUTE_WINDOW);
+    assert.equal(await passport.read.DISPUTE_WINDOW(), DISPUTE_WINDOW);
+    assert.equal(
+      getAddress(await passport.read.forfeitRecipient()),
+      getAddress(admin.account.address),
+    );
+  });
+
   it("permission: UNVERIFIED idle — Open false, Leave true", async () => {
     const { viem } = connection;
     const { passport, tokenId } = await stackWithToken(viem);

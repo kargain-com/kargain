@@ -233,6 +233,14 @@ describe("AscendingConsignment", () => {
     assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
   });
 
+  it("S30: challenge config getters readable before any open", async () => {
+    assert.equal(await mode.read.windowDuration(), CHALLENGE_WINDOW);
+    assert.equal(
+      getAddress(await mode.read.forfeitRecipient()),
+      getAddress(forfeit.account.address),
+    );
+  });
+
   // ---- N2 KarPro by behaviour (not source scan) ----
 
   it("N2: non-KarPro owner cannot open direct (behaviour)", async () => {
@@ -1492,5 +1500,54 @@ describe("AscendingConsignment", () => {
       mode.write.approvePaymentToken([bad.address], { account: owner.account }),
       revertsWith("TokenDecimalsUnavailable"),
     );
+  });
+
+  describe("S36 ShortDelivery on ERC-20 bid", () => {
+    it("fee-on-transfer token reverts ShortDelivery; no standing bid recorded", async () => {
+      const feeToken = await viem.deployContract("MockFeeToken", [1000n]); // 10%
+      await mode.write.approvePaymentToken([feeToken.address], { account: owner.account });
+
+      await activate(owner);
+      await mintAndApprove();
+      const reserve = 1_000_000n;
+      await mode.write.openAscendingDirect([TOKEN, feeToken.address, reserve, DURATION, PROTECTION], {
+        account: owner.account,
+      });
+
+      await feeToken.write.mint([buyer.account.address, reserve]);
+      await feeToken.write.approve([mode.address, reserve], { account: buyer.account });
+
+      await assert.rejects(
+        mode.write.bid([TOKEN, reserve], { account: buyer.account }),
+        revertsWith("ShortDelivery"),
+      );
+
+      assert.equal(await mode.read.auctionHighestBid([TOKEN]), 0n);
+      assert.equal(await feeToken.read.balanceOf([mode.address]), 0n);
+      assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+    });
+
+    it("zero-fee ERC-20 bid records the requested amount", async () => {
+      const feeToken = await viem.deployContract("MockFeeToken", [0n]);
+      await mode.write.approvePaymentToken([feeToken.address], { account: owner.account });
+
+      await activate(owner);
+      await mintAndApprove();
+      const reserve = 1_000_000n;
+      await mode.write.openAscendingDirect([TOKEN, feeToken.address, reserve, DURATION, PROTECTION], {
+        account: owner.account,
+      });
+
+      await feeToken.write.mint([buyer.account.address, reserve]);
+      await feeToken.write.approve([mode.address, reserve], { account: buyer.account });
+      await mode.write.bid([TOKEN, reserve], { account: buyer.account });
+
+      assert.equal(await mode.read.auctionHighestBid([TOKEN]), reserve);
+      assert.equal(
+        getAddress(await mode.read.auctionHighestBidder([TOKEN])),
+        getAddress(buyer.account.address),
+      );
+      assert.equal(await feeToken.read.balanceOf([mode.address]), reserve);
+    });
   });
 });

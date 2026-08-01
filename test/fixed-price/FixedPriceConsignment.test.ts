@@ -1332,4 +1332,50 @@ describe("FixedPriceConsignment", () => {
     assert.ok(src.includes("PaymentTokenFeedRequired"));
     assert.ok(src.includes("CannotClearPaymentTokenFeed"));
   });
+
+  describe("S36 ShortDelivery on ERC-20 buy", () => {
+    it("fee-on-transfer token reverts ShortDelivery; custody and phase unchanged", async () => {
+      const feeToken = await viem.deployContract("MockFeeToken", [1000n]); // 10%
+      await mode.write.approvePaymentToken([feeToken.address, ZERO, 0], { account: owner.account });
+
+      const price = 1_000_000n;
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_ASSET, feeToken.address, price], {
+        account: owner.account,
+      });
+
+      await feeToken.write.mint([buyer.account.address, price]);
+      await feeToken.write.approve([mode.address, price], { account: buyer.account });
+
+      await assert.rejects(
+        mode.write.buy([TOKEN], { account: buyer.account }),
+        revertsWith("ShortDelivery"),
+      );
+
+      assert.equal(await mode.read.consignmentPhase([TOKEN]), 1); // still Offered
+      assert.equal(
+        ((await passport.read.ownerOf([TOKEN])) as string).toLowerCase(),
+        mode.address.toLowerCase(),
+      );
+      assert.equal(await feeToken.read.balanceOf([mode.address]), 0n);
+    });
+
+    it("zero-fee ERC-20 buy still settles at requested amount", async () => {
+      const feeToken = await viem.deployContract("MockFeeToken", [0n]);
+      await mode.write.approvePaymentToken([feeToken.address, ZERO, 0], { account: owner.account });
+
+      const price = 1_000_000n;
+      await mintAndApprove(TOKEN);
+      await mode.write.openDirect([TOKEN, DENOM_ASSET, feeToken.address, price], {
+        account: owner.account,
+      });
+
+      await feeToken.write.mint([buyer.account.address, price]);
+      await feeToken.write.approve([mode.address, price], { account: buyer.account });
+      await mode.write.buy([TOKEN], { account: buyer.account });
+
+      assert.equal(await mode.read.consignmentPhase([TOKEN]), 2);
+      assert.equal(await feeToken.read.balanceOf([mode.address]), 0n); // paid out in split
+    });
+  });
 });
