@@ -6,14 +6,11 @@ import {
   FAVORITES_POLICY,
   getDefaultNostrPool,
   lwwActiveTokenIds,
-  mergeLwwElementSetEvents,
   mergeReadLwwState,
-  pruneLwwTombstones,
   pubkeyFromPrivateKey,
   publishLwwElementSet,
   runSerializedPubkeyWrite,
   syncLwwStateToTokenIds,
-  fetchAppEvents,
 } from "@/lib/nostr/app-event-store";
 
 export { FAVORITES_LIST_ID, PASSPORT_TAG_PREFIX } from "@/lib/nostr/app-event-store";
@@ -23,17 +20,15 @@ export async function loadFavorites(pubkey: string): Promise<string[]> {
   try {
     if (!pubkey.trim()) return [];
     const pool = getDefaultNostrPool();
-    const events = await fetchAppEvents(pool, pubkey, FAVORITES_POLICY);
-    const merged = mergeLwwElementSetEvents(events);
-    const now = Math.floor(Date.now() / 1000);
-    const pruned = pruneLwwTombstones(merged, now);
-    return lwwActiveTokenIds(pruned);
+    const base = await mergeReadLwwState(pool, pubkey, FAVORITES_POLICY);
+    if (base.status === "unanswered") return [];
+    return lwwActiveTokenIds(base.state);
   } catch {
     return [];
   }
 }
 
-/** Save an updated favorites list (bulk LWW sync). Never throws. */
+/** Save an updated favorites list (bulk LWW sync). Never throws. Skips when no relay answered. */
 export async function saveFavorites(tokenIds: string[], privateKey: string): Promise<void> {
   try {
     if (!privateKey.trim()) return;
@@ -41,16 +36,26 @@ export async function saveFavorites(tokenIds: string[], privateKey: string): Pro
     await runSerializedPubkeyWrite(pubkey, async () => {
       const pool = getDefaultNostrPool();
       const base = await mergeReadLwwState(pool, pubkey, FAVORITES_POLICY);
+      if (base.status === "unanswered") return;
       const now = Math.floor(Date.now() / 1000);
-      const next = syncLwwStateToTokenIds(base, tokenIds, now);
-      await publishLwwElementSet(pool, privateKey, FAVORITES_POLICY, next);
+      const next = syncLwwStateToTokenIds(base.state, tokenIds, now);
+      await publishLwwElementSet(
+        pool,
+        privateKey,
+        FAVORITES_POLICY,
+        next,
+        base.answeredRelays,
+      );
     });
   } catch {
     // migration path swallows errors
   }
 }
 
-/** Add one token ID to the favorites list. Fail-closed when merge-base query throws. */
+/**
+ * Add one token ID to the favorites list.
+ * Fail-closed when no relay answered the merge-base read (never gates on empty content).
+ */
 export async function addFavorite(tokenId: string, privateKey: string): Promise<boolean> {
   if (!tokenId || !privateKey.trim()) return false;
   const pubkey = pubkeyFromPrivateKey(privateKey);
@@ -59,19 +64,30 @@ export async function addFavorite(tokenId: string, privateKey: string): Promise<
     try {
       const pool = getDefaultNostrPool();
       const base = await mergeReadLwwState(pool, pubkey, FAVORITES_POLICY);
-      const active = lwwActiveTokenIds(base);
+      if (base.status === "unanswered") return false;
+
+      const active = lwwActiveTokenIds(base.state);
       if (active.includes(tokenId)) return true;
 
       const now = Math.floor(Date.now() / 1000);
-      const next = applyLwwAdd(base, tokenId, now);
-      return publishLwwElementSet(pool, privateKey, FAVORITES_POLICY, next);
+      const next = applyLwwAdd(base.state, tokenId, now);
+      return publishLwwElementSet(
+        pool,
+        privateKey,
+        FAVORITES_POLICY,
+        next,
+        base.answeredRelays,
+      );
     } catch {
       return false;
     }
   });
 }
 
-/** Remove one token ID from the favorites list. Fail-closed when merge-base query throws. */
+/**
+ * Remove one token ID from the favorites list.
+ * Fail-closed when no relay answered the merge-base read (never gates on empty content).
+ */
 export async function removeFavorite(tokenId: string, privateKey: string): Promise<boolean> {
   if (!tokenId || !privateKey.trim()) return false;
   const pubkey = pubkeyFromPrivateKey(privateKey);
@@ -80,12 +96,20 @@ export async function removeFavorite(tokenId: string, privateKey: string): Promi
     try {
       const pool = getDefaultNostrPool();
       const base = await mergeReadLwwState(pool, pubkey, FAVORITES_POLICY);
-      const active = lwwActiveTokenIds(base);
+      if (base.status === "unanswered") return false;
+
+      const active = lwwActiveTokenIds(base.state);
       if (!active.includes(tokenId)) return true;
 
       const now = Math.floor(Date.now() / 1000);
-      const next = applyLwwRemove(base, tokenId, now);
-      return publishLwwElementSet(pool, privateKey, FAVORITES_POLICY, next);
+      const next = applyLwwRemove(base.state, tokenId, now);
+      return publishLwwElementSet(
+        pool,
+        privateKey,
+        FAVORITES_POLICY,
+        next,
+        base.answeredRelays,
+      );
     } catch {
       return false;
     }

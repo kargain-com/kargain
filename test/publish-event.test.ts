@@ -119,4 +119,21 @@ describe("publishSignedEvent", () => {
 
     await assertPublish(result, { ok: true, ownRelayAck: false });
   });
+
+  it("publishes only to an explicit relays list", async () => {
+    const seen: string[][] = [];
+    const pool: NostrPublishPool = {
+      publish(urls) {
+        seen.push([...urls]);
+        return urls.map(() => Promise.resolve(SIGNED_EVENT.id));
+      },
+    };
+
+    const targets = ["wss://relay.damus.io", "wss://nos.lol"] as const;
+    const result = await publishSignedEvent(pool, SIGNED_EVENT, { relays: targets });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(seen, [[...targets]]);
+    assert.equal(await result.ownRelayAck, false);
+  });
 });

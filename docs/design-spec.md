@@ -433,7 +433,7 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`pr
 
 #### Watchlist
 
-[`app-event-store.ts`](../lib/nostr/app-event-store.ts) + [`favorites.ts`](../lib/nostr/favorites.ts) — kind 30000 `d=kargain-favorites`; merge-read **all** relay events; LWW element-set `{ v:1, items, removed }` with `i` tag mirror; add/remove fail-closed on merge-base throw; [`use-watchlist.ts`](../hooks/use-watchlist.ts) rolls back on `false`.
+[`app-event-store.ts`](../lib/nostr/app-event-store.ts) + [`favorites.ts`](../lib/nostr/favorites.ts) — kind 30000 `d=kargain-favorites`; merge-read **answered** relay events only; LWW element-set `{ v:1, items, removed }` with `i` tag mirror; **read/write symmetry** — a full-replacement publish targets only relays whose copy entered the merge base; unanswered coverage (connect or subscribe not finished before the shared wall-clock deadline) refuses the write; answered-but-empty is a valid empty base (first favorite succeeds); [`use-watchlist.ts`](../hooks/use-watchlist.ts) rolls back on `false`.
 
 ---
 
@@ -1587,4 +1587,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.114 (August 2026 — §4.11 Nostr identity / attestation / watchlist structure; §4.13 plaintext watermarks). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.116 (August 2026 — §4.11 Watchlist shared deadline covers connect + subscribe; read/write symmetry; Nostr identity / attestation; §4.13 plaintext watermarks). Update when tokens, app shell, or component contracts change.*

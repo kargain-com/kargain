@@ -1,7 +1,7 @@
 "use client";
 
 import { hexToBytes } from "viem";
-import { finalizeEvent, type Event } from "nostr-tools";
+import { finalizeEvent, type Event, type Filter } from "nostr-tools";
 
 import { getNostrPool, nostrPubkeyFromPrivateKey } from "@/lib/nostr/nostr-client";
 import {
@@ -15,6 +15,15 @@ export const PASSPORT_TAG_PREFIX = "kargain:passport:";
 
 /** Tombstones older than this are pruned on read and before publish. */
 export const LWW_TOMBSTONE_PRUNE_SECONDS = 90 * 24 * 60 * 60;
+
+/**
+ * Neutralise nostr-tools library eoseTimeout (abstract-relay `||` + 32-bit setTimeout).
+ * Real EOSE is distinguished by our wall-clock deadline below.
+ */
+export const LWW_RELAY_EOSE_NEUTRAL_MS = 2_147_483_647;
+
+/** Shared wall-clock budget for the whole multi-relay LWW coverage read (connect + subscribe). */
+export const LWW_RELAY_READ_DEADLINE_MS = 4500;
 
 export type AppEventMergeStrategy = "lww-element-set" | "latest-per-author-per-d";
 
@@ -78,13 +87,42 @@ export type LwwElementSetState = {
   removed: Record<string, { r: number }>;
 };
 
-export type AppEventQueryPool = {
-  querySync: (
-    relays: string[],
-    filter: { kinds: number[]; authors: string[]; "#d": string[]; limit: number },
-    opts: { maxWait: number },
-  ) => Promise<Event[]>;
+/** Structural per-relay port used for LWW coverage reads. */
+export type AppEventRelay = {
+  subscribe(
+    filters: Filter[],
+    params: {
+      onevent?: (event: Event) => void;
+      oneose?: () => void;
+      onclose?: (reason: string) => void;
+      eoseTimeout?: number;
+    },
+  ): { close: (reason?: string) => void };
 };
+
+export type AppEventEnsureRelayParams = {
+  connectionTimeout?: number;
+  abort?: AbortSignal;
+};
+
+export type AppEventQueryPool = {
+  ensureRelay: (
+    url: string,
+    params?: AppEventEnsureRelayParams,
+  ) => Promise<AppEventRelay>;
+};
+
+/**
+ * Per-relay coverage for LWW merge-base reads.
+ * `answered` means a real EOSE before the shared deadline — never emptiness of events.
+ */
+export type AppEventRelayReadResult =
+  | { status: "answered"; events: Event[]; answeredRelays: string[] }
+  | { status: "unanswered"; cause: "no-relay-answered" };
+
+export type LwwMergeReadResult =
+  | { status: "answered"; state: LwwElementSetState; answeredRelays: string[] }
+  | { status: "unanswered"; cause: "no-relay-answered" };
 
 function emptyLwwState(): LwwElementSetState {
   return { items: {}, removed: {} };
@@ -293,26 +331,161 @@ export function buildLwwLegacyTags(tokenIds: string[], dTag: string): string[][]
   return tags;
 }
 
+type RelayReadOutcome = {
+  url: string;
+  answered: boolean;
+  events: Event[];
+};
+
+function rejectAfter(ms: number, reason: string): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(reason)), ms);
+  });
+}
+
+/**
+ * Read one relay until real EOSE, onclose-before-EOSE, or the shared deadline.
+ * Library eoseTimeout is neutralised so timeout cannot fake `oneose`.
+ * `deadlineAt` governs connect and subscribe — connect is not outside the budget.
+ */
+async function readOneRelay(
+  pool: AppEventQueryPool,
+  url: string,
+  filter: Filter,
+  deadlineAt: number,
+): Promise<Omit<RelayReadOutcome, "url">> {
+  const remainingForConnect = Math.max(0, deadlineAt - Date.now());
+  if (remainingForConnect <= 0) {
+    return { answered: false, events: [] };
+  }
+
+  const events: Event[] = [];
+  let eosed = false;
+  let sub: { close: (reason?: string) => void } | null = null;
+
+  try {
+    // Arm the library connect timer (SimplePool has no default) and race the same
+    // remaining budget so a hung ensureRelay cannot outlive LWW_RELAY_READ_DEADLINE_MS.
+    const relay = await Promise.race([
+      pool.ensureRelay(url, { connectionTimeout: remainingForConnect }),
+      rejectAfter(remainingForConnect, "lww-connect-deadline"),
+    ]);
+
+    const remainingForSubscribe = Math.max(0, deadlineAt - Date.now());
+    if (remainingForSubscribe <= 0) {
+      return { answered: false, events: [] };
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          sub?.close("lww-read-deadline");
+        } catch {
+          // ignore close errors after disconnect
+        }
+        settle();
+      }, remainingForSubscribe);
+
+      try {
+        sub = relay.subscribe([filter], {
+          eoseTimeout: LWW_RELAY_EOSE_NEUTRAL_MS,
+          onevent(event) {
+            events.push(event);
+          },
+          oneose() {
+            eosed = true;
+            try {
+              sub?.close("lww-eose");
+            } catch {
+              // ignore
+            }
+            settle();
+          },
+          onclose() {
+            settle();
+          },
+        });
+      } catch {
+        settle();
+      }
+    });
+  } catch {
+    return { answered: false, events: [] };
+  }
+
+  return { answered: eosed, events };
+}
+
+/**
+ * Sole LWW relay-coverage reader.
+ * Full-replacement publishes may only target `answeredRelays` from an answered result.
+ */
 export async function fetchAppEvents(
   pool: AppEventQueryPool,
   pubkey: string,
   policy: LwwAppEventPolicy,
-): Promise<Event[]> {
-  if (!pubkey.trim()) return [];
-  return pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [policy.kind], authors: [pubkey], "#d": [policy.dTag], limit: 5 },
-    { maxWait: 4500 },
+): Promise<AppEventRelayReadResult> {
+  if (!pubkey.trim()) {
+    return { status: "unanswered", cause: "no-relay-answered" };
+  }
+
+  const filter: Filter = {
+    kinds: [policy.kind],
+    authors: [pubkey],
+    "#d": [policy.dTag],
+    limit: 5,
+  };
+
+  const deadlineAt = Date.now() + LWW_RELAY_READ_DEADLINE_MS;
+  const outcomes = await Promise.all(
+    NOSTR_RELAYS.map(async (url): Promise<RelayReadOutcome> => {
+      const result = await readOneRelay(pool, url, filter, deadlineAt);
+      return { url, ...result };
+    }),
   );
+
+  const answeredRelays: string[] = [];
+  const byId = new Map<string, Event>();
+  for (const outcome of outcomes) {
+    if (!outcome.answered) continue;
+    answeredRelays.push(outcome.url);
+    for (const event of outcome.events) {
+      byId.set(event.id, event);
+    }
+  }
+
+  if (answeredRelays.length === 0) {
+    return { status: "unanswered", cause: "no-relay-answered" };
+  }
+
+  return {
+    status: "answered",
+    events: [...byId.values()],
+    answeredRelays,
+  };
 }
 
+/**
+ * Publish an LWW element-set replacement only to relays included in the merge base.
+ * Never defaults to the full relay list from this call site.
+ */
 export async function publishLwwElementSet(
   pool: NostrPublishPool,
   privateKey: string,
   policy: LwwAppEventPolicy,
   state: LwwElementSetState,
+  answeredRelays: readonly string[],
 ): Promise<boolean> {
   if (!privateKey.trim()) return false;
+  if (answeredRelays.length === 0) return false;
 
   const activeIds = lwwActiveTokenIds(state);
   const content = serializeLwwContent(state);
@@ -325,7 +498,7 @@ export async function publishLwwElementSet(
     tags,
   };
   const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
-  const result = await publishSignedEvent(pool, signed);
+  const result = await publishSignedEvent(pool, signed, { relays: answeredRelays });
   return result.ok;
 }
 
@@ -348,15 +521,23 @@ export function runSerializedPubkeyWrite<T>(
   return next;
 }
 
+/** Merge-read LWW state with transport coverage; unanswered refuses write. */
 export async function mergeReadLwwState(
   pool: AppEventQueryPool,
   pubkey: string,
   policy: LwwAppEventPolicy,
-): Promise<LwwElementSetState> {
-  const events = await fetchAppEvents(pool, pubkey, policy);
-  const merged = mergeLwwElementSetEvents(events);
+): Promise<LwwMergeReadResult> {
+  const coverage = await fetchAppEvents(pool, pubkey, policy);
+  if (coverage.status === "unanswered") {
+    return coverage;
+  }
+  const merged = mergeLwwElementSetEvents(coverage.events);
   const now = Math.floor(Date.now() / 1000);
-  return pruneLwwTombstones(merged, now);
+  return {
+    status: "answered",
+    state: pruneLwwTombstones(merged, now),
+    answeredRelays: coverage.answeredRelays,
+  };
 }
 
 export function syncLwwStateToTokenIds(

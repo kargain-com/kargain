@@ -12,6 +12,8 @@ export type NostrPublishPool = {
 };
 
 export type PublishSignedEventOptions = {
+  /** Target relays; defaults to `NOSTR_RELAYS`. */
+  relays?: readonly string[];
   ownRelayTimeoutMs?: number;
 };
 
@@ -40,14 +42,17 @@ function trackOwnRelayAck(
   ).catch(() => false);
 }
 
-/** Publish to all relays; fail-open on first ack. Never throws. */
+/** Publish to target relays (default all); fail-open on first ack. Never throws. */
 export async function publishSignedEvent(
   pool: NostrPublishPool,
   signedEvent: Event,
   options?: PublishSignedEventOptions,
 ): Promise<PublishSignedEventResult> {
   try {
-    const relays = [...NOSTR_RELAYS];
+    const relays = [...(options?.relays ?? NOSTR_RELAYS)];
+    if (relays.length === 0) {
+      return { ok: false, ownRelayAck: Promise.resolve(false) };
+    }
     const perRelay = pool.publish(relays, signedEvent);
     const ownIndex = relays.indexOf(KARGAIN_RELAY);
     const ownRelayTimeoutMs = options?.ownRelayTimeoutMs ?? OWN_RELAY_TIMEOUT_MS;
