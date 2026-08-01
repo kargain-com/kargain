@@ -348,6 +348,23 @@ describe("KarProStaking — leave", () => {
     assert.equal(await staking.read.isActiveVerifier([verifier.account.address]), false);
   });
 
+  it("leave clears verificationFee (S34)", async () => {
+    const { viem } = connection;
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    const fee = 10n ** 16n;
+    await staking.write.setVerificationFee([fee], { account: verifier.account });
+    assert.equal(
+      await staking.read.verificationFee([verifier.account.address]),
+      fee,
+    );
+    await staking.write.leave([], { account: verifier.account });
+    assert.equal(
+      await staking.read.verificationFee([verifier.account.address]),
+      0n,
+    );
+  });
+
   it("reverts if not a verifier", async () => {
     const { viem } = connection;
     const { stranger, staking } = await deployVerifierStack(viem);
@@ -573,10 +590,10 @@ describe("KarProStaking — leave", () => {
     );
   });
 
-  it("VERSION is 2.0.0-rc.1", async () => {
+  it("VERSION is 2.1.0-rc.1", async () => {
     const { viem } = connection;
     const { staking } = await deployVerifierStack(viem);
-    assert.equal(await staking.read.VERSION(), "2.0.0-rc.1");
+    assert.equal(await staking.read.VERSION(), "2.1.0-rc.1");
   });
 
   it("withdrawClaim with no balance reverts NoClaim", async () => {

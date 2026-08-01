@@ -381,10 +381,10 @@ describe("KarPassport encumbrance + verification challenge", () => {
     }
   });
 
-  it("VERSION is 1.8.0-rc.1", async () => {
+  it("VERSION is 1.9.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.8.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.9.0-rc.1");
   });
 
   it("ChallengeOpened/Judged + VerificationLapsed match chain state (no Dispute* duplicates)", async () => {

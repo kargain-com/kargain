@@ -45,7 +45,7 @@ contract AscendingConsignment is
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.2.0-rc.1";
+    string public constant VERSION = "2.3.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
 

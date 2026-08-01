@@ -28,7 +28,7 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.8.0-rc.1`, FixedPriceConsignment `2.3.0-rc.1`, AscendingConsignment `2.2.0-rc.1` |
+| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.9.0-rc.1`, FixedPriceConsignment `2.4.0-rc.1`, AscendingConsignment `2.3.0-rc.1` (Nuclear #3 source; I.9 tables stay Nuclear #2 until RPC cutover) |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
@@ -46,13 +46,13 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.8.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
+| KarPassport | `1.9.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
-| KarProStaking | `2.0.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
+| KarProStaking | `2.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
-| FixedPriceConsignment | `2.3.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
-| AscendingConsignment | `2.2.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
+| FixedPriceConsignment | `2.4.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
+| AscendingConsignment | `2.3.0-rc.1` | UUPS proxy | **Commerce surface** — English ascending auction consignment + settlement hold + BondedChallenge |
 
 **Retired (not live product contracts):** `MarketplaceEscrow` and `AuctionEscrow` — sources and app/indexer consumers removed in commerce cutover §15.2 step 5 (July 2026). On-chain proxies from the July 2026 Nuclear cutover remain **denylisted** after Nuclear #2 ([I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532)).
 
@@ -81,7 +81,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 
 ---
 
-### I.2. KarPassport (`1.8.0-rc.1`)
+### I.2. KarPassport (`1.9.0-rc.1`)
 
 ### Philosophy (unchanged from v1)
 
@@ -185,7 +185,7 @@ A state transition a party can be held to must leave a log complete enough to re
 
 `CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
 
-FixedPriceConsignment `VERSION` **`2.3.0-rc.1`**. AscendingConsignment `VERSION` **`2.2.0-rc.1`**.
+FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment `VERSION` **`2.3.0-rc.1`**.
 
 **Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `minProtectionWindow` / `maxProtectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
@@ -310,7 +310,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-### I.4. KarProStaking (`2.0.0-rc.1`)
+### I.4. KarProStaking (`2.1.0-rc.1`)
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
 - **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed. **Product UI (intentional):** join offers **native only** (`KarProJoinForm` → `becomeVerifierNative`). The token path stays dormant until Timelock `setStakeToken` enables a stake asset — no join or ops UI for a governance-disabled capability. Do not build a token-join screen while `stakeToken` is unset.
@@ -359,12 +359,12 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 | Mode | VERSION | Role |
 |------|---------|------|
-| FixedPriceConsignment | `2.3.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
-| AscendingConsignment | `2.2.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
+| FixedPriceConsignment | `2.4.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
+| AscendingConsignment | `2.3.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
 **Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
-**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.3.0-rc.1`**; Ascending amend-in-place **`2.2.0-rc.1`**.
+**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.3.0-rc.1`**.
 
 **Denomination invariants** (origin: [commerce-model-2026.md](../research/commerce-model-2026.md) P3 / M3 / N4 / P4):
 

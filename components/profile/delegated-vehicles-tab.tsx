@@ -84,7 +84,7 @@ function DelegatedMandateTerms({ row }: { row: MandateRecord }) {
 
 function DelegatedConsignmentTerms({
   row,
-  /** Live FixedPrice may show variable Commission proceeds. */
+  /** Live consignments may show variable Commission proceeds (S32 formula). */
   allowVariableProceeds,
 }: {
   row: ConsignmentRecord;
@@ -97,12 +97,8 @@ function DelegatedConsignmentTerms({
     floor: row.floor,
     units,
     mode: row.mode,
-    settled:
-      allowVariableProceeds && row.mode === "fixedPrice" ? row.price : null,
-    platformFeeBps:
-      allowVariableProceeds && row.mode === "fixedPrice"
-        ? row.platformFeeBps
-        : null,
+    settled: allowVariableProceeds ? row.price : null,
+    platformFeeBps: allowVariableProceeds ? row.platformFeeBps : null,
   });
   return <OwnerMandateTerms readout={readout} />;
 }

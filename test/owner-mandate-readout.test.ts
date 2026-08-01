@@ -140,17 +140,28 @@ describe("deriveOwnerMandateReadout — Commission proceeds", () => {
     assert.equal(readout.proceeds.kind, "absent");
   });
 
-  it("is absent on Ascending even when price and fee are passed", () => {
+  it("shows variable Commission proceeds on Ascending against the bid level (S31)", () => {
+    const settled = 2n * 10n ** 18n;
     const readout = deriveOwnerMandateReadout({
       compensationForm: COMPENSATION_FORM.Commission,
       commissionBps: 500,
       floor: 1n * 10n ** 18n,
       units: ETH_UNITS,
-      settled: 2n * 10n ** 18n,
+      settled,
       platformFeeBps: 250,
       mode: "ascending",
     });
-    assert.equal(readout.proceeds.kind, "absent");
+    assert.equal(readout.proceeds.kind, "variable");
+    if (readout.proceeds.kind !== "variable") return;
+    const expected = computeAgentedSplit({
+      settled,
+      floor: 1n * 10n ** 18n,
+      compensationForm: COMPENSATION_FORM.Commission,
+      commissionBps: 500,
+      platformFeeBps: 250n,
+    });
+    assert.equal(readout.proceeds.ownerAmount, expected.ownerAmount);
+    assert.match(readout.proceeds.movesWithPrice, /winning bid/i);
     assert.equal(readout.rateLabel, "5%");
   });
 

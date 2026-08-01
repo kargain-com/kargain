@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import hardhat from "hardhat";
-import { getAddress, parseEther, zeroHash } from "viem";
+import { encodeFunctionData, getAddress, parseEther, zeroHash } from "viem";
 
 import {
   Category,
+  CURRENCY_USD,
   DISPUTE_DEPOSIT,
   increaseTime,
   joinVerifier,
@@ -14,11 +15,19 @@ import {
 } from "../scripts/lib/local-stack.js";
 import { requireLocalDeployment } from "../scripts/lib/load-deployment.js";
 import {
+  buildTimelockOp,
+  runTimelockOp,
+} from "../scripts/lib/timelock-execute.js";
+import {
   ASCENDING_ABANDONMENT_WINDOW,
   ASCENDING_CHALLENGE_WINDOW,
   ASCENDING_EXTENSION_WINDOW,
   ASCENDING_MIN_PROTECTION_WINDOW,
 } from "../scripts/lib/verify-constructor-args.js";
+import {
+  AscendingConsignmentAbi,
+  FixedPriceConsignmentAbi,
+} from "../lib/contracts/abis.generated.js";
 
 const URI_MINT = "ar://e2e-mint";
 const URI_EDIT_1 = "ar://e2e-edit-1";
@@ -138,6 +147,30 @@ async function optionalPonderChecks(ownerAddress: string, tokenId: bigint) {
 const RUN_E2E = process.env.KARGAIN_E2E_LOCAL === "1";
 
 const describeE2e = RUN_E2E ? describe : describe.skip;
+
+const BPS = 10_000n;
+const DENOM_USD = { kind: 1, currencyCode: CURRENCY_USD } as const;
+
+/** S32 / current source Commission legs (platform first, owner floored rate, agent residual). */
+function monoCommissionLegs(S: bigint, p: bigint, c: bigint) {
+  const platform = (S * p) / BPS;
+  const cut = p + c;
+  const ownerAmt = cut >= BPS ? 0n : (S * (BPS - cut)) / BPS;
+  const agent = S - platform - ownerAmt;
+  return { platform, owner: ownerAmt, agent };
+}
+
+/** Pre-S32 Commission owner share (platform + agent cuts floored independently). */
+function oldCommissionOwner(S: bigint, p: bigint, c: bigint) {
+  return S - (S * p) / BPS - (S * c) / BPS;
+}
+
+function revertsWith(errorName: string) {
+  return (err: unknown) => {
+    if (!(err instanceof Error)) return false;
+    return err.message.includes(errorName);
+  };
+}
 
 describeE2e("localhost 31337 passport lifecycle E2E", () => {
   it("runs full lifecycle against deployed stack", async () => {
@@ -410,7 +443,8 @@ describeE2e("localhost commerce modes E2E", () => {
       await sink.write.setAcceptEth([false]);
 
       const feeBps = BigInt((await fixedPrice.read.platformFeeBps()) as number);
-      const commissionFloor = parseEther("0.5");
+      const commissionBps = 500n;
+      const commissionFloor = monoCommissionLegs(fpPrice, feeBps, commissionBps).owner;
 
       // --- FixedPrice direct buy: platform leg fails → consignment.platform_payout ---
       const fpToken = await mintVerified("ar://e2e-fp");
@@ -445,7 +479,7 @@ describeE2e("localhost commerce modes E2E", () => {
         BYTES32_ZERO,
         commissionFloor,
         1,
-        500,
+        Number(commissionBps),
       ]);
       await agentContract.write.openFixedFromMandate([
         fixedPrice.address,
@@ -456,9 +490,11 @@ describeE2e("localhost commerce modes E2E", () => {
       ]);
       await fixedPrice.write.buy([splitToken], { account: buyer.account, value: fpPrice });
 
-      const expectedPlatform = (fpPrice * feeBps) / 10_000n;
-      const expectedAgent = (fpPrice * 500n) / 10_000n;
-      const expectedOwner = fpPrice - expectedPlatform - expectedAgent;
+      // S32: platform first, owner floored kept-rate, agent residual (not ⌊S·c/B⌋).
+      const splitLegs = monoCommissionLegs(fpPrice, feeBps, commissionBps);
+      const expectedPlatform = splitLegs.platform;
+      const expectedOwner = splitLegs.owner;
+      const expectedAgent = splitLegs.agent;
       const ownerClaim = (await fixedPrice.read.pendingClaims([
         sellerContract.address,
         NATIVE,
@@ -733,6 +769,572 @@ describeE2e("localhost commerce modes E2E", () => {
 
       console.log(
         "[e2e-commerce] Summary: chain commerce PASS · Ponder indexer assertions PASS · owner/agent split attributed · unknown credits=0",
+      );
+    } finally {
+      await connection?.close();
+    }
+  });
+});
+
+/**
+ * Phase 1 — PENDING-REDEPLOY behavioural delta walk on Hardhat 31337 (current source).
+ * Not a re-run of unit coverage: §1 + §5 share FixedPrice.buy / `_agentedFloorScaleBase`.
+ * Record: docs/PENDING-REDEPLOY.md (Nuclear #3 prep); scenarios prove source ahead of old commercial bytecode.
+ */
+describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
+  it("scenarios 1–6: combined §1+§5 buy, monotonicity, high commission, ShortDelivery, S30 getters, ZeroMinStake", async () => {
+    let connection: NetworkConnection | undefined;
+    try {
+      connection = await hardhat.network.connect({ network: "localhost" });
+      const { viem } = connection;
+      const publicClient = await viem.getPublicClient();
+      const deployment = requireLocalDeployment();
+      assert.ok(deployment.fixedPriceConsignment && deployment.ascendingConsignment);
+      assert.ok(deployment.usdc && deployment.nativeFeed && deployment.timelock);
+      assert.ok(deployment.commercePayoutSink);
+
+      const passport = await viem.getContractAt("KarPassport", deployment.karPassport);
+      const staking = await viem.getContractAt("KarProStaking", deployment.karProStaking);
+      const fixedPrice = await viem.getContractAt(
+        "FixedPriceConsignment",
+        deployment.fixedPriceConsignment!,
+      );
+      const ascending = await viem.getContractAt(
+        "AscendingConsignment",
+        deployment.ascendingConsignment!,
+      );
+      const usdc = await viem.getContractAt("MockUSDC", deployment.usdc!);
+      const nativeFeed = await viem.getContractAt("ChainlinkV3TestFeed", deployment.nativeFeed!);
+      const timelock = await viem.getContractAt("Timelock48h", deployment.timelock!);
+      const sink = await viem.getContractAt("RevertingRecipient", deployment.commercePayoutSink!);
+
+      const wallets = await viem.getWalletClients();
+      const admin = wallets[0]!;
+      const owner = wallets[1]!;
+      const agent = wallets[2]!;
+      const buyer = wallets[3]!;
+
+      const DENOM_ASSET = { kind: 0, currencyCode: zeroHash } as const;
+      const feeBps = BigInt((await fixedPrice.read.platformFeeBps()) as number);
+      assert.equal(feeBps, 10n, "local FixedPrice fee must be MARKETPLACE_FEE_BPS=10 for S32 danger-band cases");
+
+      for (const w of [owner, agent]) {
+        if (!(await staking.read.isActiveVerifier([w.account.address]))) {
+          await joinVerifier(staking, w, {
+            category: Category.INSPECTOR,
+            name: `E2E P1 ${w.account.address.slice(0, 8)}`,
+            metadataURI: "ar://e2e-p1",
+          });
+        }
+      }
+
+      await passport.write.setApprovalForAll([fixedPrice.address, true], {
+        account: owner.account,
+      });
+      await passport.write.setApprovalForAll([ascending.address, true], {
+        account: owner.account,
+      });
+      // Platform sink accepts ETH so Phase 1 can assert live balances (not claims).
+      await sink.write.setAcceptEth([true]);
+
+      // Commerce E2E ahead of this suite advances time (auction windows) → feeds go StalePrice.
+      async function refreshNativeFeed(answer: bigint = 2000n * 10n ** 8n) {
+        await nativeFeed.write.setAnswer([answer]);
+      }
+      async function refreshUsdcFeed() {
+        const raw = (await fixedPrice.read.paymentTokens([usdc.address])) as
+          | { feed: `0x${string}`; decimals: number; enabled: boolean; stalenessTolerance: number }
+          | readonly [`0x${string}`, number, boolean, number];
+        const feed = Array.isArray(raw) ? raw[0] : raw.feed;
+        assert.ok(feed && feed !== ZERO, "USDC must have an admitted feed");
+        // deploy:local admits with MockV3Aggregator; ChainlinkV3TestFeed also has setAnswer.
+        const usdcFeed = await viem.getContractAt("MockV3Aggregator", feed);
+        await usdcFeed.write.setAnswer([10n ** 8n]); // $1
+      }
+      await refreshNativeFeed();
+      await refreshUsdcFeed();
+
+      async function mintVerified(uri: string): Promise<bigint> {
+        const tokenId = (await passport.read.nextTokenId()) as bigint;
+        await passport.write.mintPassport([owner.account.address, uri], {
+          account: owner.account,
+        });
+        await passport.write.verifyPassport([tokenId], { account: agent.account });
+        return tokenId;
+      }
+
+      async function admitPaymentTokenViaTimelock(
+        modeAddress: `0x${string}`,
+        data: `0x${string}`,
+        saltLabel: string,
+      ) {
+        const op = await buildTimelockOp({
+          timelock,
+          target: modeAddress,
+          data,
+          saltLabel,
+        });
+        await runTimelockOp({
+          timelock,
+          op,
+          account: admin.account,
+          increaseTime: async (seconds) => {
+            await increaseTime(publicClient, BigInt(seconds));
+          },
+        });
+        // Timelock delay advances wall-clock → refresh oracle updatedAt.
+        await refreshNativeFeed();
+        await refreshUsdcFeed();
+      }
+
+      // ─── Scenario 1: combined fiat agented sale (§1 S32 + §5 floor) ─────────
+      {
+        const commissionBps = 500n;
+        const openPrice = 100n * 10n ** 8n; // $100
+        const settlePrice = 150n * 10n ** 8n; // $150 — strictly above open
+        const floor = monoCommissionLegs(openPrice, feeBps, commissionBps).owner;
+        assert.ok(floor > 0n);
+
+        // Native settlement asset
+        const nativeToken = await mintVerified("ar://e2e-p1-s1-native");
+        await fixedPrice.write.grant(
+          [
+            nativeToken,
+            agent.account.address,
+            0n,
+            ZERO,
+            DENOM_USD,
+            floor,
+            { form: 1, commissionBps: Number(commissionBps) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([nativeToken, DENOM_USD, openPrice], {
+          account: agent.account,
+        });
+        await fixedPrice.write.setPrice([nativeToken, settlePrice], { account: agent.account });
+
+        const amount = (await fixedPrice.read.quoteBuy([nativeToken])) as bigint;
+        const baseFiat = monoCommissionLegs(settlePrice, feeBps, commissionBps).owner;
+        const baseAsset = monoCommissionLegs(amount, feeBps, commissionBps).owner;
+        const expectedFloorAsset = (baseAsset * floor) / baseFiat;
+        const legs = monoCommissionLegs(amount, feeBps, commissionBps);
+        assert.ok(legs.platform > 0n, "platform fee must be non-zero");
+
+        const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+        const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+        const platformBefore = await publicClient.getBalance({ address: sink.address });
+
+        await fixedPrice.write.buy([nativeToken], { account: buyer.account, value: amount });
+
+        // Consignment storage is deleted on close — floor snapshot is not readable after buy.
+        // Prove §5 by settlement: owner received the S32 owner share (mulDiv path did not BelowFloor).
+        assert.equal(
+          (await publicClient.getBalance({ address: sink.address })) - platformBefore,
+          legs.platform,
+        );
+        assert.equal(
+          (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+          legs.owner,
+        );
+        assert.equal(
+          (await publicClient.getBalance({ address: agent.account.address })) - agentBefore,
+          legs.agent,
+        );
+        assert.equal(
+          getAddress(await passport.read.ownerOf([nativeToken])),
+          getAddress(buyer.account.address),
+        );
+        assert.ok(
+          expectedFloorAsset <= legs.owner,
+          `floorAsset ${expectedFloorAsset} must fit in owner share ${legs.owner}`,
+        );
+
+        console.log(
+          `[e2e-p1] S1 native: open=$${Number(openPrice) / 1e8} settle=$${Number(settlePrice) / 1e8}` +
+            ` amount=${amount} floorFiat=${floor} floorAsset=${expectedFloorAsset}` +
+            ` platform=${legs.platform} owner=${legs.owner} agent=${legs.agent}`,
+        );
+
+        // USDC-6 settlement (admitted MockUSDC + 8-decimal feed from deploy:local)
+        const usdcToken = await mintVerified("ar://e2e-p1-s1-usdc");
+        await fixedPrice.write.grant(
+          [
+            usdcToken,
+            agent.account.address,
+            0n,
+            usdc.address,
+            DENOM_USD,
+            floor,
+            { form: 1, commissionBps: Number(commissionBps) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([usdcToken, DENOM_USD, openPrice], {
+          account: agent.account,
+        });
+        await fixedPrice.write.setPrice([usdcToken, settlePrice], { account: agent.account });
+
+        const usdcAmount = (await fixedPrice.read.quoteBuy([usdcToken])) as bigint;
+        const usdcLegs = monoCommissionLegs(usdcAmount, feeBps, commissionBps);
+        const usdcBaseFiat = monoCommissionLegs(settlePrice, feeBps, commissionBps).owner;
+        const usdcFloorAsset = (usdcLegs.owner * floor) / usdcBaseFiat;
+        assert.ok(usdcLegs.platform > 0n);
+
+        await usdc.write.mint([buyer.account.address, usdcAmount]);
+        await usdc.write.approve([fixedPrice.address, usdcAmount], { account: buyer.account });
+
+        const usdcSellerBefore = (await usdc.read.balanceOf([owner.account.address])) as bigint;
+        const usdcAgentBefore = (await usdc.read.balanceOf([agent.account.address])) as bigint;
+        const usdcPlatformBefore = (await usdc.read.balanceOf([sink.address])) as bigint;
+
+        await fixedPrice.write.buy([usdcToken], { account: buyer.account });
+
+        assert.equal(
+          ((await usdc.read.balanceOf([sink.address])) as bigint) - usdcPlatformBefore,
+          usdcLegs.platform,
+        );
+        assert.equal(
+          ((await usdc.read.balanceOf([owner.account.address])) as bigint) - usdcSellerBefore,
+          usdcLegs.owner,
+        );
+        assert.equal(
+          ((await usdc.read.balanceOf([agent.account.address])) as bigint) - usdcAgentBefore,
+          usdcLegs.agent,
+        );
+        assert.ok(usdcFloorAsset <= usdcLegs.owner);
+
+        console.log(
+          `[e2e-p1] S1 USDC-6: amount=${usdcAmount} floorAsset=${usdcFloorAsset}` +
+            ` platform=${usdcLegs.platform} owner=${usdcLegs.owner} agent=${usdcLegs.agent}`,
+        );
+      }
+
+      // ─── Scenario 2: monotonicity + deployed-formula BelowFloor counterexample ─
+      {
+        // Asset-denom S32 danger band documentation (p=10,c=500): old owner non-monotonic.
+        assert.equal(oldCommissionOwner(999n, 10n, 500n), 950n);
+        assert.equal(oldCommissionOwner(1000n, 10n, 500n), 949n);
+        assert.ok(oldCommissionOwner(1000n, 10n, 500n) < oldCommissionOwner(999n, 10n, 500n));
+        assert.equal(monoCommissionLegs(999n, 10n, 500n).owner, 948n);
+        assert.equal(monoCommissionLegs(1000n, 10n, 500n).owner, 949n);
+
+        // §5 counterexample: open=settle at $100, ETH/USD=$1999 → independent quote(F) > owner(A).
+        const ethUsd = 1_999n * 10n ** 8n;
+        await refreshNativeFeed(ethUsd);
+
+        const commissionBps = 500n;
+        const openPrice = 100n * 10n ** 8n;
+        const floor = monoCommissionLegs(openPrice, feeBps, commissionBps).owner;
+
+        const tokenId = await mintVerified("ar://e2e-p1-s2-trunc");
+        await fixedPrice.write.grant(
+          [
+            tokenId,
+            agent.account.address,
+            0n,
+            ZERO,
+            DENOM_USD,
+            floor,
+            { form: 1, commissionBps: Number(commissionBps) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([tokenId, DENOM_USD, openPrice], {
+          account: agent.account,
+        });
+
+        const amount = (await fixedPrice.read.quoteBuy([tokenId])) as bigint;
+        const baseAsset = monoCommissionLegs(amount, feeBps, commissionBps).owner;
+        const independentQuoteFloor = (floor * 10n ** 18n) / ethUsd;
+        assert.ok(
+          independentQuoteFloor > baseAsset,
+          `deployed quote(F)=${independentQuoteFloor} must exceed owner(A)=${baseAsset} (BelowFloor under old buy)`,
+        );
+
+        const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+        await fixedPrice.write.buy([tokenId], { account: buyer.account, value: amount });
+        assert.equal(
+          (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+          baseAsset,
+        );
+
+        console.log(
+          `[e2e-p1] S2 trunc: ethUsd=1999 amount=${amount} independentQuote(F)=${independentQuoteFloor}` +
+            ` > owner(A)=${baseAsset}; buy succeeded (would BelowFloor on deployed formula)`,
+        );
+
+        // Settle strictly above open: open at R, setPrice R' > R, buy clears (S32 monotonic).
+        await refreshNativeFeed(2000n * 10n ** 8n);
+        const settlePrice = 120n * 10n ** 8n;
+        const token2 = await mintVerified("ar://e2e-p1-s2-mono");
+        const floor2 = monoCommissionLegs(openPrice, feeBps, commissionBps).owner;
+        await fixedPrice.write.grant(
+          [
+            token2,
+            agent.account.address,
+            0n,
+            ZERO,
+            DENOM_USD,
+            floor2,
+            { form: 1, commissionBps: Number(commissionBps) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([token2, DENOM_USD, openPrice], {
+          account: agent.account,
+        });
+        await fixedPrice.write.setPrice([token2, settlePrice], { account: agent.account });
+        const amount2 = (await fixedPrice.read.quoteBuy([token2])) as bigint;
+        const legs2 = monoCommissionLegs(amount2, feeBps, commissionBps);
+        assert.ok(legs2.owner >= monoCommissionLegs(amount, feeBps, commissionBps).owner);
+        const sellerBefore2 = await publicClient.getBalance({ address: owner.account.address });
+        await fixedPrice.write.buy([token2], { account: buyer.account, value: amount2 });
+        assert.equal(
+          (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore2,
+          legs2.owner,
+        );
+
+        console.log(
+          `[e2e-p1] S2 mono: open=$${Number(openPrice) / 1e8} settle=$${Number(settlePrice) / 1e8}` +
+            ` owner=${legs2.owner}`,
+        );
+      }
+
+      // ─── Scenario 3: platform fee survives high commission ────────────────────
+      {
+        const commissionBps = BPS; // 100% — owner kept rate = 0
+        const price = parseEther("1");
+        const tokenId = await mintVerified("ar://e2e-p1-s3");
+        await fixedPrice.write.grant(
+          [
+            tokenId,
+            agent.account.address,
+            0n,
+            ZERO,
+            DENOM_ASSET,
+            0n,
+            { form: 1, commissionBps: Number(commissionBps) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([tokenId, DENOM_ASSET, price], {
+          account: agent.account,
+        });
+
+        const legs = monoCommissionLegs(price, feeBps, commissionBps);
+        assert.equal(legs.owner, 0n);
+        assert.ok(legs.platform > 0n);
+        assert.equal(legs.agent, price - legs.platform);
+
+        const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+        const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+        const platformBefore = await publicClient.getBalance({ address: sink.address });
+
+        await fixedPrice.write.buy([tokenId], { account: buyer.account, value: price });
+
+        assert.equal(
+          (await publicClient.getBalance({ address: sink.address })) - platformBefore,
+          legs.platform,
+        );
+        assert.equal(
+          (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+          0n,
+        );
+        assert.equal(
+          (await publicClient.getBalance({ address: agent.account.address })) - agentBefore,
+          legs.agent,
+        );
+
+        // Near B−p: commission leaves owner rate 0, platform still floored first.
+        const cSqueeze = BPS - feeBps;
+        const token2 = await mintVerified("ar://e2e-p1-s3b");
+        await fixedPrice.write.grant(
+          [
+            token2,
+            agent.account.address,
+            0n,
+            ZERO,
+            DENOM_ASSET,
+            0n,
+            { form: 1, commissionBps: Number(cSqueeze) },
+          ],
+          { account: owner.account },
+        );
+        await fixedPrice.write.openFromMandate([token2, DENOM_ASSET, price], {
+          account: agent.account,
+        });
+        const legs2 = monoCommissionLegs(price, feeBps, cSqueeze);
+        assert.equal(legs2.owner, 0n);
+        assert.ok(legs2.platform > 0n);
+        const platformBefore2 = await publicClient.getBalance({ address: sink.address });
+        await fixedPrice.write.buy([token2], { account: buyer.account, value: price });
+        assert.equal(
+          (await publicClient.getBalance({ address: sink.address })) - platformBefore2,
+          legs2.platform,
+        );
+
+        console.log(
+          `[e2e-p1] S3: c=B platform=${legs.platform} agent=${legs.agent}; c=B-p platform=${legs2.platform}`,
+        );
+      }
+
+      // ─── Scenario 4: ShortDelivery (FoT) + WrongValue native ─────────────────
+      {
+        const fot = await viem.deployContract("MockFeeToken", [1000n]);
+        const clean = await viem.deployContract("MockFeeToken", [0n]);
+
+        await admitPaymentTokenViaTimelock(
+          fixedPrice.address,
+          encodeFunctionData({
+            abi: FixedPriceConsignmentAbi,
+            functionName: "approvePaymentToken",
+            args: [fot.address, ZERO, 0],
+          }),
+          "e2e-p1-fot-fp",
+        );
+        await admitPaymentTokenViaTimelock(
+          fixedPrice.address,
+          encodeFunctionData({
+            abi: FixedPriceConsignmentAbi,
+            functionName: "approvePaymentToken",
+            args: [clean.address, ZERO, 0],
+          }),
+          "e2e-p1-clean-fp",
+        );
+        await admitPaymentTokenViaTimelock(
+          ascending.address,
+          encodeFunctionData({
+            abi: AscendingConsignmentAbi,
+            functionName: "approvePaymentToken",
+            args: [fot.address],
+          }),
+          "e2e-p1-fot-asc",
+        );
+        await admitPaymentTokenViaTimelock(
+          ascending.address,
+          encodeFunctionData({
+            abi: AscendingConsignmentAbi,
+            functionName: "approvePaymentToken",
+            args: [clean.address],
+          }),
+          "e2e-p1-clean-asc",
+        );
+
+        const price = 1_000_000n;
+        const fpFot = await mintVerified("ar://e2e-p1-s4-fp-fot");
+        await fixedPrice.write.openDirect([fpFot, DENOM_ASSET, fot.address, price], {
+          account: owner.account,
+        });
+        await fot.write.mint([buyer.account.address, price]);
+        await fot.write.approve([fixedPrice.address, price], { account: buyer.account });
+        await assert.rejects(
+          fixedPrice.write.buy([fpFot], { account: buyer.account }),
+          revertsWith("ShortDelivery"),
+        );
+        assert.equal(await fixedPrice.read.consignmentPhase([fpFot]), 1);
+
+        const fpClean = await mintVerified("ar://e2e-p1-s4-fp-clean");
+        await fixedPrice.write.openDirect([fpClean, DENOM_ASSET, clean.address, price], {
+          account: owner.account,
+        });
+        await clean.write.mint([buyer.account.address, price]);
+        await clean.write.approve([fixedPrice.address, price], { account: buyer.account });
+        await fixedPrice.write.buy([fpClean], { account: buyer.account });
+        assert.equal(await fixedPrice.read.consignmentPhase([fpClean]), 2);
+
+        const duration = THREE_DAYS;
+        const ascFot = await mintVerified("ar://e2e-p1-s4-asc-fot");
+        await ascending.write.openAscendingDirect(
+          [ascFot, fot.address, price, duration, ASCENDING_MIN_PROTECTION_WINDOW],
+          { account: owner.account },
+        );
+        await fot.write.mint([buyer.account.address, price]);
+        await fot.write.approve([ascending.address, price], { account: buyer.account });
+        await assert.rejects(
+          ascending.write.bid([ascFot, price], { account: buyer.account }),
+          revertsWith("ShortDelivery"),
+        );
+        assert.equal(await ascending.read.auctionHighestBid([ascFot]), 0n);
+
+        const ascClean = await mintVerified("ar://e2e-p1-s4-asc-clean");
+        await ascending.write.openAscendingDirect(
+          [ascClean, clean.address, price, duration, ASCENDING_MIN_PROTECTION_WINDOW],
+          { account: owner.account },
+        );
+        await clean.write.mint([buyer.account.address, price]);
+        await clean.write.approve([ascending.address, price], { account: buyer.account });
+        await ascending.write.bid([ascClean, price], { account: buyer.account });
+        assert.equal(await ascending.read.auctionHighestBid([ascClean]), price);
+
+        const wrongNative = await mintVerified("ar://e2e-p1-s4-wrong");
+        const nativePrice = parseEther("0.1");
+        await fixedPrice.write.openDirect([wrongNative, DENOM_ASSET, ZERO, nativePrice], {
+          account: owner.account,
+        });
+        await assert.rejects(
+          fixedPrice.write.buy([wrongNative], {
+            account: buyer.account,
+            value: nativePrice + 1n,
+          }),
+          revertsWith("WrongValue"),
+        );
+
+        console.log("[e2e-p1] S4: FoT ShortDelivery on buy+bid; clean tokens OK; native WrongValue");
+      }
+
+      // ─── Scenario 5: challenge config getters on both instances ─────────────
+      {
+        const passportWindow = (await passport.read.windowDuration()) as bigint;
+        const passportForfeit = getAddress(
+          (await passport.read.forfeitRecipient()) as `0x${string}`,
+        );
+        const disputeWindow = (await passport.read.DISPUTE_WINDOW()) as bigint;
+        assert.equal(passportWindow, disputeWindow);
+        assert.equal(passportWindow, 14n * 24n * 60n * 60n);
+        // KarPassport ctor platformRecipient_ = local stack admin.
+        assert.equal(passportForfeit, getAddress(admin.account.address));
+
+        const ascWindow = (await ascending.read.windowDuration()) as bigint;
+        const ascForfeit = getAddress((await ascending.read.forfeitRecipient()) as `0x${string}`);
+        assert.equal(ascWindow, ASCENDING_CHALLENGE_WINDOW);
+        assert.equal(ascForfeit, getAddress(sink.address));
+
+        console.log(
+          `[e2e-p1] S5: passport window=${passportWindow} forfeit=${passportForfeit}` +
+            `; ascending window=${ascWindow} forfeit=${ascForfeit}`,
+        );
+      }
+
+      // ─── Scenario 6: ZeroMinStake distinct from BelowMinStakeFloor ───────────
+      {
+        const stakeTok = await viem.deployContract("MockUSDC", []);
+        await assert.rejects(
+          staking.write.setStakeToken([stakeTok.address, 0n], { account: admin.account }),
+          revertsWith("ZeroMinStake"),
+        );
+        assert.equal(await staking.read.stakeToken(), ZERO);
+
+        const tokenMin = 1_000_000n;
+        await staking.write.setStakeToken([stakeTok.address, tokenMin], {
+          account: admin.account,
+        });
+        assert.equal(getAddress(await staking.read.stakeToken()), getAddress(stakeTok.address));
+        assert.equal(await staking.read.minStakeToken(), tokenMin);
+
+        const floor = (await staking.read.MIN_STAKE_FLOOR()) as bigint;
+        await assert.rejects(
+          staking.write.setMinStakeNative([floor - 1n], { account: admin.account }),
+          revertsWith("BelowMinStakeFloor"),
+        );
+
+        console.log(
+          `[e2e-p1] S6: ZeroMinStake on setStakeToken(0); BelowMinStakeFloor on native < ${floor}`,
+        );
+      }
+
+      console.log(
+        "[e2e-p1] Summary: scenarios 1–6 PASS (PENDING §1/§2/§4/§5 on 31337 current source)",
       );
     } finally {
       await connection?.close();

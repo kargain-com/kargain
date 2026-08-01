@@ -31,7 +31,7 @@ import {Erc20Admission} from "./lib/Erc20Admission.sol";
 contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Receiver, IKarPassportEncumbrance {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.3.0-rc.1";
+    string public constant VERSION = "2.4.0-rc.1";
 
     bytes32 public constant CURRENCY_USD = bytes32("USD");
 

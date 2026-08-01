@@ -111,6 +111,15 @@ export function useAuctionChainReads({
         args: [] as const,
         chainId: wc,
       },
+      {
+        // S30 config getter — pre-open settlement challenge window (not per-subject).
+        key: "windowDuration" as const,
+        address: mode,
+        abi: AscendingConsignmentAbi,
+        functionName: "windowDuration",
+        args: [] as const,
+        chainId: wc,
+      },
     ];
     if (!passport) return modeReads;
     return [
@@ -226,8 +235,17 @@ export function useAuctionChainReads({
     isBinding: reads.get("isBinding") === true,
     settlementDisputeBond: reads.asBigint("challengeBondAmount"),
     settlementHold: reads.asBigint("holdProtectionEndsAt"),
-    /** Challenge window in seconds — replaces the escrow dispute timeout. */
-    disputeResolutionTimeout: reads.asBigint("challengeWindowDuration"),
+    /**
+     * Open-challenge window when live; else S30 config `windowDuration()`.
+     * Never invent a TS deploy constant.
+     */
+    disputeResolutionTimeout: (() => {
+      const open = reads.asBigint("challengeWindowDuration");
+      if (open != null && open > 0n) return open;
+      return reads.asBigint("windowDuration");
+    })(),
+    /** Pre-open BondedChallenge config window (Ascending `windowDuration()`). */
+    challengeConfigWindow: reads.asBigint("windowDuration"),
     commerceReadResolved,
     isPending: readsEnabled && reads.isPending,
     isFetching: reads.isFetching,

@@ -6,8 +6,9 @@ import {
 const BPS_DENOM = 10_000n;
 
 /**
- * Mirrors `ConsignmentBase._computeAgentedSplitAmounts`. `ok === false` is the
- * client-side view of the contract's `BelowFloor` revert.
+ * Mirrors `ConsignmentBase._computeAgentedSplitAmounts` (S32):
+ * platform = ⌊S·p/B⌋; Commission owner = ⌊S·(B−p−c)/B⌋; agent = residual.
+ * `ok === false` is the client-side view of the contract's `BelowFloor` revert.
  */
 export type AgentedSplit = {
   platform: bigint;
@@ -15,6 +16,21 @@ export type AgentedSplit = {
   agentAmount: bigint;
   ok: boolean;
 };
+
+function agentedFloorScaleBase(
+  settled: bigint,
+  compensationForm: CompensationForm,
+  commissionBps: number,
+  platformFeeBps: bigint,
+): bigint {
+  const platform = (settled * platformFeeBps) / BPS_DENOM;
+  if (compensationForm === COMPENSATION_FORM.Margin) {
+    return settled - platform;
+  }
+  const cutBps = platformFeeBps + BigInt(commissionBps);
+  if (cutBps >= BPS_DENOM) return 0n;
+  return (settled * (BPS_DENOM - cutBps)) / BPS_DENOM;
+}
 
 export function computeAgentedSplit(input: {
   settled: bigint;
@@ -37,12 +53,22 @@ export function computeAgentedSplit(input: {
     };
   }
 
-  const agentAmount = (settled * BigInt(commissionBps)) / BPS_DENOM;
-  if (settled < platform + agentAmount) {
+  const ownerAmount = agentedFloorScaleBase(
+    settled,
+    compensationForm,
+    commissionBps,
+    platformFeeBps,
+  );
+  if (settled < platform + ownerAmount) {
     return { platform, ownerAmount: 0n, agentAmount: 0n, ok: false };
   }
-  const ownerAmount = settled - platform - agentAmount;
-  return { platform, ownerAmount, agentAmount, ok: ownerAmount >= floor };
+  const agentAmount = settled - platform - ownerAmount;
+  return {
+    platform,
+    ownerAmount,
+    agentAmount,
+    ok: ownerAmount >= floor,
+  };
 }
 
 /** Client mirror of the `openFromMandate` / `setPrice` floor guard. */

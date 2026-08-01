@@ -230,7 +230,7 @@ describe("AscendingConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
   });
 
   it("S30: challenge config getters readable before any open", async () => {
@@ -1171,7 +1171,7 @@ describe("AscendingConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.2.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
     assert.equal(await mode.read.auctionEndsAt([TOKEN]), endsAt);
     assert.equal(await mode.read.auctionHighestBid([TOKEN]), RESERVE);
   });

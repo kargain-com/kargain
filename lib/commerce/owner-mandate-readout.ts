@@ -73,11 +73,17 @@ export function commissionRateLabel(commissionBps: number): string {
 }
 
 /**
- * Body when Commission owner proceeds are shown against a listed price.
+ * Body when Commission owner proceeds are shown against a listed FixedPrice.
  * Composed from the form definition — not a warning.
  */
 export const COMMISSION_PROCEEDS_MOVES_WITH_PRICE =
   `${compensationFormDef(COMPENSATION_FORM.Commission).ownerReceives} That remainder moves with the listed price, which you do not set.`;
+
+/**
+ * Body when Commission owner proceeds are shown against an ascending bid level.
+ */
+export const COMMISSION_PROCEEDS_MOVES_WITH_BID =
+  `${compensationFormDef(COMPENSATION_FORM.Commission).ownerReceives} That remainder moves with the winning bid, which you do not set.`;
 
 export type DeriveOwnerMandateReadoutInput = {
   compensationForm: CompensationForm;
@@ -86,17 +92,12 @@ export type DeriveOwnerMandateReadoutInput = {
   /** Resolved via {@link floorDisplayUnits}; null while unread. */
   units: FloorDisplayUnits | null;
   /**
-   * Settled / list amount in the same denomination as floor.
-   * Pass only for live FixedPrice when `price` is known; omit for awaiting
-   * mandates and Ascending (settlement uses the winning bid).
+   * Settled / list / current-bid amount in the same denomination as floor.
+   * Pass for live consignments when the amount is known; omit for awaiting mandates.
    */
   settled?: bigint | null;
   /** Snapshotted consignment platform fee; required for variable proceeds. */
   platformFeeBps?: number | bigint | null;
-  /**
-   * When `"ascending"`, never compute variable proceeds from `price`
-   * (reserve ≠ settlement gross).
-   */
   mode?: CommerceMode;
 };
 
@@ -142,13 +143,7 @@ export function deriveOwnerMandateReadout(
 
   let proceeds: OwnerMandateProceeds = { kind: "absent" };
 
-  if (
-    !ascending &&
-    units != null &&
-    settled != null &&
-    settled > 0n &&
-    feeReady
-  ) {
+  if (units != null && settled != null && settled > 0n && feeReady) {
     const platformFeeBps =
       typeof feeRaw === "bigint" ? feeRaw : BigInt(feeRaw as number);
     const split = computeAgentedSplit({
@@ -163,7 +158,9 @@ export function deriveOwnerMandateReadout(
         kind: "variable",
         ownerAmount: split.ownerAmount,
         amountLabel: formatAmountLabel(split.ownerAmount, units),
-        movesWithPrice: COMMISSION_PROCEEDS_MOVES_WITH_PRICE,
+        movesWithPrice: ascending
+          ? COMMISSION_PROCEEDS_MOVES_WITH_BID
+          : COMMISSION_PROCEEDS_MOVES_WITH_PRICE,
       };
     }
   }

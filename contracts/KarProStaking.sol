@@ -31,9 +31,9 @@ interface IKarProPass {
 /// @dev Two-phase leave: role ends immediately; stake unlocks after UNBONDING_PERIOD via claimStake (ClaimablePayouts
 ///      on failed push). Re-entry blocked while unbonding. No dispute coupling — future slashing should use a
 ///      monotonic not-before unlock, never a decrementing counter. Storage layout: Nuclear #2 redeploy only.
-/// @custom:version 2.0.0-rc.1
+/// @custom:version 2.1.0-rc.1
 contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
-    string public constant VERSION = "2.0.0-rc.1";
+    string public constant VERSION = "2.1.0-rc.1";
 
     using SafeERC20 for IERC20;
 
@@ -148,6 +148,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
 
     /// @notice End verifier role immediately; stake unlocks after UNBONDING_PERIOD via claimStake.
     /// @dev burn is wrapped in try/catch so unbonding always starts even if KarProPass burn authorization changed.
+    ///      Clears `verificationFee` so a departed verifier cannot keep a directory fee slot (S34).
     function leave() external nonReentrant {
         Stake storage s = stakes[msg.sender];
         if (!s.active) revert NotVerifier();
@@ -156,6 +157,7 @@ contract KarProStaking is ClaimablePayouts, ReentrancyGuard, Ownable {
         uint256 unlockAt = block.timestamp + UNBONDING_PERIOD;
         s.active = false;
         s.unlockAt = unlockAt;
+        delete verificationFee[msg.sender];
 
         try proPass.burn(msg.sender) {} catch {}
 

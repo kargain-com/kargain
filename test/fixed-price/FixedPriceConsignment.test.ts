@@ -143,7 +143,7 @@ describe("FixedPriceConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
   });
 
   it("source carries no verifier-admission / staking gate symbols (N2)", () => {
@@ -862,7 +862,7 @@ describe("FixedPriceConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
     assert.equal(await mode.read.consignmentPriceOf([TOKEN]), priceBefore);
     void modeImpl;

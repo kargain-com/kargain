@@ -28,7 +28,6 @@ export {
   type ChallengeExclusionParty,
   type ChallengeInstance,
   type ChallengeInstanceId,
-  SETTLEMENT_CHALLENGE_WINDOW_DEPLOY_SECONDS,
   SETTLEMENT_INSTANCE,
   VERIFICATION_INSTANCE,
   challengeExclusionCopy,

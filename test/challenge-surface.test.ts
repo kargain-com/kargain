@@ -447,9 +447,10 @@ describe("verification challenge window — chain only (S19)", () => {
       false,
       "app must not shadow KarPassport.DISPUTE_WINDOW with a TS seconds constant",
     );
-    assert.ok(
+    assert.equal(
       "SETTLEMENT_CHALLENGE_WINDOW_DEPLOY_SECONDS" in challenge,
-      "labelled deploy constant for pre-open settlement window remains until S30 getters ship",
+      false,
+      "S30: pre-open settlement window is Ascending windowDuration(), not a TS constant",
     );
   });
 
@@ -464,6 +465,22 @@ describe("verification challenge window — chain only (S19)", () => {
       panel,
       /VERIFICATION_CHALLENGE_WINDOW_SECONDS/,
       "panel must not import a mirrored window constant",
+    );
+  });
+
+  it("auction chain reads bind Ascending windowDuration config getter", () => {
+    const reads = fs.readFileSync(
+      path.join(process.cwd(), "hooks/use-auction-chain-reads.ts"),
+      "utf8",
+    );
+    assert.match(
+      reads,
+      /functionName:\s*"windowDuration"/,
+      "ascending settlement must read BondedChallenge windowDuration()",
+    );
+    assert.doesNotMatch(
+      reads,
+      /SETTLEMENT_CHALLENGE_WINDOW_DEPLOY_SECONDS/,
     );
   });
 });

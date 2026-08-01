@@ -31,9 +31,9 @@ interface IKarProStaking {
 /// @dev Verification challenge state machine lives in BondedChallenge. This contract supplies
 ///      eligibility, exclusion, qualification, bond amount, and domain terminals (lapse/stand).
 ///      Spec: commerce-model §7.2, §9, §13a.1, §13a.4. Nuclear #2 redeploy for live cutover.
-/// @custom:version 1.8.0-rc.1
+/// @custom:version 1.9.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassportEncumbrance {
-    string public constant VERSION = "1.8.0-rc.1";
+    string public constant VERSION = "1.9.0-rc.1";
 
     /// @notice Window captured into each verification challenge at open (library immutable).
     uint256 public constant DISPUTE_WINDOW = 14 days;
