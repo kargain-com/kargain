@@ -12,6 +12,10 @@ import {
   parseChallenge,
   type ChallengeSnapshot,
 } from "@/lib/challenge";
+import {
+  parseCompensationForm,
+  type CompensationForm,
+} from "@/lib/commerce/denomination";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import {
   parseAscendingHold,
@@ -33,6 +37,7 @@ const PER_TOKEN = [
   "consignmentSellerOf",
   "consignmentAgentOf",
   "consignmentCommissionBpsOf",
+  "consignmentCompensationFormOf",
   "mandateAsset",
   "consignmentPriceOf",
   "consignmentFloorOf",
@@ -178,6 +183,11 @@ export function useAuctionChainReads({
     reads.entry("holdBuyer")?.status === "success";
 
   const pausedRaw = reads.get("paused");
+  const formRaw = reads.get("consignmentCompensationFormOf");
+  const compensationForm: CompensationForm | undefined =
+    formRaw == null
+      ? undefined
+      : (parseCompensationForm(Number(formRaw)) ?? undefined);
 
   const passportOwnerEntry = reads.entry("passportOwnerOf");
   /** Current NFT holder; `undefined` unread, `null` failed/missing. */
@@ -209,6 +219,10 @@ export function useAuctionChainReads({
     paused: pausedRaw == null ? undefined : pausedRaw === true,
     /** Recall request timestamp — owner cooldown before `forceRecall`. */
     returnRequestedAt: reads.asBigint("recallRequestTimestamp"),
+    /** Snapshotted consignment floor (owner concession). */
+    floor: reads.asBigint("consignmentFloorOf"),
+    compensationForm,
+    commissionBps: reads.asNumber("consignmentCommissionBpsOf"),
     isBinding: reads.get("isBinding") === true,
     settlementDisputeBond: reads.asBigint("challengeBondAmount"),
     settlementHold: reads.asBigint("holdProtectionEndsAt"),

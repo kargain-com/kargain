@@ -226,6 +226,10 @@ export function useAuctionDetail({
     hold: chain.hold,
     /** Settlement hold in commerce shape (settlement panel). */
     holdSnapshot: chain.holdSnapshot,
+    /** Snapshotted floor / compensation for live concessions. */
+    floor: chain.floor,
+    compensationForm: chain.compensationForm,
+    commissionBps: chain.commissionBps,
     /** BondedChallenge opened against this lot, when any. */
     challenge: chain.challenge,
     challengeBond: chain.settlementDisputeBond,

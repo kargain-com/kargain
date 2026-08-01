@@ -7,6 +7,7 @@ import { useReadContract } from "wagmi";
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { getAgentMandates } from "@/app/actions/commerce-mandates";
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
+import { AgentLowerCommissionPanel } from "@/components/commerce/agent-lower-commission-panel";
 import { ConsignmentPortfolioRow } from "@/components/consignment/consignment-portfolio-row";
 import { AgentDelistButton } from "@/components/marketplace/agent-delist-button";
 import { AgentListOnBehalfPanel } from "@/components/marketplace/agent-list-on-behalf-panel";
@@ -250,7 +251,18 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
                         onSuccess={refresh}
                       />
                     </div>
-                  ) : null}
+                  ) : (
+                    <AgentLowerCommissionPanel
+                      mode="ascending"
+                      chainId={row.chainId}
+                      tokenId={row.tokenId}
+                      live={true}
+                      isConsignmentAgent={true}
+                      compensationForm={row.compensationForm}
+                      snapshotCommissionBps={row.commissionBps}
+                      onChanged={refresh}
+                    />
+                  )}
                 </ConsignmentPortfolioRow>
               );
             })}

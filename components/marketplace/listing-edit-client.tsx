@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { useFixedPriceOpenOptions } from "@/hooks/use-fixed-price-open-options";
+import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
@@ -64,7 +64,7 @@ export function ListingEditClient({
   const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
     useTxSync(chainId);
   const { options: openOptions, pending: openOptionsPending } =
-    useFixedPriceOpenOptions(chainId);
+    useOpenableTerms(chainId, "fixedPrice");
 
   const [priceInput, setPriceInput] = useState("");
   const [askingCurrency, setAskingCurrency] = useState("USD");

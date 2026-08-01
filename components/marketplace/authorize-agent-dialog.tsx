@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import {
   useAccount,
   useChainId,
@@ -10,6 +10,7 @@ import {
 } from "wagmi";
 
 import { getVerifierDirectory, type VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
+import { MandateCompensationFields } from "@/components/commerce/mandate-compensation-fields";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,20 +22,36 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
+import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { sansLink } from "@/lib/design/instrument-classes";
 import {
+  buildCompensation,
+  compensationFormDef,
+  EXTERNAL_PAYMENT_GRANT_DISCLOSURE,
+} from "@/lib/commerce/compensation-form";
+import {
   COMPENSATION_FORM,
-  CURRENCY_CODE_USD,
   DENOMINATION_KIND,
+  encodeCurrencyCode,
+  FIAT_PRICE_DECIMALS,
+  ZERO_CURRENCY_CODE,
+  type CompensationForm,
+  type DenominationKind,
 } from "@/lib/commerce/denomination";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
+import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
-import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
-import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -72,14 +89,6 @@ function isFutureDate(dateStr: string): boolean {
   return expiry > BigInt(Math.floor(Date.now() / 1000));
 }
 
-function formatListingPrice(amount: bigint, code: ListingCurrencyCode): string {
-  const value = formatFiat1e8(amount);
-  if (code === "USD") return `$${value}`;
-  if (code === "EUR") return `€${value}`;
-  if (code === "JPY") return `¥${value}`;
-  return `${value} ${code}`;
-}
-
 export function AuthorizeAgentDialog({
   chainId,
   tokenId,
@@ -99,14 +108,23 @@ export function AuthorizeAgentDialog({
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== chainId;
 
-  // Grant hardwires Fiat USD + native; floor label matches that denomination.
-  const chainListingCurrency: ListingCurrencyCode = "USD";
+  const { options: openOptions, pending: openOptionsPending } =
+    useOpenableTerms(chainId, "fixedPrice");
 
   const [step, setStep] = useState<Step>("approval");
   const [txError, setTxError] = useState<string | null>(null);
   const [verifiers, setVerifiers] = useState<VerifierDirectoryEntry[]>([]);
   const [verifiersLoading, setVerifiersLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<VerifierDirectoryEntry | null>(null);
+  const [settlementAsset, setSettlementAsset] = useState<string>(ZERO_ADDRESS);
+  const [denominationKind, setDenominationKind] = useState<DenominationKind>(
+    DENOMINATION_KIND.Fiat,
+  );
+  const [fiatCurrency, setFiatCurrency] = useState("USD");
+  const [compensationForm, setCompensationForm] = useState<CompensationForm>(
+    COMPENSATION_FORM.Margin,
+  );
+  const [commissionPercent, setCommissionPercent] = useState("");
   const [minPriceInput, setMinPriceInput] = useState("");
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
@@ -125,10 +143,60 @@ export function AuthorizeAgentDialog({
   const displayStep: Step =
     step === "approval" && isMarketplaceApproved ? "agent" : step;
 
+  const selectedAsset = useMemo(
+    () =>
+      openOptions.assets.find(
+        (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+      ),
+    [openOptions.assets, settlementAsset],
+  );
+
+  const floorDecimals =
+    denominationKind === DENOMINATION_KIND.Asset
+      ? (selectedAsset?.decimals ?? 18)
+      : FIAT_PRICE_DECIMALS;
+
+  const floorUnitLabel =
+    denominationKind === DENOMINATION_KIND.Asset
+      ? (selectedAsset?.label ?? "asset")
+      : fiatCurrency;
+
+  useEffect(() => {
+    if (!openOptions.available || openOptions.assets.length === 0) return;
+    const stillValid = openOptions.assets.some(
+      (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+    );
+    if (!stillValid) {
+      setSettlementAsset(openOptions.assets[0]!.token);
+    }
+  }, [openOptions, settlementAsset]);
+
+  useEffect(() => {
+    if (!selectedAsset) return;
+    if (
+      denominationKind === DENOMINATION_KIND.Fiat &&
+      !selectedAsset.fiatDenomination
+    ) {
+      setDenominationKind(DENOMINATION_KIND.Asset);
+    }
+  }, [selectedAsset, denominationKind]);
+
+  useEffect(() => {
+    if (openOptions.fiatCurrencyCodes.length === 0) return;
+    if (!openOptions.fiatCurrencyCodes.includes(fiatCurrency)) {
+      setFiatCurrency(openOptions.fiatCurrencyCodes[0]!);
+    }
+  }, [openOptions.fiatCurrencyCodes, fiatCurrency]);
+
   const resetState = useCallback(() => {
     setStep("approval");
     setTxError(null);
     setSelectedAgent(null);
+    setSettlementAsset(ZERO_ADDRESS);
+    setDenominationKind(DENOMINATION_KIND.Fiat);
+    setFiatCurrency("USD");
+    setCompensationForm(COMPENSATION_FORM.Margin);
+    setCommissionPercent("");
     setMinPriceInput("");
     setNoExpiration(true);
     setExpiryDate("");
@@ -195,36 +263,78 @@ export function AuthorizeAgentDialog({
     setTxError(null);
   }, []);
 
-  const formattedMinPrice = useMemo(() => {
+  const pairingGate = useMemo(
+    () =>
+      gateOpenablePairing(openOptions, {
+        asset: settlementAsset,
+        denominationKind,
+        currencyCode:
+          denominationKind === DENOMINATION_KIND.Fiat ? fiatCurrency : undefined,
+      }),
+    [openOptions, settlementAsset, denominationKind, fiatCurrency],
+  );
+
+  const compensationBuilt = useMemo(
+    () =>
+      buildCompensation({
+        form: compensationForm,
+        commissionPercent:
+          compensationForm === COMPENSATION_FORM.Commission
+            ? commissionPercent
+            : null,
+      }),
+    [compensationForm, commissionPercent],
+  );
+
+  const floorParsed = useMemo(() => {
     if (!minPriceInput.trim()) return null;
     try {
-      const amount = parseUnits(minPriceInput, 8);
-      if (amount <= 0n) return null;
-      return formatListingPrice(amount, chainListingCurrency);
+      const amount = parseUnits(minPriceInput, floorDecimals);
+      return amount > 0n ? amount : null;
     } catch {
       return null;
     }
-  }, [minPriceInput, chainListingCurrency]);
+  }, [minPriceInput, floorDecimals]);
 
   const canSubmitTerms = useMemo(() => {
     if (!selectedAgent || !market) return false;
-    try {
-      const amount = parseUnits(minPriceInput || "0", 8);
-      if (amount <= 0n) return false;
-    } catch {
-      return false;
-    }
+    if (!openOptions.available || openOptionsPending) return false;
+    if (!pairingGate.available) return false;
+    if (floorParsed == null) return false;
+    if ("ok" in compensationBuilt && compensationBuilt.ok === false) return false;
     if (noExpiration) return true;
     return expiryDate !== "" && isFutureDate(expiryDate);
-  }, [selectedAgent, market, minPriceInput, noExpiration, expiryDate]);
+  }, [
+    selectedAgent,
+    market,
+    openOptions.available,
+    openOptionsPending,
+    pairingGate,
+    floorParsed,
+    compensationBuilt,
+    noExpiration,
+    expiryDate,
+  ]);
 
   const runAuthorize = useCallback(async () => {
-    if (!market || !selectedAgent || !canSubmitTerms) return;
+    if (!market || !selectedAgent || !canSubmitTerms || floorParsed == null)
+      return;
+    if ("ok" in compensationBuilt && compensationBuilt.ok === false) {
+      setTxError(compensationBuilt.reason);
+      return;
+    }
+    if (!pairingGate.available) {
+      setTxError(pairingGate.cause);
+      return;
+    }
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      const ownerMinPrice = parseUnits(minPriceInput, 8);
       const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
+      const compensation =
+        "form" in compensationBuilt
+          ? compensationBuilt
+          : { form: COMPENSATION_FORM.Margin, commissionBps: 0 };
       const succeeded = await runTx(() =>
         writeContractAsync({
           address: market,
@@ -234,14 +344,16 @@ export function AuthorizeAgentDialog({
             tid,
             selectedAgent.address as `0x${string}`,
             expiry,
-            // Native settlement; the price is denominated in USD.
-            ZERO_ADDRESS,
+            settlementAsset as `0x${string}`,
             {
-              kind: DENOMINATION_KIND.Fiat,
-              currencyCode: CURRENCY_CODE_USD,
+              kind: denominationKind,
+              currencyCode:
+                denominationKind === DENOMINATION_KIND.Fiat
+                  ? encodeCurrencyCode(fiatCurrency)
+                  : ZERO_CURRENCY_CODE,
             },
-            ownerMinPrice,
-            { form: COMPENSATION_FORM.Margin, commissionBps: 0 },
+            floorParsed,
+            compensation,
           ],
         }),
       );
@@ -255,12 +367,17 @@ export function AuthorizeAgentDialog({
     market,
     selectedAgent,
     canSubmitTerms,
+    floorParsed,
+    compensationBuilt,
+    pairingGate,
     wrongChain,
     switchChainAsync,
     wc,
-    minPriceInput,
     noExpiration,
     expiryDate,
+    settlementAsset,
+    denominationKind,
+    fiatCurrency,
     writeContractAsync,
     tid,
     onAuthorized,
@@ -269,15 +386,23 @@ export function AuthorizeAgentDialog({
   ]);
 
   const agentName = selectedAgent ? agentDisplayName(selectedAgent) : "";
+  const formattedFloor =
+    floorParsed != null
+      ? `${formatUnits(floorParsed, floorDecimals)} ${floorUnitLabel}`
+      : null;
+  const compensationConsequence = compensationFormDef(compensationForm).consequence;
+  const fiatAllowed = selectedAsset?.fiatDenomination === true;
+  const fiatReason = selectedAsset?.fiatUnavailableReason;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent showClose className="max-w-lg">
+      <DialogContent showClose className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Delegate to a pro</DialogTitle>
           <DialogDescription>
-            Authorize a KarPro to list and sell your vehicle on your behalf. You set a minimum
-            net amount; it applies once your agent lists the vehicle.
+            Authorize a KarPro to list and sell your vehicle on your behalf. You
+            choose the settlement terms and compensation before they can open a
+            sale.
           </DialogDescription>
         </DialogHeader>
 
@@ -373,9 +498,107 @@ export function AuthorizeAgentDialog({
               </button>
             </div>
 
+            {!openOptions.available && !openOptionsPending ? (
+              <p className="font-sans text-sm text-text-secondary" role="status">
+                {openOptions.unavailableReason}
+              </p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="grant-settlement-asset">Settlement asset</Label>
+                  <Select
+                    value={settlementAsset}
+                    onValueChange={setSettlementAsset}
+                    disabled={busy || openOptionsPending || openOptions.assets.length === 0}
+                  >
+                    <SelectTrigger
+                      id="grant-settlement-asset"
+                      className="border-border-default bg-bg-card"
+                    >
+                      <SelectValue
+                        placeholder={
+                          openOptionsPending ? "Loading…" : "Select asset"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="border-border-default bg-bg-primary">
+                      {openOptions.assets.map((asset) => (
+                        <SelectItem key={asset.token} value={asset.token}>
+                          {asset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="grant-denomination">Price denomination</Label>
+                  <Select
+                    value={String(denominationKind)}
+                    onValueChange={(v) =>
+                      setDenominationKind(
+                        Number(v) === DENOMINATION_KIND.Asset
+                          ? DENOMINATION_KIND.Asset
+                          : DENOMINATION_KIND.Fiat,
+                      )
+                    }
+                    disabled={busy || openOptionsPending || !selectedAsset}
+                  >
+                    <SelectTrigger
+                      id="grant-denomination"
+                      className="border-border-default bg-bg-card"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-border-default bg-bg-primary">
+                      <SelectItem value={String(DENOMINATION_KIND.Asset)}>
+                        Asset units
+                      </SelectItem>
+                      <SelectItem
+                        value={String(DENOMINATION_KIND.Fiat)}
+                        disabled={!fiatAllowed}
+                      >
+                        Fiat
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {!fiatAllowed && fiatReason ? (
+                    <p className="font-sans text-xs text-text-secondary" role="status">
+                      {fiatReason}
+                    </p>
+                  ) : null}
+                </div>
+
+                {denominationKind === DENOMINATION_KIND.Fiat && fiatAllowed ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="grant-fiat-currency">Currency</Label>
+                    <Select
+                      value={fiatCurrency}
+                      onValueChange={setFiatCurrency}
+                      disabled={busy || openOptionsPending}
+                    >
+                      <SelectTrigger
+                        id="grant-fiat-currency"
+                        className="border-border-default bg-bg-card"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="border-border-default bg-bg-primary">
+                        {openOptions.fiatCurrencyCodes.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="agent-min-price">
-                Minimum you&apos;ll receive ({chainListingCurrency})
+                Minimum you&apos;ll receive ({floorUnitLabel})
               </Label>
               <input
                 id="agent-min-price"
@@ -384,9 +607,18 @@ export function AuthorizeAgentDialog({
                 placeholder="0.00"
                 value={minPriceInput}
                 onChange={(e) => setMinPriceInput(e.target.value)}
+                disabled={!openOptions.available}
                 className="min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-4 py-3 font-sans text-sm text-text-primary transition-colors duration-200 placeholder:text-text-tertiary focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
               />
             </div>
+
+            <MandateCompensationFields
+              form={compensationForm}
+              onFormChange={setCompensationForm}
+              commissionPercent={commissionPercent}
+              onCommissionPercentChange={setCommissionPercent}
+              disabled={busy || !openOptions.available}
+            />
 
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -417,13 +649,26 @@ export function AuthorizeAgentDialog({
               )}
             </div>
 
-            {formattedMinPrice && (
+            {formattedFloor && (
               <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-                {agentName} can list, price, and sell your vehicle on your behalf. When they list
-                it, you&apos;re guaranteed to receive at least {formattedMinPrice} in the currency
-                they choose — after their fee and platform fees.
+                {agentName} can list, price, and sell your vehicle on your behalf.
+                Your floor is{" "}
+                <span className="font-mono tabular-nums text-text-primary">
+                  {formattedFloor}
+                </span>
+                . {compensationConsequence}
               </p>
             )}
+
+            <p className="font-sans text-sm text-text-secondary">
+              {EXTERNAL_PAYMENT_GRANT_DISCLOSURE}
+            </p>
+
+            {!pairingGate.available && openOptions.available ? (
+              <p className="text-sm text-status-error" role="alert">
+                {pairingGate.cause}
+              </p>
+            ) : null}
 
             {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">

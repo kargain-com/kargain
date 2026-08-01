@@ -3,19 +3,22 @@
 import { getAddress, zeroAddress } from "viem";
 
 import {
-  deriveFixedPriceOpenOptions,
-  type FixedPriceOpenOptions,
+  deriveOpenableTerms,
   type OpenCurrencyFeedInput,
   type OpenPaymentTokenInput,
-} from "@/lib/commerce/fixed-price-open-options";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+  type OpenableTerms,
+} from "@/lib/commerce/openable-terms";
+import {
+  commerceModeAddress,
+  type CommerceMode,
+} from "@/lib/commerce/mode";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
-export type FixedPriceOpenOptionsResult = {
+export type OpenableTermsResult = {
   ok: true;
-  options: FixedPriceOpenOptions;
+  options: OpenableTerms;
   ponderError?: "PONDER_UNAVAILABLE";
 };
 
@@ -45,6 +48,7 @@ function nativeLabel(chainId: number): string {
 function parsePaymentTokens(
   rows: PaymentTokensResponse["paymentTokens"],
   modeContract: string,
+  mode: CommerceMode,
 ): OpenPaymentTokenInput[] {
   if (!rows) return [];
   const modeLc = modeContract.toLowerCase();
@@ -52,7 +56,7 @@ function parsePaymentTokens(
   for (const row of rows) {
     if (!row?.token) continue;
     if (row.modeContract && row.modeContract.toLowerCase() !== modeLc) continue;
-    if (row.mode && row.mode !== "fixedPrice") continue;
+    if (row.mode && row.mode !== mode) continue;
     let token: string;
     try {
       token = getAddress(row.token);
@@ -89,19 +93,37 @@ function parseCurrencyFeeds(
   return out;
 }
 
+function unresolved(mode: CommerceMode, chainId: number): OpenableTermsResult {
+  return {
+    ok: true,
+    options: deriveOpenableTerms({
+      mode,
+      modeAvailable: true,
+      configResolved: false,
+      native: { label: nativeLabel(chainId), decimals: 18 },
+      paymentTokens: [],
+      currencyFeeds: [],
+    }),
+    ponderError: "PONDER_UNAVAILABLE",
+  };
+}
+
 /**
- * Resolve FixedPrice open pairings for a chain from Ponder commerce projections.
- * Native is always appended by the resolver when the mode is deployed.
+ * Resolve openable / grantable terms for a mode on a chain from Ponder
+ * commerce projections. Fail closed when config is unread.
  */
-export async function getFixedPriceOpenOptions(
+export async function getOpenableTerms(
   chainId: number,
-): Promise<FixedPriceOpenOptionsResult> {
-  const mode = commerceModeAddress("fixedPrice", chainId);
-  if (!mode) {
+  mode: CommerceMode,
+): Promise<OpenableTermsResult> {
+  const modeAddress = commerceModeAddress(mode, chainId);
+  if (!modeAddress) {
     return {
       ok: true,
-      options: deriveFixedPriceOpenOptions({
+      options: deriveOpenableTerms({
+        mode,
         modeAvailable: false,
+        configResolved: true,
         native: { label: nativeLabel(chainId), decimals: 18 },
         paymentTokens: [],
         currencyFeeds: [],
@@ -112,53 +134,60 @@ export async function getFixedPriceOpenOptions(
   const base = ponderBaseUrl();
   const tokensUrl = new URL(`${base}/commerce-payment-tokens`);
   tokensUrl.searchParams.set("chainId", String(chainId));
-  tokensUrl.searchParams.set("modeContract", mode);
+  tokensUrl.searchParams.set("modeContract", modeAddress);
   tokensUrl.searchParams.set("active", "true");
   tokensUrl.searchParams.set("limit", "100");
 
-  const feedsUrl = new URL(`${base}/commerce-currency-feeds`);
-  feedsUrl.searchParams.set("chainId", String(chainId));
-  feedsUrl.searchParams.set("modeContract", mode);
-  feedsUrl.searchParams.set("limit", "100");
-
   try {
+    if (mode === "ascending") {
+      const tokensRes = await ponderFetch(tokensUrl);
+      if (!tokensRes.ok) return unresolved(mode, chainId);
+      const tokensJson = (await tokensRes.json()) as PaymentTokensResponse;
+      return {
+        ok: true,
+        options: deriveOpenableTerms({
+          mode,
+          modeAvailable: true,
+          configResolved: true,
+          native: { label: nativeLabel(chainId), decimals: 18 },
+          paymentTokens: parsePaymentTokens(
+            tokensJson.paymentTokens,
+            modeAddress,
+            mode,
+          ),
+          currencyFeeds: [],
+        }),
+      };
+    }
+
+    const feedsUrl = new URL(`${base}/commerce-currency-feeds`);
+    feedsUrl.searchParams.set("chainId", String(chainId));
+    feedsUrl.searchParams.set("modeContract", modeAddress);
+    feedsUrl.searchParams.set("limit", "100");
+
     const [tokensRes, feedsRes] = await Promise.all([
       ponderFetch(tokensUrl),
       ponderFetch(feedsUrl),
     ]);
-    if (!tokensRes.ok || !feedsRes.ok) {
-      return {
-        ok: true,
-        options: deriveFixedPriceOpenOptions({
-          modeAvailable: true,
-          native: { label: nativeLabel(chainId), decimals: 18 },
-          paymentTokens: [],
-          currencyFeeds: [],
-        }),
-        ponderError: "PONDER_UNAVAILABLE",
-      };
-    }
+    if (!tokensRes.ok || !feedsRes.ok) return unresolved(mode, chainId);
     const tokensJson = (await tokensRes.json()) as PaymentTokensResponse;
     const feedsJson = (await feedsRes.json()) as CurrencyFeedsResponse;
     return {
       ok: true,
-      options: deriveFixedPriceOpenOptions({
+      options: deriveOpenableTerms({
+        mode,
         modeAvailable: true,
+        configResolved: true,
         native: { label: nativeLabel(chainId), decimals: 18 },
-        paymentTokens: parsePaymentTokens(tokensJson.paymentTokens, mode),
-        currencyFeeds: parseCurrencyFeeds(feedsJson.currencyFeeds, mode),
+        paymentTokens: parsePaymentTokens(
+          tokensJson.paymentTokens,
+          modeAddress,
+          mode,
+        ),
+        currencyFeeds: parseCurrencyFeeds(feedsJson.currencyFeeds, modeAddress),
       }),
     };
   } catch {
-    return {
-      ok: true,
-      options: deriveFixedPriceOpenOptions({
-        modeAvailable: true,
-        native: { label: nativeLabel(chainId), decimals: 18 },
-        paymentTokens: [],
-        currencyFeeds: [],
-      }),
-      ponderError: "PONDER_UNAVAILABLE",
-    };
+    return unresolved(mode, chainId);
   }
 }

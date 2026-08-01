@@ -1,6 +1,7 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
+import { erc20Abi } from "viem";
 
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
 import { AuctionBidHistory } from "@/components/auction/auction-bid-history";
@@ -10,6 +11,7 @@ import { AuctionFinalizePanel } from "@/components/auction/auction-finalize-pane
 import { AuctionReadoutPanel } from "@/components/auction/auction-readout-panel";
 import { AuctionReturnAdvisory } from "@/components/auction/auction-return-advisory";
 import { AuctionSettlementPanel } from "@/components/auction/auction-settlement-panel";
+import { OwnerLowerFloorPanel } from "@/components/commerce/owner-lower-floor-panel";
 import { OwnerRecallPanel } from "@/components/commerce/owner-recall-panel";
 import { StatusToast } from "@/components/ui/status-toast";
 import { useAuctionBids } from "@/hooks/use-auction-bids";
@@ -18,8 +20,11 @@ import { useAuctionLiveSignals } from "@/hooks/use-auction-live-signals";
 import { useMandate } from "@/hooks/use-mandate";
 import { auctionBlocksListingCommerce } from "@/lib/auction/map-ponder-auction";
 import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
+import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
+import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
 
@@ -118,6 +123,38 @@ export function AuctionDetailClientIsland({
   const showOwnerReturn = Boolean(
     showLiveCommerce && isOwner && preStart && hasAgent,
   );
+  const liveOfferedOrBidding =
+    uiState === "S1" || uiState === "S3" || uiState === "S4";
+  const assetAddr = auction?.asset ?? "";
+  const needsErc20Decimals =
+    showLiveCommerce &&
+    isOwner &&
+    hasAgent &&
+    liveOfferedOrBidding &&
+    Boolean(assetAddr) &&
+    !isZeroAddress(assetAddr);
+  const { data: erc20Decimals } = useReadContract({
+    address: assetAddr as `0x${string}`,
+    abi: erc20Abi,
+    functionName: "decimals",
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(needsErc20Decimals) },
+  });
+  const floorUnits = floorDisplayUnits({
+    denominationKind: DENOMINATION_KIND.Asset,
+    asset: assetAddr,
+    erc20Decimals:
+      typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    assetLabel: auction?.assetLabel ?? "ETH",
+  });
+  const showOwnerFloor = Boolean(
+    showLiveCommerce &&
+      isOwner &&
+      hasAgent &&
+      liveOfferedOrBidding &&
+      detail.compensationForm != null &&
+      floorUnits != null,
+  );
 
   const bids = useAuctionBids({
     tokenId,
@@ -185,6 +222,21 @@ export function AuctionDetailClientIsland({
               chainId={chainId}
               tokenId={tokenId}
               auction={auction}
+            />
+          )}
+
+          {showOwnerFloor && floorUnits && detail.compensationForm != null && (
+            <OwnerLowerFloorPanel
+              mode="ascending"
+              chainId={chainId}
+              tokenId={tokenId}
+              live={true}
+              isPassportOwner={isOwner}
+              snapshotFloor={detail.floor}
+              floorDecimals={floorUnits.decimals}
+              floorUnitLabel={floorUnits.unitLabel}
+              compensationForm={detail.compensationForm}
+              onChanged={detail.refetch}
             />
           )}
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { parseEther, parseUnits, zeroAddress } from "viem";
+import { useEffect, useMemo, useState } from "react";
+import { parseUnits, zeroAddress } from "viem";
 import {
   useAccount,
   useChainId,
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
@@ -21,11 +22,15 @@ import {
   ASCENDING_RESERVE_INTRO,
 } from "@/lib/auction/ascending-public-claims";
 import {
+  DENOMINATION_KIND,
+} from "@/lib/commerce/denomination";
+import {
   durationBoundsErrorMessage,
   durationDayOptions,
   protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
+import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
 import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -33,7 +38,6 @@ import {
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -58,14 +62,17 @@ export function CreateAuctionPanel({
   const { writeContractAsync } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
-  const [assetKind, setAssetKind] = useState<"ETH" | "USDC">("ETH");
+  const { options: openOptions, pending: openOptionsPending } =
+    useOpenableTerms(chainId, "ascending");
+  const [settlementAsset, setSettlementAsset] = useState<`0x${string}`>(
+    zeroAddress,
+  );
   const [reserveStr, setReserveStr] = useState("");
   const [durationDays, setDurationDays] = useState(3);
   const [protectionDays, setProtectionDays] = useState(7);
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const usdc = usdcAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const busy = phase !== "idle";
   const { paused: modePaused } = useCommerceModePaused({
@@ -90,6 +97,24 @@ export function CreateAuctionPanel({
     protectionOptions.length > 0 && !protectionOptions.includes(protectionDays)
       ? protectionOptions[0]!
       : protectionDays;
+
+  useEffect(() => {
+    if (!openOptions.available || openOptions.assets.length === 0) return;
+    const stillValid = openOptions.assets.some(
+      (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+    );
+    if (!stillValid) {
+      setSettlementAsset(openOptions.assets[0]!.token as `0x${string}`);
+    }
+  }, [openOptions, settlementAsset]);
+
+  const selectedAsset = useMemo(
+    () =>
+      openOptions.assets.find(
+        (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+      ),
+    [openOptions.assets, settlementAsset],
+  );
 
   const {
     isApproved,
@@ -157,6 +182,24 @@ export function CreateAuctionPanel({
       );
       return;
     }
+    if (!openOptions.available) {
+      setFormError(
+        openOptions.unavailableReason ?? "Cannot open an auction on this chain.",
+      );
+      return;
+    }
+    const pairing = gateOpenablePairing(openOptions, {
+      asset: settlementAsset,
+      denominationKind: DENOMINATION_KIND.Asset,
+    });
+    if (!pairing.available) {
+      setFormError(pairing.cause);
+      return;
+    }
+    if (!selectedAsset) {
+      setFormError("Select a settlement asset.");
+      return;
+    }
 
     if (!auctionRules) {
       setFormError("Loading auction rules…");
@@ -191,10 +234,7 @@ export function CreateAuctionPanel({
 
     let reserve: bigint;
     try {
-      reserve =
-        assetKind === "ETH"
-          ? parseEther(reserveStr.trim())
-          : parseUnits(reserveStr.trim(), 6);
+      reserve = parseUnits(reserveStr.trim(), selectedAsset.decimals);
     } catch {
       setFormError("Enter a valid reserve amount.");
       return;
@@ -204,23 +244,25 @@ export function CreateAuctionPanel({
       return;
     }
 
-    if (assetKind === "USDC" && !usdc) {
-      setFormError("USDC is not configured on this chain.");
-      return;
-    }
-
     await runTx(async () => {
       await ensureApproved(awaitReceipt);
-      const asset = assetKind === "ETH" ? zeroAddress : usdc!;
       return writeContractAsync({
         address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingDirect",
-        args: [BigInt(tokenId), asset, reserve, durationSec, protectionSec],
+        args: [
+          BigInt(tokenId),
+          settlementAsset as `0x${string}`,
+          reserve,
+          durationSec,
+          protectionSec,
+        ],
         chainId: wagmiChainId(chainId),
       });
     });
   }
+
+  const assetLabel = selectedAsset?.label ?? "asset";
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
@@ -248,30 +290,40 @@ export function CreateAuctionPanel({
 
       <div className="space-y-2">
         <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
-          Auction currency
+          Settlement asset
         </p>
-        <div className="flex gap-2">
-          {(["ETH", "USDC"] as const).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => setAssetKind(kind)}
-              className={cn(
-                "min-h-11 flex-1 rounded-sm border px-3 font-sans text-sm font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-                assetKind === kind
-                  ? "border-border-hover bg-bg-primary text-text-primary"
-                  : "border-border-default text-text-secondary hover:border-border-hover",
-              )}
-            >
-              {kind}
-            </button>
-          ))}
-        </div>
-        <p className="font-sans text-xs text-text-secondary">
-          Bids and payout are in one currency for the whole auction. USDC is
-          recommended for expensive vehicles.
-        </p>
+        {!openOptions.available && !openOptionsPending ? (
+          <p className="font-sans text-sm text-text-secondary" role="status">
+            {openOptions.unavailableReason}
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {openOptions.assets.map((asset) => (
+                <button
+                  key={asset.token}
+                  type="button"
+                  onClick={() =>
+                    setSettlementAsset(asset.token as `0x${string}`)
+                  }
+                  disabled={busy || openOptionsPending}
+                  className={cn(
+                    "min-h-11 flex-1 rounded-sm border px-3 font-sans text-sm font-medium transition-colors",
+                    "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+                    settlementAsset.toLowerCase() === asset.token.toLowerCase()
+                      ? "border-border-hover bg-bg-primary text-text-primary"
+                      : "border-border-default text-text-secondary hover:border-border-hover",
+                  )}
+                >
+                  {asset.label}
+                </button>
+              ))}
+            </div>
+            <p className="font-sans text-xs text-text-secondary">
+              Bids and payout are in one asset for the whole auction.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -279,7 +331,7 @@ export function CreateAuctionPanel({
           htmlFor="auction-reserve"
           className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary"
         >
-          Reserve ({assetKind})
+          Reserve ({assetLabel})
         </label>
         <input
           id="auction-reserve"
@@ -288,7 +340,7 @@ export function CreateAuctionPanel({
           autoComplete="off"
           value={reserveStr}
           onChange={(e) => setReserveStr(e.target.value)}
-          disabled={busy}
+          disabled={busy || !openOptions.available}
           className={cn(
             "w-full min-h-11 rounded-sm border border-border-default bg-bg-primary px-3",
             "font-mono text-sm tabular-nums text-text-primary",
@@ -389,7 +441,14 @@ export function CreateAuctionPanel({
       <Button
         type="button"
         className="w-full"
-        disabled={busy || !reserveStr.trim() || settlementPending || modePaused === true}
+        disabled={
+          busy ||
+          !reserveStr.trim() ||
+          settlementPending ||
+          modePaused === true ||
+          !openOptions.available ||
+          openOptionsPending
+        }
         onClick={() => void onCreate()}
       >
         {phase === "indexing"

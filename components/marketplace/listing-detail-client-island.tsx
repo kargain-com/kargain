@@ -4,8 +4,10 @@ import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
+import { erc20Abi } from "viem";
 
+import { OwnerLowerFloorPanel } from "@/components/commerce/owner-lower-floor-panel";
 import { ListingAgentBuyerAttribution } from "@/components/marketplace/listing-agent-buyer-attribution";
 import { ListingBuyPanel } from "@/components/marketplace/listing-buy-panel";
 import { ListingMakeOfferButton } from "@/components/marketplace/listing-make-offer-button";
@@ -20,6 +22,8 @@ import {
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
+import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { commerceModeAddress, hasCommerceMode } from "@/lib/commerce/mode";
 import { isZeroAddress } from "@/lib/commerce/consignment";
 import { effectiveRecallRequestedAt } from "@/lib/commerce/recall";
@@ -189,6 +193,31 @@ export function ListingDetailClientIsland({
     commerce.recallRequestedAt,
   );
 
+  const needsErc20Decimals =
+    showRecallFlow &&
+    commerce.denominationKind === DENOMINATION_KIND.Asset &&
+    Boolean(commerce.asset) &&
+    !isZeroAddress(commerce.asset);
+  const { data: erc20Decimals } = useReadContract({
+    address: commerce.asset,
+    abi: erc20Abi,
+    functionName: "decimals",
+    chainId: wagmiChainId(chainId),
+    query: { enabled: needsErc20Decimals },
+  });
+  const floorUnits = floorDisplayUnits({
+    denominationKind: commerce.denominationKind,
+    currencyCode: commerce.currencyCode,
+    asset: commerce.asset,
+    erc20Decimals:
+      typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+  });
+  const showOwnerFloor = Boolean(
+    showRecallFlow &&
+      commerce.compensationForm != null &&
+      floorUnits != null,
+  );
+
   const editHref = `/marketplace/${tokenId}/edit?chain=${chainId}`;
   const showDelistBeforeAuctionHint = Boolean(
     listingActive && isSeller && hasCommerceMode("ascending", chainId),
@@ -276,6 +305,21 @@ export function ListingDetailClientIsland({
             onConfirmed={handleOfferConfirmed}
           />
         )}
+
+      {showOwnerFloor && floorUnits && commerce.compensationForm != null && (
+        <OwnerLowerFloorPanel
+          mode="fixedPrice"
+          chainId={chainId}
+          tokenId={tokenId}
+          live={listingActive}
+          isPassportOwner={isOwner}
+          snapshotFloor={commerce.floor}
+          floorDecimals={floorUnits.decimals}
+          floorUnitLabel={floorUnits.unitLabel}
+          compensationForm={commerce.compensationForm}
+          onChanged={refetchChainReads}
+        />
+      )}
 
       {showRecallFlow && (
         <OwnerRecallPanel

@@ -2,6 +2,12 @@
 
 import { useMemo } from "react";
 
+import {
+  parseCompensationForm,
+  parseDenominationKind,
+  type CompensationForm,
+  type DenominationKind,
+} from "@/lib/commerce/denomination";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ChainListingRead } from "@/lib/marketplace/effective-listing";
@@ -47,6 +53,10 @@ export function useListingChainReads(input: {
         "consignmentSellerOf",
         "consignmentPriceOf",
         "consignmentDenominationOf",
+        "consignmentAssetOf",
+        "consignmentFloorOf",
+        "consignmentCompensationFormOf",
+        "consignmentCommissionBpsOf",
         "consignmentAgentOf",
         "recallRequestTimestamp",
         "settlementNotes",
@@ -85,13 +95,30 @@ export function useListingChainReads(input: {
         ? "failure"
         : "pending";
 
-  const denomination = reads.get("consignmentDenominationOf") as
-    | { currencyCode?: string }
-    | readonly [number, string]
-    | undefined;
-  const currencyCode = Array.isArray(denomination)
-    ? denomination[1]
-    : (denomination as { currencyCode?: string } | undefined)?.currencyCode;
+  const denominationRaw = reads.get("consignmentDenominationOf");
+  const denominationKindRaw = (() => {
+    if (denominationRaw == null) return undefined;
+    if (Array.isArray(denominationRaw)) return denominationRaw[0];
+    if (typeof denominationRaw === "object" && "kind" in denominationRaw) {
+      return (denominationRaw as { kind?: number }).kind;
+    }
+    return undefined;
+  })();
+  const currencyCode = (() => {
+    if (denominationRaw == null) return undefined;
+    if (Array.isArray(denominationRaw)) return String(denominationRaw[1] ?? "");
+    if (
+      typeof denominationRaw === "object" &&
+      "currencyCode" in denominationRaw
+    ) {
+      return (denominationRaw as { currencyCode?: string }).currencyCode;
+    }
+    return undefined;
+  })();
+  const denominationKind: DenominationKind | null | undefined =
+    denominationKindRaw == null
+      ? undefined
+      : parseDenominationKind(Number(denominationKindRaw));
 
   const phaseRaw = reads.get("consignmentPhase");
   const listing: OnChainListingRow | null = buildOnChainListing({
@@ -103,6 +130,9 @@ export function useListingChainReads(input: {
 
   const agentRaw = reads.get("consignmentAgentOf");
   const pausedRaw = reads.get("paused");
+  const formRaw = reads.get("consignmentCompensationFormOf");
+  const compensationForm: CompensationForm | null | undefined =
+    formRaw == null ? undefined : parseCompensationForm(Number(formRaw));
 
   return {
     /** Fixed-price mode contract; `undefined` disables every write. */
@@ -110,6 +140,15 @@ export function useListingChainReads(input: {
     listing,
     chainListingRead,
     agent: typeof agentRaw === "string" ? (agentRaw as `0x${string}`) : undefined,
+    asset: reads.asString("consignmentAssetOf") as `0x${string}` | undefined,
+    floor: reads.asBigint("consignmentFloorOf"),
+    denominationKind:
+      denominationKind === null ? undefined : denominationKind,
+    currencyCode:
+      typeof currencyCode === "string" ? currencyCode : undefined,
+    compensationForm:
+      compensationForm === null ? undefined : compensationForm,
+    commissionBps: reads.asNumber("consignmentCommissionBpsOf"),
     recallRequestedAt: reads.asBigint("recallRequestTimestamp"),
     settlementNote: decodeSettlementNote(reads.get("settlementNotes")).trim(),
     /** Mode-level G3 pause — chain only; `undefined` while unread/failed. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { zeroAddress } from "viem";
+import { formatUnits, parseUnits, zeroAddress } from "viem";
 import {
   useAccount,
   useChainId,
@@ -14,6 +14,7 @@ import {
   getVerifierDirectory,
   type VerifierDirectoryEntry,
 } from "@/app/actions/verifier-directory";
+import { MandateCompensationFields } from "@/components/commerce/mandate-compensation-fields";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,26 +27,25 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { VerifierDirectory } from "@/components/verifier/verifier-directory";
+import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useMandate } from "@/hooks/use-mandate";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
-import {
-  endsAtDateTimeAttr,
-  formatAuctionAmount,
-} from "@/lib/auction/format-auction";
-import {
-  isValidOwnerMinAsset,
-  parseOwnerMinAsset,
-  type AuctionAssetLabel,
-} from "@/lib/auction/owner-min-asset";
+import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
 import { isZeroAddress } from "@/lib/commerce/consignment";
+import {
+  buildCompensation,
+  compensationFormDef,
+} from "@/lib/commerce/compensation-form";
 import {
   COMPENSATION_FORM,
   DENOMINATION_KIND,
   ZERO_CURRENCY_CODE,
+  type CompensationForm,
 } from "@/lib/commerce/denomination";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
+import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
@@ -54,7 +54,6 @@ import {
   sansLink,
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -94,6 +93,17 @@ function isFutureDate(dateStr: string): boolean {
   return expiry > BigInt(Math.floor(Date.now() / 1000));
 }
 
+function formatFloorAmount(
+  amount: bigint,
+  decimals: number,
+  label: string,
+): string {
+  const raw = formatUnits(amount, decimals);
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return `${raw} ${label}`;
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${label}`;
+}
+
 export function AuthorizeAuctionAgentDialog({
   chainId,
   tokenId,
@@ -110,10 +120,12 @@ export function AuthorizeAuctionAgentDialog({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const usdc = usdcAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain = walletChain !== wc;
   const busy = isPending || phase !== "idle";
+
+  const { options: openOptions, pending: openOptionsPending } =
+    useOpenableTerms(chainId, "ascending");
 
   const [step, setStep] = useState<Step>("approval");
   const [txError, setTxError] = useState<string | null>(null);
@@ -121,7 +133,13 @@ export function AuthorizeAuctionAgentDialog({
   const [verifiersLoading, setVerifiersLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] =
     useState<VerifierDirectoryEntry | null>(null);
-  const [assetKind, setAssetKind] = useState<AuctionAssetLabel>("ETH");
+  const [settlementAsset, setSettlementAsset] = useState<`0x${string}`>(
+    zeroAddress,
+  );
+  const [compensationForm, setCompensationForm] = useState<CompensationForm>(
+    COMPENSATION_FORM.Commission,
+  );
+  const [commissionPercent, setCommissionPercent] = useState("5");
   const [minAssetInput, setMinAssetInput] = useState("");
   const [noExpiration, setNoExpiration] = useState(true);
   const [expiryDate, setExpiryDate] = useState("");
@@ -185,11 +203,31 @@ export function AuthorizeAuctionAgentDialog({
   const displayStep: Step =
     step === "approval" && isModeApproved ? "agent" : step;
 
+  const selectedAsset = useMemo(
+    () =>
+      openOptions.assets.find(
+        (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+      ),
+    [openOptions.assets, settlementAsset],
+  );
+
+  useEffect(() => {
+    if (!openOptions.available || openOptions.assets.length === 0) return;
+    const stillValid = openOptions.assets.some(
+      (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
+    );
+    if (!stillValid) {
+      setSettlementAsset(openOptions.assets[0]!.token as `0x${string}`);
+    }
+  }, [openOptions, settlementAsset]);
+
   const resetState = useCallback(() => {
     setStep("approval");
     setTxError(null);
     setSelectedAgent(null);
-    setAssetKind("ETH");
+    setSettlementAsset(zeroAddress as `0x${string}`);
+    setCompensationForm(COMPENSATION_FORM.Commission);
+    setCommissionPercent("5");
     setMinAssetInput("");
     setNoExpiration(true);
     setExpiryDate("");
@@ -284,37 +322,81 @@ export function AuthorizeAuctionAgentDialog({
     setTxError(null);
   }, []);
 
+  const pairingGate = useMemo(
+    () =>
+      gateOpenablePairing(openOptions, {
+        asset: settlementAsset,
+        denominationKind: DENOMINATION_KIND.Asset,
+      }),
+    [openOptions, settlementAsset],
+  );
+
+  const compensationBuilt = useMemo(
+    () =>
+      buildCompensation({
+        form: compensationForm,
+        commissionPercent:
+          compensationForm === COMPENSATION_FORM.Commission
+            ? commissionPercent
+            : null,
+      }),
+    [compensationForm, commissionPercent],
+  );
+
+  const floorParsed = useMemo(() => {
+    if (!selectedAsset || !minAssetInput.trim()) return null;
+    try {
+      const amount = parseUnits(minAssetInput.trim(), selectedAsset.decimals);
+      return amount > 0n ? amount : null;
+    } catch {
+      return null;
+    }
+  }, [selectedAsset, minAssetInput]);
+
   const canSubmitTerms = useMemo(() => {
     if (settlementPending) return false;
     if (!selectedAgent || !mode) return false;
-    if (assetKind === "USDC" && !usdc) return false;
-    if (!isValidOwnerMinAsset(minAssetInput, assetKind)) return false;
+    if (!openOptions.available || openOptionsPending) return false;
+    if (!pairingGate.available) return false;
+    if (floorParsed == null) return false;
+    if ("ok" in compensationBuilt && compensationBuilt.ok === false) return false;
     if (noExpiration) return true;
     return expiryDate !== "" && isFutureDate(expiryDate);
   }, [
     settlementPending,
     selectedAgent,
     mode,
-    assetKind,
-    usdc,
-    minAssetInput,
+    openOptions.available,
+    openOptionsPending,
+    pairingGate,
+    floorParsed,
+    compensationBuilt,
     noExpiration,
     expiryDate,
   ]);
 
   const runAuthorize = useCallback(async () => {
-    if (!mode || !selectedAgent || !canSubmitTerms) return;
+    if (!mode || !selectedAgent || !canSubmitTerms || floorParsed == null) return;
     if (settlementPending) {
       setTxError(
         "The previous sale of this vehicle is still settling. Try again after the hold ends.",
       );
       return;
     }
+    if ("ok" in compensationBuilt && compensationBuilt.ok === false) {
+      setTxError(compensationBuilt.reason);
+      return;
+    }
+    if (!pairingGate.available) {
+      setTxError(pairingGate.cause);
+      return;
+    }
     setTxError(null);
-    const ownerMinAsset = parseOwnerMinAsset(minAssetInput, assetKind);
-    if (ownerMinAsset == null) return;
-    const asset = assetKind === "ETH" ? zeroAddress : usdc!;
     const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
+    const compensation =
+      "form" in compensationBuilt
+        ? compensationBuilt
+        : { form: COMPENSATION_FORM.Margin, commissionBps: 0 };
     const succeeded = await runTx(() =>
       writeContractAsync({
         address: mode,
@@ -324,14 +406,13 @@ export function AuthorizeAuctionAgentDialog({
           tid,
           selectedAgent.address as `0x${string}`,
           expiry,
-          asset,
-          // Auction floors are denominated in the settlement asset itself.
+          settlementAsset as `0x${string}`,
           {
             kind: DENOMINATION_KIND.Asset,
             currencyCode: ZERO_CURRENCY_CODE,
           },
-          ownerMinAsset,
-          { form: COMPENSATION_FORM.Margin, commissionBps: 0 },
+          floorParsed,
+          compensation,
         ],
       }),
     );
@@ -343,12 +424,13 @@ export function AuthorizeAuctionAgentDialog({
     mode,
     selectedAgent,
     canSubmitTerms,
+    floorParsed,
     settlementPending,
-    minAssetInput,
-    assetKind,
-    usdc,
+    compensationBuilt,
+    pairingGate,
     noExpiration,
     expiryDate,
+    settlementAsset,
     writeContractAsync,
     tid,
     runTx,
@@ -357,18 +439,30 @@ export function AuthorizeAuctionAgentDialog({
   ]);
 
   const agentName = selectedAgent ? agentDisplayName(selectedAgent) : "";
+  const assetLabel = selectedAsset?.label ?? "asset";
   const formattedMin =
-    isValidOwnerMinAsset(minAssetInput, assetKind) &&
-    parseOwnerMinAsset(minAssetInput, assetKind) != null
-      ? formatAuctionAmount(
-          parseOwnerMinAsset(minAssetInput, assetKind)!,
-          assetKind,
-        )
+    floorParsed != null && selectedAsset
+      ? formatFloorAmount(floorParsed, selectedAsset.decimals, assetLabel)
       : null;
+  const compensationConsequence = compensationFormDef(compensationForm).consequence;
+
+  const revokeAsset = chainAuth
+    ? openOptions.assets.find(
+        (a) => a.token.toLowerCase() === chainAuth.asset.toLowerCase(),
+      )
+    : undefined;
+  const revokeFloorLabel = chainAuth
+    ? formatFloorAmount(
+        chainAuth.floor,
+        revokeAsset?.decimals ?? (isZeroAddress(chainAuth.asset) ? 18 : 6),
+        revokeAsset?.label ??
+          (isZeroAddress(chainAuth.asset) ? "ETH" : "token"),
+      )
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent showClose className="max-w-lg">
+      <DialogContent showClose className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {showRevoke ? "Auction agent" : "Authorize auction agent"}
@@ -376,7 +470,7 @@ export function AuthorizeAuctionAgentDialog({
           <DialogDescription>
             {showRevoke
               ? "An agent is authorized to create an auction for this vehicle."
-              : "Authorize a KarPro to create a reserve auction on your behalf. Your minimum is locked in the auction currency."}
+              : "Authorize a KarPro to create a reserve auction on your behalf. You choose the settlement asset, floor, and compensation."}
           </DialogDescription>
         </DialogHeader>
 
@@ -404,11 +498,13 @@ export function AuthorizeAuctionAgentDialog({
                 {authExpired ? " · expired" : ""}
               </p>
               <p className="font-mono text-sm tabular-nums text-text-primary">
-                Floor{" "}
-                {formatAuctionAmount(
-                  chainAuth.floor,
-                  isZeroAddress(chainAuth.asset) ? "ETH" : "USDC",
-                )}
+                Floor {revokeFloorLabel}
+              </p>
+              <p className="font-sans text-xs text-text-secondary">
+                {compensationFormDef(chainAuth.compensationForm).label}
+                {chainAuth.compensationForm === COMPENSATION_FORM.Commission
+                  ? ` · ${(chainAuth.commissionBps / 100).toFixed(2)}%`
+                  : ""}
               </p>
             </div>
             {(txError ?? error) && (
@@ -537,33 +633,46 @@ export function AuthorizeAuctionAgentDialog({
               </button>
             </div>
 
-            <div className="space-y-2">
-              <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
-                Auction currency
+            {!openOptions.available && !openOptionsPending ? (
+              <p className="font-sans text-sm text-text-secondary" role="status">
+                {openOptions.unavailableReason}
               </p>
-              <div className="flex gap-2">
-                {(["ETH", "USDC"] as const).map((kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    onClick={() => setAssetKind(kind)}
-                    className={cn(
-                      "min-h-11 flex-1 rounded-sm border px-3 font-sans text-sm font-medium transition-colors",
-                      "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-                      assetKind === kind
-                        ? "border-border-hover bg-bg-primary text-text-primary"
-                        : "border-border-default text-text-secondary hover:border-border-hover",
-                    )}
-                  >
-                    {kind}
-                  </button>
-                ))}
+            ) : (
+              <div className="space-y-2">
+                <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
+                  Settlement asset
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {openOptions.assets.map((asset) => (
+                    <button
+                      key={asset.token}
+                      type="button"
+                      onClick={() =>
+                        setSettlementAsset(asset.token as `0x${string}`)
+                      }
+                      disabled={busy || openOptionsPending}
+                      className={cn(
+                        "min-h-11 flex-1 rounded-sm border px-3 font-sans text-sm font-medium transition-colors",
+                        "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+                        settlementAsset.toLowerCase() ===
+                          asset.token.toLowerCase()
+                          ? "border-border-hover bg-bg-primary text-text-primary"
+                          : "border-border-default text-text-secondary hover:border-border-hover",
+                      )}
+                    >
+                      {asset.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="font-sans text-xs text-text-secondary">
+                  Ascending floors are denominated in the settlement asset.
+                </p>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="auction-owner-min">
-                Minimum you&apos;ll receive ({assetKind})
+                Minimum you&apos;ll receive ({assetLabel})
               </Label>
               <input
                 id="auction-owner-min"
@@ -572,13 +681,19 @@ export function AuthorizeAuctionAgentDialog({
                 placeholder="0.00"
                 value={minAssetInput}
                 onChange={(e) => setMinAssetInput(e.target.value)}
+                disabled={!openOptions.available}
                 className="min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-4 py-3 font-mono text-sm tabular-nums text-text-primary transition-colors duration-200 placeholder:text-text-tertiary focus:border-accent-warm focus:bg-bg-surface focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
               />
-              <p className="text-xs text-text-secondary">
-                Your minimum is in the auction currency ({assetKind}), not a
-                display price. You receive at least this amount after all fees.
-              </p>
             </div>
+
+            <MandateCompensationFields
+              form={compensationForm}
+              onFormChange={setCompensationForm}
+              commissionPercent={commissionPercent}
+              onCommissionPercentChange={setCommissionPercent}
+              disabled={busy || !openOptions.available}
+              tip="Commission is the natural pairing for ascending sales — the market creates the upside, so it belongs to you. Either form may be granted."
+            />
 
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -618,14 +733,19 @@ export function AuthorizeAuctionAgentDialog({
 
             {formattedMin && (
               <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
-                {agentName} can create an auction in {assetKind}. You are
-                guaranteed at least{" "}
+                {agentName} can create an auction in {assetLabel}. Your floor is{" "}
                 <span className="font-mono tabular-nums text-text-primary">
                   {formattedMin}
-                </span>{" "}
-                after their fee and platform fees.
+                </span>
+                . {compensationConsequence}
               </p>
             )}
+
+            {!pairingGate.available && openOptions.available ? (
+              <p className="text-sm text-status-error" role="alert">
+                {pairingGate.cause}
+              </p>
+            ) : null}
 
             {(txError ?? error) && (
               <p className="text-sm text-status-error" role="alert">

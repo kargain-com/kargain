@@ -14,10 +14,10 @@ import {
   DENOMINATION_KIND,
   type DenominationKind,
 } from "@/lib/commerce/denomination";
-import type { FixedPriceOpenOptions } from "@/lib/commerce/fixed-price-open-options";
+import type { OpenableTerms } from "@/lib/commerce/openable-terms";
 
 type Props = {
-  openOptions: FixedPriceOpenOptions;
+  openOptions: OpenableTerms;
   openOptionsPending?: boolean;
   settlementAsset: string;
   onSettlementAssetChange: (token: string) => void;

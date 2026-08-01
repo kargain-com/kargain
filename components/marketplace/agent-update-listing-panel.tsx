@@ -10,6 +10,7 @@ import {
   useWriteContract,
 } from "wagmi";
 
+import { AgentLowerCommissionPanel } from "@/components/commerce/agent-lower-commission-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -20,12 +21,11 @@ import {
   agentedPriceMeetsFloor,
 } from "@/components/marketplace/seller-net-calculator";
 import {
-  COMPENSATION_FORM,
   DENOMINATION_KIND,
   type CompensationForm,
 } from "@/lib/commerce/denomination";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
-import { deriveFixedPriceOpenOptions } from "@/lib/commerce/fixed-price-open-options";
+import { deriveOpenableTerms } from "@/lib/commerce/openable-terms";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
@@ -34,8 +34,11 @@ import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-const SETTLEMENT_NOTE_ONLY_OPTIONS = deriveFixedPriceOpenOptions({
+/** Native-only stub so the settlement-note chrome can render without open pairings. */
+const SETTLEMENT_NOTE_ONLY_OPTIONS = deriveOpenableTerms({
+  mode: "fixedPrice",
   modeAvailable: true,
+  configResolved: true,
   native: { label: "ETH", decimals: 18 },
   paymentTokens: [],
   currencyFeeds: [],
@@ -65,17 +68,9 @@ function parsePrice1e8(input: string): bigint | null {
   }
 }
 
-function parseCommissionBps(input: string): number | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const pct = Number(trimmed);
-  if (!Number.isFinite(pct) || pct < 0) return null;
-  return Math.round(pct * 100);
-}
-
 /**
- * Runner amends a live fixed-price consignment: price freely (subject to the
- * mandate floor) and commission downward only (`lowerCommission`).
+ * Runner amends a live fixed-price consignment price (`setPrice`).
+ * Commission concessions use the shared {@link AgentLowerCommissionPanel}.
  */
 export function AgentUpdateListingPanel({
   chainId,
@@ -104,7 +99,6 @@ export function AgentUpdateListingPanel({
   const [priceInput, setPriceInput] = useState(() =>
     formatFiat1e8(currentPrice1e8),
   );
-  const [commissionInput, setCommissionInput] = useState("");
   const [settlementNote, setSettlementNote] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
@@ -124,24 +118,12 @@ export function AgentUpdateListingPanel({
   }, [onChainNote]);
 
   const price1e8 = useMemo(() => parsePrice1e8(priceInput), [priceInput]);
-  const nextCommissionBps = useMemo(
-    () => parseCommissionBps(commissionInput),
-    [commissionInput],
-  );
-  const commissionLowered =
-    nextCommissionBps != null && nextCommissionBps < commissionBps;
-  const commissionInvalid =
-    commissionInput.trim().length > 0 && !commissionLowered;
-
-  const effectiveCommissionBps = commissionLowered
-    ? nextCommissionBps
-    : commissionBps;
 
   const meetsFloor = agentedPriceMeetsFloor({
     price: price1e8,
     floor: floor1e8,
     compensationForm,
-    commissionBps: effectiveCommissionBps,
+    commissionBps,
     platformFeeBps,
   });
 
@@ -153,9 +135,7 @@ export function AgentUpdateListingPanel({
     if (!market) return "Fixed price sales are not available on this chain.";
     if (platformFeeBps == null) return "Loading platform fee…";
     if (price1e8 == null) return "Enter a valid asking price.";
-    if (commissionInvalid) {
-      return "Commission can only be lowered.";
-    }
+    if (price1e8 === currentPrice1e8) return "Enter a new asking price.";
     if (!meetsFloor) return "Mandate floor not met — raise the price.";
     return null;
   }, [
@@ -163,7 +143,7 @@ export function AgentUpdateListingPanel({
     market,
     platformFeeBps,
     price1e8,
-    commissionInvalid,
+    currentPrice1e8,
     meetsFloor,
   ]);
 
@@ -172,28 +152,15 @@ export function AgentUpdateListingPanel({
     if (wrongChain) await switchChainAsync?.({ chainId: wc });
     setTxError(null);
     try {
-      if (commissionLowered && nextCommissionBps != null) {
-        const loweredOk = await runTx(() =>
-          writeContractAsync({
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "lowerCommission",
-            args: [tid, nextCommissionBps],
-          }),
-        );
-        if (!loweredOk) return;
-      }
-      if (price1e8 !== currentPrice1e8) {
-        const pricedOk = await runTx(() =>
-          writeContractAsync({
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "setPrice",
-            args: [tid, price1e8],
-          }),
-        );
-        if (!pricedOk) return;
-      }
+      const pricedOk = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: FixedPriceConsignmentAbi,
+          functionName: "setPrice",
+          args: [tid, price1e8],
+        }),
+      );
+      if (!pricedOk) return;
       onSuccess();
     } catch (err) {
       setTxError(txErrorMessage(err));
@@ -202,9 +169,6 @@ export function AgentUpdateListingPanel({
     market,
     meetsFloor,
     price1e8,
-    currentPrice1e8,
-    commissionLowered,
-    nextCommissionBps,
     wrongChain,
     switchChainAsync,
     wc,
@@ -216,6 +180,18 @@ export function AgentUpdateListingPanel({
 
   return (
     <div className="mt-3 space-y-3 border-t border-border-default pt-3">
+      <AgentLowerCommissionPanel
+        mode="fixedPrice"
+        chainId={chainId}
+        tokenId={tokenId}
+        live={true}
+        isConsignmentAgent={isAgentWallet}
+        compensationForm={compensationForm}
+        snapshotCommissionBps={commissionBps}
+        onChanged={onSuccess}
+        embedded
+      />
+
       <div className="space-y-2">
         <Label htmlFor={`update-price-${tokenId}`}>
           Asking price ({listingCurrency})
@@ -231,34 +207,11 @@ export function AgentUpdateListingPanel({
         />
       </div>
 
-      {compensationForm === COMPENSATION_FORM.Commission && (
-        <div className="space-y-2">
-          <Label htmlFor={`update-commission-${tokenId}`}>
-            Lower your commission (%)
-          </Label>
-          <Input
-            id={`update-commission-${tokenId}`}
-            inputMode="decimal"
-            placeholder={(commissionBps / 100).toFixed(2)}
-            value={commissionInput}
-            onChange={(e) => setCommissionInput(e.target.value)}
-            disabled={busy}
-            className="border-border-default bg-bg-card"
-          />
-          {commissionInvalid && (
-            <p className="text-xs text-status-error">
-              Enter a value below {(commissionBps / 100).toFixed(2)}%.
-              Commission can only be lowered.
-            </p>
-          )}
-        </div>
-      )}
-
       <SellerNetCalculator
         price1e8={price1e8}
         floor1e8={floor1e8}
         compensationForm={compensationForm}
-        commissionBps={effectiveCommissionBps}
+        commissionBps={commissionBps}
         platformFeeBps={platformFeeBps}
         currencyCode={listingCurrency}
       />

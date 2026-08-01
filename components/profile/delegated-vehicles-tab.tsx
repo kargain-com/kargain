@@ -2,16 +2,22 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
+import { erc20Abi } from "viem";
+import { useReadContract } from "wagmi";
 
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { getOwnerMandates } from "@/app/actions/commerce-mandates";
+import { OwnerLowerFloorPanel } from "@/components/commerce/owner-lower-floor-panel";
 import { ConsignmentPortfolioRow } from "@/components/consignment/consignment-portfolio-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { ConsignmentRecord } from "@/lib/commerce/ponder-consignment";
+import { isZeroAddress } from "@/lib/commerce/consignment";
+import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
+import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -29,6 +35,51 @@ function phaseStatusLabel(row: ConsignmentRecord): string {
   if (row.phase === "held") return "Settlement hold";
   if (row.phase === "returned") return "Returned";
   return "Closed";
+}
+
+function DelegatedLiveFloor({
+  row,
+  onChanged,
+}: {
+  row: ConsignmentRecord;
+  onChanged: () => void;
+}) {
+  const hasAgent = Boolean(row.agent && !isZeroAddress(row.agent));
+  const needsErc20 =
+    row.denominationKind === DENOMINATION_KIND.Asset &&
+    Boolean(row.asset) &&
+    !isZeroAddress(row.asset);
+  const { data: erc20Decimals } = useReadContract({
+    address: row.asset,
+    abi: erc20Abi,
+    functionName: "decimals",
+    chainId: wagmiChainId(row.chainId),
+    query: { enabled: hasAgent && needsErc20 },
+  });
+  const units = floorDisplayUnits({
+    denominationKind: row.denominationKind,
+    currencyCode: row.currencyCode,
+    asset: row.asset,
+    erc20Decimals:
+      typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+  });
+
+  if (!hasAgent || !units) return null;
+
+  return (
+    <OwnerLowerFloorPanel
+      mode={row.mode}
+      chainId={row.chainId}
+      tokenId={row.tokenId}
+      live={true}
+      isPassportOwner={true}
+      snapshotFloor={row.floor}
+      floorDecimals={units.decimals}
+      floorUnitLabel={units.unitLabel}
+      compensationForm={row.compensationForm}
+      onChanged={onChanged}
+    />
+  );
 }
 
 /**
@@ -91,6 +142,12 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
     awaitingQuery.data?.ponderError === "PONDER_UNAVAILABLE" ||
     liveQuery.data?.ponderError === "PONDER_UNAVAILABLE" ||
     pastQuery.data?.ponderError === "PONDER_UNAVAILABLE";
+
+  const refresh = () => {
+    void awaitingQuery.refetch();
+    void liveQuery.refetch();
+    void pastQuery.refetch();
+  };
 
   if (!modesReady) {
     return (
@@ -167,7 +224,11 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
                   {shortChainName(row.chainId)}
                 </span>
               }
-            />
+            >
+              {(row.phase === "offered" || row.phase === "binding") && (
+                <DelegatedLiveFloor row={row} onChanged={refresh} />
+              )}
+            </ConsignmentPortfolioRow>
           ))}
         </ul>
       </section>
