@@ -22,7 +22,7 @@ Identical commercial stacks on Base Sepolia (**84532**) and Ethereum Sepolia (**
 
 **Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook) · [SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)
 
-**Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. `2.1.0-rc.1` for FixedPriceConsignment / AscendingConsignment). Indexer migration follows generation, not semver major alone.
+**Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. FixedPriceConsignment `2.3.0-rc.1`, AscendingConsignment `2.2.0-rc.1`). Indexer migration follows generation, not semver major alone.
 
 ---
 

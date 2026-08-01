@@ -97,7 +97,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Commerce mode protection bounds (July 2026) | `commerce_mode.minProtectionWindow` + `maxProtectionWindow` (`AuctionRulesSet`) — **full reindex** with Nuclear #2 (**done** July 30); lot `ascending_terms.protectionWindow` meaning unchanged |
 | FixedPrice per-feed staleness (July 2026) | `commerce_mode.nativeUsdStalenessTolerance`; `stalenessTolerance` on `commerce_payment_token` / `commerce_currency_feed`; event `NativeUsdStalenessToleranceSet` — **full reindex** with Nuclear #2 FixedPrice `2.3.0-rc.1` (**done** July 30) |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
-| Contract redeploy | KarPassport / Marketplace address change (Nuclear / Phase 5) |
+| Contract redeploy | KarPassport / FixedPrice / Ascending / gateway address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
 | Stuck / corrupt sync | Ponder refuses to start after config change |
 | `MigrationError` after deploy | New `ponder.schema.ts` in Docker image without `ponder-reindex.sql` |

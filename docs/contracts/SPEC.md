@@ -64,7 +64,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 |------|------|-----|
 | Listing currency | Enum (`USD` / `EUR`) | `bytes32` registry + Chainlink feeds per currency |
 | Marketplace governance | Deployer EOA as `upgradeAuthority` | `Timelock48h` as `upgradeAuthority` |
-| Agent sales | None | Dépôt-vente: authorize → listOnBehalf → fee split |
+| Agent sales | None | Dépôt-vente: mandate grant → `open*FromMandate` → fee split |
 | External payment | None | `setSettlementNote` + `confirmExternalPayment` |
 | KarPassport tokenId | Sequential from 0 | `chainId << 128 \| localSequence` |
 | Disputes | Deposit-free; D6 withdraw via `reportDiscrepancy` | BondedChallenge `open`/`withdraw`/`judge`/`conclude`; exact `disputeDeposit`; encumbrance `may` |
@@ -81,7 +81,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 
 ---
 
-### I.2. KarPassport v1.2.0
+### I.2. KarPassport (`1.8.0-rc.1`)
 
 ### Philosophy (unchanged from v1)
 
@@ -210,7 +210,7 @@ FixedPriceConsignment `VERSION` **`2.3.0-rc.1`**. AscendingConsignment `VERSION`
 
 **`setDisputeDeposit`:** rejects zero (`ZeroDisputeDeposit`) so the deterrent cannot be switched off by value. There is **no** on-chain ceiling; governance can raise the bond high enough to make verifications effectively unchallengeable — control is Timelock48h visibility and cancellability. Open challenges keep the bond captured at open.
 
-**Accepted risk — open-window griefing freeze:** a freeze of up to `DISPUTE_WINDOW` is available for the cost of gas. It blocks auctions, bridging, and metadata updates — **not** marketplace fixed-price sale already offered. New consignments are refused via `may(OpenConsignment)` while challenged.
+**Accepted risk — open-window griefing freeze:** a freeze of up to `DISPUTE_WINDOW` is available for the cost of gas. It blocks auctions, bridging, and metadata updates — **not** a FixedPrice consignment already offered for buy. New consignments are refused via `may(OpenConsignment)` while challenged.
 
 ### Unchanged v1.1 behaviors
 
@@ -218,7 +218,7 @@ FixedPriceConsignment `VERSION` **`2.3.0-rc.1`**. AscendingConsignment `VERSION`
 - `appendRecord`, `reportDiscrepancy`, `appendAttestation` — record-only paths unchanged in role.
 - `verifyPassport`: active verifier only; `CannotSelfVerify` if verifier owns token.
 - **E5:** Buyer inherits `passportStatus` on transfer; no auto-reset on sale.
-- Escrow ownership blocks owner-only mutations (`NotOwner` while listed).
+- Mode (or other protocol) custody of the NFT blocks owner-only mutations (`NotOwner` while `ownerOf` is not the wallet).
 
 ### KarPassport — function reference
 
@@ -314,7 +314,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
 - **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed.
-- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Claim refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Auction `asset`.
+- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Claim refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
 - **Two-phase leave:** `leave()` ends the role immediately (`active = false`, burn try/catch), sets `unlockAt = now + UNBONDING_PERIOD` (**14 days**, equal to passport `DISPUTE_WINDOW` by design). `claimStake()` after unlock pays via ClaimablePayouts (failed push → withdrawable claim). **No slashing** in this ship. There is **no** dispute↔leave coupling — a future slash design must use a monotonic “not before” unlock timestamp (bug → early unlock), never a decrementing challenge counter (bug → permanent lock).
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
 - **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). The Kargain `/kar-pro` UI composes service margin (nav display currency) plus an estimated `verifyPassport` gas cost at save time and writes the sum as a single wei value via `setVerificationFee`. Accepted off-chain payment methods are signaled in Nostr kind 0 as optional `verifierPaymentMethods` (`eth`, `usdc`, `lightning`; absent = all three). Workflow: verifier sets fee → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
@@ -372,7 +372,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAINLINK_FEEDS.usdcUsdFeed` when present; when that entry is zero, Nuclear still admits USDC with `feed=0` and **announces** that fiat-denominated USDC sales are unavailable on that chain (asset-only). Never invent a feed or treat zero as a silent peg. Timelock may later `approvePaymentToken` with a non-zero feed and tolerance; once set, feed is monotonic. **Mainnet feed rows** (Ethereum `1`, Base `8453`) in `CHAINLINK_FEEDS` are configuration only — Nuclear deploy remains `isCommercialChainId` → **84532 | 11155111**; populating mainnet feeds does not unlock a mainnet Nuclear path (§7.6). A single global bound (e.g. 3600s) cannot serve both ETH/USD (~hourly) and USDC/USD (~24h) heartbeats — Base mainnet USDC/USD would fail a 3600s global check when probed ~18–20h stale (motivation for per-feed tolerances). Seller open UI offers Fiat×token only when the admitted token has a feed (`lib/commerce/openable-terms.ts` / `deriveOpenableTerms`; same derivation for mandate grant); Asset denomination is always offered for admitted assets.
 
-**Nuclear admit tolerances (P4 rule; RPC gap + Chainlink directory 2026-07-30):** Base Sepolia **84532** — native ETH/USD **2444s** (obs max 1222, hb 1200; obs governs); USDC feed zero (asset-only). Ethereum Sepolia **11155111** — native ETH/USD **7392s** (obs 3696, hb 3600; obs governs); USDC/USD **172 992s** (obs 86496, hb 86400; obs governs). **Full redeploy** both commercial chains required — nothing live survives; Timelock patch of the old global slot is rejected.
+**Nuclear admit tolerances (P4 rule; RPC gap + Chainlink directory 2026-07-30):** Base Sepolia **84532** — native ETH/USD **2444s** (obs max 1222, hb 1200; obs governs); USDC feed zero (asset-only). Ethereum Sepolia **11155111** — native ETH/USD **7392s** (obs 3696, hb 3600; obs governs); USDC/USD **172 992s** (obs 86496, hb 86400; obs governs). Shipped on commercial chains via **Nuclear #2 full redeploy** (July 2026) — Timelock patch of any prior global max-staleness slot is rejected.
 
 **Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
 
@@ -385,10 +385,10 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 | Duration bounds | **3–30 days** | Checked at open; Timelock `setAuctionRules` |
 | Protection bounds | **7–45 days** | Bounds, not a value — the opener chooses within them at open (`protectionWindow_`), captured into `AuctionTerms`, applied at `settle` |
 | Settlement challenge window | **14 days** | Ascending BondedChallenge instance — **same length** as KarPassport verification (model §7.3: discovery time lives in the protection hold, not in a second long clock) |
-| Abandonment window | **30 days** | Fixed when reversal becomes pending |
+| Abandonment window | **30 days** | Length captured into `AuctionTerms` at open; **deadline** set when reversal becomes pending |
 | Challenge bond | **0.01 ETH** | Exact match at `open` |
 
-Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Every governing term of a running lot is a snapshot** — governance storage is read only when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot: …" / "snapshot: minIncrementBps frozen at open…").
+Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — governance storage for those fields is read when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot…" / "snapshot: minIncrementBps frozen…"). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is captured when a challenge opens. See the provenance table.
 
 #### Parameter provenance — what to read, and from where
 
@@ -529,7 +529,7 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 
 ### Non-custodial properties
 
-- Marketplace holds NFTs only during active listings; payments settle atomically in `_settleNative` / `_settleErc20`.
+- Commerce modes hold NFTs only during live consignments / holds; payments settle atomically via `_paySplit` / ClaimablePayouts (failed pushes become withdrawable claims).
 - KarProStaking locks user stake; owner cannot drain verifier stakes.
 - Platform does not hold user keys; `platformRecipient` receives fee slice only.
 
@@ -542,10 +542,10 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 | Risk | Mitigation / acceptance |
 |------|-------------------------|
 | **`platformRecipient` immutable** | Wrong address at deploy is permanent; verify before deploy |
-| **Open-window griefing freeze** | Up to 14d freeze (auctions/bridge/URI) for gas cost; marketplace sale still allowed; counter = owner-funded independent Reject → bond to platform |
+| **Open-window griefing freeze** | Up to 14d freeze (auctions/bridge/URI) for gas cost; FixedPrice buy on an already-offered consignment still allowed; counter = owner-funded independent Reject → bond to platform |
 | **No bond ceiling** | Governance can raise deposit enough to make verifications unchallengeable; Timelock48h visibility + cancel is the control |
 | **Reverting seller** | Seller contract wallet can block ETH payout; document for buyers |
-| **Agent price / commission** | Under Commission the agent may lower (never raise) snapshotted `commissionBps` (C2); under Margin there is no agent fee object — the agent sets price and keeps the residual. Owner protection is snapshotted `floor` via `_computeAgentedSplitAmounts` / `BelowFloor` (C6); buyers should quote immediately before purchase |
+| **Agent price / commission** | Under Commission the agent may lower (never raise) snapshotted `commissionBps` (C2); under Margin there is no agent fee object — the agent sets price and keeps the residual. Owner protection is snapshotted `floor` via `_computeAgentedSplitAmounts` / `BelowFloor` (C6). **Split arithmetic:** source (S32) is platform floored first + owner floored kept rate + agent residual — see [PENDING-REDEPLOY §1](../PENDING-REDEPLOY.md); **deployed** lots still use pre-S32 owner-residual-after-two-floored-cuts until UUPS. Buyers should quote immediately before purchase |
 | **Oracle staleness** | Per-feed `stalenessTolerance` on FixedPrice (native, payment token, currency); bounds 60s–72h; P4 rule `2 × max(obs, publishedHb)`; stale feeds revert quote/buy (`StalePrice`); no global default |
 | **External payment trust** | `confirmExternalPayment` is seller attestation — no on-chain payment proof |
 | **`verificationFee`** | Informational on-chain signal only — no escrow or payment enforcement; Kargain UI may facilitate direct owner→verifier ETH (memo) or USDC transfer |
@@ -740,7 +740,7 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 
 ### 12.10 84532 hub migration (testnet) — Nuclear
 
-`KarPassport` is immutable; commerce **modes** are UUPS but the committed stack still lacks mode addresses until **Nuclear #2**. Testnet mode is **Nuclear**: deploy the identical full stack (passport + modes + gateway) on both 84532 and 11155111; prior stacks move to historical/denylist; Ponder reindexes from new hub addresses. Existing testnet-RC passports are abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from first deploy.
+`KarPassport` is immutable; commerce **modes** are UUPS. **Nuclear #2** (July 2026) deployed the identical full stack (passport + modes + gateway) on both 84532 and 11155111; prior stacks moved to historical/denylist; Ponder reindexed from the new hub/spoke start blocks. Existing testnet-RC passports from earlier stacks were abandoned (no user value). Result: a symmetric, §12.3/§12.4-safe protocol from that cutover.
 
 ### 12.11 Recovery (Approach A) — kill then restore
 
@@ -912,15 +912,15 @@ Normative on-chain rules: **Part I** verification challenge (BondedChallenge ins
 ### On-chain (historical v1.x summary)
 
 - `disputePassport` — VERIFIED → DISPUTED; locks deposit.
-- `withdrawDispute` — opener only, before window; → VERIFIED + full refund.
-- `resolveDispute` — independent active verifier only (not opener, owner, or recorded verifier), **before** window; afterwards only `expireDispute`.
+- `withdrawDispute` — opener only, before window; → VERIFIED + full refund (superseded by BondedChallenge `withdraw`).
+- `resolveDispute` — independent active verifier only (not opener, owner, or recorded verifier), **before** window; afterwards only `expireDispute` (superseded by `judge` / `conclude`).
 - `expireDispute` — anyone after window; → UNVERIFIED (lapse, no merits); bond → platform.
 - `reportDiscrepancy` — light record only; does **not** withdraw a dispute or change status.
 
 ### Owner during DISPUTED
 
 - `appendRecord` for clarifications when owner holds NFT.
-- **Not possible while listed** (escrow = owner).
+- **Not possible while a mode holds the NFT** (`ownerOf` is the consignment contract).
 - Owner cannot resolve; hire an independent KarPro.
 
 ### After Confirm or expire → UNVERIFIED
@@ -1001,7 +1001,7 @@ Verbatim from contract headers:
 //   Pre-release: -rc.N for release candidates, remove on mainnet deploy
 //   Immutable contracts (KarPassport, KarProPass, KarProStaking):
 //     any change = new deployment = bump MINOR or MAJOR
-//   Upgradeable contracts (MarketplaceEscrow):
+//   Upgradeable contracts (FixedPriceConsignment, AscendingConsignment):
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 ```
 
@@ -1024,8 +1024,8 @@ Verbatim from contract headers:
 | NATIVE-priced listings | None | `CURRENCY_NATIVE` direct amount |
 | Multi-token pay | ETH + USDC | Native + any approved ERC-20 |
 | Marketplace admin | Deployer EOA | Timelock48h |
-| Dispute withdraw | Off-chain convention (`reportDiscrepancy`) | On-chain `withdrawDispute` + deposit refund |
-| Dispute resolve | `resolveDispute(bool uphold)` | `DisputeOutcome` enum + deposit routing |
+| Dispute withdraw | Off-chain convention (`reportDiscrepancy`) | BondedChallenge `withdraw` + bond refund (KarPassport) |
+| Dispute resolve | `resolveDispute(bool uphold)` | BondedChallenge `judge` / `conclude` + deposit routing |
 | Self-resolve guard | None | `CannotResolveOwnDispute` (opener / owner / recorded verifier) |
 | tokenId | Sequential | Chain-prefixed (`chainId << 128`) |
 | Verifier fee signal | None | `verificationFee` |
@@ -1034,7 +1034,7 @@ Verbatim from contract headers:
 
 ---
 
-*Last updated: June 27, 2026 — generation v2 deployed to Base Sepolia (84532) as `-rc.1` release candidates; 238 Hardhat tests.*
+*Last updated: August 2026 — Nuclear #2 Modes live on 84532 / 11155111; behavioural sections describe **source** (see [PENDING-REDEPLOY](../PENDING-REDEPLOY.md) when source ahead of chain); address/VERSION tables describe **chain**. Part IV is a historical generation-v2 migration table — BondedChallenge superseded `withdrawDispute` / `DisputeOutcome`.*
 
 ---
 

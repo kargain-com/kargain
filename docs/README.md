@@ -32,7 +32,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | June 2026 generation v2 deploy — smoke/verify + **completed** VPS cutover |
-| [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | July 2026 AuctionEscrow additive deploy on 84532 |
+| [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | **Historical** — July 2026 AuctionEscrow additive deploy on 84532 (retired; Modes replace auctions) |
 | [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | July 2026 hub↔spoke bridge pathway (84532 ↔ 11155111) |
 | [ops/deploys/multichain-browser-e2e-checklist.md](./ops/deploys/multichain-browser-e2e-checklist.md) | Maintainer dual-chain browser/ops checklist (testnet) |
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
