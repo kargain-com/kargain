@@ -403,6 +403,211 @@ describe("FixedPriceConsignment", () => {
     );
   });
 
+  // ---- Base-scaled fiat floor snapshot (PENDING-REDEPLOY §5) ----
+  // Construction: open proves F ≤ baseFiat ⇒ floorAsset = mulDiv(baseAsset, F, baseFiat) ≤ baseAsset
+  // ⇒ settle cannot BelowFloor. Independent quote(F) deleted.
+
+  const BPS = 10_000n;
+  function commissionOwnerShare(settled: bigint, commissionBps: bigint) {
+    const cut = PLATFORM_FEE_BPS + commissionBps;
+    return cut >= BPS ? 0n : (settled * (BPS - cut)) / BPS;
+  }
+  function marginScaleBase(settled: bigint) {
+    return settled - (settled * PLATFORM_FEE_BPS) / BPS;
+  }
+
+  it("base-scaled floor: Commission zero headroom, native — buy succeeds", async () => {
+    const commissionBps = 500n;
+    const price = FIAT_100_USD;
+    const floor = commissionOwnerShare(price, commissionBps);
+    assert.ok(floor > 0n);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [
+        TOKEN,
+        agent.account.address,
+        0n,
+        ZERO,
+        DENOM_USD,
+        floor,
+        { form: 1, commissionBps: Number(commissionBps) },
+      ],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_USD, price], { account: agent.account });
+
+    const amount = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    const expectedFloorAsset = commissionOwnerShare(amount, commissionBps);
+
+    const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+    const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+
+    await mode.write.buy([TOKEN], { account: buyer.account, value: amount });
+
+    const platformFee = (amount * PLATFORM_FEE_BPS) / BPS;
+    assert.equal(
+      (await publicClient.getBalance({ address: platform.account.address })) - platformBefore,
+      platformFee,
+    );
+    assert.equal(
+      (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+      expectedFloorAsset,
+    );
+    assert.equal(
+      (await publicClient.getBalance({ address: agent.account.address })) - agentBefore,
+      amount - platformFee - expectedFloorAsset,
+    );
+  });
+
+  it("base-scaled floor: Commission zero headroom, USDC-6 — buy succeeds", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await admitWithUsdFeed(usdc.address);
+
+    const commissionBps = 500n;
+    const price = FIAT_100_USD;
+    const floor = commissionOwnerShare(price, commissionBps);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [
+        TOKEN,
+        agent.account.address,
+        0n,
+        usdc.address,
+        DENOM_USD,
+        floor,
+        { form: 1, commissionBps: Number(commissionBps) },
+      ],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_USD, price], { account: agent.account });
+
+    const amount = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    const expectedFloorAsset = commissionOwnerShare(amount, commissionBps);
+
+    await usdc.write.mint([buyer.account.address, amount]);
+    await usdc.write.approve([mode.address, amount], { account: buyer.account });
+
+    const sellerBefore = (await usdc.read.balanceOf([owner.account.address])) as bigint;
+    await mode.write.buy([TOKEN], { account: buyer.account });
+    assert.equal(
+      ((await usdc.read.balanceOf([owner.account.address])) as bigint) - sellerBefore,
+      expectedFloorAsset,
+    );
+  });
+
+  it("base-scaled floor: Margin max floor F = P − ⌊P·p/B⌋, native — buy succeeds", async () => {
+    const price = FIAT_100_USD;
+    const floor = marginScaleBase(price);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_USD, floor, COMP_MARGIN],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_USD, price], { account: agent.account });
+
+    const amount = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    const expectedFloorAsset = marginScaleBase(amount);
+
+    const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+    const agentBefore = await publicClient.getBalance({ address: agent.account.address });
+    const platformBefore = await publicClient.getBalance({ address: platform.account.address });
+
+    await mode.write.buy([TOKEN], { account: buyer.account, value: amount });
+
+    const platformFee = (amount * PLATFORM_FEE_BPS) / BPS;
+    assert.equal(
+      (await publicClient.getBalance({ address: platform.account.address })) - platformBefore,
+      platformFee,
+    );
+    assert.equal(
+      (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+      expectedFloorAsset,
+    );
+    assert.equal(
+      (await publicClient.getBalance({ address: agent.account.address })) - agentBefore,
+      amount - platformFee - expectedFloorAsset,
+    );
+    assert.equal(expectedFloorAsset, amount - platformFee);
+  });
+
+  it("base-scaled floor: Margin max floor, USDC-6 — buy succeeds", async () => {
+    const usdc = await viem.deployContract("MockERC20Decimals", ["USDC", "USDC", 6]);
+    await admitWithUsdFeed(usdc.address);
+
+    const price = FIAT_100_USD;
+    const floor = marginScaleBase(price);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, usdc.address, DENOM_USD, floor, COMP_MARGIN],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_USD, price], { account: agent.account });
+
+    const amount = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    const expectedFloorAsset = marginScaleBase(amount);
+
+    await usdc.write.mint([buyer.account.address, amount]);
+    await usdc.write.approve([mode.address, amount], { account: buyer.account });
+
+    const sellerBefore = (await usdc.read.balanceOf([owner.account.address])) as bigint;
+    const agentBefore = (await usdc.read.balanceOf([agent.account.address])) as bigint;
+    await mode.write.buy([TOKEN], { account: buyer.account });
+    assert.equal(
+      ((await usdc.read.balanceOf([owner.account.address])) as bigint) - sellerBefore,
+      expectedFloorAsset,
+    );
+    assert.equal(
+      ((await usdc.read.balanceOf([agent.account.address])) as bigint) - agentBefore,
+      0n,
+    );
+  });
+
+  it("base-scaled floor: independent quote(F) would BelowFloor; mulDiv path succeeds", async () => {
+    // ETH/USD = $1999: for P=$100 and F=ownerShare(P), ⌊F·1e18/rate⌋ = ownerShare(A)+1.
+    // Old buy wrote that snapshot then _paySplit reverted BelowFloor. New path scales from base.
+    const ethUsd = 1_999n * 10n ** 8n;
+    await nativeFeed.write.setAnswer([ethUsd]);
+
+    const commissionBps = 500n;
+    const price = FIAT_100_USD;
+    const floor = commissionOwnerShare(price, commissionBps);
+
+    await mintAndApprove(TOKEN);
+    await mode.write.grant(
+      [
+        TOKEN,
+        agent.account.address,
+        0n,
+        ZERO,
+        DENOM_USD,
+        floor,
+        { form: 1, commissionBps: Number(commissionBps) },
+      ],
+      { account: owner.account },
+    );
+    await mode.write.openFromMandate([TOKEN, DENOM_USD, price], { account: agent.account });
+
+    const amount = (await mode.read.quoteBuy([TOKEN])) as bigint;
+    const baseAsset = commissionOwnerShare(amount, commissionBps);
+    const independentQuoteFloor = (floor * 10n ** 18n) / ethUsd;
+    assert.ok(
+      independentQuoteFloor > baseAsset,
+      `expected independent quote(F)=${independentQuoteFloor} > owner(A)=${baseAsset}`,
+    );
+
+    const sellerBefore = await publicClient.getBalance({ address: owner.account.address });
+    await mode.write.buy([TOKEN], { account: buyer.account, value: amount });
+    assert.equal(
+      (await publicClient.getBalance({ address: owner.account.address })) - sellerBefore,
+      baseAsset,
+    );
+  });
+
   // ---- External path (C7 / R4) ----
 
   it("external: note required; NFT moves; no money moved; poisoned floor ignored", async () => {

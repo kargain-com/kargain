@@ -374,6 +374,22 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         if (agent != msg.sender) revert NotConsignmentAgent();
     }
 
+    /// @dev Quantity open proved the agented floor fits inside (C6 / P3 scale base).
+    /// Margin: settled − ⌊settled·p/B⌋. Commission: owner share ⌊settled·(B−p−c)/B⌋ (0 if cut ≥ B).
+    function _agentedFloorScaleBase(
+        uint256 settled,
+        Compensation memory comp,
+        uint16 feeBps
+    ) internal pure returns (uint256) {
+        uint256 platform = (settled * feeBps) / _BPS_DENOM;
+        if (comp.form == CompensationForm.Margin) {
+            return settled - platform;
+        }
+        uint256 cutBps = uint256(feeBps) + uint256(comp.commissionBps);
+        if (cutBps >= _BPS_DENOM) return 0;
+        return (settled * (_BPS_DENOM - cutBps)) / _BPS_DENOM;
+    }
+
     /// @dev Single BelowFloor site for agented open, setPrice, and settle (C6 / §5.1).
     /// Commission: platform takes a floored first cut; owner is one floored fraction of
     /// settled (monotonic in S — S32); agent takes the residual (truncation dust).
@@ -389,16 +405,14 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
         bool ok;
 
         if (comp.form == CompensationForm.Margin) {
-            ok = settled >= platform + uint256(floor);
+            // scaleBase = settled − platform; floor must fit in that headroom.
+            ok = uint256(floor) <= _agentedFloorScaleBase(settled, comp, feeBps);
             if (ok) {
                 ownerAmount = floor;
                 agentAmount = settled - platform - floor;
             }
         } else {
-            uint256 cutBps = uint256(feeBps) + uint256(comp.commissionBps);
-            ownerAmount = cutBps >= _BPS_DENOM
-                ? 0
-                : (settled * (_BPS_DENOM - cutBps)) / _BPS_DENOM;
+            ownerAmount = _agentedFloorScaleBase(settled, comp, feeBps);
             ok = settled >= platform + ownerAmount;
             if (ok) {
                 agentAmount = settled - platform - ownerAmount;

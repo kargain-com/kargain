@@ -5,6 +5,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
@@ -234,7 +235,14 @@ contract FixedPriceConsignment is ConsignmentBase, UUPSUpgradeable, IERC721Recei
         }
 
         if (c.denomination.kind == DenominationKind.Fiat && c.agent != address(0) && c.floor != 0) {
-            uint256 floorAsset = _quoteAmount(c.floor, c.denomination, asset);
+            // P3: floor stays fiat until payment. Scale by the Margin/Commission base open already
+            // proved F fits in (M3: never convert at open). Open ⇒ F ≤ baseFiat ⇒
+            // floorAsset ≤ baseAsset ⇒ settle cannot BelowFloor on that comparison.
+            // baseFiat == 0 is unreachable here (floor != 0 and open passed C6).
+            // Independent quote(F) deleted — that truncated across unit bases.
+            uint256 baseFiat = _agentedFloorScaleBase(c.price, c.compensation, c.platformFeeBps);
+            uint256 baseAsset = _agentedFloorScaleBase(amount, c.compensation, c.platformFeeBps);
+            uint256 floorAsset = Math.mulDiv(baseAsset, uint256(c.floor), baseFiat);
             if (floorAsset > type(uint128).max) revert BadOracleAnswer();
             _setSnapshotFloor(tokenId, uint128(floorAsset));
         }
