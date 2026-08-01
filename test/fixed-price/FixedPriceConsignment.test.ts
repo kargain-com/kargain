@@ -853,10 +853,19 @@ describe("FixedPriceConsignment", () => {
 
   // ---- PA1: undeliverable split legs become claims (buy → _paySplit → _payNative) ----
 
-  function splitLegs(price: bigint, commissionBps: bigint) {
+  /** Direct (and Margin platform leg): platform-first remainder. */
+  function directSplitLegs(price: bigint) {
     const platformLeg = (price * PLATFORM_FEE_BPS) / 10_000n;
-    const agentLeg = (price * commissionBps) / 10_000n;
-    const ownerLeg = price - platformLeg - agentLeg;
+    return { platformLeg, agentLeg: 0n, ownerLeg: price - platformLeg };
+  }
+
+  /** Commission (S32): platform = ⌊S·p/B⌋ first; owner = ⌊S·(B−p−c)/B⌋; agent = residual. */
+  function commissionSplitLegs(price: bigint, commissionBps: bigint) {
+    const BPS = 10_000n;
+    const platformLeg = (price * PLATFORM_FEE_BPS) / BPS;
+    const cut = PLATFORM_FEE_BPS + commissionBps;
+    const ownerLeg = cut >= BPS ? 0n : (price * (BPS - cut)) / BPS;
+    const agentLeg = price - platformLeg - ownerLeg;
     return { platformLeg, agentLeg, ownerLeg };
   }
 
@@ -871,7 +880,7 @@ describe("FixedPriceConsignment", () => {
 
   it("PA1: reverting owner leg credits claim; withdraw after accept", async () => {
     const price = parseEther("1");
-    const { platformLeg, ownerLeg } = splitLegs(price, 0n);
+    const { platformLeg, ownerLeg } = directSplitLegs(price);
     const seller = await viem.deployContract("RevertingRecipient", []);
     await seller.write.setAcceptEth([false]);
 
@@ -905,7 +914,7 @@ describe("FixedPriceConsignment", () => {
   it("PA1: reverting agent leg credits claim; withdraw after accept", async () => {
     const price = parseEther("1");
     const commissionBps = 500n;
-    const { platformLeg, agentLeg, ownerLeg } = splitLegs(price, commissionBps);
+    const { platformLeg, agentLeg, ownerLeg } = commissionSplitLegs(price, commissionBps);
     const agentSink = await viem.deployContract("RevertingRecipient", []);
     await agentSink.write.setAcceptEth([false]);
 
@@ -954,7 +963,7 @@ describe("FixedPriceConsignment", () => {
 
   it("PA1: reverting platform leg credits claim; withdraw after accept", async () => {
     const price = parseEther("1");
-    const { platformLeg, ownerLeg } = splitLegs(price, 0n);
+    const { platformLeg, ownerLeg } = directSplitLegs(price);
     const platformSink = await viem.deployContract("RevertingRecipient", []);
     await platformSink.write.setAcceptEth([false]);
 
@@ -992,7 +1001,7 @@ describe("FixedPriceConsignment", () => {
   it("PA1: all three legs reverting credit exact claims; withdraw each", async () => {
     const price = parseEther("1");
     const commissionBps = 500n;
-    const { platformLeg, agentLeg, ownerLeg } = splitLegs(price, commissionBps);
+    const { platformLeg, agentLeg, ownerLeg } = commissionSplitLegs(price, commissionBps);
     assert.equal(platformLeg + agentLeg + ownerLeg, price);
 
     const seller = await viem.deployContract("RevertingRecipient", []);

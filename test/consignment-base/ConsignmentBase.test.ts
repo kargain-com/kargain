@@ -284,7 +284,7 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
       settled,
       TOKEN,
     ])) as [bigint, bigint, bigint];
-    // open 250 bps: platform 50k; agent 5% of gross = 100_000; owner 1_850_000
+    // open 250 bps snapshotted: platform ⌊S·250/B⌋; owner ⌊S·9250/B⌋; agent residual
     assert.equal(platformCut, 50_000n);
     assert.equal(agentCut, 100_000n);
     assert.equal(ownerCut, 1_850_000n);
@@ -369,9 +369,10 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
       settled,
       TOKEN,
     ])) as [bigint, bigint, bigint];
+    // Monotonic Commission: platform = ⌊S·p/B⌋ first; owner = ⌊S·(B−p−c)/B⌋; agent = residual.
     const expectedPlatform = (settled * PLATFORM_FEE_BPS) / 10_000n;
-    const expectedAgent = (settled * 500n) / 10_000n;
-    const expectedOwner = settled - expectedPlatform - expectedAgent;
+    const expectedOwner = (settled * (10_000n - PLATFORM_FEE_BPS - 500n)) / 10_000n;
+    const expectedAgent = settled - expectedPlatform - expectedOwner;
     assert.equal(platformAmt, expectedPlatform);
     assert.equal(agentAmt, expectedAgent);
     assert.equal(ownerAmt, expectedOwner);
@@ -609,5 +610,228 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
     assert.ok(base.includes("function _may("));
     assert.ok(!base.includes("_mayOpenConsignment"));
     assert.ok(harnessSrc.includes("mayPermit"));
+  });
+
+  describe("S32 monotonic Commission split", () => {
+    const BPS = 10_000n;
+    const TOKEN_S32 = 42n;
+
+    function monoCommissionLegs(S: bigint, p: bigint, c: bigint) {
+      const platform = (S * p) / BPS;
+      const cut = p + c;
+      const ownerAmt = cut >= BPS ? 0n : (S * (BPS - cut)) / BPS;
+      const agent = S - platform - ownerAmt;
+      return { platform, owner: ownerAmt, agent };
+    }
+
+    /** Pre-fix platform-first remainder (documented baseline; not on-chain). */
+    function oldCommissionOwner(S: bigint, p: bigint, c: bigint) {
+      const platform = (S * p) / BPS;
+      const agent = (S * c) / BPS;
+      return S - platform - agent;
+    }
+
+    async function prepareToken(tokenId: bigint) {
+      await harness.write.setPassportOwner([tokenId, owner.account.address]);
+      await harness.write.setEscrowApproved([tokenId, true]);
+      await harness.write.setMayOpen([tokenId, true]);
+    }
+
+    async function openCommissionLot(opts: {
+      tokenId: bigint;
+      feeBps: number;
+      commissionBps: number;
+      floor: bigint;
+      reserve: bigint;
+    }) {
+      await prepareToken(opts.tokenId);
+      await harness.write.forceSetPlatformFeeBps([opts.feeBps]);
+      const comp = { form: 1, commissionBps: opts.commissionBps } as const;
+      await harness.write.grant(
+        [opts.tokenId, agent.account.address, 0n, ZERO, DENOM_ASSET, opts.floor, comp],
+        { account: owner.account },
+      );
+      await harness.write.openFromMandate([opts.tokenId, DENOM_ASSET, opts.reserve], {
+        account: agent.account,
+      });
+    }
+
+    it("documents old non-monotonic 999→1000; on-chain clears the danger band after legal open", async () => {
+      const p = 10n;
+      const c = 500n;
+      // Old legs (platform-first remainder): owner(999)=950, owner(1000)=949 — non-monotonic.
+      assert.equal(oldCommissionOwner(999n, p, c), 950n);
+      assert.equal(oldCommissionOwner(1000n, p, c), 949n);
+      assert.ok(oldCommissionOwner(1000n, p, c) < oldCommissionOwner(999n, p, c));
+
+      // New math: owner(999)=948, owner(1000)=949 — monotonic; open at 999 with floor 950 fails.
+      assert.equal(monoCommissionLegs(999n, p, c).owner, 948n);
+      assert.equal(monoCommissionLegs(1000n, p, c).owner, 949n);
+      await prepareToken(TOKEN_S32 + 1n);
+      await harness.write.forceSetPlatformFeeBps([10]);
+      await harness.write.grant(
+        [
+          TOKEN_S32 + 1n,
+          agent.account.address,
+          0n,
+          ZERO,
+          DENOM_ASSET,
+          950n,
+          { form: 1, commissionBps: 500 },
+        ],
+        { account: owner.account },
+      );
+      await assert.rejects(
+        harness.write.openFromMandate([TOKEN_S32 + 1n, DENOM_ASSET, 999n], {
+          account: agent.account,
+        }),
+        revertsWith("BelowFloor"),
+      );
+
+      // Open at the former danger amount with F = owner(R) under the new formula.
+      const R = 1000n;
+      const atR = monoCommissionLegs(R, p, c);
+      await openCommissionLot({
+        tokenId: TOKEN_S32,
+        feeBps: 10,
+        commissionBps: 500,
+        floor: atR.owner,
+        reserve: R,
+      });
+
+      for (const S of [R, R + 1n, 2_000n, 10_000n]) {
+        const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeSplitPublic([
+          S,
+          TOKEN_S32,
+        ])) as [bigint, bigint, bigint];
+        const expected = monoCommissionLegs(S, p, c);
+        assert.equal(platformAmt, expected.platform);
+        assert.equal(ownerAmt, expected.owner);
+        assert.equal(agentAmt, expected.agent);
+        assert.ok(ownerAmt >= atR.owner);
+        assert.equal(platformAmt + ownerAmt + agentAmt, S);
+      }
+    });
+
+    it("matrix: after open, every tested S ≥ R clears floor; legs conserve; platform = ⌊S·p/B⌋", async () => {
+      const cases: Array<{ feeBps: number; commissionBps: number; reserve: bigint }> = [
+        { feeBps: 0, commissionBps: 500, reserve: 2_000n },
+        { feeBps: 10, commissionBps: 500, reserve: 2_000n },
+        { feeBps: 250, commissionBps: 500, reserve: 2_000_000n },
+        { feeBps: 250, commissionBps: 10_000, reserve: 1_000_000n },
+      ];
+
+      for (const { feeBps, commissionBps, reserve } of cases) {
+        const tokenId = 1_000n + BigInt(feeBps) * 100n + BigInt(commissionBps);
+        await prepareToken(tokenId);
+        await harness.write.forceSetPlatformFeeBps([feeBps]);
+        const p = BigInt(feeBps);
+        const c = BigInt(commissionBps);
+        const atR = monoCommissionLegs(reserve, p, c);
+        const floor = atR.owner;
+        const comp = { form: 1, commissionBps } as const;
+        await harness.write.grant(
+          [tokenId, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, comp],
+          { account: owner.account },
+        );
+        await harness.write.openFromMandate([tokenId, DENOM_ASSET, reserve], {
+          account: agent.account,
+        });
+
+        const spreads = [reserve, reserve + 1n, reserve + 7n, reserve * 2n, reserve * 10n + 3n];
+        let prevOwner = -1n;
+        for (const S of spreads) {
+          const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeSplitPublic([
+            S,
+            tokenId,
+          ])) as [bigint, bigint, bigint];
+          const expected = monoCommissionLegs(S, p, c);
+          assert.equal(platformAmt, expected.platform, `p=${feeBps} c=${commissionBps} S=${S}`);
+          assert.equal(ownerAmt, expected.owner);
+          assert.equal(agentAmt, expected.agent);
+          assert.equal(platformAmt + ownerAmt + agentAmt, S);
+          assert.ok(ownerAmt >= floor);
+          assert.equal(platformAmt, (S * p) / BPS);
+          if (prevOwner >= 0n) assert.ok(ownerAmt >= prevOwner);
+          prevOwner = ownerAmt;
+        }
+      }
+    });
+
+    it("platform floored share survives commission at or above B − p", async () => {
+      // Pre-S32 (platform + ⌊S·c/B⌋): c = B and p > 0 → BelowFloor. Interim residual-to-platform
+      // completed the open with platform = 0. Final: platform stays ⌊S·p/B⌋; agent residual.
+      const p = 250n;
+      const cFull = BPS; // 100%
+      const cSqueeze = BPS - p; // owner kept bps = 0
+      const R = 1_000_000n;
+      const flooredAtR = (R * p) / BPS;
+      assert.ok(flooredAtR > 0n);
+
+      // Document old refusal at 100% commission.
+      const oldPlat = (R * p) / BPS;
+      const oldAgent = (R * cFull) / BPS;
+      assert.ok(R < oldPlat + oldAgent);
+
+      for (const { commissionBps, tokenOffset } of [
+        { commissionBps: Number(cFull), tokenOffset: 200n },
+        { commissionBps: Number(cSqueeze), tokenOffset: 201n },
+      ]) {
+        const tokenId = TOKEN_S32 + tokenOffset;
+        await prepareToken(tokenId);
+        await harness.write.forceSetPlatformFeeBps([Number(p)]);
+        const c = BigInt(commissionBps);
+        const atR = monoCommissionLegs(R, p, c);
+        assert.equal(atR.owner, 0n);
+        assert.equal(atR.platform, flooredAtR);
+        await harness.write.grant(
+          [tokenId, agent.account.address, 0n, ZERO, DENOM_ASSET, 0n, { form: 1, commissionBps }],
+          { account: owner.account },
+        );
+        await harness.write.openFromMandate([tokenId, DENOM_ASSET, R], {
+          account: agent.account,
+        });
+
+        for (const S of [R, R + 1n, R * 2n, R * 10n + 3n]) {
+          const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeSplitPublic([
+            S,
+            tokenId,
+          ])) as [bigint, bigint, bigint];
+          const expected = monoCommissionLegs(S, p, c);
+          assert.equal(platformAmt, (S * p) / BPS);
+          assert.ok(platformAmt > 0n);
+          assert.equal(ownerAmt, 0n);
+          assert.equal(agentAmt, S - platformAmt);
+          assert.equal(platformAmt, expected.platform);
+          assert.equal(agentAmt, expected.agent);
+          assert.equal(platformAmt + ownerAmt + agentAmt, S);
+        }
+      }
+    });
+
+    it("Margin unchanged: owner = floor, platform = ⌊S·p/B⌋, agent residual", async () => {
+      const tokenId = TOKEN_S32 + 99n;
+      await prepareToken(tokenId);
+      await harness.write.forceSetPlatformFeeBps([10]);
+      const floor = 950n;
+      await harness.write.grant(
+        [tokenId, agent.account.address, 0n, ZERO, DENOM_ASSET, floor, COMP_MARGIN],
+        { account: owner.account },
+      );
+      const R = 2000n;
+      await harness.write.openFromMandate([tokenId, DENOM_ASSET, R], {
+        account: agent.account,
+      });
+      for (const S of [R, R + 1n, 10_000n]) {
+        const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeSplitPublic([
+          S,
+          tokenId,
+        ])) as [bigint, bigint, bigint];
+        const expectedPlatform = (S * 10n) / BPS;
+        assert.equal(platformAmt, expectedPlatform);
+        assert.equal(ownerAmt, floor);
+        assert.equal(agentAmt, S - expectedPlatform - floor);
+      }
+    });
   });
 });

@@ -375,6 +375,8 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
     }
 
     /// @dev Single BelowFloor site for agented open, setPrice, and settle (C6 / §5.1).
+    /// Commission: platform takes a floored first cut; owner is one floored fraction of
+    /// settled (monotonic in S — S32); agent takes the residual (truncation dust).
     function _computeAgentedSplitAmounts(
         uint256 settled,
         uint128 floor,
@@ -393,10 +395,13 @@ abstract contract ConsignmentBase is Mandate, Recall, ClaimablePayouts, Reentran
                 agentAmount = settled - platform - floor;
             }
         } else {
-            agentAmount = (settled * comp.commissionBps) / _BPS_DENOM;
-            ok = settled >= platform + agentAmount;
+            uint256 cutBps = uint256(feeBps) + uint256(comp.commissionBps);
+            ownerAmount = cutBps >= _BPS_DENOM
+                ? 0
+                : (settled * (_BPS_DENOM - cutBps)) / _BPS_DENOM;
+            ok = settled >= platform + ownerAmount;
             if (ok) {
-                ownerAmount = settled - platform - agentAmount;
+                agentAmount = settled - platform - ownerAmount;
                 ok = ownerAmount >= floor;
             }
         }

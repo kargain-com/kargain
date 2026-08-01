@@ -1029,8 +1029,10 @@ describe("AscendingConsignment", () => {
     const sellerAfter = await publicClient.getBalance({ address: owner.account.address });
 
     const platformFee = (RESERVE * PLATFORM_FEE_BPS) / 10_000n;
-    const agentAmt = (RESERVE * 500n) / 10_000n;
-    const ownerAmt = RESERVE - platformFee - agentAmt;
+    // Commission: platform first; owner floored kept rate; agent residual (ether-scale = ⌊S·c/B⌋).
+    const ownerAmt = (RESERVE * (10_000n - PLATFORM_FEE_BPS - 500n)) / 10_000n;
+    const agentAmt = RESERVE - platformFee - ownerAmt;
+    assert.equal(platformFee + ownerAmt + agentAmt, RESERVE);
     assert.ok(ownerAmt >= floor);
     assert.ok(agentAfter >= agentBefore + agentAmt - parseEther("0.01"));
     assert.ok(sellerAfter >= sellerBefore + ownerAmt - parseEther("0.01"));
