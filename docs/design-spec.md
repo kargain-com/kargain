@@ -377,10 +377,6 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Personal copy | Nostr **about** and **website** render in `ProfileBio` on `profile-page.tsx` only — aligned with text column via `sm:pl-[8.5rem]`; not inside `IdentityHeader` |
 | Source priority | Nostr kind 0 `picture` → ENS avatar → address identicon via `IdentityAvatar` |
 | Nostr load | `/profile/[handle]` — kind 0 via [`use-nostr-profile.ts`](../hooks/use-nostr-profile.ts) on client (no blocking server relay fetch) |
-| Nostr identity | Wallet-bound via canonical sign message `kargain-nostr-v1:{address}` (no domain); local blob encrypts sk with signature-derived AES (`version: 2` only). Account gate = shared [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same predicate as XMTP — refuse `contract`, allow `eoa` / `eip7702`). Signature drift or corrupt blob → fail closed (never silent overwrite). No V1 address-derived AES; no identity rotation / migrate path. |
-| Passive pubkey restore | [`use-nostr-key.tsx`](../hooks/use-nostr-key.tsx) — on connect when [`nostr-pubkey-cache`](../lib/nostr/nostr-pubkey-cache.ts) is empty and no in-memory private key, one relay attempt per mount via `attestedPubkeyForAddress` (read-only; no wallet signature); result cached in localStorage; `loading` true during resolve so watchlist/notification read paths do not flash empty |
-| Notification read state | Kind 30078 NIP-78 — **signed plaintext** `{ lastSeenAt }` watermarks ([`notification-state.ts`](../lib/nostr/notification-state.ts)); authenticity = event signature; no content encryption (three integers; readable on passive pubkey restore). Legacy address-AES envelopes ignored. |
-| LWW watchlist | [`app-event-store.ts`](../lib/nostr/app-event-store.ts) + [`favorites.ts`](../lib/nostr/favorites.ts) — kind 30000 `d=kargain-favorites`; merge-read **all** relay events (never latest-only); LWW element-set content `{ v:1, items, removed }` with legacy `i` tag mirror; `addFavorite`/`removeFavorite` fail-closed when merge-base query throws; per-pubkey serialized writes; [`use-watchlist.ts`](../hooks/use-watchlist.ts) rolls back optimistic state on `false` |
 | Profile edit | [`profile-edit-client.tsx`](../components/profile/profile-edit-client.tsx) — optional **Lightning address** (`lud16` on kind 0) and **Location** (structured Place object on kind 0 — not NIP free-text) for **confirmed non-verifiers** only; gating is fail-closed while KarProStaking `isActiveVerifier` resolves (fields disabled; `lud16` / `location` omitted from publish patch until status confirmed); active verifiers see read-only lud16 + location label + *Managed in KarPro settings* → `/kar-pro?section=payments` (lud16) / `/kar-pro?section=profile` (location); PlacePicker selection-only (`placeId` + `countryCode` + `label`, never lat/lng); merge-preserving publish via [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — **touched-fields-only** patch via [`build-profile-edit-patch.ts`](../lib/nostr/build-profile-edit-patch.ts) (untouched keys absent; Save disabled while profile loading, verifier status pending, or no edits); **Lightning wallet** subsection ([`lightning-wallet-section.tsx`](../components/profile/lightning-wallet-section.tsx)) for NWC connect/disconnect; **active verifiers** — **Professional profile** readout group (`divide-y divide-border-default`, four rows): Business profile (name · category + mono slug) → `/kar-pro?section=profile`; Verification fee (`VerificationFeeDisplay`, chain-read from Ponder) → `/kar-pro?section=fee`; Payments (`VerificationPaymentChips` from cached Nostr profile, `—` while loading or unset) → `/kar-pro?section=payments`; Membership (chain-read `{stakeLabel} ETH staked`) → `/kar-pro?section=membership`; each row `monoLinkSm` **Edit →** / **Manage →** |
 | Profile location display | Public profile bio ([`profile-page.tsx`](../components/profile/profile-page.tsx)) — quiet mono `location.label` when present; active verifiers prefer KarPro Arweave place when metadata loads, else Nostr kind 0; no map |
 | KarPro stats | Compact mono line on `profile-page.tsx` (active verifier or non-zero VERIFIED count): **verificationCount** = passports with `status=VERIFIED` assigned to this verifier · active since · **verification fee** (all visitors) · chain-read **minStakeNative** staked (owner only, via [`use-min-stake-native.ts`](../hooks/use-min-stake-native.ts)) · owner **Manage →** → `/kar-pro?section=membership` · **Edit fee →** → `/kar-pro?section=fee`. Refreshes client-side via [`ProfileVerifierStatsBand`](../components/profile/profile-verifier-stats-band.tsx). |
@@ -403,30 +399,41 @@ Implementation: [`components/identity/identity-header.tsx`](../components/identi
 | Outstanding panel | [`profile-outstanding-tab.tsx`](../components/profile/profile-outstanding-tab.tsx) — sole owner answer from [`lib/obligation/`](../lib/obligation/) (`deriveOutstandingObligations` on `GET /accounts/:address/obligations` facts); role-grouped rows (buyer / bidder / party / challenger / eligible judge / recorded verifier); absolute deadline + live countdown (same pattern as settlement abandonment readout); consequence from challenge/settlement terminals — no second local “is outstanding?”; empty = content EmptyState; unresolved ≠ empty; badge count null while facts or judge eligibility unread |
 | Notifications commerce | Feed stamps commerce lifecycle + approaching (`windowRemainingSec ≤ 48h` via same derivation); `commerce_claim_credit` unions into `claim.recorded`; icons in `notification-row` |
 
-#### Profile attestation (NS-1 / NS-2)
+**Pro showroom (`/pro/[slug]`):** Hero stats (passports verified · active listings · attestations) use Ponder `verificationCount` (VERIFIED only) and `attestationTotal` (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below — chain-read fee with Ponder fallback, payment chips (§4.17), **Pay for inspection** when fee &gt; 0. Content when verifier is active on-chain, active in Ponder, or has ≥1 VERIFIED passport.
 
-Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0 content. Write: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts) + [`profile.ts`](../lib/nostr/profile.ts). Read: [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — **single choke point**; consumers cannot obtain unverified profile data by address.
+Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only — profile header, verifier directory, pro showroom, mobile bottom nav, XMTP inbox.
+
+#### Nostr identity
+
+Identity is deterministic from wallet `personal_sign`. Modules: [`key-manager.ts`](../lib/nostr/key-manager.ts), [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts), [`use-nostr-key.tsx`](../hooks/use-nostr-key.tsx).
 
 | Item | Value |
 |------|-------|
-| Message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` |
-| Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address are implicit from event `pubkey` and NIP-39 `i` tag |
-| Write path | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge source fetched by `{ kinds: [0], authors: [derivedPubkey] }` only (never by `#i`); if existing author content has valid attestation, merge preserves it (no extra wallet prompt); otherwise one additional `signMessage(attestationMessage)` before publish |
-| Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `fetchLatestKind0RawByAuthor`; `attestation` outside managed keys; preserved when patch omits it; set only via explicit publish param |
-| Publish guard | `publishNostrProfile` / `publishNostrProfileWithPrivateKey` — when caller passes `expectExisting: true` and merge base fetch returns `{}`, abort (`false`) before attestation signature; default `expectExisting: false` preserves first-ever save |
-| Messaging patch | Enable/disable messaging publishes `{ messagesEnabled }` only — no personal fields re-sent ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx) via `dispatch` enable/disable) |
-| Read resolver | `resolveAttestedProfile` / `resolveAttestedProfiles` / `attestedPubkeyForAddress` — query `#i`, sort `created_at` desc, return **newest event that passes verify** (older attested beats newer spoofed); `null` when none verify |
-| Batch (KP-5) | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — subscription events verified before accumulator; unverified never enter map |
-| Verify helper | `verifyProfileAttestation(event, expectedAddress)` — EIP-191 recover via viem; fail-closed; memoized by `event.id` + normalized address |
-| Lint guard | ESLint `no-restricted-syntax` on `"#i"` filter property — allowed only in resolver (+ listing-offers passport tag, tests) |
-| Key material | **The nostr key-derivation signature (`kargain-nostr-v1:…`) is private key material and must never appear in event content, tags, logs, or errors.** Attestation uses a separate `signMessage` with the binding message above. |
-| External clients | Third-party kind 0 publishers must adopt the same v1 binding message (or a future version bump) to pass read-path checks |
+| Derivation message | `kargain-nostr-v1:{address}` (no domain) — signature material only; never in event content, tags, logs, or errors |
+| Local blob | IndexedDB (localStorage fallback) encrypts sk with signature-derived AES — `version: 2` only ([`secure-blob-store.ts`](../lib/nostr/secure-blob-store.ts)) |
+| Account gate | [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) — refuse `contract`; allow `eoa` / `eip7702` (same predicate as XMTP) |
+| Unlock | Corrupt, decrypt-fail, or sk≠signature → fail closed; never overwrite the stored key with a freshly derived one |
+| Passive pubkey | When pubkey cache empty and no in-memory sk: one `attestedPubkeyForAddress` attempt per mount (no wallet signature); cache result; `loading` during resolve so watchlist/notification reads do not flash empty |
 
-**NS initiative (NS-1–NS-5) complete:** write-path attestation, read-path resolver enforcement, publish integrity (NS-4), relay infra + client publish helper (NS-5.3), LWW watchlist store (NS-5.4). NS-3 migration nudge removed in NS-4.1.
+#### Profile attestation
 
-**Pro showroom (`/pro/[slug]`):** Hero stats grid (passports verified · active listings · attestations) uses the same Ponder `verificationCount` (VERIFIED only) and `attestationTotal`; visible on all breakpoints (`grid-cols-3`). [`ProShowroomVerificationFee`](../components/verifier/pro-showroom-verification-fee.tsx) below the stats grid — chain-read fee with Ponder fallback, payment method chips (§4.17), **Pay for inspection** when effective fee &gt; 0 (§4.17). Showroom content renders when the verifier is active on-chain, active in Ponder, or has at least one VERIFIED passport.
+Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts) + [`profile.ts`](../lib/nostr/profile.ts). Read: [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — **sole** address→profile choke point; unverified data is never returned.
 
-Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only; used in profile header, verifier directory, pro showroom, mobile bottom nav, and XMTP inbox rows.
+| Item | Value |
+|------|-------|
+| Binding message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` (separate from key derivation) |
+| Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address implicit from event `pubkey` and NIP-39 `i` tag |
+| Write | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge by `{ authors: [derivedPubkey] }` only; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)` |
+| Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; set only via explicit publish param |
+| Publish guard | `expectExisting: true` + empty merge base → abort before attestation signature; default `false` for first save |
+| Messaging patch | Enable/disable publishes `{ messagesEnabled }` only ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx)) |
+| Read | Newest `#i` event that verifies wins (older attested beats newer spoof); `null` when none verify |
+| Batch | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — verify before accumulator |
+| Lint | ESLint bans `"#i"` filters outside the resolver (+ listing-offers passport tag, tests) |
+
+#### Watchlist
+
+[`app-event-store.ts`](../lib/nostr/app-event-store.ts) + [`favorites.ts`](../lib/nostr/favorites.ts) — kind 30000 `d=kargain-favorites`; merge-read **all** relay events; LWW element-set `{ v:1, items, removed }` with `i` tag mirror; add/remove fail-closed on merge-base throw; [`use-watchlist.ts`](../hooks/use-watchlist.ts) rolls back on `false`.
 
 ---
 
@@ -434,7 +441,7 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (sole React entry), [`session-store.ts`](../lib/messaging/session-store.ts), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
 
-**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent → XMTP network registration → OPFS local client → cache memos (latency only). Legacy `xmtp:opted-in` / `xmtp:disabled` / `xmtp:network-registered` keys are purged on session init — not read.
+**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent → XMTP network registration → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity).
 
 **SessionSnapshot → surfaces**
 
@@ -480,7 +487,7 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | Empty inbox | Comment icon + title *No conversations yet* + description *Conversations with buyers and sellers appear here. Start one from any listing with Message seller.* + **Browse marketplace** → `/`; only when messaging is active |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
 
-No per-message sender label in the bubble list. No drift banner — publish/network gaps surface inline on settings (`publishError`) or via setup card states.
+No per-message sender label in the bubble list. Publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 
 Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
 
@@ -488,17 +495,18 @@ Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Pr
 
 ### 4.13 Notifications
 
-Implementation: [`notifications-shell.tsx`](../components/notifications/notifications-shell.tsx), [`notifications-client.tsx`](../components/notifications/notifications-client.tsx).
+Implementation: [`notifications-shell.tsx`](../components/notifications/notifications-shell.tsx), [`notifications-client.tsx`](../components/notifications/notifications-client.tsx), [`notification-state.ts`](../lib/nostr/notification-state.ts).
 
 | Element | Rule |
 |---------|------|
 | Page padding | `pt-8 md:pt-12 pb-16` (not `py-24`) |
 | Heading | Compact `text-fluid-h2` above tabs |
 | Tabs | Alerts (default) · Watchlist (`?tab=watchlist`) |
+| Read watermarks | Kind 30078 (`#d: kargain-notifications-v1`) — signed plaintext `{ lastSeenAt: { ponder, nostr, watchlist } }`; authenticity = event signature; load by pubkey only; save with Nostr sk; cross-device merge = `max()` per channel |
 | Mark read | Per-row on interaction; **Mark all read** when `unreadCount > 0` — no auto mark-read on page open |
 | Claim recorded | High-priority `claim.recorded` — body is this credit’s amount + reason (not the aggregate balance); href `/profile/{address}?tab=claims` |
 
-Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.tsx).
+Watchlist embeds [`WatchlistClient`](../components/watchlist/watchlist-client.tsx) (§4.11 Watchlist).
 
 ---
 
@@ -1090,7 +1098,7 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 | UNVERIFIED / neutral | `border-border-default` | `text-text-tertiary` or `text-text-secondary` | |
 | Caution / advisory (display-only) | `border-status-warning` (or `border-status-warning/40` where a softer panel is needed) | `text-status-warning` (icon); body may use `text-text-primary` / `text-text-secondary` | Non-gating caution — see sub-table below |
 | Purchase / external payment confirmed | `border-status-success/40` (`commerceConfirmedPanel`) | `text-status-success` (`commerceConfirmedLabel`) | Post-confirmation commerce only — §12.7 |
-| Informational (prior dispute resolved, verification lapsed, indexer sync, commerce pause, etc.) | `border-border-default` | `text-text-secondary` | Informational (prior dispute closed, verification lapsed after window, indexer sync pending, KarPro challenges banner, messaging activation drift banner body, messaging setup / account setup nudges, XMTP unread catch-up, profile identity relink card, **G3 commerce pause** notice on open/bid/buy and ops readout) — `border-border-default` / `text-text-secondary` — Not accent. Lapsed verification and a paused selling mode are **not** error states. Do not upgrade to `status-warning` without a product decision changing their meaning. |
+| Informational (prior dispute resolved, verification lapsed, indexer sync, commerce pause, etc.) | `border-border-default` | `text-text-secondary` | Prior dispute closed, verification lapsed after window, indexer sync pending, KarPro challenges banner, messaging setup / account setup nudges, XMTP unread catch-up, **G3 commerce pause** notice on open/bid/buy and ops readout — not accent. Lapsed verification and a paused selling mode are **not** error states. Do not upgrade to `status-warning` without a product decision changing their meaning. |
 
 #### Gated acknowledgments (`status-error`)
 
@@ -1579,4 +1587,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.112 (August 2026 — Nostr identity Variant A: signature-derived sk only; shared personal-sign account gate; plaintext notification watermarks; V1 AES and rotation deleted). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.114 (August 2026 — §4.11 Nostr identity / attestation / watchlist structure; §4.13 plaintext watermarks). Update when tokens, app shell, or component contracts change.*
