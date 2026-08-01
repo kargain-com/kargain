@@ -24,6 +24,13 @@ export const ASCENDING_S1_HELP =
 export const ASCENDING_BID_HELD =
   "Every bid is held in full by the contract until you are outbid or you win. Outbid funds are released; if they do not arrive, withdraw them under Claims.";
 
+/**
+ * Opener protection-window trade — longer hold vs faster settle.
+ * Body copy under the day picker; does not change which day is pre-selected.
+ */
+export const ASCENDING_PROTECTION_TRADE =
+  "A longer hold gives the buyer more time after delivery; a shorter hold settles your payment sooner.";
+
 /** Seconds → whole minutes for extension copy. Returns null when unread/invalid. */
 export function extensionWindowMinutes(
   extensionWindowSec: bigint | null | undefined,

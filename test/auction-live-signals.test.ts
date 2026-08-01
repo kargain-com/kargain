@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   detectEndsAtExtension,
@@ -14,10 +17,21 @@ import {
   ASCENDING_BID_HELD,
   ASCENDING_CANCEL_BEFORE_FIRST_BID,
   ASCENDING_NO_CANCEL_AFTER_BID,
+  ASCENDING_PROTECTION_TRADE,
   ASCENDING_RESERVE_HELP,
   ASCENDING_RESERVE_INTRO,
   ASCENDING_S1_HELP,
 } from "@/lib/auction/ascending-public-claims";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CREATE_PANEL = path.join(
+  ROOT,
+  "components/auction/create-auction-panel.tsx",
+);
+const AGENT_CREATE_PANEL = path.join(
+  ROOT,
+  "components/auction/agent-create-auction-panel.tsx",
+);
 
 describe("extensionWindowMinutes", () => {
   it("rounds seconds to minutes", () => {
@@ -63,6 +77,30 @@ describe("ascending public claims", () => {
     assert.match(ASCENDING_S1_HELP, /seller can cancel or withdraw/i);
     assert.match(ASCENDING_BID_HELD, /held in full by the contract/i);
     assert.match(ASCENDING_BID_HELD, /Claims/);
+  });
+
+  it("protection_trade_unstated: names longer-hold vs faster-settle at the opener picker", () => {
+    assert.match(ASCENDING_PROTECTION_TRADE, /longer hold/i);
+    assert.match(ASCENDING_PROTECTION_TRADE, /buyer more time/i);
+    assert.match(ASCENDING_PROTECTION_TRADE, /shorter hold/i);
+    assert.match(ASCENDING_PROTECTION_TRADE, /settles your payment sooner/i);
+
+    for (const [label, file] of [
+      ["create-auction-panel", CREATE_PANEL],
+      ["agent-create-auction-panel", AGENT_CREATE_PANEL],
+    ] as const) {
+      const text = fs.readFileSync(file, "utf8");
+      assert.match(
+        text,
+        /ASCENDING_PROTECTION_TRADE/,
+        `${label} must render ASCENDING_PROTECTION_TRADE`,
+      );
+      assert.match(
+        text,
+        /from\s+["']@\/lib\/auction\/ascending-public-claims["']/,
+        `${label} must import from ascending-public-claims`,
+      );
+    }
   });
 });
 

@@ -25,6 +25,7 @@ import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
+import { SETTLEMENT_NOTE_WRITE_DISCLOSURE } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -196,6 +197,9 @@ export function AgentListOnBehalfPanel({
           disabled={busy}
           className="border-border-default bg-bg-card"
         />
+        <p className="font-sans text-xs text-text-secondary">
+          {SETTLEMENT_NOTE_WRITE_DISCLOSURE}
+        </p>
       </div>
 
       <SellerNetCalculator

@@ -15,6 +15,7 @@ import {
   type DenominationKind,
 } from "@/lib/commerce/denomination";
 import type { OpenableTerms } from "@/lib/commerce/openable-terms";
+import { SETTLEMENT_NOTE_WRITE_DISCLOSURE } from "@/lib/marketplace/settlement-note";
 
 type Props = {
   openOptions: OpenableTerms;
@@ -238,6 +239,9 @@ export function ListingSellerSettlementPanel({
             disabled={disabled}
             className="border-border-default bg-bg-surface"
           />
+          <p className="font-sans text-xs text-text-secondary">
+            {SETTLEMENT_NOTE_WRITE_DISCLOSURE}
+          </p>
         </div>
       </div>
       )}

@@ -729,13 +729,9 @@ export function PassportActionsPanel({
 
       {isAvailable(actionSurface.withdraw) && (
         <div className="space-y-2">
-          {disputeDeposit != null && (
-            <p className="text-xs text-text-secondary">
-              This restores VERIFIED status and returns your {formatEther(disputeDeposit)} ETH
-              deposit. If it cannot be delivered, it waits under Claims. Only you can do this, and
-              only before the window ends.
-            </p>
-          )}
+          <p className="text-xs text-text-secondary">
+            {actionSurface.challenge.terminals.withdrawn.withdrawCopy}
+          </p>
           <Button
             type="button"
             variant="secondary"

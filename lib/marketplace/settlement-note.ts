@@ -1,3 +1,11 @@
+/**
+ * Writer disclosure at the settlement-note textarea — permanence and publicity
+ * of on-chain storage. Trust vocabulary matches the buyer card
+ * (*Not verified by Kargain*). Body copy at write time, not a warning banner.
+ */
+export const SETTLEMENT_NOTE_WRITE_DISCLOSURE =
+  "These instructions are stored permanently on the public chain and shown to buyers. Kargain does not verify them.";
+
 /** Decode UTF-8 settlement note bytes from `settlementNotes(tokenId)`. */
 export function decodeSettlementNote(raw: unknown): string {
   if (raw == null) return "";

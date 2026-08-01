@@ -10,6 +10,7 @@ import { useMandate } from "@/hooks/use-mandate";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
+import { ASCENDING_PROTECTION_TRADE } from "@/lib/auction/ascending-public-claims";
 import {
   auctionAssetLabelFromAddress,
   parseOwnerMinAsset,
@@ -320,7 +321,8 @@ export function AgentCreateAuctionPanel({
         </select>
         <p className="font-sans text-xs text-text-secondary">
           After settle, payment stays held for this long so the buyer can
-          receive the vehicle and open a settlement challenge if needed.
+          receive the vehicle and open a settlement challenge if needed.{" "}
+          {ASCENDING_PROTECTION_TRADE}
         </p>
       </div>
 

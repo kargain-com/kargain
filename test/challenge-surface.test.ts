@@ -8,7 +8,10 @@
  * - rejection_closes_sale
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   SETTLEMENT_INSTANCE,
@@ -23,9 +26,19 @@ import {
   isAvailable,
   parseChallenge,
   parseChallengeTerminal,
+  settlementWithdrawDisclosure,
   type ChallengeSnapshot,
 } from "@/lib/challenge";
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PASSPORT_ACTIONS = path.join(
+  ROOT,
+  "components/passport/passport-actions-panel.tsx",
+);
+const SETTLEMENT_PANEL = path.join(
+  ROOT,
+  "components/auction/auction-settlement-panel.tsx",
+);
 const OWNER = "0x1111111111111111111111111111111111111111";
 const VERIFIER = "0x2222222222222222222222222222222222222222";
 const OPENER = "0x3333333333333333333333333333333333333333";
@@ -351,5 +364,77 @@ describe("verification vs settlement terminal definitions differ", () => {
     assert.match(SETTLEMENT_TERMINALS.rejected.judgeCopy, /pays the seller/i);
     assert.match(VERIFICATION_TERMINALS.expired.concludeCopy, /verification lapses/i);
     assert.match(SETTLEMENT_TERMINALS.expired.concludeCopy, /seller is paid/i);
+  });
+});
+
+describe("verification_withdraw_permanence", () => {
+  it("withdrawCopy and description name permanent attributed public record", () => {
+    const { withdrawCopy, description } = VERIFICATION_TERMINALS.withdrawn;
+    assert.match(withdrawCopy, /permanently/i);
+    assert.match(withdrawCopy, /public timeline/i);
+    assert.match(withdrawCopy, /attributed to you/i);
+    assert.match(withdrawCopy, /restores VERIFIED/i);
+    assert.match(withdrawCopy, /returns your deposit/i);
+    assert.match(description, /public record/i);
+    assert.match(description, /attributed to the opener/i);
+  });
+
+  it("passport-actions panel consumes withdrawCopy — no inline permanence sentence", () => {
+    const panel = fs.readFileSync(PASSPORT_ACTIONS, "utf8");
+    assert.match(
+      panel,
+      /terminals\.withdrawn\.withdrawCopy/,
+      "passport-actions-panel must render withdrawn.withdrawCopy",
+    );
+    assert.doesNotMatch(
+      panel,
+      /This restores VERIFIED status and returns your/,
+      "inline withdraw help must not remain beside the terminal definition",
+    );
+  });
+});
+
+describe("settlement_withdraw_frozen_remainder", () => {
+  it("names formatted remainder when frozen remaining is readable", () => {
+    const day = settlementWithdrawDisclosure(7 * 24 * 60 * 60);
+    assert.match(day, /7 days remaining/i);
+    assert.match(day, /returns your bond/i);
+    assert.match(day, /resumes the protection window/i);
+
+    const hours = settlementWithdrawDisclosure(3 * 60 * 60);
+    assert.match(hours, /3 hours remaining/i);
+  });
+
+  it("falls back to qualitative terminal description when remainder unread", () => {
+    assert.equal(
+      settlementWithdrawDisclosure(null),
+      SETTLEMENT_TERMINALS.withdrawn.description,
+    );
+    assert.equal(
+      settlementWithdrawDisclosure(undefined),
+      SETTLEMENT_TERMINALS.withdrawn.description,
+    );
+    assert.equal(
+      settlementWithdrawDisclosure(0),
+      SETTLEMENT_TERMINALS.withdrawn.description,
+    );
+    assert.match(
+      SETTLEMENT_TERMINALS.withdrawn.description,
+      /resumes from where it stood/i,
+    );
+  });
+
+  it("settlement panel renders disclosure beside withdraw", () => {
+    const panel = fs.readFileSync(SETTLEMENT_PANEL, "utf8");
+    assert.match(
+      panel,
+      /settlementWithdrawDisclosure\(hold\?\.frozenRemaining\)/,
+      "auction-settlement-panel must pass hold.frozenRemaining to settlementWithdrawDisclosure",
+    );
+    assert.match(
+      panel,
+      /challengeSurface\.openDisclosure/,
+      "open help must consume challengeSurface.openDisclosure",
+    );
   });
 });

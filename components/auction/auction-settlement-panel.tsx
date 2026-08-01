@@ -24,6 +24,7 @@ import {
   SETTLEMENT_INSTANCE,
   deriveChallengeSurface,
   isAvailable,
+  settlementWithdrawDisclosure,
   type ChallengeSnapshot,
 } from "@/lib/challenge";
 import { addressesMatch } from "@/lib/commerce/consignment";
@@ -514,13 +515,7 @@ export function AuctionSettlementPanel({
           {isAvailable(challengeSurface.open) && (
             <div className="space-y-2 border-t border-border-default pt-3">
               <p className="font-sans text-xs text-text-secondary">
-                Opening a challenge locks a{" "}
-                <span className="font-mono tabular-nums text-text-primary">
-                  {bondLabel ?? "…"}
-                </span>{" "}
-                bond and freezes the protection clock. You get the bond back if
-                the challenge is upheld (in the judging transaction). If a return
-                cannot be delivered, it waits under Claims.
+                {challengeSurface.openDisclosure}
               </p>
               <Button
                 type="button"
@@ -539,15 +534,20 @@ export function AuctionSettlementPanel({
           )}
 
           {isAvailable(challengeSurface.withdraw) && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={actionBusy || !mode}
-              onClick={() => void run("withdraw")}
-            >
-              {actionBusy ? "Confirming…" : "Withdraw challenge"}
-            </Button>
+            <div className="space-y-2 border-t border-border-default pt-3">
+              <p className="font-sans text-xs text-text-secondary">
+                {settlementWithdrawDisclosure(hold?.frozenRemaining)}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={actionBusy || !mode}
+                onClick={() => void run("withdraw")}
+              >
+                {actionBusy ? "Confirming…" : "Withdraw challenge"}
+              </Button>
+            </div>
           )}
 
           {isAvailable(challengeSurface.conclude) && (

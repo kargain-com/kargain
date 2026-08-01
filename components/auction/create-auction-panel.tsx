@@ -18,6 +18,7 @@ import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
 import {
+  ASCENDING_PROTECTION_TRADE,
   ASCENDING_RESERVE_HELP,
   ASCENDING_RESERVE_INTRO,
 } from "@/lib/auction/ascending-public-claims";
@@ -417,7 +418,7 @@ export function CreateAuctionPanel({
         <p className="font-sans text-xs text-text-secondary">
           After the winning bid settles, payment stays held for this long so
           the buyer can receive the vehicle and open a settlement challenge if
-          needed.
+          needed. {ASCENDING_PROTECTION_TRADE}
         </p>
       </div>
 

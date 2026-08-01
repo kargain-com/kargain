@@ -46,6 +46,7 @@ export {
   VERIFICATION_OPEN_COPY,
   VERIFICATION_TERMINALS,
   challengeElapsedFeedCopy,
+  settlementWithdrawDisclosure,
 } from "@/lib/challenge/terminals";
 
 export {

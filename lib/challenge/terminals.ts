@@ -1,3 +1,5 @@
+import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
+
 /**
  * Claims fallback — undeliverable bond / payout waits under Claims (PA1).
  * Shared wording so both instances disclose the same rule.
@@ -25,6 +27,8 @@ export type ChallengeTerminalDef = {
   readonly judgeCopy: string;
   /** Conclude / buyer-facing body when this terminal is the window outcome. */
   readonly concludeCopy: string;
+  /** Withdraw CTA body when offering withdraw (withdrawn terminal only). */
+  readonly withdrawCopy: string;
 };
 
 export type ChallengeTerminalSet = {
@@ -43,6 +47,7 @@ export const VERIFICATION_TERMINALS: ChallengeTerminalSet = {
     judgeCopy:
       "The verification was incorrect. Status becomes unverified. The opener’s deposit returns to them in this transaction — if it cannot be delivered, it waits as a claim for them.",
     concludeCopy: "",
+    withdrawCopy: "",
   },
   rejected: {
     id: "rejected",
@@ -52,6 +57,7 @@ export const VERIFICATION_TERMINALS: ChallengeTerminalSet = {
     judgeCopy:
       "The verification stands. Status stays verified. The deposit goes to the platform — never to the resolver. If it cannot be delivered, it waits under Claims.",
     concludeCopy: "",
+    withdrawCopy: "",
   },
   expired: {
     id: "expired",
@@ -60,15 +66,18 @@ export const VERIFICATION_TERMINALS: ChallengeTerminalSet = {
       "The challenge window ended without a professional judgment. Verification lost its backing — a fresh inspection restores it.",
     judgeCopy: "",
     concludeCopy:
-      "Conclude without a merits judgment. Verification lapses (not a penalty to the owner) — a fresh inspection restores it. The deposit goes to the platform. If it cannot be delivered, it waits under Claims.",
+      "Conclude without a merits judgment. Verification lapses (not a penalty to the owner) — a fresh inspection restores it. The deposit goes to the platform. If a return cannot be delivered, it waits under Claims.",
+    withdrawCopy: "",
   },
   withdrawn: {
     id: "withdrawn",
     label: "Challenge withdrawn",
     description:
-      "The opener withdrew the challenge. Verification was restored.",
+      "The opener withdrew the challenge. Verification was restored. The withdrawal remains on this passport’s public record, attributed to the opener.",
     judgeCopy: "",
     concludeCopy: "",
+    withdrawCopy:
+      "Withdrawing restores VERIFIED status and returns your deposit. The withdrawal is recorded permanently on this passport’s public timeline, attributed to you. If a return cannot be delivered, it waits under Claims. Only you can do this, and only before the window ends.",
   },
 };
 
@@ -81,6 +90,7 @@ export const SETTLEMENT_TERMINALS: ChallengeTerminalSet = {
     judgeCopy:
       "Upholding starts a reversal. The bond returns to the challenger in this transaction. The settled amount returns only when the buyer completes the reversal by returning the passport. If a payout cannot be delivered, it waits under Claims.",
     concludeCopy: "",
+    withdrawCopy: "",
   },
   rejected: {
     id: "rejected",
@@ -90,6 +100,7 @@ export const SETTLEMENT_TERMINALS: ChallengeTerminalSet = {
     judgeCopy:
       "Rejecting pays the seller and closes the sale. The challenger’s bond goes to the platform — not a return of the protection hold. If a payout cannot be delivered, it waits under Claims.",
     concludeCopy: "",
+    withdrawCopy: "",
   },
   expired: {
     id: "expired",
@@ -99,6 +110,7 @@ export const SETTLEMENT_TERMINALS: ChallengeTerminalSet = {
     judgeCopy: "",
     concludeCopy:
       "Conclude without a merits judgment. The seller is paid and the sale closes. The challenger’s bond goes to the platform. If a payout cannot be delivered, it waits under Claims.",
+    withdrawCopy: "",
   },
   withdrawn: {
     id: "withdrawn",
@@ -107,6 +119,7 @@ export const SETTLEMENT_TERMINALS: ChallengeTerminalSet = {
       "The buyer withdrew the challenge. The protection window resumes from where it stood.",
     judgeCopy: "",
     concludeCopy: "",
+    withdrawCopy: "",
   },
 };
 
@@ -116,6 +129,21 @@ export const VERIFICATION_OPEN_COPY =
 
 export const SETTLEMENT_OPEN_COPY =
   "Opening a challenge locks a bond and freezes the protection clock. You get the bond back if the challenge is upheld (in the judging transaction). If a return cannot be delivered, it waits under Claims.";
+
+/**
+ * Settlement withdraw CTA body — composes SETTLEMENT_TERMINALS.withdrawn
+ * (resume from where it stood) with the frozen remainder when readable.
+ * Unread/invalid remainder → qualitative terminal description only.
+ */
+export function settlementWithdrawDisclosure(
+  frozenRemainingSec: number | bigint | null | undefined,
+): string {
+  const remaining = formatWindowDurationLabel(frozenRemainingSec);
+  if (remaining == null) {
+    return SETTLEMENT_TERMINALS.withdrawn.description;
+  }
+  return `Withdrawing returns your bond and resumes the protection window with ${remaining} remaining.`;
+}
 
 /** Feed / inbox line when the window has ended — conclude only; judge is absent. */
 export function challengeElapsedFeedCopy(
