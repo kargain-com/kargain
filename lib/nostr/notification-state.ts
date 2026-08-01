@@ -3,7 +3,13 @@
 import { hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
-import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
+import {
+  fetchRelayCoverage,
+  getDefaultNostrPool,
+  pubkeyFromPrivateKey,
+  runSerializedPubkeyWrite,
+  type AppEventQueryPool,
+} from "@/lib/nostr/app-event-store";
 import { publishSignedEvent } from "@/lib/nostr/publish-event";
 
 export type NotificationLastSeenAt = {
@@ -15,6 +21,14 @@ export type NotificationLastSeenAt = {
 export type NotificationState = {
   lastSeenAt: NotificationLastSeenAt;
 };
+
+export type NotificationRelayReadResult =
+  | {
+      status: "answered";
+      state: NotificationState;
+      answeredRelays: string[];
+    }
+  | { status: "unanswered"; cause: "no-relay-answered" };
 
 const DEFAULT_STATE: NotificationState = {
   lastSeenAt: { ponder: 0, nostr: 0, watchlist: 0 },
@@ -88,53 +102,89 @@ export function mergeNotificationStates(
   };
 }
 
-/** Load state from NIP-78 relay. Never throws. Falls back to DEFAULT_STATE. */
-export async function loadNotificationState(pubkey: string): Promise<NotificationState> {
+/**
+ * Coverage-aware kind 30078 merge-base read.
+ * Uses the sole {@link fetchRelayCoverage} owner — never `querySync`.
+ */
+export async function loadNotificationState(
+  pubkey: string,
+  opts?: { pool?: AppEventQueryPool },
+): Promise<NotificationRelayReadResult> {
+  if (!pubkey.trim()) {
+    return { status: "unanswered", cause: "no-relay-answered" };
+  }
+
   try {
-    if (!pubkey.trim()) return DEFAULT_STATE;
+    const pool = opts?.pool ?? getDefaultNostrPool();
+    const coverage = await fetchRelayCoverage(pool, {
+      kinds: [KIND_APP_DATA],
+      authors: [pubkey],
+      "#d": [NOTIFICATION_STATE_D],
+      limit: 5,
+    });
+    if (coverage.status === "unanswered") {
+      return coverage;
+    }
 
-    const pool = getNostrPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [KIND_APP_DATA], authors: [pubkey], "#d": [NOTIFICATION_STATE_D], limit: 5 },
-      { maxWait: 4500 },
-    );
-    if (events.length === 0) return DEFAULT_STATE;
+    if (coverage.events.length === 0) {
+      return {
+        status: "answered",
+        state: DEFAULT_STATE,
+        answeredRelays: coverage.answeredRelays,
+      };
+    }
 
-    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-    if (!latest?.content) return DEFAULT_STATE;
+    const latest = [...coverage.events].sort((a, b) => b.created_at - a.created_at)[0];
+    if (!latest?.content) {
+      return {
+        status: "answered",
+        state: DEFAULT_STATE,
+        answeredRelays: coverage.answeredRelays,
+      };
+    }
 
     const remote = parseRelayContent(latest.content);
-    if (!remote) return DEFAULT_STATE;
-
-    return mergeNotificationStates(DEFAULT_STATE, remote);
-  } catch (err) {
-    console.error("loadNotificationState failed", err);
-    return DEFAULT_STATE;
+    return {
+      status: "answered",
+      state: remote ?? DEFAULT_STATE,
+      answeredRelays: coverage.answeredRelays,
+    };
+  } catch {
+    return { status: "unanswered", cause: "no-relay-answered" };
   }
 }
 
-/** Publish kind 30078 replacement as signed plaintext. Never throws. */
+/**
+ * Coverage-aware kind 30078 full replacement: read → max-merge → publish to answered.
+ * Unanswered coverage skips publish (local floor stays authoritative for this device).
+ * Serialized per pubkey so debounced saves cannot interleave.
+ */
 export async function saveNotificationState(
   state: NotificationState,
   privateKey: string,
 ): Promise<void> {
   try {
     if (!privateKey.trim()) return;
+    const pubkey = pubkeyFromPrivateKey(privateKey);
 
-    const normalized = normalizeState(state);
-    const content = JSON.stringify(normalized);
+    await runSerializedPubkeyWrite(pubkey, async () => {
+      const base = await loadNotificationState(pubkey);
+      if (base.status === "unanswered") return;
 
-    const unsigned = {
-      kind: KIND_APP_DATA,
-      created_at: Math.floor(Date.now() / 1000),
-      content,
-      tags: [["d", NOTIFICATION_STATE_D]] as string[][],
-    };
-    const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
-    const pool = getNostrPool();
-    await publishSignedEvent(pool, signed);
-  } catch (err) {
-    console.error("saveNotificationState failed", err);
+      const toPublish = mergeNotificationStates(state, base.state);
+      const content = JSON.stringify(normalizeState(toPublish));
+
+      const unsigned = {
+        kind: KIND_APP_DATA,
+        created_at: Math.floor(Date.now() / 1000),
+        content,
+        tags: [["d", NOTIFICATION_STATE_D]] as string[][],
+      };
+      const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKey));
+      const pool = getDefaultNostrPool();
+      await publishSignedEvent(pool, signed, { relays: base.answeredRelays });
+    });
+  } catch {
+    // Never throws — local floor remains authoritative for this device.
   }
 }

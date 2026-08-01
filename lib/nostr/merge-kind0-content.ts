@@ -1,15 +1,14 @@
 "use client";
 
-import { finalizeEvent } from "nostr-tools";
-
 import {
-  getNostrPool,
-  NOSTR_RELAYS,
-} from "@/lib/nostr/nostr-client";
+  fetchRelayCoverage,
+  getDefaultNostrPool,
+  type AppEventQueryPool,
+  type AppEventRelayReadResult,
+} from "@/lib/nostr/app-event-store";
 import { pickLatestKind0Event } from "@/lib/nostr/pick-latest-kind0";
 import { normalizeVerifierPaymentMethods } from "@/lib/nostr/payment-method-id";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
-import type { AttestedProfileQueryPool } from "@/lib/nostr/resolve-attested-profile";
 import {
   isCompletePlaceSelection,
   placeSelectionToWire,
@@ -27,6 +26,14 @@ export const KARGAIN_MANAGED_KIND0_KEYS = [
   // attestation is intentionally omitted — set only via publish param, preserved by spread
 ] as const;
 
+export type Kind0MergeReadResult =
+  | {
+      status: "answered";
+      content: Record<string, unknown>;
+      answeredRelays: string[];
+    }
+  | { status: "unanswered"; cause: "no-relay-answered" };
+
 function parseKind0RawObject(content: string): Record<string, unknown> {
   if (!content.trim()) return {};
   try {
@@ -38,32 +45,39 @@ function parseKind0RawObject(content: string): Record<string, unknown> {
   }
 }
 
-/** Fetch latest kind:0 JSON object by author pubkey for merge-before-publish. */
+/**
+ * Coverage-aware kind:0 merge-base read by author pubkey.
+ * Uses the sole {@link fetchRelayCoverage} owner — never `querySync`.
+ */
 export async function fetchLatestKind0RawByAuthor(
   pubkey: string,
-  opts?: { pool?: AttestedProfileQueryPool; maxWait?: number },
-): Promise<Record<string, unknown>> {
-  try {
-    const pool = opts?.pool ?? getNostrPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      { kinds: [0], authors: [pubkey], limit: 20 },
-      { maxWait: opts?.maxWait ?? 2500 },
-    );
-    const latest = pickLatestKind0Event(events);
-    if (latest?.content != null) return parseKind0RawObject(latest.content);
-    return {};
-  } catch {
-    return {};
+  opts?: { pool?: AppEventQueryPool },
+): Promise<Kind0MergeReadResult> {
+  if (!pubkey.trim()) {
+    return { status: "unanswered", cause: "no-relay-answered" };
   }
-}
 
-/** True when caller expects an existing relay profile but the merge base fetch returned nothing. */
-export function isMergeBaseUnavailable(
-  existing: Record<string, unknown>,
-  expectExisting: boolean,
-): boolean {
-  return expectExisting && Object.keys(existing).length === 0;
+  try {
+    const pool = opts?.pool ?? getDefaultNostrPool();
+    const coverage: AppEventRelayReadResult = await fetchRelayCoverage(pool, {
+      kinds: [0],
+      authors: [pubkey],
+      limit: 20,
+    });
+    if (coverage.status === "unanswered") {
+      return coverage;
+    }
+    const latest = pickLatestKind0Event(coverage.events);
+    const content =
+      latest?.content != null ? parseKind0RawObject(latest.content) : {};
+    return {
+      status: "answered",
+      content,
+      answeredRelays: coverage.answeredRelays,
+    };
+  } catch {
+    return { status: "unanswered", cause: "no-relay-answered" };
+  }
 }
 
 /** Merge relay content with a partial Kargain-managed patch (preserves unknown fields). */

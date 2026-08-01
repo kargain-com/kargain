@@ -4,10 +4,7 @@ import { getAddress, type Address } from "viem";
 import type { WalletClient } from "viem";
 
 import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
-import {
-  publishNostrProfile,
-  type PublishNostrProfileOpts,
-} from "@/lib/nostr/profile";
+import { publishNostrProfile } from "@/lib/nostr/profile";
 import type { NostrPolicyPort } from "../ports";
 
 export type CreateNostrPolicyAdapterInput = {
@@ -32,11 +29,6 @@ export function createNostrPolicyAdapter(input: CreateNostrPolicyAdapterInput): 
         return { ok: false, reason: "publish_failed" };
       }
 
-      const profile = await resolveAttestedProfile(getAddress(address as Address));
-      const opts: PublishNostrProfileOpts = {
-        expectExisting: profile != null,
-      };
-
       const ok = await publishNostrProfile(
         { messagesEnabled: enabled },
         signerAddress,
@@ -44,7 +36,6 @@ export function createNostrPolicyAdapter(input: CreateNostrPolicyAdapterInput): 
           signMessage: (msg) =>
             walletClient.signMessage({ account: signerAddress, message: msg }),
         },
-        opts,
       );
 
       return ok ? { ok: true } : { ok: false, reason: "publish_failed" };

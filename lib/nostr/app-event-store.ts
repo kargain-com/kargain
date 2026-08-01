@@ -87,7 +87,7 @@ export type LwwElementSetState = {
   removed: Record<string, { r: number }>;
 };
 
-/** Structural per-relay port used for LWW coverage reads. */
+/** Structural per-relay port used for coverage reads. */
 export type AppEventRelay = {
   subscribe(
     filters: Filter[],
@@ -113,7 +113,7 @@ export type AppEventQueryPool = {
 };
 
 /**
- * Per-relay coverage for LWW merge-base reads.
+ * Per-relay coverage for merge-base reads (LWW, kind 0, …).
  * `answered` means a real EOSE before the shared deadline — never emptiness of events.
  */
 export type AppEventRelayReadResult =
@@ -425,25 +425,14 @@ async function readOneRelay(
 }
 
 /**
- * Sole LWW relay-coverage reader.
+ * Sole coverage-aware multi-relay reader (filter-generic).
  * Full-replacement publishes may only target `answeredRelays` from an answered result.
+ * Classification is transport-only — never emptiness of events.
  */
-export async function fetchAppEvents(
+export async function fetchRelayCoverage(
   pool: AppEventQueryPool,
-  pubkey: string,
-  policy: LwwAppEventPolicy,
+  filter: Filter,
 ): Promise<AppEventRelayReadResult> {
-  if (!pubkey.trim()) {
-    return { status: "unanswered", cause: "no-relay-answered" };
-  }
-
-  const filter: Filter = {
-    kinds: [policy.kind],
-    authors: [pubkey],
-    "#d": [policy.dTag],
-    limit: 5,
-  };
-
   const deadlineAt = Date.now() + LWW_RELAY_READ_DEADLINE_MS;
   const outcomes = await Promise.all(
     NOSTR_RELAYS.map(async (url): Promise<RelayReadOutcome> => {
@@ -471,6 +460,24 @@ export async function fetchAppEvents(
     events: [...byId.values()],
     answeredRelays,
   };
+}
+
+/** LWW-policy layer over {@link fetchRelayCoverage}. Watchlist behaviour unchanged. */
+export async function fetchAppEvents(
+  pool: AppEventQueryPool,
+  pubkey: string,
+  policy: LwwAppEventPolicy,
+): Promise<AppEventRelayReadResult> {
+  if (!pubkey.trim()) {
+    return { status: "unanswered", cause: "no-relay-answered" };
+  }
+
+  return fetchRelayCoverage(pool, {
+    kinds: [policy.kind],
+    authors: [pubkey],
+    "#d": [policy.dTag],
+    limit: 5,
+  });
 }
 
 /**

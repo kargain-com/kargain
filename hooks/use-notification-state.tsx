@@ -97,11 +97,13 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const remote = await loadNotificationState(nostrPubkey);
-        const merged = mergeNotificationStates(local, remote);
-        if (!cancelled) setState(merged);
-      } catch (err) {
-        console.error("useNotificationState load failed", err);
-        if (!cancelled) setState(local);
+        if (cancelled) return;
+        if (remote.status === "answered") {
+          setState((prev) => mergeNotificationStates(prev, remote.state));
+        }
+        // unanswered: leave current state (local floor / concurrent markRead)
+      } catch {
+        // leave current state
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -138,10 +140,7 @@ function NotificationStateProvider({ children }: { children: ReactNode }) {
 
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        void saveNotificationState(
-          stateRef.current,
-          key,
-        );
+        void saveNotificationState(stateRef.current, key);
       }, 400);
     },
     [address, nostrPrivateKey, ensureNostrKey],

@@ -425,7 +425,7 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`pr
 | Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address implicit from event `pubkey` and NIP-39 `i` tag |
 | Write | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge by `{ authors: [derivedPubkey] }` only; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)` |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; set only via explicit publish param |
-| Publish guard | `expectExisting: true` + empty merge base → abort before attestation signature; default `false` for first save |
+| Read/write symmetry | Same invariant as Watchlist: coverage-aware merge-base via [`fetchRelayCoverage`](../lib/nostr/app-event-store.ts); unanswered refuses the write before signing; full-replacement publish targets only `answeredRelays`; answered-but-empty is a valid first profile |
 | Messaging patch | Enable/disable publishes `{ messagesEnabled }` only ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx)) |
 | Read | Newest `#i` event that verifies wins (older attested beats newer spoof); `null` when none verify |
 | Batch | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — verify before accumulator |
@@ -502,7 +502,7 @@ Implementation: [`notifications-shell.tsx`](../components/notifications/notifica
 | Page padding | `pt-8 md:pt-12 pb-16` (not `py-24`) |
 | Heading | Compact `text-fluid-h2` above tabs |
 | Tabs | Alerts (default) · Watchlist (`?tab=watchlist`) |
-| Read watermarks | Kind 30078 (`#d: kargain-notifications-v1`) — signed plaintext `{ lastSeenAt: { ponder, nostr, watchlist } }`; authenticity = event signature; load by pubkey only; save with Nostr sk; cross-device merge = `max()` per channel |
+| Read watermarks | Kind 30078 (`#d: kargain-notifications-v1`) — signed plaintext `{ lastSeenAt: { ponder, nostr, watchlist } }`; authenticity = event signature; **local floor** (`loadLocalNotificationState`) is the device-side merge floor; **each save** re-reads coverage via [`fetchRelayCoverage`](../lib/nostr/app-event-store.ts) (same shape as Watchlist / Profile — no cached allowlist), max-merges remote into the payload, then publishes only to `answeredRelays`; unanswered skips relay publish (local stays authoritative); per-pubkey serialization; cross-device merge = `max()` per channel |
 | Mark read | Per-row on interaction; **Mark all read** when `unreadCount > 0` — no auto mark-read on page open |
 | Claim recorded | High-priority `claim.recorded` — body is this credit’s amount + reason (not the aggregate balance); href `/profile/{address}?tab=claims` |
 
@@ -1587,4 +1587,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.116 (August 2026 — §4.11 Watchlist shared deadline covers connect + subscribe; read/write symmetry; Nostr identity / attestation; §4.13 plaintext watermarks). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.119 (August 2026 — §4.13 kind 30078 atomic save: coverage per publish, no cached allowlist; Watchlist / Profile parity). Update when tokens, app shell, or component contracts change.*

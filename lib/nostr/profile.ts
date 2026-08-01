@@ -3,13 +3,13 @@
 import { type Address, hexToBytes } from "viem";
 import { finalizeEvent } from "nostr-tools";
 
+import { getDefaultNostrPool } from "@/lib/nostr/app-event-store";
 import { getOrCreateNostrKey } from "@/lib/nostr/key-manager";
 import {
   fetchLatestKind0RawByAuthor,
-  isMergeBaseUnavailable,
   mergeKind0Content,
 } from "@/lib/nostr/merge-kind0-content";
-import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import {
   attestationMessage,
   buildProfileAttestation,
@@ -24,8 +24,6 @@ import { publishSignedEvent } from "@/lib/nostr/publish-event";
 import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
 
 export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
-
-export type PublishNostrProfileOpts = { expectExisting?: boolean };
 
 function toWalletAddress(address: Address): `0x${string}` {
   return address as `0x${string}`;
@@ -64,16 +62,16 @@ export async function publishNostrProfileWithPrivateKey(
   walletAddress: Address,
   privateKeyHex: string,
   attestation?: ProfileAttestationV1,
-  opts?: PublishNostrProfileOpts,
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
     const pubkey = nostrPubkeyFromPrivateKey(privateKeyHex);
-    const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
-    if (isMergeBaseUnavailable(existing, opts?.expectExisting === true)) {
+    const pool = getDefaultNostrPool();
+    const base = await fetchLatestKind0RawByAuthor(pubkey, { pool });
+    if (base.status === "unanswered") {
       return false;
     }
-    const content = mergeKind0Content(existing, data);
+    const content = mergeKind0Content(base.content, data);
     if (attestation) {
       content.attestation = attestation;
     }
@@ -84,8 +82,9 @@ export async function publishNostrProfileWithPrivateKey(
       tags: [["i", `ethereum:${address.toLowerCase()}`]] as string[][],
     };
     const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKeyHex));
-    const pool = getNostrPool();
-    const { ok } = await publishSignedEvent(pool, signed);
+    const { ok } = await publishSignedEvent(pool, signed, {
+      relays: base.answeredRelays,
+    });
     return ok;
   } catch {
     return false;
@@ -97,7 +96,6 @@ export async function publishNostrProfile(
   data: NostrProfileData,
   walletAddress: Address,
   signer: { signMessage: (msg: string) => Promise<string> },
-  opts?: PublishNostrProfileOpts,
 ): Promise<boolean> {
   try {
     const address = toWalletAddress(walletAddress);
@@ -109,17 +107,18 @@ export async function publishNostrProfile(
       },
     });
     const pubkey = nostrPubkeyFromPrivateKey(privateKey);
-    const existing = await fetchLatestKind0RawByAuthor(pubkey, { pool: getNostrPool() });
-    if (isMergeBaseUnavailable(existing, opts?.expectExisting === true)) {
+    const pool = getDefaultNostrPool();
+    const base = await fetchLatestKind0RawByAuthor(pubkey, { pool });
+    if (base.status === "unanswered") {
       return false;
     }
     const hasValidAttestation = await verifyProfileAttestationCore(
-      { id: `write:${pubkey}`, pubkey, content: JSON.stringify(existing) },
+      { id: `write:${pubkey}`, pubkey, content: JSON.stringify(base.content) },
       address,
     );
 
     if (hasValidAttestation) {
-      return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey, undefined, opts);
+      return publishNostrProfileWithPrivateKey(data, walletAddress, privateKey);
     }
 
     const attestationSig = (await signer.signMessage(
@@ -135,7 +134,6 @@ export async function publishNostrProfile(
       walletAddress,
       privateKey,
       attestation,
-      opts,
     );
   } catch {
     return false;

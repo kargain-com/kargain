@@ -1,25 +1,120 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { Event } from "nostr-tools";
 
 import {
   fetchLatestKind0RawByAuthor,
-  isMergeBaseUnavailable,
   mergeKind0Content,
 } from "../lib/nostr/merge-kind0-content.ts";
-import type { AttestedProfileQueryPool } from "../lib/nostr/resolve-attested-profile.ts";
+import type { AppEventQueryPool } from "../lib/nostr/app-event-store.ts";
 import type { NostrProfileData } from "../lib/nostr/parse-profile-content.ts";
+import { KARGAIN_RELAY, NOSTR_RELAYS } from "../lib/nostr/relays.ts";
 
-describe("isMergeBaseUnavailable", () => {
-  it("returns true when empty and caller expects existing profile", () => {
-    assert.equal(isMergeBaseUnavailable({}, true), true);
+const STRING_KEYS = ["name", "about", "picture", "website", "lud16"] as const;
+
+type RelayScript =
+  | { mode: "eose"; events?: Event[] }
+  | { mode: "close-before-eose" }
+  | { mode: "ensure-reject" };
+
+function makePool(scripts: {
+  defaultScript?: RelayScript;
+  byUrl?: Partial<Record<string, RelayScript>>;
+}): AppEventQueryPool {
+  const defaultScript: RelayScript = scripts.defaultScript ?? { mode: "eose", events: [] };
+  const byUrl = scripts.byUrl ?? {};
+
+  return {
+    async ensureRelay(url) {
+      const script = byUrl[url] ?? defaultScript;
+      if (script.mode === "ensure-reject") {
+        throw new Error(`ensureRelay failed: ${url}`);
+      }
+      return {
+        subscribe(_filters, params) {
+          let closed = false;
+          const close = () => {
+            if (closed) return;
+            closed = true;
+            params.onclose?.("closed");
+          };
+          queueMicrotask(() => {
+            if (closed) return;
+            if (script.mode === "close-before-eose") {
+              close();
+              return;
+            }
+            for (const event of script.events ?? []) {
+              params.onevent?.(event);
+            }
+            params.oneose?.();
+          });
+          return { close };
+        },
+      };
+    },
+  };
+}
+
+describe("fetchLatestKind0RawByAuthor coverage", () => {
+  it("queries kind:0 by authors pubkey and returns answered content", async () => {
+    const pubkey = "aa".repeat(32);
+    const pool = makePool({
+      defaultScript: {
+        mode: "eose",
+        events: [
+          {
+            id: "11".repeat(32),
+            pubkey,
+            kind: 0,
+            created_at: 100,
+            content: JSON.stringify({ name: "Ada" }),
+            tags: [],
+            sig: "cc".repeat(64),
+          },
+        ],
+      },
+    });
+
+    const raw = await fetchLatestKind0RawByAuthor(pubkey, { pool });
+    assert.equal(raw.status, "answered");
+    if (raw.status !== "answered") return;
+    assert.equal(raw.content.name, "Ada");
+    assert.equal(raw.answeredRelays.length, NOSTR_RELAYS.length);
   });
 
-  it("returns false when empty and caller does not expect existing profile", () => {
-    assert.equal(isMergeBaseUnavailable({}, false), false);
+  it("returns unanswered when no relay reaches EOSE", async () => {
+    const pool = makePool({ defaultScript: { mode: "close-before-eose" } });
+    const raw = await fetchLatestKind0RawByAuthor("aa".repeat(32), { pool });
+    assert.deepEqual(raw, { status: "unanswered", cause: "no-relay-answered" });
   });
 
-  it("returns false when merge base has keys", () => {
-    assert.equal(isMergeBaseUnavailable({ name: "Ada" }, true), false);
+  it("includes only relays that reach EOSE in answeredRelays", async () => {
+    const pubkey = "bb".repeat(32);
+    const pool = makePool({
+      defaultScript: {
+        mode: "eose",
+        events: [
+          {
+            id: "22".repeat(32),
+            pubkey,
+            kind: 0,
+            created_at: 50,
+            content: JSON.stringify({ name: "Bob" }),
+            tags: [],
+            sig: "cc".repeat(64),
+          },
+        ],
+      },
+      byUrl: { [KARGAIN_RELAY]: { mode: "close-before-eose" } },
+    });
+
+    const raw = await fetchLatestKind0RawByAuthor(pubkey, { pool });
+    assert.equal(raw.status, "answered");
+    if (raw.status !== "answered") return;
+    assert.ok(!raw.answeredRelays.includes(KARGAIN_RELAY));
+    assert.equal(raw.answeredRelays.length, NOSTR_RELAYS.length - 1);
+    assert.equal(raw.content.name, "Bob");
   });
 });
 
@@ -35,36 +130,6 @@ describe("mergeKind0Content attestation", () => {
     );
     assert.deepEqual(merged.attestation, attestation);
     assert.equal(merged.name, "B");
-  });
-});
-
-const STRING_KEYS = ["name", "about", "picture", "website", "lud16"] as const;
-
-describe("fetchLatestKind0RawByAuthor", () => {
-  it("queries kind:0 by authors pubkey only", async () => {
-    const pubkey = "aa".repeat(32);
-    let capturedFilter: { authors?: string[] } | undefined;
-
-    const pool: AttestedProfileQueryPool = {
-      querySync: async (_relays, filter) => {
-        capturedFilter = filter as { authors?: string[] };
-        return [
-          {
-            id: "1",
-            pubkey,
-            content: JSON.stringify({ name: "Ada" }),
-            created_at: 100,
-            tags: [],
-            kind: 0,
-            sig: "sig",
-          },
-        ];
-      },
-    };
-
-    const raw = await fetchLatestKind0RawByAuthor(pubkey, { pool });
-    assert.deepEqual(capturedFilter?.authors, [pubkey]);
-    assert.equal(raw.name, "Ada");
   });
 });
 
@@ -228,4 +293,3 @@ describe("mergeKind0Content location", () => {
     assert.equal("lng" in loc, false);
   });
 });
-

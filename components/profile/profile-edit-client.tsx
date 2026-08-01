@@ -211,7 +211,6 @@ export function ProfileEditClient() {
         {
           signMessage: (msg) => walletClient.signMessage({ message: msg }),
         },
-        { expectExisting: profile != null },
       );
       if (ok) {
         setSaveStatus("success");
@@ -235,7 +234,6 @@ export function ProfileEditClient() {
     lud16Invalid,
     verifierResolvedNonVerifier,
     refetch,
-    profile,
   ]);
 
   if (!isConnected) {
