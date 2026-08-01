@@ -11,6 +11,7 @@ import { useBridge } from "@/hooks/use-bridge";
 import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CommerceMode } from "@/lib/commerce/mode";
+import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
 import {
   CROSSING_TRUST_DISCLOSURE,
   bridgeActionCopy,
@@ -32,8 +33,8 @@ type Props = {
   chainId: number;
   tokenId: string;
   passportOwner: `0x${string}`;
-  /** `may(tokenId, LeaveChain)`; `undefined` fails closed. */
-  mayLeaveChain: boolean | undefined;
+  /** `may(tokenId, LeaveChain)` gate from commerce facts. */
+  leaveChainPermission: EncumbrancePermissionGate;
   /** Mode holding a live consignment, when one does — drives block copy. */
   liveConsignmentMode: CommerceMode | null;
   /** Bonded verification challenge open on the passport. */
@@ -44,7 +45,7 @@ export function PassportBridgePanel({
   chainId,
   tokenId,
   passportOwner,
-  mayLeaveChain,
+  leaveChainPermission,
   liveConsignmentMode,
   challengeOpen,
 }: Props) {
@@ -93,7 +94,7 @@ export function PassportBridgePanel({
   const surface = deriveBridgeSurface({
     isOwner: Boolean(isOwner),
     chainId,
-    mayLeaveChain,
+    leaveChainPermission,
     liveConsignmentMode,
     challengeOpen: challengeOpen === true,
     transitActive,
@@ -140,7 +141,10 @@ export function PassportBridgePanel({
 
   const disabledReason =
     surface.blockReason != null
-      ? bridgeBlockReasonCopy(surface.blockReason)
+      ? bridgeBlockReasonCopy(
+          surface.blockReason,
+          surface.unanswerableSource,
+        )
       : !configured || dstChainId == null
         ? "Bridge is not configured on this chain."
         : null;

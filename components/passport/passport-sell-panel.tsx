@@ -22,6 +22,10 @@ import {
   mandateHasAgent,
   type MandateSnapshot,
 } from "@/lib/commerce/mandate";
+import {
+  encumbrancePermissionCopy,
+  isEncumbrancePermissionAvailable,
+} from "@/lib/passport/encumbrance-permission";
 import { deriveSellSurface } from "@/lib/passport/sell-surface";
 import {
   isOnChainNftOwner,
@@ -111,7 +115,7 @@ export function PassportSellPanel({
     hasLiveConsignment: facts.hasLiveConsignment,
     fixedPriceConfigured: facts.fixedPrice.configured,
     ascendingConfigured: facts.ascending.configured,
-    mayOpenConsignment: facts.mayOpenConsignment,
+    openConsignmentPermission: facts.openConsignmentPermission,
     isActiveVerifier:
       isActiveVerifier === undefined ? undefined : isActiveVerifier === true,
     fixedPriceMandate:
@@ -144,12 +148,21 @@ export function PassportSellPanel({
     surface.showAscendingRunnerNote;
 
   if (!anyVisible) {
-    if (facts.mayOpenConsignment === false) {
-      return (
-        <p className="text-sm text-text-secondary">
-          This passport cannot open a consignment right now.
-        </p>
-      );
+    const openGate = facts.openConsignmentPermission;
+    if (openGate.status === "blocked") {
+      // Unresolved is waiting copy; refused / unanswerable are definite facts.
+      // Hide only when modes are missing and permission is available-shaped
+      // unread would still show waiting — openGate is always blocked or available.
+      if (
+        openGate.cause !== "reads_unresolved" ||
+        facts.fixedPrice.configured ||
+        facts.ascending.configured
+      ) {
+        const copy = encumbrancePermissionCopy(openGate, "openConsignment");
+        if (copy) {
+          return <p className="text-sm text-text-secondary">{copy}</p>;
+        }
+      }
     }
     if (!facts.fixedPrice.configured && !facts.ascending.configured) {
       return (
@@ -160,6 +173,10 @@ export function PassportSellPanel({
     }
     return null;
   }
+
+  const canOpen =
+    isEncumbrancePermissionAvailable(facts.openConsignmentPermission) &&
+    facts.hasLiveConsignment === false;
 
   return (
     <div className="space-y-4 rounded-md border border-border-subtle bg-bg-surface p-4">
@@ -225,7 +242,7 @@ export function PassportSellPanel({
         <CreateAuctionPanel
           chainId={chainId}
           tokenId={tokenId}
-          canOpen={facts.mayOpenConsignment === true && facts.hasLiveConsignment === false}
+          canOpen={canOpen}
           isOwner
           isActiveVerifier={isActiveVerifier === true}
         />

@@ -1,8 +1,30 @@
-import { UserRejectedRequestError } from "viem";
+import {
+  UserRejectedRequestError,
+  getAddress,
+  isAddress,
+  type Abi,
+} from "viem";
+
+import {
+  AscendingConsignmentAbi,
+  FixedPriceConsignmentAbi,
+  KarPassportAbi,
+  KarPassportBridgeGatewayAbi,
+  KarProPassAbi,
+  KarProStakingAbi,
+} from "@/lib/contracts/abis.generated";
+import { sourceUnanswerableCopy } from "@/lib/passport/encumbrance-permission";
+import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
+import {
+  decodeCustomError,
+  type DecodedCustomError,
+} from "@/lib/web3/decode-custom-error";
 
 /**
  * Exact error-name → user copy. Every production custom error must appear here with a
  * distinct message. Resolution uses whole-identifier match + longest-name wins (no list order).
+ * Errors whose ABI args are rendered by `formatDecodedRevert` keep a static fallback here
+ * for when decode fails (fail closed — never invent a confident wrong statement).
  */
 export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotOwner: "Only the passport owner can do this.",
@@ -68,7 +90,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   NonexistentToken: "This passport does not exist.",
   NotActiveVerifier: "Only an active KarPro verifier can do this.",
   CannotSelfVerify: "You cannot verify your own passport.",
-  InvalidStatus: "This action is not allowed in the current passport status.",
+  InvalidStatus: "Not allowed in the current passport status.",
   EmptyField: "A required field is empty.",
   SameURI: "The new metadata URI is the same as the current one.",
   NothingToRescue: "There is no excess ETH available to rescue.",
@@ -157,6 +179,63 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);
 
+/** Production contract ABIs tried in order for write-path custom-error decode. */
+const PRODUCTION_DECODE_ABIS: readonly Abi[] = [
+  KarPassportAbi as Abi,
+  FixedPriceConsignmentAbi as Abi,
+  AscendingConsignmentAbi as Abi,
+  KarProStakingAbi as Abi,
+  KarProPassAbi as Abi,
+  KarPassportBridgeGatewayAbi as Abi,
+];
+
+/**
+ * Decode a write/simulate failure via the shared ABI decoder (same helper as
+ * the may-preview path). Tries each production ABI until one matches.
+ */
+export function decodeProductionCustomError(
+  error: unknown,
+): DecodedCustomError | null {
+  for (const abi of PRODUCTION_DECODE_ABIS) {
+    const decoded = decodeCustomError(error, abi);
+    if (decoded != null) return decoded;
+  }
+  return null;
+}
+
+/**
+ * Enrich messages for mapped errors whose ABI args identify something
+ * actionable. Returns null when args are absent, malformed, or unactionable
+ * (caller falls back to static REVERT_COPY).
+ */
+export function formatDecodedRevert(
+  decoded: DecodedCustomError,
+): string | null {
+  if (decoded.name === "SourceUnanswerable") {
+    const raw = decoded.args?.[0];
+    if (typeof raw !== "string" || !isAddress(raw)) return null;
+    return sourceUnanswerableCopy(getAddress(raw));
+  }
+  if (decoded.name === "EmptyField") {
+    const field = decoded.args?.[0];
+    if (typeof field !== "string" || field.trim() === "") return null;
+    return `A required field is empty (${field.trim()}).`;
+  }
+  if (decoded.name === "InvalidStatus") {
+    const raw = decoded.args?.[0];
+    const index =
+      typeof raw === "bigint"
+        ? Number(raw)
+        : typeof raw === "number"
+          ? raw
+          : NaN;
+    const status = passportStatusFromChainIndex(index);
+    if (status == null) return null;
+    return `Not allowed in the current passport status (${status}).`;
+  }
+  return null;
+}
+
 /** Whole-identifier match; longest matching name wins (order-independent). */
 export function resolveRevertCopy(message: string): string | null {
   let best: string | null = null;
@@ -190,6 +269,15 @@ export function txErrorMessage(err: unknown): string {
   ) {
     return "Wallet signature cancelled.";
   }
+
+  const decoded = decodeProductionCustomError(err);
+  if (decoded != null) {
+    const enriched = formatDecodedRevert(decoded);
+    if (enriched != null) return enriched;
+    const staticCopy = REVERT_COPY[decoded.name];
+    if (staticCopy != null) return staticCopy;
+  }
+
   if (err instanceof Error && err.message.trim()) {
     const mapped = resolveRevertCopy(err.message);
     if (mapped) return mapped;

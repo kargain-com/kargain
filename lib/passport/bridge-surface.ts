@@ -1,11 +1,18 @@
 import type { CommerceMode } from "@/lib/commerce/mode";
+import {
+  encumbrancePermissionCopy,
+  isEncumbrancePermissionAvailable,
+  type EncumbrancePermissionGate,
+} from "@/lib/passport/encumbrance-permission";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
+import type { Address } from "viem";
 
 export type BridgeBlockReason =
   | "consigned"
   | "challenged"
   | "refused"
-  | "unresolved";
+  | "unresolved"
+  | "source_unanswerable";
 
 export type BridgeSurfaceMode = "hidden" | "action";
 
@@ -14,6 +21,8 @@ export type BridgeSurfaceResult = {
   mode: BridgeSurfaceMode;
   canBridge: boolean;
   blockReason: BridgeBlockReason | null;
+  /** Set when `blockReason` is `source_unanswerable`. */
+  unanswerableSource: Address | null;
 };
 
 export type BridgeSurfaceInput = {
@@ -21,10 +30,9 @@ export type BridgeSurfaceInput = {
   /** Custody chain — where the token lives now. */
   chainId: number;
   /**
-   * `may(tokenId, LeaveChain)` from KarPassport — the authoritative gate.
-   * `undefined` means unresolved: fail closed.
+   * `may(tokenId, LeaveChain)` gate — the authoritative leave permission.
    */
-  mayLeaveChain: boolean | undefined;
+  leaveChainPermission: EncumbrancePermissionGate;
   /** Live consignment mode, when known, so the block copy can be specific. */
   liveConsignmentMode?: CommerceMode | null;
   /** Open passport challenge (bonded verification challenge). */
@@ -41,6 +49,7 @@ const HIDDEN: BridgeSurfaceResult = {
   mode: "hidden",
   canBridge: false,
   blockReason: null,
+  unanswerableSource: null,
 };
 
 /**
@@ -52,6 +61,7 @@ const TRANSIT_VISIBLE: BridgeSurfaceResult = {
   mode: "action",
   canBridge: false,
   blockReason: null,
+  unanswerableSource: null,
 };
 
 export function deriveBridgeSurface(
@@ -72,27 +82,56 @@ export function deriveBridgeSurface(
     return { ...HIDDEN };
   }
 
-  if (input.mayLeaveChain === undefined) {
+  const gate = input.leaveChainPermission;
+
+  if (gate.status === "blocked" && gate.cause === "reads_unresolved") {
     return {
       visible: true,
       mode: "action",
       canBridge: false,
       blockReason: "unresolved",
+      unanswerableSource: null,
     };
   }
 
-  if (input.mayLeaveChain === false) {
+  if (gate.status === "blocked" && gate.cause === "source_unanswerable") {
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: "source_unanswerable",
+      unanswerableSource: gate.source,
+    };
+  }
+
+  if (gate.status === "blocked" && gate.cause === "refused") {
     // Challenge first: it outranks commerce when both apply.
     const reason: BridgeBlockReason = input.challengeOpen
       ? "challenged"
       : input.liveConsignmentMode
         ? "consigned"
         : "refused";
-    return { visible: true, mode: "action", canBridge: false, blockReason: reason };
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: reason,
+      unanswerableSource: null,
+    };
   }
 
   if (input.transitActive) {
     return { ...TRANSIT_VISIBLE };
+  }
+
+  if (!isEncumbrancePermissionAvailable(gate)) {
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: "unresolved",
+      unanswerableSource: null,
+    };
   }
 
   return {
@@ -100,11 +139,13 @@ export function deriveBridgeSurface(
     mode: "action",
     canBridge: true,
     blockReason: null,
+    unanswerableSource: null,
   };
 }
 
 export function bridgeBlockReasonCopy(
   reason: BridgeBlockReason,
+  unanswerableSource: Address | null = null,
 ): string {
   switch (reason) {
     case "consigned":
@@ -112,9 +153,26 @@ export function bridgeBlockReasonCopy(
     case "challenged":
       return "Resolve the open challenge before bridging.";
     case "refused":
-      return "This passport cannot leave the chain right now.";
+      return encumbrancePermissionCopy(
+        { status: "blocked", cause: "refused" },
+        "leaveChain",
+      );
     case "unresolved":
-      return "Waiting for chain permission…";
+      return encumbrancePermissionCopy(
+        { status: "blocked", cause: "reads_unresolved" },
+        "leaveChain",
+      );
+    case "source_unanswerable":
+      return encumbrancePermissionCopy(
+        unanswerableSource != null
+          ? {
+              status: "blocked",
+              cause: "source_unanswerable",
+              source: unanswerableSource,
+            }
+          : { status: "blocked", cause: "reads_unresolved" },
+        "leaveChain",
+      );
   }
 }
 

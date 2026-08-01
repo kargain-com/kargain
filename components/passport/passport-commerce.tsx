@@ -3,6 +3,7 @@
 import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
 import { PassportBridgePanel } from "@/components/passport/passport-bridge-panel";
+import { PassportEncumbranceRegistry } from "@/components/passport/passport-encumbrance-registry";
 import { PassportSellPanel } from "@/components/passport/passport-sell-panel";
 import { WatchlistButton } from "@/components/watchlist/watchlist-button";
 import { useAuctionDetail } from "@/hooks/use-auction-detail";
@@ -13,6 +14,7 @@ import {
   type AuctionRow,
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
+import { isEncumbrancePermissionAvailable } from "@/lib/passport/encumbrance-permission";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +82,19 @@ export function PassportCommerce({
     Boolean(detail.auction?.active) ||
     auctionHoldOpen;
 
+  const canOpenConsignment = isEncumbrancePermissionAvailable(
+    facts.openConsignmentPermission,
+  );
+
+  const unanswerableSource =
+    facts.openConsignmentPermission.status === "blocked" &&
+    facts.openConsignmentPermission.cause === "source_unanswerable"
+      ? facts.openConsignmentPermission.source
+      : facts.leaveChainPermission.status === "blocked" &&
+          facts.leaveChainPermission.cause === "source_unanswerable"
+        ? facts.leaveChainPermission.source
+        : null;
+
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
       <WatchlistButton tokenId={tokenId} />
@@ -88,7 +103,7 @@ export function PassportCommerce({
           chainId={chainId}
           tokenId={tokenId}
           passportOwner={passportOwner}
-          canOpenConsignment={facts.mayOpenConsignment === true}
+          canOpenConsignment={canOpenConsignment}
           listingBlocksAuction={listingBlocksAuction}
           detail={detail}
         />
@@ -98,7 +113,7 @@ export function PassportCommerce({
             chainId={chainId}
             tokenId={tokenId}
             passportOwner={passportOwner}
-            canOpenConsignment={facts.mayOpenConsignment === true}
+            canOpenConsignment={canOpenConsignment}
             listingBlocksAuction={listingBlocksAuction}
             detail={detail}
           />
@@ -124,9 +139,14 @@ export function PassportCommerce({
         chainId={chainId}
         tokenId={tokenId}
         passportOwner={passportOwner}
-        mayLeaveChain={facts.mayLeaveChain}
+        leaveChainPermission={facts.leaveChainPermission}
         liveConsignmentMode={facts.liveConsignmentMode}
         challengeOpen={facts.challengeOpen}
+      />
+      <PassportEncumbranceRegistry
+        chainId={chainId}
+        registry={facts.encumbranceRegistry}
+        unanswerableSource={unanswerableSource}
       />
     </div>
   );

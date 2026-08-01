@@ -15,6 +15,15 @@ import {
   FixedPriceConsignmentAbi,
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
+import {
+  deriveEncumbrancePermission,
+  type EncumbrancePermissionGate,
+} from "@/lib/passport/encumbrance-permission";
+import {
+  deriveEncumbranceRegistry,
+  MAX_ENCUMBRANCE_SOURCES,
+  type EncumbranceRegistry,
+} from "@/lib/passport/encumbrance-registry";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   useKeyedReadContracts,
@@ -48,10 +57,15 @@ export type CommerceModeFacts = {
 export type PassportCommerceFacts = {
   fixedPrice: CommerceModeFacts;
   ascending: CommerceModeFacts;
-  /** `may(tokenId, OpenConsignment)`; `undefined` fails closed. */
-  mayOpenConsignment: boolean | undefined;
-  /** `may(tokenId, LeaveChain)`; `undefined` fails closed. */
-  mayLeaveChain: boolean | undefined;
+  /** `may(tokenId, OpenConsignment)` — available | blocked with named cause. */
+  openConsignmentPermission: EncumbrancePermissionGate;
+  /** `may(tokenId, LeaveChain)` — available | blocked with named cause. */
+  leaveChainPermission: EncumbrancePermissionGate;
+  /**
+   * On-chain encumbrance registry membership for this custody-chain passport
+   * contract (not token-scoped).
+   */
+  encumbranceRegistry: EncumbranceRegistry;
   /**
    * On-chain `custodyLocked(tokenId)` — usable copy not on this chain when true.
    * `undefined` while unread (fail closed for presence).
@@ -126,7 +140,24 @@ export function usePassportCommerceFacts(input: {
         args: [tid],
         chainId: wc,
       },
+      {
+        key: "encumbranceSourceCount",
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "encumbranceSourceCount",
+        chainId: wc,
+      },
     ];
+    for (let i = 0; i < MAX_ENCUMBRANCE_SOURCES; i++) {
+      calls.push({
+        key: `encumbranceSourceAt.${i}`,
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "encumbranceSourceAt",
+        args: [BigInt(i)],
+        chainId: wc,
+      });
+    }
     if (fixedPrice) {
       calls.push({
         key: "fp.phase",
@@ -226,10 +257,19 @@ export function usePassportCommerceFacts(input: {
   );
   const ascendingFacts = readModeFacts("ascending", "asc", Boolean(ascending));
 
-  const mayOpen = reads.get("mayOpen");
-  const mayLeave = reads.get("mayLeave");
+  const mayOpenEntry = reads.entry("mayOpen");
+  const mayLeaveEntry = reads.entry("mayLeave");
   const challengeOpenedAt = reads.get("challengeOpenedAt");
   const custodyLockedRaw = reads.get("custodyLocked");
+
+  const openConsignmentPermission = deriveEncumbrancePermission(mayOpenEntry);
+  const leaveChainPermission = deriveEncumbrancePermission(mayLeaveEntry);
+  const encumbranceRegistry = deriveEncumbranceRegistry({
+    countEntry: reads.entry("encumbranceSourceCount"),
+    atEntries: Array.from({ length: MAX_ENCUMBRANCE_SOURCES }, (_, i) =>
+      reads.entry(`encumbranceSourceAt.${i}`),
+    ),
+  });
 
   const anyUnresolved =
     fixedPriceFacts.live === undefined || ascendingFacts.live === undefined;
@@ -246,8 +286,9 @@ export function usePassportCommerceFacts(input: {
   return {
     fixedPrice: fixedPriceFacts,
     ascending: ascendingFacts,
-    mayOpenConsignment: mayOpen == null ? undefined : mayOpen === true,
-    mayLeaveChain: mayLeave == null ? undefined : mayLeave === true,
+    openConsignmentPermission,
+    leaveChainPermission,
+    encumbranceRegistry,
     custodyLocked:
       custodyLockedRaw == null ? undefined : custodyLockedRaw === true,
     challengeOpen:

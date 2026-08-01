@@ -4,6 +4,7 @@ import { zeroAddress } from "viem";
 
 import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
 import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
+import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   deriveSellSurface,
   type SellSurfaceFlags,
@@ -13,6 +14,21 @@ import {
 const AGENT = "0x1111111111111111111111111111111111111111" as const;
 const OWNER = "0x2222222222222222222222222222222222222222" as const;
 const NOW = 2_000_000_000;
+
+const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
+const REFUSED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "refused",
+};
+const UNRESOLVED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "reads_unresolved",
+};
+const UNANSWERABLE: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "source_unanswerable",
+  source: AGENT,
+};
 
 const allHidden: SellSurfaceFlags = {
   showFixedPriceOpen: false,
@@ -59,7 +75,7 @@ function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
     hasLiveConsignment: false,
     fixedPriceConfigured: true,
     ascendingConfigured: true,
-    mayOpenConsignment: true,
+    openConsignmentPermission: AVAILABLE,
     isActiveVerifier: false,
     fixedPriceMandate: { value: null, now: NOW },
     ascendingMandate: { value: null, now: NOW },
@@ -85,11 +101,18 @@ describe("deriveSellSurface", () => {
       allHidden,
     );
     assert.deepEqual(
-      deriveSellSurface(input({ mayOpenConsignment: undefined })),
+      deriveSellSurface(input({ openConsignmentPermission: UNRESOLVED })),
       allHidden,
     );
     assert.deepEqual(
-      deriveSellSurface(input({ mayOpenConsignment: false })),
+      deriveSellSurface(input({ openConsignmentPermission: REFUSED })),
+      allHidden,
+    );
+  });
+
+  it("fails closed when a source is unanswerable", () => {
+    assert.deepEqual(
+      deriveSellSurface(input({ openConsignmentPermission: UNANSWERABLE })),
       allHidden,
     );
   });

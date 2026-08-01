@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   CROSSING_TRUST_DISCLOSURE,
   bridgeActionCopy,
@@ -13,29 +14,47 @@ import {
   type BridgeSurfaceResult,
 } from "../lib/passport/bridge-surface.ts";
 
+const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
+const REFUSED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "refused",
+};
+const UNRESOLVED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "reads_unresolved",
+};
+const SOURCE = "0x1111111111111111111111111111111111111111" as const;
+const UNANSWERABLE: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "source_unanswerable",
+  source: SOURCE,
+};
+
 const HIDDEN: BridgeSurfaceResult = {
   visible: false,
   mode: "hidden",
   canBridge: false,
   blockReason: null,
+  unanswerableSource: null,
 };
 
 function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput {
   return {
     isOwner: true,
     chainId: 84532,
-    mayLeaveChain: true,
+    leaveChainPermission: AVAILABLE,
     ...overrides,
   };
 }
 
 describe("deriveBridgeSurface", () => {
-  it("allows bridge when may(LeaveChain) is true", () => {
+  it("allows bridge when may(LeaveChain) is available", () => {
     assert.deepEqual(deriveBridgeSurface(input()), {
       visible: true,
       mode: "action",
       canBridge: true,
       blockReason: null,
+      unanswerableSource: null,
     });
   });
 
@@ -45,6 +64,7 @@ describe("deriveBridgeSurface", () => {
       mode: "action",
       canBridge: true,
       blockReason: null,
+      unanswerableSource: null,
     });
   });
 
@@ -57,28 +77,49 @@ describe("deriveBridgeSurface", () => {
   });
 
   it("fail-closes while may(LeaveChain) is unresolved", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ mayLeaveChain: undefined })), {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "unresolved",
-    });
+    assert.deepEqual(
+      deriveBridgeSurface(input({ leaveChainPermission: UNRESOLVED })),
+      {
+        visible: true,
+        mode: "action",
+        canBridge: false,
+        blockReason: "unresolved",
+        unanswerableSource: null,
+      },
+    );
   });
 
   it("disables when may refuses leave", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ mayLeaveChain: false })), {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: "refused",
-    });
+    assert.deepEqual(
+      deriveBridgeSurface(input({ leaveChainPermission: REFUSED })),
+      {
+        visible: true,
+        mode: "action",
+        canBridge: false,
+        blockReason: "refused",
+        unanswerableSource: null,
+      },
+    );
+  });
+
+  it("names the unanswerable source on SourceUnanswerable", () => {
+    assert.deepEqual(
+      deriveBridgeSurface(input({ leaveChainPermission: UNANSWERABLE })),
+      {
+        visible: true,
+        mode: "action",
+        canBridge: false,
+        blockReason: "source_unanswerable",
+        unanswerableSource: SOURCE,
+      },
+    );
   });
 
   it("names consigned when leave is refused and a live consignment is known", () => {
     assert.equal(
       deriveBridgeSurface(
         input({
-          mayLeaveChain: false,
+          leaveChainPermission: REFUSED,
           liveConsignmentMode: "fixedPrice",
         }),
       ).blockReason,
@@ -90,7 +131,7 @@ describe("deriveBridgeSurface", () => {
     assert.equal(
       deriveBridgeSurface(
         input({
-          mayLeaveChain: false,
+          leaveChainPermission: REFUSED,
           challengeOpen: true,
         }),
       ).blockReason,
@@ -102,7 +143,7 @@ describe("deriveBridgeSurface", () => {
     assert.equal(
       deriveBridgeSurface(
         input({
-          mayLeaveChain: false,
+          leaveChainPermission: REFUSED,
           liveConsignmentMode: "ascending",
           challengeOpen: true,
         }),
@@ -119,6 +160,7 @@ describe("deriveBridgeSurface", () => {
         mode: "action",
         canBridge: false,
         blockReason: null,
+        unanswerableSource: null,
       },
     );
   });
@@ -129,6 +171,7 @@ describe("deriveBridgeSurface", () => {
       mode: "action",
       canBridge: false,
       blockReason: null,
+      unanswerableSource: null,
     });
   });
 });
@@ -162,6 +205,10 @@ describe("bridgeBlockReasonCopy", () => {
     assert.ok(bridgeBlockReasonCopy("challenged"));
     assert.ok(bridgeBlockReasonCopy("refused"));
     assert.ok(bridgeBlockReasonCopy("unresolved"));
+    assert.match(
+      bridgeBlockReasonCopy("source_unanswerable", SOURCE),
+      /0x1111/,
+    );
   });
 });
 

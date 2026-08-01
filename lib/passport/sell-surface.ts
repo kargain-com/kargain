@@ -1,6 +1,10 @@
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import type { CommerceMode } from "@/lib/commerce/mode";
+import {
+  isEncumbrancePermissionAvailable,
+  type EncumbrancePermissionGate,
+} from "@/lib/passport/encumbrance-permission";
 
 export type SellSurfaceFlags = {
   /** Open a fixed-price consignment directly. */
@@ -35,8 +39,8 @@ export type SellSurfaceInput = {
   /** Mode contracts deployed on this chain. */
   fixedPriceConfigured: boolean;
   ascendingConfigured: boolean;
-  /** `may(tokenId, OpenConsignment)`; `undefined` while unresolved. */
-  mayOpenConsignment: boolean | undefined;
+  /** `may(tokenId, OpenConsignment)` gate — sole permission answer. */
+  openConsignmentPermission: EncumbrancePermissionGate;
   /** `undefined` means the staking read is unresolved. */
   isActiveVerifier: boolean | undefined;
   /** `undefined` means the mandate read is unresolved. */
@@ -74,7 +78,7 @@ export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
   if (!input.isOwner || input.hasLiveConsignment !== false) {
     return { ...HIDDEN_FLAGS };
   }
-  if (input.mayOpenConsignment !== true) {
+  if (!isEncumbrancePermissionAvailable(input.openConsignmentPermission)) {
     return { ...HIDDEN_FLAGS };
   }
 
