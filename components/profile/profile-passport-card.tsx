@@ -8,6 +8,10 @@ import {
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
 import { isProfilePassportBridgedAway } from "@/lib/passport/map-profile-passport";
+import {
+  derivePassportPresence,
+  derivePassportTrustDisplay,
+} from "@/lib/passport/presence";
 import { buildProfilePassportTitle } from "@/lib/passport/vehicle-label";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
@@ -52,6 +56,15 @@ export function ProfilePassportCard({
 }: ProfilePassportCardProps) {
   const bridgedAway =
     !transitBadge && isProfilePassportBridgedAway(chainId, custodyChain);
+  // Inventory presence from indexer location — not escrow custody.
+  const presence = derivePassportPresence({
+    viewChainId: chainId,
+    // Profile tiles have no RPC lock read; custody mismatch means away.
+    custodyLocked: bridgedAway || Boolean(transitBadge) ? true : false,
+    ponderCustodyChain: custodyChain,
+    locationChainId: custodyChain,
+  });
+  const trustDisplay = derivePassportTrustDisplay(presence, status);
   const linkChain = hrefChainId ?? custodyChain;
   const title = buildProfilePassportTitle({
     year,
@@ -73,7 +86,7 @@ export function ProfilePassportCard({
       className={cn(
         "group flex h-full flex-col overflow-hidden rounded-md border bg-bg-card transition-colors duration-150",
         "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-        status === "VERIFIED"
+        trustDisplay.showVerifiedAccent
           ? "border-accent-warm group-focus-visible:border-accent-warm"
           : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
       )}
@@ -93,7 +106,12 @@ export function ProfilePassportCard({
       <div className="flex flex-1 flex-col gap-2 p-3">
         <h3 className={TITLE_SLOT}>{title}</h3>
         <div className="flex min-w-0 items-center gap-2">
-          <PassportStatusBadge status={status} className="shrink-0" />
+          {trustDisplay.badgeStatus != null ? (
+            <PassportStatusBadge
+              status={trustDisplay.badgeStatus}
+              className="shrink-0"
+            />
+          ) : null}
           <PassportIdLabel
             tokenId={tokenId}
             chainId={chainId}

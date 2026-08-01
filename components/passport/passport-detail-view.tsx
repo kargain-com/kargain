@@ -11,11 +11,14 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportPanelLink } from "@/components/passport/passport-panel-link";
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
+import {
+  PassportPresenceStatusBadge,
+  PassportPresenceVerified,
+} from "@/components/passport/passport-presence-status";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
 import { PassportUriHistory } from "@/components/passport/passport-uri-history";
 import { PassportChainStatusBanner } from "@/components/passport/passport-chain-status-banner";
-import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { PassportTrustBanner } from "@/components/passport/passport-trust-banner";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import {
@@ -159,6 +162,7 @@ export function PassportDetailView({
     <PassportActionsPanel
       tokenId={tokenId}
       chainId={chainId}
+      ponderCustodyChain={passport.custodyChain}
       passportOwner={passport.owner as `0x${string}`}
       status={passport.status}
       lastDisputer={passport.lastDisputer}
@@ -194,8 +198,11 @@ export function PassportDetailView({
               <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                 {title}
               </h1>
-              <PassportStatusBadge
-                status={passport.status}
+              <PassportPresenceStatusBadge
+                tokenId={tokenId}
+                chainId={chainId}
+                ponderCustodyChain={passport.custodyChain}
+                recordedStatus={passport.status}
                 sublabel={statusSublabel}
                 className="shrink-0"
               />
@@ -259,11 +266,20 @@ export function PassportDetailView({
             <div className="order-1 mt-6 md:hidden">{commerce}</div>
 
             <div className="mt-6">
-              <PassportPhotoGallery
-                photos={metadata?.photos ?? []}
+              <PassportPresenceVerified
+                tokenId={tokenId}
                 chainId={chainId}
-                verified={passport.status === "VERIFIED"}
-              />
+                ponderCustodyChain={passport.custodyChain}
+                recordedStatus={passport.status}
+              >
+                {(verified) => (
+                  <PassportPhotoGallery
+                    photos={metadata?.photos ?? []}
+                    chainId={chainId}
+                    verified={verified}
+                  />
+                )}
+              </PassportPresenceVerified>
             </div>
 
             <PassportDetailTabs

@@ -118,6 +118,13 @@ export function bridgeBlockReasonCopy(
   }
 }
 
+/**
+ * Term of a crossing (X2) — shown before send on Move and Return.
+ * Plain disclosure, not an alarm.
+ */
+export const CROSSING_TRUST_DISCLOSURE =
+  "Verification does not travel. After you send, the passport begins unverified on the destination chain. Returning home clears verification on this chain too — a verification is a statement by a professional whose stake lives on one chain.";
+
 export type BridgeDirectionMode = "move" | "return";
 
 /**

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
+  CROSSING_TRUST_DISCLOSURE,
   bridgeActionCopy,
   bridgeBlockReasonCopy,
   deriveBridgeDirectionMode,
@@ -159,5 +162,23 @@ describe("bridgeBlockReasonCopy", () => {
     assert.ok(bridgeBlockReasonCopy("challenged"));
     assert.ok(bridgeBlockReasonCopy("refused"));
     assert.ok(bridgeBlockReasonCopy("unresolved"));
+  });
+});
+
+describe("CROSSING_TRUST_DISCLOSURE", () => {
+  it("states that verification does not travel", () => {
+    assert.ok(CROSSING_TRUST_DISCLOSURE.length > 40);
+    assert.match(CROSSING_TRUST_DISCLOSURE, /Verification does not travel/);
+    assert.match(CROSSING_TRUST_DISCLOSURE, /unverified/);
+    assert.match(CROSSING_TRUST_DISCLOSURE, /Returning home/);
+  });
+
+  it("bridge panel shows disclosure before send", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
+      "utf8",
+    );
+    assert.match(src, /CROSSING_TRUST_DISCLOSURE/);
+    assert.match(src, /surface\.canBridge/);
   });
 });

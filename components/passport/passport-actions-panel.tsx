@@ -40,9 +40,13 @@ import {
 import {
   VERIFICATION_INSTANCE,
   deriveChallengeSurface,
-  isAvailable,
   parseChallenge,
 } from "@/lib/challenge";
+import {
+  derivePassportActionSurface,
+  isAvailable,
+} from "@/lib/passport/action-surface";
+import { derivePassportPresence } from "@/lib/passport/presence";
 import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
@@ -59,10 +63,14 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 
 type Props = {
   tokenId: string;
+  /** Chain this panel acts on (view / commerce chain). */
   chainId: number;
+  /** Ponder usable-copy location — presence input. Defaults to `chainId`. */
+  ponderCustodyChain?: number;
   passportOwner: `0x${string}`;
   status: PassportStatus;
   lastDisputer: string;
@@ -85,6 +93,7 @@ type Props = {
 export function PassportActionsPanel({
   tokenId,
   chainId,
+  ponderCustodyChain,
   passportOwner,
   status,
   lastDisputer,
@@ -244,7 +253,28 @@ export function PassportActionsPanel({
     nowSec,
     requireDisputedStatus: true,
   });
-  const exclusionCopy = challengeSurface.exclusionCopy;
+
+  const commerceFacts = usePassportCommerceFacts({
+    chainId,
+    tokenId,
+    enabled: Boolean(passport),
+  });
+  const presence = derivePassportPresence({
+    viewChainId: chainId,
+    custodyLocked: commerceFacts.custodyLocked,
+    ponderCustodyChain: ponderCustodyChain ?? chainId,
+  });
+  const actionSurface = derivePassportActionSurface({
+    presence,
+    challenge: challengeSurface,
+    wallet: address,
+    isOwner,
+    holder,
+    isActiveVerifier,
+    status,
+    listingActive: Boolean(listingActive),
+  });
+  const exclusionCopy = actionSurface.challenge.exclusionCopy;
 
   useEffect(() => {
     if (!recordAddedSuccess) return;
@@ -517,19 +547,25 @@ export function PassportActionsPanel({
         </p>
       )}
 
-      {isOwner && status !== "DISPUTED" && !listingActive && (
+      {actionSurface.presenceCopy ? (
+        <p className="text-sm text-text-secondary" role="status">
+          {actionSurface.presenceCopy}
+        </p>
+      ) : null}
+
+      {isAvailable(actionSurface.editMetadata) && (
         <Button asChild variant="secondary" className="w-full">
           <Link href={`/passport/${tokenId}/edit?chain=${chainId}`}>Edit metadata</Link>
         </Button>
       )}
 
-      {isOwner && status === "VERIFIED" && !listingActive && (
+      {isAvailable(actionSurface.editMetadata) && status === "VERIFIED" && (
         <p className="text-xs text-text-secondary">
           Editing anchor fields while verified will reset verification status.
         </p>
       )}
 
-      {isActiveVerifier === true && !isOwner && status === "UNVERIFIED" && (
+      {isAvailable(actionSurface.verify) && (
         <div className="space-y-3">
           <MetadataDiffPanel
             chainId={chainId}
@@ -562,7 +598,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isConnected && isAvailable(challengeSurface.open) && (
+      {isAvailable(actionSurface.open) && (
         <div className="space-y-2">
           {disputeDepositLoading ? (
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
@@ -603,29 +639,29 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && (
+      {status === "DISPUTED" && actionSurface.presence.status === "here" && (
         <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-3">
-          {challengeSurface.phase === "active" && (
+          {actionSurface.challenge.phase === "active" && (
             <p className="text-sm text-text-secondary">
               Challenge window ends{" "}
               <time
                 className="font-mono tabular-nums text-text-primary"
-                dateTime={new Date(challengeSurface.windowEndsAt * 1000).toISOString()}
+                dateTime={new Date(actionSurface.challenge.windowEndsAt * 1000).toISOString()}
               >
-                {new Date(challengeSurface.windowEndsAt * 1000).toLocaleString(undefined, {
+                {new Date(actionSurface.challenge.windowEndsAt * 1000).toLocaleString(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })}
               </time>
               {" · "}
               <span className="font-mono tabular-nums">
-                {formatReturnCountdown(BigInt(challengeSurface.windowRemainingSec))}
+                {formatReturnCountdown(BigInt(actionSurface.challenge.windowRemainingSec))}
               </span>{" "}
               left. If no independent KarPro decides by then, verification lapses and the deposit
               goes to the platform.
             </p>
           )}
-          {challengeSurface.phase === "elapsed" && (
+          {actionSurface.challenge.phase === "elapsed" && (
             <p className="text-sm text-text-secondary">
               The challenge window has ended. Anyone may conclude so verification
               lapses. The deposit goes to the platform. Judging is no longer available.
@@ -637,11 +673,11 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isAvailable(challengeSurface.judge) && (
+      {isAvailable(actionSurface.judge) && (
         <div className="flex flex-col gap-2">
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
-              {challengeSurface.terminals.upheld.judgeCopy}
+              {actionSurface.challenge.terminals.upheld.judgeCopy}
             </p>
             <Button
               type="button"
@@ -665,7 +701,7 @@ export function PassportActionsPanel({
           </div>
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
-              {challengeSurface.terminals.rejected.judgeCopy}
+              {actionSurface.challenge.terminals.rejected.judgeCopy}
             </p>
             <Button
               type="button"
@@ -691,7 +727,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isAvailable(challengeSurface.withdraw) && (
+      {isAvailable(actionSurface.withdraw) && (
         <div className="space-y-2">
           {disputeDeposit != null && (
             <p className="text-xs text-text-secondary">
@@ -725,10 +761,10 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isAvailable(challengeSurface.conclude) && (
+      {isAvailable(actionSurface.conclude) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
-            {challengeSurface.terminals.expired.concludeCopy}
+            {actionSurface.challenge.terminals.expired.concludeCopy}
           </p>
           <Button
             type="button"
@@ -754,7 +790,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && isOwner && !listingActive && (
+      {isAvailable(actionSurface.ownerClarification) && (
         <div className="space-y-2">
           <Label htmlFor="clarification">Owner clarification</Label>
           <Textarea
@@ -789,13 +825,13 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {listingActive && holder && (
+      {listingActive && holder && actionSurface.presence.status === "here" && (
         <p className="text-xs text-text-secondary">
           Service records can be added after delisting.
         </p>
       )}
 
-      {isOwner && status !== "DISPUTED" && !listingActive && (
+      {isAvailable(actionSurface.appendRecord) && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Button
             type="button"
@@ -874,7 +910,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isActiveVerifier === true && !isOwner && (
+      {isAvailable(actionSurface.appendAttestation) && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Label htmlFor="attestation-text">Verifier attestation</Label>
           <p className="text-xs text-text-secondary">
@@ -913,7 +949,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isConnected && !holder && (
+      {isAvailable(actionSurface.reportDiscrepancy) && (
       <div className="space-y-2 border-t border-border-default pt-4">
         <Label htmlFor="discrepancy">Report discrepancy</Label>
         <Textarea

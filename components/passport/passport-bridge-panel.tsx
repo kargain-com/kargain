@@ -12,6 +12,7 @@ import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import {
+  CROSSING_TRUST_DISCLOSURE,
   bridgeActionCopy,
   bridgeBlockReasonCopy,
   deriveBridgeDirectionMode,
@@ -197,6 +198,12 @@ export function PassportBridgePanel({
         <p className="font-mono text-xs tabular-nums text-text-tertiary">
           {record?.srcChainId ?? chainId} →{" "}
           {record?.dstChainId ?? dstChainId}
+        </p>
+      )}
+
+      {surface.canBridge && !transitActive && (
+        <p className="font-sans text-sm text-text-secondary">
+          {CROSSING_TRUST_DISCLOSURE}
         </p>
       )}
 

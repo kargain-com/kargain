@@ -52,6 +52,11 @@ export type PassportCommerceFacts = {
   mayOpenConsignment: boolean | undefined;
   /** `may(tokenId, LeaveChain)`; `undefined` fails closed. */
   mayLeaveChain: boolean | undefined;
+  /**
+   * On-chain `custodyLocked(tokenId)` — usable copy not on this chain when true.
+   * `undefined` while unread (fail closed for presence).
+   */
+  custodyLocked: boolean | undefined;
   /** Bonded verification challenge open on the passport itself. */
   challengeOpen: boolean | undefined;
   /** Mode holding a live consignment, when exactly one does. */
@@ -110,6 +115,14 @@ export function usePassportCommerceFacts(input: {
         address: passport,
         abi: KarPassportAbi,
         functionName: "challengeOpenedAt",
+        args: [tid],
+        chainId: wc,
+      },
+      {
+        key: "custodyLocked",
+        address: passport,
+        abi: KarPassportAbi,
+        functionName: "custodyLocked",
         args: [tid],
         chainId: wc,
       },
@@ -216,6 +229,7 @@ export function usePassportCommerceFacts(input: {
   const mayOpen = reads.get("mayOpen");
   const mayLeave = reads.get("mayLeave");
   const challengeOpenedAt = reads.get("challengeOpenedAt");
+  const custodyLockedRaw = reads.get("custodyLocked");
 
   const anyUnresolved =
     fixedPriceFacts.live === undefined || ascendingFacts.live === undefined;
@@ -234,6 +248,8 @@ export function usePassportCommerceFacts(input: {
     ascending: ascendingFacts,
     mayOpenConsignment: mayOpen == null ? undefined : mayOpen === true,
     mayLeaveChain: mayLeave == null ? undefined : mayLeave === true,
+    custodyLocked:
+      custodyLockedRaw == null ? undefined : custodyLockedRaw === true,
     challengeOpen:
       challengeOpenedAt == null
         ? undefined
