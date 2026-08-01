@@ -16,35 +16,39 @@ const HUB = 84532;
 const ETH = 11155111;
 
 describe("COMMERCIAL_ACTIVE registry", () => {
-  it("includes Nuclear #2 hub and Eth stacks with modes", () => {
+  it("includes Nuclear #3 hub and Eth stacks with modes", () => {
     assert.equal(Object.keys(COMMERCIAL_ACTIVE).sort().join(","), `${ETH},${HUB}`);
     assert.equal(requireCommercialActive(HUB).karPassport, SEPOLIA_ACTIVE.karPassport);
     assert.equal(
       requireCommercialActive(ETH).karPassport,
-      "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
+      "0xc903feE4395dd5Db35d9BcB558917f3Af8d71869",
     );
     assert.equal(
       requireCommercialActive(HUB).fixedPriceConsignment,
-      "0xE98EbDb9354ff9c91872390D7106D621794C9118",
+      "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
     );
     assert.equal(
       requireCommercialActive(ETH).ascendingConsignment,
-      "0xe8ECf3b42b489F6289434840661770b43B027F13",
+      "0x07f9c182F176C2C4A82Fcb80c4f942864420542D",
     );
   });
 
   it("SEPOLIA_ACTIVE aliases COMMERCIAL_ACTIVE[84532]", () => {
     assert.equal(SEPOLIA_ACTIVE, COMMERCIAL_ACTIVE[HUB]);
-    assert.equal(SEPOLIA_ACTIVE.indexFromBlock, 44_833_462);
+    assert.equal(SEPOLIA_ACTIVE.indexFromBlock, 44_919_727);
   });
 
-  it("ETHEREUM_SEPOLIA_SPOKE points at Nuclear #2 Eth KarPassport", () => {
+  it("ETHEREUM_SEPOLIA_SPOKE points at Nuclear #3 Eth KarPassport", () => {
     const eth = requireCommercialActive(ETH);
     assert.equal(ETHEREUM_SEPOLIA_SPOKE.karPassportOnft, eth.karPassport);
     assert.equal(ETHEREUM_SEPOLIA_SPOKE.bridgeGateway, eth.bridgeGateway);
     assert.notEqual(
       ETHEREUM_SEPOLIA_SPOKE.karPassportOnft,
       "0x5b7fD0ffF9B82255AD4d043a491e81948b76e703",
+    );
+    assert.notEqual(
+      ETHEREUM_SEPOLIA_SPOKE.karPassportOnft,
+      "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
     );
   });
 
@@ -69,9 +73,9 @@ describe("resolveCommercialStack committed fallback", () => {
 
       const eth = resolveCommercialStack(ETH);
       assert.ok(eth.source === "committed" || eth.source === "manifest");
-      assert.equal(eth.karPassport, "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0");
-      assert.equal(eth.indexFromBlock, 11_384_136);
-      assert.equal(eth.bridgeGateway, "0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655");
+      assert.equal(eth.karPassport, "0xc903feE4395dd5Db35d9BcB558917f3Af8d71869");
+      assert.equal(eth.indexFromBlock, 11_398_068);
+      assert.equal(eth.bridgeGateway, "0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41");
 
       const bundle = ponderAddressesFromStack(eth);
       assert.equal(bundle.karPassport, eth.karPassport);

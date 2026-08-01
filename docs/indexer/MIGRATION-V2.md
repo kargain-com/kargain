@@ -7,12 +7,12 @@
 | VPS env + contract addresses (June 2026 v2) | ✅ Complete — reindex from **43399242** ([ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)) — **superseded for production by Nuclear below** |
 | v1 ghost index data | ✅ Cleared after production reindex |
 | Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
-| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — VPS reindex July 22 from hub **44434865** + Eth **11319840**; **superseded by Nuclear #2** hub **44833462** + Eth **11384136** ([OPERATIONS.md](./OPERATIONS.md)) |
-| Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; repaired by Nuclear #2 reindex ([OPERATIONS.md](./OPERATIONS.md)) |
-| Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` — expire ≠ Confirm for product; **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
-| ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications — **Nuclear #2 reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)) |
-| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — **live addresses + VPS full reindex done** July 30 ([OPERATIONS.md](./OPERATIONS.md)). |
-| Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — **full reindex required** after deploy ([OPERATIONS.md](./OPERATIONS.md)) |
+| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — current production start blocks = **Nuclear #3** hub **44919727** + Eth **11398068** ([OPERATIONS.md](./OPERATIONS.md); **VPS reindex required** after Aug 1 cutover) |
+| Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; covered by Nuclear full reindex |
+| Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` — expire ≠ Confirm for product; covered by Nuclear full reindex |
+| ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications; covered by Nuclear full reindex |
+| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — live Nuclear #3 addresses; **VPS full reindex required** for production API ([OPERATIONS.md](./OPERATIONS.md)) |
+| Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — included in Nuclear #3 VPS reindex ([OPERATIONS.md](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **July 2026:** the `MarketplaceEscrow` / `AuctionEscrow` schema and handlers described in §1–§3 below (`marketplace_listing`, `marketplace_sale`, `agent_authorization`, `auction*`, `currency_feed`) have been **removed** — commerce lives entirely in the FixedPrice/Ascending consignment surface (§3's commerce-modes note, and [indexer/README.md](./README.md)). This document remains as historical reference for the v1→v2 event mapping and for the FX display work (§6).
 
@@ -85,7 +85,7 @@ Generation v2 adds agent consignment fields:
 | `VerificationLapsed` / `VerificationStood` | Domain status after terminals |
 | `DisputeDepositUpdated` | Owner changed global deposit amount |
 
-Handlers in `src/index.ts` listen for `Challenge*` on Nuclear #2 ABIs; legacy `Dispute*` names remain historical for live I.9 until redeploy.
+Handlers in `src/index.ts` listen for `Challenge*` on live Nuclear #3 ABIs; legacy `Dispute*` names are historical only.
 
 ### KarProStaking
 
@@ -252,9 +252,9 @@ The `agent_authorization` / `marketplace_listing` agent routes described above (
 
 Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedChallenge` / mode-specific surfaces feed new tables (`consignment`, `ascending_terms`, `consignment_bid`, `consignment_hold`, `challenge`, `mandate`, `consignment_settlement`, `commerce_claim` + `commerce_claim_credit`, `commerce_mode`, `commerce_payment_token`, `commerce_currency_feed`). Claim reasons come from **same-tx event correlation**, not tx selectors. Floor/commission lowers update the **consignment** snapshot, not the standing mandate.
 
-**FixedPrice oracle projection (July 2026, `2.3.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. **Nuclear #2 full reindex done** July 30.
+**FixedPrice oracle projection (July 2026, live Nuclear #3 FixedPrice `2.4.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. Production API needs Nuclear #3 VPS reindex ([OPERATIONS.md](./OPERATIONS.md)).
 
-**Addresses:** FixedPrice + Ascending on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #2. Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
+**Addresses:** FixedPrice + Ascending on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #3. Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
 
 **HTTP:** see [indexer/README.md](./README.md#commerce-modes-api-fixedprice--ascending--july-2026). Old escrow tables/handlers/routes untouched — no compatibility projection.
 

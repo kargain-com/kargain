@@ -12,7 +12,7 @@ MIT License · Open Source
 
 ## What is Kargain?
 
-Kargain combines on-chain vehicle passports, professional verification, and escrow-backed sales:
+Kargain combines on-chain vehicle passports, professional verification, and mode-based commerce:
 
 | Layer | Role |
 |-------|------|
@@ -37,8 +37,8 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Contracts, metadata, deploy addresses | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
 | Ponder indexer (API, ops, v2 reference) | [docs/indexer/README.md](docs/indexer/README.md) |
 | VPS reindex runbook | [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
-| Generation v2 deploy (84532) | [docs/ops/deploys/84532-v2.md](docs/ops/deploys/84532-v2.md) |
-| Bridge pathway (84532 ↔ 11155111) | [docs/ops/deploys/bridge-84532-11155111.md](docs/ops/deploys/bridge-84532-11155111.md) |
+| Nuclear #3 commercial stack (84532 + 11155111) | [docs/ops/deploys/nuclear-3.md](docs/ops/deploys/nuclear-3.md) |
+| Addresses (active) | [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
@@ -128,9 +128,9 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Production indexer
 
-- API: https://ponder.kargain.com (dual commercial chains; Nuclear #2 hub from block **44833462**, Eth from **11384136**)
+- API: https://ponder.kargain.com (dual commercial chains; indexes from hub block **44919727** and Eth **11398068** — see [OPERATIONS.md](docs/indexer/OPERATIONS.md))
 - Stack: `docker compose up -d` · diagnostic: `pnpm ponder:config`
-- Reindex after schema changes: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
+- Reindex after schema or address cutover: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
 ---
 

@@ -25,7 +25,7 @@ type AddressKey =
 
 type OptionalV2Key = "timelock" | "bridgeGateway";
 
-/** Commerce modes — filled at Nuclear #2; absent until then (SPEC §I.9.x). */
+/** Commerce modes — on COMMERCIAL_ACTIVE (Nuclear #3); fail closed when unset (SPEC §I.9.x). */
 type OptionalModeKey = "fixedPriceConsignment" | "ascendingConsignment";
 
 const ENV_SINGLE: Record<AddressKey | OptionalV2Key | OptionalModeKey, string> = {
@@ -125,12 +125,12 @@ function resolveOptionalAddress(
   return undefined;
 }
 
-/** Commerce mode — filled at Nuclear #2; fails closed (`undefined`) until then. */
+/** Commerce mode — Nuclear #3 COMMERCIAL_ACTIVE; fails closed (`undefined`) when unset. */
 export function fixedPriceConsignmentAddress(chainId: number): `0x${string}` | undefined {
   return resolveOptionalAddress("fixedPriceConsignment", chainId);
 }
 
-/** Commerce mode — filled at Nuclear #2; fails closed (`undefined`) until then. */
+/** Commerce mode — Nuclear #3 COMMERCIAL_ACTIVE; fails closed (`undefined`) when unset. */
 export function ascendingConsignmentAddress(chainId: number): `0x${string}` | undefined {
   return resolveOptionalAddress("ascendingConsignment", chainId);
 }

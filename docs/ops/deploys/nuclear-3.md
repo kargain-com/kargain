@@ -1,8 +1,10 @@
 # Nuclear #3 — full commercial redeploy (84532 + 11155111)
 
+**Status: COMPLETE August 1, 2026** (steps 0–5 + repo cutover). Remaining: VPS full reindex + app deploy. Nuclear #2 manifests archived under `docs/ops/deploys/archive/nuclear-2-*.json` (not active).
+
 **Local only.** Empty testnets: deploy **every** contract fresh. No UUPS-in-place. No stake/passport migration. No 48h wait for mode upgrades.
 
-**Register:** [PENDING-REDEPLOY.md](../../PENDING-REDEPLOY.md) entries **1–6**.  
+**Register:** [PENDING-REDEPLOY.md](../../PENDING-REDEPLOY.md) — entries **1–6 closed** by this deploy (open register is empty).  
 **Tooling:** existing `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`.  
 **Cursor never signs txs or reads `.env` keys.**
 
@@ -126,13 +128,12 @@ pnpm smoke:bridge --token-id <id>
 
 ### 6 — App + indexer cutover (same change window as mirrors)
 
-1. Update `COMMERCIAL_ACTIVE` + SPEC **I.9.1 / I.9.2** + HANDOFF deployed-state **from RPC** (not from memory).  
-2. Confirm `lib/commerce/agented-split.ts` already matches S32 (shipped in prep).  
-3. `pnpm ponder:config`  
-4. VPS: pull → rebuild ponder → **full reindex** from new `indexFromBlock` ([OPERATIONS.md](../../indexer/OPERATIONS.md)).  
-5. Smoke: `/ready`, `/status`, `/consignments`, obligations, notifications.  
-6. Deploy app.  
-7. Close PENDING-REDEPLOY entries **1–6** with this deploy record.
+**Done in repo (August 1):** `COMMERCIAL_ACTIVE` + SPEC I.9 + PENDING closed + S32 mirror. **Still required on VPS / production app:**
+
+1. `pnpm ponder:config` (sanity).  
+2. VPS: pull → set start blocks **44919727** / **11398068** → rebuild ponder → **full reindex** ([OPERATIONS.md](../../indexer/OPERATIONS.md)).  
+3. Smoke: `/ready`, `/status`, `/consignments`, obligations, notifications.  
+4. Deploy app.
 
 ---
 

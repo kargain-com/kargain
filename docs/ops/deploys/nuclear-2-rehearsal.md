@@ -1,8 +1,10 @@
 # Nuclear #2 — full-stack deploy rehearsal runbook (84532 + 11155111)
 
-Operator steps for the next commercial Nuclear wave. **Cursor never runs live txs** — execute these yourself. Local proof lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts` (construction admission + Timelock expand/restore path).
+> **HISTORICAL — July 2026.** Nuclear #2 was superseded by **Nuclear #3** (August 1, 2026). Do **not** use this runbook for production ops. Live stack + remaining VPS/app steps: [nuclear-3.md](./nuclear-3.md). Addresses: SPEC I.9. This file is kept only as construction/admission rehearsal history; local proof still lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts`.
 
-> **FixedPrice `2.3.0-rc.1` (July 2026):** per-feed oracle staleness replaces global `maxFeedStaleness`. **Full redeploy both commercial chains** — nothing live survives; Timelock patch of the old slot is rejected. Ponder schema gains `nativeUsdStalenessTolerance` / per-row `stalenessTolerance`; event `NativeUsdStalenessToleranceSet` replaces `MaxFeedStalenessSet`. **Full reindex** with Nuclear #2 cutover.
+Operator steps for the July 2026 commercial Nuclear wave (archived). **Cursor never runs live txs.**
+
+> **FixedPrice `2.3.0-rc.1` (July 2026):** per-feed oracle staleness replaces global `maxFeedStaleness`. Shipped on Nuclear #2 then carried into Nuclear #3.
 
 | | |
 |--|--|
