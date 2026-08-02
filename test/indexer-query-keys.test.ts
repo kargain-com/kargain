@@ -33,6 +33,7 @@ const REQUIRED_COMMERCE_PREFIXES = [
   "kar-pro-slug-availability",
   "pending-claims",
   "commerce-open-options",
+  "commerce-payment-tokens",
 ] as const;
 
 describe("INDEXER_QUERY_KEY_PREFIXES", () => {

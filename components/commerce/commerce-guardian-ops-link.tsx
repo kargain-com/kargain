@@ -12,7 +12,7 @@ export function CommerceGuardianOpsLink() {
   return (
     <p className="text-sm text-text-secondary">
       <Link href="/ops/commerce-pause" className={monoLinkSm}>
-        Commerce pause →
+        Commerce ops →
       </Link>
     </p>
   );

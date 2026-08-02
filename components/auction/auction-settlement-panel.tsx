@@ -35,6 +35,7 @@ import {
   REVERSAL_NOT_HOLDER_COPY,
   REVERSAL_PENDING_BUYER_BODY,
   REVERSAL_REFUND_CLAIMS_DISCLOSURE,
+  RELEASE_FUNDS_CONSEQUENCE,
   ascendingSettlementCopy,
   deriveAscendingSettlementActions,
   deriveAscendingSettlementState,
@@ -475,14 +476,20 @@ export function AuctionSettlementPanel({
           )}
 
           {actions.releaseFunds.status === "available" && (
-            <Button
-              type="button"
-              className="w-full"
-              disabled={actionBusy || !mode}
-              onClick={() => void run("releaseFunds")}
-            >
-              {actionBusy ? "Confirming…" : "Release payment"}
-            </Button>
+            <div className="space-y-2">
+              <p className="font-sans text-xs text-text-secondary">
+                {RELEASE_FUNDS_CONSEQUENCE}
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={actionBusy || !mode}
+                onClick={() => void run("releaseFunds")}
+              >
+                {actionBusy ? "Confirming…" : "Release payment"}
+              </Button>
+            </div>
           )}
 
           {showCompleteCta && (

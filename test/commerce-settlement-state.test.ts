@@ -10,6 +10,7 @@ import {
   REVERSAL_NOT_HOLDER_COPY,
   REVERSAL_PENDING_BUYER_BODY,
   REVERSAL_REFUND_CLAIMS_DISCLOSURE,
+  RELEASE_FUNDS_CONSEQUENCE,
   deriveAscendingSettlementActions,
   deriveAscendingSettlementState,
   isCompleteReversalActionable,
@@ -73,6 +74,103 @@ describe("deriveAscendingSettlementState", () => {
         nowSec: NOW,
       }),
       "REVERSAL_EXPIRED",
+    );
+  });
+});
+
+describe("deriveAscendingSettlementActions — releaseFunds", () => {
+  const releasableHold = hold({
+    protectionEndsAt: NOW - 1,
+    frozenRemaining: 0,
+  });
+
+  const base = {
+    seller: SELLER,
+    agent: null as string | null,
+    passportOwner: BUYER,
+    modeApproved: true,
+  };
+
+  it("stranger on HOLD_RELEASABLE → available (permissionless; no not_party)", () => {
+    const state = deriveAscendingSettlementState({
+      hold: releasableHold,
+      challenge: null,
+      nowSec: NOW,
+    });
+    assert.equal(state, "HOLD_RELEASABLE");
+
+    const actions = deriveAscendingSettlementActions({
+      state,
+      hold: releasableHold,
+      viewer: STRANGER,
+      ...base,
+    });
+    assert.deepEqual(actions.releaseFunds, { status: "available" });
+  });
+
+  it("buyer and seller also available when hold is ready", () => {
+    for (const viewer of [BUYER, SELLER]) {
+      const actions = deriveAscendingSettlementActions({
+        state: "HOLD_RELEASABLE",
+        hold: releasableHold,
+        viewer,
+        ...base,
+      });
+      assert.deepEqual(actions.releaseFunds, { status: "available" });
+    }
+  });
+
+  it("hold_not_ready while protection is still running", () => {
+    const active = hold();
+    const state = deriveAscendingSettlementState({
+      hold: active,
+      challenge: null,
+      nowSec: NOW,
+    });
+    assert.equal(state, "HOLD");
+    const actions = deriveAscendingSettlementActions({
+      state,
+      hold: active,
+      viewer: STRANGER,
+      ...base,
+    });
+    assert.deepEqual(actions.releaseFunds, {
+      status: "blocked",
+      cause: "hold_not_ready",
+    });
+  });
+
+  it("dispute_active while a challenge is open", () => {
+    const actions = deriveAscendingSettlementActions({
+      state: "CHALLENGED",
+      hold: releasableHold,
+      viewer: STRANGER,
+      ...base,
+    });
+    assert.deepEqual(actions.releaseFunds, {
+      status: "blocked",
+      cause: "dispute_active",
+    });
+  });
+
+  it("RELEASE_FUNDS_CONSEQUENCE states split parties and gas-only caller", () => {
+    assert.match(RELEASE_FUNDS_CONSEQUENCE, /consignment's terms/i);
+    assert.match(RELEASE_FUNDS_CONSEQUENCE, /receives nothing/i);
+    assert.match(RELEASE_FUNDS_CONSEQUENCE, /gas/i);
+  });
+
+  it("settlement panel mounts release disclosure; no not_party", () => {
+    const text = fs.readFileSync(SETTLEMENT_PANEL, "utf8");
+    assert.match(text, /RELEASE_FUNDS_CONSEQUENCE/);
+    assert.doesNotMatch(text, /not_party/);
+    const moduleText = fs.readFileSync(
+      path.join(ROOT, "lib/commerce/settlement-state.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      moduleText,
+      /not_party/,
+      "product actor narrowing must be gone",
     );
   });
 });

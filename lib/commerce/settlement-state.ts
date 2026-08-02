@@ -92,8 +92,7 @@ export type ReleaseFundsBlockCause =
   | "wrong_state"
   | "dispute_active"
   | "reversal_pending"
-  | "hold_not_ready"
-  | "not_party";
+  | "hold_not_ready";
 
 export type CompleteReversalBlockCause =
   | "no_hold"
@@ -129,8 +128,9 @@ const BLOCKED = {
 const AVAILABLE = { status: "available" } as const;
 
 /**
- * Buyer confirms receipt (early release) or completes a started reversal; the
- * seller/agent releases once protection lapses; anyone clears an expired
+ * Buyer confirms receipt (early release) or completes a started reversal;
+ * anyone releases once protection lapses (permissionless on chain — caller
+ * pays gas, split pays the consignment parties); anyone clears an expired
  * reversal so the lot stops blocking the passport.
  *
  * Every action is available or blocked with a named cause covering the
@@ -158,8 +158,6 @@ export function deriveAscendingSettlementActions(input: {
     state,
     hold,
     viewer,
-    seller,
-    agent,
     passportOwner,
     modeApproved,
   } = input;
@@ -174,9 +172,6 @@ export function deriveAscendingSettlementActions(input: {
   }
 
   const isBuyer = Boolean(viewer && addressesMatch(hold.buyer, viewer));
-  const isSellerSide =
-    Boolean(viewer && addressesMatch(seller, viewer)) ||
-    Boolean(viewer && addressesMatch(agent, viewer));
   const challengeOpen =
     state === "CHALLENGED" ||
     state === "CHALLENGE_ELAPSED" ||
@@ -195,6 +190,7 @@ export function deriveAscendingSettlementActions(input: {
     confirmReceipt = AVAILABLE;
   }
 
+  // Permissionless once ready — mirrors clearHoldForRelease (no caller check).
   let releaseFunds: SettlementActionGate<ReleaseFundsBlockCause>;
   if (hold.reversalPending) {
     releaseFunds = BLOCKED.release("reversal_pending");
@@ -204,9 +200,6 @@ export function deriveAscendingSettlementActions(input: {
     releaseFunds = BLOCKED.release("hold_not_ready");
   } else if (state !== "HOLD_RELEASABLE") {
     releaseFunds = BLOCKED.release("wrong_state");
-  } else if (!viewer || (!isBuyer && !isSellerSide)) {
-    // Product filter — on-chain release is permissionless once ready.
-    releaseFunds = BLOCKED.release("not_party");
   } else {
     releaseFunds = AVAILABLE;
   }
@@ -263,7 +256,7 @@ export function ascendingSettlementCopy(state: AscendingSettlementState): string
     case "HOLD":
       return "Funds are held while the buyer inspects the vehicle.";
     case "HOLD_RELEASABLE":
-      return "The protection window has passed. Funds can be released.";
+      return "The protection window has passed. Anyone can release the funds.";
     case "CHALLENGED":
       return "A bonded challenge is open. The protection clock is frozen.";
     case "CHALLENGE_ELAPSED":
@@ -293,6 +286,13 @@ export const REVERSAL_REFUND_CLAIMS_DISCLOSURE =
  */
 export const REVERSAL_ABANDONMENT_CONSEQUENCE =
   "If you miss it, anyone can abandon the reversal and the seller is paid as though the challenge had failed.";
+
+/**
+ * Permissionless release — funds follow the consignment split; the caller
+ * receives nothing and pays gas (model §4.3 / clearHoldForRelease).
+ */
+export const RELEASE_FUNDS_CONSEQUENCE =
+  "Funds go to the parties on the consignment's terms. The caller receives nothing and pays only gas.";
 
 /** CH6 — buyer no longer holds the passport. */
 export const REVERSAL_NOT_HOLDER_COPY =

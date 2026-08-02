@@ -775,7 +775,7 @@ Chain `endsAt` wins over Ponder for timers. Ponder has **no `ENDED` phase**. Cha
 | **S4** | Live + passport `DISPUTED` | Bid **enabled**; quiet `status-error` advisory (trust chroma only — not a block) |
 | **S5** | Derived `ENDED` = `phase BIDDING && now ≥ endsAt(chain)` (U15) | **Finalize auction** → `settle` (always; passport status ignored) |
 | **S6 / HOLD** | `SETTLED`, before protection end, no challenge | Buyer: Confirm receipt · Open challenge; passport status change readout when DISPUTED/UNVERIFIED; others: informational payout date + same passport readout |
-| **HOLD_RELEASABLE** | Protection elapsed, no challenge | Buyer/seller/agent: **Release payment** |
+| **HOLD_RELEASABLE** | Protection elapsed, no challenge | Anyone: **Release payment** (funds go to consignment parties; caller pays gas) |
 | **S7 / CHALLENGE** | Settlement challenge open | *Payout frozen*; challenge window; minimal verifier resolve |
 | **CHALLENGE_ELAPSED** | Challenge window elapsed | Permissionless conclude |
 | **REVERSAL_PENDING** | Upheld challenge; abandonment deadline running | See Modes reversal surface below |
@@ -923,19 +923,24 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy; `SourceUnanswerable` on preview and write uses the same [`sourceUnanswerableCopy`](../lib/passport/encumbrance-permission.ts) via ABI decode (mono short address) — never invent an address when decode fails |
 | Boundary | [`lib/web3/bridge/`](../lib/web3/bridge/) + generated ABIs; no `@layerzerolabs/*` in `app/`, `hooks/`, or non-bridge `lib/` |
 
-### 4.20 Commerce pause (G3 ops)
+### 4.20 Commerce ops (G3 pause + soft-revoke)
 
-Ops-only emergency stop for FixedPrice / Ascending modes ([commerce-model §G3](./research/commerce-model-2026.md)). Not product navigation.
+Ops-only guardian reducing powers for FixedPrice / Ascending modes ([commerce-model §G3](./research/commerce-model-2026.md)). Not product navigation. Route stays `/ops/commerce-pause`.
 
 | Surface | Contract |
 |---------|----------|
 | Route | [`/ops/commerce-pause`](../app/ops/commerce-pause/page.tsx) — not in top nav, bottom nav, or footer |
-| Reachability | Direct URL; quiet mono **Commerce pause →** on own profile only when the connected wallet is `guardian()` on ≥1 resolved mode ([`commerce-guardian-ops-link.tsx`](../components/commerce/commerce-guardian-ops-link.tsx)) |
-| Grid | One Level B `instrumentReadoutPanel` per resolved `(commercialChainIds × COMMERCE_MODES)` via [`commerceModeAddress`](../lib/commerce/mode.ts) — no chain/mode literals |
-| Reads | Chain only: `paused` / `guardian` / `owner` ([`use-commerce-pause-ops.ts`](../hooks/use-commerce-pause-ops.ts)). Never indexer for pause UX |
+| Reachability | Direct URL; quiet mono **Commerce ops →** on own profile only when the connected wallet is `guardian()` on ≥1 resolved mode ([`commerce-guardian-ops-link.tsx`](../components/commerce/commerce-guardian-ops-link.tsx)) |
+| Pause grid | One Level B `instrumentReadoutPanel` per resolved `(commercialChainIds × COMMERCE_MODES)` via [`commerceModeAddress`](../lib/commerce/mode.ts) — no chain/mode literals |
+| Pause reads | Chain only: `paused` / `guardian` / `owner` ([`use-commerce-pause-ops.ts`](../hooks/use-commerce-pause-ops.ts)). Never indexer for pause UX |
 | Pause CTA | Offered only when connected === guardian and mode is running ([`deriveGuardianPauseControl`](../lib/commerce/pause-surface.ts)); withheld from owner and strangers |
-| Confirm | Dialog states what stops (mode-specific open + buy/bid) and what continues (settlement, claims, withdrawals, recall, challenges); unpause is timelock-only copy |
-| Write | `useTxSync(chainId).runTx` → `pause()`; no unpause button — show owner address + [`UNPAUSE_HINT`](../lib/commerce/pause-surface.ts) while paused |
+| Pause confirm | Dialog states what stops (mode-specific open + buy/bid) and what continues (settlement, claims, withdrawals, recall, challenges); unpause is timelock-only copy |
+| Pause write | `useTxSync(chainId).runTx` → `pause()`; no unpause button — show owner address + [`UNPAUSE_HINT`](../lib/commerce/pause-surface.ts) while paused |
+| Soft-revoke discovery | Ponder `GET /commerce-payment-tokens` candidates (incl. inactive) via [`commerce-payment-tokens`](../app/actions/commerce-payment-tokens.ts); operator selects a listed token — no free-form address |
+| Soft-revoke CTA truth | Chain `paymentTokens(token).enabled` / `paymentTokenEnabled(token)` via keyed multicall ([`use-commerce-revoke-ops.ts`](../hooks/use-commerce-revoke-ops.ts)); [`deriveGuardianRevokeControl`](../lib/commerce/payment-token-revoke-surface.ts) — guardian-only wallet CTA (Timelock owner is readout-only; restore is not MetaMask) |
+| Soft-revoke confirm | New opens in that asset stop; in-flight deals still settle; no approve on this page ([`RESTORE_PAYMENT_TOKEN_HINT`](../lib/commerce/payment-token-revoke-surface.ts)) |
+| Soft-revoke write | `useTxSync` → `revokePaymentToken(token)` only |
+| Token rows | Level B `instrumentReadoutPanel`; mono token / guardian / owner (timelock) via `EnsWalletLink` + `serialLabel` mode·chain |
 | User notice | [`CommercePausedNotice`](../components/commerce/commerce-paused-notice.tsx) on open / bid / buy before the wallet attempt when chain `paused === true`; disable those CTAs. Pending/failed reads do not invent paused — `ContractPaused` remains the backstop |
 | Chrome | Informational §10.3: `border-border-default` + `text-text-secondary` on `bg-bg-surface` — not `accent-warm`, not `status-error` |
 
