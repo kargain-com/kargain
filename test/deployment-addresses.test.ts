@@ -46,7 +46,7 @@ describe("commerce mode resolvers (Nuclear #2 live)", () => {
 });
 
 describe("kargainContractDenylist per-chain", () => {
-  it("84532 includes hub actives and historical spoke hexes", () => {
+  it("84532 includes hub actives", () => {
     const list = kargainContractDenylist(84532).map((a) => a.toLowerCase());
     assert.ok(list.includes(HUB.karPassport.toLowerCase()));
     assert.ok(list.includes(HUB.bridgeGateway.toLowerCase()));

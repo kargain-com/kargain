@@ -48,8 +48,14 @@ describe("isProtocolAddress", () => {
     assert.equal(isProtocolAddress(SPOKE.karPassport, 11155111), true);
   });
 
-  it("flags spoke KarPassport as historical on Base Sepolia", () => {
-    assert.equal(isProtocolAddress(SPOKE.karPassport, 84532), true);
+  // Retired dual-list hex: Base historical adapter + Eth Nuclear #2 KarPassport.
+  // Pin the literal — never SPOKE.karPassport (active bundle changes every Nuclear).
+  const DUAL_CHAIN_RETIRED =
+    "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0" as const;
+
+  it("protocol match is chain-scoped (SPEC §I.12.12 dual-list hex)", () => {
+    assert.equal(isProtocolAddress(DUAL_CHAIN_RETIRED, 84532), true);
+    assert.equal(isProtocolAddress(DUAL_CHAIN_RETIRED, 11155111), true);
   });
 
   it("does not flag arbitrary EOA", () => {
