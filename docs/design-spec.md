@@ -518,7 +518,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 **Shared header (always):** title + two-line seal; serial; dispute one-liner; MRZ; advisories; constrained gallery photo plate (§13.7).
 
-**Sticky tabs** ([`passport-detail-tabs.tsx`](../components/passport/passport-detail-tabs.tsx)): `Overview` | `History & records` | `Actions` — URL `?tab=overview|records|actions` (overview omits `tab`). History/Actions **lazy-mounted** on first visit (kept mounted after to preserve form state). Lighter than dialogs (no portal/overlay).
+**Sticky tabs** ([`passport-detail-tabs.tsx`](../components/passport/passport-detail-tabs.tsx)): `Overview` | `History & records` | `Actions` — URL `?tab=overview|records|actions` (overview omits `tab`). History/Actions **lazy-mounted** on first visit (kept mounted after to preserve form state). Lighter than dialogs (no portal/overlay). After a successful owner **Add record** (`appendRecord` via Actions), the panel calls [`revealPassportRecordsTab`](../lib/passport/passport-tab-url.ts) so the new History row is visible (`?tab=records`) — confirmation is the timeline, not an Actions-only flash.
 
 **Overview tab:** description, attributes; **mobile:** commerce then **compact Discussion at bottom**; **desktop:** main column only (commerce + Discussion in right rail).
 
@@ -1592,4 +1592,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.119 (August 2026 — §4.13 kind 30078 atomic save: coverage per publish, no cached allowlist; Watchlist / Profile parity). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.120 (August 2026 — §4.14 Add record reveals History & records via `revealPassportRecordsTab`). Update when tokens, app shell, or component contracts change.*

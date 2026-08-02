@@ -281,6 +281,16 @@ describe("actions panel consumes action-surface", () => {
     assert.match(src, /isAvailable\(actionSurface\./);
   });
 
+  it("Add record reveals History via revealPassportRecordsTab", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-actions-panel.tsx"),
+      "utf8",
+    );
+    assert.match(src, /revealPassportRecordsTab/);
+    assert.match(src, /revealPassportRecordsTab\(pathname\)/);
+    assert.doesNotMatch(src, /recordAddedSuccess/);
+  });
+
   it("edit route names refusals via action-surface and reserves notFound for absence", () => {
     const src = readFileSync(
       join(process.cwd(), "app/passport/[tokenId]/edit/page.tsx"),

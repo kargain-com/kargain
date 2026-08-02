@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatEther } from "viem";
 import {
@@ -51,6 +52,7 @@ import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
 } from "@/lib/passport/record-types";
+import { revealPassportRecordsTab } from "@/lib/passport/passport-tab-url";
 import {
   getWalletUploadProvider,
 } from "@/lib/passport/upload-passport-metadata";
@@ -111,6 +113,7 @@ export function PassportActionsPanel({
   onBusyChange,
   embeddedInSheet = false,
 }: Props) {
+  const pathname = usePathname();
   const { address, isConnected, connector } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending } = useWriteContract();
@@ -137,7 +140,6 @@ export function PassportActionsPanel({
   const [recordDescription, setRecordDescription] = useState("");
   const [recordEvidencePaste, setRecordEvidencePaste] = useState("");
   const [recordEvidenceFile, setRecordEvidenceFile] = useState<File | null>(null);
-  const [recordAddedSuccess, setRecordAddedSuccess] = useState(false);
 
   const passport = karPassportAddress(chainId);
   const staking = karProStakingAddress(chainId);
@@ -276,12 +278,6 @@ export function PassportActionsPanel({
   });
   const exclusionCopy = actionSurface.challenge.exclusionCopy;
 
-  useEffect(() => {
-    if (!recordAddedSuccess) return;
-    const timer = window.setTimeout(() => setRecordAddedSuccess(false), 2000);
-    return () => window.clearTimeout(timer);
-  }, [recordAddedSuccess]);
-
   const run = useCallback(
     async (
       fn: () => Promise<`0x${string}`>,
@@ -387,10 +383,11 @@ export function PassportActionsPanel({
       setRecordDescription("");
       setRecordEvidencePaste("");
       setRecordEvidenceFile(null);
-      setRecordAddedSuccess(true);
+      revealPassportRecordsTab(pathname);
     }
   }, [
     passport,
+    pathname,
     recordDescription,
     recordType,
     resolveOwnerRecordEvidence,
@@ -834,12 +831,10 @@ export function PassportActionsPanel({
             variant="ghost"
             className="w-full justify-start px-0 hover:bg-transparent"
             onClick={() => {
-              if (!recordAddedSuccess) {
-                setRecordFormOpen((open) => !open);
-              }
+              setRecordFormOpen((open) => !open);
             }}
           >
-            {recordAddedSuccess ? "Record added ✓" : "Add record +"}
+            Add record +
           </Button>
           {recordFormOpen && (
             <div className="space-y-3">

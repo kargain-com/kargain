@@ -46,6 +46,11 @@ export function replacePassportTabUrl(
   window.dispatchEvent(new Event(PASSPORT_TAB_CHANGE_EVENT));
 }
 
+/** After a write that only appears as a History row, show History & records. */
+export function revealPassportRecordsTab(pathname: string): void {
+  replacePassportTabUrl(pathname, window.location.search, "records");
+}
+
 export function readPassportTabFromLocation(): PassportTab {
   if (typeof window === "undefined") return "overview";
   return parsePassportTab(new URLSearchParams(window.location.search).get("tab"));

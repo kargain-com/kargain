@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
 import {
   buildPassportTabQuery,
   parsePassportTab,
   passportTabQueryString,
+  revealPassportRecordsTab,
 } from "../lib/passport/passport-tab-url.ts";
 
 describe("passport-tab-url", () => {
@@ -33,5 +34,47 @@ describe("passport-tab-url", () => {
     assert.equal(passportTabQueryString("overview"), "");
     assert.equal(passportTabQueryString("records"), "tab=records");
   });
-});
 
+  describe("revealPassportRecordsTab", () => {
+    const prior = (globalThis as { window?: unknown }).window;
+
+    afterEach(() => {
+      if (prior === undefined) {
+        Reflect.deleteProperty(globalThis, "window");
+      } else {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          writable: true,
+          value: prior,
+        });
+      }
+    });
+
+    it("sets tab=records and preserves other query params", () => {
+      let replaced = "";
+      let dispatched = false;
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        writable: true,
+        value: {
+          location: { search: "?e=abc&chain=84532" },
+          history: {
+            state: null,
+            replaceState(_state: unknown, _title: string, url: string) {
+              replaced = url;
+            },
+          },
+          dispatchEvent(event: Event) {
+            if (event.type === "passport-tab-change") dispatched = true;
+            return true;
+          },
+        },
+      });
+
+      revealPassportRecordsTab("/marketplace/1");
+
+      assert.equal(replaced, "/marketplace/1?e=abc&chain=84532&tab=records");
+      assert.equal(dispatched, true);
+    });
+  });
+});
