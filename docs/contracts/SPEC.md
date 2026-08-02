@@ -11,7 +11,7 @@
 | Semver / `-rc.N` policy | [Part V](#part-v--version-policy) |
 | Local E2E & tests | [Appendix](#appendix-a--local-e2e-hardhat-31337) |
 
-**Related (not in this file):** UI → [design-spec.md](../design-spec.md) · Indexer → [indexer/README.md](../indexer/README.md) · Deploy ops → [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md)
+**Related (not in this file):** UI → [design-spec.md](../design-spec.md) · Indexer → [indexer/README.md](../indexer/README.md) · Deploy ops → [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md)
 
 **Address tables (single source within this document):**
 
@@ -593,7 +593,7 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #4** August 2, 2026 — production Ponder must **full reindex** from hub `indexFromBlock` **44957457** and Eth **11404204**.
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #4** August 2, 2026 — production Ponder **full reindexed** from hub `indexFromBlock` **44957457** and Eth **11404204**.
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
@@ -711,7 +711,7 @@ Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`ch
 
 ### I.11. Retired — AuctionEscrow
 
-**Retired** with `MarketplaceEscrow` in commerce cutover §15.2 step 5 (July 2026). Replaced by **`AscendingConsignment`** for English reserve auctions with settlement hold. Product, app, and indexer no longer target `AuctionEscrow` events or legacy `GET /auctions*` routes. Historical design: [auction-design.md](../research/auction-design.md). Denylisted proxy addresses: [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532). Ops log: [ops/deploys/84532-auction.md](../ops/deploys/84532-auction.md).
+**Retired** with `MarketplaceEscrow` in commerce cutover §15.2 step 5 (July 2026). Replaced by **`AscendingConsignment`** for English reserve auctions with settlement hold. Product, app, and indexer no longer target `AuctionEscrow` events or legacy `GET /auctions*` routes. Historical design: [auction-design.md](../research/archive/auction-design.md). Denylisted proxy addresses: [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532). Ops log: [ops/deploys/archive/84532-auction.md](../ops/deploys/archive/84532-auction.md).
 
 ---
 
@@ -764,7 +764,7 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 
 ### 12.10 84532 hub migration (testnet) — Nuclear
 
-`KarPassport` is immutable; commerce **modes** are UUPS. **Nuclear #4** (August 2, 2026) redeployed the full stack (passport + modes + gateway) on both 84532 and 11155111; Nuclear #3 and earlier stacks are denylisted. Ponder must full-reindex from hub **44957457** / Eth **11404204**. Empty-testnet passports from prior stacks were abandoned (no user value).
+`KarPassport` is immutable; commerce **modes** are UUPS. **Nuclear #4** (August 2, 2026) redeployed the full stack (passport + modes + gateway) on both 84532 and 11155111; Nuclear #3 and earlier stacks are denylisted. Ponder full-reindexed from hub **44957457** / Eth **11404204**. Empty-testnet passports from prior stacks were abandoned (no user value).
 
 ### 12.11 Recovery (Approach A) — kill then restore
 

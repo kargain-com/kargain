@@ -4,9 +4,10 @@
 |----------|-----------|-------------------|
 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
-| [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
+| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
+| [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **VPS full reindex required** before [ponder.kargain.com](https://ponder.kargain.com) matches. Smoke after reindex: `GET /consignments`, `GET /commerce-payment-tokens`, obligations, notifications ([OPERATIONS.md](./OPERATIONS.md)).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **VPS full reindex done** — [ponder.kargain.com](https://ponder.kargain.com) matches. Smoke: `GET /consignments`, `GET /commerce-payment-tokens`, obligations, notifications ([OPERATIONS.md](./OPERATIONS.md)).
 
 ## Contract addresses for indexer
 

@@ -1,6 +1,8 @@
 # Base Sepolia AuctionEscrow — Timelock UUPS upgrade to 1.0.1-draft (84532)
 
-Maintainer rehearsal: first `Timelock48h`-gated UUPS upgrade of AuctionEscrow. **Cursor never runs live txs** — use this runbook.
+> **HISTORICAL.** AuctionEscrow retired. Live stack: [nuclear-4.md](../nuclear-4.md) · SPEC I.9.
+
+Maintainer rehearsal: first `Timelock48h`-gated UUPS upgrade of AuctionEscrow. **Cursor never runs live txs** — use this runbook only as history.
 
 | | |
 |--|--|

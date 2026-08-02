@@ -11,7 +11,7 @@ import {
   type DeploymentManifest,
 } from "./load-deployment.js";
 
-/** Platform fee — 0.1% (10 bps). Matches AscendingConsignment deploy + auction-design §9. */
+/** Platform fee — 0.1% (10 bps). Matches AscendingConsignment deploy + commerce-model §11 / SPEC. */
 export const AUCTION_PLATFORM_FEE_BPS = 10n;
 
 /** Must match `scripts/deploy.ts` nuclear constants (FixedPriceConsignment platform fee). */

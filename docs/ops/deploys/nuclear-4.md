@@ -1,6 +1,6 @@
 # Nuclear #4 — sell UNVERIFIED + ascending-only VERIFIED (84532 + 11155111)
 
-**Status: LIVE** (August 2, 2026). Both commercial chains cut over; PENDING Nuclear #4 closed.
+**Status: LIVE** (August 2, 2026). Both commercial chains cut over; PENDING Nuclear #4 closed; **VPS full reindex + app deploy done**.
 
 **Local only.** Empty-testnet full redeploy of the commercial stack. KarPassport is immutable → not UUPS-in-place. No 48h wait for mode upgrades on this path.
 
@@ -139,9 +139,9 @@ pnpm smoke:bridge --token-id <id>
 2. Cut over `COMMERCIAL_ACTIVE` + denylist Nuclear #3 addresses + SPEC I.9.  
 3. Close PENDING Nuclear #4 entry.  
 4. `pnpm ponder:config` (sanity).  
-5. VPS: pull → set new `indexFromBlock` values → rebuild ponder → **full reindex** ([OPERATIONS.md](../../indexer/OPERATIONS.md)).  
-6. Smoke: `/ready`, `/status`, `/consignments`, obligations, notifications.  
-7. Deploy app.  
+5. VPS: pull → set new `indexFromBlock` values → rebuild ponder → **full reindex** ([OPERATIONS.md](../../indexer/OPERATIONS.md)) — **done**.  
+6. Smoke: `/ready`, `/status`, `/consignments`, obligations, notifications — **done**.  
+7. Deploy app — **done**.  
 8. Phase F live matrix: **spot-check done on 84532** (`scripts/nuclear-4-live-proof.ts` — FixedPrice UNVERIFIED open; Ascending → `PassportNotVerified`). Optional remainder: grant UNVERIFIED → verify → ascending open; VERIFIED bridge consent → list OK; never-verified return → no reset banner.
 
 ---

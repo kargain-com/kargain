@@ -1,6 +1,6 @@
 # Nuclear #2 — full-stack deploy rehearsal runbook (84532 + 11155111)
 
-> **HISTORICAL — July 2026.** Nuclear #2 was superseded by **Nuclear #3** (August 1, 2026). Do **not** use this runbook for production ops. Live stack + remaining VPS/app steps: [nuclear-3.md](./nuclear-3.md). Addresses: SPEC I.9. This file is kept only as construction/admission rehearsal history; local proof still lives in `pnpm hardhat test test/nuclear-rehearsal.test.ts`.
+> **HISTORICAL — July 2026.** Nuclear #2 was superseded by Nuclear #3 then **Nuclear #4**. Do **not** use this runbook for production ops. Live stack: [nuclear-4.md](../nuclear-4.md) · SPEC I.9. Kept as construction/admission rehearsal history; local proof: `pnpm hardhat test test/nuclear-rehearsal.test.ts`.
 
 Operator steps for the July 2026 commercial Nuclear wave (archived). **Cursor never runs live txs.**
 

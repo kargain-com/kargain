@@ -24,5 +24,6 @@ Do not maintain parallel contract docs. If you need to document a contract chang
 | Indexer cutover (env) | ✅ June 2026 — [../indexer/OPERATIONS.md](../indexer/OPERATIONS.md) |
 | Indexer handlers (v2 events) | ✅ [../indexer/MIGRATION-V2.md](../indexer/MIGRATION-V2.md) |
 | Indexer reindex | [../indexer/OPERATIONS.md](../indexer/OPERATIONS.md) |
-| Deploy record (84532) | [../ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) |
+| Deploy record (current) | [../ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) |
+| Historical (June 2026 v2) | [../ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) |
 | UI | [../design-spec.md](../design-spec.md) |

@@ -1,6 +1,8 @@
 # Nuclear #3 — full commercial redeploy (84532 + 11155111)
 
-**Status: COMPLETE August 1, 2026** (steps 0–5 + repo cutover). Remaining: VPS full reindex + app deploy. Nuclear #2 manifests archived under `docs/ops/deploys/archive/nuclear-2-*.json` (not active).
+> **HISTORICAL.** Superseded by **Nuclear #4** (August 2, 2026). Live stack + ops: [nuclear-4.md](../nuclear-4.md) · SPEC I.9. Do not use addresses or start blocks in this file for production.
+
+**Status: COMPLETE August 1, 2026** (then superseded by Nuclear #4). Nuclear #2 manifests remain under `docs/ops/deploys/archive/nuclear-2-*.json`.
 
 **Local only.** Empty testnets: deploy **every** contract fresh. No UUPS-in-place. No stake/passport migration. No 48h wait for mode upgrades.
 

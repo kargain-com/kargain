@@ -12,7 +12,7 @@ Canonical policy: [SPEC §I.12](../../contracts/SPEC.md#i12-multi-chain-architec
 | Layer | Covers hub↔spoke? |
 |-------|-------------------|
 | `test/KarPassportBridgeGateway.test.ts` (`gatewayHub` / `gatewaySpoke`) | Yes — lock/mint/return, guards, recovery |
-| `pnpm smoke:bridge` + [bridge-84532-11155111.md](./bridge-84532-11155111.md) | Yes — live testnet pathway |
+| `pnpm smoke:bridge` + SPEC I.9 / [nuclear-4.md](./nuclear-4.md) | Yes — live testnet pathway |
 | `./scripts/e2e-local.sh` / `pnpm test:e2e` | No — 31337 mint/verify/list/buy + auction + optional Ponder |
 
 A second Hardhat node + mock LZ relay + dual-chain Ponder inside `e2e-local` would mostly duplicate the gateway suite. Keep local E2E as commerce/indexer; use this checklist for browser + live ops.

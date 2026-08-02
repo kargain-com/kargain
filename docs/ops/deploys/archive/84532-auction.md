@@ -1,6 +1,8 @@
 # Base Sepolia AuctionEscrow — additive deploy record (84532)
 
-Point-in-time deploy log for the **additive** AuctionEscrow cutover. Does **not** redeploy or mutate the generation v2 stack. Design reference: [auction-design.md §11](../../research/auction-design.md).
+> **HISTORICAL.** AuctionEscrow retired; Modes replace auctions. Live: [nuclear-4.md](../nuclear-4.md) · SPEC I.5 / I.9.
+
+Point-in-time deploy log for the **additive** AuctionEscrow cutover. Design reference (archived): [auction-design.md §11](../../../research/archive/auction-design.md).
 
 | | |
 |--|--|
@@ -18,7 +20,7 @@ Point-in-time deploy log for the **additive** AuctionEscrow cutover. Does **not*
 | AuctionEscrow proxy | [`0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce`](https://sepolia.basescan.org/address/0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce) | 44080895 | `0x0bb29db41de3a4f750b8719e8cd98802bbc9588a2bfd8ba51f888d114c4e5368` |
 | AuctionEscrow impl | [`0x8e87749CE61569ACFc60058fFAc2122A97466c5A`](https://sepolia.basescan.org/address/0x8e87749CE61569ACFc60058fFAc2122A97466c5A) | 44080893 | `0xd4ed6c9cbd86589c12bc7f3dcc20f7aa99968ac3cfafdd675f637fdc62b72fd3` |
 
-**Ponder auction start block (iteration b):** **44080895** (proxy deploy block). Do **not** change global `PONDER_START_BLOCK_84532` (43399242). See [indexer/MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md).
+**Ponder auction start block (iteration b):** **44080895** (proxy deploy block). Historical only — Modes replaced AuctionEscrow; legacy `MIGRATION-AUCTION.md` was deleted with the escrow cutover.
 
 ---
 
@@ -81,7 +83,7 @@ pnpm smoke:sepolia
 
 | Iteration | Work |
 |-----------|------|
-| b | Ponder schema + handlers + start block — **shipped July 2026**; **VPS reindex completed July 14, 2026** ([MIGRATION-AUCTION.md](../../indexer/MIGRATION-AUCTION.md)) — live `/auctions` → `total: 0` (no lots yet) |
+| b | Ponder schema + handlers + start block — **shipped July 2026**; **VPS reindex completed July 14, 2026** — live `/auctions` then empty; later retired with Modes |
 | c | e2e |
 | d | UI route |
 | — | SPEC Part I.9.1 address rows + Part I.11 behavior — **shipped July 14, 2026** |

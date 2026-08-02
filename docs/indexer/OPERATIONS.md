@@ -10,7 +10,7 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 **Committed stack:** Nuclear #4 on **84532** + **11155111** (`COMMERCIAL_ACTIVE` / SPEC I.9). One full `ponder-reindex.sql` backfills **both** networks.
 
-**VPS:** full reindex from the start blocks below is **required** after the August 2 cutover (production API still lags until that reindex finishes). Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md).
+**VPS:** full reindex from the start blocks below **done** (August 2, 2026 cutover). Production API matches Nuclear #4. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md).
 
 | Item | Value |
 |------|--------|
@@ -83,7 +83,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| **Nuclear #4 (August 2, 2026) — current** | Full commercial redeploy both chains — **full reindex** from hub **44957457** + Eth **11404204**. **Do this on VPS now.** Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
+| **Nuclear #4 (August 2, 2026) — current** | Full commercial redeploy both chains — **full reindex done** from hub **44957457** + Eth **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
 | Older Nuclear / commerce schema triggers | Superseded by Nuclear #4 reindex (same wipe covers modes, claims, challenge terminals, place columns, party indexes, etc.). Local Hardhat: `pnpm deploy:local` then index from block 0. |
 | Outstanding obligation party indexes | Included in Nuclear #4 full reindex — required for `GET /accounts/:address/obligations` + commerce notification stamps |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
@@ -342,4 +342,5 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | [contracts/SPEC.md Part I.9.2](../contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) | **Active** Ethereum Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + FX extension |
-| [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | Deploy record (84532 generation v2) |
+| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | Current Nuclear #4 deploy / reindex |
+| [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | Historical June 2026 generation v2 |

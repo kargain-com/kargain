@@ -32,11 +32,10 @@ Start here. Each area has **one canonical document**; other files link in — th
 | Document | Purpose |
 |----------|---------|
 | [ops/deploys/nuclear-4.md](./ops/deploys/nuclear-4.md) | **Current** — Nuclear #4 full commercial stack (84532 + 11155111), August 2026 |
-| [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | **Historical** — June 2026 generation v2 deploy |
-| [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | **Historical** — July 2026 AuctionEscrow additive deploy (retired; Modes replace auctions) |
-| [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | **Historical** — pre–Nuclear #4 bridge pathway notes; live peers/hash in SPEC I.9 |
+| [ops/deploys/archive/](./ops/deploys/archive/) | **Historical** — Nuclear #2/#3, June v2, AuctionEscrow, pre-Nuclear bridge pathway |
 | [ops/deploys/multichain-browser-e2e-checklist.md](./ops/deploys/multichain-browser-e2e-checklist.md) | Maintainer dual-chain browser/ops checklist (testnet) |
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
+| [ops/recovery-bridge.md](./ops/recovery-bridge.md) | Bridge recovery ops (testnet EOA vs mainnet Timelock) |
 
 ## Product onboarding
 
