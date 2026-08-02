@@ -129,3 +129,24 @@ describe("profile tile presence policy", () => {
     assert.doesNotMatch(src, /status === ["']VERIFIED["']\s*\n\s*\? ["']border-accent-warm/);
   });
 });
+
+describe("detail gallery presence policy", () => {
+  it("detail view mounts PassportPresenceGallery with serializable props only", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-detail-view.tsx"),
+      "utf8",
+    );
+    assert.match(src, /PassportPresenceGallery/);
+    assert.doesNotMatch(src, /PassportPresenceVerified/);
+  });
+
+  it("presence status module has no function-typed children render prop", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-presence-status.tsx"),
+      "utf8",
+    );
+    assert.match(src, /export function PassportPresenceGallery/);
+    assert.doesNotMatch(src, /PassportPresenceVerified/);
+    assert.doesNotMatch(src, /children:\s*\([^)]*\)\s*=>/);
+  });
+});

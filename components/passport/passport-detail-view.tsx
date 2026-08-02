@@ -9,11 +9,10 @@ import { PassportMobileDiscussion } from "@/components/passport/passport-mobile-
 import { PassportIndexerSyncBanner } from "@/components/passport/passport-indexer-sync-banner";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportPanelLink } from "@/components/passport/passport-panel-link";
-import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportActionsPanel } from "@/components/passport/passport-actions-panel";
 import {
+  PassportPresenceGallery,
   PassportPresenceStatusBadge,
-  PassportPresenceVerified,
 } from "@/components/passport/passport-presence-status";
 import { PassportRecordsTimeline } from "@/components/passport/passport-records-timeline";
 import { PassportSpecGrid } from "@/components/passport/passport-spec-grid";
@@ -266,20 +265,13 @@ export function PassportDetailView({
             <div className="order-1 mt-6 md:hidden">{commerce}</div>
 
             <div className="mt-6">
-              <PassportPresenceVerified
+              <PassportPresenceGallery
                 tokenId={tokenId}
                 chainId={chainId}
                 ponderCustodyChain={passport.custodyChain}
                 recordedStatus={passport.status}
-              >
-                {(verified) => (
-                  <PassportPhotoGallery
-                    photos={metadata?.photos ?? []}
-                    chainId={chainId}
-                    verified={verified}
-                  />
-                )}
-              </PassportPresenceVerified>
+                photos={metadata?.photos ?? []}
+              />
             </div>
 
             <PassportDetailTabs

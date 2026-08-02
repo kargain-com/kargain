@@ -1,7 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
-
+import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import {
@@ -72,22 +71,22 @@ export function PassportPresenceStatusBadge({
   );
 }
 
-type GalleryVerifiedProps = {
+type GalleryProps = {
   tokenId: string;
   chainId: number;
   ponderCustodyChain: number;
   recordedStatus: PassportStatus;
-  children: (verified: boolean) => ReactNode;
+  photos: string[];
 };
 
-/** Provides gallery verified framing only when trust is current here. */
-export function PassportPresenceVerified({
+/** Gallery with verified framing only when trust is current here. */
+export function PassportPresenceGallery({
   tokenId,
   chainId,
   ponderCustodyChain,
   recordedStatus,
-  children,
-}: GalleryVerifiedProps) {
+  photos,
+}: GalleryProps) {
   const facts = usePassportCommerceFacts({ chainId, tokenId });
   const presence = derivePassportPresence({
     viewChainId: chainId,
@@ -95,5 +94,11 @@ export function PassportPresenceVerified({
     ponderCustodyChain,
   });
   const display = derivePassportTrustDisplay(presence, recordedStatus);
-  return <>{children(display.showVerifiedFrame)}</>;
+  return (
+    <PassportPhotoGallery
+      photos={photos}
+      chainId={chainId}
+      verified={display.showVerifiedFrame}
+    />
+  );
 }
