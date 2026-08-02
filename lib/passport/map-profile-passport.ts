@@ -1,3 +1,7 @@
+import {
+  isIndexedPhaseLive,
+  type ConsignmentRecord,
+} from "@/lib/commerce/ponder-consignment";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 
@@ -96,35 +100,27 @@ export function mapProfilePassport(raw: unknown): ProfilePassportRow | null {
 }
 
 /**
- * Map an enriched profile listing. Prefer custodyChain, then listing chainId.
+ * Map a live seller consignment onto the profile Listings tile.
+ * Live = offered | binding (HTTP `active=true` / OPEN_PHASES).
  */
-export function mapProfileListing(raw: unknown): ProfileListingRow | null {
-  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const obj = raw as Record<string, unknown>;
+export function mapProfileListingFromConsignment(
+  row: ConsignmentRecord,
+): ProfileListingRow | null {
+  if (!isIndexedPhaseLive(row.phase)) return null;
 
-  if (obj.active !== true && obj.active !== "true") return null;
-
-  const tokenId = String(obj.tokenId ?? obj.id ?? "");
-  const statusRaw =
-    typeof obj.passportStatus === "string" ? obj.passportStatus : "UNVERIFIED";
-  const custodyChain =
-    parseChainIdField(obj.custodyChain) ?? parseChainIdField(obj.chainId);
-  const originChainId =
-    parseChainIdField(obj.originChainId) ?? parseChainIdField(obj.chainId) ?? undefined;
-
-  if (!tokenId || !isPassportStatus(statusRaw) || custodyChain == null) {
-    return null;
-  }
+  const statusRaw = row.status ?? "UNVERIFIED";
+  if (!isPassportStatus(statusRaw)) return null;
+  if (!row.tokenId) return null;
 
   return {
-    tokenId,
+    tokenId: row.tokenId,
     passportStatus: statusRaw,
-    make: parseOptionalString(obj.make),
-    model: parseOptionalString(obj.model),
-    year: parseYear(obj.year),
-    vin: parseVin(obj.vin),
-    imageUrl: coverImageUrl(obj.coverPhotoUri),
-    custodyChain,
-    originChainId,
+    make: row.make?.trim() ?? "",
+    model: row.model?.trim() ?? "",
+    year: parseYear(row.year),
+    vin: parseVin(row.vin),
+    imageUrl: coverImageUrl(row.coverPhotoUri),
+    custodyChain: row.custodyChain,
+    originChainId: row.originChainId,
   };
 }

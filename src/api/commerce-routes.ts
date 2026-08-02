@@ -26,7 +26,11 @@ import type { Hono } from "hono";
 import { getAddress, isAddress } from "viem";
 import { replaceBigInts } from "ponder";
 
-import { LIVE_PHASES } from "../lib/ponder-commerce";
+import {
+  ALL_COMMERCE_PHASES,
+  LIVE_PHASES,
+  OPEN_PHASES,
+} from "../lib/ponder-commerce";
 import { loadObligationFacts } from "./load-obligation-facts";
 
 function parsePage(raw: string | undefined): number {
@@ -64,7 +68,13 @@ function jsonBody<T>(value: T): T {
 }
 
 const LIVE_PHASE_LIST = [...LIVE_PHASES];
+const OPEN_PHASE_LIST = [...OPEN_PHASES];
 
+/**
+ * Flatten passport denorm onto the consignment wire — matches
+ * `PonderConsignmentRow` (status/make/…/custodyChain). Nested `passport`
+ * objects are not part of the product contract.
+ */
 async function enrichConsignment(row: typeof consignment.$inferSelect) {
   const [terms, hold, settlement, pass] = await Promise.all([
     row.mode === "ascending"
@@ -80,22 +90,24 @@ async function enrichConsignment(row: typeof consignment.$inferSelect) {
       .limit(1),
     db.select().from(passport).where(eq(passport.id, row.tokenId)).limit(1),
   ]);
+  const p = pass[0];
   return {
     ...row,
     ascendingTerms: terms[0] ?? null,
     hold: hold[0] ?? null,
     settlement: settlement[0] ?? null,
-    passport: pass[0]
-      ? {
-          status: pass[0].status,
-          coverPhotoUri: pass[0].coverPhotoUri,
-          make: pass[0].make,
-          model: pass[0].model,
-          year: pass[0].year,
-          vin: pass[0].vin,
-          custodyChain: pass[0].custodyChain,
-        }
-      : null,
+    status: p?.status ?? null,
+    coverPhotoUri: p?.coverPhotoUri ?? null,
+    make: p?.make ?? null,
+    model: p?.model ?? null,
+    year: p?.year ?? null,
+    vin: p?.vin ?? null,
+    verifier: p?.verifier ?? null,
+    mileageKm: p?.mileageKm ?? null,
+    duplicateVin: p?.duplicateVin ?? null,
+    custodyChain: p?.custodyChain ?? row.chainId,
+    /** Immutable passport origin (`tokenId >> 128`). */
+    originChainId: p?.chainId ?? row.chainId,
   };
 }
 
@@ -120,6 +132,7 @@ export function registerCommerceRoutes(app: Hono): void {
     const offset = (page - 1) * limit;
     const mode = c.req.query("mode");
     const active = parseOptionalBoolean(c.req.query("active"));
+    const phase = c.req.query("phase");
     const chainId = parseOptionalChainId(c.req.query("chainId"));
     const sellerParam = c.req.query("seller");
     const agentParam = c.req.query("agent");
@@ -128,15 +141,22 @@ export function registerCommerceRoutes(app: Hono): void {
     if (mode === "fixedPrice" || mode === "ascending") {
       conditions.push(eq(consignment.mode, mode));
     }
+    // `active` = open for buy/bid (offered|binding). Held stays out of browse.
     if (active === true) {
-      conditions.push(inArray(consignment.phase, LIVE_PHASE_LIST));
+      conditions.push(inArray(consignment.phase, OPEN_PHASE_LIST));
     } else if (active === false) {
       conditions.push(
         sql`${consignment.phase} NOT IN (${sql.join(
-          LIVE_PHASE_LIST.map((p) => sql`${p}`),
+          OPEN_PHASE_LIST.map((p) => sql`${p}`),
           sql`, `,
         )})`,
       );
+    }
+    if (phase) {
+      if (!ALL_COMMERCE_PHASES.has(phase)) {
+        return c.json({ error: "Invalid phase" }, 400);
+      }
+      conditions.push(eq(consignment.phase, phase));
     }
     if (chainId !== undefined) {
       conditions.push(eq(consignment.chainId, chainId));

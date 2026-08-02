@@ -52,14 +52,13 @@ type BidsResponse = {
 
 export type ConsignmentQuery = {
   mode?: CommerceMode;
-  /** Indexed phase filter — omit for every phase. */
-  phase?: "offered" | "binding" | "held" | "closed" | "returned";
-  /** Convenience: offered + binding only. */
+  /** Convenience: offered + binding only (`active=true` on the HTTP API). */
   live?: boolean;
+  /** Exact indexed phase (`phase=` on the HTTP API). */
+  phase?: string;
   chainId?: number;
   seller?: string;
   agent?: string;
-  tokenId?: string;
   page?: number;
   limit?: number;
 };
@@ -81,12 +80,14 @@ function consignmentsUrl(query: ConsignmentQuery): URL {
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
   if (query.mode) url.searchParams.set("mode", query.mode);
+  // API filter is `active` → OPEN_PHASES (offered|binding). `live` is the
+  // product name in this action; do not send a phantom `live` query key.
+  if (query.live === true) url.searchParams.set("active", "true");
+  else if (query.live === false) url.searchParams.set("active", "false");
   if (query.phase) url.searchParams.set("phase", query.phase);
-  if (query.live) url.searchParams.set("live", "true");
   if (query.chainId != null) url.searchParams.set("chainId", String(query.chainId));
   if (query.seller) url.searchParams.set("seller", query.seller);
   if (query.agent) url.searchParams.set("agent", query.agent);
-  if (query.tokenId) url.searchParams.set("tokenId", query.tokenId);
   return url;
 }
 

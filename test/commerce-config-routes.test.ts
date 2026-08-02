@@ -28,4 +28,18 @@ describe("commerce config HTTP readers", () => {
     assert.ok(src.includes("commercePaymentToken"));
     assert.ok(src.includes("commerceCurrencyFeed"));
   });
+
+  it("browse active filter uses OPEN_PHASES; by-token live uses LIVE_PHASES", () => {
+    const src = readFileSync(ROUTES, "utf8");
+    assert.ok(src.includes("OPEN_PHASES"));
+    assert.ok(src.includes("LIVE_PHASES"));
+    assert.ok(
+      src.includes("inArray(consignment.phase, OPEN_PHASE_LIST)"),
+      "GET /consignments?active=true must filter OPEN_PHASES only",
+    );
+    assert.ok(
+      src.includes("inArray(consignment.phase, LIVE_PHASE_LIST)"),
+      "by-token / occupying lookups must keep LIVE_PHASES",
+    );
+  });
 });

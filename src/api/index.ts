@@ -85,7 +85,9 @@ app.get("/passports", async (c) => {
 
   const conditions = [];
   if (owner) {
-    conditions.push(eq(passport.owner, owner.toLowerCase()));
+    const ownerAddress = parseAddressParam(owner);
+    if (!ownerAddress) return c.json({ error: "Invalid owner" }, 400);
+    conditions.push(eq(passport.owner, ownerAddress));
   }
   if (status) {
     conditions.push(eq(passport.status, status));
@@ -312,7 +314,9 @@ app.get("/passports/:tokenId", async (c) => {
 });
 
 app.get("/profile/:address/passports", async (c) => {
-  const address = c.req.param("address").toLowerCase();
+  // Checksum match — owners are written via event `to` (viem getAddress shape).
+  const address = parseAddressParam(c.req.param("address"));
+  if (!address) return c.json({ error: "Invalid address" }, 400);
   const passports = await db
     .select()
     .from(passport)

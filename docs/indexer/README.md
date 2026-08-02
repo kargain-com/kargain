@@ -48,7 +48,7 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 
 | Route | Purpose |
 |-------|---------|
-| `GET /consignments` | Browse (`mode`, `active`, `seller`, `agent`, `chainId`) |
+| `GET /consignments` | Browse (`mode`, `active` = offered\|binding, `phase`, `seller`, `agent`, `chainId`) |
 | `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred, else latest historical) |
 | `GET /consignments/:id` | Deep link by append-only id (“sale N”) |
 | `GET /consignments/:id/bids` | Ascending bid history |

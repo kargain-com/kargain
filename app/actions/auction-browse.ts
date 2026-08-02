@@ -28,7 +28,7 @@ type ConsignmentsResponse = {
 function ascendingUrl(page: number, limit: number): URL {
   const url = new URL(`${ponderBaseUrl()}/consignments`);
   url.searchParams.set("mode", "ascending");
-  url.searchParams.set("live", "true");
+  url.searchParams.set("active", "true");
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
   return url;

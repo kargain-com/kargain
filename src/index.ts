@@ -111,7 +111,7 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
     chainId: origin,
     custodyChain: custody.custodyChain,
     custodyUpdatedAt: custody.custodyUpdatedAt,
-    owner: event.args.to,
+    owner: getAddress(event.args.to),
     status: "UNVERIFIED",
     verifier: "",
     verifiedAt: 0n,
@@ -166,7 +166,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
             custodyUpdatedAt: custody.custodyUpdatedAt,
           }
         : {}),
-      owner: event.args.to,
+      owner: getAddress(event.args.to),
       tokenUri: uri,
       ...bridgeMintArrivalTrustFields(ts),
     });
@@ -179,7 +179,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
       chainId: origin,
       custodyChain: initial.custodyChain,
       custodyUpdatedAt: initial.custodyUpdatedAt,
-      owner: event.args.to,
+      owner: getAddress(event.args.to),
       status: "UNVERIFIED",
       verifier: "",
       verifiedAt: 0n,
@@ -405,7 +405,7 @@ ponder.on("KarPassport:Transfer", async ({ event, context }) => {
   await context.db
     .update(passport, { id: event.args.tokenId.toString() })
     .set({
-      owner: event.args.to,
+      owner: getAddress(event.args.to),
       updatedAt: event.block.timestamp,
     });
 });

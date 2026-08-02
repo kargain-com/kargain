@@ -114,6 +114,8 @@ export type PonderConsignmentRow = {
   status?: string | null;
   verifier?: string | null;
   custodyChain?: number | null;
+  /** Immutable passport origin when denormed by API. */
+  originChainId?: number | null;
   mileageKm?: number | null;
   duplicateVin?: boolean | null;
   terms?: PonderAscendingTermsRow | null;
@@ -147,11 +149,16 @@ export type ConsignmentRecord = {
   readonly make: string | null;
   readonly model: string | null;
   readonly year: number | null;
+  readonly vin: string | null;
   readonly coverPhotoUri: string | null;
   readonly status: string | null;
   readonly verifier: string | null;
   readonly duplicateVin: boolean;
   readonly mileageKm: number | null;
+  /** Where the NFT lives now (passport denorm; falls back to commerce chain). */
+  readonly custodyChain: number;
+  /** Passport origin chain (denorm; falls back to commerce chain). */
+  readonly originChainId: number;
 };
 
 function toBigInt(value: string | null | undefined): bigint {
@@ -213,11 +220,20 @@ export function mapConsignmentRow(
     make: row.make ?? null,
     model: row.model ?? null,
     year: row.year ?? null,
+    vin: row.vin ?? null,
     coverPhotoUri: row.coverPhotoUri ?? null,
     status: row.status ?? null,
     verifier: row.verifier ?? null,
     duplicateVin: row.duplicateVin === true,
     mileageKm: row.mileageKm ?? null,
+    custodyChain:
+      typeof row.custodyChain === "number" && Number.isFinite(row.custodyChain)
+        ? row.custodyChain
+        : row.chainId,
+    originChainId:
+      typeof row.originChainId === "number" && Number.isFinite(row.originChainId)
+        ? row.originChainId
+        : row.chainId,
   };
 }
 

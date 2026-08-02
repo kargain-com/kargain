@@ -3,8 +3,11 @@ import { describe, it } from "node:test";
 import { getAddress, zeroAddress } from "viem";
 
 import {
+  ALL_COMMERCE_PHASES,
   COMMERCE_PHASE,
   CLOSE_REASON,
+  LIVE_PHASES,
+  OPEN_PHASES,
   REQUIRED_CLAIM_CAUSE_EVENTS,
   bidExtended,
   causeFromBidRefunded,
@@ -70,6 +73,14 @@ describe("ponder-commerce identity", () => {
 });
 
 describe("ponder-commerce phase machine", () => {
+  it("OPEN_PHASES are buyable; LIVE_PHASES add held custody", () => {
+    assert.deepEqual([...OPEN_PHASES].sort(), ["binding", "offered"]);
+    assert.ok(LIVE_PHASES.has(COMMERCE_PHASE.HELD));
+    assert.equal(LIVE_PHASES.has(COMMERCE_PHASE.CLOSED), false);
+    for (const p of OPEN_PHASES) assert.ok(LIVE_PHASES.has(p));
+    assert.ok(ALL_COMMERCE_PHASES.has(COMMERCE_PHASE.RETURNED));
+  });
+
   it("Returned close → returned; other closes → closed", () => {
     assert.equal(phaseAfterClose(CLOSE_REASON.RETURNED), COMMERCE_PHASE.RETURNED);
     assert.equal(phaseAfterClose(CLOSE_REASON.SOLD), COMMERCE_PHASE.CLOSED);

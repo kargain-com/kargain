@@ -1,5 +1,6 @@
 "use server";
 
+import { getConsignments } from "@/app/actions/commerce-consignments";
 import { z } from "zod";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
@@ -14,6 +15,12 @@ import {
   mapPonderListingToRow,
   type MarketplaceListingRow as MarketplaceListingRowType,
 } from "@/lib/marketplace/map-ponder-listing";
+import {
+  mapProfileListingFromConsignment,
+  mapProfilePassport,
+  type ProfileListingRow,
+  type ProfilePassportRow,
+} from "@/lib/passport/map-profile-passport";
 import type { PassportStatus } from "@/lib/types/ponder";
 
 export type MarketplaceListingRow = MarketplaceListingRowType;
@@ -74,7 +81,7 @@ type ConsignmentsResponse = {
 function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
   const url = new URL(`${ponderBaseUrl()}/consignments`);
   url.searchParams.set("mode", "fixedPrice");
-  url.searchParams.set("live", "true");
+  url.searchParams.set("active", "true");
   url.searchParams.set("page", String(p.page));
   url.searchParams.set("limit", String(p.limit));
   url.searchParams.set("verifiedFirst", "true");
@@ -169,20 +176,30 @@ export async function getPassportFromPonder(tokenId: string) {
   }
 }
 
-export async function getProfileData(address: string) {
+export async function getProfileData(address: string): Promise<{
+  passports: ProfilePassportRow[];
+  listings: ProfileListingRow[];
+}> {
   try {
-    const [passportsRes, listingsRes] = await Promise.all([
+    const [passportsRes, consignmentsPage] = await Promise.all([
       ponderFetch(`${ponderBaseUrl()}/profile/${address}/passports`),
-      ponderFetch(`${ponderBaseUrl()}/profile/${address}/consignments`),
+      // Seller live lots (offered|binding) — same filter as marketplace browse.
+      getConsignments({ seller: address, live: true, limit: 100 }),
     ]);
-    return {
-      passports: passportsRes.ok
-        ? ((await passportsRes.json()) as { passports: unknown[] }).passports
-        : [],
-      listings: listingsRes.ok
-        ? ((await listingsRes.json()) as { consignments: unknown[] }).consignments
-        : [],
-    };
+
+    const passports = passportsRes.ok
+      ? ((await passportsRes.json()) as { passports: unknown[] }).passports
+          .map(mapProfilePassport)
+          .filter((p): p is ProfilePassportRow => p != null)
+      : [];
+
+    const listings = consignmentsPage.ponderError
+      ? []
+      : consignmentsPage.rows
+          .map(mapProfileListingFromConsignment)
+          .filter((l): l is ProfileListingRow => l != null);
+
+    return { passports, listings };
   } catch {
     return { passports: [], listings: [] };
   }

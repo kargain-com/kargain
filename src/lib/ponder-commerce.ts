@@ -36,11 +36,28 @@ export const CLOSE_REASON = {
   REVERSAL_ABANDONED: 6,
 } as const;
 
+/**
+ * Buyable / biddable lots — product `GET /consignments?active=true`
+ * and profile Listings. Settlement hold is not “active” for browse.
+ */
+export const OPEN_PHASES: ReadonlySet<string> = new Set([
+  COMMERCE_PHASE.OFFERED,
+  COMMERCE_PHASE.BINDING,
+]);
+
+/**
+ * Passport still in mode custody (open offer/bid or ascending hold).
+ * Used by find-live lookups, obligations, and by-token “current lot”.
+ */
 export const LIVE_PHASES: ReadonlySet<string> = new Set([
   COMMERCE_PHASE.OFFERED,
   COMMERCE_PHASE.BINDING,
   COMMERCE_PHASE.HELD,
 ]);
+
+export const ALL_COMMERCE_PHASES: ReadonlySet<string> = new Set(
+  Object.values(COMMERCE_PHASE),
+);
 
 export function checksumOrZero(addr: string): string {
   if (!addr || addr === "0" || /^0x0+$/i.test(addr)) return zeroAddress;

@@ -7,10 +7,6 @@ import { getProfileData } from "@/app/actions/marketplace-listings";
 import { getAgentMandateCount, getOwnerMandateCount } from "@/app/actions/commerce-mandates";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
-import {
-  mapProfileListing,
-  mapProfilePassport,
-} from "@/lib/passport/map-profile-passport";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import { commercialChainIds } from "@/lib/web3/chain-context";
 import {
@@ -76,8 +72,8 @@ export default async function PublicProfilePage({
   const delegatedCount = await getOwnerMandateCount(wallet);
 
   let ponderErr: string | null = null;
-  let passports: NonNullable<ReturnType<typeof mapProfilePassport>>[] = [];
-  let listings: NonNullable<ReturnType<typeof mapProfileListing>>[] = [];
+  let passports: Awaited<ReturnType<typeof getProfileData>>["passports"] = [];
+  let listings: Awaited<ReturnType<typeof getProfileData>>["listings"] = [];
   let verifiedPassports: Awaited<
     ReturnType<typeof getCachedVerifierPublicData>
   >["verifiedPassports"] = [];
@@ -95,12 +91,8 @@ export default async function PublicProfilePage({
     verifiedPassports = verifierData.verifiedPassports;
     attestations = verifierData.attestations;
 
-    passports = (profileData.passports as unknown[])
-      .map(mapProfilePassport)
-      .filter((p): p is NonNullable<typeof p> => p != null);
-    listings = (profileData.listings as unknown[])
-      .map(mapProfileListing)
-      .filter((l): l is NonNullable<typeof l> => l != null);
+    passports = profileData.passports;
+    listings = profileData.listings;
   } catch {
     ponderErr = "PONDER_UNAVAILABLE";
   }
