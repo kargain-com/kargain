@@ -215,7 +215,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
 
   it("atomic init: proxy state live after deploy; re-initialize reverts", async () => {
     assert.equal(await stack.fixedPrice.read.VERSION(), "2.4.0-rc.1");
-    assert.equal(await stack.ascending.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.4.0-rc.1");
     assert.equal(
       getAddress((await stack.fixedPrice.read.owner([])) as string),
       getAddress(stack.timelock.address),
@@ -567,7 +567,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       encodeUpgradeToAndCall(nextImpl.address),
     );
 
-    assert.equal(await stack.ascending.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.4.0-rc.1");
     assert.equal(await stack.ascending.read.auctionEndsAt([tokenId]), endsAt);
     assert.equal(await stack.ascending.read.auctionHighestBid([tokenId]), high);
     assert.equal(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAccount, useChainId, useWriteContract } from "wagmi";
+import { useAccount, useChainId, useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -11,6 +11,7 @@ import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import { ASCENDING_PROTECTION_TRADE } from "@/lib/auction/ascending-public-claims";
+import { AUCTION_REQUIRES_VERIFICATION_HINT } from "@/lib/auction/sale-form-copy";
 import {
   auctionAssetLabelFromAddress,
   parseOwnerMinAsset,
@@ -27,8 +28,12 @@ import {
 } from "@/lib/commerce/format-window-duration";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
-import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import {
+  AscendingConsignmentAbi,
+  KarPassportAbi,
+} from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -60,11 +65,29 @@ export function AgentCreateAuctionPanel({
   const busy = phase !== "idle";
 
   const mode = commerceModeAddress("ascending", chainId);
+  const passport = karPassportAddress(chainId);
   const wrongChain = walletChainId !== wagmiChainId(chainId);
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
     chainId,
   });
+  const tid = useMemo(() => {
+    try {
+      return BigInt(tokenId);
+    } catch {
+      return 0n;
+    }
+  }, [tokenId]);
+  const { data: passportStatusRaw, isPending: statusPending } = useReadContract({
+    address: passport,
+    abi: KarPassportAbi,
+    functionName: "passportStatus",
+    args: [tid],
+    chainId: wagmiChainId(chainId),
+    query: { enabled: Boolean(passport) && tid > 0n },
+  });
+  /** KarPassport.Status.VERIFIED === 1 — ascending open refuses otherwise. */
+  const passportVerified = passportStatusRaw === 1;
   const { rules: auctionRules } = useAscendingAuctionRules({ chainId });
   const durationOptions = auctionRules
     ? durationDayOptions(auctionRules.minDuration, auctionRules.maxDuration)
@@ -83,13 +106,6 @@ export function AgentCreateAuctionPanel({
     protectionOptions.length > 0 && !protectionOptions.includes(protectionDays)
       ? protectionOptions[0]!
       : protectionDays;
-  const tid = useMemo(() => {
-    try {
-      return BigInt(tokenId);
-    } catch {
-      return 0n;
-    }
-  }, [tokenId]);
 
   const { mandate, platformFeeBps, isPending: mandatePending } = useMandate({
     mode: "ascending",
@@ -150,6 +166,10 @@ export function AgentCreateAuctionPanel({
   async function onCreate() {
     setTxError(null);
     if (!mode || !mandate || !usable) return;
+    if (!passportVerified) {
+      setTxError(AUCTION_REQUIRES_VERIFICATION_HINT);
+      return;
+    }
 
     if (!auctionRules) {
       setTxError("Loading auction rules…");
@@ -357,6 +377,12 @@ export function AgentCreateAuctionPanel({
         </p>
       )}
 
+      {!statusPending && !passportVerified && (
+        <p className="font-sans text-sm text-text-secondary">
+          {AUCTION_REQUIRES_VERIFICATION_HINT}
+        </p>
+      )}
+
       {(txError ?? error) && (
         <p className="font-sans text-sm text-status-error" role="alert">
           {txError ?? error}
@@ -375,6 +401,8 @@ export function AgentCreateAuctionPanel({
           modePaused === true ||
           busy ||
           isWriting ||
+          statusPending ||
+          !passportVerified ||
           !reserveStr.trim() ||
           !meetsFloor ||
           platformFeeBps == null

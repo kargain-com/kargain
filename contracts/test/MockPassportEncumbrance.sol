@@ -15,6 +15,8 @@ import {IKarPassportEncumbrance} from "../interfaces/IKarPassportEncumbrance.sol
  */
 contract MockPassportEncumbrance is ERC721, IKarPassportEncumbrance, IEncumbranceRegistry {
     mapping(uint256 tokenId => mapping(Intent intent => bool)) public mayPermit;
+    /// @dev KarPassport.Status ordinal; mint defaults to VERIFIED so ascending open suites stay green.
+    mapping(uint256 tokenId => uint8) public passportStatus;
     mapping(address source => bool) internal _sourceSet;
     mapping(address source => bool) internal _sourceRegistered;
     bool public defaultEncumbranceSource = true;
@@ -23,6 +25,11 @@ contract MockPassportEncumbrance is ERC721, IKarPassportEncumbrance, IEncumbranc
 
     function mint(address to, uint256 tokenId) external {
         _mint(to, tokenId);
+        passportStatus[tokenId] = 1; // VERIFIED
+    }
+
+    function setPassportStatus(uint256 tokenId, uint8 status) external {
+        passportStatus[tokenId] = status;
     }
 
     function setMay(uint256 tokenId, Intent intent, bool allowed) external {

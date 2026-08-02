@@ -6,7 +6,7 @@
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
 | [ops/deploys/84532-v2.md](../ops/deploys/84532-v2.md) | **Per deploy** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #3 cutover August 1, 2026):** committed start blocks hub **44919727** / Eth **11398068**. **VPS full reindex required** before [ponder.kargain.com](https://ponder.kargain.com) matches. Smoke after reindex: `GET /consignments`, `GET /commerce-payment-tokens`, obligations, notifications ([OPERATIONS.md](./OPERATIONS.md)).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **VPS full reindex required** before [ponder.kargain.com](https://ponder.kargain.com) matches. Smoke after reindex: `GET /consignments`, `GET /commerce-payment-tokens`, obligations, notifications ([OPERATIONS.md](./OPERATIONS.md)).
 
 ## Contract addresses for indexer
 
@@ -19,7 +19,7 @@ Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) + Eth nuclear table
 
-**Start blocks:** `PONDER_START_BLOCK_84532=44919727` · `PONDER_START_BLOCK_11155111=11398068`. Per-contract start blocks from each manifest’s `blocks.*`.
+**Start blocks:** `PONDER_START_BLOCK_84532=44957457` · `PONDER_START_BLOCK_11155111=11404204`. Per-contract start blocks from each manifest’s `blocks.*`.
 
 ## Dual-chain identity (C3 · July 2026)
 
@@ -36,7 +36,7 @@ Browse: `GET /consignments?chainId=84532` (optional). Passport detail returns `r
 
 Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts): **`GET /consignments*`** browse, **`GET /agents|owners/.../mandates`** portfolio, **`GET /challenges`** (BondedChallenge feed), and commerce claims. The legacy `MarketplaceEscrow` / `AuctionEscrow` schema and HTTP surface (`marketplace_listing`, `auction`, `GET /listings`, `GET /auctions*`, …) have been removed — there is no dual-write path.
 
-**Production state (Nuclear #3):** `COMMERCIAL_ACTIVE` cut over August 1, 2026. VPS must reindex from hub **44919727** + Eth **11398068** before live API matches. Legacy `/listings` is gone.
+**Production state (Nuclear #4):** `COMMERCIAL_ACTIVE` cut over August 2, 2026. VPS must reindex from hub **44957457** + Eth **11404204** before live API matches. Legacy `/listings` is gone.
 
 | Identity | Format |
 |----------|--------|

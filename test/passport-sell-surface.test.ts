@@ -38,6 +38,7 @@ const allHidden: SellSurfaceFlags = {
   showAscendingGrant: false,
   showAscendingMandateCard: false,
   showAscendingRunnerNote: false,
+  showAuctionVerificationHint: false,
 };
 
 function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
@@ -77,6 +78,7 @@ function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
     ascendingConfigured: true,
     openConsignmentPermission: AVAILABLE,
     isActiveVerifier: false,
+    passportStatus: "UNVERIFIED",
     fixedPriceMandate: { value: null, now: NOW },
     ascendingMandate: { value: null, now: NOW },
     ...overrides,
@@ -117,7 +119,7 @@ describe("deriveSellSurface", () => {
     );
   });
 
-  it("shows fixed-price open and ascending grant for a private owner", () => {
+  it("shows fixed-price open and ascending grant for a private owner (status ignored)", () => {
     assert.deepEqual(deriveSellSurface(input()), {
       ...allHidden,
       showFixedPriceOpen: true,
@@ -125,15 +127,53 @@ describe("deriveSellSurface", () => {
       showAscendingGrant: true,
       showAscendingRunnerNote: true,
     });
+    assert.deepEqual(
+      deriveSellSurface(input({ passportStatus: "VERIFIED" })),
+      {
+        ...allHidden,
+        showFixedPriceOpen: true,
+        showFixedPriceGrant: true,
+        showAscendingGrant: true,
+        showAscendingRunnerNote: true,
+      },
+    );
   });
 
-  it("replaces ascending grant with open for a KarPro owner", () => {
-    assert.deepEqual(deriveSellSurface(input({ isActiveVerifier: true })), {
-      ...allHidden,
-      showFixedPriceOpen: true,
-      showFixedPriceGrant: true,
-      showAscendingOpen: true,
-    });
+  it("replaces ascending grant with open for a KarPro owner only when VERIFIED", () => {
+    assert.deepEqual(
+      deriveSellSurface(
+        input({ isActiveVerifier: true, passportStatus: "VERIFIED" }),
+      ),
+      {
+        ...allHidden,
+        showFixedPriceOpen: true,
+        showFixedPriceGrant: true,
+        showAscendingOpen: true,
+      },
+    );
+  });
+
+  it("Nuclear #4: KarPro owner UNVERIFIED gets auction hint, not ascending open", () => {
+    assert.deepEqual(
+      deriveSellSurface(
+        input({ isActiveVerifier: true, passportStatus: "UNVERIFIED" }),
+      ),
+      {
+        ...allHidden,
+        showFixedPriceOpen: true,
+        showFixedPriceGrant: true,
+        showAuctionVerificationHint: true,
+      },
+    );
+  });
+
+  it("Nuclear #4: unread status fails closed on ascending open", () => {
+    const flags = deriveSellSurface(
+      input({ isActiveVerifier: true, passportStatus: undefined }),
+    );
+    assert.equal(flags.showAscendingOpen, false);
+    assert.equal(flags.showAuctionVerificationHint, false);
+    assert.equal(flags.showFixedPriceOpen, true);
   });
 
   it("shows a fixed-price mandate card when a standing grant exists", () => {
@@ -185,6 +225,7 @@ describe("deriveSellSurface", () => {
             now: NOW,
           },
           isActiveVerifier: true,
+          passportStatus: "VERIFIED",
         }),
       ),
       {
@@ -201,6 +242,7 @@ describe("deriveSellSurface", () => {
     assert.equal(flags.showAscendingOpen, false);
     assert.equal(flags.showAscendingGrant, false);
     assert.equal(flags.showAscendingRunnerNote, false);
+    assert.equal(flags.showAuctionVerificationHint, false);
     assert.equal(flags.showFixedPriceOpen, true);
   });
 
@@ -210,6 +252,7 @@ describe("deriveSellSurface", () => {
         fixedPriceMandate: undefined,
         ascendingMandate: undefined,
         isActiveVerifier: true,
+        passportStatus: "VERIFIED",
       }),
     );
     assert.equal(flags.showFixedPriceOpen, true);

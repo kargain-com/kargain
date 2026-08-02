@@ -158,6 +158,8 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "Recall is only available while an agented offer is open — not after a sale is bound.",
   OpenConsignmentRefused:
     "This passport cannot open a consignment right now (encumbrance refused).",
+  PassportNotVerified:
+    "Auction sales require a verified passport. Verify first, then open the auction.",
   NotOffered: "This lot is not open for bidding or withdrawal.",
   NotDirectConsignment:
     "Only a direct (unagented) seller can withdraw immediately — use recall when an agent is appointed.",

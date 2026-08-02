@@ -6,18 +6,18 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 ---
 
-## Production state (Nuclear #3 dual-chain — August 1, 2026)
+## Production state (Nuclear #4 dual-chain — August 2, 2026)
 
-**Committed stack:** Nuclear #3 on **84532** + **11155111** (`COMMERCIAL_ACTIVE` / SPEC I.9). One full `ponder-reindex.sql` backfills **both** networks.
+**Committed stack:** Nuclear #4 on **84532** + **11155111** (`COMMERCIAL_ACTIVE` / SPEC I.9). One full `ponder-reindex.sql` backfills **both** networks.
 
-**VPS:** full reindex from the start blocks below is **required** after the August 1 cutover (production API still lags until that reindex finishes). Runbook: [ops/deploys/nuclear-3.md](../ops/deploys/nuclear-3.md).
+**VPS:** full reindex from the start blocks below is **required** after the August 2 cutover (production API still lags until that reindex finishes). Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md).
 
 | Item | Value |
 |------|--------|
-| Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **44919727** |
-| Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11398068** |
-| Hub start block | `PONDER_START_BLOCK_84532=44919727` |
-| Eth start block | `PONDER_START_BLOCK_11155111=11398068` |
+| Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **44957457** |
+| Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11404204** |
+| Hub start block | `PONDER_START_BLOCK_84532=44957457` |
+| Eth start block | `PONDER_START_BLOCK_11155111=11404204` |
 | Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
 | Eth RPC | `PONDER_RPC_URL_11155111` (Alchemy/Infura/QuickNode; PublicNode often 403) · `PONDER_MAX_RPS_11155111` default **5** |
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
@@ -27,7 +27,7 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 **Omnichain ordering:** `ponder.config.ts` sets `ordering: "omnichain"`. Cross-chain consistency for owner/status/uri waits on both networks (**consistency > liveness**). Custody is additionally fail-closed via the monotonic `custodyUpdatedAt` gate if one chain lags and delivers a stale bridge-mint after a fresher unlock.
 
-Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **11319840** · Nuclear #2 **44833462** / **11384136** — superseded by Nuclear #3 hub **44919727** / Eth **11398068**. Runbook: [ops/deploys/nuclear-3.md](../ops/deploys/nuclear-3.md).
+Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **11319840** · Nuclear #2 **44833462** / **11384136** · Nuclear #3 **44919727** / **11398068** — superseded by Nuclear #4 hub **44957457** / Eth **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md).
 
 **Handlers:** dual-chain event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
 
@@ -40,8 +40,8 @@ Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **113198
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
 PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
-PONDER_START_BLOCK_84532=44919727
-PONDER_START_BLOCK_11155111=11398068
+PONDER_START_BLOCK_84532=44957457
+PONDER_START_BLOCK_11155111=11404204
 # Optional per-chain RPS (defaults 10 / 5):
 # PONDER_MAX_RPS_84532=10
 # PONDER_MAX_RPS_11155111=5
@@ -63,7 +63,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 
 | When | Start blocks |
 |------|----------------|
-| One-time backfill after `ponder-reindex.sql` | Hub **44919727** + Eth **11398068** (or checkpoints) |
+| One-time backfill after `ponder-reindex.sql` | Hub **44957457** + Eth **11404204** (or checkpoints) |
 | Steady production (after sync) | **Same numeric values** — do not set `latest` |
 | Fresh deploy after schema wipe | Reset both to manifest `indexFromBlock` when running `ponder-reindex.sql` again |
 
@@ -83,9 +83,9 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| **Nuclear #3 (August 1, 2026) — current** | Full commercial redeploy both chains — **full reindex** from hub **44919727** + Eth **11398068**. **Do this on VPS now.** Runbook: [ops/deploys/nuclear-3.md](../ops/deploys/nuclear-3.md). |
-| Older Nuclear / commerce schema triggers | Superseded by Nuclear #3 reindex (same wipe covers modes, claims, challenge terminals, place columns, party indexes, etc.). Local Hardhat: `pnpm deploy:local` then index from block 0. |
-| Outstanding obligation party indexes | Included in Nuclear #3 full reindex — required for `GET /accounts/:address/obligations` + commerce notification stamps |
+| **Nuclear #4 (August 2, 2026) — current** | Full commercial redeploy both chains — **full reindex** from hub **44957457** + Eth **11404204**. **Do this on VPS now.** Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
+| Older Nuclear / commerce schema triggers | Superseded by Nuclear #4 reindex (same wipe covers modes, claims, challenge terminals, place columns, party indexes, etc.). Local Hardhat: `pnpm deploy:local` then index from block 0. |
+| Outstanding obligation party indexes | Included in Nuclear #4 full reindex — required for `GET /accounts/:address/obligations` + commerce notification stamps |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
 | Contract redeploy | KarPassport / FixedPrice / Ascending / gateway address change (Nuclear / Phase 5) |
 | Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
@@ -240,8 +240,8 @@ Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optiona
 ```bash
 PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
 PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
-PONDER_START_BLOCK_84532=44919727
-PONDER_START_BLOCK_11155111=11398068
+PONDER_START_BLOCK_84532=44957457
+PONDER_START_BLOCK_11155111=11404204
 # PONDER_MAX_RPS_84532=10
 # PONDER_MAX_RPS_11155111=5
 DATABASE_URL=...                    # Postgres for Ponder
@@ -278,8 +278,8 @@ Wait until logs show:
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
 curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/passports | jq '.total'
-curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until first Nuclear #3 consignment opens
-curl -s https://ponder.kargain.com/commerce-payment-tokens | jq '.total'   # expect 4 after Nuclear #3 reindex (USDC × 2 modes × 2 chains)
+curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until first Nuclear #4 consignment opens
+curl -s https://ponder.kargain.com/commerce-payment-tokens | jq '.total'   # expect 4 after Nuclear #4 reindex (USDC × 2 modes × 2 chains)
 curl -s https://ponder.kargain.com/accounts/0x0000000000000000000000000000000000000001/obligations | jq 'keys'
 curl -s https://ponder.kargain.com/notifications/0x0000000000000000000000000000000000000001 | jq '.total // .items | length'
 curl -s https://ponder.kargain.com/challenges | jq '.total'

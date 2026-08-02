@@ -13,7 +13,7 @@ export type CommercialActiveBlocks = {
   karProStaking?: number;
   karPassport?: number;
   bridgeGateway?: number;
-  /** Present when commerce modes are on the commercial stack (Nuclear #2+; live Nuclear #3). */
+  /** Present when commerce modes are on the commercial stack (Nuclear #2+; live Nuclear #4). */
   fixedPriceConsignment?: number;
   fixedPriceConsignmentImpl?: number;
   ascendingConsignment?: number;
@@ -32,7 +32,7 @@ export type CommercialActiveStack = {
   timelock: `0x${string}`;
   /** KarPassportBridgeGateway. */
   bridgeGateway: `0x${string}`;
-  /** Commerce modes — live on Nuclear #3 (August 1, 2026). */
+  /** Commerce modes — live on Nuclear #4 (August 2, 2026). */
   fixedPriceConsignment?: `0x${string}`;
   fixedPriceConsignmentImpl?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
@@ -45,67 +45,67 @@ export type CommercialActiveStack = {
   blocks: CommercialActiveBlocks;
 };
 
-/** Base Sepolia — Nuclear #3 August 1, 2026 (SPEC I.9.1); FixedPrice `2.4.0-rc.1`. */
+/** Base Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.1); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
 const BASE_SEPOLIA_84532 = {
   chainId: 84532,
-  karPassport: "0xEf7403424Ce96f0e1845AB70800022c78D97a52C",
-  karProPass: "0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43",
-  karProStaking: "0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5",
+  karPassport: "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
+  karProPass: "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
+  karProStaking: "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-  timelock: "0x886328c407998EA493b757bE9d49034624F8f4BE",
-  bridgeGateway: "0xd4728af32553005A2BEae8f29eb73DB425980daa",
-  fixedPriceConsignment: "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
-  fixedPriceConsignmentImpl: "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
-  ascendingConsignment: "0xC0ADc29De760195d5BBB5d3c11f040B388872039",
-  ascendingConsignmentImpl: "0x254340154a0C5B1d8679f49400AF292e33E1e855",
+  timelock: "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
+  bridgeGateway: "0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc",
+  fixedPriceConsignment: "0x73F41293bb207443990006b951CE9BC38Ef2eB3b",
+  fixedPriceConsignmentImpl: "0xa4A2FE8Bd5A7Ee99ED375BA179861D1DA7F2e8F4",
+  ascendingConsignment: "0xABd47E54595b814625B1B911BC3A078397Abb973",
+  ascendingConsignmentImpl: "0xcdfEe11B2F2eA6501E06576e1a50baa7B8Bd8750",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x886328c407998EA493b757bE9d49034624F8f4BE",
-  indexFromBlock: 44_919_727,
+  upgradeAuthority: "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
+  indexFromBlock: 44_957_457,
   blocks: {
-    timelock: 44_919_737,
-    karProPass: 44_919_741,
-    karProStaking: 44_919_745,
-    karPassport: 44_919_752,
-    fixedPriceConsignmentImpl: 44_919_774,
-    fixedPriceConsignment: 44_919_778,
-    ascendingConsignmentImpl: 44_919_801,
-    ascendingConsignment: 44_919_805,
-    bridgeGateway: 44_919_820,
+    timelock: 44_957_467,
+    karProPass: 44_957_471,
+    karProStaking: 44_957_475,
+    karPassport: 44_957_484,
+    fixedPriceConsignmentImpl: 44_957_489,
+    fixedPriceConsignment: 44_957_497,
+    ascendingConsignmentImpl: 44_957_513,
+    ascendingConsignment: 44_957_521,
+    bridgeGateway: 44_957_539,
   },
 } as const satisfies CommercialActiveStack;
 
-/** Ethereum Sepolia — Nuclear #3 August 1, 2026 (SPEC I.9.2); FixedPrice `2.4.0-rc.1`. */
+/** Ethereum Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.2); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
 const ETHEREUM_SEPOLIA_11155111 = {
   chainId: 11155111,
-  karPassport: "0xc903feE4395dd5Db35d9BcB558917f3Af8d71869",
-  karProPass: "0xFc12ea568DD7aa636C64f4f778b965D2434D0054",
-  karProStaking: "0xea8Ee6b1E9f1a6D6F1229EC498f1A93Fcddd02CB",
+  karPassport: "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
+  karProPass: "0xb83b89f4a7303f005dA8c0787e904104a1030128",
+  karProStaking: "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
   usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   nativeFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-  timelock: "0x20683ca58425DA09B148242432318EeFbfbfFAb1",
-  bridgeGateway: "0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41",
-  fixedPriceConsignment: "0xe9c06240059800228aB5f8c39f1a323dAFBA84a1",
-  fixedPriceConsignmentImpl: "0x1424084C800b4712D835d244904915D1e62B2f21",
-  ascendingConsignment: "0x07f9c182F176C2C4A82Fcb80c4f942864420542D",
-  ascendingConsignmentImpl: "0x3ef0bD0e9446D5C3B7A10A1e0563b1d5a96afc4E",
+  timelock: "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
+  bridgeGateway: "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269",
+  fixedPriceConsignment: "0xc416f642a85E3E104A42c2B067bB31485947891d",
+  fixedPriceConsignmentImpl: "0x49e8ce3e99Fa7413133b04f4085E55BF332BFC60",
+  ascendingConsignment: "0xbFdA994743feF37b268aA70ffF8a91eF3d10936E",
+  ascendingConsignmentImpl: "0x689D4A780a0d65A3f6dd02BD1013b1d3a5f60660",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x20683ca58425DA09B148242432318EeFbfbfFAb1",
-  indexFromBlock: 11_398_068,
+  upgradeAuthority: "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
+  indexFromBlock: 11_404_204,
   blocks: {
-    timelock: 11_398_078,
-    karProPass: 11_398_080,
-    karProStaking: 11_398_082,
-    karPassport: 11_398_085,
-    fixedPriceConsignmentImpl: 11_398_088,
-    fixedPriceConsignment: 11_398_089,
-    ascendingConsignmentImpl: 11_398_093,
-    ascendingConsignment: 11_398_094,
-    bridgeGateway: 11_398_099,
+    timelock: 11_404_214,
+    karProPass: 11_404_216,
+    karProStaking: 11_404_217,
+    karPassport: 11_404_220,
+    fixedPriceConsignmentImpl: 11_404_221,
+    fixedPriceConsignment: 11_404_222,
+    ascendingConsignmentImpl: 11_404_228,
+    ascendingConsignment: 11_404_229,
+    bridgeGateway: 11_404_235,
   },
 } as const satisfies CommercialActiveStack;
 

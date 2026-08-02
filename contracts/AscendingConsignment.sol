@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {IEncumbranceRegistry} from "./interfaces/IEncumbranceRegistry.sol";
+import {IKarPassportBridge} from "./interfaces/IKarPassportBridge.sol";
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
 import {AscendingHoldLib} from "./lib/AscendingHoldLib.sol";
 import {AscendingOpenLib} from "./lib/AscendingOpenLib.sol";
@@ -45,9 +46,11 @@ contract AscendingConsignment is
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.3.0-rc.1";
+    string public constant VERSION = "2.4.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
+    /// @dev KarPassport.Status.VERIFIED — ascending open requires verified readiness at the mode.
+    uint8 private constant _PASSPORT_VERIFIED = 1;
 
     IERC721 public karPassport;
     IKarProActive public karProStaking;
@@ -115,6 +118,8 @@ contract AscendingConsignment is
     /// @dev ERC-20 pull delivered a different amount than requested (e.g. fee-on-transfer).
     error ShortDelivery();
     error NotPassportHolder();
+    /// @dev Ascending open requires `passportStatus == VERIFIED` (FixedPrice does not).
+    error PassportNotVerified();
 
     event AuctionRulesSet(
         uint40 minDuration,
@@ -290,6 +295,7 @@ contract AscendingConsignment is
         Denomination memory denom = Denomination(DenominationKind.Asset, bytes32(0));
         _requireModeOpen(tokenId, owner_, denom, asset);
         _requireCanOpen(tokenId, owner_);
+        _requireVerifiedPassport(tokenId);
         AscendingOpenLib.requireAuctionOpenParams(
             reserve,
             duration,
@@ -338,6 +344,7 @@ contract AscendingConsignment is
         address owner_ = passportOwner(tokenId);
         _requireModeOpen(tokenId, m.agent, m.denomination, m.asset);
         _requireCanOpen(tokenId, owner_);
+        _requireVerifiedPassport(tokenId);
         AscendingOpenLib.requireAuctionOpenParams(
             reserve,
             duration,
@@ -652,6 +659,13 @@ contract AscendingConsignment is
 
     function _may(uint256 tokenId, IKarPassportEncumbrance.Intent intent) internal view override returns (bool) {
         return IKarPassportEncumbrance(address(karPassport)).may(tokenId, intent);
+    }
+
+    /// @dev Ascending-only readiness: VERIFIED at open. Mandate grant stays status-free on passport.
+    function _requireVerifiedPassport(uint256 tokenId) internal view {
+        if (IKarPassportBridge(address(karPassport)).passportStatus(tokenId) != _PASSPORT_VERIFIED) {
+            revert PassportNotVerified();
+        }
     }
 
     function _isSelfEncumbranceSource() internal view override returns (bool) {

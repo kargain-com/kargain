@@ -130,6 +130,7 @@ export function PassportCommerce({
             chainId={chainId}
             tokenId={tokenId}
             passportOwner={passportOwner}
+            passportStatus={passportStatus}
             facts={facts}
             now={detail.now}
           />
@@ -139,6 +140,7 @@ export function PassportCommerce({
         chainId={chainId}
         tokenId={tokenId}
         passportOwner={passportOwner}
+        passportStatus={passportStatus}
         leaveChainPermission={facts.leaveChainPermission}
         liveConsignmentMode={facts.liveConsignmentMode}
         challengeOpen={facts.challengeOpen}

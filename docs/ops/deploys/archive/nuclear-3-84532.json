@@ -1,0 +1,31 @@
+{
+  "note": "Nuclear #3 retired by Nuclear #4 August 2, 2026",
+  "chainId": 84532,
+  "karPassport": "0xEf7403424Ce96f0e1845AB70800022c78D97a52C",
+  "karProPass": "0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43",
+  "karProStaking": "0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5",
+  "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "nativeFeed": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+  "timelock": "0x886328c407998EA493b757bE9d49034624F8f4BE",
+  "bridgeGateway": "0xd4728af32553005A2BEae8f29eb73DB425980daa",
+  "fixedPriceConsignment": "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
+  "fixedPriceConsignmentImpl": "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
+  "ascendingConsignment": "0xC0ADc29De760195d5BBB5d3c11f040B388872039",
+  "ascendingConsignmentImpl": "0x254340154a0C5B1d8679f49400AF292e33E1e855",
+  "layerZeroEndpoint": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+  "platformRecipient": "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+  "deployer": "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
+  "upgradeAuthority": "0x886328c407998EA493b757bE9d49034624F8f4BE",
+  "indexFromBlock": 44919727,
+  "blocks": {
+    "timelock": 44919737,
+    "karProPass": 44919741,
+    "karProStaking": 44919745,
+    "karPassport": 44919752,
+    "fixedPriceConsignmentImpl": 44919774,
+    "fixedPriceConsignment": 44919778,
+    "ascendingConsignmentImpl": 44919801,
+    "ascendingConsignment": 44919805,
+    "bridgeGateway": 44919820
+  }
+}

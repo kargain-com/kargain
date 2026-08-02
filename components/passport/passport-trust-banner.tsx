@@ -40,8 +40,10 @@ export function PassportTrustBanner({
             Verification was reset
           </p>
           <p className="font-sans text-sm text-text-secondary">
-            Verification was cleared {formatResetCount(verificationResetCount)} on this
-            passport. Review the metadata history for details.
+            A recorded verification was cleared{" "}
+            {formatResetCount(verificationResetCount)} on this passport. Fixed-price
+            listing stays available while unverified; reserve auctions need a fresh
+            verification. Review the metadata history for details.
           </p>
         </div>
       </div>

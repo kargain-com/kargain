@@ -153,10 +153,10 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("VERSION is 1.9.0-rc.1", async () => {
+  it("VERSION is 1.10.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.9.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.10.0-rc.1");
   });
 });
 
@@ -443,6 +443,28 @@ describe("KarPassport v1.3 — G4/G5 bridgeResetOnUnlock", () => {
     const logs = await receiptLogs(publicClient, hash, stack.passport.abi);
     assert.ok(logs.some((l) => l.eventName === "VerificationReset"));
     assert.ok(!logs.some((l) => l.eventName === "PassportURIUpdated"));
+  });
+
+  it("Nuclear #4: unlock from UNVERIFIED does not emit VerificationReset", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const stack = await deployWithGateway(viem);
+    const tokenId = await mintPassport(
+      stack.passport,
+      stack.owner,
+      stack.owner.account.address,
+      "ar://home",
+    );
+    assert.equal(await stack.passport.read.passportStatus([tokenId]), 0);
+
+    const hash = (await stack.gateway.write.bridgeResetOnUnlock([tokenId, "ar://returned"], {
+      account: stack.admin.account,
+    })) as Hash;
+    const logs = await receiptLogs(publicClient, hash, stack.passport.abi);
+    assert.ok(!logs.some((l) => l.eventName === "VerificationReset"));
+    assert.ok(logs.some((l) => l.eventName === "PassportURIUpdated"));
+    assert.equal(await stack.passport.read.passportStatus([tokenId]), 0);
+    assert.equal(await stack.passport.read.tokenURI([tokenId]), "ar://returned");
   });
 
   it("Authority: bridgeResetOnUnlock / setCustodyLock revert NotBridgeGateway for non-gateway", async () => {

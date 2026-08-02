@@ -174,6 +174,15 @@ describe("FixedPriceConsignment", () => {
     );
   });
 
+  it("Nuclear #4: UNVERIFIED passport can open FixedPrice direct", async () => {
+    await mintAndApprove(TOKEN);
+    await passport.write.setPassportStatus([TOKEN, 0]); // UNVERIFIED
+    await mode.write.openDirect([TOKEN, DENOM_ASSET, ZERO, parseEther("1")], {
+      account: owner.account,
+    });
+    assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+  });
+
   it("ZeroFeedStaleness on initialize", async () => {
     const impl = await viem.deployContract("FixedPriceConsignment", []);
     const initData = encodeFunctionData({

@@ -31,9 +31,9 @@ interface IKarProStaking {
 /// @dev Verification challenge state machine lives in BondedChallenge. This contract supplies
 ///      eligibility, exclusion, qualification, bond amount, and domain terminals (lapse/stand).
 ///      Spec: commerce-model §7.2, §9, §13a.1, §13a.4. Nuclear #2 redeploy for live cutover.
-/// @custom:version 1.9.0-rc.1
+/// @custom:version 1.10.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassportEncumbrance {
-    string public constant VERSION = "1.9.0-rc.1";
+    string public constant VERSION = "1.10.0-rc.1";
 
     /// @notice Window captured into each verification challenge at open (library immutable).
     uint256 public constant DISPUTE_WINDOW = 14 days;
@@ -173,12 +173,9 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     ///      (E6). Explicit `false` from a readable answer still returns `false`.
     function may(uint256 tokenId, Intent intent) external view override returns (bool) {
         _requireExists(tokenId);
-
-        // Readiness (§9).
-        if (intent == Intent.OpenConsignment) {
-            if (passportStatus[tokenId] != Status.VERIFIED) return false;
-        }
-        // LeaveChain: always ready (unverified may travel).
+        // OpenConsignment readiness is encumbrance-only (challenge + sources). Ascending open
+        // requires VERIFIED at the mode; FixedPrice may open while UNVERIFIED. LeaveChain is
+        // always ready when encumbrance allows (unverified may travel).
 
         // Intrinsic verification challenge forbids both intents (E5 — no self-registry entry).
         if (_isChallengeActive(tokenId)) return false;
@@ -276,14 +273,18 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         emit PassportBridgeBurned(tokenId);
     }
 
-    /// @notice Gateway home-side return credit: reset trust and optionally adopt returned URI.
+    /// @notice Gateway home-side return credit: clear trust and optionally adopt returned URI.
+    /// @dev Emits `VerificationReset` only when prior status was VERIFIED (mirrors `setPassportURI`).
     function bridgeResetOnUnlock(uint256 tokenId, string calldata uri) external onlyGateway {
         if (chainIdOf(tokenId) != block.chainid) revert NotHomeToken();
         _requireExists(tokenId);
+        Status current = passportStatus[tokenId];
         passportStatus[tokenId] = Status.UNVERIFIED;
         passportVerifier[tokenId] = address(0);
         passportVerifiedAt[tokenId] = 0;
-        emit VerificationReset(tokenId, bridgeGateway);
+        if (current == Status.VERIFIED) {
+            emit VerificationReset(tokenId, bridgeGateway);
+        }
 
         if (bytes(uri).length > 0) {
             if (keccak256(bytes(uri)) != keccak256(bytes(tokenURI(tokenId)))) {

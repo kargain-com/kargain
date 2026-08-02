@@ -28,13 +28,13 @@
 | Term | Meaning | Examples |
 |------|---------|----------|
 | **Generation v2** | New contract **stack** vs v1/v1.1 | `generation: "v2"`, `deploy.ts` |
-| **Semver (`VERSION`)** | Per-contract release identity | KarPassport `1.9.0-rc.1`, FixedPriceConsignment `2.4.0-rc.1`, AscendingConsignment `2.3.0-rc.1` (Nuclear #3 live on I.9) |
+| Semver (`VERSION`) | Per-contract release identity | **Live (Nuclear #4):** KarPassport `1.10.0-rc.1`, FixedPriceConsignment `2.4.0-rc.1`, AscendingConsignment `2.4.0-rc.1` |
 | **`-rc.N`** | Release candidate on testnet; drop suffix on mainnet | `-rc.1` on Base Sepolia today |
 | **Not Kargain v2** | Third-party names | LayerZero **EndpointV2** |
 
 **Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility.
 
-**Amend-in-place while shipping a VERSION:** Source `VERSION` strings in `CONTRACT_VERSIONS` must match Solidity. Nuclear #3 ship VERSIONS are **live** on I.9 (August 1, 2026). Further pre-deploy changes to an already-shipped VERSION amend that string in place (do not accumulate unused `-rc.N` / `-draft` history).
+**Amend-in-place while shipping a VERSION:** Source `VERSION` strings in `CONTRACT_VERSIONS` must match Solidity. **Nuclear #4** ship VERSIONS are **live** on I.9 (August 2, 2026). Further pre-deploy changes to an unshipped VERSION amend that string in place.
 
 ---
 
@@ -46,7 +46,7 @@
 
 | Contract | VERSION constant | Upgrade model | Role |
 |----------|------------------|---------------|------|
-| KarPassport | `1.9.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
+| KarPassport | `1.10.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
 | KarProStaking | `2.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
@@ -81,7 +81,7 @@ Source of truth for VERSION strings: `scripts/lib/contract-versions.ts` (must ma
 
 ---
 
-### I.2. KarPassport (`1.9.0-rc.1`)
+### I.2. KarPassport (`1.10.0-rc.1`)
 
 ### Philosophy (unchanged from v1)
 
@@ -202,7 +202,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment `VERSION`
 | `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / `setAuctionRules` / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
 | Passport `addEncumbranceSource` / `removeEncumbranceSource` / `setDisputeDeposit` / `rescueExcessEth` | Owner (Timelock); `setBridgeGateway` one-shot |
 
-**Encumbrance:** `may(tokenId, Intent)` combines readiness (`OpenConsignment` requires VERIFIED; `LeaveChain` always) with intrinsic challenge + governed external sources. Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
+**Encumbrance:** `may(tokenId, Intent)` answers challenge + governed external sources only. **`OpenConsignment` does not require VERIFIED** — FixedPrice may open while UNVERIFIED when encumbrance allows. Ascending open enforces VERIFIED at the mode (`PassportNotVerified`). **`LeaveChain` readiness** is always true when encumbrance allows (unverified may travel). Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
 
 **E6 — unanswerable source forbids by name:** each registered source is probed with a bounded `staticcall` (`SOURCE_MAY_GAS` = 100 000). Revert, empty returndata, unreadable returndata, or gas exhaustion → `SourceUnanswerable(source)` (never treat silence as permission). A healthy `false` still returns `false` without naming. Governance removes the named address to restore service.
 
@@ -225,7 +225,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment `VERSION`
 | Function | Access | Behavior |
 |----------|--------|----------|
 | `chainIdOf` / `localIdOf` | view | Decode tokenId namespace |
-| `may` | view | Permission for `LeaveChain` / `OpenConsignment` (readiness + challenge + sources) |
+| `may` | view | Permission for `LeaveChain` / `OpenConsignment` (challenge + sources; no status readiness on Open) |
 | `addEncumbranceSource` / `removeEncumbranceSource` | owner | Governed external obligation registry |
 | `setDisputeDeposit` | owner | Update exact bond for next `open` (**≠ 0**); emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedBonds` or pending claims |
@@ -373,11 +373,13 @@ This option is **recorded, not scheduled.** Do not invent a roadmap item, PENDIN
 | Mode | VERSION | Role |
 |------|---------|------|
 | FixedPriceConsignment | `2.4.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
-| AscendingConsignment | `2.3.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
+| AscendingConsignment | `2.4.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
 **Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
-**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.3.0-rc.1`**.
+**Trust readiness (Nuclear #4):** FixedPrice open/grant ignore `passportStatus` (encumbrance `may(OpenConsignment)` only). Ascending **`openAscendingDirect` / `openAscendingFromMandate`** require `passportStatus == VERIFIED` else `PassportNotVerified`. Mandate **`grant`** stays status-free (agent may verify before open).
+
+**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.4.0-rc.1`** (live on Nuclear #4 I.9).
 
 **Denomination invariants** (origin: [commerce-model-2026.md](../research/commerce-model-2026.md) P3 / M3 / N4 / P4):
 
@@ -439,7 +441,7 @@ Two traps this table encodes:
 
 **Indexer / HTTP:** `GET /consignments*`, mandate routes (`GET /agents/:address/mandates`, `GET /owners/:address/mandates`), shared `GET /challenges`, config mirrors `GET /commerce-modes` / `/commerce-payment-tokens` / `/commerce-currency-feeds` — [indexer/README.md](../indexer/README.md).
 
-**Live addresses:** FixedPrice + Ascending proxies are on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #3 (August 1, 2026); Ponder indexes from hub **44919727** / Eth **11398068**. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
+**Live addresses:** FixedPrice + Ascending proxies are on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #4 (August 2, 2026); Ponder indexes from hub **44957457** / Eth **11404204**. Local Hardhat (`pnpm deploy:local`) deploys and indexes both modes.
 
 **Accountability events:** ConsignmentOpened / MandateGranted / RecallRequested / ChallengeOpened / … — see KarPassport § commerce mode events above.
 
@@ -522,7 +524,7 @@ Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridg
 2. **Hub:** User calls ONFT send via **`KarPassportBridgeGateway`** → `_debit` reverts **`LeaveChainRefused`** when `may(LeaveChain)` is false; locks home NFT / burns foreign rep; message carries tokenId + URI compose. *(Historical `ProxyONFT721Adapter` used `ListedInMarketplace` / `PassportDisputed`.)*
 3. **LayerZero:** Message delivered to spoke endpoint (DVN quorum / confirmations per §7.4 / §7.6).
 4. **Spoke:** `KarPassportONFT721._lzReceive` mints same tokenId to recipient; sets URI from compose when present. Spoke ONFT has **no** on-chain `passportStatus` — **UNVERIFIED** is product/UI semantics for a fresh spoke mint (trust not ported), not a written hub status field.
-5. **Return path (end-state, [§I.12.3](#i12-multi-chain-architecture-normative)):** Burn representation on spoke → unlock on home via gateway debit/credit pairing. **On unlock the home row resets to `UNVERIFIED`** (verifier/verifiedAt cleared, `VerificationReset` emitted) and adopts the returned URI (§I.12.5). *Note: the Bridge-1–7 thin ONFT preserved hub status on return; that is superseded — once commerce exists at the destination, preserving trust across a round trip re-attaches verification to a possibly-mutated asset/new owner.*
+5. **Return path (end-state, [§I.12.3](#i12-multi-chain-architecture-normative)):** Burn representation on spoke → unlock on home via gateway debit/credit pairing. **On unlock the home row is set to `UNVERIFIED`** (verifier/verifiedAt cleared). **`VerificationReset` is emitted only when prior status was VERIFIED** (mirrors `setPassportURI` — never-verified returns do not invent a reset). Returned URI adopted when provided (§I.12.5). *Note: the Bridge-1–7 thin ONFT preserved hub status on return; that is superseded — once commerce exists at the destination, preserving trust across a round trip re-attaches verification to a possibly-mutated asset/new owner.*
 
 ### 7.6 LayerZero security configuration (normative)
 
@@ -584,30 +586,30 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 
 | Network | chainId | tokenIdOffset | Initial currencies (config) | Status |
 |---------|---------|---------------|------------------------------|--------|
-| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear #3) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
-| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (Nuclear #3) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
+| Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear #4) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
+| Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (Nuclear #4) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #3** August 1, 2026 — production Ponder must **full reindex** from hub `indexFromBlock` **44919727** and Eth **11398068**.
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #4** August 2, 2026 — production Ponder must **full reindex** from hub `indexFromBlock` **44957457** and Eth **11404204**.
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
 > **Single source of truth** for active 84532 contract addresses and semver. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[84532]` / `SEPOLIA_ACTIVE`). Local `deployments/84532.json` is a deploy-machine artifact (not in git).
 
-Nuclear #3 cutover August 1, 2026 · KarPassport **`1.9.0-rc.1`** · FixedPrice **`2.4.0-rc.1`** · Ascending **`2.3.0-rc.1`** · KarProStaking **`2.1.0-rc.1`** · `indexFromBlock`: **44919727** · committed: `COMMERCIAL_ACTIVE[84532]` · commerce guardian `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
+Nuclear #4 cutover August 2, 2026 · KarPassport **`1.10.0-rc.1`** · FixedPrice **`2.4.0-rc.1`** · Ascending **`2.4.0-rc.1`** · KarProStaking **`2.1.0-rc.1`** · `indexFromBlock`: **44957457** · committed: `COMMERCIAL_ACTIVE[84532]` · commerce guardian `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
 | Contract | VERSION | Address | Basescan |
 |----------|---------|---------|----------|
-| Timelock48h | `1.0.0-rc.1` | `0x886328c407998EA493b757bE9d49034624F8f4BE` | [code](https://sepolia.basescan.org/address/0x886328c407998EA493b757bE9d49034624F8f4BE#code) |
-| KarProPass | `1.1.0-rc.1` | `0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43` | [code](https://sepolia.basescan.org/address/0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43#code) |
-| KarProStaking | `2.1.0-rc.1` | `0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5` | [code](https://sepolia.basescan.org/address/0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5#code) |
-| KarPassport | `1.9.0-rc.1` | `0xEf7403424Ce96f0e1845AB70800022c78D97a52C` | [code](https://sepolia.basescan.org/address/0xEf7403424Ce96f0e1845AB70800022c78D97a52C#code) |
-| KarPassportBridgeGateway | `1.3.0-rc.1` | `0xd4728af32553005A2BEae8f29eb73DB425980daa` | [code](https://sepolia.basescan.org/address/0xd4728af32553005A2BEae8f29eb73DB425980daa#code) |
-| FixedPriceConsignment | `2.4.0-rc.1` | `0x233B0e6780d52275caE1f1d08035F6a3C932B99E` | [code](https://sepolia.basescan.org/address/0x233B0e6780d52275caE1f1d08035F6a3C932B99E#code) |
-| AscendingConsignment | `2.3.0-rc.1` | `0xC0ADc29De760195d5BBB5d3c11f040B388872039` | [code](https://sepolia.basescan.org/address/0xC0ADc29De760195d5BBB5d3c11f040B388872039#code) |
+| Timelock48h | `1.0.0-rc.1` | `0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb` | [code](https://sepolia.basescan.org/address/0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb#code) |
+| KarProPass | `1.1.0-rc.1` | `0x046DB61Ac23520bd6f9466a7f8B033325795B32c` | [code](https://sepolia.basescan.org/address/0x046DB61Ac23520bd6f9466a7f8B033325795B32c#code) |
+| KarProStaking | `2.1.0-rc.1` | `0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE` | [code](https://sepolia.basescan.org/address/0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE#code) |
+| KarPassport | `1.10.0-rc.1` | `0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76` | [code](https://sepolia.basescan.org/address/0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76#code) |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | `0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc` | [code](https://sepolia.basescan.org/address/0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc#code) |
+| FixedPriceConsignment | `2.4.0-rc.1` | `0x73F41293bb207443990006b951CE9BC38Ef2eB3b` | [code](https://sepolia.basescan.org/address/0x73F41293bb207443990006b951CE9BC38Ef2eB3b#code) |
+| AscendingConsignment | `2.4.0-rc.1` | `0xABd47E54595b814625B1B911BC3A078397Abb973` | [code](https://sepolia.basescan.org/address/0xABd47E54595b814625B1B911BC3A078397Abb973#code) |
 | USDC | — | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [token](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Native USD feed | — | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` | [feed](https://sepolia.basescan.org/address/0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1) |
 | LayerZero EndpointV2 | — | `0x6EDCE65403992e310A62460808c4b910D972f10f` | [contract](https://sepolia.basescan.org/address/0x6EDCE65403992e310A62460808c4b910D972f10f) |
@@ -625,25 +627,25 @@ Nuclear #3 cutover August 1, 2026 · KarPassport **`1.9.0-rc.1`** · FixedPrice 
 
 **Parameters:** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · `minStakeNative` 0.05 ETH · `upgradeAuthority` Timelock48h · USD-only currency registry · USDC payment token enabled · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77` · `COMMERCE_GUARDIAN` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1`
 
-> **Superseded (Nuclear #2 hub, denylisted August 1, 2026):** Timelock `0x380021…2452` · KarProPass `0xD9Ea57…5d4f` · KarProStaking `0xC90d6E…fcaD` · KarPassport `0xFC3388…28aE` · gateway `0x77C881…F51F` · FixedPrice `0xE98EbD…9118` · Ascending `0x568f44…a17D`. **July 21 Nuclear hub / pre-Nuclear hub** remain denylisted — see [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
+> **Superseded (Nuclear #3 hub, denylisted August 2, 2026):** Timelock `0x886328…F4BE` · KarProPass `0xF4bCec…B32c` · KarProStaking `0xB7563a…0FD5` · KarPassport `0xEf7403…a52C` · gateway `0xd4728a…0daa` · FixedPrice `0x233B0e…B99E` · Ascending `0xC0ADc2…2039`. **Nuclear #2 / July 21 / pre-Nuclear hub** remain denylisted — see [Part II.4](#ii4-historical-deployment-base-sepolia-84532).
 
-**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Nuclear #3 runbook: [ops/deploys/nuclear-3.md](../ops/deploys/nuclear-3.md)
+**Ops:** `pnpm smoke:sepolia` · `pnpm verify:sepolia` · `pnpm ponder:config` · `pnpm bridge:wire` · `pnpm smoke:bridge` · Nuclear deploy: [§I.10](#i10-deploy-sequence) · Nuclear #4 runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md)
 
 ### I.9.2 Active deployment (Ethereum Sepolia 11155111)
 
-> **Single source of truth** for the Nuclear #3 full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[11155111]`). Local `deployments/11155111.json` is a deploy-machine artifact (not in git).
+> **Single source of truth** for the Nuclear #4 full commercial stack on Ethereum Sepolia and the wired hub↔eth gateway pathway. Other docs link here. Matches `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE[11155111]`). Local `deployments/11155111.json` is a deploy-machine artifact (not in git).
 
-Nuclear #3 cutover August 1, 2026 · KarPassport **`1.9.0-rc.1`** · FixedPrice **`2.4.0-rc.1`** · Ascending **`2.3.0-rc.1`** · KarProStaking **`2.1.0-rc.1`** · `indexFromBlock`: **11398068** · committed: `COMMERCIAL_ACTIVE[11155111]` · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
+Nuclear #4 cutover August 2, 2026 · KarPassport **`1.10.0-rc.1`** · FixedPrice **`2.4.0-rc.1`** · Ascending **`2.4.0-rc.1`** · KarProStaking **`2.1.0-rc.1`** · `indexFromBlock`: **11404204** · committed: `COMMERCIAL_ACTIVE[11155111]` · hub peer gateway: [I.9.1](#i91-active-deployment-base-sepolia-84532)
 
 | Contract | VERSION | Address | Etherscan |
 |----------|---------|---------|-----------|
-| Timelock48h | `1.0.0-rc.1` | `0x20683ca58425DA09B148242432318EeFbfbfFAb1` | [code](https://sepolia.etherscan.io/address/0x20683ca58425DA09B148242432318EeFbfbfFAb1#code) |
-| KarProPass | `1.1.0-rc.1` | `0xFc12ea568DD7aa636C64f4f778b965D2434D0054` | [code](https://sepolia.etherscan.io/address/0xFc12ea568DD7aa636C64f4f778b965D2434D0054#code) |
-| KarProStaking | `2.1.0-rc.1` | `0xea8Ee6b1E9f1a6D6F1229EC498f1A93Fcddd02CB` | [code](https://sepolia.etherscan.io/address/0xea8Ee6b1E9f1a6D6F1229EC498f1A93Fcddd02CB#code) |
-| KarPassport | `1.9.0-rc.1` | `0xc903feE4395dd5Db35d9BcB558917f3Af8d71869` | [code](https://sepolia.etherscan.io/address/0xc903feE4395dd5Db35d9BcB558917f3Af8d71869#code) |
-| KarPassportBridgeGateway | `1.3.0-rc.1` | `0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41` | [code](https://sepolia.etherscan.io/address/0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41#code) |
-| FixedPriceConsignment | `2.4.0-rc.1` | `0xe9c06240059800228aB5f8c39f1a323dAFBA84a1` | [code](https://sepolia.etherscan.io/address/0xe9c06240059800228aB5f8c39f1a323dAFBA84a1#code) |
-| AscendingConsignment | `2.3.0-rc.1` | `0x07f9c182F176C2C4A82Fcb80c4f942864420542D` | [code](https://sepolia.etherscan.io/address/0x07f9c182F176C2C4A82Fcb80c4f942864420542D#code) |
+| Timelock48h | `1.0.0-rc.1` | `0x95D9A432B53ceB42a0681b1900f52e7Fe2247586` | [code](https://sepolia.etherscan.io/address/0x95D9A432B53ceB42a0681b1900f52e7Fe2247586#code) |
+| KarProPass | `1.1.0-rc.1` | `0xb83b89f4a7303f005dA8c0787e904104a1030128` | [code](https://sepolia.etherscan.io/address/0xb83b89f4a7303f005dA8c0787e904104a1030128#code) |
+| KarProStaking | `2.1.0-rc.1` | `0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906` | [code](https://sepolia.etherscan.io/address/0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906#code) |
+| KarPassport | `1.10.0-rc.1` | `0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC` | [code](https://sepolia.etherscan.io/address/0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC#code) |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | `0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269` | [code](https://sepolia.etherscan.io/address/0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269#code) |
+| FixedPriceConsignment | `2.4.0-rc.1` | `0xc416f642a85E3E104A42c2B067bB31485947891d` | [code](https://sepolia.etherscan.io/address/0xc416f642a85E3E104A42c2B067bB31485947891d#code) |
+| AscendingConsignment | `2.4.0-rc.1` | `0xbFdA994743feF37b268aA70ffF8a91eF3d10936E` | [code](https://sepolia.etherscan.io/address/0xbFdA994743feF37b268aA70ffF8a91eF3d10936E#code) |
 | USDC | — | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | [token](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
 | Native USD feed | — | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | [feed](https://sepolia.etherscan.io/address/0x694AA1769357215DE4FAC081bf1f309aDC325306) |
 | USDC/USD feed | — | `0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E` | [feed](https://sepolia.etherscan.io/address/0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E) |
@@ -662,13 +664,13 @@ Nuclear #3 cutover August 1, 2026 · KarPassport **`1.9.0-rc.1`** · FixedPrice 
 
 **Parameters:** same Nuclear policy as [I.9.1](#i91-active-deployment-base-sepolia-84532) (USD-only registry, `disputeDeposit` 0.01 ETH, `platformFeeBps` 10, `minStakeNative` 0.05 ETH, `upgradeAuthority` Timelock48h) · `platformRecipient` `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` · `deployer` `0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77`
 
-> **Superseded (Nuclear #2 Eth, denylisted August 1, 2026):** Timelock `0x48B0a4…756D8` · KarProPass `0xc31197…9376` · KarProStaking `0x3F6594…1249` · KarPassport `0xC219bf…6Fb0` · gateway `0xd2c6EA…b655` · FixedPrice `0xf9dF8c…258E9` · Ascending `0xe8ECf3…7F13`.
+> **Superseded (Nuclear #3 Eth, denylisted August 2, 2026):** Timelock `0x20683c…FAb1` · KarProPass `0xFc12ea…0054` · KarProStaking `0xea8Ee6…02CB` · KarPassport `0xc903fe…1869` · gateway `0x3aC463…2E41` · FixedPrice `0xe9c062…84a1` · Ascending `0x07f9c1…542D`. **Nuclear #2 Eth** remains denylisted.
 
 > **Superseded thin ONFT (denylisted):** KarPassportONFT721 `0x5b7fD0ffF9B82255AD4d043a491e81948b76e703` (July 20 spoke) — retired by Nuclear full stack.
 
-**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · peers hub gateway `0xd4728af32553005A2BEae8f29eb73DB425980daa` ↔ eth gateway `0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41` · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x811457625783c271439767c70b1ad672e2ec633b0a1709d580e3f15689933907`
+**Wired pathway (testnet-only values):** EIDs **40245 ↔ 40161** · peers hub gateway `0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc` ↔ eth gateway `0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269` · required DVNs Labs + Nethermind (committed snapshot `scripts/lib/layerzero-metadata.snapshot.json`) · confirmations **5 / 5** · enforcedOptions type1 **100k** gas / type2 **250k** gas (**floors**; sender may raise lzReceive via `extraOptions` from URI-length policy in `lib/web3/bridge/lz-receive-gas.ts`) · `pathwayConfigHash` `0x84c7ea51e28cedf54a79d9edc81b07019ad1a47cc3d5dc08471d681e4e81cf1e`
 
-**Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · `pnpm verify:sepolia:eth` · Nuclear #3 runbook: [ops/deploys/nuclear-3.md](../ops/deploys/nuclear-3.md) · security policy: [§7.6](#76-layerzero-security-configuration).
+**Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · `pnpm verify:sepolia:eth` · Nuclear #4 runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) · security policy: [§7.6](#76-layerzero-security-configuration).
 
 ---
 
@@ -732,7 +734,7 @@ For every `tokenId`, the number of **usable** instances across all chains is **e
 
 ### 12.3 Trust never survives a crossing (supersedes §7.5 "preserved on return")
 
-Every crossing lands **UNVERIFIED**, in **both** directions. Outbound mints the representation UNVERIFIED. **On unlock at home, status resets to UNVERIFIED** (`passportVerifier`/`passportVerifiedAt` cleared, `VerificationReset` emitted). Verification is chain-local; re-verify with a local KarPro or sell UNVERIFIED. KarPro is per-chain.
+Every crossing lands **UNVERIFIED**, in **both** directions. Outbound mints the representation UNVERIFIED. **On unlock at home, status is set to UNVERIFIED** (`passportVerifier`/`passportVerifiedAt` cleared). **`VerificationReset` emits only when prior status was VERIFIED** — a never-verified passport does not increment reset accounting. Verification is chain-local; re-verify with a local KarPro or sell FixedPrice while UNVERIFIED. Ascending open still requires VERIFIED. KarPro is per-chain.
 
 ### 12.4 Custody-lock freezes the home trust surface
 
@@ -750,7 +752,7 @@ LeaveChain is refused when: an intrinsic verification challenge is active; a reg
 
 ### 12.7 Bridge entrypoints (gateway-only)
 
-`KarPassport v1.3` exposes, callable **only** by the bound `bridgeGateway`: `bridgeMint(to, tokenId, uri)` (require `chainIdOf != local`, not-exists; status UNVERIFIED); `bridgeBurn(tokenId)` (require `chainIdOf != local`); `setCustodyLock(tokenId, bool)`; `bridgeResetOnUnlock(tokenId, uri)` (status→UNVERIFIED, clear verifier, set URI). The gateway is bound **once** via `setBridgeGateway` (one-time, owner-only — same pattern as `KarProPass.setStaking`). Unlock releases only a token the gateway actually holds and had locked. `KarPassport` imports no LayerZero — it knows only a `bridgeGateway` address (§7.6 provider isolation).
+`KarPassport` exposes, callable **only** by the bound `bridgeGateway`: `bridgeMint(to, tokenId, uri)` (require `chainIdOf != local`, not-exists; status UNVERIFIED); `bridgeBurn(tokenId)` (require `chainIdOf != local`); `setCustodyLock(tokenId, bool)`; `bridgeResetOnUnlock(tokenId, uri)` (status→UNVERIFIED, clear verifier; emit `VerificationReset` only if prior was VERIFIED; set URI when provided). The gateway is bound **once** via `setBridgeGateway` (one-time, owner-only — same pattern as `KarProPass.setStaking`). Unlock releases only a token the gateway actually holds and had locked. `KarPassport` imports no LayerZero — it knows only a `bridgeGateway` address (§7.6 provider isolation).
 
 ### 12.8 Records are chain-sharded, globally aggregated
 
@@ -762,7 +764,7 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 
 ### 12.10 84532 hub migration (testnet) — Nuclear
 
-`KarPassport` is immutable; commerce **modes** are UUPS. **Nuclear #3** (August 1, 2026) redeployed the identical full stack (passport + modes + gateway) on both 84532 and 11155111; Nuclear #2 and earlier stacks are denylisted. Ponder must full-reindex from hub **44919727** / Eth **11398068**. Empty-testnet passports from prior stacks were abandoned (no user value).
+`KarPassport` is immutable; commerce **modes** are UUPS. **Nuclear #4** (August 2, 2026) redeployed the full stack (passport + modes + gateway) on both 84532 and 11155111; Nuclear #3 and earlier stacks are denylisted. Ponder must full-reindex from hub **44957457** / Eth **11404204**. Empty-testnet passports from prior stacks were abandoned (no user value).
 
 ### 12.11 Recovery (Approach A) — kill then restore
 
@@ -1027,7 +1029,7 @@ Verbatim from contract headers:
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 ```
 
-**Amend-in-place before a Nuclear ship:** Until a `VERSION` exists on a commercial chain, source VERSION strings are amended in place rather than accumulating unused pre-release increments. Storage-layout changes on UUPS contracts in that window ship only via full-stack Nuclear redeploy (not in-place upgrade of prior layouts). **Nuclear #3** (August 1, 2026) is the live ship for current VERSIONS.
+**Amend-in-place before a Nuclear ship:** Until a `VERSION` exists on a commercial chain, source VERSION strings are amended in place rather than accumulating unused pre-release increments. Storage-layout changes on UUPS contracts in that window ship only via full-stack Nuclear redeploy (not in-place upgrade of prior layouts). **Nuclear #4** (August 2, 2026) is the live ship for current VERSIONS.
 
 ---
 
@@ -1056,7 +1058,7 @@ Verbatim from contract headers:
 
 ---
 
-*Last updated: August 2026 — Nuclear #3 live on 84532 / 11155111; address/VERSION tables describe **chain**. Part IV is a historical generation-v2 migration table — BondedChallenge superseded `withdrawDispute` / `DisputeOutcome`.*
+*Last updated: August 2026 — Nuclear #4 live on 84532 / 11155111; address/VERSION tables describe **chain**. Part IV is a historical generation-v2 migration table — BondedChallenge superseded `withdrawDispute` / `DisputeOutcome`.*
 
 ---
 

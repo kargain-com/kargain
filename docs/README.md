@@ -17,7 +17,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 |----------|---------|
 | [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
 | [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; Nuclear dual-chain / C3; FX display layer (§6) |
-| [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44919727** + Eth **11398068**) |
+| [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44957457** + Eth **11404204**) |
 
 ## UI
 
@@ -31,10 +31,10 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [ops/deploys/nuclear-3.md](./ops/deploys/nuclear-3.md) | **Current** — Nuclear #3 full commercial stack (84532 + 11155111), August 2026 |
+| [ops/deploys/nuclear-4.md](./ops/deploys/nuclear-4.md) | **Current** — Nuclear #4 full commercial stack (84532 + 11155111), August 2026 |
 | [ops/deploys/84532-v2.md](./ops/deploys/84532-v2.md) | **Historical** — June 2026 generation v2 deploy |
 | [ops/deploys/84532-auction.md](./ops/deploys/84532-auction.md) | **Historical** — July 2026 AuctionEscrow additive deploy (retired; Modes replace auctions) |
-| [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | **Historical** — pre–Nuclear #3 bridge pathway notes; live peers/hash in SPEC I.9 |
+| [ops/deploys/bridge-84532-11155111.md](./ops/deploys/bridge-84532-11155111.md) | **Historical** — pre–Nuclear #4 bridge pathway notes; live peers/hash in SPEC I.9 |
 | [ops/deploys/multichain-browser-e2e-checklist.md](./ops/deploys/multichain-browser-e2e-checklist.md) | Maintainer dual-chain browser/ops checklist (testnet) |
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
 

@@ -6446,6 +6446,11 @@ export const AscendingConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "PassportNotVerified",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "PaymentTokenNotSupported",
     "type": "error"
   },

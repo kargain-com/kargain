@@ -230,7 +230,7 @@ describe("AscendingConsignment", () => {
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
   });
 
   it("S30: challenge config getters readable before any open", async () => {
@@ -257,6 +257,34 @@ describe("AscendingConsignment", () => {
   it("N2: KarPro owner can open; fixed mode is not this contract", async () => {
     await openDirect();
     assert.equal(await mode.read.consignmentPhase([TOKEN]), 1);
+  });
+
+  it("Nuclear #4: UNVERIFIED passport cannot open ascending direct", async () => {
+    await activate(owner);
+    await mintAndApprove();
+    await passport.write.setPassportStatus([TOKEN, 0]); // UNVERIFIED
+    await assert.rejects(
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION], {
+        account: owner.account,
+      }),
+      revertsWith("PassportNotVerified"),
+    );
+  });
+
+  it("Nuclear #4: UNVERIFIED passport cannot open ascending from mandate", async () => {
+    await activate(agent);
+    await mintAndApprove();
+    await passport.write.setPassportStatus([TOKEN, 0]);
+    await mode.write.grant(
+      [TOKEN, agent.account.address, 0n, ZERO, DENOM_ASSET, parseEther("0.5"), COMP_MARGIN],
+      { account: owner.account },
+    );
+    await assert.rejects(
+      mode.write.openAscendingFromMandate([TOKEN, RESERVE, DURATION, PROTECTION], {
+        account: agent.account,
+      }),
+      revertsWith("PassportNotVerified"),
+    );
   });
 
   // ---- Opening gates ----
@@ -1171,7 +1199,7 @@ describe("AscendingConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.3.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
     assert.equal(await mode.read.auctionEndsAt([TOKEN]), endsAt);
     assert.equal(await mode.read.auctionHighestBid([TOKEN]), RESERVE);
   });

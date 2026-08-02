@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
@@ -13,9 +13,9 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
 import {
-  CROSSING_TRUST_DISCLOSURE,
   bridgeActionCopy,
   bridgeBlockReasonCopy,
+  deriveBridgeCrossingConsent,
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
 } from "@/lib/passport/bridge-surface";
@@ -24,6 +24,7 @@ import {
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
+import type { PassportStatus } from "@/lib/types/ponder";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
@@ -33,6 +34,7 @@ type Props = {
   chainId: number;
   tokenId: string;
   passportOwner: `0x${string}`;
+  passportStatus: PassportStatus;
   /** `may(tokenId, LeaveChain)` gate from commerce facts. */
   leaveChainPermission: EncumbrancePermissionGate;
   /** Mode holding a live consignment, when one does — drives block copy. */
@@ -45,12 +47,14 @@ export function PassportBridgePanel({
   chainId,
   tokenId,
   passportOwner,
+  passportStatus,
   leaveChainPermission,
   liveConsignmentMode,
   challengeOpen,
 }: Props) {
   const router = useRouter();
   const handedOffRef = useRef(false);
+  const [crossingAcked, setCrossingAcked] = useState(false);
   const { address, isConnected } = useAccount();
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
@@ -64,6 +68,7 @@ export function PassportBridgePanel({
   const actionCopy = dstName
     ? bridgeActionCopy(directionMode, dstName)
     : null;
+  const crossingConsent = deriveBridgeCrossingConsent(passportStatus);
 
   const { record, ui, scanUrl: transitScanUrl, transitActive } =
     useBridgeTransit({
@@ -205,9 +210,25 @@ export function PassportBridgePanel({
       )}
 
       {surface.canBridge && !transitActive && (
-        <p className="font-sans text-sm text-text-secondary">
-          {CROSSING_TRUST_DISCLOSURE}
-        </p>
+        <div className="space-y-2">
+          <p className="font-sans text-sm text-text-secondary">
+            {crossingConsent.disclosure}
+          </p>
+          {crossingConsent.requiresAck ? (
+            <label className="flex items-start gap-2 font-sans text-sm text-text-primary">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={crossingAcked}
+                onChange={(e) => setCrossingAcked(e.target.checked)}
+              />
+              <span>
+                I understand verification will not travel and this passport will
+                be unverified after the crossing.
+              </span>
+            </label>
+          ) : null}
+        </div>
       )}
 
       {feeWei != null && surface.canBridge && !transitActive && (
@@ -273,7 +294,8 @@ export function PassportBridgePanel({
           transitActive ||
           !surface.canBridge ||
           Boolean(disabledReason) ||
-          busy
+          busy ||
+          (crossingConsent.requiresAck && !crossingAcked)
         }
         onClick={() => {
           void bridge(tid);

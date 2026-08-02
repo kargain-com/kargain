@@ -177,11 +177,41 @@ export function bridgeBlockReasonCopy(
 }
 
 /**
- * Term of a crossing (X2) — shown before send on Move and Return.
- * Plain disclosure, not an alarm.
+ * Term of a crossing (X2) — shown before send when the passport is VERIFIED.
+ * Plain disclosure, not an alarm. Requires explicit ack before the send CTA.
  */
 export const CROSSING_TRUST_DISCLOSURE =
-  "Verification does not travel. After you send, the passport begins unverified on the destination chain. Returning home clears verification on this chain too — a verification is a statement by a professional whose stake lives on one chain.";
+  "Verification does not travel. After you send, the passport begins unverified on the destination chain. Returning home clears verification on this chain too — a verification is a statement by a professional whose stake lives on one chain. You can still list at a fixed price while unverified; reserve auctions need a fresh verification.";
+
+/** Shorter crossing note when the passport is not currently VERIFIED. */
+export const CROSSING_UNVERIFIED_DISCLOSURE =
+  "Verification does not travel. The passport arrives unverified on the destination chain.";
+
+export type BridgeCrossingConsent = {
+  disclosure: string;
+  /** When true, the send CTA stays disabled until the owner acknowledges. */
+  requiresAck: boolean;
+};
+
+/**
+ * Bridge disclosure + ack gate from current trust status.
+ * VERIFIED → full loss-of-verification disclosure + required ack.
+ * Otherwise → short disclosure, no ack (never frames a never-verified passport as losing VERIFIED).
+ */
+export function deriveBridgeCrossingConsent(
+  passportStatus: "UNVERIFIED" | "VERIFIED" | "DISPUTED" | undefined,
+): BridgeCrossingConsent {
+  if (passportStatus === "VERIFIED") {
+    return {
+      disclosure: CROSSING_TRUST_DISCLOSURE,
+      requiresAck: true,
+    };
+  }
+  return {
+    disclosure: CROSSING_UNVERIFIED_DISCLOSURE,
+    requiresAck: false,
+  };
+}
 
 export type BridgeDirectionMode = "move" | "return";
 

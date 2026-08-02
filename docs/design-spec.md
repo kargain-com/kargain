@@ -737,19 +737,20 @@ Reserve auctions on AscendingConsignment. **Canonical lot URL** remains `/market
 
 [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx) is the sole owner sale-start surface on the passport page. `PassportCommerce` mounts it only in the non-auction branch. The fixed-price and auction islands retain active commerce and management, but render no owner sale-start CTA.
 
-- One neutral Level B frame headed **Sell this vehicle**, ordered **Fixed price** → **Delegation** → **Auction**.
-- Fixed price shows **List for sale**. Delegation shows **Delegate to a pro**, replaced by the existing marketplace authorization status card while authorization is active.
-- The auction row shows a quiet text-only verification requirement for an owner of a non-VERIFIED passport when auction escrow is configured. For a VERIFIED passport, an active KarPro owner sees the direct create panel; another owner sees **Authorize auction agent**. An active auction authorization takes precedence over both and renders [`auction-agent-authorization-status.tsx`](../components/auction/auction-agent-authorization-status.tsx): agent, asset minimum, expiry, neutral expired tag, and **Manage** opening the existing revoke-capable dialog.
-- Expiry does not hide an active authorization card: expired authorization remains owner-revocable, while agent create remains disabled.
+- One neutral Level B frame headed **Sell**, ordered **Fixed price** → **Ascending**.
+- Fixed price shows **Open fixed-price consignment** and **Grant fixed-price mandate** while encumbrance `may(OpenConsignment)` is available and no live consignment holds the NFT — **status-agnostic** (UNVERIFIED may list).
+- Ascending **direct open** requires an active KarPro owner **and** `passportStatus === VERIFIED` (mirrors chain `PassportNotVerified`). Ascending **grant** is status-free so an agent may verify then open. When a KarPro owner is blocked solely by non-VERIFIED status, show quiet [`AUCTION_REQUIRES_VERIFICATION_HINT`](../lib/auction/sale-form-copy.ts).
+- An active ascending mandate takes precedence and renders [`auction-agent-authorization-status.tsx`](../components/auction/auction-agent-authorization-status.tsx): agent, asset minimum, expiry, neutral expired tag, and **Manage** opening the existing revoke-capable dialog.
+- Expiry does not hide an active authorization card: expired authorization remains owner-revocable, while agent create remains disabled until VERIFIED.
 - Owner, listing, authorization, verifier, auction, and open-hold facts are chain-read with explicit `chainId`. Each row fails closed while its required fact is unresolved or unavailable; Ponder fallback never enables a new owner write. Dialog callbacks refetch the panel reads, and auction changes also invalidate shared auction detail.
-- [`sell-surface.ts`](../lib/passport/sell-surface.ts) is the pure seven-flag visibility policy. Successful inactive chain listing state is required for the group; active listing, live auction, settlement hold, or non-owner returns all flags false. Open flags require `openConsignmentPermission` available from [`encumbrance-permission.ts`](../lib/passport/encumbrance-permission.ts); refused / unanswerable / unresolved all hide CTAs. Permission body copy (including named `source_unanswerable` address) comes only from that module — the sell panel does not invent may-refusal text.
+- [`sell-surface.ts`](../lib/passport/sell-surface.ts) is the pure visibility policy (incl. `showAuctionVerificationHint`). Successful inactive chain listing state is required for the group; active listing, live auction, settlement hold, or non-owner returns all flags false. Open flags require `openConsignmentPermission` available from [`encumbrance-permission.ts`](../lib/passport/encumbrance-permission.ts); refused / unanswerable / unresolved all hide CTAs. Permission body copy (including named `source_unanswerable` address) comes only from that module — the sell panel does not invent may-refusal text.
 
 #### Copy (verbatim catalog subset)
 
 | Surface | Gate | Copy |
 |---------|------|------|
-| Owner **Sell this vehicle** Auction row; Manage listing Delist section | Auction escrow configured and passport status known non-VERIFIED | *Reserve auctions require a verified passport. Get this vehicle verified by a KarPro to enable auctions.* |
-| Manage listing Delist section | Auction escrow configured and passport VERIFIED, or status unavailable | *To start a reserve auction, delist this fixed-price listing first.* |
+| Owner **Sell** ascending row; Manage listing Delist section | Ascending configured and passport status known non-VERIFIED | *Reserve auctions require a verified passport. Get this vehicle verified by a KarPro to enable auctions.* |
+| Manage listing Delist section | Ascending configured and passport VERIFIED, or status unavailable | *To start a reserve auction, delist this fixed-price listing first.* |
 
 #### Role matrix
 
@@ -917,7 +918,7 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 | Direction | `useBridge(custodyChain, counterpart, tokenId)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
 | Transit | First-class in-flight lifecycle ([`bridge-transit.ts`](../lib/passport/bridge-transit.ts) + store + [`use-bridge-transit.ts`](../hooks/use-bridge-transit.ts)): persist intent on src receipt; keep panel visible after burn/lock (`transitActive` on [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts)); stepper Sent → In transit → Arrived; dst `ownerOf` poll remains delivery gate; `router.replace(?chain=dst)` on delivery; **indexer catch-up** polls Ponder until `custodyChain === dst`, then [`useTxSync.syncReads`](../hooks/use-tx-sync.ts) (same invalidate + `router.refresh` as `runTx`) and clear transit so the idle Move/Return surface returns without a manual reload. Own profile passport tiles show **In transit to** / **Returning to** on the reserved state line and keep the tile |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
-| Crossing disclosure | [`CROSSING_TRUST_DISCLOSURE`](../lib/passport/bridge-surface.ts) shown whenever idle send is offered (`canBridge`) — term of the action (plain secondary copy, not alarm): verification does not travel; destination begins unverified; returning home clears verification here too. Same text for Move and Return |
+| Crossing disclosure | [`deriveBridgeCrossingConsent`](../lib/passport/bridge-surface.ts): **VERIFIED** → full [`CROSSING_TRUST_DISCLOSURE`](../lib/passport/bridge-surface.ts) + required checkbox ack before send (fixed-price listing still available after; auctions need fresh verification); **non-VERIFIED** → short [`CROSSING_UNVERIFIED_DISCLOSURE`](../lib/passport/bridge-surface.ts), no ack (never frames a never-verified passport as losing VERIFIED). Shown whenever idle send is offered (`canBridge`) |
 | Registry | Chain-read membership on this custody passport ([`encumbrance-registry.ts`](../lib/passport/encumbrance-registry.ts)); mono tabular addresses; highlight a registered source named by `source_unanswerable` |
 | Flow | Passport approval via shared `usePassportApproval` (gateway spender) if needed → quote → send via shared `useTxSync` / `runFlow`; pending = destination RPC `ownerOf` poll (not Ponder); after delivery, transit owns indexer catch-up → `syncReads`; LayerZero Scan GUID link when available |
 | Errors | Shared [`tx-error-message`](../lib/marketplace/tx-error-message.ts) plus bridge-specific `PassportDisputed` copy; `SourceUnanswerable` on preview and write uses the same [`sourceUnanswerableCopy`](../lib/passport/encumbrance-permission.ts) via ABI decode (mono short address) — never invent an address when decode fails |
@@ -1132,7 +1133,7 @@ Chip: `border-status-error/40`, `bg-status-error/10`, `text-status-error`. Panel
 
 | Signal | Trigger |
 |--------|---------|
-| Verification was reset (reset count) | Indexer `verificationResetCount` (on-chain `VerificationReset` only — not bridge mint) — [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx) |
+| Verification was reset (reset count) | Indexer `verificationResetCount` (on-chain `VerificationReset` only when prior status was VERIFIED — URI edit or VERIFIED unlock; not bridge mint; not never-verified unlock) — [`passport-trust-banner.tsx`](../components/passport/passport-trust-banner.tsx): lost-verification framing; does **not** say listing is blocked |
 | On-chain vs indexer status drift (passport detail only) | Client `compareListingStatus` / chain RPC vs Ponder — [`passport-chain-status-banner.tsx`](../components/passport/passport-chain-status-banner.tsx) |
 | Verifier inactive | On-chain `isActiveVerifier` false |
 | Re-inspection recommended | Client `recommendsReInspection` — **spec target**: currently neutral `border-border-default`; moves to `status-warning` in a follow-up code pass |

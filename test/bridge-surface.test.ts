@@ -6,8 +6,10 @@ import { join } from "node:path";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   CROSSING_TRUST_DISCLOSURE,
+  CROSSING_UNVERIFIED_DISCLOSURE,
   bridgeActionCopy,
   bridgeBlockReasonCopy,
+  deriveBridgeCrossingConsent,
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
   type BridgeSurfaceInput,
@@ -218,14 +220,42 @@ describe("CROSSING_TRUST_DISCLOSURE", () => {
     assert.match(CROSSING_TRUST_DISCLOSURE, /Verification does not travel/);
     assert.match(CROSSING_TRUST_DISCLOSURE, /unverified/);
     assert.match(CROSSING_TRUST_DISCLOSURE, /Returning home/);
+    assert.match(CROSSING_TRUST_DISCLOSURE, /fixed price/i);
   });
 
-  it("bridge panel shows disclosure before send", () => {
+  it("bridge panel wires crossing consent before send", () => {
     const src = readFileSync(
       join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
       "utf8",
     );
-    assert.match(src, /CROSSING_TRUST_DISCLOSURE/);
+    assert.match(src, /deriveBridgeCrossingConsent/);
+    assert.match(src, /crossingConsent/);
+    assert.match(src, /requiresAck/);
     assert.match(src, /surface\.canBridge/);
+  });
+});
+
+describe("deriveBridgeCrossingConsent", () => {
+  it("requires ack with full disclosure when VERIFIED", () => {
+    assert.deepEqual(deriveBridgeCrossingConsent("VERIFIED"), {
+      disclosure: CROSSING_TRUST_DISCLOSURE,
+      requiresAck: true,
+    });
+  });
+
+  it("uses short disclosure without ack when not VERIFIED", () => {
+    assert.deepEqual(deriveBridgeCrossingConsent("UNVERIFIED"), {
+      disclosure: CROSSING_UNVERIFIED_DISCLOSURE,
+      requiresAck: false,
+    });
+    assert.deepEqual(deriveBridgeCrossingConsent("DISPUTED"), {
+      disclosure: CROSSING_UNVERIFIED_DISCLOSURE,
+      requiresAck: false,
+    });
+    assert.deepEqual(deriveBridgeCrossingConsent(undefined), {
+      disclosure: CROSSING_UNVERIFIED_DISCLOSURE,
+      requiresAck: false,
+    });
+    assert.doesNotMatch(CROSSING_UNVERIFIED_DISCLOSURE, /Returning home/);
   });
 });

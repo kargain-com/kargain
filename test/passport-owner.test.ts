@@ -9,7 +9,8 @@ import {
 } from "../lib/passport/passport-owner.ts";
 import { SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
 
-const MARKETPLACE = SEPOLIA_ACTIVE.marketplace;
+/** Mode custody stand-in (listed passport held by FixedPrice / Ascending, not a deleted MarketplaceEscrow). */
+const MODE_CUSTODY = SEPOLIA_ACTIVE.fixedPriceConsignment!;
 const SELLER = "0xcfe194fea9727bD04dA8F78c2362680986e02dF1" as const;
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
 const OTHER = "0x2222222222222222222222222222222222222222" as const;
@@ -39,7 +40,7 @@ describe("passport-owner helpers", () => {
     assert.equal(
       isPassportHolder({
         address: SELLER,
-        onChainOwner: MARKETPLACE,
+        onChainOwner: MODE_CUSTODY,
         listingActive: true,
         listingSeller: SELLER,
       }),
@@ -48,7 +49,7 @@ describe("passport-owner helpers", () => {
     assert.equal(
       isPassportHolder({
         address: OWNER,
-        onChainOwner: MARKETPLACE,
+        onChainOwner: MODE_CUSTODY,
         listingActive: true,
         listingSeller: SELLER,
       }),
@@ -91,7 +92,7 @@ describe("passport-owner helpers", () => {
       isPassportHolder({
         address: SELLER,
         onChainOwner: SELLER,
-        ponderOwner: MARKETPLACE,
+        ponderOwner: MODE_CUSTODY,
         listingActive: false,
       }),
       true,
@@ -100,7 +101,7 @@ describe("passport-owner helpers", () => {
       isPassportHolder({
         address: SELLER,
         onChainOwner: SELLER,
-        ponderOwner: MARKETPLACE,
+        ponderOwner: MODE_CUSTODY,
         listingActive: false,
         listingSeller: SELLER,
       }),

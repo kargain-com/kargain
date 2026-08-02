@@ -14,8 +14,8 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
 
 /**
- * Active Nuclear #3 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
- * KarPassport `1.9.0-rc.1` · FixedPrice `2.4.0-rc.1` · Ascending `2.3.0-rc.1`.
+ * Active Nuclear #4 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
+ * KarPassport `1.10.0-rc.1` · FixedPrice `2.4.0-rc.1` · Ascending `2.4.0-rc.1`.
  */
 export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
 
@@ -29,7 +29,7 @@ export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
  * also denylisted on Eth as retired Nuclear #2 KarPassport — never match by hex alone.
  * Normative: SPEC §I.12.12.
  *
- * Nuclear #3 cutover August 1, 2026: Nuclear #2 hub + prior RC/escrow stacks retired.
+ * Nuclear #4 cutover August 2, 2026: Nuclear #3 hub + prior stacks retired.
  */
 export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x6378469256907D7DC14BBfce0261ceDE22314507",
@@ -63,6 +63,16 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x77C881b9FB3cD425367c99378588b2790669F51F",
   "0xE98EbDb9354ff9c91872390D7106D621794C9118",
   "0x568f44F238BD1104D8c51Ea93eC92dC91ef5a17D",
+  // Nuclear #3 hub (superseded by Nuclear #4 August 2, 2026)
+  "0x886328c407998EA493b757bE9d49034624F8f4BE",
+  "0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43",
+  "0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5",
+  "0xEf7403424Ce96f0e1845AB70800022c78D97a52C",
+  "0xd4728af32553005A2BEae8f29eb73DB425980daa",
+  "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
+  "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
+  "0xC0ADc29De760195d5BBB5d3c11f040B388872039",
+  "0x254340154a0C5B1d8679f49400AF292e33E1e855",
 ];
 
 /**
@@ -71,7 +81,7 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
  * WARNING — strictly `chainId === 11155111` scoped; do not use chain-blind matching
  * (see `SEPOLIA_HISTORICAL_DENYLIST`). Normative rule: SPEC §I.12.12.
  *
- * Nuclear #3 cutover August 1, 2026: Nuclear #2 Eth stack + prior Nuclear/legacy retired.
+ * Nuclear #4 cutover August 2, 2026: Nuclear #3 Eth stack + prior Nuclear/legacy retired.
  */
 export const ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
@@ -91,6 +101,16 @@ export const ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655",
   "0xf9dF8c00B89D833A1C7E1210259F9c4F673258E9",
   "0xe8ECf3b42b489F6289434840661770b43B027F13",
+  // Nuclear #3 Eth (superseded by Nuclear #4 August 2, 2026)
+  "0x20683ca58425DA09B148242432318EeFbfbfFAb1",
+  "0xFc12ea568DD7aa636C64f4f778b965D2434D0054",
+  "0xea8Ee6b1E9f1a6D6F1229EC498f1A93Fcddd02CB",
+  "0xc903feE4395dd5Db35d9BcB558917f3Af8d71869",
+  "0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41",
+  "0xe9c06240059800228aB5f8c39f1a323dAFBA84a1",
+  "0x1424084C800b4712D835d244904915D1e62B2f21",
+  "0x07f9c182F176C2C4A82Fcb80c4f942864420542D",
+  "0x3ef0bD0e9446D5C3B7A10A1e0563b1d5a96afc4E",
 ];
 
 /**

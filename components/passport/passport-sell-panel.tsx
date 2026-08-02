@@ -13,6 +13,9 @@ import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-d
 import { Button } from "@/components/ui/button";
 import type { PassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import {
+  AUCTION_REQUIRES_VERIFICATION_HINT,
+} from "@/lib/auction/sale-form-copy";
 import type { AuctionAgentAuth } from "@/lib/auction/auction-agent";
 import {
   KarPassportAbi,
@@ -31,6 +34,7 @@ import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import type { PassportStatus } from "@/lib/types/ponder";
 import {
   karPassportAddress,
   karProStakingAddress,
@@ -51,18 +55,21 @@ type Props = {
   chainId: number;
   tokenId: string;
   passportOwner: `0x${string}`;
+  passportStatus: PassportStatus;
   facts: PassportCommerceFacts;
   now: number;
 };
 
 /**
  * Owner sell group for FixedPrice + Ascending modes (mandate grant / open).
- * Permission is `may(OpenConsignment)` + no live consignment — not trust status.
+ * Permission is `may(OpenConsignment)` + no live consignment. Ascending open
+ * additionally requires VERIFIED (mirrors chain).
  */
 export function PassportSellPanel({
   chainId,
   tokenId,
   passportOwner,
+  passportStatus,
   facts,
   now,
 }: Props) {
@@ -118,6 +125,7 @@ export function PassportSellPanel({
     openConsignmentPermission: facts.openConsignmentPermission,
     isActiveVerifier:
       isActiveVerifier === undefined ? undefined : isActiveVerifier === true,
+    passportStatus,
     fixedPriceMandate:
       facts.fixedPrice.mandate === undefined
         ? undefined
@@ -145,7 +153,8 @@ export function PassportSellPanel({
     surface.showAscendingOpen ||
     surface.showAscendingGrant ||
     surface.showAscendingMandateCard ||
-    surface.showAscendingRunnerNote;
+    surface.showAscendingRunnerNote ||
+    surface.showAuctionVerificationHint;
 
   if (!anyVisible) {
     const openGate = facts.openConsignmentPermission;
@@ -225,6 +234,12 @@ export function PassportSellPanel({
         <p className="text-sm text-text-secondary">
           Ascending auctions are opened by an active KarPro verifier. Grant a
           mandate to let a pro run the lot for you.
+        </p>
+      ) : null}
+
+      {surface.showAuctionVerificationHint ? (
+        <p className="text-sm text-text-secondary">
+          {AUCTION_REQUIRES_VERIFICATION_HINT}
         </p>
       ) : null}
 

@@ -83,10 +83,10 @@ describe("KarPassport encumbrance + verification challenge", () => {
     );
   });
 
-  it("permission: UNVERIFIED idle — Open false, Leave true", async () => {
+  it("permission: UNVERIFIED idle — Open true, Leave true", async () => {
     const { viem } = connection;
     const { passport, tokenId } = await stackWithToken(viem);
-    assert.equal(await passport.read.may([tokenId, INTENT_OPEN]), false);
+    assert.equal(await passport.read.may([tokenId, INTENT_OPEN]), true);
     assert.equal(await passport.read.may([tokenId, INTENT_LEAVE]), true);
   });
 
@@ -125,12 +125,14 @@ describe("KarPassport encumbrance + verification challenge", () => {
     assert.equal(await passport.read.may([tokenId, INTENT_LEAVE]), true);
   });
 
-  it("E5-by-behaviour: status-alone diverges from may on LeaveChain×UNVERIFIED", async () => {
+  it("E5-by-behaviour: status-alone diverges from may on Open×UNVERIFIED and Leave×UNVERIFIED", async () => {
     const { viem } = connection;
     const { passport, tokenId } = await stackWithToken(viem);
     const [status] = (await passport.read.getPassportStatus([tokenId])) as [number, string, bigint];
     assert.equal(status, 0);
+    assert.equal(permissionFromStatusAlone(status, INTENT_OPEN), false);
     assert.equal(permissionFromStatusAlone(status, INTENT_LEAVE), false);
+    assert.equal(await passport.read.may([tokenId, INTENT_OPEN]), true);
     assert.equal(await passport.read.may([tokenId, INTENT_LEAVE]), true);
   });
 
@@ -381,10 +383,10 @@ describe("KarPassport encumbrance + verification challenge", () => {
     }
   });
 
-  it("VERSION is 1.9.0-rc.1", async () => {
+  it("VERSION is 1.10.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.9.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.10.0-rc.1");
   });
 
   it("ChallengeOpened/Judged + VerificationLapsed match chain state (no Dispute* duplicates)", async () => {

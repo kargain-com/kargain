@@ -28,7 +28,7 @@ describe("resolveAddress commercial fallback", () => {
   });
 });
 
-describe("commerce mode resolvers (Nuclear #2 live)", () => {
+describe("commerce mode resolvers (Nuclear #4 live)", () => {
   it("fixedPriceConsignmentAddress resolves on both commercial stacks", () => {
     assert.equal(fixedPriceConsignmentAddress(84532), HUB.fixedPriceConsignment);
     assert.equal(fixedPriceConsignmentAddress(11155111), SPOKE.fixedPriceConsignment);
