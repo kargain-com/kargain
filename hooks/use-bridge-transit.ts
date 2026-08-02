@@ -1,13 +1,18 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { getPassportDetail } from "@/app/actions/passport-detail";
+import { useTxSync } from "@/hooks/use-tx-sync";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
   deriveBridgeTransitUi,
+  isBridgeDestinationCustodyIndexed,
   isBridgeTransitActivePhase,
+  isBridgeTransitIndexerCatchupPhase,
   reconcileBridgeTransit,
 } from "@/lib/passport/bridge-transit";
 import {
@@ -26,6 +31,11 @@ import {
   layerZeroScanTxUrl,
 } from "@/lib/web3/bridge";
 import { shortChainName } from "@/lib/web3/supported-chains";
+import {
+  INDEXER_SYNC_INTERVAL_MS,
+  INDEXER_SYNC_MAX_ATTEMPTS,
+  pollUntil,
+} from "@/lib/web3/tx-sync";
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,7 +64,8 @@ async function readDstOwner(
 
 /**
  * Recover + reconcile bridge transit for a passport detail page.
- * Live send path still owned by `useBridge`; this hook covers F5 and catch-up.
+ * Live send path still owned by `useBridge`; this hook covers F5, dst delivery
+ * resume, and indexer catch-up → `syncReads` (same post-truth path as `runTx`).
  */
 export function useBridgeTransit(opts: {
   tokenId: string;
@@ -64,7 +75,11 @@ export function useBridgeTransit(opts: {
 }) {
   const { tokenId, ponderCustodyChain, enabled = true } = opts;
   const { address } = useAccount();
-  const abortRef = useRef<AbortController | null>(null);
+  const router = useRouter();
+  // chainId unused by syncReads; commerce custody satisfies the hook shape.
+  const { syncReads } = useTxSync(ponderCustodyChain);
+  const deliveryAbortRef = useRef<AbortController | null>(null);
+  const catchupAbortRef = useRef<AbortController | null>(null);
 
   const storeVersion = useSyncExternalStore(
     subscribeBridgeTransit,
@@ -107,7 +122,7 @@ export function useBridgeTransit(opts: {
     }
   }, [address, ponderCustodyChain, tokenId]);
 
-  // Clear when indexer custody matches destination.
+  // Clear when RSC commerce custody already matches destination (post-refresh).
   useEffect(() => {
     if (!enabled || !address || !record) return;
     if (ponderCustodyChain === record.dstChainId) {
@@ -115,7 +130,7 @@ export function useBridgeTransit(opts: {
     }
   }, [address, enabled, ponderCustodyChain, record, tokenId]);
 
-  // Resume dst poll while in flight after refresh.
+  // Resume dst ownerOf poll while in flight after refresh.
   useEffect(() => {
     if (!enabled || !address || !record) return;
     const polling =
@@ -127,9 +142,9 @@ export function useBridgeTransit(opts: {
       return;
     }
 
-    abortRef.current?.abort();
+    deliveryAbortRef.current?.abort();
     const controller = new AbortController();
-    abortRef.current = controller;
+    deliveryAbortRef.current = controller;
     const sentAt = record.sentAt;
 
     void (async () => {
@@ -140,8 +155,7 @@ export function useBridgeTransit(opts: {
         const latest = getBridgeTransit(address, tokenId);
         if (
           latest == null ||
-          latest.phase === "indexer_catchup" ||
-          latest.phase === "delivered_on_chain" ||
+          isBridgeTransitIndexerCatchupPhase(latest.phase) ||
           latest.phase === "timed_out" ||
           latest.phase === "complete"
         ) {
@@ -156,6 +170,51 @@ export function useBridgeTransit(opts: {
       controller.abort();
     };
   }, [address, enabled, reconcileOnce, record, tokenId]);
+
+  // Indexer catch-up: poll Ponder custody → syncReads → clear (mirrors runTx).
+  useEffect(() => {
+    if (!enabled || !address || !record) return;
+    if (!isBridgeTransitIndexerCatchupPhase(record.phase)) return;
+    if (ponderCustodyChain === record.dstChainId) return;
+
+    catchupAbortRef.current?.abort();
+    const controller = new AbortController();
+    catchupAbortRef.current = controller;
+    const dstChainId = record.dstChainId;
+
+    void (async () => {
+      const result = await pollUntil({
+        poll: () => getPassportDetail(tokenId, dstChainId),
+        predicate: (detail) =>
+          isBridgeDestinationCustodyIndexed(detail, dstChainId),
+        intervalMs: INDEXER_SYNC_INTERVAL_MS,
+        maxAttempts: INDEXER_SYNC_MAX_ATTEMPTS,
+        wait,
+        shouldContinue: () => !controller.signal.aborted,
+      });
+
+      if (controller.signal.aborted) return;
+      if (result.status !== "matched") return;
+
+      // Same post-truth triad as runTx. Clear when RSC commerce custody updates
+      // (existing effect) so idle Move/Return never flashes on stale src props.
+      await syncReads();
+      if (controller.signal.aborted) return;
+      router.replace(`/marketplace/${tokenId}?chain=${dstChainId}`);
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    address,
+    enabled,
+    ponderCustodyChain,
+    record,
+    router,
+    syncReads,
+    tokenId,
+  ]);
 
   const dstName = record ? shortChainName(record.dstChainId) : "";
   const ui = record ? deriveBridgeTransitUi(record, dstName) : null;

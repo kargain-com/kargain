@@ -14,6 +14,11 @@ const INVALIDATE_ALLOWLIST = new Set([
   path.join(HOOKS, "use-tx-sync.ts"),
 ]);
 
+/** Sole owner of post-truth `router.refresh` (via `syncReads`). */
+const ROUTER_REFRESH_ALLOWLIST = new Set([
+  path.join(HOOKS, "use-tx-sync.ts"),
+]);
+
 function listTsxFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -52,6 +57,49 @@ describe("tx-sync write policy", () => {
       }
     }
     assert.deepEqual(violations, []);
+  });
+
+  it("forbids bare router.refresh outside useTxSync.syncReads", () => {
+    const violations: string[] = [];
+    for (const dir of [COMPONENTS, HOOKS]) {
+      for (const file of listTsxFiles(dir)) {
+        if (ROUTER_REFRESH_ALLOWLIST.has(file)) continue;
+        const text = fs.readFileSync(file, "utf8");
+        if (text.includes("router.refresh(")) {
+          violations.push(path.relative(ROOT, file));
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("bridge transit catch-up consumes useTxSync.syncReads (no parallel invalidate)", () => {
+    const transitHook = path.join(HOOKS, "use-bridge-transit.ts");
+    const text = fs.readFileSync(transitHook, "utf8");
+    assert.match(text, /useTxSync/);
+    assert.match(text, /syncReads/);
+    assert.match(text, /isBridgeDestinationCustodyIndexed/);
+    assert.match(text, /pollUntil/);
+    assert.equal(text.includes("invalidateQueries("), false);
+    assert.equal(text.includes("location.reload"), false);
+
+    const bridgeHook = path.join(HOOKS, "use-bridge.ts");
+    const bridgeText = fs.readFileSync(bridgeHook, "utf8");
+    assert.equal(bridgeText.includes('| "delivered"'), false);
+    assert.equal(bridgeText.includes('setPhase("delivered")'), false);
+    assert.match(bridgeText, /indexer_catchup/);
+    assert.match(bridgeText, /setPhase\("idle"\)/);
+  });
+
+  it("passport indexer entity catch-up consumes useTxSync.syncReads", () => {
+    const hook = path.join(HOOKS, "use-passport-indexer-sync.ts");
+    const text = fs.readFileSync(hook, "utf8");
+    assert.match(text, /useTxSync/);
+    assert.match(text, /syncReads/);
+    assert.match(text, /INDEXER_SYNC_INTERVAL_MS/);
+    assert.match(text, /INDEXER_SYNC_MAX_ATTEMPTS/);
+    assert.equal(text.includes("router.refresh("), false);
+    assert.equal(text.includes("KAR_PRO_VERIFIER_POLL"), false);
   });
 
   it("does not resurrect auction post-tx dual-path symbols", () => {

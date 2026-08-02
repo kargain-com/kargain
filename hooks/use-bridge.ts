@@ -55,7 +55,6 @@ export type BridgePhase =
   | "approving"
   | "sending"
   | "pending"
-  | "delivered"
   | "error";
 
 function mapBridgeError(err: unknown): string {
@@ -340,7 +339,8 @@ export function useBridge(
             mode,
             phase: "indexer_catchup",
           });
-          setPhase("delivered");
+          // Transit owns catch-up chrome + completion via useBridgeTransit → syncReads.
+          setPhase("idle");
           return true;
         } catch (err) {
           setLocalError(mapBridgeError(err));

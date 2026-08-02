@@ -1,14 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { getPassportDetail } from "@/app/actions/passport-detail";
+import { useTxSync } from "@/hooks/use-tx-sync";
 import {
-  KAR_PRO_VERIFIER_POLL_INTERVAL_MS,
-  KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS,
-} from "@/lib/kar-pro/kar-pro-verifier-profile";
-import { pollUntil } from "@/lib/web3/tx-sync";
+  INDEXER_SYNC_INTERVAL_MS,
+  INDEXER_SYNC_MAX_ATTEMPTS,
+  pollUntil,
+} from "@/lib/web3/tx-sync";
 
 type PassportDetailResult = Awaited<ReturnType<typeof getPassportDetail>>;
 type PassportPollStatus = "idle" | "polling" | "matched" | "exhausted";
@@ -90,8 +90,8 @@ export function usePassportIndexerPoll(
         return result;
       },
       predicate: (result) => result.ok && !result.indexerPending,
-      intervalMs: KAR_PRO_VERIFIER_POLL_INTERVAL_MS,
-      maxAttempts: KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS,
+      intervalMs: INDEXER_SYNC_INTERVAL_MS,
+      maxAttempts: INDEXER_SYNC_MAX_ATTEMPTS,
       wait: (ms) =>
         foregroundWait(
           ms,
@@ -122,12 +122,16 @@ export function usePassportIndexerPoll(
   return { latest: current.latest, status: current.status };
 }
 
+/**
+ * Entity-drift catch-up when no receipt block is known.
+ * On match: same `syncReads` as `runTx` / bridge catch-up (sole post-truth refresh).
+ */
 export function usePassportIndexerSync(
   tokenId: string,
   chainId: number,
   enabled: boolean,
 ) {
-  const router = useRouter();
+  const { syncReads } = useTxSync(chainId);
   const { latest, status } = usePassportIndexerPoll(
     tokenId,
     chainId,
@@ -135,8 +139,8 @@ export function usePassportIndexerSync(
   );
 
   useEffect(() => {
-    if (status === "matched") router.refresh();
-  }, [router, status]);
+    if (status === "matched") void syncReads();
+  }, [status, syncReads]);
 
   const isSyncing =
     enabled && Boolean(latest?.ok && latest.indexerPending);

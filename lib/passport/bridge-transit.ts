@@ -91,6 +91,24 @@ export function isBridgeTransitActivePhase(
   );
 }
 
+/** True when transit is waiting for Ponder custody to match destination. */
+export function isBridgeTransitIndexerCatchupPhase(
+  phase: BridgeTransitPhase,
+): boolean {
+  return phase === "indexer_catchup" || phase === "delivered_on_chain";
+}
+
+/**
+ * Destination custody is indexed — safe to clear transit and refresh client reads.
+ * Fail-closed: unread / non-ok detail does not complete.
+ */
+export function isBridgeDestinationCustodyIndexed(
+  detail: { ok: boolean; passport?: { custodyChain: number } },
+  dstChainId: number,
+): boolean {
+  return detail.ok === true && detail.passport?.custodyChain === dstChainId;
+}
+
 export function parseBridgeTransitRecord(
   raw: unknown,
 ): BridgeTransitRecord | null {

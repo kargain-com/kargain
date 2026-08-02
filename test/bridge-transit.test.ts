@@ -5,7 +5,9 @@ import {
   bridgeTransitSessionKey,
   clearBridgeTransitRecord,
   deriveBridgeTransitUi,
+  isBridgeDestinationCustodyIndexed,
   isBridgeTransitActivePhase,
+  isBridgeTransitIndexerCatchupPhase,
   mergeProfilePassportWithTransit,
   parseBridgeTransitRecord,
   readBridgeTransitRecord,
@@ -145,6 +147,42 @@ describe("reconcileBridgeTransit", () => {
         ponderCustodyChain: null,
       }),
       null,
+    );
+  });
+});
+
+describe("isBridgeTransitIndexerCatchupPhase", () => {
+  it("marks catch-up phases only", () => {
+    assert.equal(isBridgeTransitIndexerCatchupPhase("indexer_catchup"), true);
+    assert.equal(isBridgeTransitIndexerCatchupPhase("delivered_on_chain"), true);
+    assert.equal(isBridgeTransitIndexerCatchupPhase("in_flight"), false);
+    assert.equal(isBridgeTransitIndexerCatchupPhase("complete"), false);
+  });
+});
+
+describe("isBridgeDestinationCustodyIndexed", () => {
+  it("requires ok detail with custody === dst", () => {
+    assert.equal(
+      isBridgeDestinationCustodyIndexed(
+        { ok: true, passport: { custodyChain: 84532 } },
+        84532,
+      ),
+      true,
+    );
+    assert.equal(
+      isBridgeDestinationCustodyIndexed(
+        { ok: true, passport: { custodyChain: 11155111 } },
+        84532,
+      ),
+      false,
+    );
+    assert.equal(
+      isBridgeDestinationCustodyIndexed({ ok: false }, 84532),
+      false,
+    );
+    assert.equal(
+      isBridgeDestinationCustodyIndexed({ ok: true }, 84532),
+      false,
     );
   });
 });

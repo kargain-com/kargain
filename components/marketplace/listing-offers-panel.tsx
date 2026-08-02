@@ -24,7 +24,6 @@ type Props = {
   tokenId: string;
   sellerNostrPubkey: string;
   hasDirectPayment: boolean;
-  onConfirmed: () => void;
 };
 
 type RowProps = {
@@ -133,7 +132,6 @@ export function ListingOffersPanel({
   tokenId,
   sellerNostrPubkey,
   hasDirectPayment,
-  onConfirmed,
 }: Props) {
   const wc = wagmiChainId(chainId);
   const walletChain = useChainId();
@@ -167,9 +165,9 @@ export function ListingOffersPanel({
           }),
         );
         if (!succeeded) return;
+        // runTx → syncReads owns client refresh; no parent dual-path.
         setConfirmedBuyer(buyer);
         setConfirmingBuyer(null);
-        onConfirmed();
       } catch (err) {
         setTxError(txErrorMessage(err));
       }
@@ -182,7 +180,6 @@ export function ListingOffersPanel({
       wc,
       writeContractAsync,
       tid,
-      onConfirmed,
       runTx,
     ],
   );

@@ -122,20 +122,18 @@ export function PassportBridgePanel({
     void quote(tid);
   }, [surface.canBridge, configured, quote, tid, transitActive]);
 
-  // Handoff to destination URL once on-chain delivery is confirmed.
+  // Soft-nav to destination URL once on-chain delivery is confirmed.
+  // Working commerce UI returns after indexer catch-up → syncReads (transit hook).
   useEffect(() => {
     if (handedOffRef.current) return;
-    const dst =
-      record?.dstChainId ??
-      (phase === "delivered" ? dstChainId : null);
+    const dst = record?.dstChainId ?? null;
     const ready =
-      phase === "delivered" ||
       record?.phase === "indexer_catchup" ||
       record?.phase === "delivered_on_chain";
     if (!ready || dst == null) return;
     handedOffRef.current = true;
     router.replace(`/marketplace/${tokenId}?chain=${dst}`);
-  }, [dstChainId, phase, record?.dstChainId, record?.phase, router, tokenId]);
+  }, [record?.dstChainId, record?.phase, router, tokenId]);
 
   if (!surface.visible) return null;
 
@@ -158,10 +156,11 @@ export function PassportBridgePanel({
       ? "Approving…"
       : phase === "quoting" || phase === "sending"
         ? "Bridging…"
-        : phase === "pending" || record?.phase === "in_flight"
+        : phase === "pending" ||
+            record?.phase === "in_flight" ||
+            record?.phase === "source_confirmed"
           ? "Waiting for delivery…"
-          : phase === "delivered" ||
-              record?.phase === "indexer_catchup" ||
+          : record?.phase === "indexer_catchup" ||
               record?.phase === "delivered_on_chain"
             ? displayDstName
               ? `Delivered on ${displayDstName}`
@@ -240,8 +239,7 @@ export function PassportBridgePanel({
           </p>
         )}
 
-      {(phase === "delivered" ||
-        record?.phase === "indexer_catchup" ||
+      {(record?.phase === "indexer_catchup" ||
         record?.phase === "delivered_on_chain") &&
         scanUrl && (
           <p className="font-sans text-sm text-text-secondary" role="status">
@@ -275,8 +273,7 @@ export function PassportBridgePanel({
           transitActive ||
           !surface.canBridge ||
           Boolean(disabledReason) ||
-          busy ||
-          phase === "delivered"
+          busy
         }
         onClick={() => {
           void bridge(tid);

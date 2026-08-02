@@ -2,7 +2,6 @@
 
 import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi } from "viem";
@@ -81,7 +80,6 @@ export function ListingDetailClientIsland({
   duplicateVin,
   hadDispute,
 }: Props) {
-  const router = useRouter();
   const { address, isConnected } = useAccount();
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
@@ -225,11 +223,6 @@ export function ListingDetailClientIsland({
 
   const externalPaymentDate = formatChainTimestamp(listing?.externalPaymentConfirmedAt);
 
-  const handleOfferConfirmed = useCallback(() => {
-    refetchChainReads();
-    router.refresh();
-  }, [refetchChainReads, router]);
-
   return (
     <div className="space-y-6">
       {listingActive && effectiveListing ? (
@@ -302,7 +295,6 @@ export function ListingDetailClientIsland({
             tokenId={tokenId}
             sellerNostrPubkey={sellerNostrPubkey}
             hasDirectPayment={hasDirectPayment}
-            onConfirmed={handleOfferConfirmed}
           />
         )}
 

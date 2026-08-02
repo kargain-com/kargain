@@ -81,6 +81,20 @@ export function useTxSync(chainId: number) {
     [config],
   );
 
+  /**
+   * Sole client-read refresh after indexer truth advanced without a new wallet
+   * write (e.g. bridge destination custody). Same invalidate + route refresh as
+   * `runTx` post-sync — does not move `phase` / busy.
+   */
+  const syncReads = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["readContract"] }),
+      queryClient.invalidateQueries({ queryKey: ["readContracts"] }),
+      invalidateIndexerQueries(queryClient),
+    ]);
+    router.refresh();
+  }, [queryClient, router]);
+
   const runTx = useCallback(
     async (
       writeFn: () => Promise<`0x${string}`>,
@@ -108,12 +122,7 @@ export function useTxSync(chainId: number) {
           wait,
         });
 
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["readContract"] }),
-          queryClient.invalidateQueries({ queryKey: ["readContracts"] }),
-          invalidateIndexerQueries(queryClient),
-        ]);
-        router.refresh();
+        await syncReads();
         setSyncLagged(!synced);
         return { receipt, synced };
       } catch (err) {
@@ -127,8 +136,7 @@ export function useTxSync(chainId: number) {
     [
       chainId,
       config,
-      queryClient,
-      router,
+      syncReads,
       switchChainAsync,
       walletChainId,
     ],
@@ -136,5 +144,14 @@ export function useTxSync(chainId: number) {
 
   const busy = phase !== "idle" || flowActive;
 
-  return { runTx, awaitReceipt, runFlow, phase, busy, error, syncLagged };
+  return {
+    runTx,
+    awaitReceipt,
+    runFlow,
+    syncReads,
+    phase,
+    busy,
+    error,
+    syncLagged,
+  };
 }
