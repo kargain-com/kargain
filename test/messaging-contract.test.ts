@@ -1,7 +1,9 @@
 /**
- * Messaging R1 — executable behavioral contract.
+ * Messaging R1 — executable behavioral contract (pure machine / reconcile / effects).
  *
- * Canonical spec: docs/research/messaging-rebuild.md
+ * Activation defects and target architecture:
+ * docs/research/messaging-activation-audit-2026.md
+ * Runtime types: lib/messaging/ports.ts
  */
 
 import assert from "node:assert/strict";
@@ -174,16 +176,14 @@ describe("messaging contract — scenarios", () => {
       xmtp: {
         probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
-        resetLocalDb: async () => {
-          order.push("reset");
-        },
       },
     });
     await settleAsync(clock);
     session.dispatch({ type: "disable" });
     await settleAsync(clock);
     assert.deepEqual(order, ["publish:false"]);
-    assert.equal(xmtp.calls.resetLocalDb, 0);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    assert.equal(xmtp.calls.revokeOtherInstallations, 0);
     const snap = session.getSnapshot();
     assert.equal(snap.state, "active");
     if (snap.state === "active") assert.equal(snap.publiclyReachable, false);
@@ -256,12 +256,105 @@ describe("messaging contract — scenarios", () => {
     assert.notEqual(snap.state, "active");
   });
 
-  it("installation_limit on create → reason + revoke→reset→create recovery", async () => {
+  it("installation_limit on create → actionable snapshot; zero revoke/create until user acts", async () => {
+    const clock = createControlledClock();
+    let createCalls = 0;
+    const { session, xmtp } = openSession(clock, {
+      nostr: {
+        readIntent: async () => null,
+        publishIntent: async () => ({ ok: true }),
+      },
+      xmtp: {
+        probeRegistration: async () => ({ registered: false }),
+        createWithSigner: async () => {
+          createCalls += 1;
+          return { ok: false, reason: "installation_limit" };
+        },
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "enable" });
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "needs_signature");
+    if (snap.state === "needs_signature") {
+      assert.equal(snap.reason, "installation_limit");
+      assert.equal(snap.next, "resetIdentity");
+    }
+    assert.equal(createCalls, 1);
+    assert.equal(xmtp.calls.revokeOtherInstallations, 0);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    const createsAfter = createCalls;
+    await settleAsync(clock);
+    assert.equal(createCalls, createsAfter);
+    assert.equal(xmtp.calls.revokeOtherInstallations, 0);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+  });
+
+  it("revokeOtherInstallations refuses with no current client", async () => {
+    const clock = createControlledClock();
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => null },
+      xmtp: {
+        probeRegistration: async () => ({ registered: false }),
+        createWithSigner: async () => ({ ok: false, reason: "installation_limit" }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "enable" });
+    await settleAsync(clock);
+    session.dispatch({ type: "resetIdentity" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeOtherInstallations, 1);
+    assert.equal(xmtp.lastRevokeOthersClient, null);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "needs_signature");
+    if (snap.state === "needs_signature") assert.equal(snap.reason, "installation_limit");
+  });
+
+  it("revokeOtherInstallations passes current client (never silently full-revoke)", async () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      nostr: {
+        readIntent: async () => true,
+        publishIntent: async () => ({ ok: true }),
+      },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+        revokeOtherInstallations: async (_a, _s, current) => {
+          assert.equal(current, fakeClient);
+          return { ok: true };
+        },
+        createWithSigner: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "resetIdentity" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeOtherInstallations, 1);
+    assert.equal(xmtp.lastRevokeOthersClient, fakeClient);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    assert.equal(session.getSnapshot().state, "active");
+  });
+
+  it("revokeAllInstallations refused while cooldown active", async () => {
+    const clock = createControlledClock(1_000);
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { markRevokeAllAt, clearRevokeAllAt } = await import(
+      "../lib/messaging/adapters/cache-adapter.ts"
+    );
+    const { getMessagingXmtpEnv } = await import("../lib/messaging/xmtp-env.ts");
+    const { REVOKE_ALL_COOLDOWN_MS } = await import("../lib/messaging/ports.ts");
+    const { TEST_ADDRESS } = await import("./messaging-contract-harness.ts");
+    const env = getMessagingXmtpEnv();
+    clearRevokeAllAt(env, TEST_ADDRESS);
+    markRevokeAllAt(env, TEST_ADDRESS, clock.nowMs());
+
     let createCalls = 0;
-    const order: string[] = [];
-    const { session } = openSession(clock, {
+    const { session, xmtp } = openSession(clock, {
       nostr: {
         readIntent: async () => null,
         publishIntent: async () => ({ ok: true }),
@@ -273,19 +366,56 @@ describe("messaging contract — scenarios", () => {
           if (createCalls === 1) return { ok: false, reason: "installation_limit" };
           return { ok: true, client: fakeClient };
         },
-        revokeInstallations: async () => {
-          order.push("revoke");
-        },
-        resetLocalDb: async () => {
-          order.push("reset");
-        },
       },
     });
     await settleAsync(clock);
     session.dispatch({ type: "enable" });
     await settleAsync(clock);
-    assert.ok(order.includes("revoke"));
-    assert.ok(order.includes("reset"));
+    session.dispatch({ type: "revokeAllInstallations" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    assert.equal(session.isRevokeAllOnCooldown(), true);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "needs_signature");
+    if (snap.state === "needs_signature") assert.equal(snap.reason, "installation_limit");
+
+    clock.advance(REVOKE_ALL_COOLDOWN_MS);
+    session.dispatch({ type: "revokeAllInstallations" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeAllInstallations, 1);
+    assert.equal(session.getSnapshot().state, "active");
+    clearRevokeAllAt(env, TEST_ADDRESS);
+  });
+
+  it("installation_limit idle until user act — free-slot then create", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    let createCalls = 0;
+    const { session, xmtp } = openSession(clock, {
+      nostr: {
+        readIntent: async () => null,
+        publishIntent: async () => ({ ok: true }),
+      },
+      xmtp: {
+        probeRegistration: async () => ({ registered: false }),
+        createWithSigner: async () => {
+          createCalls += 1;
+          if (createCalls === 1) return { ok: false, reason: "installation_limit" };
+          return { ok: true, client: fakeClient };
+        },
+        // Simulate a prior client becoming available only after user free-slot with client:
+        // here free-slot refuses (no client); full revoke recovers.
+        revokeAllInstallations: async () => ({ ok: true }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "enable" });
+    await settleAsync(clock);
+    assert.equal(createCalls, 1);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    session.dispatch({ type: "revokeAllInstallations" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeAllInstallations, 1);
     assert.ok(createCalls >= 2);
     assert.equal(session.getSnapshot().state, "active");
   });
@@ -445,7 +575,7 @@ describe("messaging contract — scenarios", () => {
     session.dispatch({ type: "disable" });
     await settleAsync(clock);
     assert.ok(nostr.publishLog.some((p) => p.enabled === false));
-    assert.equal(xmtp.calls.resetLocalDb, 0);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
     const snap = session.getSnapshot();
     assert.equal(snap.state, "disabled");
     if (snap.state === "disabled") assert.equal(snap.intent, "explicit");

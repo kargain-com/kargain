@@ -2,11 +2,12 @@
 
 import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { MessagingSetupError } from "@/components/messaging/messaging-setup-error";
+import { MessagingSetupError, type InstallationDisplay } from "@/components/messaging/messaging-setup-error";
 import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import type { InstallationReadout } from "@/lib/messaging/ports";
 import {
   canWalletEnableMessaging,
   isUserOpInFlight,
@@ -52,13 +53,37 @@ function errorCopy(reason: string): string {
   return "Could not restore your messages on this device.";
 }
 
+function formatInstallationAge(createdAtMs: number | null, nowMs: number): string {
+  if (createdAtMs === null) return "age unknown";
+  const ageMs = Math.max(0, nowMs - createdAtMs);
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 60) return `${minutes}m old`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h old`;
+  const days = Math.floor(hours / 24);
+  return `${days}d old`;
+}
+
+function toInstallationDisplay(readout: InstallationReadout, nowMs: number): InstallationDisplay {
+  return {
+    count: readout.installations.length,
+    currentInstallationId: readout.currentInstallationId,
+    rows: readout.installations.map((installation) => ({
+      id: installation.id,
+      ageLabel: formatInstallationAge(installation.createdAtMs, nowMs),
+      isCurrent: installation.id === readout.currentInstallationId,
+    })),
+  };
+}
+
 export function MessagingSetupCard({
   variant = "full",
   context = "account",
   className,
 }: Props) {
-  const { snapshot, dispatch } = useMessagingSession();
+  const { snapshot, dispatch, session } = useMessagingSession();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [installations, setInstallations] = useState<InstallationDisplay | null>(null);
 
   const unsupported = messagingUnsupportedCopy(snapshot);
   const canEnable = canWalletEnableMessaging(snapshot);
@@ -87,17 +112,32 @@ export function MessagingSetupCard({
   const showErrorPanel =
     createErrorKind === "installation_limit" || Boolean(actionError || storeError);
 
+  const atInstallationLimit = createErrorKind === "installation_limit";
+
+  useEffect(() => {
+    if (!atInstallationLimit || !session) return;
+    let cancelled = false;
+    void session.readInstallations().then((readout) => {
+      if (cancelled) return;
+      setInstallations(toInstallationDisplay(readout, Date.now()));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [atInstallationLimit, session, snapshot]);
+
+  const revokeAllOnCooldown = session?.isRevokeAllOnCooldown() ?? false;
+
   const errorPanel = (
     <MessagingSetupError
       actionError={actionError}
       storeError={storeError}
       createErrorKind={createErrorKind}
-      showResetIdentity={
-        snapshot.state === "error" && snapshot.reason !== "installation_limit"
-      }
       busy={userOpBusy}
-      onResetIdentity={() => dispatch({ type: "resetIdentity" })}
-      onRevokeAndRetry={() => dispatch({ type: "resetIdentity" })}
+      installations={installations}
+      revokeAllOnCooldown={revokeAllOnCooldown}
+      onFreeDeviceSlot={() => dispatch({ type: "resetIdentity" })}
+      onRevokeAllDevices={() => dispatch({ type: "revokeAllInstallations" })}
     />
   );
 
@@ -131,6 +171,25 @@ export function MessagingSetupCard({
         role="status"
       >
         {unsupported ?? "This wallet cannot use encrypted messages."}
+      </div>
+    );
+  }
+
+  if (atInstallationLimit) {
+    return (
+      <div
+        className={cn(
+          "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">Device limit reached</p>
+          <p className="text-sm text-text-secondary">
+            Free a slot on an existing device, or revoke every device and reactivate this browser.
+          </p>
+        </div>
+        {errorPanel}
       </div>
     );
   }

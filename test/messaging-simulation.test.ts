@@ -27,6 +27,7 @@ const COMMANDS: SessionCommand[] = [
   { type: "enable" },
   { type: "disable" },
   { type: "resetIdentity" },
+  { type: "revokeAllInstallations" },
   { type: "retry" },
   { type: "cancel" },
 ];
@@ -112,8 +113,10 @@ describe("messaging simulation — seeded invariants", () => {
             inFlight -= 1;
           }
         },
-        revokeInstallations: async () => {},
-        resetLocalDb: async () => {},
+        revokeOtherInstallations: async (_a, _s, current) =>
+          current ? { ok: true } : { ok: false, reason: "no_current_installation" },
+        revokeAllInstallations: async () => ({ ok: true }),
+        readInstallations: async () => ({ installations: [], currentInstallationId: null }),
       });
 
       const nostr = createFakeNostrPolicyPort({
@@ -132,8 +135,9 @@ describe("messaging simulation — seeded invariants", () => {
           probeRegistration: xmtp.probeRegistration.bind(xmtp),
           buildLocal: xmtp.buildLocal.bind(xmtp),
           createWithSigner: xmtp.createWithSigner.bind(xmtp),
-          revokeInstallations: xmtp.revokeInstallations.bind(xmtp),
-          resetLocalDb: xmtp.resetLocalDb.bind(xmtp),
+          revokeOtherInstallations: xmtp.revokeOtherInstallations.bind(xmtp),
+          revokeAllInstallations: xmtp.revokeAllInstallations.bind(xmtp),
+          readInstallations: xmtp.readInstallations.bind(xmtp),
         },
         nostr: {
           readIntent: nostr.readIntent.bind(nostr),

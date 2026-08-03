@@ -9,9 +9,12 @@ import type {
   BuildLocalResult,
   Clock,
   CreateWithSignerResult,
+  InstallationReadout,
   MessagingWalletKind,
   NostrPolicyPort,
   ProbeRegistrationResult,
+  RevokeAllResult,
+  RevokeOtherResult,
   WalletPort,
   XmtpLocalClient,
   XmtpPort,
@@ -101,8 +104,20 @@ export type FakeXmtpHandlers = {
     address: string,
     signal?: AbortSignal,
   ) => Promise<CreateWithSignerResult>;
-  revokeInstallations?: (address: string, signal?: AbortSignal) => Promise<void>;
-  resetLocalDb?: (address: string) => Promise<void>;
+  revokeOtherInstallations?: (
+    address: string,
+    signal?: AbortSignal,
+    currentClient?: XmtpLocalClient | null,
+  ) => Promise<RevokeOtherResult>;
+  revokeAllInstallations?: (
+    address: string,
+    signal?: AbortSignal,
+  ) => Promise<RevokeAllResult>;
+  readInstallations?: (
+    address: string,
+    signal?: AbortSignal,
+    currentClient?: XmtpLocalClient | null,
+  ) => Promise<InstallationReadout>;
 };
 
 export type FakeXmtpPort = XmtpPort & {
@@ -110,9 +125,12 @@ export type FakeXmtpPort = XmtpPort & {
     probeRegistration: number;
     buildLocal: number;
     createWithSigner: number;
-    revokeInstallations: number;
-    resetLocalDb: number;
+    revokeOtherInstallations: number;
+    revokeAllInstallations: number;
+    readInstallations: number;
   };
+  /** Last currentClient passed to revokeOtherInstallations (for exclude-current asserts). */
+  lastRevokeOthersClient: XmtpLocalClient | null | undefined;
 };
 
 const fakeClient = { __brand: "XmtpLocalClient" as const } satisfies XmtpLocalClient;
@@ -137,12 +155,17 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     probeRegistration: 0,
     buildLocal: 0,
     createWithSigner: 0,
-    revokeInstallations: 0,
-    resetLocalDb: 0,
+    revokeOtherInstallations: 0,
+    revokeAllInstallations: 0,
+    readInstallations: 0,
   };
+  let lastRevokeOthersClient: XmtpLocalClient | null | undefined;
 
   return {
     calls,
+    get lastRevokeOthersClient() {
+      return lastRevokeOthersClient;
+    },
     async probeRegistration(address, signal) {
       calls.probeRegistration += 1;
       if (handlers.probeRegistration) return handlers.probeRegistration(address, signal);
@@ -158,15 +181,28 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
       if (handlers.createWithSigner) return handlers.createWithSigner(address, signal);
       return { ok: true, client: fakeClient };
     },
-    async revokeInstallations(address, signal) {
-      calls.revokeInstallations += 1;
-      if (handlers.revokeInstallations) {
-        await handlers.revokeInstallations(address, signal);
+    async revokeOtherInstallations(address, signal, currentClient) {
+      calls.revokeOtherInstallations += 1;
+      lastRevokeOthersClient = currentClient;
+      if (handlers.revokeOtherInstallations) {
+        return handlers.revokeOtherInstallations(address, signal, currentClient);
       }
+      if (!currentClient) return { ok: false, reason: "no_current_installation" };
+      return { ok: true };
     },
-    async resetLocalDb(address) {
-      calls.resetLocalDb += 1;
-      if (handlers.resetLocalDb) await handlers.resetLocalDb(address);
+    async revokeAllInstallations(address, signal) {
+      calls.revokeAllInstallations += 1;
+      if (handlers.revokeAllInstallations) {
+        return handlers.revokeAllInstallations(address, signal);
+      }
+      return { ok: true };
+    },
+    async readInstallations(address, signal, currentClient) {
+      calls.readInstallations += 1;
+      if (handlers.readInstallations) {
+        return handlers.readInstallations(address, signal, currentClient);
+      }
+      return { installations: [], currentInstallationId: null };
     },
   };
 }
@@ -281,6 +317,7 @@ export function openSession(
     nostr?: Parameters<typeof createFakeNostrPolicyPort>[0];
     wallet?: Parameters<typeof createFakeWalletPort>[0];
     cacheSeed?: Partial<CacheEntry>;
+    env?: string;
   } = {},
 ) {
   const xmtp = createFakeXmtpPort(handlers.xmtp);
@@ -296,8 +333,12 @@ export function openSession(
     clock,
     cache,
   });
+  // Wire env through effects via session — createMessagingSession does not take env;
+  // cooldown helpers use getMessagingXmtpEnv() or memory fallback. Tests pass env via
+  // markRevokeAllAt(getMessagingXmtpEnv() or "production", address).
+  void handlers.env;
   session.start();
   return { session, xmtp, nostr, wallet, clock, cache };
 }
 
-export { createMessagingSession };
+export { createMessagingSession, TEST_ADDRESS };

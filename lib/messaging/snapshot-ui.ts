@@ -1,6 +1,6 @@
 import type { MessagingSession, ReconcilingOp, SessionSnapshot } from "./ports";
 
-const USER_OPS = new Set<ReconcilingOp>(["create", "publish", "revoke", "reset"]);
+const USER_OPS = new Set<ReconcilingOp>(["create", "publish", "revoke"]);
 
 export function needsMessagingSetupCard(snapshot: SessionSnapshot): boolean {
   switch (snapshot.state) {

@@ -16,6 +16,8 @@ export type InFlightOp = {
   generation: number;
 };
 
+export type RevokeMode = "others" | "all";
+
 export type MachineState = {
   generation: number;
   address: string;
@@ -29,7 +31,10 @@ export type MachineState = {
   publishError: "publish_failed" | null;
   awaitingSignature: SessionReason | null;
   lastError: SessionReason | null;
-  resetChain: null | "revoke" | "reset" | "create";
+  resetChain: null | "revoke" | "create";
+  revokeMode: RevokeMode | null;
+  /** Full-revoke refused because cooldown has not elapsed. */
+  revokeAllCooldown: boolean;
   enableRequested: boolean;
   disableRequested: boolean;
   resetRequested: boolean;
@@ -50,6 +55,8 @@ export function createInitialMachineState(address: string): MachineState {
     awaitingSignature: null,
     lastError: null,
     resetChain: null,
+    revokeMode: null,
+    revokeAllCooldown: false,
     enableRequested: false,
     disableRequested: false,
     resetRequested: false,
@@ -68,6 +75,8 @@ export type MachineEvent =
   | { type: "awaiting_signature_set"; reason: SessionReason | null }
   | { type: "last_error_set"; reason: SessionReason | null }
   | { type: "reset_chain_set"; stage: MachineState["resetChain"] }
+  | { type: "revoke_mode_set"; mode: RevokeMode | null }
+  | { type: "revoke_all_cooldown_set"; blocked: boolean }
   | { type: "enable_requested" }
   | { type: "disable_requested" }
   | { type: "reset_requested" }
@@ -116,6 +125,10 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
       return { ...state, lastError: event.reason };
     case "reset_chain_set":
       return { ...state, resetChain: event.stage };
+    case "revoke_mode_set":
+      return { ...state, revokeMode: event.mode };
+    case "revoke_all_cooldown_set":
+      return { ...state, revokeAllCooldown: event.blocked };
     case "enable_requested":
       return { ...state, enableRequested: true, disableRequested: false };
     case "disable_requested":
@@ -127,7 +140,12 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
     case "disable_cleared":
       return { ...state, disableRequested: false };
     case "reset_cleared":
-      return { ...state, resetRequested: false, resetChain: null };
+      return {
+        ...state,
+        resetRequested: false,
+        resetChain: null,
+        revokeMode: null,
+      };
     default:
       return state;
   }

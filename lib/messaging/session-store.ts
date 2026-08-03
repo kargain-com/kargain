@@ -74,6 +74,17 @@ export const createMessagingSession: CreateMessagingSession = (
       const client = runner.getState().localClient;
       return client ? unbrandClient(client) : null;
     },
+    async readInstallations() {
+      const machine = runner.getState();
+      return input.ports.xmtp.readInstallations(
+        machine.address,
+        undefined,
+        machine.localClient,
+      );
+    },
+    isRevokeAllOnCooldown() {
+      return runner.getState().revokeAllCooldown;
+    },
     start() {
       if (started) return;
       started = true;

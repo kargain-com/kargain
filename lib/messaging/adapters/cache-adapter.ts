@@ -10,6 +10,42 @@ export type CacheEntry = {
   readAtMs: number;
 };
 
+/** Dedicated key — not subject to memo TTL (full-revoke cooldown must survive). */
+function revokeAllKey(env: string, address: string): string {
+  return `messaging:revoke-all:${env}:${address.toLowerCase()}`;
+}
+
+const memoryRevokeAllAt = new Map<string, number>();
+
+/** Last successful full-account revoke timestamp (ms), if any. */
+export function readLastRevokeAllAt(env: string, address: string): number | undefined {
+  const key = revokeAllKey(env, address);
+  if (storageAvailable()) {
+    const raw = localStorage.getItem(key);
+    if (!raw) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return memoryRevokeAllAt.get(key);
+}
+
+/** Record a successful full-account revoke for cooldown enforcement. */
+export function markRevokeAllAt(env: string, address: string, atMs: number): void {
+  const key = revokeAllKey(env, address);
+  if (storageAvailable()) {
+    localStorage.setItem(key, String(atMs));
+    return;
+  }
+  memoryRevokeAllAt.set(key, atMs);
+}
+
+/** Test helper — clear cooldown marker. */
+export function clearRevokeAllAt(env: string, address: string): void {
+  const key = revokeAllKey(env, address);
+  if (storageAvailable()) localStorage.removeItem(key);
+  memoryRevokeAllAt.delete(key);
+}
+
 export type MessagingCachePort = {
   get(address: string): CacheEntry | undefined;
   set(address: string, patch: Partial<CacheEntry>): void;

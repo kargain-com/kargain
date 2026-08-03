@@ -17,6 +17,12 @@ export const PROBE_DEADLINE_MS = 5_000;
 /** Silent local build must settle by this wall time. */
 export const BUILD_DEADLINE_MS = 10_000;
 
+/**
+ * Minimum gap between full-account installation revokes for one address.
+ * Full revoke spends irreversible inbox updates; rate-limit protects users.
+ */
+export const REVOKE_ALL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 /** Wallet kinds the session accepts; `contract` → unsupported. */
 export type MessagingWalletKind = "eoa" | "eip7702" | "contract";
 
@@ -34,7 +40,10 @@ export type SessionReason =
 export type SessionCommand =
   | { type: "enable" }
   | { type: "disable" }
+  /** Free device slots while keeping this browser's installation → create. */
   | { type: "resetIdentity" }
+  /** Revoke every installation including this device (confirm + cooldown) → create. */
+  | { type: "revokeAllInstallations" }
   | { type: "retry" }
   | { type: "cancel" };
 
@@ -46,8 +55,7 @@ export type ReconcilingOp =
   | "build"
   | "create"
   | "publish"
-  | "revoke"
-  | "reset";
+  | "revoke";
 
 /** Intent never published (onboarding) vs explicit opt-out on Nostr. */
 export type DisabledIntent = "absent" | "explicit";
@@ -105,6 +113,19 @@ export type CreateWithSignerResult =
       reason: "installation_limit" | "opfs_lock" | "create_cancelled" | "build_failed";
     };
 
+export type InstallationReadout = {
+  installations: Array<{ id: string; createdAtMs: number | null }>;
+  currentInstallationId: string | null;
+};
+
+export type RevokeOtherResult =
+  | { ok: true }
+  | { ok: false; reason: "no_current_installation" };
+
+export type RevokeAllResult =
+  | { ok: true }
+  | { ok: false; reason: "cooldown" };
+
 /**
  * XMTP side effects the core may request. Adapters wrap `@xmtp/client`
  * (R1+); R0 tests use fakes only.
@@ -117,8 +138,25 @@ export type XmtpPort = {
    * AbortSignal → reason `create_cancelled`.
    */
   createWithSigner(address: string, signal?: AbortSignal): Promise<CreateWithSignerResult>;
-  revokeInstallations(address: string, signal?: AbortSignal): Promise<void>;
-  resetLocalDb(address: string): Promise<void>;
+  /**
+   * Revoke every installation except this browser's. Refuses when
+   * `currentClient` is absent — never silently becomes full revoke.
+   */
+  revokeOtherInstallations(
+    address: string,
+    signal?: AbortSignal,
+    currentClient?: XmtpLocalClient | null,
+  ): Promise<RevokeOtherResult>;
+  /** Revoke the full set including this device. Cooldown is enforced by effects. */
+  revokeAllInstallations(
+    address: string,
+    signal?: AbortSignal,
+  ): Promise<RevokeAllResult>;
+  readInstallations(
+    address: string,
+    signal?: AbortSignal,
+    currentClient?: XmtpLocalClient | null,
+  ): Promise<InstallationReadout>;
 };
 
 /**
@@ -165,11 +203,17 @@ export type MessagingSessionPorts = {
   wallet: WalletPort;
 };
 
+/** Soft cap shown in the device-limit surface (matches XMTP installation ceiling). */
+export const MESSAGING_INSTALLATION_LIMIT = 10;
+
 export type MessagingSession = {
   getSnapshot(): SessionSnapshot;
   subscribe(onChange: () => void): () => void;
   dispatch(command: SessionCommand): void;
   getXmtpClient(): import("./adapters/xmtp-adapter").XmtpSdkClient | null;
+  readInstallations(): Promise<InstallationReadout>;
+  /** True when a full-account revoke was refused or is still within cooldown. */
+  isRevokeAllOnCooldown(): boolean;
   /** Idempotent — begins background reconcile after mount. */
   start(): void;
   /** Sync machine address when the wallet port address changes. */

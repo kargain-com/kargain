@@ -19,7 +19,10 @@ import { getAddress, hexToBytes, type WalletClient } from "viem";
 import type {
   BuildLocalResult,
   CreateWithSignerResult,
+  InstallationReadout,
   ProbeRegistrationResult,
+  RevokeAllResult,
+  RevokeOtherResult,
   XmtpLocalClient,
   XmtpPort,
 } from "../ports";
@@ -201,17 +204,6 @@ export function buildXmtpEoaSigner(
   };
 }
 
-export function xmtpDatabaseFilename(env: XmtpEnv, inboxId: string): string {
-  return `xmtp-${env}-${inboxId}.db3`;
-}
-
-export function installationIdBytesFromInboxState(
-  state: InboxState | undefined,
-): Uint8Array[] {
-  if (!state) return [];
-  return state.installations.map((installation) => installation.bytes);
-}
-
 export async function resolveInboxId(address: `0x${string}`): Promise<string> {
   const xmtp = await loadXmtp();
   const identifier = ethereumIdentifier(address, xmtp.IdentifierKind);
@@ -226,8 +218,36 @@ export async function resolveInboxId(address: `0x${string}`): Promise<string> {
   return xmtp.generateInboxId(identifier);
 }
 
-function matchesInboxDatabaseFile(path: string, env: XmtpEnv, inboxId: string): boolean {
-  return path === xmtpDatabaseFilename(env, inboxId);
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function nsToCreatedAtMs(ns: bigint | undefined): number | null {
+  if (ns === undefined) return null;
+  return Number(ns / 1_000_000n);
+}
+
+async function messagingBackend() {
+  const xmtp = await loadXmtp();
+  const env = getMessagingXmtpEnv() as XmtpEnv;
+  return { xmtp, backend: await xmtp.createBackend({ env }) };
+}
+
+function mapInstallationReadout(
+  state: InboxState | undefined,
+  currentClient: XmtpLocalClient | null | undefined,
+): InstallationReadout {
+  const current = currentClient ? unbrandClient(currentClient) : null;
+  const currentId = current?.installationId ?? null;
+  const installations = (state?.installations ?? []).map((installation) => ({
+    id: installation.id,
+    createdAtMs: nsToCreatedAtMs(installation.clientTimestampNs),
+  }));
+  return { installations, currentInstallationId: currentId };
 }
 
 export type CreateXmtpAdapterInput = {
@@ -239,10 +259,10 @@ export async function probePeerRegistration(
   signal?: AbortSignal,
 ): Promise<ProbeRegistrationResult> {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  const xmtp = await loadXmtp();
+  const { xmtp, backend } = await messagingBackend();
   const peer = getAddress(address as `0x${string}`);
   const identifier = ethereumIdentifier(peer, xmtp.IdentifierKind);
-  const response = await xmtp.Client.canMessage([identifier], getMessagingXmtpEnv() as XmtpEnv);
+  const response = await xmtp.Client.canMessage([identifier], backend);
   const registered = response.get(identifier.identifier) === true;
   return { registered };
 }
@@ -296,37 +316,64 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
       }
     },
 
-    async revokeInstallations(address, signal) {
+    async revokeOtherInstallations(address, signal, currentClient) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      const walletClient = input.getWalletClient();
-      if (!walletClient) return;
+      if (!currentClient) {
+        return { ok: false, reason: "no_current_installation" } satisfies RevokeOtherResult;
+      }
+      const client = unbrandClient(currentClient);
       const xmtp = await loadXmtp();
+      try {
+        await client.revokeAllOtherInstallations();
+        return { ok: true } satisfies RevokeOtherResult;
+      } catch (error) {
+        if (!(error instanceof xmtp.SignerUnavailableError)) throw error;
+      }
+      const currentBytes = client.installationIdBytes;
+      if (!currentBytes) {
+        return { ok: false, reason: "no_current_installation" } satisfies RevokeOtherResult;
+      }
+      const walletClient = input.getWalletClient();
+      if (!walletClient) {
+        return { ok: false, reason: "no_current_installation" } satisfies RevokeOtherResult;
+      }
       const peer = getAddress(address as `0x${string}`);
       const signer = buildXmtpEoaSigner(walletClient, peer, xmtp.IdentifierKind);
-      const env = getMessagingXmtpEnv() as XmtpEnv;
+      const { backend } = await messagingBackend();
       const inboxId = await resolveInboxId(peer);
-      const states = await xmtp.Client.fetchInboxStates([inboxId], env);
-      const installationIds = installationIdBytesFromInboxState(states[0]);
-      if (installationIds.length === 0) return;
-      await xmtp.Client.revokeInstallations(signer, inboxId, installationIds, env);
+      const states = await xmtp.Client.fetchInboxStates([inboxId], backend);
+      const others = (states[0]?.installations ?? [])
+        .filter((installation) => !bytesEqual(installation.bytes, currentBytes))
+        .map((installation) => installation.bytes);
+      if (others.length === 0) return { ok: true } satisfies RevokeOtherResult;
+      await xmtp.Client.revokeInstallations(signer, inboxId, others, backend);
+      return { ok: true } satisfies RevokeOtherResult;
     },
 
-    async resetLocalDb(address) {
-      const xmtp = await loadXmtp();
+    async revokeAllInstallations(address, signal) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const walletClient = input.getWalletClient();
+      if (!walletClient) return { ok: true } satisfies RevokeAllResult;
+      const { xmtp, backend } = await messagingBackend();
       const peer = getAddress(address as `0x${string}`);
-      const env = getMessagingXmtpEnv() as XmtpEnv;
+      const signer = buildXmtpEoaSigner(walletClient, peer, xmtp.IdentifierKind);
       const inboxId = await resolveInboxId(peer);
-      const opfs = await xmtp.Opfs.create();
-      try {
-        const files = await opfs.listFiles();
-        for (const path of files) {
-          if (matchesInboxDatabaseFile(path, env, inboxId)) {
-            await opfs.deleteFile(path);
-          }
-        }
-      } finally {
-        opfs.close();
-      }
+      const states = await xmtp.Client.fetchInboxStates([inboxId], backend);
+      const installationIds = (states[0]?.installations ?? []).map(
+        (installation) => installation.bytes,
+      );
+      if (installationIds.length === 0) return { ok: true } satisfies RevokeAllResult;
+      await xmtp.Client.revokeInstallations(signer, inboxId, installationIds, backend);
+      return { ok: true } satisfies RevokeAllResult;
+    },
+
+    async readInstallations(address, signal, currentClient) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const { xmtp, backend } = await messagingBackend();
+      const peer = getAddress(address as `0x${string}`);
+      const inboxId = await resolveInboxId(peer);
+      const states = await xmtp.Client.fetchInboxStates([inboxId], backend);
+      return mapInstallationReadout(states[0], currentClient);
     },
   };
 }

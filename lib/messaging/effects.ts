@@ -1,5 +1,5 @@
 import type { Clock, MessagingSessionPorts, SessionCommand, XmtpLocalClient } from "./ports";
-import { BUILD_DEADLINE_MS, PROBE_DEADLINE_MS } from "./ports";
+import { BUILD_DEADLINE_MS, PROBE_DEADLINE_MS, REVOKE_ALL_COOLDOWN_MS } from "./ports";
 import {
   createInitialMachineState,
   projectSnapshot,
@@ -14,7 +14,12 @@ import {
   reconcile,
   type ReconcilePlan,
 } from "./reconcile";
-import type { MessagingCachePort } from "./adapters/cache-adapter";
+import {
+  markRevokeAllAt,
+  readLastRevokeAllAt,
+  type MessagingCachePort,
+} from "./adapters/cache-adapter";
+import { getMessagingXmtpEnv } from "./xmtp-env";
 
 export type EffectsRunner = {
   start(): void;
@@ -31,10 +36,13 @@ export type CreateEffectsRunnerInput = {
   clock: Clock;
   cache: MessagingCachePort;
   onChange: () => void;
+  /** XMTP env for revoke-all cooldown key; defaults to getMessagingXmtpEnv(). */
+  env?: string;
 };
 
 export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRunner {
   const { ports, clock, cache, onChange } = input;
+  const env = input.env ?? getMessagingXmtpEnv();
   let state = createInitialMachineState(input.address);
   let generation = 1;
   let inFlightCount = 0;
@@ -80,7 +88,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     const now = clock.nowMs();
     if (op.effect === "probe") return now + PROBE_DEADLINE_MS;
     if (op.effect === "build") return now + BUILD_DEADLINE_MS;
-    // create / publish / revoke / reset: no wall deadline
+    // create / publish / revoke: no wall deadline
     return Number.MAX_SAFE_INTEGER;
   }
 
@@ -119,6 +127,12 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
   function isAbortError(err: unknown): boolean {
     return err instanceof DOMException && err.name === "AbortError";
+  }
+
+  function isRevokeAllInCooldown(): boolean {
+    const last = readLastRevokeAllAt(env, state.address);
+    if (last === undefined) return false;
+    return clock.nowMs() - last < REVOKE_ALL_COOLDOWN_MS;
   }
 
   async function executePlan(plan: ReconcilePlan) {
@@ -243,17 +257,35 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           break;
         }
         case "revoke": {
-          await ports.xmtp.revokeInstallations(state.address, signal);
+          const mode = state.revokeMode ?? "others";
+          if (mode === "all") {
+            const result = await ports.xmtp.revokeAllInstallations(state.address, signal);
+            if (isStale(opGeneration)) return;
+            if (!result.ok) {
+              apply({ type: "revoke_all_cooldown_set", blocked: true });
+              apply({ type: "reset_cleared" });
+              apply({ type: "awaiting_signature_set", reason: "installation_limit" });
+              break;
+            }
+            markRevokeAllAt(env, state.address, clock.nowMs());
+            apply({ type: "local_client_set", client: null });
+            apply({ type: "reset_chain_set", stage: "create" });
+            cache.invalidate(state.address);
+            break;
+          }
+          const others = await ports.xmtp.revokeOtherInstallations(
+            state.address,
+            signal,
+            state.localClient,
+          );
           if (isStale(opGeneration)) return;
-          apply({ type: "reset_chain_set", stage: "reset" });
-          break;
-        }
-        case "reset": {
-          await ports.xmtp.resetLocalDb(state.address);
-          if (isStale(opGeneration)) return;
-          apply({ type: "local_client_set", client: null });
+          if (!others.ok) {
+            // Preserve-current refused — user must use full revoke.
+            apply({ type: "reset_cleared" });
+            apply({ type: "awaiting_signature_set", reason: "installation_limit" });
+            break;
+          }
           apply({ type: "reset_chain_set", stage: "create" });
-          cache.invalidate(state.address);
           break;
         }
         default:
@@ -287,20 +319,19 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       apply({ type: "network_observed", registered: true });
       apply({ type: "enable_cleared" });
       apply({ type: "publish_pending_set", pending: true });
+      apply({ type: "revoke_all_cooldown_set", blocked: false });
       cache.set(state.address, { networkRegistered: true, buildClient: true });
       return;
     }
     if (mapped.awaiting) {
       apply({ type: "awaiting_signature_set", reason: mapped.awaiting });
       apply({ type: "enable_cleared" });
+      apply({ type: "reset_cleared" });
     }
     if (mapped.lastError) {
       apply({ type: "last_error_set", reason: mapped.lastError });
       apply({ type: "enable_cleared" });
-    }
-    if (mapped.resetChain) {
-      apply({ type: "reset_chain_set", stage: mapped.resetChain });
-      apply({ type: "reset_requested" });
+      apply({ type: "reset_cleared" });
     }
   }
 
@@ -394,6 +425,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           apply({ type: "last_error_set", reason: null });
           apply({ type: "awaiting_signature_set", reason: null });
           apply({ type: "publish_error_set", error: null });
+          apply({ type: "revoke_all_cooldown_set", blocked: false });
           apply({ type: "enable_requested" });
           scheduleLoop();
           break;
@@ -404,6 +436,22 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         case "resetIdentity":
           apply({ type: "awaiting_signature_set", reason: null });
           apply({ type: "last_error_set", reason: null });
+          apply({ type: "revoke_all_cooldown_set", blocked: false });
+          apply({ type: "revoke_mode_set", mode: "others" });
+          apply({ type: "reset_requested" });
+          apply({ type: "reset_chain_set", stage: "revoke" });
+          scheduleLoop();
+          break;
+        case "revokeAllInstallations":
+          apply({ type: "awaiting_signature_set", reason: null });
+          apply({ type: "last_error_set", reason: null });
+          if (isRevokeAllInCooldown()) {
+            apply({ type: "revoke_all_cooldown_set", blocked: true });
+            apply({ type: "awaiting_signature_set", reason: "installation_limit" });
+            break;
+          }
+          apply({ type: "revoke_all_cooldown_set", blocked: false });
+          apply({ type: "revoke_mode_set", mode: "all" });
           apply({ type: "reset_requested" });
           apply({ type: "reset_chain_set", stage: "revoke" });
           scheduleLoop();
@@ -411,6 +459,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         case "retry":
           apply({ type: "awaiting_signature_set", reason: null });
           apply({ type: "last_error_set", reason: null });
+          apply({ type: "revoke_all_cooldown_set", blocked: false });
           if (state.publishPending || state.publishError) {
             apply({ type: "publish_error_set", error: null });
             apply({ type: "publish_pending_set", pending: true });

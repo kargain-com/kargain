@@ -68,9 +68,6 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
     if (state.resetChain === "revoke" || (state.resetRequested && !state.resetChain)) {
       return { kind: "run", effect: "revoke" };
     }
-    if (state.resetChain === "reset") {
-      return { kind: "run", effect: "reset" };
-    }
     if (state.resetChain === "create") {
       return { kind: "run", effect: "create" };
     }
@@ -195,12 +192,12 @@ export function applyCreateResult(
     return { client: result.client, awaiting: null, lastError: null, resetChain: null };
   }
   if (result.reason === "installation_limit") {
+    // User must choose free-slot vs full revoke — no automatic recovery.
     return {
       client: null,
-      awaiting: null,
+      awaiting: "installation_limit",
       lastError: null,
-      // Auto-start recovery chain; UI may also show resetIdentity.
-      resetChain: "revoke",
+      resetChain: null,
     };
   }
   if (result.reason === "create_cancelled") {

@@ -451,7 +451,7 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | `unsupported` | Contract wallet — messaging unavailable |
 | `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) |
 | `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings |
-| `reconciling` | Spinner beside CTA (probe / build / create / publish / revoke / reset / intent) |
+| `reconciling` | Spinner beside CTA (probe / build / create / publish / revoke / intent) |
 | `needs_signature` | Device activation card (`not_registered` \| `build_failed`) |
 | `active` | DMs available; `publiclyReachable` drives profile switch + peer reachability |
 | `active` + `publishError` / `publishPending` | Inline publish retry in settings (no second XMTP signature) |
@@ -470,10 +470,9 @@ Implementation: [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) 
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
 | Peer reachability | [`usePeerMessagingReachability`](../hooks/use-peer-messaging-reachability.ts) + [`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) before DM actions |
 | XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) |
-| Setup card | `enable` / `disable` / `resetIdentity` / `retry` / `cancel` commands; CTA disabled while `isUserOpInFlight(snapshot)` or `active` / `unsupported` / `disconnected` |
+| Setup card | `enable` / `disable` / `resetIdentity` / `revokeAllInstallations` / `retry` / `cancel` commands; CTA disabled while `isUserOpInFlight(snapshot)` or `active` / `unsupported` / `disconnected` |
 | Setup card errors | Primary user copy `text-status-error`; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
-| Installation limit recovery | `resetIdentity` chain: revoke → reset → create; advisory *Messages on your other devices will need one-time reactivation.* |
-| OPFS identity reset | `error` + `resetIdentity` next — scoped OPFS delete via adapter; advisory *Message history on this device will be re-downloaded from the network.* |
+| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` (revoke-others → create; disabled when this browser has no current installation). Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (full revoke → create; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
 | Provider mount | [`MessagingNotificationsProviders`](../components/providers/messaging-notifications-providers.tsx) always mounted in [`app-providers.tsx`](../components/providers/app-providers.tsx); guest hooks no-op until wallet connected |
 | XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; no top-level SDK import in app bundle |
