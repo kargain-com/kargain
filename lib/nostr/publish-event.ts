@@ -17,7 +17,14 @@ export type PublishSignedEventOptions = {
   ownRelayTimeoutMs?: number;
 };
 
-const OWN_RELAY_TIMEOUT_MS = 4000;
+/**
+ * Wait for an ACK from the configured own relay after publish.
+ * This is a write-path acknowledgement budget — not a coverage merge-base read.
+ * Coupling it to `LWW_RELAY_READ_DEADLINE_MS` would conflate publish UX with
+ * read symmetry. Smaller: healthy own-relay acks falsely time out as false.
+ * Larger: hung own-relay holds the ack promise (and callers awaiting it) longer.
+ */
+export const OWN_RELAY_TIMEOUT_MS = 4000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {

@@ -8,6 +8,7 @@ import type {
 import {
   createInMemoryMessagingCache,
   createMessagingCachePort,
+  isMessagingStorageAvailable,
 } from "./adapters/cache-adapter";
 import { getMessagingXmtpEnv } from "./xmtp-env";
 import { createEffectsRunner, getSessionSnapshot } from "./effects";
@@ -18,9 +19,9 @@ export const createMessagingSession: CreateMessagingSession = (
 ): MessagingSession => {
   const cache =
     input.cache ??
-    (typeof localStorage === "undefined"
-      ? createInMemoryMessagingCache()
-      : createMessagingCachePort(getMessagingXmtpEnv()));
+    (isMessagingStorageAvailable()
+      ? createMessagingCachePort(getMessagingXmtpEnv())
+      : createInMemoryMessagingCache());
   const listeners = new Set<() => void>();
   let started = false;
 

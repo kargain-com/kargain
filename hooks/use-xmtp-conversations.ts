@@ -9,9 +9,11 @@ export function useXmtpConversations(): {
   conversations: ConversationSummary[];
   isLoading: boolean;
   refresh: () => void;
+  markConversationSeen: (conversationId: string) => void;
 } {
-  const { conversations, isLoading, refresh } = useXmtpConversationsContext();
-  return { conversations, isLoading, refresh };
+  const { conversations, isLoading, refresh, markConversationSeen } =
+    useXmtpConversationsContext();
+  return { conversations, isLoading, refresh, markConversationSeen };
 }
 
 export function useXmtpUnreadTotal(): number {

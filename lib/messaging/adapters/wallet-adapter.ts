@@ -8,8 +8,19 @@ import {
 } from "@/lib/web3/wallet-account";
 import type { Clock, MessagingWalletKind, WalletPort } from "../ports";
 
-const WALLET_CLIENT_WAIT_MS = 3_000;
-const WALLET_CLIENT_POLL_MS = 100;
+/**
+ * How long waitUntilReady polls for a connected wallet client before failing.
+ * Smaller: brief wallet connect races throw “not ready” during enable.
+ * Larger: a disconnected wallet holds create/enable reconciling longer.
+ */
+export const WALLET_CLIENT_WAIT_MS = 3_000;
+
+/**
+ * Poll interval while waiting for the wallet client inside WALLET_CLIENT_WAIT_MS.
+ * Smaller: hotter CPU/wakeups with little UX gain. Larger: readiness detected
+ * later within the same overall wait budget.
+ */
+export const WALLET_CLIENT_POLL_MS = 100;
 
 function mapWalletKind(kind: WalletAccountKind): MessagingWalletKind {
   return kind;

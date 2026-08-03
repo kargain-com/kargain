@@ -1,4 +1,9 @@
-import type { MessagingSession, ReconcilingOp, SessionSnapshot } from "./ports";
+import type {
+  MessagingSession,
+  ReconcilingOp,
+  SessionCommand,
+  SessionSnapshot,
+} from "./ports";
 import {
   deriveEnableWalletSignatures,
   enableWalletSignaturesCopy,
@@ -7,6 +12,45 @@ import {
 export { deriveEnableWalletSignatures, enableWalletSignaturesCopy };
 
 const USER_OPS = new Set<ReconcilingOp>(["create", "publish", "revoke"]);
+
+export type PrimaryMessagingAction = {
+  command: SessionCommand;
+  label: string;
+};
+
+/**
+ * Sole owner of primary CTA command + label from the session contract.
+ * Surfaces must not invent a different command than `snapshot.next`.
+ */
+export function primaryActionFromSnapshot(
+  snapshot: SessionSnapshot,
+): PrimaryMessagingAction | null {
+  const next =
+    snapshot.state === "disabled" ||
+    snapshot.state === "needs_signature" ||
+    snapshot.state === "error" ||
+    snapshot.state === "active"
+      ? snapshot.next
+      : undefined;
+  if (!next) return null;
+  switch (next) {
+    case "enable":
+      return { command: { type: "enable" }, label: "Enable messages" };
+    case "retry":
+      return { command: { type: "retry" }, label: "Retry" };
+    case "resetIdentity":
+      return { command: { type: "resetIdentity" }, label: "Free a device slot" };
+    case "cancel":
+      return { command: { type: "cancel" }, label: "Cancel" };
+    default:
+      return null;
+  }
+}
+
+/** Secondary install-limit action — not projected as `next`. */
+export const SECONDARY_REVOKE_ALL_COMMAND: SessionCommand = {
+  type: "revokeAllInstallations",
+};
 
 /**
  * Project signature-cost onto enable-facing snapshots (disabled / needs_signature).
@@ -41,9 +85,20 @@ export function needsMessagingSetupCard(snapshot: SessionSnapshot): boolean {
     case "needs_signature":
     case "error":
       return true;
+    case "active":
+      return (
+        snapshot.next === "retry" ||
+        snapshot.publishError === "publish_failed" ||
+        snapshot.publishPending === true
+      );
     default:
       return false;
   }
+}
+
+/** Seller own listing: active but peers cannot reach (intent not published true). */
+export function needsSellerUnreachableDisclosure(snapshot: SessionSnapshot): boolean {
+  return snapshot.state === "active" && snapshot.publiclyReachable === false;
 }
 
 /**
@@ -58,6 +113,8 @@ export function shouldIdleWarmXmtp(input: {
 }
 
 export function messagingReadyForChecklist(snapshot: SessionSnapshot): boolean {
+  if (needsMessagingSetupCard(snapshot)) return false;
+  if (needsSellerUnreachableDisclosure(snapshot)) return false;
   if (snapshot.state === "disabled" && snapshot.intent === "absent") return false;
   if (snapshot.state === "needs_signature") return false;
   if (snapshot.state === "disconnected" || snapshot.state === "unsupported") return false;

@@ -20,6 +20,7 @@ import {
   canWalletEnableMessaging,
   isUserOpInFlight,
   messagingUnsupportedCopy,
+  primaryActionFromSnapshot,
 } from "@/lib/messaging/snapshot-ui";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,14 @@ export function MessagingSettingsSection() {
     userOpBusy ||
     (snapshot.state === "reconciling" && snapshot.op !== "intent");
 
+  const publishRetryAction =
+    snapshot.state === "active" &&
+    (snapshot.publishError || snapshot.next === "retry")
+      ? primaryActionFromSnapshot(snapshot)
+      : null;
+  const showPublishRetry =
+    publishRetryAction != null && publishRetryAction.command.type === "retry";
+
   return (
     <section id="messages" className={cn("flex flex-col gap-4", sectionScrollAnchor)}>
       <SectionEyebrow>Messages</SectionEyebrow>
@@ -109,7 +118,7 @@ export function MessagingSettingsSection() {
         </div>
       </div>
 
-      {snapshot.state === "active" && snapshot.publishError && (
+      {showPublishRetry && publishRetryAction && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border-default bg-bg-surface px-4 py-3">
           <p className="text-sm text-status-error" role="alert">
             Could not publish your message preference. Retry without signing again.
@@ -119,9 +128,9 @@ export function MessagingSettingsSection() {
             variant="secondary"
             size="sm"
             disabled={userOpBusy}
-            onClick={() => dispatch({ type: "retry" })}
+            onClick={() => dispatch(publishRetryAction.command)}
           >
-            Retry publish
+            {publishRetryAction.label}
           </Button>
         </div>
       )}

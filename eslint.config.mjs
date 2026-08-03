@@ -238,7 +238,7 @@ const eslintConfig = [
     },
   },
   {
-    files: ["lib/messaging/adapters/cache-adapter.ts", "lib/messaging/last-seen.ts"],
+    files: ["lib/messaging/adapters/cache-adapter.ts"],
     rules: {
       "no-restricted-syntax": "off",
     },

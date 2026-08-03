@@ -8,7 +8,13 @@ import {
   peerReachabilityMessage,
   resolvePeerReachabilityFromProvider,
 } from "./can-message-peer";
-import { PROBE_DEADLINE_MS } from "./ports";
+
+/**
+ * Abort for click-path `probePeerRegistration` only (not a session op).
+ * Smaller: slow networks falsely report the peer unreachable. Larger: Message
+ * seller waits longer before failing closed on an unresponsive probe.
+ */
+export const PEER_REGISTRATION_DEADLINE_MS = 5_000;
 
 export class ContactPeerError extends Error {
   constructor(message: string) {
@@ -29,7 +35,7 @@ function mapSdkError(error: unknown): string {
 export async function checkXmtpReachable(address: `0x${string}`): Promise<boolean> {
   const peer = getAddress(address);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_DEADLINE_MS);
+  const timeout = setTimeout(() => controller.abort(), PEER_REGISTRATION_DEADLINE_MS);
   try {
     const result = await probePeerRegistration(peer, controller.signal);
     return result.registered;

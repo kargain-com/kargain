@@ -6,7 +6,7 @@ import type {
   SessionSnapshot,
   XmtpLocalClient,
 } from "./ports";
-import { RECONCILING_HINT_MS } from "./ports";
+import { RECONCILING_HINT_MS } from "./session-budgets";
 
 export type IntentValue = boolean | null;
 

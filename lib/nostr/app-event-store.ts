@@ -19,10 +19,18 @@ export const LWW_TOMBSTONE_PRUNE_SECONDS = 90 * 24 * 60 * 60;
 /**
  * Neutralise nostr-tools library eoseTimeout (abstract-relay `||` + 32-bit setTimeout).
  * Real EOSE is distinguished by our wall-clock deadline below.
+ * Smaller: library could fire a fake EOSE before our deadline (classification
+ * lies). Larger: irrelevant — we already treat library timeout as neutralised;
+ * the shared read deadline owns the real cut-off.
  */
 export const LWW_RELAY_EOSE_NEUTRAL_MS = 2_147_483_647;
 
-/** Shared wall-clock budget for the whole multi-relay LWW coverage read (connect + subscribe). */
+/**
+ * Shared wall-clock budget for the whole multi-relay LWW coverage read
+ * (connect + subscribe). Smaller: slow relays mark unanswered and writes skip
+ * them (or refuse when none answered). Larger: hung relays delay every kind 0 /
+ * watchlist / notification coverage read before unanswered.
+ */
 export const LWW_RELAY_READ_DEADLINE_MS = 4500;
 
 export type AppEventMergeStrategy = "lww-element-set" | "latest-per-author-per-d";

@@ -7,27 +7,12 @@
  * - OPFS local DB = device fact
  * - Any cache = observation memo only (never a decision source, never gates a CTA)
  *
+ * Wall-clock budgets for session ops live in `session-budgets.ts` (not here).
+ * Peer registration abort lives with `contact-peer.ts`.
+ *
  * The "opted-in" concept is abolished. R1 implements CreateMessagingSession;
  * adapters that satisfy these ports land in R1–R2. No `@xmtp/client` here.
  */
-
-/**
- * UI hint for reconciling snapshots that have no wall deadline (intent load).
- * Peer click-path registration checks reuse {@link PROBE_DEADLINE_MS}.
- */
-export const RECONCILING_HINT_MS = 5_000;
-
-/** Peer click-path registration probe abort (not used on the session path). */
-export const PROBE_DEADLINE_MS = 5_000;
-
-/** Silent local build must settle by this wall time. */
-export const BUILD_DEADLINE_MS = 10_000;
-
-/**
- * Minimum gap between full-account installation revokes for one address.
- * Full revoke spends irreversible inbox updates; rate-limit protects users.
- */
-export const REVOKE_ALL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /** Wallet kinds the session accepts; `contract` → unsupported. */
 export type MessagingWalletKind = "eoa" | "eip7702" | "contract";

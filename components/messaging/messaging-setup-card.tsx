@@ -8,12 +8,14 @@ import { MessagingSetupError, type InstallationDisplay } from "@/components/mess
 import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
-import type { InstallationReadout } from "@/lib/messaging/ports";
+import type { InstallationReadout, SessionSnapshot } from "@/lib/messaging/ports";
 import {
   canWalletEnableMessaging,
   enableWalletSignaturesCopy,
   isUserOpInFlight,
   messagingUnsupportedCopy,
+  primaryActionFromSnapshot,
+  SECONDARY_REVOKE_ALL_COMMAND,
 } from "@/lib/messaging/snapshot-ui";
 import { cn } from "@/lib/utils";
 
@@ -29,10 +31,10 @@ function contextCopy(
   context: SetupContext,
   enableWalletSignatures: number | undefined,
 ): { title: string; body: string } {
-  const signatureBody =
+  const signatureSentence =
     enableWalletSignatures != null
-      ? enableWalletSignaturesCopy(enableWalletSignatures)
-      : enableWalletSignaturesCopy(3);
+      ? ` ${enableWalletSignaturesCopy(enableWalletSignatures)}`
+      : "";
   switch (context) {
     case "seller":
       return {
@@ -47,19 +49,28 @@ function contextCopy(
     default:
       return {
         title: "Enable messages to finish account setup",
-        body: `Buyers, sellers, and verifiers use encrypted messages on Kargain. ${signatureBody}`,
+        body: `Buyers, sellers, and verifiers use encrypted messages on Kargain.${signatureSentence}`,
       };
   }
 }
 
-function errorCopy(reason: string): string {
+function errorBody(reason: string): { title: string; body: string } {
   if (reason === "opfs_lock") {
-    return "Messages are already open in another Kargain tab. Close it and retry.";
+    return {
+      title: "Messages are open in another place",
+      body: "Messages are already open in another Kargain tab or window on this device. Close it here to continue in this browser.",
+    };
   }
   if (reason === "timeout") {
-    return "Messaging setup timed out. Try again.";
+    return {
+      title: "Messaging setup timed out",
+      body: "The setup step did not finish in time. Try again when you are ready.",
+    };
   }
-  return "Could not restore your messages on this device.";
+  return {
+    title: "Could not restore your messages on this device",
+    body: "Local access on this browser could not be restored. Use the action below to continue.",
+  };
 }
 
 function formatInstallationAge(createdAtMs: number | null, nowMs: number): string {
@@ -85,6 +96,15 @@ function toInstallationDisplay(readout: InstallationReadout, nowMs: number): Ins
   };
 }
 
+function isActionableActive(snapshot: SessionSnapshot): boolean {
+  return (
+    snapshot.state === "active" &&
+    (snapshot.next === "retry" ||
+      snapshot.publishError === "publish_failed" ||
+      snapshot.publishPending === true)
+  );
+}
+
 export function MessagingSetupCard({
   variant = "full",
   context = "account",
@@ -97,6 +117,7 @@ export function MessagingSetupCard({
 
   const unsupported = messagingUnsupportedCopy(snapshot);
   const canEnable = canWalletEnableMessaging(snapshot);
+  const primary = primaryActionFromSnapshot(snapshot);
   const enableWalletSignatures =
     snapshot.state === "disabled" || snapshot.state === "needs_signature"
       ? snapshot.enableWalletSignatures
@@ -104,10 +125,10 @@ export function MessagingSetupCard({
   const copy = contextCopy(context, enableWalletSignatures);
   const userOpBusy = isUserOpInFlight(snapshot);
   const ctaDisabled =
-    snapshot.state === "active" ||
     snapshot.state === "unsupported" ||
     snapshot.state === "disconnected" ||
-    userOpBusy;
+    userOpBusy ||
+    (snapshot.state === "active" && !isActionableActive(snapshot));
 
   const createErrorKind =
     snapshot.state === "error"
@@ -117,10 +138,10 @@ export function MessagingSetupCard({
         : null;
 
   const storeError =
-    snapshot.state === "error"
-      ? errorCopy(snapshot.reason)
+    snapshot.state === "error" && snapshot.reason !== "opfs_lock"
+      ? errorBody(snapshot.reason).body
       : snapshot.state === "needs_signature" && snapshot.reason === "opfs_lock"
-        ? errorCopy(snapshot.reason)
+        ? errorBody("opfs_lock").body
         : null;
 
   const showErrorPanel =
@@ -150,28 +171,46 @@ export function MessagingSetupCard({
       busy={userOpBusy}
       installations={installations}
       revokeAllOnCooldown={revokeAllOnCooldown}
-      onFreeDeviceSlot={() => dispatch({ type: "resetIdentity" })}
-      onRevokeAllDevices={() => dispatch({ type: "revokeAllInstallations" })}
+      onFreeDeviceSlot={() => {
+        const action = primaryActionFromSnapshot(snapshot);
+        if (action) dispatch(action.command);
+      }}
+      onRevokeAllDevices={() => dispatch(SECONDARY_REVOKE_ALL_COMMAND)}
     />
   );
 
-  const ctaRow = (label: string, onClick: () => void) => (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button type="button" size="sm" disabled={ctaDisabled} onClick={onClick}>
-        {label}
-      </Button>
-      {userOpBusy && (
-        <SpinnerIcon className="h-4 w-4 animate-spin text-text-secondary" aria-hidden />
-      )}
-      {variant === "full" && context === "account" && (
-        <Link href="/privacy" className="text-sm text-text-secondary link-underline">
-          How messaging works
-        </Link>
-      )}
-    </div>
-  );
+  const ctaRow = () => {
+    if (!primary) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          size="sm"
+          disabled={ctaDisabled}
+          onClick={() => {
+            setActionError(null);
+            dispatch(primary.command);
+          }}
+        >
+          {primary.label}
+        </Button>
+        {userOpBusy && (
+          <SpinnerIcon className="h-4 w-4 animate-spin text-text-secondary" aria-hidden />
+        )}
+        {variant === "full" && context === "account" && (
+          <Link href="/privacy" className="text-sm text-text-secondary link-underline">
+            How messaging works
+          </Link>
+        )}
+      </div>
+    );
+  };
 
-  if (snapshot.state === "disconnected" || snapshot.state === "active") {
+  if (snapshot.state === "disconnected") {
+    return null;
+  }
+
+  if (snapshot.state === "active" && !isActionableActive(snapshot)) {
     return null;
   }
 
@@ -208,6 +247,42 @@ export function MessagingSetupCard({
     );
   }
 
+  if (snapshot.state === "error" && snapshot.reason === "opfs_lock") {
+    const body = errorBody("opfs_lock");
+    return (
+      <div
+        className={cn(
+          "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+        role="status"
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">{body.title}</p>
+          <p className="text-sm text-text-secondary">{body.body}</p>
+        </div>
+        {ctaRow()}
+      </div>
+    );
+  }
+
+  if (isActionableActive(snapshot)) {
+    return (
+      <div
+        className={cn(
+          "space-y-3 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+      >
+        <p className="text-sm text-text-secondary">
+          Your message preference could not be published yet. Retry without creating a new device
+          installation.
+        </p>
+        {ctaRow()}
+      </div>
+    );
+  }
+
   if (snapshot.state === "disabled" && snapshot.intent === "explicit") {
     return (
       <div
@@ -220,16 +295,14 @@ export function MessagingSetupCard({
           You turned off incoming messages. Turn them back on to receive buyer and verifier
           messages.
         </p>
-        {ctaRow("Turn on messages", () => {
-          setActionError(null);
-          dispatch({ type: "enable" });
-        })}
+        {ctaRow()}
         {showErrorPanel && errorPanel}
       </div>
     );
   }
 
   if (snapshot.state === "error") {
+    const body = errorBody(snapshot.reason);
     return (
       <div
         className={cn(
@@ -238,18 +311,10 @@ export function MessagingSetupCard({
         )}
       >
         <div className="space-y-1">
-          <p className="text-sm font-medium text-text-primary">
-            Could not restore your messages on this device.
-          </p>
-          <p className="text-sm text-text-secondary">
-            Your account is still registered for messages. Retry to restore local access on this
-            browser.
-          </p>
+          <p className="text-sm font-medium text-text-primary">{body.title}</p>
+          <p className="text-sm text-text-secondary">{body.body}</p>
         </div>
-        {ctaRow("Retry", () => {
-          setActionError(null);
-          dispatch({ type: "retry" });
-        })}
+        {ctaRow()}
         {showErrorPanel && errorPanel}
       </div>
     );
@@ -266,14 +331,10 @@ export function MessagingSetupCard({
         <div className="space-y-1">
           <p className="text-sm font-medium text-text-primary">Activate messages on this device</p>
           <p className="text-sm text-text-secondary">
-            Your account already has messages enabled. One wallet signature activates them in this
-            browser.
+            Finish activation on this browser to open your encrypted inbox here.
           </p>
         </div>
-        {ctaRow("Activate", () => {
-          setActionError(null);
-          dispatch({ type: "enable" });
-        })}
+        {ctaRow()}
         {actionError && (
           <p className="text-sm text-status-error" role="alert">
             {actionError}
@@ -299,10 +360,7 @@ export function MessagingSetupCard({
         </div>
       </div>
 
-      {ctaRow("Enable messages", () => {
-        setActionError(null);
-        dispatch({ type: "enable" });
-      })}
+      {ctaRow()}
 
       {showErrorPanel && errorPanel}
     </div>

@@ -22,7 +22,6 @@ import {
   type XmtpDm,
 } from "@/lib/messaging/adapters/xmtp-adapter";
 import { formatRelativeTime } from "@/lib/format/relative-time";
-import { setLastSeen } from "@/lib/messaging/last-seen";
 import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
@@ -51,7 +50,7 @@ function ConversationThreadBody({ conversationId }: Props) {
   useRequestLocalMessagingClient(isConnected);
   const isReady = snapshot.state === "active" && client != null;
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
-  const { conversations } = useXmtpConversations();
+  const { conversations, markConversationSeen } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -94,8 +93,8 @@ function ConversationThreadBody({ conversationId }: Props) {
   }, [client, conversationId, listPeerAddress]);
 
   useEffect(() => {
-    setLastSeen(conversationId);
-  }, [conversationId]);
+    markConversationSeen(conversationId);
+  }, [conversationId, markConversationSeen]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

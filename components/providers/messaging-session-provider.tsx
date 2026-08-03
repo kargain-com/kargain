@@ -210,7 +210,6 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
 
   const nextKey = address && isConnected ? sessionKey(address) : null;
   const [heldKey, setHeldKey] = useState<string | null>(null);
-  const [keyHeldEpoch, setKeyHeldEpoch] = useState(0);
 
   let session: MessagingSession | null = null;
 
@@ -246,15 +245,11 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
     };
   }, [nextKey]);
 
-  useEffect(() => {
-    if (!session) return;
-    setKeyHeldEpoch((n) => n + 1);
-  }, [session, nostrPrivateKey]);
-
   const snapshot = useSyncExternalStore(
     (onStoreChange) => (session ? session.subscribe(onStoreChange) : () => {}),
     () => {
-      void keyHeldEpoch;
+      // Re-read when held-key flips so enableWalletSignatures stays current.
+      void nostrPrivateKey;
       return address && isConnected && session
         ? session.getSnapshot()
         : DISCONNECTED_SNAPSHOT;

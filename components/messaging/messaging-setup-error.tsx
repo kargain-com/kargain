@@ -72,8 +72,8 @@ export function MessagingSetupError({
         )}
         {!canFreeSlot && installations !== null && (
           <p className="text-sm text-text-secondary">
-            This browser has no active messaging installation. Freeing a slot while keeping this
-            device is unavailable — revoke all devices to continue.
+            Not available on this browser — no installation to keep. Revoke all devices to continue
+            on this device.
           </p>
         )}
         <div className="flex flex-col items-start gap-2">
@@ -83,7 +83,9 @@ export function MessagingSetupError({
             disabled={busy || !canFreeSlot}
             onClick={() => void onFreeDeviceSlot()}
           >
-            Free a device slot
+            {canFreeSlot
+              ? "Free a device slot"
+              : "Free a device slot (needs this browser's installation)"}
           </button>
           <button
             type="button"

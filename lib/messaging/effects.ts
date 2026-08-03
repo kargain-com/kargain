@@ -1,5 +1,9 @@
 import type { Clock, MessagingSessionPorts, SessionCommand, XmtpLocalClient } from "./ports";
-import { BUILD_DEADLINE_MS, RECONCILING_HINT_MS, REVOKE_ALL_COOLDOWN_MS } from "./ports";
+import {
+  BUILD_DEADLINE_MS,
+  RECONCILING_HINT_MS,
+  REVOKE_ALL_COOLDOWN_MS,
+} from "./session-budgets";
 import {
   createInitialMachineState,
   projectSnapshot,

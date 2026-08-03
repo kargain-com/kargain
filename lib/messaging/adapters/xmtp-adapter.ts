@@ -166,6 +166,151 @@ export function dateToSentAfterNs(date: Date): bigint {
   return BigInt(date.getTime()) * 1_000_000n;
 }
 
+/** Endable stream handle owned by the adapter registry. */
+type RegisteredStream = {
+  end: () => Promise<void>;
+};
+
+const streamsByClient = new Map<object, Set<RegisteredStream>>();
+let liveInboxStreamCount = 0;
+
+/** Test/teardown invariant — inbox delivery streams still open. */
+export function getLiveInboxStreamCount(): number {
+  return liveInboxStreamCount;
+}
+
+function registerClientStream(client: object, stream: RegisteredStream): void {
+  let set = streamsByClient.get(client);
+  if (!set) {
+    set = new Set();
+    streamsByClient.set(client, set);
+  }
+  set.add(stream);
+  liveInboxStreamCount += 1;
+}
+
+function unregisterClientStream(client: object, stream: RegisteredStream): void {
+  const set = streamsByClient.get(client);
+  if (!set || !set.has(stream)) return;
+  set.delete(stream);
+  liveInboxStreamCount = Math.max(0, liveInboxStreamCount - 1);
+  if (set.size === 0) streamsByClient.delete(client);
+}
+
+async function endAllStreamsForClient(client: object): Promise<void> {
+  const set = streamsByClient.get(client);
+  if (!set) return;
+  streamsByClient.delete(client);
+  const streams = [...set];
+  set.clear();
+  await Promise.all(
+    streams.map(async (stream) => {
+      try {
+        await stream.end();
+      } catch {
+        // Teardown must not fail closeLocal.
+      }
+      liveInboxStreamCount = Math.max(0, liveInboxStreamCount - 1);
+    }),
+  );
+}
+
+export type InboxDeliveryHandlers = {
+  onConversation: () => void;
+  onMessage: (conversationId: string) => void;
+  /** Fired at most once per handle when a stream fails or errors. */
+  onFail: () => void;
+};
+
+export type InboxDeliveryHandle = {
+  end: () => Promise<void>;
+};
+
+/**
+ * Open DM conversation + all-DM-message streams for inbox delivery.
+ * Consent filter omitted so behaviour matches unfiltered `listDms()` (P9 owns Allowed).
+ * Streams are registered against `client` and ended by `closeLocal` / `handle.end()`.
+ */
+export async function openInboxDeliveryStreams(
+  client: XmtpSdkClient,
+  handlers: InboxDeliveryHandlers,
+): Promise<InboxDeliveryHandle> {
+  let failed = false;
+  let ended = false;
+  const failOnce = () => {
+    if (failed || ended) return;
+    failed = true;
+    handlers.onFail();
+  };
+
+  const dmStream = await client.conversations.streamDms({
+    onValue: () => {
+      if (ended) return;
+      handlers.onConversation();
+    },
+    onFail: failOnce,
+    onError: failOnce,
+  });
+
+  const msgStream = await client.conversations.streamAllDmMessages({
+    onValue: (message) => {
+      if (ended) return;
+      handlers.onMessage(message.conversationId);
+    },
+    onFail: failOnce,
+    onError: failOnce,
+  });
+
+  const registered: RegisteredStream[] = [
+    {
+      end: async () => {
+        await dmStream.end();
+      },
+    },
+    {
+      end: async () => {
+        await msgStream.end();
+      },
+    },
+  ];
+  for (const stream of registered) {
+    registerClientStream(client, stream);
+  }
+
+  return {
+    async end() {
+      if (ended) return;
+      ended = true;
+      for (const stream of registered) {
+        unregisterClientStream(client, stream);
+        try {
+          await stream.end();
+        } catch {
+          // Idempotent end.
+        }
+      }
+    },
+  };
+}
+
+/**
+ * Protocol read receipt. Does not touch localStorage.
+ * Returns ok:false when the conversation is missing or the send fails.
+ */
+export async function markConversationRead(
+  client: XmtpSdkClient,
+  conversationId: string,
+): Promise<{ ok: true } | { ok: false }> {
+  try {
+    const conversation = await client.conversations.getConversationById(conversationId);
+    if (!conversation) return { ok: false };
+    await conversation.sendReadReceipt();
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function openDmWithPeer(
   client: XmtpSdkClient,
   peerAddress: `0x${string}`,
@@ -318,11 +463,14 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
     },
 
     closeLocal(client) {
-      try {
-        unbrandClient(client).close();
-      } catch {
-        // Already shut down or worker dead — teardown must not fail the session.
-      }
+      const raw = unbrandClient(client);
+      void endAllStreamsForClient(raw).finally(() => {
+        try {
+          raw.close();
+        } catch {
+          // Already shut down or worker dead — teardown must not fail the session.
+        }
+      });
     },
 
     async ensureDurableStorage(signal) {

@@ -442,32 +442,35 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write core:
 
 ### 4.12 Messages
 
-Implementation: [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) (sole session owner — sync `registry.acquire` during render), [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (context reader), [`session-registry.ts`](../lib/messaging/session-registry.ts) (refcount + deferred destroy), [`session-store.ts`](../lib/messaging/session-store.ts), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
+Implementation: [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) (sole session owner — sync `registry.acquire` during render), [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (context reader), [`session-registry.ts`](../lib/messaging/session-registry.ts) (refcount + deferred destroy), [`session-store.ts`](../lib/messaging/session-store.ts), [`session-budgets.ts`](../lib/messaging/session-budgets.ts) (session wall-clock budgets), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
 
 **Account model:** Wallet connect = account created. **Enable messages** = XMTP inbox create plus Nostr intent publish (wallet signature count on `enableWalletSignatures` — unlock + attest + create when cold; fewer when key/attestation already held). **Canonical truth:** Nostr `messagesEnabled` intent ([`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read; unknown ≠ absent) → local build/create (registration derived) → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity). `publiclyReachable` = intent known and published true. Full revoke publishes intent false **before** revoke so peers never see reachable with zero installations. Intent publish obtains the Nostr key only through [`NostrKeyProvider`](../hooks/use-nostr-key.tsx) (`obtainKey` / `isKeyHeld`) — never a second `getOrCreateNostrKey` on the messaging path. Declined wallet signature → `signature_declined` (retry-inviting); hard failure → `publish_failed`.
 
 **SessionSnapshot → surfaces**
 
+Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snapshot-ui.ts) (`snapshot.next` → command + fixed label). Surfaces must not invent a different command than `next`. Secondary **Revoke all devices** stays allowlisted (`SECONDARY_REVOKE_ALL_COMMAND`) — not projected as `next`.
+
 | Snapshot | UI |
 |----------|-----|
 | `disconnected` | No wallet — setup surfaces hidden |
 | `unsupported` | Contract wallet — messaging unavailable |
-| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published; body uses `enableWalletSignatures` count |
+| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published; body includes signature-count sentence only when `enableWalletSignatures` is present (never invent a default count) |
 | `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings; same signature-cost field when re-enabling |
 | `reconciling` | Spinner beside CTA (build / create / publish / revoke / intent) — includes unanswered intent (never onboarding) |
-| `needs_signature` | Device activation card (`not_registered` \| `build_failed`) |
+| `needs_signature` | Device activation card (`not_registered` \| `build_failed`); primary from `next` |
 | `active` | DMs available when a local client exists; without client demand, dormant `active` (intent on, `publiclyReachable` true) — not setup-needed |
-| `active` + `publishError` / `publishPending` | Inline publish retry in settings (no second XMTP signature) |
-| `error` | Recovery card (`MessagingSetupError`); `opfs_lock` → close other tab; `installation_limit` → free device slots |
+| `active` + `publishError` / `publishPending` / `next: "retry"` | Actionable publish-retry chrome on setup card (account / seller / karpro) + settings Retry — never silenced; no second XMTP signature |
+| `active` + `!publiclyReachable` (setup complete) | Seller own listing: Level B disclosure only — never a commerce gate |
+| `error` | Recovery card (`MessagingSetupError`); `opfs_lock` names other tab/window, primary **Cancel** only (never Retry); `installation_limit` → free device slots |
 
 | Element | Rule |
 |---------|------|
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
 | Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, explanation from ledger `credits[]` (one line per credit origin — amount + reason; multi-origin balances list every credit), `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab; body is **this credit’s** amount + reason only |
-| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable` (= intent published true); toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`). Does **not** raise `clientDemand` / load the SDK |
-| Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
-| KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until `messagingReadyForChecklist(snapshot)` |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable` (= intent published true); toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → Retry from `primaryActionFromSnapshot` (`next: "retry"`). Does **not** raise `clientDemand` / load the SDK |
+| Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — setup card when incomplete; else factual unreachable disclosure when `active && !publiclyReachable`; never blocks list/buy/edit |
+| KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` while `needsMessagingSetupCard`; checklist `messagingReadyForChecklist` false until reachable without publish failure |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
 | Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends listing context before navigating to `/messages/{id}` |
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
@@ -476,14 +479,17 @@ Implementation: [`MessagingSessionProvider`](../components/providers/messaging-s
 | Lazy client | Build/create require `clientDemand` (`requestLocalClient` / `releaseLocalClient`); demand from `/messages`, setup/enable, and DM open — not from conversations provider or settings alone. Registration is derived from build/create (`unknown` \| `registered` \| `unregistered`) — no session probe |
 | XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (runs only when `client` present) |
 | Client lifecycle | Sole abandon owner = effects `abandonOwnedClient` (incl. address change with `alreadyDetached`); clear-then-defer `clock.sleep(0)`. Orphans that never entered state close immediately. |
-| Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (no UI in this phase — P7). |
-| Setup card | `enable` / `disable` / `resetIdentity` / `revokeAllInstallations` / `retry` / `cancel` commands; CTA disabled while `isUserOpInFlight(snapshot)` or `active` / `unsupported` / `disconnected` |
-| Setup card errors | Primary user copy `text-status-error`; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
-| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` (revoke-others → create; disabled when this browser has no current installation). Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
+| Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (UI deferred with budgets phase). |
+| Setup card | Primary CTA = `primaryActionFromSnapshot` only; idle `active` without `next` may hide; actionable `active` publish states stay visible. CTA disabled while `isUserOpInFlight(snapshot)` |
+| Setup card errors | Primary user copy `text-status-error`; no “still registered” claims on timeout/generic error; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
+| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` from contract. Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
 | Provider mount | [`MessagingNotificationsProviders`](../components/providers/messaging-notifications-providers.tsx) always mounted in [`app-providers.tsx`](../components/providers/app-providers.tsx); guest hooks no-op until wallet connected |
 | XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; idle `preloadXmtp` when `shouldIdleWarmXmtp` (intent known true via `publiclyReachable`, no local client) — never unconditional on wallet connect |
-| Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect |
+| Offline catch-up | Streams deliver new conversations/messages; explicit manual refresh and one-shot stream-failure recovery re-sync. [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) when unread increases after recovery/manual reconnect — no 60s interval or focus/visibility poll |
+| Delivery | Adapter-owned `streamDms` + `streamAllDmMessages` (consent filter omitted until P9); per-thread `conversation.stream` unchanged. `closeLocal` ends registered streams before client close |
+| Read state | Protocol `sendReadReceipt` / `lastReadTimes` — no localStorage last-seen. Opening a thread clears unread locally and sends a receipt; failed receipts persist via `messaging:pending-receipts:` cache key (hydrate on client attach; flush on every sync) |
+| Summary build | One batched `getInboxStates` for all peers |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |
 | Peer bubble | `bg-bg-surface text-text-primary` |
@@ -1599,4 +1605,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.126 (August 2026 — §4.11/§4.12 P6 messaging consumes Nostr identity owner; pin/rotation coupling). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.129 (August 2026 — §4.12 session wall clocks in `session-budgets`). Update when tokens, app shell, or component contracts change.*

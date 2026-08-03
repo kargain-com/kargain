@@ -9,10 +9,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import {
-  BUILD_DEADLINE_MS,
-  type SessionSnapshot,
-} from "../lib/messaging/ports.ts";
+import type { SessionSnapshot } from "../lib/messaging/ports.ts";
+import { BUILD_DEADLINE_MS } from "../lib/messaging/session-budgets.ts";
 import { snapshotHasActionableNext } from "../lib/messaging/machine.ts";
 import {
   advanceAndSettle,
@@ -339,7 +337,7 @@ describe("messaging contract — scenarios", () => {
       "../lib/messaging/adapters/cache-adapter.ts"
     );
     const { getMessagingXmtpEnv } = await import("../lib/messaging/xmtp-env.ts");
-    const { REVOKE_ALL_COOLDOWN_MS } = await import("../lib/messaging/ports.ts");
+    const { REVOKE_ALL_COOLDOWN_MS } = await import("../lib/messaging/session-budgets.ts");
     const { TEST_ADDRESS } = await import("./messaging-contract-harness.ts");
     const env = getMessagingXmtpEnv();
     clearRevokeAllAt(env, TEST_ADDRESS);
