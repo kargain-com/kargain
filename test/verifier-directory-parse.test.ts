@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseVerifierDirectoryEntry } from "../app/actions/verifier-directory.ts";
+import { parseVerifierDirectoryEntry } from "../lib/verifier/parse-directory-entry.ts";
 
 describe("parseVerifierDirectoryEntry", () => {
   it("keeps chainId on a valid row", () => {

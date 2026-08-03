@@ -10,10 +10,8 @@ import {
   useWriteContract,
 } from "wagmi";
 
-import {
-  getVerifierDirectory,
-  type VerifierDirectoryEntry,
-} from "@/app/actions/verifier-directory";
+import { getVerifierDirectory } from "@/app/actions/verifier-directory";
+import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
 import { MandateCompensationFields } from "@/components/commerce/mandate-compensation-fields";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";

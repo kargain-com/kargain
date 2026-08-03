@@ -1,4 +1,4 @@
-import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
+import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { showLightningChip } from "@/lib/verifier/payment-methods";

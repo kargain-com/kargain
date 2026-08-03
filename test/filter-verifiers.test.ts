@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { VerifierDirectoryEntry } from "../app/actions/verifier-directory.ts";
+import type { VerifierDirectoryEntry } from "../lib/verifier/parse-directory-entry.ts";
 import {
   filterVerifiers,
   formatVerifierDirectoryResultCount,

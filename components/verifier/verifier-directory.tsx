@@ -4,7 +4,7 @@ import { ChevronDownIcon, CloseIcon, SearchIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
-import type { VerifierDirectoryEntry } from "@/app/actions/verifier-directory";
+import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
 import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
