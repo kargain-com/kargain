@@ -14,6 +14,17 @@ export function needsMessagingSetupCard(snapshot: SessionSnapshot): boolean {
   }
 }
 
+/**
+ * Idle-warm the XMTP SDK when intent is known true and this device has no client yet.
+ * Uses the same publiclyReachable fact as the settings switch (intent === true).
+ */
+export function shouldIdleWarmXmtp(input: {
+  publiclyReachable: boolean;
+  hasClient: boolean;
+}): boolean {
+  return input.publiclyReachable && !input.hasClient;
+}
+
 export function messagingReadyForChecklist(snapshot: SessionSnapshot): boolean {
   if (snapshot.state === "disabled" && snapshot.intent === "absent") return false;
   if (snapshot.state === "needs_signature") return false;

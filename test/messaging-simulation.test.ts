@@ -83,20 +83,9 @@ describe("messaging simulation — seeded invariants", () => {
       let networkRegistered = false;
       let buildOk = true;
       let publishOk = true;
-      let hangProbe = false;
       let hangBuild = false;
 
       const xmtp = createFakeXmtpPort({
-        probeRegistration: async (_a, signal) => {
-          inFlight += 1;
-          maxInFlight = Math.max(maxInFlight, inFlight);
-          try {
-            if (hangProbe) return hangUntilAbort(signal);
-            return { registered: networkRegistered };
-          } finally {
-            inFlight -= 1;
-          }
-        },
         buildLocal: async (_a, signal) => {
           inFlight += 1;
           maxInFlight = Math.max(maxInFlight, inFlight);
@@ -113,6 +102,7 @@ describe("messaging simulation — seeded invariants", () => {
           inFlight += 1;
           maxInFlight = Math.max(maxInFlight, inFlight);
           try {
+            networkRegistered = true;
             return { ok: true, client: fakeClient };
           } finally {
             inFlight -= 1;
@@ -127,7 +117,7 @@ describe("messaging simulation — seeded invariants", () => {
       });
 
       const nostr = createFakeNostrPolicyPort({
-        readIntent: async () => intent,
+        readIntent: async () => ({ status: "answered", intent }),
         publishIntent: async (_a, enabled) => {
           if (!publishOk) return { ok: false, reason: "publish_failed" };
           if (enabled) intent = true;
@@ -139,7 +129,6 @@ describe("messaging simulation — seeded invariants", () => {
       const wallet = createFakeWalletPort();
       const { session, xmtp: sessionXmtp } = openSession(clock, {
         xmtp: {
-          probeRegistration: xmtp.probeRegistration.bind(xmtp),
           buildLocal: xmtp.buildLocal.bind(xmtp),
           createWithSigner: xmtp.createWithSigner.bind(xmtp),
           closeLocal: xmtp.closeLocal.bind(xmtp),
@@ -163,7 +152,6 @@ describe("messaging simulation — seeded invariants", () => {
         if (rng() < 0.08) networkRegistered = rng() < 0.6;
         if (rng() < 0.05) buildOk = !buildOk;
         if (rng() < 0.05) publishOk = !publishOk;
-        if (rng() < 0.03) hangProbe = !hangProbe;
         if (rng() < 0.03) hangBuild = !hangBuild;
 
         const action = pickAction(rng);

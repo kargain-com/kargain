@@ -3,8 +3,10 @@
 import { getAddress, type Address } from "viem";
 import type { WalletClient } from "viem";
 
-import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
-import { publishNostrProfile } from "@/lib/nostr/profile";
+import {
+  publishMessagingIntent,
+  readMessagingIntent,
+} from "@/lib/nostr/messaging-intent";
 import type { NostrPolicyPort } from "../ports";
 
 export type CreateNostrPolicyAdapterInput = {
@@ -15,11 +17,7 @@ export type CreateNostrPolicyAdapterInput = {
 export function createNostrPolicyAdapter(input: CreateNostrPolicyAdapterInput): NostrPolicyPort {
   return {
     async readIntent(address) {
-      const profile = await resolveAttestedProfile(getAddress(address as Address));
-      if (!profile) return null;
-      if (profile.messagesEnabled === true) return true;
-      if (profile.messagesEnabled === false) return false;
-      return null;
+      return readMessagingIntent(getAddress(address as Address));
     },
 
     async publishIntent(address, enabled) {
@@ -29,9 +27,9 @@ export function createNostrPolicyAdapter(input: CreateNostrPolicyAdapterInput): 
         return { ok: false, reason: "publish_failed" };
       }
 
-      const ok = await publishNostrProfile(
-        { messagesEnabled: enabled },
-        signerAddress,
+      const ok = await publishMessagingIntent(
+        getAddress(address as Address),
+        enabled,
         {
           signMessage: (msg) =>
             walletClient.signMessage({ account: signerAddress, message: msg }),

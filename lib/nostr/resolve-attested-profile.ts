@@ -2,19 +2,38 @@ import type { Event, Filter } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 import type { Address } from "viem";
 
+import {
+  fetchRelayCoverage,
+  getDefaultNostrPool,
+  type AppEventQueryPool,
+} from "@/lib/nostr/app-event-store";
+import {
+  loadCachedPubkeyBinding,
+  saveCachedPubkey,
+  type CachedPubkeyBinding,
+} from "@/lib/nostr/nostr-pubkey-cache";
 import { parseProfileContent, type NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { verifyProfileAttestation } from "@/lib/nostr/profile-attestation";
-import { NOSTR_RELAYS } from "@/lib/nostr/relays";
 
-const DEFAULT_MAX_WAIT_MS = 3000;
-const MAX_PROFILE_BATCH_LIMIT = 500;
-const KIND0_BY_TAG_LIMIT = 20;
+/**
+ * Forward skew for kind:0 `created_at` on read.
+ * Far-future plants are the cheap eclipse form; NTP/mobile skew is usually
+ * seconds–minutes. 1h leaves margin for wrong clocks without leaving a day-long
+ * attack window. Past events are unbounded (profiles are naturally old).
+ */
+export const ATTESTED_PROFILE_CREATED_AT_SKEW_SECONDS = 3600;
 
-export type AttestedProfileQueryPool = Pick<SimplePool, "querySync">;
+/** Per-address coverage / subscribe limit — never shared across a page. */
+export const KIND0_PER_ADDRESS_LIMIT = 20;
+
+const DEFAULT_NOW_SEC = () => Math.floor(Date.now() / 1000);
+
+export type AttestedProfileQueryPool = AppEventQueryPool;
 
 export type ResolveAttestedProfileOptions = {
   pool?: AttestedProfileQueryPool;
-  maxWait?: number;
+  /** Test / clock injection — unix seconds. */
+  nowSec?: number;
 };
 
 export type VerifiedProfileEntry = {
@@ -29,13 +48,30 @@ export type AttestedProfileBatchState = {
   byAddress: Map<string, VerifiedProfileEntry>;
 };
 
+export type ResolvedAttestedProfile = {
+  profile: NostrProfileData;
+  pubkey: string;
+  createdAt: number;
+  eventId: string;
+};
+
 let serverPoolInstance: SimplePool | null = null;
 
-function getServerPool(): SimplePool {
+/** @internal retained for server cold-start without browser pool */
+function getServerPool(): AppEventQueryPool {
   if (!serverPoolInstance) {
     serverPoolInstance = new SimplePool();
   }
   return serverPoolInstance;
+}
+
+function resolvePool(options?: ResolveAttestedProfileOptions): AppEventQueryPool {
+  if (options?.pool) return options.pool;
+  try {
+    return getDefaultNostrPool();
+  } catch {
+    return getServerPool();
+  }
 }
 
 function toWalletAddress(address: Address | `0x${string}`): `0x${string}` {
@@ -44,6 +80,15 @@ function toWalletAddress(address: Address | `0x${string}`): `0x${string}` {
 
 export function normalizeProfileAddress(address: string): string {
   return address.trim().toLowerCase();
+}
+
+/** True when `created_at` is not beyond `now + skew` (past always allowed). */
+export function isCreatedAtWithinReadSkew(
+  createdAt: number,
+  nowSec: number = DEFAULT_NOW_SEC(),
+  skewSeconds: number = ATTESTED_PROFILE_CREATED_AT_SKEW_SECONDS,
+): boolean {
+  return createdAt <= nowSec + skewSeconds;
 }
 
 function ethereumAddressFromEvent(event: Pick<Event, "tags">): string | null {
@@ -56,18 +101,23 @@ function ethereumAddressFromEvent(event: Pick<Event, "tags">): string | null {
   return null;
 }
 
-/** Single choke point for NIP-39 ethereum identity tag queries on kind:0. */
-function buildAttestedProfileFilter(addresses: Address[]): Filter {
-  const tags = [...new Set(addresses.map((a) => `ethereum:${a.toLowerCase()}`))];
+/** Single-address NIP-39 `#i` filter — sole owner of identity-tag queries. */
+export function attestedProfileFilterForAddress(address: Address | string): Filter {
+  const tag = `ethereum:${normalizeProfileAddress(address)}`;
   return {
     kinds: [0],
-    "#i": tags,
-    limit: Math.min(Math.max(tags.length, 1) * 2, MAX_PROFILE_BATCH_LIMIT),
+    "#i": [tag],
+    limit: KIND0_PER_ADDRESS_LIMIT,
   };
 }
 
-export function attestedProfileFilterForAddresses(addresses: Address[]): Filter {
-  return buildAttestedProfileFilter(addresses);
+/** Author-keyed filter once pubkey is known (cannot be eclipsed by `#i` plants). */
+export function attestedProfileFilterForAuthor(pubkey: string): Filter {
+  return {
+    kinds: [0],
+    authors: [pubkey],
+    limit: KIND0_PER_ADDRESS_LIMIT,
+  };
 }
 
 export function createEmptyAttestedProfileState(): AttestedProfileBatchState {
@@ -98,45 +148,159 @@ export function attestedProfileMapFromState(
   return result;
 }
 
-async function fetchKind0EventsByEthereumTag(
-  address: `0x${string}`,
-  pool: AttestedProfileQueryPool,
-  maxWait: number,
-): Promise<Event[]> {
-  const tag = `ethereum:${address.toLowerCase()}`;
-  return pool.querySync(
-    [...NOSTR_RELAYS],
-    { kinds: [0], "#i": [tag], limit: KIND0_BY_TAG_LIMIT },
-    { maxWait },
-  );
+function filterEventsBySkew(events: Event[], nowSec: number): Event[] {
+  return events.filter((e) => isCreatedAtWithinReadSkew(e.created_at, nowSec));
 }
 
-async function pickNewestVerifiedProfile(
+/**
+ * Pre-P5b eclipse oracle: newest-first sort, take first `limit` events, then
+ * verify-walk. Used only in tests to prove the attack fails against old code.
+ */
+export function preP5bEclipseOraclePick(
   events: Event[],
-  expectedAddress?: string,
-): Promise<{ event: Event; profile: NostrProfileData } | null> {
-  const sorted = [...events].sort((a, b) => b.created_at - a.created_at);
-  for (const event of sorted) {
-    const address = expectedAddress ?? ethereumAddressFromEvent(event);
-    if (!address) continue;
+  limit: number,
+): Event[] {
+  return [...events].sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+}
 
-    const verified = await verifyProfileAttestation(
-      { id: event.id, pubkey: event.pubkey, content: event.content },
-      address as `0x${string}`,
-    );
+type PickedVerified = {
+  event: Event;
+  profile: NostrProfileData;
+};
+
+async function verifyEventForAddress(
+  event: Event,
+  expectedAddress: string,
+): Promise<PickedVerified | null> {
+  const address = ethereumAddressFromEvent(event);
+  if (!address || address !== expectedAddress) return null;
+
+  const verified = await verifyProfileAttestation(
+    { id: event.id, pubkey: event.pubkey, content: event.content },
+    address as `0x${string}`,
+  );
+  if (!verified) return null;
+
+  const parsed = parseProfileContent(event.content);
+  return { event, profile: parsed ?? {} };
+}
+
+/**
+ * Pin-aware pick among skew-filtered events.
+ * - Prefer newest verifying event from the pinned pubkey.
+ * - A verifying challenger with created_at > boundCreatedAt replaces the pin.
+ * - Unverified challengers never displace the pin.
+ */
+async function pickWithPin(
+  events: Event[],
+  expectedAddress: string,
+  pin: CachedPubkeyBinding | null,
+  nowSec: number,
+): Promise<{ picked: PickedVerified; nextPin: CachedPubkeyBinding } | null> {
+  const skewed = filterEventsBySkew(events, nowSec);
+  const sorted = [...skewed].sort((a, b) => b.created_at - a.created_at);
+
+  let bestPinned: PickedVerified | null = null;
+  let bestChallenger: PickedVerified | null = null;
+
+  for (const event of sorted) {
+    const verified = await verifyEventForAddress(event, expectedAddress);
     if (!verified) continue;
 
-    const parsed = parseProfileContent(event.content);
-    return { event, profile: parsed ?? {} };
+    if (pin && verified.event.pubkey === pin.pubkey) {
+      if (!bestPinned) bestPinned = verified;
+      continue;
+    }
+
+    if (pin) {
+      if (verified.event.created_at > pin.boundCreatedAt) {
+        if (!bestChallenger || verified.event.created_at > bestChallenger.event.created_at) {
+          bestChallenger = verified;
+        }
+      }
+      continue;
+    }
+
+    // No pin yet — first verifying (newest-first walk) wins.
+    const nextPin: CachedPubkeyBinding = {
+      pubkey: verified.event.pubkey,
+      boundCreatedAt: verified.event.created_at,
+    };
+    return { picked: verified, nextPin };
   }
+
+  if (bestChallenger) {
+    const nextPin: CachedPubkeyBinding = {
+      pubkey: bestChallenger.event.pubkey,
+      boundCreatedAt: bestChallenger.event.created_at,
+    };
+    return { picked: bestChallenger, nextPin };
+  }
+
+  if (bestPinned) {
+    return {
+      picked: bestPinned,
+      nextPin: {
+        pubkey: bestPinned.event.pubkey,
+        boundCreatedAt: Math.max(pin?.boundCreatedAt ?? 0, bestPinned.event.created_at),
+      },
+    };
+  }
+
   return null;
 }
 
-/** Verify a subscription event; returns null when attestation fails (fail-closed). */
+async function coverageEvents(
+  pool: AppEventQueryPool,
+  filter: Filter,
+): Promise<Event[]> {
+  const coverage = await fetchRelayCoverage(pool, filter);
+  if (coverage.status === "unanswered") return [];
+  return coverage.events;
+}
+
+async function resolveAddressInternal(
+  walletAddress: Address | `0x${string}`,
+  options?: ResolveAttestedProfileOptions,
+): Promise<ResolvedAttestedProfile | null> {
+  const address = toWalletAddress(walletAddress);
+  const expected = normalizeProfileAddress(address);
+  const pool = resolvePool(options);
+  const nowSec = options?.nowSec ?? DEFAULT_NOW_SEC();
+  const pin = loadCachedPubkeyBinding(address);
+
+  let events: Event[];
+  if (pin?.pubkey) {
+    events = await coverageEvents(pool, attestedProfileFilterForAuthor(pin.pubkey));
+    // Author miss (key cached, no events yet) → discovery; otherwise no `#i`.
+    if (events.length === 0) {
+      events = await coverageEvents(pool, attestedProfileFilterForAddress(address));
+    }
+  } else {
+    events = await coverageEvents(pool, attestedProfileFilterForAddress(address));
+  }
+
+  const result = await pickWithPin(events, expected, pin, nowSec);
+  if (!result) return null;
+
+  saveCachedPubkey(address, result.nextPin.pubkey, result.nextPin.boundCreatedAt);
+
+  return {
+    profile: result.picked.profile,
+    pubkey: result.picked.event.pubkey,
+    createdAt: result.picked.event.created_at,
+    eventId: result.picked.event.id,
+  };
+}
+
+/** Verify a subscription event; returns null when attestation fails or skew exceeded. */
 export async function verifyIncomingProfileEvent(
   event: Pick<Event, "id" | "pubkey" | "content" | "created_at" | "tags">,
+  nowSec: number = DEFAULT_NOW_SEC(),
 ): Promise<VerifiedProfileEntry | null> {
   try {
+    if (!isCreatedAtWithinReadSkew(event.created_at, nowSec)) return null;
+
     const address = ethereumAddressFromEvent(event);
     if (!address) return null;
 
@@ -159,27 +323,42 @@ export async function verifyIncomingProfileEvent(
   }
 }
 
+/**
+ * After a live event verifies, update the pin per the challenge rule.
+ * Unverified events must not call this.
+ */
+export function recordVerifiedBindingFromEntry(entry: VerifiedProfileEntry): void {
+  const address = entry.address as `0x${string}`;
+  const pin = loadCachedPubkeyBinding(address);
+  if (!pin) {
+    saveCachedPubkey(address, entry.pubkey, entry.createdAt);
+    return;
+  }
+  if (entry.pubkey === pin.pubkey) {
+    if (entry.createdAt > pin.boundCreatedAt) {
+      saveCachedPubkey(address, entry.pubkey, entry.createdAt);
+    }
+    return;
+  }
+  if (entry.createdAt > pin.boundCreatedAt) {
+    saveCachedPubkey(address, entry.pubkey, entry.createdAt);
+  }
+}
+
 /** Newest attested kind:0 profile for a wallet address, or null when none verify. */
 export async function resolveAttestedProfile(
   walletAddress: Address | `0x${string}`,
   options?: ResolveAttestedProfileOptions,
 ): Promise<NostrProfileData | null> {
   try {
-    const address = toWalletAddress(walletAddress);
-    const pool = options?.pool ?? getServerPool();
-    const events = await fetchKind0EventsByEthereumTag(
-      address,
-      pool,
-      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
-    );
-    const picked = await pickNewestVerifiedProfile(events, normalizeProfileAddress(address));
-    return picked?.profile ?? null;
+    const resolved = await resolveAddressInternal(walletAddress, options);
+    return resolved?.profile ?? null;
   } catch {
     return null;
   }
 }
 
-/** Batch variant of resolveAttestedProfile — one entry per requested address. */
+/** Batch variant — independent per-address coverage (no shared limit). */
 export async function resolveAttestedProfiles(
   addresses: Address[],
   options?: ResolveAttestedProfileOptions,
@@ -188,38 +367,21 @@ export async function resolveAttestedProfiles(
   const result = new Map<string, NostrProfileData | null>();
   if (normalized.length === 0) return result;
 
-  try {
-    const pool = options?.pool ?? getServerPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      buildAttestedProfileFilter(addresses),
-      { maxWait: options?.maxWait ?? DEFAULT_MAX_WAIT_MS },
-    );
-
-    const eventsByAddress = new Map<string, Event[]>();
-    for (const event of events) {
-      const addr = ethereumAddressFromEvent(event);
-      if (!addr) continue;
-      const list = eventsByAddress.get(addr) ?? [];
-      list.push(event);
-      eventsByAddress.set(addr, list);
-    }
-
-    for (const addr of normalized) {
-      const candidates = eventsByAddress.get(addr) ?? [];
-      const picked = await pickNewestVerifiedProfile(candidates, addr);
-      result.set(addr, picked?.profile ?? null);
-    }
-  } catch {
-    for (const addr of normalized) {
-      result.set(addr, null);
-    }
-  }
+  await Promise.all(
+    normalized.map(async (addr) => {
+      try {
+        const resolved = await resolveAddressInternal(addr as `0x${string}`, options);
+        result.set(addr, resolved?.profile ?? null);
+      } catch {
+        result.set(addr, null);
+      }
+    }),
+  );
 
   return result;
 }
 
-/** Server-safe single-address resolver (internal SimplePool). */
+/** Server-safe single-address resolver. */
 export async function resolveAttestedProfileServer(
   address: `0x${string}`,
   options?: Omit<ResolveAttestedProfileOptions, "pool">,
@@ -236,33 +398,16 @@ export async function attestedPubkeysForAddresses(
   const result = new Map<string, string | null>();
   if (normalized.length === 0) return result;
 
-  try {
-    const pool = options?.pool ?? getServerPool();
-    const events = await pool.querySync(
-      [...NOSTR_RELAYS],
-      buildAttestedProfileFilter(addresses),
-      { maxWait: options?.maxWait ?? DEFAULT_MAX_WAIT_MS },
-    );
-
-    const eventsByAddress = new Map<string, Event[]>();
-    for (const event of events) {
-      const addr = ethereumAddressFromEvent(event);
-      if (!addr) continue;
-      const list = eventsByAddress.get(addr) ?? [];
-      list.push(event);
-      eventsByAddress.set(addr, list);
-    }
-
-    for (const addr of normalized) {
-      const candidates = eventsByAddress.get(addr) ?? [];
-      const picked = await pickNewestVerifiedProfile(candidates, addr);
-      result.set(addr, picked?.event.pubkey ?? null);
-    }
-  } catch {
-    for (const addr of normalized) {
-      result.set(addr, null);
-    }
-  }
+  await Promise.all(
+    normalized.map(async (addr) => {
+      try {
+        const resolved = await resolveAddressInternal(addr as `0x${string}`, options);
+        result.set(addr, resolved?.pubkey ?? null);
+      } catch {
+        result.set(addr, null);
+      }
+    }),
+  );
 
   return result;
 }
@@ -273,14 +418,8 @@ export async function attestedPubkeyForAddress(
   options?: ResolveAttestedProfileOptions,
 ): Promise<string | null> {
   try {
-    const pool = options?.pool ?? getServerPool();
-    const events = await fetchKind0EventsByEthereumTag(
-      address,
-      pool,
-      options?.maxWait ?? DEFAULT_MAX_WAIT_MS,
-    );
-    const picked = await pickNewestVerifiedProfile(events, normalizeProfileAddress(address));
-    return picked?.event.pubkey ?? null;
+    const resolved = await resolveAddressInternal(address, options);
+    return resolved?.pubkey ?? null;
   } catch {
     return null;
   }

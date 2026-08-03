@@ -1,6 +1,18 @@
 "use client";
 
+/**
+ * Memoises a *verified* address→pubkey binding (self or peer).
+ * Not a trust store: cold cache must produce the same outcome as warm, only slower.
+ * Write only after attestation verification succeeds (or the local key is derived).
+ */
+
 const PUBKEY_CACHE_PREFIX = "kargain_nostr_pubkey_v1:";
+
+export type CachedPubkeyBinding = {
+  pubkey: string;
+  /** `created_at` of the verifying event that established the pin (0 if key-derived only). */
+  boundCreatedAt: number;
+};
 
 function cacheKey(address: `0x${string}`): string {
   return `${PUBKEY_CACHE_PREFIX}${address.toLowerCase()}`;
@@ -10,17 +22,63 @@ function requireBrowser(): boolean {
   return typeof window !== "undefined" && Boolean(window.localStorage);
 }
 
-/** Load cached Nostr pubkey for a wallet (public metadata only). */
-export function loadCachedPubkey(address: `0x${string}`): string | null {
-  if (!requireBrowser()) return null;
-  const raw = window.localStorage.getItem(cacheKey(address));
-  return raw?.trim() ? raw.trim() : null;
+function parseBinding(raw: string): CachedPubkeyBinding | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (
+        parsed != null &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as { pubkey?: unknown }).pubkey === "string" &&
+        typeof (parsed as { boundCreatedAt?: unknown }).boundCreatedAt === "number"
+      ) {
+        const pubkey = (parsed as { pubkey: string }).pubkey.trim();
+        const boundCreatedAt = (parsed as { boundCreatedAt: number }).boundCreatedAt;
+        if (!pubkey) return null;
+        return { pubkey, boundCreatedAt };
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  // Legacy plain-pubkey entries (pre-P5b).
+  return { pubkey: trimmed, boundCreatedAt: 0 };
 }
 
-/** Persist Nostr pubkey after first successful key link. */
-export function saveCachedPubkey(address: `0x${string}`, pubkey: string): void {
+/** Load full binding, or null when absent / SSR. */
+export function loadCachedPubkeyBinding(
+  address: `0x${string}`,
+): CachedPubkeyBinding | null {
+  if (!requireBrowser()) return null;
+  const raw = window.localStorage.getItem(cacheKey(address));
+  if (raw == null) return null;
+  return parseBinding(raw);
+}
+
+/** Load cached Nostr pubkey for a wallet (public metadata only). */
+export function loadCachedPubkey(address: `0x${string}`): string | null {
+  return loadCachedPubkeyBinding(address)?.pubkey ?? null;
+}
+
+/**
+ * Persist a verified (or locally derived) pubkey binding.
+ * `boundCreatedAt` defaults to now when the caller has no event (key unlock).
+ */
+export function saveCachedPubkey(
+  address: `0x${string}`,
+  pubkey: string,
+  boundCreatedAt: number = Math.floor(Date.now() / 1000),
+): void {
   if (!requireBrowser() || !pubkey.trim()) return;
-  window.localStorage.setItem(cacheKey(address), pubkey.trim());
+  const binding: CachedPubkeyBinding = {
+    pubkey: pubkey.trim(),
+    boundCreatedAt: Number.isFinite(boundCreatedAt) ? boundCreatedAt : 0,
+  };
+  window.localStorage.setItem(cacheKey(address), JSON.stringify(binding));
 }
 
 export function clearCachedPubkey(address: `0x${string}`): void {

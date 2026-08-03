@@ -5,8 +5,6 @@
 
 export type CacheEntry = {
   intent?: boolean | null;
-  networkRegistered?: boolean;
-  buildClient?: boolean;
   readAtMs: number;
 };
 

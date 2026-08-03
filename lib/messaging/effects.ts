@@ -1,5 +1,5 @@
 import type { Clock, MessagingSessionPorts, SessionCommand, XmtpLocalClient } from "./ports";
-import { BUILD_DEADLINE_MS, PROBE_DEADLINE_MS, REVOKE_ALL_COOLDOWN_MS } from "./ports";
+import { BUILD_DEADLINE_MS, RECONCILING_HINT_MS, REVOKE_ALL_COOLDOWN_MS } from "./ports";
 import {
   createInitialMachineState,
   projectSnapshot,
@@ -109,7 +109,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
   function deadlineFor(op: ReconcilePlan & { kind: "run" }): number {
     const now = clock.nowMs();
-    if (op.effect === "probe") return now + PROBE_DEADLINE_MS;
     if (op.effect === "build") return now + BUILD_DEADLINE_MS;
     // create / publish / revoke: no wall deadline
     return Number.MAX_SAFE_INTEGER;
@@ -218,24 +217,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
     try {
       switch (plan.effect) {
-        case "probe": {
-          const memo = cache.get(state.address);
-          if (memo?.networkRegistered === true) {
-            apply({ type: "network_observed", registered: true });
-            break;
-          }
-          const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
-            ports.xmtp.probeRegistration(state.address, signal),
-          );
-          if (isStale(opGeneration)) return;
-          if (result === "timeout") {
-            apply({ type: "last_error_set", reason: "timeout" });
-            break;
-          }
-          apply({ type: "network_observed", registered: result.registered });
-          cache.set(state.address, { networkRegistered: result.registered });
-          break;
-        }
         case "build": {
           const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
             ports.xmtp.buildLocal(state.address, signal),
@@ -249,9 +230,11 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
             break;
           }
           const mapped = applyBuildResult(result);
+          if (mapped.registrationStatus) {
+            apply({ type: "registration_set", status: mapped.registrationStatus });
+          }
           if (mapped.client) {
             apply({ type: "local_client_set", client: mapped.client });
-            cache.set(state.address, { buildClient: true });
           } else {
             apply({
               type: "local_client_set",
@@ -277,6 +260,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
             apply({ type: "publish_pending_set", pending: false });
             if (enabled) {
               apply({ type: "intent_loaded", intent: intentAfterEnablePublish() });
+              cache.set(state.address, { intent: true });
               apply({ type: "enable_cleared" });
             } else {
               // Amendment C: keep local client so inbox stays readable after opt-out.
@@ -297,6 +281,18 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         case "revoke": {
           const mode = state.revokeMode ?? "others";
           if (mode === "all") {
+            // Publish intent false before revoke so peers never see reachable
+            // with zero installations if create is declined/fails.
+            const published = await ports.nostr.publishIntent(state.address, false, signal);
+            if (isStale(opGeneration)) return;
+            if (!published.ok) {
+              apply({ type: "publish_error_set", error: "publish_failed" });
+              apply({ type: "reset_cleared" });
+              break;
+            }
+            apply({ type: "intent_loaded", intent: false });
+            cache.set(state.address, { intent: false });
+
             const result = await ports.xmtp.revokeAllInstallations(state.address, signal);
             if (isStale(opGeneration)) return;
             if (!result.ok) {
@@ -313,7 +309,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
               apply({ type: "local_client_set", client: null });
             }
             apply({ type: "reset_chain_set", stage: "create" });
-            cache.invalidate(state.address);
             break;
           }
           const others = await ports.xmtp.revokeOtherInstallations(
@@ -359,11 +354,12 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     if (mapped.client) {
       apply({ type: "local_client_set", client: mapped.client });
       apply({ type: "reset_cleared" });
-      apply({ type: "network_observed", registered: true });
+      if (mapped.registrationStatus) {
+        apply({ type: "registration_set", status: mapped.registrationStatus });
+      }
       apply({ type: "enable_cleared" });
       apply({ type: "publish_pending_set", pending: true });
       apply({ type: "revoke_all_cooldown_set", blocked: false });
-      cache.set(state.address, { networkRegistered: true, buildClient: true });
       return;
     }
     if (mapped.awaiting) {
@@ -431,18 +427,23 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     apply({
       type: "effect_started",
       op: "intent",
-      deadlineMs: clock.nowMs() + PROBE_DEADLINE_MS,
+      deadlineMs: clock.nowMs() + RECONCILING_HINT_MS,
       generation: opGeneration,
     });
     try {
-      const intent = await ports.nostr.readIntent(state.address);
+      const result = await ports.nostr.readIntent(state.address);
       if (isStale(opGeneration)) return;
-      apply({ type: "intent_loaded", intent });
-      cache.set(state.address, { intent });
+      if (result.status === "unanswered") {
+        apply({ type: "intent_unanswered" });
+        scheduleLoop();
+        return;
+      }
+      apply({ type: "intent_loaded", intent: result.intent });
+      cache.set(state.address, { intent: result.intent });
       scheduleLoop();
     } catch {
       if (!isStale(opGeneration)) {
-        apply({ type: "intent_loaded", intent: null });
+        apply({ type: "intent_unanswered" });
         scheduleLoop();
       }
     } finally {

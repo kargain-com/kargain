@@ -7,9 +7,10 @@ import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { getNostrPool, NOSTR_RELAYS } from "@/lib/nostr/nostr-client";
 import {
   applyVerifiedProfileEntry,
-  attestedProfileFilterForAddresses,
+  attestedProfileFilterForAddress,
   attestedProfileMapFromState,
   createEmptyAttestedProfileState,
+  recordVerifiedBindingFromEntry,
   type AttestedProfileBatchState,
   verifyIncomingProfileEvent,
 } from "@/lib/nostr/resolve-attested-profile";
@@ -69,11 +70,12 @@ export function useNostrProfiles(
     const parsedAddresses = subscriptionKey.split(",") as Address[];
 
     const pool = getNostrPool();
-    const filter = attestedProfileFilterForAddresses(parsedAddresses);
 
     let initialDone = false;
     let batchState: AttestedProfileBatchState = createEmptyAttestedProfileState();
     let progressiveTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingAddresses = new Set(parsedAddresses.map((a) => a.toLowerCase()));
+    const closedAddresses = new Set<string>();
 
     const publishBatchState = () => {
       if (!mountedRef.current) return;
@@ -101,24 +103,43 @@ export function useNostrProfiles(
       setLoading(false);
     };
 
-    const sub = pool.subscribeMany([...NOSTR_RELAYS], filter, {
-      onevent: (ev) => {
-        void (async () => {
-          const verified = await verifyIncomingProfileEvent(ev);
-          if (!verified || !mountedRef.current) return;
-
-          batchState = applyVerifiedProfileEntry(batchState, verified);
-          if (!initialDone) {
-            scheduleProgressiveFlush();
-          } else {
-            publishBatchState();
-          }
-        })();
-      },
-      oneose: finishInitialLoad,
-      onclose: () => {
+    const markAddressSettled = (addr: string) => {
+      if (closedAddresses.has(addr)) return;
+      closedAddresses.add(addr);
+      pendingAddresses.delete(addr);
+      if (pendingAddresses.size === 0) {
         finishInitialLoad();
-      },
+      }
+    };
+
+    const handleEvent = (ev: Parameters<typeof verifyIncomingProfileEvent>[0]) => {
+      void (async () => {
+        const verified = await verifyIncomingProfileEvent(ev);
+        if (!verified || !mountedRef.current) return;
+
+        recordVerifiedBindingFromEntry(verified);
+        batchState = applyVerifiedProfileEntry(batchState, verified);
+        if (!initialDone) {
+          scheduleProgressiveFlush();
+        } else {
+          publishBatchState();
+        }
+      })();
+    };
+
+    // Per-address subscriptions — each address has its own limit budget.
+    const subs = parsedAddresses.map((address) => {
+      const addrKey = address.toLowerCase();
+      const filter = attestedProfileFilterForAddress(address);
+      return pool.subscribeMany([...NOSTR_RELAYS], filter, {
+        onevent: handleEvent,
+        oneose: () => {
+          markAddressSettled(addrKey);
+        },
+        onclose: () => {
+          markAddressSettled(addrKey);
+        },
+      });
     });
 
     const timeout = window.setTimeout(finishInitialLoad, INITIAL_LOAD_TIMEOUT_MS);
@@ -126,10 +147,12 @@ export function useNostrProfiles(
     return () => {
       window.clearTimeout(timeout);
       if (progressiveTimer != null) clearTimeout(progressiveTimer);
-      try {
-        sub.close();
-      } catch {
-        // ignore
+      for (const sub of subs) {
+        try {
+          sub.close();
+        } catch {
+          // ignore
+        }
       }
     };
   }, [subscriptionKey]);

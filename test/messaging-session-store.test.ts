@@ -34,10 +34,9 @@ describe("messaging session-store snapshot cache", () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: { __brand: "XmtpLocalClient" } }),
       },
       wallet: { address: "0x1111111111111111111111111111111111111111", kind: "eoa" },

@@ -6,9 +6,12 @@ import type {
   SessionSnapshot,
   XmtpLocalClient,
 } from "./ports";
-import { PROBE_DEADLINE_MS } from "./ports";
+import { RECONCILING_HINT_MS } from "./ports";
 
 export type IntentValue = boolean | null;
+
+/** Derived from last build/create — never probed on the session path. */
+export type RegistrationStatus = "unknown" | "registered" | "unregistered";
 
 export type InFlightOp = {
   op: ReconcilingOp;
@@ -22,8 +25,11 @@ export type MachineState = {
   generation: number;
   address: string;
   intent: IntentValue;
+  /** A read attempt finished (answered or unanswered). */
   intentLoaded: boolean;
-  networkRegistered: boolean | null;
+  /** An answered read (or successful publish) established `intent`. */
+  intentKnown: boolean;
+  registrationStatus: RegistrationStatus;
   localClient: XmtpLocalClient | null;
   localBuildReason: SessionReason | null;
   inFlight: InFlightOp | null;
@@ -43,7 +49,7 @@ export type MachineState = {
   enableRequested: boolean;
   disableRequested: boolean;
   resetRequested: boolean;
-  /** Surfaces that need a local XMTP client (inbox / DM / enable). Probe/build gated on this. */
+  /** Surfaces that need a local XMTP client (inbox / DM / enable). Build gated on this. */
   clientDemand: number;
 };
 
@@ -53,7 +59,8 @@ export function createInitialMachineState(address: string): MachineState {
     address,
     intent: null,
     intentLoaded: false,
-    networkRegistered: null,
+    intentKnown: false,
+    registrationStatus: "unknown",
     localClient: null,
     localBuildReason: null,
     inFlight: null,
@@ -75,7 +82,9 @@ export function createInitialMachineState(address: string): MachineState {
 export type MachineEvent =
   | { type: "generation_bumped"; generation: number }
   | { type: "intent_loaded"; intent: IntentValue }
-  | { type: "network_observed"; registered: boolean }
+  /** Coverage unanswered — does not clear a known intent. */
+  | { type: "intent_unanswered" }
+  | { type: "registration_set"; status: RegistrationStatus }
   | { type: "local_client_set"; client: XmtpLocalClient | null; reason?: SessionReason }
   | { type: "effect_started"; op: ReconcilingOp; deadlineMs: number; generation: number }
   | { type: "effect_cleared" }
@@ -104,9 +113,16 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
         address: state.address,
       };
     case "intent_loaded":
-      return { ...state, intent: event.intent, intentLoaded: true };
-    case "network_observed":
-      return { ...state, networkRegistered: event.registered };
+      return {
+        ...state,
+        intent: event.intent,
+        intentLoaded: true,
+        intentKnown: true,
+      };
+    case "intent_unanswered":
+      return { ...state, intentLoaded: true };
+    case "registration_set":
+      return { ...state, registrationStatus: event.status };
     case "local_client_set":
       return {
         ...state,
@@ -173,13 +189,9 @@ function disabledIntent(intent: IntentValue): DisabledIntent {
   return intent === false ? "explicit" : "absent";
 }
 
-function publiclyReachable(
-  networkRegistered: boolean | null,
-  intent: IntentValue,
-): boolean {
-  // Reachable only when network-registered and relay intent is explicitly true.
-  // publishPending (intent still null) and explicit opt-out are not reachable.
-  return networkRegistered === true && intent === true;
+/** Reachability is published intent true — no SDK / registration probe. */
+function publiclyReachable(intent: IntentValue): boolean {
+  return intent === true;
 }
 
 export function projectSnapshot(
@@ -195,7 +207,7 @@ export function projectSnapshot(
     return {
       state: "reconciling",
       op: "intent",
-      deadlineMs: nowMs + PROBE_DEADLINE_MS,
+      deadlineMs: nowMs + RECONCILING_HINT_MS,
     };
   }
   if (walletKind === "contract") {
@@ -211,7 +223,7 @@ export function projectSnapshot(
   }
 
   if (state.localClient) {
-    const reachable = publiclyReachable(state.networkRegistered, state.intent);
+    const reachable = publiclyReachable(state.intent);
     const storageEvictable =
       state.storageDurable === false ? ({ storageEvictable: true as const } as const) : {};
     if (state.publishPending || state.publishError) {
@@ -251,18 +263,29 @@ export function projectSnapshot(
     };
   }
 
-  if (state.intentLoaded && state.intent === null && !state.enableRequested) {
+  if (
+    state.intentLoaded &&
+    state.intentKnown &&
+    state.intent === null &&
+    !state.enableRequested
+  ) {
     return { state: "disabled", intent: "absent", next: "enable" };
   }
 
-  if (state.intentLoaded && state.intent === false && !state.enableRequested) {
+  if (
+    state.intentLoaded &&
+    state.intentKnown &&
+    state.intent === false &&
+    !state.enableRequested
+  ) {
     return { state: "disabled", intent: "explicit", next: "enable" };
   }
 
   if (
     state.intentLoaded &&
+    state.intentKnown &&
     state.intent === true &&
-    state.networkRegistered === false &&
+    state.registrationStatus === "unregistered" &&
     !state.enableRequested
   ) {
     return {
@@ -272,22 +295,24 @@ export function projectSnapshot(
     };
   }
 
-  // Intent on, no local client demanded yet — dormant (no probe/build). Not setup-needed.
+  // Intent on, no local client demanded yet — dormant (no build). Not setup-needed.
   if (
     state.intentLoaded &&
+    state.intentKnown &&
     state.intent === true &&
     state.clientDemand <= 0 &&
     !state.localClient &&
     !state.enableRequested
   ) {
-    return { state: "active", publiclyReachable: false };
+    return { state: "active", publiclyReachable: true };
   }
 
-  if (!state.intentLoaded) {
+  // Unknown (unanswered, never known) must never render onboarding.
+  if (!state.intentLoaded || !state.intentKnown) {
     return {
       state: "reconciling",
       op: "intent",
-      deadlineMs: nowMs + PROBE_DEADLINE_MS,
+      deadlineMs: nowMs + RECONCILING_HINT_MS,
     };
   }
 

@@ -1,5 +1,5 @@
 import type { ReconcilingOp, SessionReason, XmtpLocalClient } from "./ports";
-import type { IntentValue, MachineState } from "./machine";
+import type { IntentValue, MachineState, RegistrationStatus } from "./machine";
 
 export type ReconcileEffect = ReconcilingOp;
 
@@ -23,34 +23,35 @@ function hasClientDemand(state: MachineState): boolean {
   return state.clientDemand > 0;
 }
 
-function shouldProbe(state: MachineState): boolean {
-  if (!wantsMessaging(state)) return false;
-  if (!hasClientDemand(state)) return false;
-  if (state.networkRegistered !== null) return false;
-  return state.intentLoaded;
-}
-
 function shouldBuild(state: MachineState): boolean {
   if (!wantsMessaging(state)) return false;
   if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
-  if (state.networkRegistered !== true) return false;
   if (state.localBuildReason !== null) return false;
   if (state.awaitingSignature || state.lastError) return false;
+  // Prefer build whenever registration is unknown or already known registered.
+  // Unregistered → create path (enable / reset), not another build.
+  if (state.registrationStatus === "unregistered") return false;
   return true;
 }
 
 /** Create only on explicit enable / reset recovery — never auto on cutover. */
 function shouldCreate(state: MachineState): boolean {
-  if (!wantsMessaging(state)) return false;
   if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
+
+  // Full-revoke publishes intent false before revoke; create must still run.
   if (state.resetChain === "create") return true;
+
+  if (!wantsMessaging(state)) return false;
   if (!state.enableRequested) return false;
-  // Wait for probe to settle before creating.
-  if (state.networkRegistered === null) return false;
-  // Prefer silent build when registered and not yet attempted.
-  if (state.networkRegistered === true && state.localBuildReason === null) return false;
+  // Prefer silent build first when not yet attempted.
+  if (
+    state.registrationStatus !== "unregistered" &&
+    state.localBuildReason === null
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -93,7 +94,7 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
     return { kind: "run", effect: "publish", publishValue: true };
   }
 
-  if (!state.intentLoaded) {
+  if (!state.intentLoaded || !state.intentKnown) {
     return { kind: "idle" };
   }
 
@@ -113,10 +114,6 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
     return { kind: "idle" };
   }
 
-  if (shouldProbe(state)) {
-    return { kind: "run", effect: "probe" };
-  }
-
   if (shouldBuild(state)) {
     return { kind: "run", effect: "build" };
   }
@@ -127,7 +124,7 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
 
   if (
     wantsMessaging(state) &&
-    state.networkRegistered === false &&
+    state.registrationStatus === "unregistered" &&
     !state.localClient &&
     state.intent === true &&
     !state.enableRequested
@@ -156,9 +153,16 @@ export function applyBuildResult(
   reason: SessionReason | null;
   awaiting: SessionReason | null;
   lastError: SessionReason | null;
+  registrationStatus: RegistrationStatus | null;
 } {
   if (result.ok) {
-    return { client: result.client, reason: null, awaiting: null, lastError: null };
+    return {
+      client: result.client,
+      reason: null,
+      awaiting: null,
+      lastError: null,
+      registrationStatus: "registered",
+    };
   }
   if (result.reason === "not_registered") {
     return {
@@ -166,16 +170,24 @@ export function applyBuildResult(
       reason: "not_registered",
       awaiting: "not_registered",
       lastError: null,
+      registrationStatus: "unregistered",
     };
   }
   if (result.reason === "opfs_lock") {
-    return { client: null, reason: "opfs_lock", awaiting: null, lastError: "opfs_lock" };
+    return {
+      client: null,
+      reason: "opfs_lock",
+      awaiting: null,
+      lastError: "opfs_lock",
+      registrationStatus: null,
+    };
   }
   return {
     client: null,
     reason: "build_failed",
     awaiting: "build_failed",
     lastError: null,
+    registrationStatus: null,
   };
 }
 
@@ -194,9 +206,16 @@ export function applyCreateResult(
   awaiting: SessionReason | null;
   lastError: SessionReason | null;
   resetChain: MachineState["resetChain"];
+  registrationStatus: RegistrationStatus | null;
 } {
   if (result.ok) {
-    return { client: result.client, awaiting: null, lastError: null, resetChain: null };
+    return {
+      client: result.client,
+      awaiting: null,
+      lastError: null,
+      resetChain: null,
+      registrationStatus: "registered",
+    };
   }
   if (result.reason === "installation_limit") {
     // User must choose free-slot vs full revoke — no automatic recovery.
@@ -205,15 +224,34 @@ export function applyCreateResult(
       awaiting: "installation_limit",
       lastError: null,
       resetChain: null,
+      registrationStatus: null,
     };
   }
   if (result.reason === "create_cancelled") {
-    return { client: null, awaiting: "create_cancelled", lastError: null, resetChain: null };
+    return {
+      client: null,
+      awaiting: "create_cancelled",
+      lastError: null,
+      resetChain: null,
+      registrationStatus: null,
+    };
   }
   if (result.reason === "opfs_lock") {
-    return { client: null, awaiting: null, lastError: "opfs_lock", resetChain: null };
+    return {
+      client: null,
+      awaiting: null,
+      lastError: "opfs_lock",
+      resetChain: null,
+      registrationStatus: null,
+    };
   }
-  return { client: null, awaiting: "build_failed", lastError: null, resetChain: null };
+  return {
+    client: null,
+    awaiting: "build_failed",
+    lastError: null,
+    resetChain: null,
+    registrationStatus: null,
+  };
 }
 
 export function intentAfterDisable(): IntentValue {

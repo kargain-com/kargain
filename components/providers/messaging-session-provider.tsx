@@ -24,6 +24,7 @@ import {
 import type { MessagingSession, SessionCommand, SessionSnapshot } from "@/lib/messaging/ports";
 import { createSessionRegistry } from "@/lib/messaging/session-registry";
 import { createMessagingSession } from "@/lib/messaging/session-store";
+import { shouldIdleWarmXmtp } from "@/lib/messaging/snapshot-ui";
 import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
 import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -181,13 +182,19 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
     () => DISCONNECTED_SNAPSHOT,
   );
 
-  // Idle-warm the SDK module only when intent is known true — never on wallet connect alone.
+  const client =
+    address && isConnected && session ? session.getXmtpClient() : null;
+
+  // Idle-warm when intent known true and this device has no client yet.
   useEffect(() => {
     if (snapshot.state !== "active") return;
+    if (!shouldIdleWarmXmtp({ publiclyReachable: snapshot.publiclyReachable, hasClient: client != null })) {
+      return;
+    }
     return scheduleIdle(() => {
       void preloadXmtp();
     });
-  }, [snapshot.state]);
+  }, [snapshot, client]);
 
   const value: MessagingSessionContextValue =
     address && isConnected && session
@@ -196,7 +203,7 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
           dispatch: (command) => {
             session.dispatch(command);
           },
-          client: session.getXmtpClient(),
+          client,
           session,
         }
       : DISCONNECTED_VALUE;

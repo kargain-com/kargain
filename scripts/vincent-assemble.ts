@@ -142,14 +142,9 @@ async function main(): Promise<void> {
   const queryEvents = (filter: Filter): Promise<Event[]> =>
     pool.querySync(relays, filter, { maxWait: RELAY_QUERY_MAX_WAIT_MS });
 
-  // Gate 1 — attested kind 0 pubkey per attester, over the CLI relay list.
+  // Gate 1 — attested kind 0 pubkey per attester (coverage via SimplePool.ensureRelay).
   const attestedPubkeys = (addresses: string[]): Promise<Map<string, string | null>> =>
-    attestedPubkeysForAddresses(addresses as Address[], {
-      pool: {
-        querySync: (_relays, filter, params) => pool.querySync(relays, filter, params),
-      },
-      maxWait: RELAY_QUERY_MAX_WAIT_MS,
-    });
+    attestedPubkeysForAddresses(addresses as Address[], { pool });
 
   // Gate 2 — isActiveVerifier snapshot at assembly time (multicall-batched).
   const publicClient = createPublicClient({

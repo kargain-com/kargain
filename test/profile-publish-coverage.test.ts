@@ -8,7 +8,7 @@ import {
   type AppEventRelay,
 } from "../lib/nostr/app-event-store.ts";
 import { nostrPubkeyFromPrivateKey } from "../lib/nostr/nostr-client.ts";
-import { publishNostrProfileWithPrivateKey } from "../lib/nostr/profile.ts";
+import { publishNostrProfile } from "../lib/nostr/profile.ts";
 import type { NostrPublishPool } from "../lib/nostr/publish-event.ts";
 import { KARGAIN_RELAY, NOSTR_RELAYS } from "../lib/nostr/relays.ts";
 
@@ -25,6 +25,7 @@ type TestPool = AppEventQueryPool &
   NostrPublishPool & {
     publishedUrls: string[][];
     publishCount: number;
+    ensureRelayCount: number;
     lastPublished: Event | null;
   };
 
@@ -46,6 +47,7 @@ function makeTestPool(options: {
 }): TestPool {
   const publishedUrls: string[][] = [];
   let publishCount = 0;
+  let ensureRelayCount = 0;
   let lastPublished: Event | null = null;
   const defaultScript: RelayScript = options.defaultScript ?? { mode: "eose", events: [] };
   const scripts = options.scripts ?? {};
@@ -56,10 +58,14 @@ function makeTestPool(options: {
     get publishCount() {
       return publishCount;
     },
+    get ensureRelayCount() {
+      return ensureRelayCount;
+    },
     get lastPublished() {
       return lastPublished;
     },
     async ensureRelay(url) {
+      ensureRelayCount += 1;
       const script = scripts[url] ?? defaultScript;
       if (script.mode === "ensure-reject") {
         throw new Error(`ensureRelay failed: ${url}`);
@@ -105,19 +111,22 @@ function makeTestPool(options: {
   return pool;
 }
 
+const noopSigner = { signMessage: async () => "0x" + "ab".repeat(65) };
+
 afterEach(() => {
   setAppEventStorePoolForTest(null);
 });
 
-describe("publishNostrProfileWithPrivateKey coverage", () => {
+describe("publishNostrProfile sole kind:0 writer", () => {
   it("returns false and does not publish when no relay answered", async () => {
     const pool = makeTestPool({ defaultScript: { mode: "close-before-eose" } });
     setAppEventStorePoolForTest(pool);
 
-    const ok = await publishNostrProfileWithPrivateKey(
+    const ok = await publishNostrProfile(
       { name: "Ada" },
       WALLET,
-      PRIVATE_KEY,
+      noopSigner,
+      { privateKeyHex: PRIVATE_KEY },
     );
 
     assert.equal(ok, false);
@@ -139,10 +148,11 @@ describe("publishNostrProfileWithPrivateKey coverage", () => {
     });
     setAppEventStorePoolForTest(pool);
 
-    const ok = await publishNostrProfileWithPrivateKey(
+    const ok = await publishNostrProfile(
       { name: "New" },
       WALLET,
-      PRIVATE_KEY,
+      noopSigner,
+      { privateKeyHex: PRIVATE_KEY },
     );
 
     assert.equal(ok, true);
@@ -159,10 +169,11 @@ describe("publishNostrProfileWithPrivateKey coverage", () => {
     const pool = makeTestPool({ defaultScript: { mode: "eose", events: [] } });
     setAppEventStorePoolForTest(pool);
 
-    const ok = await publishNostrProfileWithPrivateKey(
+    const ok = await publishNostrProfile(
       { name: "First" },
       WALLET,
-      PRIVATE_KEY,
+      noopSigner,
+      { privateKeyHex: PRIVATE_KEY },
     );
 
     assert.equal(ok, true);
@@ -193,11 +204,11 @@ describe("publishNostrProfileWithPrivateKey coverage", () => {
     });
     setAppEventStorePoolForTest(pool);
 
-    const ok = await publishNostrProfileWithPrivateKey(
+    const ok = await publishNostrProfile(
       { about: "Updated" },
       WALLET,
-      PRIVATE_KEY,
-      attestation,
+      noopSigner,
+      { privateKeyHex: PRIVATE_KEY, attestation },
     );
 
     assert.equal(ok, true);
@@ -210,5 +221,23 @@ describe("publishNostrProfileWithPrivateKey coverage", () => {
     assert.equal(content.about, "Updated");
     assert.equal(content.nip05, "ada@example.com");
     assert.ok(!pool.publishedUrls[0]!.includes(KARGAIN_RELAY));
+  });
+
+  it("performs exactly one coverage round per publish", async () => {
+    const pool = makeTestPool({
+      defaultScript: {
+        mode: "eose",
+        events: [makeEvent({ created_at: 1, content: "{}" })],
+      },
+    });
+    setAppEventStorePoolForTest(pool);
+
+    await publishNostrProfile(
+      { name: "Once" },
+      WALLET,
+      noopSigner,
+      { privateKeyHex: PRIVATE_KEY },
+    );
+    assert.equal(pool.ensureRelayCount, NOSTR_RELAYS.length);
   });
 });

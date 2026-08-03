@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { categoryLabel, sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
-import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
 import {
   canWalletEnableMessaging,
   isUserOpInFlight,
@@ -31,7 +30,6 @@ function SectionEyebrow({ children }: { children: string }) {
 export function MessagingSettingsSection() {
   const { address } = useAccount();
   const { snapshot, dispatch } = useMessagingSession();
-  useRequestLocalMessagingClient(Boolean(address));
   const [confirmDisableOpen, setConfirmDisableOpen] = useState(false);
 
   const unsupported = messagingUnsupportedCopy(snapshot);

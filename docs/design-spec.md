@@ -423,12 +423,14 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`pr
 |------|-------|
 | Binding message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` (separate from key derivation) |
 | Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address implicit from event `pubkey` and NIP-39 `i` tag |
-| Write | [`publishNostrProfile`](../lib/nostr/profile.ts) — merge by `{ authors: [derivedPubkey] }` only; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)` |
+| Write | [`publishNostrProfile`](../lib/nostr/profile.ts) — **sole** kind:0 writer: one coverage read, merge, publish inside `runSerializedPubkeyWrite`; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)` |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; set only via explicit publish param |
 | Read/write symmetry | Same invariant as Watchlist: coverage-aware merge-base via [`fetchRelayCoverage`](../lib/nostr/app-event-store.ts); unanswered refuses the write before signing; full-replacement publish targets only `answeredRelays`; answered-but-empty is a valid first profile |
-| Messaging patch | Enable/disable publishes `{ messagesEnabled }` only ([`messaging-settings-section.tsx`](../components/profile/messaging-settings-section.tsx)) |
-| Read | Newest `#i` event that verifies wins (older attested beats newer spoof); `null` when none verify |
-| Batch | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — verify before accumulator |
+| Messaging intent | Sole owner [`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read of `messagesEnabled` (true / false / never published / **unanswered**); write via `publishNostrProfile`. Session onboarding only on answered-absent — never on unanswered |
+| Messaging patch | Enable/disable / revoke-preflight publish `{ messagesEnabled }` only through the intent owner |
+| Attested profile read | [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — sole NIP-39 `#i` owner; per-address coverage (no shared page limit); discard `created_at > now + 1h` skew; author path once pubkey cached; pin `{pubkey,boundCreatedAt}` — verifying newer challenger replaces, unverified never; peer cache is a memo not a trust store |
+| Read | Newest verifying event within skew wins; `null` when none verify |
+| Batch | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — **per-address** subscribe (own limit each); verify before accumulator |
 | Lint | ESLint bans `"#i"` filters outside the resolver (+ listing-offers passport tag, tests) |
 
 #### Watchlist
@@ -441,7 +443,7 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`pr
 
 Implementation: [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) (sole session owner — sync `registry.acquire` during render), [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (context reader), [`session-registry.ts`](../lib/messaging/session-registry.ts) (refcount + deferred destroy), [`session-store.ts`](../lib/messaging/session-store.ts), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
 
-**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent → XMTP network registration → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity).
+**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent ([`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read; unknown ≠ absent) → local build/create (registration derived) → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity). `publiclyReachable` = intent known and published true. Full revoke publishes intent false **before** revoke so peers never see reachable with zero installations.
 
 **SessionSnapshot → surfaces**
 
@@ -449,11 +451,11 @@ Implementation: [`MessagingSessionProvider`](../components/providers/messaging-s
 |----------|-----|
 | `disconnected` | No wallet — setup surfaces hidden |
 | `unsupported` | Contract wallet — messaging unavailable |
-| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) |
+| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published |
 | `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings |
-| `reconciling` | Spinner beside CTA (probe / build / create / publish / revoke / intent) |
+| `reconciling` | Spinner beside CTA (build / create / publish / revoke / intent) — includes unanswered intent (never onboarding) |
 | `needs_signature` | Device activation card (`not_registered` \| `build_failed`) |
-| `active` | DMs available when a local client exists; without client demand, dormant `active` (intent on, `publiclyReachable` false) — not setup-needed |
+| `active` | DMs available when a local client exists; without client demand, dormant `active` (intent on, `publiclyReachable` true) — not setup-needed |
 | `active` + `publishError` / `publishPending` | Inline publish retry in settings (no second XMTP signature) |
 | `error` | Recovery card (`MessagingSetupError`); `opfs_lock` → close other tab; `installation_limit` → free device slots |
 
@@ -462,7 +464,7 @@ Implementation: [`MessagingSessionProvider`](../components/providers/messaging-s
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
 | Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, explanation from ledger `credits[]` (one line per credit origin — amount + reason; multi-origin balances list every credit), `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab; body is **this credit’s** amount + reason only |
-| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable`; toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`) |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable` (= intent published true); toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → inline **Retry** (`retry`). Does **not** raise `clientDemand` / load the SDK |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — banner only (listing not blocked) |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` until `messagingReadyForChecklist(snapshot)` |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
@@ -470,16 +472,16 @@ Implementation: [`MessagingSessionProvider`](../components/providers/messaging-s
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
 | Peer reachability | Browse CTA: intent + protocol + account-kind only ([`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) — no XMTP probe). Registration probe only on click via [`contactPeer`](../lib/messaging/contact-peer.ts) |
 | Session ownership | One [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) under notifications providers; refcounted [`session-registry`](../lib/messaging/session-registry.ts); address change = release old / acquire new (no `syncWalletAddress`) |
-| Lazy client | Probe/build require `clientDemand` (`requestLocalClient` / `releaseLocalClient`); demand from `/messages`, setup/enable, and DM open — not from conversations provider alone |
+| Lazy client | Build/create require `clientDemand` (`requestLocalClient` / `releaseLocalClient`); demand from `/messages`, setup/enable, and DM open — not from conversations provider or settings alone. Registration is derived from build/create (`unknown` \| `registered` \| `unregistered`) — no session probe |
 | XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (runs only when `client` present) |
 | Client lifecycle | Sole abandon owner = effects `abandonOwnedClient` (incl. address change with `alreadyDetached`); clear-then-defer `clock.sleep(0)`. Orphans that never entered state close immediately. |
 | Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (no UI in this phase — P7). |
 | Setup card | `enable` / `disable` / `resetIdentity` / `revokeAllInstallations` / `retry` / `cancel` commands; CTA disabled while `isUserOpInFlight(snapshot)` or `active` / `unsupported` / `disconnected` |
 | Setup card errors | Primary user copy `text-status-error`; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
-| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` (revoke-others → create; disabled when this browser has no current installation). Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (full revoke → create; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
+| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` (revoke-others → create; disabled when this browser has no current installation). Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
 | Provider mount | [`MessagingNotificationsProviders`](../components/providers/messaging-notifications-providers.tsx) always mounted in [`app-providers.tsx`](../components/providers/app-providers.tsx); guest hooks no-op until wallet connected |
-| XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; idle `preloadXmtp` when intent known true — never unconditional on wallet connect |
+| XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; idle `preloadXmtp` when `shouldIdleWarmXmtp` (intent known true via `publiclyReachable`, no local client) — never unconditional on wallet connect |
 | Offline catch-up | Provider re-syncs XMTP on tab focus, wallet restore, and 60s interval; [`MessagingCatchUpBanner`](../components/messaging/messaging-catch-up-banner.tsx) above inbox when unread increased after reconnect |
 | Thread header | Peer avatar + display name + KarPro badge + link to `/profile/{address}` |
 | Own bubble | `bg-white text-bg-primary` |

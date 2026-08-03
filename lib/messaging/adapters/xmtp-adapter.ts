@@ -21,7 +21,6 @@ import type {
   CreateWithSignerResult,
   DurableStorageResult,
   InstallationReadout,
-  ProbeRegistrationResult,
   RevokeAllResult,
   RevokeOtherResult,
   XmtpLocalClient,
@@ -263,7 +262,7 @@ export type CreateXmtpAdapterInput = {
 export async function probePeerRegistration(
   address: string,
   signal?: AbortSignal,
-): Promise<ProbeRegistrationResult> {
+): Promise<{ registered: boolean }> {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   const { xmtp, backend } = await messagingBackend();
   const peer = getAddress(address as `0x${string}`);
@@ -275,10 +274,6 @@ export async function probePeerRegistration(
 
 export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
   return {
-    async probeRegistration(address, signal) {
-      return probePeerRegistration(address, signal);
-    },
-
     async buildLocal(address, signal) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {

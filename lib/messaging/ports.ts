@@ -3,7 +3,7 @@
  *
  * Truth hierarchy (normative for R0–R4):
  * - Nostr kind 0 `messagesEnabled` = durable cross-device intent
- * - XMTP network registration = account fact
+ * - XMTP network registration = derived from last build/create on this device
  * - OPFS local DB = device fact
  * - Any cache = observation memo only (never a decision source, never gates a CTA)
  *
@@ -11,7 +11,13 @@
  * adapters that satisfy these ports land in R1–R2. No `@xmtp/client` here.
  */
 
-/** Background probe (network registration) must settle by this wall time. */
+/**
+ * UI hint for reconciling snapshots that have no wall deadline (intent load).
+ * Peer click-path registration checks reuse {@link PROBE_DEADLINE_MS}.
+ */
+export const RECONCILING_HINT_MS = 5_000;
+
+/** Peer click-path registration probe abort (not used on the session path). */
 export const PROBE_DEADLINE_MS = 5_000;
 
 /** Silent local build must settle by this wall time. */
@@ -51,7 +57,6 @@ export type SessionCommandType = SessionCommand["type"];
 
 export type ReconcilingOp =
   | "intent"
-  | "probe"
   | "build"
   | "create"
   | "publish"
@@ -103,10 +108,6 @@ export type SessionSnapshot =
 /** Opaque local client handle — core never inspects SDK types. */
 export type XmtpLocalClient = { readonly __brand: "XmtpLocalClient" };
 
-export type ProbeRegistrationResult = {
-  registered: boolean;
-};
-
 export type BuildLocalResult =
   | { ok: true; client: XmtpLocalClient }
   | { ok: false; reason: "build_failed" | "opfs_lock" | "not_registered" };
@@ -140,7 +141,6 @@ export type DurableStorageResult = {
  * (R1+); R0 tests use fakes only.
  */
 export type XmtpPort = {
-  probeRegistration(address: string, signal?: AbortSignal): Promise<ProbeRegistrationResult>;
   buildLocal(address: string, signal?: AbortSignal): Promise<BuildLocalResult>;
   /**
    * User-signature path. No wall timeout (waits on wallet); cancellable via
@@ -179,12 +179,20 @@ export type XmtpPort = {
 };
 
 /**
+ * Discriminated intent read. Unanswered is not a flag value — relays did not
+ * complete coverage (or author pubkey is unknown). `intent: null` means
+ * answered and the field was never published.
+ */
+export type IntentReadResult =
+  | { status: "answered"; intent: true | false | null }
+  | { status: "unanswered" };
+
+/**
  * Durable intent on Nostr kind 0 `messagesEnabled`.
- * R1 adapter wraps the existing NS-4.3 / NS-5.2.1-guarded profile stack.
+ * Sole owner: `lib/nostr/messaging-intent.ts` (coverage read + kind:0 writer).
  */
 export type NostrPolicyPort = {
-  /** `true` = enabled intent; `false` = explicit opt-out; `null` = never published. */
-  readIntent(address: string, signal?: AbortSignal): Promise<boolean | null>;
+  readIntent(address: string, signal?: AbortSignal): Promise<IntentReadResult>;
   /**
    * Publish intent. Must ack on relay before the core tears down local state
    * on disable. Failure → stay active / surface `publish_failed`.

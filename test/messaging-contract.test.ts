@@ -11,7 +11,6 @@ import { afterEach, describe, it } from "node:test";
 
 import {
   BUILD_DEADLINE_MS,
-  PROBE_DEADLINE_MS,
   type SessionSnapshot,
 } from "../lib/messaging/ports.ts";
 import { snapshotHasActionableNext } from "../lib/messaging/machine.ts";
@@ -45,9 +44,8 @@ describe("messaging contract — scenarios", () => {
   it("cutover: intent enabled, network unregistered, no OPFS → needs_signature", async () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         buildLocal: async () => ({ ok: false, reason: "not_registered" }),
       },
     });
@@ -61,26 +59,26 @@ describe("messaging contract — scenarios", () => {
     assert.equal(xmtp.calls.createWithSigner, 0);
   });
 
-  it("july16: hung probe settles by PROBE_DEADLINE_MS → timeout", async () => {
+  it("cold path: hung build settles by BUILD_DEADLINE_MS → timeout (no probe wall)", async () => {
     const clock = createControlledClock();
-    const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async (_a, signal) => hangUntilAbort(signal),
+        buildLocal: async (_a, signal) => hangUntilAbort(signal),
       },
     });
-    await advanceAndSettle(clock, PROBE_DEADLINE_MS);
+    await advanceAndSettle(clock, BUILD_DEADLINE_MS);
     const snap = session.getSnapshot();
     assert.equal(snap.state, "error");
     if (snap.state === "error") assert.equal(snap.reason, "timeout");
+    assert.ok(xmtp.calls.buildLocal >= 1);
   });
 
   it("july16: hung build settles by BUILD_DEADLINE_MS → timeout", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async (_a, signal) => hangUntilAbort(signal),
       },
     });
@@ -94,9 +92,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -111,9 +108,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -124,9 +120,8 @@ describe("messaging contract — scenarios", () => {
   it("reload: build fails → needs_signature reason=build_failed", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: false, reason: "build_failed" }),
       },
     });
@@ -142,11 +137,10 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp, nostr } = openSession(clock, {
       nostr: {
-        readIntent: async () => null,
+        readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () =>
           new Promise((resolve) => {
             releaseBuild = () => resolve({ ok: false, reason: "build_failed" });
@@ -172,14 +166,13 @@ describe("messaging contract — scenarios", () => {
     const order: string[] = [];
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
         publishIntent: async (_a, enabled) => {
           order.push(`publish:${enabled}`);
           return { ok: true };
         },
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -199,12 +192,11 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
         publishIntent: async (_a, enabled) =>
           enabled ? { ok: true } : { ok: false, reason: "publish_failed" },
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -222,9 +214,8 @@ describe("messaging contract — scenarios", () => {
   it("second tab: OPFS lock → error/opfs_lock dedicated path, no crash loop", async () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: false, reason: "opfs_lock" }),
       },
     });
@@ -239,31 +230,25 @@ describe("messaging contract — scenarios", () => {
 
   it("address switch: stale-generation events discarded", async () => {
     const clock = createControlledClock();
-    let resolveProbe: ((v: { registered: boolean }) => void) | undefined;
+    let resolveBuild: ((v: { ok: true; client: { __brand: "XmtpLocalClient" } }) => void) | undefined;
     const fakeClient = { __brand: "XmtpLocalClient" as const };
-    const { session, wallet } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+    const { session, wallet, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () =>
+        buildLocal: async () =>
           new Promise((resolve) => {
-            resolveProbe = resolve;
+            resolveBuild = resolve;
           }),
-        buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
     await settleAsync(clock);
     wallet.setAddress("0x2222222222222222222222222222222222222222");
     session.changeAddress(wallet.getAddress()!);
-    resolveProbe?.({ registered: true });
+    resolveBuild?.({ ok: true, client: fakeClient });
     await settleAsync(clock);
-    const snap = session.getSnapshot();
-    // Stale probe must not publish a client for the new address.
+    // Stale build must not publish a client for the new address.
     assert.equal(session.getXmtpClient(), null);
-    if (snap.state === "active") {
-      assert.equal(snap.publiclyReachable, false);
-    } else {
-      assert.notEqual(snap.state, "active");
-    }
+    assert.ok(xmtp.calls.closeLocal >= 1);
   });
 
   it("installation_limit on create → actionable snapshot; zero revoke/create until user acts", async () => {
@@ -271,11 +256,10 @@ describe("messaging contract — scenarios", () => {
     let createCalls = 0;
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => null,
+        readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () => {
           createCalls += 1;
           return { ok: false, reason: "installation_limit" };
@@ -304,9 +288,8 @@ describe("messaging contract — scenarios", () => {
   it("revokeOtherInstallations refuses with no current client", async () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => null },
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () => ({ ok: false, reason: "installation_limit" }),
       },
     });
@@ -328,11 +311,10 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
         revokeOtherInstallations: async (_a, _s, current) => {
           assert.equal(current, fakeClient);
@@ -366,11 +348,10 @@ describe("messaging contract — scenarios", () => {
     let createCalls = 0;
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => null,
+        readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () => {
           createCalls += 1;
           if (createCalls === 1) return { ok: false, reason: "installation_limit" };
@@ -403,11 +384,10 @@ describe("messaging contract — scenarios", () => {
     let createCalls = 0;
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => null,
+        readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () => {
           createCalls += 1;
           if (createCalls === 1) return { ok: false, reason: "installation_limit" };
@@ -432,9 +412,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -451,9 +430,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp, wallet } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -474,9 +452,8 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     let resolveBuild: ((v: { ok: true; client: typeof fakeClient }) => void) | undefined;
     const { session, xmtp, wallet } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () =>
           new Promise((resolve) => {
             resolveBuild = resolve;
@@ -498,9 +475,8 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     let resolveCreate: ((v: { ok: true; client: typeof fakeClient }) => void) | undefined;
     const { session, xmtp, wallet } = openSession(clock, {
-      nostr: { readIntent: async () => null, publishIntent: async () => ({ ok: true }) },
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }), publishIntent: async () => ({ ok: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () =>
           new Promise((resolve) => {
             resolveCreate = resolve;
@@ -522,9 +498,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -543,9 +518,8 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => null, publishIntent: async () => ({ ok: true }) },
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }), publishIntent: async () => ({ ok: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         ensureDurableStorage: async () => ({ durable: false }),
         createWithSigner: async () => ({ ok: true, client: fakeClient }),
       },
@@ -564,22 +538,21 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
       wallet: { address: "0x1111111111111111111111111111111111111111", kind: "contract" },
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
     });
     await settleAsync(clock);
     assert.equal(session.getSnapshot().state, "unsupported");
     session.dispatch({ type: "enable" });
     await settleAsync(clock);
-    assert.equal(xmtp.calls.probeRegistration, 0);
+    assert.equal(xmtp.calls.buildLocal, 0);
   });
 
   it("caches: expired/absent memos change latency only", async () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const handlers = {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     };
@@ -598,7 +571,7 @@ describe("messaging contract — scenarios", () => {
   it("intent absent never enabled → disabled with next=enable", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => null },
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }) },
     });
     await settleAsync(clock);
     const snap = session.getSnapshot();
@@ -612,9 +585,8 @@ describe("messaging contract — scenarios", () => {
   it("create cancelled mid-signature → reason=create_cancelled", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async (_a, signal) => hangUntilAbort(signal),
       },
     });
@@ -631,7 +603,7 @@ describe("messaging contract — scenarios", () => {
   it("reload while intent disabled → must not create; stay disabled", async () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
-      nostr: { readIntent: async () => false },
+      nostr: { readIntent: async () => ({ status: "answered", intent: false }) },
       xmtp: {
         createWithSigner: async () => {
           throw new Error("must not create");
@@ -650,12 +622,11 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
       nostr: {
-        readIntent: async () => null,
+        readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async (_a, enabled) =>
           enabled ? { ok: false, reason: "publish_failed" } : { ok: true },
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: false }),
         createWithSigner: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -680,11 +651,10 @@ describe("messaging contract — scenarios", () => {
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
@@ -701,11 +671,10 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const { session, xmtp, nostr } = openSession(clock, {
       nostr: {
-        readIntent: async () => true,
+        readIntent: async () => ({ status: "answered", intent: true }),
         publishIntent: async () => ({ ok: true }),
       },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: false, reason: "build_failed" }),
       },
     });
@@ -723,11 +692,11 @@ describe("messaging contract — scenarios", () => {
 
   it("initial mount projects reconciling intent until readIntent resolves", async () => {
     const clock = createControlledClock();
-    let resolveIntent: ((v: boolean | null) => void) | undefined;
+    let resolveIntent: ((v: import("../lib/messaging/ports.ts").IntentReadResult) => void) | undefined;
     const { session } = openSession(clock, {
       nostr: {
         readIntent: async () =>
-          new Promise<boolean | null>((resolve) => {
+          new Promise((resolve) => {
             resolveIntent = resolve;
           }),
       },
@@ -735,28 +704,90 @@ describe("messaging contract — scenarios", () => {
     const first = session.getSnapshot();
     assert.equal(first.state, "reconciling");
     if (first.state === "reconciling") assert.equal(first.op, "intent");
-    resolveIntent?.(true);
+    resolveIntent?.({ status: "answered", intent: true });
     await settleAsync(clock);
     const after = session.getSnapshot();
     assert.notEqual(after.state, "disabled");
   });
 
-  it("negative networkRegistered memo does not suppress fresh probe", async () => {
+  it("unknown registration does not block build", async () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const { session, xmtp } = openSession(clock, {
-      cacheSeed: { networkRegistered: false },
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: true, client: fakeClient }),
       },
     });
     await settleAsync(clock);
-    assert.ok(xmtp.calls.probeRegistration >= 1);
+    assert.ok(xmtp.calls.buildLocal >= 1);
     const snap = session.getSnapshot();
     assert.equal(snap.state, "active");
     if (snap.state === "active") assert.equal(snap.publiclyReachable, true);
+  });
+
+  it("returning device: build ok → active with zero signatures", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+      xmtp: {
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    assert.equal(session.getSnapshot().state, "active");
+    assert.equal(xmtp.calls.createWithSigner, 0);
+    assert.ok(xmtp.calls.buildLocal >= 1);
+  });
+
+  it("intent true, no local DB → needs_signature; no create until enable", async () => {
+    const clock = createControlledClock();
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+      xmtp: {
+        buildLocal: async () => ({ ok: false, reason: "not_registered" }),
+      },
+    });
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "needs_signature");
+    if (snap.state === "needs_signature") assert.equal(snap.reason, "not_registered");
+    assert.equal(xmtp.calls.createWithSigner, 0);
+  });
+
+  it("opfs_lock remains distinct from not_registered", async () => {
+    const clock = createControlledClock();
+    const { session } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+      xmtp: {
+        buildLocal: async () => ({ ok: false, reason: "opfs_lock" }),
+      },
+    });
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "error");
+    if (snap.state === "error") assert.equal(snap.reason, "opfs_lock");
+  });
+
+  it("registration unknown before build — not needs_signature not_registered", async () => {
+    const clock = createControlledClock();
+    const { session } = openSession(
+      clock,
+      {
+        nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+        xmtp: {
+          buildLocal: async (_a, signal) => hangUntilAbort(signal),
+        },
+      },
+      { demand: false },
+    );
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "active");
+    if (snap.state === "active") assert.equal(snap.publiclyReachable, true);
+    assert.equal(session.getXmtpClient(), null);
+    assert.notEqual(snap.state, "needs_signature");
   });
 });
 
@@ -764,8 +795,8 @@ describe("messaging contract — invariants", () => {
   it("invariant: no state older than its deadline", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => true },
-      xmtp: { probeRegistration: async (_a, s) => hangUntilAbort(s) },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+      xmtp: { buildLocal: async (_a, s) => hangUntilAbort(s) },
     });
     await settleAsync(clock);
     assertDeadlineBound(session.getSnapshot(), clock.nowMs());
@@ -779,13 +810,13 @@ describe("messaging contract — invariants", () => {
     let inFlight = 0;
     let maxInFlight = 0;
     openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async (_a, signal) => {
+        buildLocal: async (_a, signal) => {
           inFlight += 1;
           maxInFlight = Math.max(maxInFlight, inFlight);
           try {
-            return await hangUntilAbort<{ registered: boolean }>(signal);
+            return await hangUntilAbort(signal);
           } finally {
             inFlight -= 1;
           }
@@ -794,30 +825,140 @@ describe("messaging contract — invariants", () => {
     });
     await settleAsync(clock);
     assert.ok(maxInFlight <= 1);
-    await advanceAndSettle(clock, PROBE_DEADLINE_MS);
+    await advanceAndSettle(clock, BUILD_DEADLINE_MS);
     assert.ok(maxInFlight <= 1);
   });
 
   it("invariant: only effects interpreter touches ports", async () => {
     const clock = createControlledClock();
     const { xmtp, nostr } = openSession(clock, {
-      nostr: { readIntent: async () => true },
+      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
       xmtp: {
-        probeRegistration: async () => ({ registered: true }),
         buildLocal: async () => ({ ok: false, reason: "not_registered" }),
       },
     });
     await settleAsync(clock);
-    assert.ok(xmtp.calls.probeRegistration >= 1);
+    assert.ok(xmtp.calls.buildLocal >= 1);
     assert.ok(nostr.calls.readIntent >= 1);
   });
 
   it("invariant: every non-active/non-terminal snapshot exposes a concrete next command", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
-      nostr: { readIntent: async () => null },
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }) },
     });
     await settleAsync(clock);
     assertActionableNext(session.getSnapshot());
+  });
+
+  it("unanswered intent never renders onboarding absent", async () => {
+    const clock = createControlledClock();
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "unanswered" }) },
+    });
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "reconciling");
+    if (snap.state === "reconciling") assert.equal(snap.op, "intent");
+    assert.equal(xmtp.calls.createWithSigner, 0);
+    assert.equal(xmtp.liveCount, 0);
+  });
+
+  it("answered absent intent is distinct from unanswered — shows onboarding", async () => {
+    const clock = createControlledClock();
+    const { session } = openSession(clock, {
+      nostr: { readIntent: async () => ({ status: "answered", intent: null }) },
+    });
+    await settleAsync(clock);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "disabled");
+    if (snap.state === "disabled") assert.equal(snap.intent, "absent");
+  });
+
+  it("unanswered does not clear a previously known intent memo", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+
+    const { session, xmtp, nostr } = openSession(clock, {
+      cacheSeed: { intent: true },
+      nostr: { readIntent: async () => ({ status: "unanswered" }) },
+      xmtp: {
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    // Cache hit short-circuits Nostr — known true preserved; unanswered never consulted.
+    assert.equal(nostr.calls.readIntent, 0);
+    assert.equal(session.getSnapshot().state, "active");
+    assert.equal(xmtp.liveCount, 1);
+  });
+
+  it("full revoke refuses when intent publish fails — no revoke", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { clearRevokeAllAt } = await import("../lib/messaging/adapters/cache-adapter.ts");
+    const { getMessagingXmtpEnv } = await import("../lib/messaging/xmtp-env.ts");
+    const { TEST_ADDRESS } = await import("./messaging-contract-harness.ts");
+    clearRevokeAllAt(getMessagingXmtpEnv(), TEST_ADDRESS);
+
+    const { session, xmtp, nostr } = openSession(clock, {
+      nostr: {
+        readIntent: async () => ({ status: "answered", intent: true }),
+        publishIntent: async () => ({ ok: false, reason: "publish_failed" }),
+      },
+      xmtp: {
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+        revokeAllInstallations: async () => ({ ok: true }),
+      },
+    });
+    await settleAsync(clock);
+    assert.equal(session.getSnapshot().state, "active");
+    session.dispatch({ type: "revokeAllInstallations" });
+    await settleAsync(clock);
+    assert.ok(nostr.calls.publishIntent >= 1);
+    assert.equal(nostr.publishLog.some((p) => p.enabled === false), true);
+    assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    assert.equal(xmtp.liveCount, 1);
+  });
+
+  it("full revoke publishes false first then create restores true", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { clearRevokeAllAt } = await import("../lib/messaging/adapters/cache-adapter.ts");
+    const { getMessagingXmtpEnv } = await import("../lib/messaging/xmtp-env.ts");
+    const { TEST_ADDRESS } = await import("./messaging-contract-harness.ts");
+    clearRevokeAllAt(getMessagingXmtpEnv(), TEST_ADDRESS);
+
+    let published: boolean | null = true;
+    const { session, xmtp, nostr } = openSession(clock, {
+      nostr: {
+        readIntent: async () => ({ status: "answered", intent: published }),
+        publishIntent: async (_a, enabled) => {
+          published = enabled;
+          return { ok: true };
+        },
+      },
+      xmtp: {
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+        createWithSigner: async () => ({ ok: true, client: fakeClient }),
+        revokeAllInstallations: async () => ({ ok: true }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "revokeAllInstallations" });
+    await settleAsync(clock);
+    assert.equal(xmtp.calls.revokeAllInstallations, 1);
+    const falseIdx = nostr.publishLog.findIndex((p) => p.enabled === false);
+    assert.ok(falseIdx >= 0);
+    const trueAfter = nostr.publishLog.findIndex(
+      (p, i) => i > falseIdx && p.enabled === true,
+    );
+    assert.ok(trueAfter > falseIdx);
+    assert.equal(published, true);
+    assert.equal(session.getSnapshot().state, "active");
+    if (session.getSnapshot().state === "active") {
+      assert.equal(session.getSnapshot().publiclyReachable, true);
+    }
+    assert.equal(xmtp.liveCount, 1);
   });
 });

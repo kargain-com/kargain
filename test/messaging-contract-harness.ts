@@ -12,9 +12,9 @@ import type {
   Clock,
   CreateWithSignerResult,
   InstallationReadout,
+  IntentReadResult,
   MessagingWalletKind,
   NostrPolicyPort,
-  ProbeRegistrationResult,
   RevokeAllResult,
   RevokeOtherResult,
   WalletPort,
@@ -93,10 +93,6 @@ export function createControlledClock(startMs = 0): ControlledClock {
 }
 
 export type FakeXmtpHandlers = {
-  probeRegistration?: (
-    address: string,
-    signal?: AbortSignal,
-  ) => Promise<ProbeRegistrationResult>;
   buildLocal?: (address: string, signal?: AbortSignal) => Promise<BuildLocalResult>;
   createWithSigner?: (
     address: string,
@@ -122,7 +118,6 @@ export type FakeXmtpHandlers = {
 
 export type FakeXmtpPort = XmtpPort & {
   calls: {
-    probeRegistration: number;
     buildLocal: number;
     createWithSigner: number;
     closeLocal: number;
@@ -137,9 +132,7 @@ export type FakeXmtpPort = XmtpPort & {
   lastRevokeOthersClient: XmtpLocalClient | null | undefined;
 };
 
-const fakeClient = { __brand: "XmtpLocalClient" as const } satisfies XmtpLocalClient;
-
-/** Never-resolving promise (until abort) — July 16 hang fixture. */
+/** Never-resolving promise (until abort) — hang fixture. */
 export function hangUntilAbort<T>(signal?: AbortSignal): Promise<T> {
   return new Promise<T>((_resolve, reject) => {
     if (signal?.aborted) {
@@ -156,7 +149,6 @@ export function hangUntilAbort<T>(signal?: AbortSignal): Promise<T> {
 
 export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPort {
   const calls = {
-    probeRegistration: 0,
     buildLocal: 0,
     createWithSigner: 0,
     closeLocal: 0,
@@ -186,11 +178,6 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     },
     get lastRevokeOthersClient() {
       return lastRevokeOthersClient;
-    },
-    async probeRegistration(address, signal) {
-      calls.probeRegistration += 1;
-      if (handlers.probeRegistration) return handlers.probeRegistration(address, signal);
-      return { registered: false };
     },
     async buildLocal(address, signal) {
       calls.buildLocal += 1;
@@ -247,7 +234,10 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
 }
 
 export type FakeNostrHandlers = {
-  readIntent?: (address: string, signal?: AbortSignal) => Promise<boolean | null>;
+  readIntent?: (
+    address: string,
+    signal?: AbortSignal,
+  ) => Promise<IntentReadResult>;
   publishIntent?: (
     address: string,
     enabled: boolean,
@@ -261,6 +251,14 @@ export type FakeNostrPolicyPort = NostrPolicyPort & {
   publishLog: Array<{ enabled: boolean }>;
 };
 
+export function answeredIntent(intent: true | false | null): IntentReadResult {
+  return { status: "answered", intent };
+}
+
+export function unansweredIntent(): IntentReadResult {
+  return { status: "unanswered" };
+}
+
 export function createFakeNostrPolicyPort(
   handlers: FakeNostrHandlers = {},
 ): FakeNostrPolicyPort {
@@ -273,7 +271,7 @@ export function createFakeNostrPolicyPort(
     async readIntent(address, signal) {
       calls.readIntent += 1;
       if (handlers.readIntent) return handlers.readIntent(address, signal);
-      return null;
+      return answeredIntent(null);
     },
     async publishIntent(address, enabled, signal) {
       calls.publishIntent += 1;
@@ -383,6 +381,7 @@ export function openSession(
     cacheSeed?: Partial<CacheEntry>;
     env?: string;
   } = {},
+  opts: { demand?: boolean } = {},
 ): OpenSessionHandle {
   const xmtp = createFakeXmtpPort(handlers.xmtp);
   const nostr = createFakeNostrPolicyPort(handlers.nostr);
@@ -399,8 +398,10 @@ export function openSession(
   });
   void handlers.env;
   session.start();
-  // Contract / simulation surfaces need a local client (probe/build).
-  session.requestLocalClient();
+  // Most contract surfaces need a local client (build). Opt out for dormant cases.
+  if (opts.demand !== false) {
+    session.requestLocalClient();
+  }
   const handle = { session, xmtp, nostr, wallet, clock, cache };
   openSessionHandles.push(handle);
   return handle;
