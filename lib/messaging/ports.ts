@@ -72,7 +72,7 @@ export type DisabledIntent = "absent" | "explicit";
 export type SessionSnapshot =
   | { state: "disconnected" }
   | { state: "unsupported" }
-  | { state: "disabled"; intent: DisabledIntent; next: "enable" }
+  | { state: "disabled"; intent: DisabledIntent; next: "enable"; enableWalletSignatures?: number }
   | {
       state: "reconciling";
       op: ReconcilingOp;
@@ -83,6 +83,7 @@ export type SessionSnapshot =
       state: "needs_signature";
       reason: SessionReason;
       next: "enable" | "retry" | "resetIdentity";
+      enableWalletSignatures?: number;
     }
   | {
       state: "active";
@@ -188,6 +189,24 @@ export type IntentReadResult =
   | { status: "unanswered" };
 
 /**
+ * App Nostr identity owner capability injected into the messaging adapter.
+ * Implemented by MessagingSessionProvider wrapping `useNostrKey().ensureNostrKey`.
+ * Held-in-memory → obtainKey returns ready with zero wallet prompts.
+ */
+export type NostrIdentityCapability = {
+  obtainKey: () => Promise<
+    | { status: "ready"; privateKey: `0x${string}` }
+    | { status: "declined" }
+    | { status: "error" }
+    | { status: "unavailable" }
+  >;
+  isKeyHeld: () => boolean;
+  /** Cached prompt-free attestation probe (null = not yet probed). */
+  getAttestationValidCached: () => boolean | null;
+  markAttestationValid: (valid: boolean) => void;
+};
+
+/**
  * Durable intent on Nostr kind 0 `messagesEnabled`.
  * Sole owner: `lib/nostr/messaging-intent.ts` (coverage read + kind:0 writer).
  */
@@ -195,13 +214,21 @@ export type NostrPolicyPort = {
   readIntent(address: string, signal?: AbortSignal): Promise<IntentReadResult>;
   /**
    * Publish intent. Must ack on relay before the core tears down local state
-   * on disable. Failure → stay active / surface `publish_failed`.
+   * on disable. Declined signature → retry-inviting; other failures → `publish_failed`.
    */
   publishIntent(
     address: string,
     enabled: boolean,
     signal?: AbortSignal,
-  ): Promise<{ ok: true } | { ok: false; reason: "publish_failed" }>;
+  ): Promise<
+    { ok: true } | { ok: false; reason: "publish_failed" | "signature_declined" }
+  >;
+  /** Prompt-free: private key already held in the identity owner. */
+  isKeyHeld(): boolean;
+  /** Prompt-free cached attestation fact (null until probed / published). */
+  getAttestationValidCached(): boolean | null;
+  /** Coverage + verify; caches result; never prompts the wallet. */
+  probeAttestationValid(address: string): Promise<boolean>;
 };
 
 export type WalletPort = {

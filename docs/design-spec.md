@@ -414,20 +414,21 @@ Identity is deterministic from wallet `personal_sign`. Modules: [`key-manager.ts
 | Account gate | [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) — refuse `contract`; allow `eoa` / `eip7702` (same predicate as XMTP) |
 | Unlock | Corrupt, decrypt-fail, or sk≠signature → fail closed; never overwrite the stored key with a freshly derived one |
 | Passive pubkey | When pubkey cache empty and no in-memory sk: one `attestedPubkeyForAddress` attempt per mount (no wallet signature); cache result; `loading` during resolve so watchlist/notification reads do not flash empty |
+| Peer pin / rotation | Peer cache pins `{pubkey, boundCreatedAt}` after a verifying event. Warm author path never re-queries `#i`. **Any future Nostr key rotation must invalidate peer pins** (otherwise peers keep messaging the retired pubkey). |
 
 #### Profile attestation
 
-Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`profile-attestation.ts`](../lib/nostr/profile-attestation.ts) + [`profile.ts`](../lib/nostr/profile.ts). Read: [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — **sole** address→profile choke point; unverified data is never returned.
+Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write core: [`publish-kind0-profile.ts`](../lib/nostr/publish-kind0-profile.ts) (requires held key). Unlock entry: [`profile.ts`](../lib/nostr/profile.ts) (`getOrCreateNostrKey` then core). Read: [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — **sole** address→profile choke point; unverified data is never returned.
 
 | Item | Value |
 |------|-------|
 | Binding message | `Kargain profile binding v1\nnostr:{pubkey-hex}\nethereum:{lowercase-0x-address}` (separate from key derivation) |
 | Content field | `attestation: { v: 1, sig: "0x…" }` — pubkey and address implicit from event `pubkey` and NIP-39 `i` tag |
-| Write | [`publishNostrProfile`](../lib/nostr/profile.ts) — **sole** kind:0 writer: one coverage read, merge, publish inside `runSerializedPubkeyWrite`; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)` |
+| Write | [`publishKind0Profile`](../lib/nostr/publish-kind0-profile.ts) — one coverage read, merge, publish inside `runSerializedPubkeyWrite`; valid existing attestation preserved (no extra prompt); else one `signMessage(attestationMessage)`. `privateKeyHex` / held key skips unlock only — attestation still runs. [`publishNostrProfile`](../lib/nostr/profile.ts) unlocks when the caller does not hold a key |
 | Merge | [`merge-kind0-content.ts`](../lib/nostr/merge-kind0-content.ts) — `attestation` outside managed keys; set only via explicit publish param |
 | Read/write symmetry | Same invariant as Watchlist: coverage-aware merge-base via [`fetchRelayCoverage`](../lib/nostr/app-event-store.ts); unanswered refuses the write before signing; full-replacement publish targets only `answeredRelays`; answered-but-empty is a valid first profile |
-| Messaging intent | Sole owner [`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read of `messagesEnabled` (true / false / never published / **unanswered**); write via `publishNostrProfile`. Session onboarding only on answered-absent — never on unanswered |
-| Messaging patch | Enable/disable / revoke-preflight publish `{ messagesEnabled }` only through the intent owner |
+| Messaging intent | Sole owner [`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read of `messagesEnabled` (true / false / never published / **unanswered**); write via `publishKind0Profile` with key from the identity owner. Session onboarding only on answered-absent — never on unanswered |
+| Messaging patch | Enable/disable / revoke-preflight publish `{ messagesEnabled }` only through the intent owner; adapter obtains key via `NostrKeyProvider.ensureNostrKey` (zero prompts when already held) |
 | Attested profile read | [`resolve-attested-profile.ts`](../lib/nostr/resolve-attested-profile.ts) — sole NIP-39 `#i` owner; per-address coverage (no shared page limit); discard `created_at > now + 1h` skew; author path once pubkey cached; pin `{pubkey,boundCreatedAt}` — verifying newer challenger replaces, unverified never; peer cache is a memo not a trust store |
 | Read | Newest verifying event within skew wins; `null` when none verify |
 | Batch | [`use-nostr-profiles`](../hooks/use-nostr-profiles.ts) — **per-address** subscribe (own limit each); verify before accumulator |
@@ -443,7 +444,7 @@ Wallet-signed binding of Nostr pubkey to Ethereum address on kind 0. Write: [`pr
 
 Implementation: [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) (sole session owner — sync `registry.acquire` during render), [`use-messaging-session.ts`](../hooks/use-messaging-session.ts) (context reader), [`session-registry.ts`](../lib/messaging/session-registry.ts) (refcount + deferred destroy), [`session-store.ts`](../lib/messaging/session-store.ts), [`snapshot-ui.ts`](../lib/messaging/snapshot-ui.ts), [`message-inbox-client.tsx`](../components/messaging/message-inbox-client.tsx), [`conversation-thread-client.tsx`](../components/messaging/conversation-thread-client.tsx), [`messaging-setup-card.tsx`](../components/messaging/messaging-setup-card.tsx), [`messaging-setup-error.tsx`](../components/messaging/messaging-setup-error.tsx), [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (only `@xmtp/client` importer).
 
-**Account model:** Wallet connect = account created. **Enable messages** (one wallet signature) = XMTP inbox registered on-network and DMs available. **Canonical truth:** Nostr `messagesEnabled` intent ([`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read; unknown ≠ absent) → local build/create (registration derived) → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity). `publiclyReachable` = intent known and published true. Full revoke publishes intent false **before** revoke so peers never see reachable with zero installations.
+**Account model:** Wallet connect = account created. **Enable messages** = XMTP inbox create plus Nostr intent publish (wallet signature count on `enableWalletSignatures` — unlock + attest + create when cold; fewer when key/attestation already held). **Canonical truth:** Nostr `messagesEnabled` intent ([`messaging-intent.ts`](../lib/nostr/messaging-intent.ts) — coverage read; unknown ≠ absent) → local build/create (registration derived) → OPFS local client → session cache memos (latency only). Account gate = [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) (same as Nostr identity). `publiclyReachable` = intent known and published true. Full revoke publishes intent false **before** revoke so peers never see reachable with zero installations. Intent publish obtains the Nostr key only through [`NostrKeyProvider`](../hooks/use-nostr-key.tsx) (`obtainKey` / `isKeyHeld`) — never a second `getOrCreateNostrKey` on the messaging path. Declined wallet signature → `signature_declined` (retry-inviting); hard failure → `publish_failed`.
 
 **SessionSnapshot → surfaces**
 
@@ -451,8 +452,8 @@ Implementation: [`MessagingSessionProvider`](../components/providers/messaging-s
 |----------|-----|
 | `disconnected` | No wallet — setup surfaces hidden |
 | `unsupported` | Contract wallet — messaging unavailable |
-| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published |
-| `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings |
+| `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published; body uses `enableWalletSignatures` count |
+| `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings; same signature-cost field when re-enabling |
 | `reconciling` | Spinner beside CTA (build / create / publish / revoke / intent) — includes unanswered intent (never onboarding) |
 | `needs_signature` | Device activation card (`not_registered` \| `build_failed`) |
 | `active` | DMs available when a local client exists; without client demand, dormant `active` (intent on, `publiclyReachable` true) — not setup-needed |
@@ -1598,4 +1599,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.125 (August 2026 — §4.11 KarPro membership anyActive shared gate; dead OR helpers deleted). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.126 (August 2026 — §4.11/§4.12 P6 messaging consumes Nostr identity owner; pin/rotation coupling). Update when tokens, app shell, or component contracts change.*

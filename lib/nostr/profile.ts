@@ -1,53 +1,28 @@
 "use client";
 
-import { type Address, hexToBytes } from "viem";
-import { finalizeEvent } from "nostr-tools";
+import { type Address } from "viem";
 
-import {
-  getDefaultNostrPool,
-  runSerializedPubkeyWrite,
-} from "@/lib/nostr/app-event-store";
 import { getOrCreateNostrKey } from "@/lib/nostr/key-manager";
-import {
-  fetchLatestKind0RawByAuthor,
-  mergeKind0Content,
-  type Kind0MergeReadResult,
-} from "@/lib/nostr/merge-kind0-content";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
+import type { ProfileAttestationV1 } from "@/lib/nostr/profile-attestation";
 import {
-  attestationMessage,
-  buildProfileAttestation,
-  verifyProfileAttestationCore,
-  type ProfileAttestationV1,
-} from "@/lib/nostr/profile-attestation";
-import {
-  getNostrPool,
-  nostrPubkeyFromPrivateKey,
-} from "@/lib/nostr/nostr-client";
-import { publishSignedEvent } from "@/lib/nostr/publish-event";
+  publishKind0Profile,
+} from "@/lib/nostr/publish-kind0-profile";
+import { getNostrPool } from "@/lib/nostr/nostr-client";
 import { resolveAttestedProfile } from "@/lib/nostr/resolve-attested-profile";
-import { saveCachedPubkey } from "@/lib/nostr/nostr-pubkey-cache";
 
 export type { NostrProfileData, ProfileAttestationV1 } from "@/lib/nostr/parse-profile-content";
 
 export type PublishNostrProfileOpts = {
   /**
    * When set, skips `getOrCreateNostrKey` (tests / callers that already hold
-   * the key). Still runs inside the per-pubkey serializer with one coverage read.
+   * the key). Still runs attestation unless `attestation` is supplied or the
+   * merge base already verifies.
    */
   privateKeyHex?: string;
   /** When set, replaces attestation on the merged content. */
   attestation?: ProfileAttestationV1;
 };
-
-function toWalletAddress(address: Address): `0x${string}` {
-  return address as `0x${string}`;
-}
-
-function toPrivateKeyBytes(privateKey: string): Uint8Array {
-  const hex = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-  return hexToBytes(hex as `0x${string}`);
-}
 
 /** Canonical public profile read — attestation-verified via central resolver. */
 export async function fetchNostrProfileByEthereumTag(
@@ -70,39 +45,10 @@ export async function fetchNostrProfile(
 }
 
 /**
- * Sign + publish from an already-fetched merge base (exactly one coverage read
- * must have produced `base` for this write).
- */
-async function publishFromMergeBase(opts: {
-  data: NostrProfileData;
-  address: `0x${string}`;
-  privateKeyHex: string;
-  base: Extract<Kind0MergeReadResult, { status: "answered" }>;
-  attestation?: ProfileAttestationV1;
-}): Promise<boolean> {
-  const { data, address, privateKeyHex, base, attestation } = opts;
-  const content = mergeKind0Content(base.content, data);
-  if (attestation) {
-    content.attestation = attestation;
-  }
-  const unsigned = {
-    kind: 0,
-    created_at: Math.floor(Date.now() / 1000),
-    content: JSON.stringify(content),
-    tags: [["i", `ethereum:${address.toLowerCase()}`]] as string[][],
-  };
-  const signed = finalizeEvent(unsigned, toPrivateKeyBytes(privateKeyHex));
-  const pool = getDefaultNostrPool();
-  const { ok } = await publishSignedEvent(pool, signed, {
-    relays: base.answeredRelays,
-  });
-  return ok;
-}
-
-/**
- * Sole kind:0 writer: one coverage read, one merge, one publish, inside the
- * per-pubkey serializer. Profile edit, KarPro payments, and messaging intent
- * all call this. Never throws.
+ * Sole kind:0 writer entry for callers that may need unlock: obtains the key
+ * when `privateKeyHex` is absent, then publishes via {@link publishKind0Profile}.
+ * Messaging passes a held key and uses `publishKind0Profile` directly.
+ * Never throws.
  */
 export async function publishNostrProfile(
   data: NostrProfileData,
@@ -111,7 +57,7 @@ export async function publishNostrProfile(
   opts?: PublishNostrProfileOpts,
 ): Promise<boolean> {
   try {
-    const address = toWalletAddress(walletAddress);
+    const address = walletAddress as `0x${string}`;
     const privateKey =
       opts?.privateKeyHex ??
       (await getOrCreateNostrKey({
@@ -121,66 +67,8 @@ export async function publishNostrProfile(
           return sig as `0x${string}`;
         },
       }));
-    const pubkey = nostrPubkeyFromPrivateKey(privateKey);
-    saveCachedPubkey(address, pubkey);
-
-    return await runSerializedPubkeyWrite(pubkey, async () => {
-      const pool = getDefaultNostrPool();
-      const base = await fetchLatestKind0RawByAuthor(pubkey, { pool });
-      if (base.status === "unanswered") {
-        return false;
-      }
-
-      // Key-holder / test path: optional attestation override; no second coverage.
-      if (opts?.privateKeyHex) {
-        return publishFromMergeBase({
-          data,
-          address,
-          privateKeyHex: privateKey,
-          base,
-          attestation: opts.attestation,
-        });
-      }
-
-      if (opts?.attestation) {
-        return publishFromMergeBase({
-          data,
-          address,
-          privateKeyHex: privateKey,
-          base,
-          attestation: opts.attestation,
-        });
-      }
-
-      const hasValidAttestation = await verifyProfileAttestationCore(
-        { id: `write:${pubkey}`, pubkey, content: JSON.stringify(base.content) },
-        address,
-      );
-
-      if (hasValidAttestation) {
-        return publishFromMergeBase({
-          data,
-          address,
-          privateKeyHex: privateKey,
-          base,
-        });
-      }
-
-      const attestationSig = (await signer.signMessage(
-        attestationMessage(pubkey, address),
-      )) as `0x${string}`;
-      const attestation = buildProfileAttestation({
-        pubkey,
-        address,
-        signature: attestationSig,
-      });
-      return publishFromMergeBase({
-        data,
-        address,
-        privateKeyHex: privateKey,
-        base,
-        attestation,
-      });
+    return publishKind0Profile(data, walletAddress, privateKey, signer, {
+      attestation: opts?.attestation,
     });
   } catch {
     return false;

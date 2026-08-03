@@ -11,6 +11,7 @@ import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messag
 import type { InstallationReadout } from "@/lib/messaging/ports";
 import {
   canWalletEnableMessaging,
+  enableWalletSignaturesCopy,
   isUserOpInFlight,
   messagingUnsupportedCopy,
 } from "@/lib/messaging/snapshot-ui";
@@ -24,7 +25,14 @@ type Props = {
   className?: string;
 };
 
-function contextCopy(context: SetupContext): { title: string; body: string } {
+function contextCopy(
+  context: SetupContext,
+  enableWalletSignatures: number | undefined,
+): { title: string; body: string } {
+  const signatureBody =
+    enableWalletSignatures != null
+      ? enableWalletSignaturesCopy(enableWalletSignatures)
+      : enableWalletSignaturesCopy(3);
   switch (context) {
     case "seller":
       return {
@@ -39,7 +47,7 @@ function contextCopy(context: SetupContext): { title: string; body: string } {
     default:
       return {
         title: "Enable messages to finish account setup",
-        body: "Buyers, sellers, and verifiers use encrypted messages on Kargain. One wallet signature turns them on for your account.",
+        body: `Buyers, sellers, and verifiers use encrypted messages on Kargain. ${signatureBody}`,
       };
   }
 }
@@ -89,7 +97,11 @@ export function MessagingSetupCard({
 
   const unsupported = messagingUnsupportedCopy(snapshot);
   const canEnable = canWalletEnableMessaging(snapshot);
-  const copy = contextCopy(context);
+  const enableWalletSignatures =
+    snapshot.state === "disabled" || snapshot.state === "needs_signature"
+      ? snapshot.enableWalletSignatures
+      : undefined;
+  const copy = contextCopy(context, enableWalletSignatures);
   const userOpBusy = isUserOpInFlight(snapshot);
   const ctaDisabled =
     snapshot.state === "active" ||

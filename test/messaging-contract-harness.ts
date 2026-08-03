@@ -242,13 +242,20 @@ export type FakeNostrHandlers = {
     address: string,
     enabled: boolean,
     signal?: AbortSignal,
-  ) => Promise<{ ok: true } | { ok: false; reason: "publish_failed" }>;
+  ) => Promise<
+    { ok: true } | { ok: false; reason: "publish_failed" | "signature_declined" }
+  >;
+  isKeyHeld?: () => boolean;
+  getAttestationValidCached?: () => boolean | null;
+  probeAttestationValid?: (address: string) => Promise<boolean>;
 };
 
 export type FakeNostrPolicyPort = NostrPolicyPort & {
   calls: { readIntent: number; publishIntent: number };
   /** Ordered publish calls for disable-ordering assertions. */
   publishLog: Array<{ enabled: boolean }>;
+  setKeyHeld(held: boolean): void;
+  setAttestationValid(valid: boolean | null): void;
 };
 
 export function answeredIntent(intent: true | false | null): IntentReadResult {
@@ -264,10 +271,18 @@ export function createFakeNostrPolicyPort(
 ): FakeNostrPolicyPort {
   const calls = { readIntent: 0, publishIntent: 0 };
   const publishLog: Array<{ enabled: boolean }> = [];
+  let keyHeld = false;
+  let attestationValid: boolean | null = null;
 
   return {
     calls,
     publishLog,
+    setKeyHeld(held) {
+      keyHeld = held;
+    },
+    setAttestationValid(valid) {
+      attestationValid = valid;
+    },
     async readIntent(address, signal) {
       calls.readIntent += 1;
       if (handlers.readIntent) return handlers.readIntent(address, signal);
@@ -278,6 +293,21 @@ export function createFakeNostrPolicyPort(
       publishLog.push({ enabled });
       if (handlers.publishIntent) return handlers.publishIntent(address, enabled, signal);
       return { ok: true };
+    },
+    isKeyHeld() {
+      return handlers.isKeyHeld?.() ?? keyHeld;
+    },
+    getAttestationValidCached() {
+      return handlers.getAttestationValidCached?.() ?? attestationValid;
+    },
+    async probeAttestationValid(address) {
+      if (handlers.probeAttestationValid) {
+        const valid = await handlers.probeAttestationValid(address);
+        attestationValid = valid;
+        return valid;
+      }
+      if (attestationValid === null) attestationValid = false;
+      return attestationValid === true;
     },
   };
 }

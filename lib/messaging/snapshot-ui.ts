@@ -1,6 +1,38 @@
 import type { MessagingSession, ReconcilingOp, SessionSnapshot } from "./ports";
+import {
+  deriveEnableWalletSignatures,
+  enableWalletSignaturesCopy,
+} from "./enable-cost";
+
+export { deriveEnableWalletSignatures, enableWalletSignaturesCopy };
 
 const USER_OPS = new Set<ReconcilingOp>(["create", "publish", "revoke"]);
+
+/**
+ * Project signature-cost onto enable-facing snapshots (disabled / needs_signature).
+ * Conservative when attestation not yet probed (counts as needing attest).
+ */
+export function withEnableWalletSignatures(
+  snapshot: SessionSnapshot,
+  facts: {
+    keyHeld: boolean;
+    attestationValidCached: boolean | null;
+    hasLocalClient: boolean;
+  },
+): SessionSnapshot {
+  if (snapshot.state !== "disabled" && snapshot.state !== "needs_signature") {
+    return snapshot;
+  }
+  if (snapshot.state === "needs_signature" && snapshot.next !== "enable") {
+    return snapshot;
+  }
+  const count = deriveEnableWalletSignatures({
+    keyHeld: facts.keyHeld,
+    attestationValid: facts.attestationValidCached === true,
+    needsCreate: !facts.hasLocalClient,
+  });
+  return { ...snapshot, enableWalletSignatures: count };
+}
 
 export function needsMessagingSetupCard(snapshot: SessionSnapshot): boolean {
   switch (snapshot.state) {

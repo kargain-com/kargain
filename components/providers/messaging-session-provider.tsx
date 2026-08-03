@@ -21,11 +21,17 @@ import {
   preloadXmtp,
   type XmtpSdkClient,
 } from "@/lib/messaging/adapters/xmtp-adapter";
-import type { MessagingSession, SessionCommand, SessionSnapshot } from "@/lib/messaging/ports";
+import type {
+  MessagingSession,
+  NostrIdentityCapability,
+  SessionCommand,
+  SessionSnapshot,
+} from "@/lib/messaging/ports";
 import { createSessionRegistry } from "@/lib/messaging/session-registry";
 import { createMessagingSession } from "@/lib/messaging/session-store";
 import { shouldIdleWarmXmtp } from "@/lib/messaging/snapshot-ui";
 import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
+import { useNostrKey } from "@/hooks/use-nostr-key";
 import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -33,6 +39,12 @@ type SessionRefs = {
   address: Address;
   walletClient: WalletClient | undefined;
   commercialChainId: number | null;
+  /** Latest identity facts — mutated each render like walletClient. */
+  nostrPrivateKey: `0x${string}` | null;
+  nostrStatus: "idle" | "connecting_wallet" | "restoring" | "creating" | "ready" | "error";
+  ensureNostrKey: () => Promise<`0x${string}` | null>;
+  isConnected: boolean;
+  attestationValidByAddress: Map<string, boolean>;
 };
 
 export type MessagingSessionContextValue = {
@@ -84,6 +96,32 @@ function sessionKey(address: string): string {
   return address.toLowerCase();
 }
 
+function identityFromRefs(refs: SessionRefs): NostrIdentityCapability {
+  return {
+    async obtainKey() {
+      if (!refs.isConnected || !refs.address) return { status: "unavailable" };
+      if (refs.nostrPrivateKey) {
+        return { status: "ready", privateKey: refs.nostrPrivateKey };
+      }
+      const key = await refs.ensureNostrKey();
+      if (key) return { status: "ready", privateKey: key };
+      if (refs.nostrStatus === "error") return { status: "error" };
+      if (refs.nostrStatus === "idle") return { status: "declined" };
+      return { status: "unavailable" };
+    },
+    isKeyHeld() {
+      return refs.nostrPrivateKey != null;
+    },
+    getAttestationValidCached() {
+      const cached = refs.attestationValidByAddress.get(sessionKey(refs.address));
+      return cached === undefined ? null : cached;
+    },
+    markAttestationValid(valid) {
+      refs.attestationValidByAddress.set(sessionKey(refs.address), valid);
+    },
+  };
+}
+
 function createSessionForAddress(address: Address, refs: SessionRefs): MessagingSession {
   const wallet = createWalletAdapter({
     getAddress: () => refs.address,
@@ -94,9 +132,11 @@ function createSessionForAddress(address: Address, refs: SessionRefs): Messaging
   const xmtp = createXmtpAdapter({
     getWalletClient: () => refs.walletClient,
   });
+  const identity = identityFromRefs(refs);
   const nostr = createNostrPolicyAdapter({
     getAddress: () => refs.address,
     getWalletClient: () => refs.walletClient,
+    identity,
   });
   const cache =
     typeof localStorage === "undefined"
@@ -125,15 +165,32 @@ function ensureRefs(
   address: Address,
   walletClient: WalletClient | undefined,
   commercialChainId: number | null,
+  nostrPrivateKey: `0x${string}` | null,
+  nostrStatus: SessionRefs["nostrStatus"],
+  ensureNostrKey: () => Promise<`0x${string}` | null>,
+  isConnected: boolean,
 ): SessionRefs {
   let refs = sessionRefsByAddress.get(key);
   if (!refs) {
-    refs = { address, walletClient, commercialChainId };
+    refs = {
+      address,
+      walletClient,
+      commercialChainId,
+      nostrPrivateKey,
+      nostrStatus,
+      ensureNostrKey,
+      isConnected,
+      attestationValidByAddress: new Map(),
+    };
     sessionRefsByAddress.set(key, refs);
   } else {
     refs.address = address;
     refs.walletClient = walletClient;
     refs.commercialChainId = commercialChainId;
+    refs.nostrPrivateKey = nostrPrivateKey;
+    refs.nostrStatus = nostrStatus;
+    refs.ensureNostrKey = ensureNostrKey;
+    refs.isConnected = isConnected;
   }
   return refs;
 }
@@ -145,14 +202,29 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
   const { data: walletClient } = useWalletClient(
     commercialChainId != null ? { chainId: wagmiChainId(commercialChainId) } : {},
   );
+  const {
+    nostrPrivateKey,
+    ensureNostrKey,
+    status: nostrStatus,
+  } = useNostrKey();
 
   const nextKey = address && isConnected ? sessionKey(address) : null;
   const [heldKey, setHeldKey] = useState<string | null>(null);
+  const [keyHeldEpoch, setKeyHeldEpoch] = useState(0);
 
   let session: MessagingSession | null = null;
 
   if (nextKey && address) {
-    const refs = ensureRefs(nextKey, address, walletClient, commercialChainId);
+    const refs = ensureRefs(
+      nextKey,
+      address,
+      walletClient,
+      commercialChainId,
+      nostrPrivateKey,
+      nostrStatus,
+      ensureNostrKey,
+      isConnected,
+    );
     if (heldKey !== nextKey) {
       registry.acquire(address, () => createSessionForAddress(address, refs));
       setHeldKey(nextKey);
@@ -170,22 +242,29 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
       if (!nextKey) return;
       registry.release(nextKey);
       sessionRefsByAddress.delete(nextKey);
-      // Allow remount / Strict Mode to re-acquire and cancel pending destroy.
       setHeldKey((current) => (current === nextKey ? null : current));
     };
   }, [nextKey]);
 
+  useEffect(() => {
+    if (!session) return;
+    setKeyHeldEpoch((n) => n + 1);
+  }, [session, nostrPrivateKey]);
+
   const snapshot = useSyncExternalStore(
     (onStoreChange) => (session ? session.subscribe(onStoreChange) : () => {}),
-    () =>
-      address && isConnected && session ? session.getSnapshot() : DISCONNECTED_SNAPSHOT,
+    () => {
+      void keyHeldEpoch;
+      return address && isConnected && session
+        ? session.getSnapshot()
+        : DISCONNECTED_SNAPSHOT;
+    },
     () => DISCONNECTED_SNAPSHOT,
   );
 
   const client =
     address && isConnected && session ? session.getXmtpClient() : null;
 
-  // Idle-warm when intent known true and this device has no client yet.
   useEffect(() => {
     if (snapshot.state !== "active") return;
     if (!shouldIdleWarmXmtp({ publiclyReachable: snapshot.publiclyReachable, hasClient: client != null })) {

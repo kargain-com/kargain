@@ -4,7 +4,11 @@ import type { Address } from "viem";
 
 import { fetchLatestKind0RawByAuthor } from "@/lib/nostr/merge-kind0-content";
 import { loadCachedPubkey } from "@/lib/nostr/nostr-pubkey-cache";
-import { publishNostrProfile } from "@/lib/nostr/profile";
+import { verifyProfileAttestationCore } from "@/lib/nostr/profile-attestation";
+import {
+  publishKind0Profile,
+  type PublishKind0ProfileOpts,
+} from "@/lib/nostr/publish-kind0-profile";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 
 /**
@@ -62,12 +66,42 @@ export async function readMessagingIntent(
 }
 
 /**
- * Publish `messagesEnabled` via the sole kind:0 writer (serialized, one coverage).
+ * Prompt-free check: coverage merge base already carries a verifying attestation.
+ * Never prompts the wallet.
+ */
+export async function hasValidMessagingAttestation(
+  walletAddress: Address,
+): Promise<boolean> {
+  try {
+    const address = walletAddress as `0x${string}`;
+    const pubkey = await resolveAuthorPubkey(address);
+    if (!pubkey) return false;
+    const base = await fetchLatestKind0RawByAuthor(pubkey);
+    if (base.status === "unanswered") return false;
+    return verifyProfileAttestationCore(
+      { id: `probe:${pubkey}`, pubkey, content: JSON.stringify(base.content) },
+      address,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Publish `messagesEnabled` via the key-injected kind:0 writer (no key-manager).
+ * Caller must supply `privateKeyHex` from the app identity owner.
  */
 export async function publishMessagingIntent(
   walletAddress: Address,
   enabled: boolean,
   signer: { signMessage: (msg: string) => Promise<string> },
+  opts: { privateKeyHex: string } & PublishKind0ProfileOpts,
 ): Promise<boolean> {
-  return publishNostrProfile({ messagesEnabled: enabled }, walletAddress, signer);
+  return publishKind0Profile(
+    { messagesEnabled: enabled },
+    walletAddress,
+    opts.privateKeyHex,
+    signer,
+    { attestation: opts.attestation },
+  );
 }

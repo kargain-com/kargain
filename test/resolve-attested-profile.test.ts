@@ -25,11 +25,11 @@ import {
   createEmptyAttestedProfileState,
   isCreatedAtWithinReadSkew,
   KIND0_PER_ADDRESS_LIMIT,
-  preP5bEclipseOraclePick,
   resolveAttestedProfile,
   resolveAttestedProfiles,
   verifyIncomingProfileEvent,
 } from "../lib/nostr/resolve-attested-profile.ts";
+import { preP5bEclipseOraclePick } from "./pre-p5b-eclipse-oracle.ts";
 import {
   attestationMessage,
   buildProfileAttestation,

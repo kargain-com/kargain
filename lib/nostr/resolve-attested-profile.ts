@@ -152,17 +152,6 @@ function filterEventsBySkew(events: Event[], nowSec: number): Event[] {
   return events.filter((e) => isCreatedAtWithinReadSkew(e.created_at, nowSec));
 }
 
-/**
- * Pre-P5b eclipse oracle: newest-first sort, take first `limit` events, then
- * verify-walk. Used only in tests to prove the attack fails against old code.
- */
-export function preP5bEclipseOraclePick(
-  events: Event[],
-  limit: number,
-): Event[] {
-  return [...events].sort((a, b) => b.created_at - a.created_at).slice(0, limit);
-}
-
 type PickedVerified = {
   event: Event;
   profile: NostrProfileData;

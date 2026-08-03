@@ -20,6 +20,7 @@ import {
   type MessagingCachePort,
 } from "./adapters/cache-adapter";
 import { getMessagingXmtpEnv } from "./xmtp-env";
+import { withEnableWalletSignatures } from "./snapshot-ui";
 
 export type EffectsRunner = {
   start(): void;
@@ -268,6 +269,19 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
               apply({ type: "disable_cleared" });
               cache.set(state.address, { intent: false });
             }
+          } else if (result.reason === "signature_declined") {
+            // Retry-inviting: clear sticky hard failure; keep pending if enable
+            // already built a client so publish-only retry works.
+            apply({ type: "publish_error_set", error: null });
+            if (enabled) {
+              apply({
+                type: "publish_pending_set",
+                pending: state.localClient != null,
+              });
+              apply({ type: "enable_cleared" });
+            } else {
+              apply({ type: "disable_cleared" });
+            }
           } else if (enabled) {
             apply({ type: "publish_pending_set", pending: true });
             apply({ type: "publish_error_set", error: "publish_failed" });
@@ -286,7 +300,11 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
             const published = await ports.nostr.publishIntent(state.address, false, signal);
             if (isStale(opGeneration)) return;
             if (!published.ok) {
-              apply({ type: "publish_error_set", error: "publish_failed" });
+              if (published.reason === "signature_declined") {
+                apply({ type: "publish_error_set", error: null });
+              } else {
+                apply({ type: "publish_error_set", error: "publish_failed" });
+              }
               apply({ type: "reset_cleared" });
               break;
             }
@@ -440,6 +458,9 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       }
       apply({ type: "intent_loaded", intent: result.intent });
       cache.set(state.address, { intent: result.intent });
+      void ports.nostr.probeAttestationValid(state.address).then(() => {
+        if (!disposed && !isStale(opGeneration)) notify();
+      });
       scheduleLoop();
     } catch {
       if (!isStale(opGeneration)) {
@@ -584,10 +605,15 @@ export function getSessionSnapshot(
   ports: MessagingSessionPorts,
   nowMs?: number,
 ) {
-  return projectSnapshot(
+  const base = projectSnapshot(
     state,
     ports.wallet.getAddress(),
     ports.wallet.getAccountKind(),
     nowMs ?? Date.now(),
   );
+  return withEnableWalletSignatures(base, {
+    keyHeld: ports.nostr.isKeyHeld(),
+    attestationValidCached: ports.nostr.getAttestationValidCached(),
+    hasLocalClient: state.localClient != null,
+  });
 }

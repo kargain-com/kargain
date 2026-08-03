@@ -42,13 +42,27 @@ export const createMessagingSession: CreateMessagingSession = (
   }
 
   function refreshCachedSnapshot(): void {
-    cachedSnapshot = snapshotNow();
+    const next = snapshotNow();
+    if (
+      cachedSnapshot &&
+      JSON.stringify(cachedSnapshot) === JSON.stringify(next)
+    ) {
+      return;
+    }
+    cachedSnapshot = next;
   }
 
   refreshCachedSnapshot();
 
   return {
     getSnapshot() {
+      // Recompute so live identity facts (key held / attestation cache) apply
+      // without a machine event; return prior ref when unchanged (uSES stability).
+      const next = snapshotNow();
+      if (JSON.stringify(cachedSnapshot) === JSON.stringify(next)) {
+        return cachedSnapshot;
+      }
+      cachedSnapshot = next;
       return cachedSnapshot;
     },
     subscribe(onChange) {

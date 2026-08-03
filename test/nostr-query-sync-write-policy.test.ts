@@ -12,6 +12,7 @@ const PUBLISH_PATH_OWNERS = [
   path.join(ROOT, "lib/nostr/favorites.ts"),
   path.join(ROOT, "lib/nostr/merge-kind0-content.ts"),
   path.join(ROOT, "lib/nostr/profile.ts"),
+  path.join(ROOT, "lib/nostr/publish-kind0-profile.ts"),
   path.join(ROOT, "lib/nostr/notification-state.ts"),
   path.join(ROOT, "lib/nostr/messaging-intent.ts"),
 ] as const;
@@ -109,21 +110,32 @@ describe("nostr querySync write policy", () => {
   });
 
   it("profile publish serializes and has no expectExisting heuristic", () => {
-    const profile = fs.readFileSync(PUBLISH_PATH_OWNERS[3], "utf8");
+    const profile = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/profile.ts"),
+      "utf8",
+    );
+    const kind0 = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/publish-kind0-profile.ts"),
+      "utf8",
+    );
     assert.equal(EXPECT_EXISTING.test(profile), false);
     assert.equal(IS_MERGE_BASE_UNAVAILABLE.test(profile), false);
     assert.ok(
-      profile.includes("answeredRelays"),
-      "profile publish must pass answeredRelays to publishSignedEvent",
+      kind0.includes("answeredRelays"),
+      "kind:0 core must pass answeredRelays to publishSignedEvent",
     );
     assert.ok(
-      profile.includes("runSerializedPubkeyWrite"),
+      kind0.includes("runSerializedPubkeyWrite"),
       "kind:0 publish must serialize per pubkey",
     );
     assert.equal(
       profile.includes("publishNostrProfileWithPrivateKey"),
       false,
       "dual-read inner helper must be deleted",
+    );
+    assert.ok(
+      profile.includes("publishKind0Profile"),
+      "profile unlock entry must delegate to kind:0 core",
     );
   });
 
@@ -141,7 +153,10 @@ describe("nostr querySync write policy", () => {
   });
 
   it("kind 30078 notification-state uses fetchRelayCoverage and answeredRelays", () => {
-    const text = fs.readFileSync(PUBLISH_PATH_OWNERS[4], "utf8");
+    const text = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/notification-state.ts"),
+      "utf8",
+    );
     assert.ok(
       FETCH_RELAY_COVERAGE.test(text),
       "notification-state must call fetchRelayCoverage",
@@ -158,15 +173,19 @@ describe("nostr querySync write policy", () => {
   });
 
   it("messaging-intent owns coverage read and kind:0 write — not on read-only allowlist", () => {
-    const text = fs.readFileSync(PUBLISH_PATH_OWNERS[5], "utf8");
+    const text = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/messaging-intent.ts"),
+      "utf8",
+    );
     assert.ok(
       text.includes("fetchLatestKind0RawByAuthor"),
       "messaging-intent must read via coverage merge-base helper",
     );
     assert.ok(
-      text.includes("publishNostrProfile"),
-      "messaging-intent must write via sole kind:0 writer",
+      text.includes("publishKind0Profile"),
+      "messaging-intent must write via key-injected kind:0 core (no key-manager)",
     );
+    assert.equal(text.includes("getOrCreateNostrKey"), false);
     assert.equal(QUERY_SYNC_CALL.test(text), false);
     assert.equal(
       text.includes("resolveAttestedProfile"),
@@ -279,7 +298,19 @@ describe("nostr querySync write policy", () => {
       "removing the skew export must fail the suite",
     );
     assert.ok(text.includes("isCreatedAtWithinReadSkew"));
-    assert.ok(text.includes("preP5bEclipseOraclePick"));
+    const resolver = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/resolve-attested-profile.ts"),
+      "utf8",
+    );
+    assert.equal(
+      resolver.includes("preP5bEclipseOraclePick"),
+      false,
+      "eclipse oracle must not live in the production choke point",
+    );
+    assert.ok(
+      fs.existsSync(path.join(ROOT, "test/pre-p5b-eclipse-oracle.ts")),
+      "oracle helper must live under test/",
+    );
   });
 
   it("messaging intent read path cannot reach wall-clock querySync transitively", () => {
@@ -320,5 +351,28 @@ describe("nostr querySync write policy", () => {
       "utf8",
     );
     assert.equal(adapterSrc.includes("resolveAttestedProfile"), false);
+  });
+
+  it("messaging path cannot reach key-manager transitively", () => {
+    const entries = [
+      "lib/messaging/adapters/nostr-adapter.ts",
+      "lib/nostr/messaging-intent.ts",
+      "lib/messaging/effects.ts",
+    ];
+    const reachable = reachableFrom(entries);
+    const violations = [...reachable]
+      .map((f) => path.relative(ROOT, f))
+      .filter((rel) => rel === "lib/nostr/key-manager.ts" || rel.endsWith("/key-manager.ts"));
+    assert.deepEqual(
+      violations,
+      [],
+      "messaging unlock must go through NostrKeyProvider; adapter must not reach key-manager",
+    );
+    const adapterSrc = fs.readFileSync(
+      path.join(ROOT, "lib/messaging/adapters/nostr-adapter.ts"),
+      "utf8",
+    );
+    assert.equal(adapterSrc.includes("getOrCreateNostrKey"), false);
+    assert.ok(adapterSrc.includes("obtainKey"));
   });
 });
