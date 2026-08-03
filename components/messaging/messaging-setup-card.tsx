@@ -57,14 +57,20 @@ function contextCopy(
 function errorBody(reason: string): { title: string; body: string } {
   if (reason === "opfs_lock") {
     return {
-      title: "Messages are open in another place",
-      body: "Messages are already open in another Kargain tab or window on this device. Close it here to continue in this browser.",
+      title: "Messages storage is busy on this device",
+      body: "Local message storage is already in use — another Kargain tab or window, or a previous setup that did not finish. Close it here to continue in this browser.",
     };
   }
   if (reason === "timeout") {
     return {
       title: "Messaging setup timed out",
       body: "The setup step did not finish in time. Try again when you are ready.",
+    };
+  }
+  if (reason === "unknown") {
+    return {
+      title: "Could not finish messaging setup",
+      body: "Something unexpected went wrong while setting up messages. Try again when you are ready.",
     };
   }
   return {
@@ -127,7 +133,7 @@ export function MessagingSetupCard({
   const ctaDisabled =
     snapshot.state === "unsupported" ||
     snapshot.state === "disconnected" ||
-    userOpBusy ||
+    (userOpBusy && !(snapshot.state === "reconciling" && snapshot.op === "sdk")) ||
     (snapshot.state === "active" && !isActionableActive(snapshot));
 
   const createErrorKind =
@@ -224,6 +230,26 @@ export function MessagingSetupCard({
         role="status"
       >
         {unsupported ?? "This wallet cannot use encrypted messages."}
+      </div>
+    );
+  }
+
+  if (snapshot.state === "reconciling" && snapshot.op === "sdk") {
+    return (
+      <div
+        className={cn(
+          "space-y-4 rounded-md border border-border-default bg-bg-surface p-4",
+          className,
+        )}
+        role="status"
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-text-primary">Downloading the messaging module</p>
+          <p className="text-sm text-text-secondary">
+            This is a one-time download for this browser. You can cancel and try again later.
+          </p>
+        </div>
+        {ctaRow()}
       </div>
     );
   }

@@ -11,6 +11,7 @@ import {
 export type PeerReachabilityReason =
   | "disabled"
   | "not_registered"
+  | "unknown"
   | "protocol"
   | "contract"
   | null;
@@ -55,6 +56,9 @@ export function peerReachabilityMessage(reason: PeerReachabilityReason): string 
       return "This user is not accepting messages.";
     case "not_registered":
       return "This user has not enabled messages yet.";
+    case "unknown":
+      // Incomplete probe — about our check, not a claim about the peer.
+      return "Could not check whether this user can receive messages.";
     case "protocol":
     case "contract":
       return "This address cannot receive messages.";

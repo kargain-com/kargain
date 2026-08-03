@@ -11,6 +11,8 @@ export type ReconcilePlan =
 export type ReconcileInput = {
   state: MachineState;
   nowMs: number;
+  /** SDK module loaded — build/create require this. */
+  moduleReady: boolean;
 };
 
 function wantsMessaging(state: MachineState): boolean {
@@ -40,6 +42,11 @@ function shouldCreate(state: MachineState): boolean {
   if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
 
+  // Storage busy — never mint an installation while the local DB cannot open.
+  if (state.lastError === "opfs_lock" || state.localBuildReason === "opfs_lock") {
+    return false;
+  }
+
   // Full-revoke publishes intent false before revoke; create must still run.
   if (state.resetChain === "create") return true;
 
@@ -66,7 +73,7 @@ function shouldPublishFalse(state: MachineState): boolean {
 }
 
 export function reconcile(input: ReconcileInput): ReconcilePlan {
-  const { state } = input;
+  const { state, moduleReady } = input;
 
   if (state.inFlight) {
     return { kind: "idle" };
@@ -77,6 +84,7 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
       return { kind: "run", effect: "revoke" };
     }
     if (state.resetChain === "create") {
+      if (!moduleReady) return { kind: "run", effect: "sdk" };
       return { kind: "run", effect: "create" };
     }
   }
@@ -112,6 +120,17 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
 
   if (state.lastError && !state.localClient) {
     return { kind: "idle" };
+  }
+
+  // Storage failure sticks via localBuildReason even if lastError was cleared.
+  if (state.localBuildReason === "opfs_lock" && !state.localClient) {
+    return { kind: "idle" };
+  }
+
+  if (shouldBuild(state) || shouldCreate(state)) {
+    if (!moduleReady) {
+      return { kind: "run", effect: "sdk" };
+    }
   }
 
   if (shouldBuild(state)) {

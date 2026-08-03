@@ -25,7 +25,8 @@ export type SessionReason =
   | "opfs_lock"
   | "installation_limit"
   | "publish_failed"
-  | "create_cancelled";
+  | "create_cancelled"
+  | "unknown";
 
 /** Commands the UI / hook may dispatch. */
 export type SessionCommand =
@@ -42,6 +43,7 @@ export type SessionCommandType = SessionCommand["type"];
 
 export type ReconcilingOp =
   | "intent"
+  | "sdk"
   | "build"
   | "create"
   | "publish"
@@ -63,6 +65,8 @@ export type SessionSnapshot =
       op: ReconcilingOp;
       /** Absolute clock deadline (ms since epoch) for this op, when applicable. */
       deadlineMs: number;
+      /** Present for `sdk` — cancelable module load with no wall deadline. */
+      next?: "cancel";
     }
   | {
       state: "needs_signature";
@@ -89,6 +93,8 @@ export type SessionSnapshot =
       state: "error";
       reason: SessionReason;
       next: "retry" | "resetIdentity" | "cancel";
+      /** Underlying cause when reason is `unknown` (inspectable, not user-facing). */
+      cause?: string;
     };
 
 /** Opaque local client handle — core never inspects SDK types. */
@@ -127,10 +133,17 @@ export type DurableStorageResult = {
  * (R1+); R0 tests use fakes only.
  */
 export type XmtpPort = {
+  /**
+   * Load the SDK module (WASM). Prerequisite for build/create — never inside a
+   * wall-clock deadline. Cancel via AbortSignal only.
+   */
+  ensureModule(signal?: AbortSignal): Promise<void>;
+  /** True after a successful ensureModule / preload settled. */
+  isModuleReady(): boolean;
   buildLocal(address: string, signal?: AbortSignal): Promise<BuildLocalResult>;
   /**
    * User-signature path. No wall timeout (waits on wallet); cancellable via
-   * AbortSignal → reason `create_cancelled`.
+   * AbortSignal → reason `create_cancelled`. Requires module ready.
    */
   createWithSigner(address: string, signal?: AbortSignal): Promise<CreateWithSignerResult>;
   /**

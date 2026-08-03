@@ -57,7 +57,7 @@ describe("messaging contract — scenarios", () => {
     assert.equal(xmtp.calls.createWithSigner, 0);
   });
 
-  it("cold path: hung build settles by BUILD_DEADLINE_MS → timeout (no probe wall)", async () => {
+  it("cold path: hung build (post-sdk) settles by BUILD_DEADLINE_MS → timeout", async () => {
     const clock = createControlledClock();
     const { session, xmtp } = openSession(clock, {
       nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
@@ -72,7 +72,7 @@ describe("messaging contract — scenarios", () => {
     assert.ok(xmtp.calls.buildLocal >= 1);
   });
 
-  it("july16: hung build settles by BUILD_DEADLINE_MS → timeout", async () => {
+  it("july16: hung build (post-sdk) settles by BUILD_DEADLINE_MS → timeout", async () => {
     const clock = createControlledClock();
     const { session } = openSession(clock, {
       nostr: { readIntent: async () => ({ status: "answered", intent: true }) },

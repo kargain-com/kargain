@@ -37,6 +37,8 @@ export type MachineState = {
   publishError: "publish_failed" | null;
   awaitingSignature: SessionReason | null;
   lastError: SessionReason | null;
+  /** Inspectable cause when lastError is `unknown`. */
+  lastErrorCause: string | null;
   resetChain: null | "revoke" | "create";
   revokeMode: RevokeMode | null;
   /** Full-revoke refused because cooldown has not elapsed. */
@@ -68,6 +70,7 @@ export function createInitialMachineState(address: string): MachineState {
     publishError: null,
     awaitingSignature: null,
     lastError: null,
+    lastErrorCause: null,
     resetChain: null,
     revokeMode: null,
     revokeAllCooldown: false,
@@ -91,7 +94,7 @@ export type MachineEvent =
   | { type: "publish_pending_set"; pending: boolean }
   | { type: "publish_error_set"; error: "publish_failed" | null }
   | { type: "awaiting_signature_set"; reason: SessionReason | null }
-  | { type: "last_error_set"; reason: SessionReason | null }
+  | { type: "last_error_set"; reason: SessionReason | null; cause?: string | null }
   | { type: "reset_chain_set"; stage: MachineState["resetChain"] }
   | { type: "revoke_mode_set"; mode: RevokeMode | null }
   | { type: "revoke_all_cooldown_set"; blocked: boolean }
@@ -139,6 +142,7 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
         },
         awaitingSignature: null,
         lastError: null,
+        lastErrorCause: null,
       };
     case "effect_cleared":
       return { ...state, inFlight: null };
@@ -149,7 +153,18 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
     case "awaiting_signature_set":
       return { ...state, awaitingSignature: event.reason };
     case "last_error_set":
-      return { ...state, lastError: event.reason };
+      return {
+        ...state,
+        lastError: event.reason,
+        lastErrorCause:
+          event.reason == null
+            ? null
+            : event.cause !== undefined
+              ? event.cause
+              : event.reason === "unknown"
+                ? state.lastErrorCause
+                : null,
+      };
     case "reset_chain_set":
       return { ...state, resetChain: event.stage };
     case "revoke_mode_set":
@@ -219,6 +234,7 @@ export function projectSnapshot(
       state: "reconciling",
       op: state.inFlight.op,
       deadlineMs: state.inFlight.deadlineMs,
+      ...(state.inFlight.op === "sdk" ? ({ next: "cancel" as const } as const) : {}),
     };
   }
 
@@ -239,14 +255,22 @@ export function projectSnapshot(
     return { state: "active", publiclyReachable: reachable, ...storageEvictable };
   }
 
-  if (state.lastError) {
+  if (state.lastError || (state.localBuildReason === "opfs_lock" && !state.localClient)) {
+    const reason = state.lastError ?? "opfs_lock";
     const next =
-      state.lastError === "opfs_lock"
+      reason === "opfs_lock"
         ? ("cancel" as const)
-        : state.lastError === "installation_limit"
+        : reason === "installation_limit"
           ? ("resetIdentity" as const)
           : ("retry" as const);
-    return { state: "error", reason: state.lastError, next };
+    return {
+      state: "error",
+      reason,
+      next,
+      ...(reason === "unknown" && state.lastErrorCause
+        ? { cause: state.lastErrorCause }
+        : {}),
+    };
   }
 
   if (state.awaitingSignature) {

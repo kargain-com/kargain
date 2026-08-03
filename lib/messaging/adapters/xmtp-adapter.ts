@@ -32,8 +32,11 @@ type XmtpModule = typeof import("@xmtp/client");
 
 let xmtpModulePromise: Promise<XmtpModule> | null = null;
 let xmtpModule: XmtpModule | null = null;
+/** Test-only: increments on every `loadXmtp` entry (including cache hits). */
+let xmtpLoadInvocationCount = 0;
 
 async function loadXmtp(): Promise<XmtpModule> {
+  xmtpLoadInvocationCount += 1;
   if (xmtpModule) return xmtpModule;
   xmtpModulePromise ??= import("@xmtp/client").then((mod) => {
     xmtpModule = mod;
@@ -45,6 +48,20 @@ async function loadXmtp(): Promise<XmtpModule> {
 /** Idle warm — load the SDK module only; does not build a client. */
 export function preloadXmtp(): Promise<XmtpModule> {
   return loadXmtp();
+}
+
+/** Same readiness path as the session port `ensureModule` — no second loader. */
+export async function ensureXmtpModuleReady(signal?: AbortSignal): Promise<void> {
+  await ensureModuleLoaded(signal);
+}
+
+export function isXmtpModuleReady(): boolean {
+  return xmtpModule != null;
+}
+
+/** @internal tests — loader invocation count (browse must stay at zero). */
+export function __testGetXmtpLoadInvocationCount(): number {
+  return xmtpLoadInvocationCount;
 }
 
 function ensureXmtpModule(): XmtpModule {
@@ -60,6 +77,10 @@ const INSTALLATION_LIMIT_SUFFIX = "Please revoke existing installations first";
 
 const APP_VERSION = "kargain-app/1.x";
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 function isOpfsLockError(error: unknown): boolean {
   if (xmtpModule) {
     const { OpfsInitializationError, OpfsNotInitializedError } = xmtpModule;
@@ -68,12 +89,43 @@ function isOpfsLockError(error: unknown): boolean {
     }
   }
   if (error instanceof Error) {
-    const { name } = error;
+    const { name, message } = error;
     if (name === "OpfsInitializationError" || name === "OpfsNotInitializedError") {
+      return true;
+    }
+    // Same-tab orphan / SyncAccessHandle contention often surfaces as these strings.
+    const lower = message.toLowerCase();
+    if (
+      lower.includes("opfs") ||
+      lower.includes("syncaccesshandle") ||
+      lower.includes("access handle") ||
+      lower.includes("database is locked")
+    ) {
       return true;
     }
   }
   return false;
+}
+
+async function ensureModuleLoaded(signal?: AbortSignal): Promise<XmtpModule> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  if (xmtpModule) return xmtpModule;
+  const load = loadXmtp();
+  if (!signal) return load;
+  return Promise.race([
+    load,
+    new Promise<XmtpModule>((_resolve, reject) => {
+      const onAbort = () => {
+        signal.removeEventListener("abort", onAbort);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }),
+  ]);
 }
 
 function classifyCreateError(error: unknown): CreateWithSignerResult {
@@ -315,7 +367,7 @@ export async function openDmWithPeer(
   client: XmtpSdkClient,
   peerAddress: `0x${string}`,
 ) {
-  const xmtp = await loadXmtp();
+  const xmtp = ensureXmtpModule();
   const peer = getAddress(peerAddress);
   return client.conversations.createDmWithIdentifier(
     ethereumIdentifier(peer, xmtp.IdentifierKind),
@@ -355,7 +407,7 @@ export function buildXmtpEoaSigner(
 }
 
 export async function resolveInboxId(address: `0x${string}`): Promise<string> {
-  const xmtp = await loadXmtp();
+  const xmtp = ensureXmtpModule();
   const identifier = ethereumIdentifier(address, xmtp.IdentifierKind);
   const env = getMessagingXmtpEnv() as XmtpEnv;
   try {
@@ -382,7 +434,7 @@ function nsToCreatedAtMs(ns: bigint | undefined): number | null {
 }
 
 async function messagingBackend() {
-  const xmtp = await loadXmtp();
+  const xmtp = ensureXmtpModule();
   const env = getMessagingXmtpEnv() as XmtpEnv;
   return { xmtp, backend: await xmtp.createBackend({ env }) };
 }
@@ -404,12 +456,18 @@ export type CreateXmtpAdapterInput = {
   getWalletClient: () => WalletClient | undefined;
 };
 
+/**
+ * Network registration probe — assumes the SDK module is already ready.
+ * Does not load the module; callers must `ensureXmtpModuleReady` first.
+ */
 export async function probePeerRegistration(
   address: string,
   signal?: AbortSignal,
 ): Promise<{ registered: boolean }> {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  const { xmtp, backend } = await messagingBackend();
+  const xmtp = ensureXmtpModule();
+  const env = getMessagingXmtpEnv() as XmtpEnv;
+  const backend = await xmtp.createBackend({ env });
   const peer = getAddress(address as `0x${string}`);
   const identifier = ethereumIdentifier(peer, xmtp.IdentifierKind);
   const response = await xmtp.Client.canMessage([identifier], backend);
@@ -419,15 +477,31 @@ export async function probePeerRegistration(
 
 export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
   return {
+    async ensureModule(signal) {
+      await ensureModuleLoaded(signal);
+    },
+
+    isModuleReady() {
+      return xmtpModule != null;
+    },
+
     async buildLocal(address, signal) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
-        const xmtp = await loadXmtp();
+        const xmtp = ensureXmtpModule();
         const peer = getAddress(address as `0x${string}`);
         const client = await xmtp.Client.build(
           ethereumIdentifier(peer, xmtp.IdentifierKind),
           clientOptions(),
         );
+        if (signal?.aborted) {
+          try {
+            client.close();
+          } catch {
+            // ignore
+          }
+          throw new DOMException("Aborted", "AbortError");
+        }
         const registered = await client.isRegistered();
         if (!registered) {
           client.close();
@@ -435,6 +509,7 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
         }
         return { ok: true, client: asBrand(client) } satisfies BuildLocalResult;
       } catch (error) {
+        if (isAbortError(error)) throw error;
         if (isOpfsLockError(error)) {
           return { ok: false, reason: "opfs_lock" };
         }
@@ -448,7 +523,7 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
         return { ok: false, reason: "build_failed" };
       }
       try {
-        const xmtp = await loadXmtp();
+        const xmtp = ensureXmtpModule();
         const peer = getAddress(address as `0x${string}`);
         const signer = buildXmtpEoaSigner(walletClient, peer, xmtp.IdentifierKind);
         const client = await xmtp.Client.create(signer, clientOptions());
@@ -493,7 +568,7 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
         return { ok: false, reason: "no_current_installation" } satisfies RevokeOtherResult;
       }
       const client = unbrandClient(currentClient);
-      const xmtp = await loadXmtp();
+      const xmtp = ensureXmtpModule();
       try {
         await client.revokeAllOtherInstallations();
         return { ok: true } satisfies RevokeOtherResult;

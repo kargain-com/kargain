@@ -129,6 +129,8 @@ describe("messaging simulation — seeded invariants", () => {
       const wallet = createFakeWalletPort();
       const { session, xmtp: sessionXmtp } = openSession(clock, {
         xmtp: {
+          ensureModule: xmtp.ensureModule.bind(xmtp),
+          isModuleReady: xmtp.isModuleReady.bind(xmtp),
           buildLocal: xmtp.buildLocal.bind(xmtp),
           createWithSigner: xmtp.createWithSigner.bind(xmtp),
           closeLocal: xmtp.closeLocal.bind(xmtp),

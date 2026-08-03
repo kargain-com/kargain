@@ -29,7 +29,8 @@ export function primaryActionFromSnapshot(
     snapshot.state === "disabled" ||
     snapshot.state === "needs_signature" ||
     snapshot.state === "error" ||
-    snapshot.state === "active"
+    snapshot.state === "active" ||
+    snapshot.state === "reconciling"
       ? snapshot.next
       : undefined;
   if (!next) return null;
@@ -85,6 +86,8 @@ export function needsMessagingSetupCard(snapshot: SessionSnapshot): boolean {
     case "needs_signature":
     case "error":
       return true;
+    case "reconciling":
+      return snapshot.op === "sdk";
     case "active":
       return (
         snapshot.next === "retry" ||

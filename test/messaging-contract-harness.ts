@@ -93,6 +93,8 @@ export function createControlledClock(startMs = 0): ControlledClock {
 }
 
 export type FakeXmtpHandlers = {
+  ensureModule?: (signal?: AbortSignal) => Promise<void>;
+  isModuleReady?: () => boolean;
   buildLocal?: (address: string, signal?: AbortSignal) => Promise<BuildLocalResult>;
   createWithSigner?: (
     address: string,
@@ -118,6 +120,7 @@ export type FakeXmtpHandlers = {
 
 export type FakeXmtpPort = XmtpPort & {
   calls: {
+    ensureModule: number;
     buildLocal: number;
     createWithSigner: number;
     closeLocal: number;
@@ -130,6 +133,8 @@ export type FakeXmtpPort = XmtpPort & {
   liveCount: number;
   /** Last currentClient passed to revokeOtherInstallations (for exclude-current asserts). */
   lastRevokeOthersClient: XmtpLocalClient | null | undefined;
+  /** Test control — mark module ready without ensureModule. */
+  setModuleReady(ready: boolean): void;
 };
 
 /** Never-resolving promise (until abort) — hang fixture. */
@@ -149,6 +154,7 @@ export function hangUntilAbort<T>(signal?: AbortSignal): Promise<T> {
 
 export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPort {
   const calls = {
+    ensureModule: 0,
     buildLocal: 0,
     createWithSigner: 0,
     closeLocal: 0,
@@ -160,6 +166,7 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
   const live = new Set<XmtpLocalClient>();
   let lastRevokeOthersClient: XmtpLocalClient | null | undefined;
   let clientSeq = 0;
+  let moduleReady = false;
 
   function trackAcquire(client: XmtpLocalClient): XmtpLocalClient {
     live.add(client);
@@ -178,6 +185,23 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     },
     get lastRevokeOthersClient() {
       return lastRevokeOthersClient;
+    },
+    setModuleReady(ready) {
+      moduleReady = ready;
+    },
+    async ensureModule(signal) {
+      calls.ensureModule += 1;
+      if (handlers.ensureModule) {
+        await handlers.ensureModule(signal);
+        moduleReady = true;
+        return;
+      }
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      moduleReady = true;
+    },
+    isModuleReady() {
+      if (handlers.isModuleReady) return handlers.isModuleReady();
+      return moduleReady;
     },
     async buildLocal(address, signal) {
       calls.buildLocal += 1;

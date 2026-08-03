@@ -1,4 +1,10 @@
-import type { Clock, MessagingSessionPorts, SessionCommand, XmtpLocalClient } from "./ports";
+import type {
+  BuildLocalResult,
+  Clock,
+  MessagingSessionPorts,
+  SessionCommand,
+  XmtpLocalClient,
+} from "./ports";
 import {
   BUILD_DEADLINE_MS,
   RECONCILING_HINT_MS,
@@ -115,20 +121,32 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
   function deadlineFor(op: ReconcilePlan & { kind: "run" }): number {
     const now = clock.nowMs();
     if (op.effect === "build") return now + BUILD_DEADLINE_MS;
-    // create / publish / revoke: no wall deadline
+    // sdk / create / publish / revoke: no wall deadline
     return Number.MAX_SAFE_INTEGER;
+  }
+
+  function formatUnknownCause(err: unknown): string {
+    if (err instanceof Error) return err.message || err.name;
+    return String(err);
+  }
+
+  function closeOrphanBuildResult(result: BuildLocalResult | "timeout" | undefined): void {
+    if (result && result !== "timeout" && result.ok) {
+      ports.xmtp.closeLocal(result.client);
+    }
   }
 
   /**
    * Race work against a clock sleep that is NOT tied to the op AbortSignal
    * (aborting the op must not cancel the deadline timer via reject).
+   * On timeout/stale, a later-ok build client is closed (abandoned init).
    */
-  async function runWithDeadline<T>(
+  async function runWithDeadline(
     opGeneration: number,
     deadlineMs: number,
     signal: AbortSignal,
-    fn: () => Promise<T>,
-  ): Promise<T | "timeout"> {
+    fn: () => Promise<BuildLocalResult>,
+  ): Promise<BuildLocalResult | "timeout"> {
     const remaining = deadlineMs - clock.nowMs();
     if (remaining <= 0) return "timeout";
 
@@ -142,6 +160,9 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
     if (raced.kind === "timeout") {
       abortController?.abort();
+      void work.then((outcome) => {
+        if (outcome.kind === "ok") closeOrphanBuildResult(outcome.value);
+      });
       return "timeout";
     }
     if (raced.kind === "err") {
@@ -222,12 +243,29 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
     try {
       switch (plan.effect) {
+        case "sdk": {
+          try {
+            await ports.xmtp.ensureModule(signal);
+          } catch (err) {
+            if (isStale(opGeneration)) return;
+            if (signal.aborted || isAbortError(err)) {
+              // User cancelled the download — idle until retry/enable.
+              break;
+            }
+            apply({
+              type: "last_error_set",
+              reason: "unknown",
+              cause: formatUnknownCause(err),
+            });
+          }
+          break;
+        }
         case "build": {
           const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
             ports.xmtp.buildLocal(state.address, signal),
           );
           if (isStale(opGeneration)) {
-            if (result !== "timeout" && result.ok) ports.xmtp.closeLocal(result.client);
+            closeOrphanBuildResult(result);
             return;
           }
           if (result === "timeout") {
@@ -247,6 +285,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
               reason: mapped.reason ?? undefined,
             });
             // With enable requested, fall through to create — do not park on awaiting.
+            // Storage failures set lastError and must never fall through.
             if (mapped.awaiting && !state.enableRequested) {
               apply({ type: "awaiting_signature_set", reason: mapped.awaiting });
             }
@@ -351,9 +390,17 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         default:
           break;
       }
-    } catch {
+    } catch (err) {
       if (!isStale(opGeneration)) {
-        apply({ type: "last_error_set", reason: "timeout" });
+        if (isAbortError(err)) {
+          // Cancelled mid-op — do not pretend timeout.
+        } else {
+          apply({
+            type: "last_error_set",
+            reason: "unknown",
+            cause: formatUnknownCause(err),
+          });
+        }
       }
     } finally {
       endInFlight();
@@ -417,7 +464,11 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           notify();
           return;
         }
-        const plan = reconcile({ state, nowMs: clock.nowMs() });
+        const plan = reconcile({
+          state,
+          nowMs: clock.nowMs(),
+          moduleReady: ports.xmtp.isModuleReady(),
+        });
         if (plan.kind === "await_signature") {
           apply({ type: "awaiting_signature_set", reason: plan.reason });
           return;

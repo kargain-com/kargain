@@ -119,6 +119,8 @@ describe("peerReachabilityMessage", () => {
   it("maps known reasons to user copy", () => {
     assert.match(peerReachabilityMessage("not_registered") ?? "", /not enabled messages/i);
     assert.match(peerReachabilityMessage("disabled") ?? "", /not accepting messages/i);
+    assert.match(peerReachabilityMessage("unknown") ?? "", /could not check/i);
+    assert.doesNotMatch(peerReachabilityMessage("unknown") ?? "", /not enabled/i);
     assert.equal(peerReachabilityMessage(null), null);
   });
 });

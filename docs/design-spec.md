@@ -457,6 +457,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | `disabled` + `intent: "absent"` | First-time onboarding (`MessagingSetupCard`) — only when intent read **answered** with field never published; body includes signature-count sentence only when `enableWalletSignatures` is present (never invent a default count) |
 | `disabled` + `intent: "explicit"` | Turned off copy; switch off in settings; same signature-cost field when re-enabling |
 | `reconciling` | Spinner beside CTA (build / create / publish / revoke / intent) — includes unanswered intent (never onboarding) |
+| `reconciling` + `op: "sdk"` | Downloading the messaging module — no wall deadline; primary **Cancel**; never times out as setup timeout |
 | `needs_signature` | Device activation card (`not_registered` \| `build_failed`); primary from `next` |
 | `active` | DMs available when a local client exists; without client demand, dormant `active` (intent on, `publiclyReachable` true) — not setup-needed |
 | `active` + `publishError` / `publishPending` / `next: "retry"` | Actionable publish-retry chrome on setup card (account / seller / karpro) + settings Retry — never silenced; no second XMTP signature |
@@ -474,12 +475,12 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
 | Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — on **new** threads only (`lastMessage()` empty), silently sends listing context before navigating to `/messages/{id}` |
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
-| Peer reachability | Browse CTA: intent + protocol + account-kind only ([`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) — no XMTP probe). Registration probe only on click via [`contactPeer`](../lib/messaging/contact-peer.ts) |
+| Peer reachability | Browse CTA: intent + protocol + account-kind only ([`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) — no XMTP probe, no module load). Click path: [`contactPeer`](../lib/messaging/contact-peer.ts) establishes readiness via `ensureXmtpModuleReady` (same owner as session `ensureModule`), then probes registration under `PEER_REGISTRATION_DEADLINE_MS` (network only). Incomplete probe → `unknown` — copy asserts nothing about the peer’s registration |
 | Session ownership | One [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) under notifications providers; refcounted [`session-registry`](../lib/messaging/session-registry.ts); address change = release old / acquire new (no `syncWalletAddress`) |
-| Lazy client | Build/create require `clientDemand` (`requestLocalClient` / `releaseLocalClient`); demand from `/messages`, setup/enable, and DM open — not from conversations provider or settings alone. Registration is derived from build/create (`unknown` \| `registered` \| `unregistered`) — no session probe |
+| Lazy client | Build/create require `clientDemand`; SDK module load is prerequisite effect `sdk` (`ensureModule`) with **no** wall deadline — never inside `BUILD_DEADLINE_MS`. Registration derived from build/create |
 | XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; `conversations.sync` owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) (runs only when `client` present) |
-| Client lifecycle | Sole abandon owner = effects `abandonOwnedClient` (incl. address change with `alreadyDetached`); clear-then-defer `clock.sleep(0)`. Orphans that never entered state close immediately. |
-| Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (UI deferred with budgets phase). |
+| Client lifecycle | Sole abandon owner = effects `abandonOwnedClient` (incl. address change with `alreadyDetached`); clear-then-defer `clock.sleep(0)`. Orphans that never entered state close immediately — including late-ok builds after deadline timeout |
+| Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (UI deferred with budgets phase). Storage-busy (`opfs_lock`) never falls through to create |
 | Setup card | Primary CTA = `primaryActionFromSnapshot` only; idle `active` without `next` may hide; actionable `active` publish states stay visible. CTA disabled while `isUserOpInFlight(snapshot)` |
 | Setup card errors | Primary user copy `text-status-error`; no “still registered” claims on timeout/generic error; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
 | Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` from contract. Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
@@ -497,7 +498,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Timestamps | Below bubble, `font-mono text-xs text-text-tertiary tabular-nums`, aligned with sender side (inbox row: `font-mono text-[10px] text-text-secondary tabular-nums`) |
 | Composer | Auto-growing `Textarea` (`rows=1`, `min-h-11`, approximately six lines max, then scroll) + icon `Button`; Enter sends, Shift+Enter inserts a newline, and composing IME Enter / keyCode 229 never sends; successful send resets the field height |
 | Empty inbox | Comment icon + title *No conversations yet* + description *Conversations with buyers and sellers appear here. Start one from any listing with Message seller.* + **Browse marketplace** → `/`; only when messaging is active |
-| User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* |
+| User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* · Incomplete check: *Could not check whether this user can receive messages.* (not a peer-state claim) |
 
 No per-message sender label in the bubble list. Publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 
@@ -1605,4 +1606,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.129 (August 2026 — §4.12 session wall clocks in `session-budgets`). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.130 (August 2026 — §4.12 SDK module load is prerequisite `sdk`, not a deadlined op). Update when tokens, app shell, or component contracts change.*

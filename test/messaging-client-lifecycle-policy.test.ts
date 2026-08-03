@@ -77,10 +77,16 @@ describe("messaging client lifecycle policy", () => {
       text,
       /onAddressChange\s*\([^)]*\)\s*\{[\s\S]*clock\.sleep\(0\)\.then\(\s*\(\)\s*=>\s*\{\s*ports\.xmtp\.closeLocal/,
     );
-    // Stale build: isStale then closeLocal on ok client
+    // Stale build: isStale then close orphan via closeOrphanBuildResult
     assert.match(
       text,
-      /case "build":[\s\S]*if \(isStale\(opGeneration\)\) \{\s*if \(result !== "timeout" && result\.ok\) ports\.xmtp\.closeLocal/,
+      /case "build":[\s\S]*if \(isStale\(opGeneration\)\) \{\s*closeOrphanBuildResult\(result\)/,
+    );
+    // Timeout path closes late-ok clients
+    assert.ok(text.includes("closeOrphanBuildResult"));
+    assert.match(
+      text,
+      /raced\.kind === "timeout"[\s\S]*closeOrphanBuildResult|void work\.then/,
     );
     // Stale create: isStale then closeLocal on ok client
     assert.match(
@@ -89,9 +95,11 @@ describe("messaging client lifecycle policy", () => {
     );
   });
 
-  it("ports declare closeLocal and ensureDurableStorage; active may carry storageEvictable", () => {
+  it("ports declare closeLocal, ensureModule, and ensureDurableStorage; active may carry storageEvictable", () => {
     const ports = fs.readFileSync(path.join(ROOT, "lib/messaging/ports.ts"), "utf8");
     assert.match(ports, /closeLocal\s*\(\s*client:\s*XmtpLocalClient\s*\)\s*:\s*void/);
+    assert.match(ports, /ensureModule/);
+    assert.match(ports, /isModuleReady/);
     assert.match(ports, /ensureDurableStorage/);
     assert.match(ports, /storageEvictable\?:\s*true/);
   });
