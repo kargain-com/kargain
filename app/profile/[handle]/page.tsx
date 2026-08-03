@@ -6,7 +6,8 @@ import { getAddress } from "viem";
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { getAgentMandateCount, getOwnerMandateCount } from "@/app/actions/commerce-mandates";
 import { ProfilePage } from "@/components/profile/profile-page";
-import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
+import { loadMembershipRoster } from "@/lib/kar-pro/load-membership-roster";
+import { karProAnyActive, preferActiveMembershipChainId } from "@/lib/kar-pro/membership-roster";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
 import { commercialChainIds } from "@/lib/web3/chain-context";
 import {
@@ -59,10 +60,13 @@ export default async function PublicProfilePage({
   const accountKind = await readAccountKindOnCommercialChains(wallet);
   if (accountKind === "contract") notFound();
 
-  const [isActiveVerifier, profileData] = await Promise.all([
-    isActiveVerifierOnCommercialChains(wallet),
+  const [roster, profileData] = await Promise.all([
+    loadMembershipRoster(wallet, { enrichActive: true }),
     getProfileData(wallet),
   ]);
+
+  const isActiveVerifier = karProAnyActive(roster.rows);
+  const preferredShowroomChainId = preferActiveMembershipChainId(roster.rows, null);
 
   let consignedCount: number | null = null;
   if (isActiveVerifier) {
@@ -85,7 +89,11 @@ export default async function PublicProfilePage({
   >["attestations"] = [];
 
   try {
-    const verifierData = await getCachedVerifierPublicData(wallet);
+    // Prefer membership-scoped detail when we know an active chain.
+    const verifierData = await getCachedVerifierPublicData(
+      wallet,
+      preferredShowroomChainId ?? undefined,
+    );
 
     verifierProfile = verifierData.profile;
     verifiedPassports = verifierData.verifiedPassports;
@@ -97,6 +105,20 @@ export default async function PublicProfilePage({
     ponderErr = "PONDER_UNAVAILABLE";
   }
 
+  // Prefer slug from enriched active fact matching preferred chain.
+  const preferredFact =
+    preferredShowroomChainId != null
+      ? roster.activeFacts.find((f) => f.chainId === preferredShowroomChainId)
+      : roster.activeFacts[0];
+  if (preferredFact?.slug && verifierProfile) {
+    verifierProfile = {
+      ...verifierProfile,
+      slug: preferredFact.slug || verifierProfile.slug,
+      name: preferredFact.name || verifierProfile.name,
+      chainId: preferredFact.chainId,
+    };
+  }
+
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">
       <Suspense fallback={null}>
@@ -104,6 +126,9 @@ export default async function PublicProfilePage({
           wallet={wallet}
           chainId={chainId}
           isActiveVerifier={isActiveVerifier}
+          membershipRows={roster.rows}
+          activeMembershipFacts={roster.activeFacts}
+          preferredShowroomChainId={preferredShowroomChainId}
           verifierProfile={verifierProfile}
           initialNostrProfile={null}
           passports={passports}

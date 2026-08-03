@@ -19,11 +19,14 @@ import {
   categoryIndexToLabel,
   KAR_PRO_CATEGORY_OPTIONS,
 } from "@/lib/kar-pro/kar-pro-metadata";
+import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import {
   filterVerifiers,
   formatVerifierDirectoryResultCount,
   type VerifierDirectorySortKey,
 } from "@/lib/verifier/filter-verifiers";
+import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import { shortChainName } from "@/lib/web3/supported-chains";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -40,10 +43,16 @@ import {
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
 const CATEGORY_CHIPS = ["All", ...CATEGORY_LABELS] as const;
 
+const COMMERCIAL_NETWORK_IDS = Object.keys(COMMERCIAL_ACTIVE)
+  .map(Number)
+  .sort((a, b) => a - b);
+
 type Props = {
   verifiers: VerifierDirectoryEntry[];
   onSelectAgent?: (entry: VerifierDirectoryEntry) => void;
   layout?: "grid" | "picker";
+  /** When set (agent picker), only that commercial chain; network chips hidden. */
+  lockedChainId?: number;
 };
 
 function displayName(name: string, address: `0x${string}`): string {
@@ -88,6 +97,9 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
           <p className={categoryLabel}>
             {categoryIndexToLabel(verifier.category)}
           </p>
+          <p className="font-mono text-xs text-text-tertiary">
+            {shortChainName(verifier.chainId)}
+          </p>
         </div>
         <Button
           type="button"
@@ -104,7 +116,7 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
 
   const showroomSlug = verifier.slug.trim();
   const showroomHref = showroomSlug
-    ? `/pro/${showroomSlug}`
+    ? proShowroomHref(showroomSlug, verifier.chainId)
     : `/profile/${verifier.address}`;
   const feeWei = parseWeiString(verifier.verificationFee);
 
@@ -116,6 +128,9 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
           <p className="truncate font-sans text-sm font-medium text-text-primary">{name}</p>
           <p className={categoryLabel}>
             {categoryIndexToLabel(verifier.category)}
+          </p>
+          <p className="font-mono text-xs text-text-tertiary">
+            {shortChainName(verifier.chainId)}
           </p>
           {verifier.locationLabel.trim() !== "" && (
             <p className="font-mono text-xs text-text-secondary">
@@ -188,14 +203,20 @@ export function VerifierDirectory({
   verifiers,
   onSelectAgent,
   layout = "grid",
+  lockedChainId,
 }: Props) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const [networkFilter, setNetworkFilter] = useState<number | null>(
+    lockedChainId ?? null,
+  );
   const [sortKey, setSortKey] = useState<VerifierDirectorySortKey>("verifications");
   const [lightningOnly, setLightningOnly] = useState(false);
   const [preferredPlace, setPreferredPlace] = useState<PlaceSelection | null>(null);
 
   const isPicker = layout === "picker";
+  const networkLocked = lockedChainId != null;
+  const effectiveNetworkFilter = networkLocked ? lockedChainId : networkFilter;
   const deferredQuery = useDeferredValue(search.trim());
   const activeOnly = Boolean(onSelectAgent);
 
@@ -212,6 +233,7 @@ export function VerifierDirectory({
   const clearFilters = () => {
     setSearch("");
     setCategoryFilter(null);
+    if (!networkLocked) setNetworkFilter(null);
     setLightningOnly(false);
     setPreferredPlace(null);
   };
@@ -221,6 +243,7 @@ export function VerifierDirectory({
       filterVerifiers(verifiers, {
         query: deferredQuery,
         categoryIndex: categoryFilter,
+        chainId: effectiveNetworkFilter,
         sortKey,
         activeOnly,
         lightningOnly,
@@ -232,6 +255,7 @@ export function VerifierDirectory({
       verifiers,
       deferredQuery,
       categoryFilter,
+      effectiveNetworkFilter,
       sortKey,
       activeOnly,
       lightningOnly,
@@ -243,6 +267,7 @@ export function VerifierDirectory({
   const hasActiveFilters =
     search.trim() !== "" ||
     categoryFilter !== null ||
+    (!networkLocked && networkFilter != null) ||
     lightningOnly ||
     preferredPlace != null;
 
@@ -319,6 +344,41 @@ export function VerifierDirectory({
         })}
       </div>
 
+      {!networkLocked && (
+        <div role="group" aria-label="Filter by network" className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-pressed={networkFilter === null}
+            onClick={() => setNetworkFilter(null)}
+            className={`inline-flex items-center rounded-sm border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] ${
+              networkFilter === null
+                ? "border-border-hover bg-bg-surface text-text-primary"
+                : "border-border-default bg-transparent text-text-secondary hover:border-border-hover hover:text-text-primary"
+            }`}
+          >
+            All networks
+          </button>
+          {COMMERCIAL_NETWORK_IDS.map((id) => {
+            const isActive = networkFilter === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setNetworkFilter(id)}
+                className={`inline-flex items-center rounded-sm border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] ${
+                  isActive
+                    ? "border-border-hover bg-bg-surface text-text-primary"
+                    : "border-border-default bg-transparent text-text-secondary hover:border-border-hover hover:text-text-primary"
+                }`}
+              >
+                {shortChainName(id)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {!isPicker && (
         <PlacePicker
           id="verifier-directory-place"
@@ -377,7 +437,7 @@ export function VerifierDirectory({
     <div className={isPicker ? "flex flex-col gap-2" : "grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"}>
       {filteredVerifiers.map((verifier) => (
         <VerifierCard
-          key={verifier.address}
+          key={`${verifier.chainId}-${verifier.address.toLowerCase()}`}
           verifier={verifier}
           profile={profiles.get(verifier.address.toLowerCase()) ?? null}
           onSelectAgent={onSelectAgent}

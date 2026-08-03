@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import type { Filter } from "nostr-tools";
 
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { useKarProMembershipActive } from "@/hooks/use-kar-pro-membership-active";
 import { COMMONS_CONFIRMATIONS_POLICY } from "@/lib/nostr/app-event-store";
 import {
   commonsConfirmationEntryFromEvent,
@@ -13,13 +13,6 @@ import {
 } from "@/lib/nostr/commons-confirmations";
 import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscription";
 import { attestedPubkeysForAddresses } from "@/lib/nostr/resolve-attested-profile";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { commercialChainIds } from "@/lib/web3/chain-context";
-import {
-  useKeyedReadContracts,
-  type KeyedContract,
-} from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
 
@@ -31,7 +24,7 @@ type UseCommonsConfirmationsReturn = {
   /**
    * manifestHash → attester addresses (lowercased, sorted) that passed every
    * gate: confirmation signature, attested wallet↔Nostr binding matching the
-   * event author, and an `isActiveVerifier` chain read. Fail-closed —
+   * event author, and KarPro membership anyActive. Fail-closed —
    * unresolved gates exclude. Self-confirmation exclusion (publisher of the
    * epoch) is the acceptance evaluator's concern, not this hook's.
    */
@@ -61,8 +54,6 @@ export function useCommonsConfirmations(
 
   const subscriptionKey = enabled && manifestKey.length > 0 ? manifestKey : "";
 
-  // One batched kind 31862 subscription; latest confirmation per
-  // (author, manifest) via the shared latest-per-author-per-d merge.
   const { entries, loading: subscriptionLoading } = useLatestPerAuthorPerDEntries(
     subscriptionKey,
     buildConfirmationFilter,
@@ -83,8 +74,6 @@ export function useCommonsConfirmations(
     [attesterKey],
   );
 
-  // Gate 1 — attested wallet↔Nostr binding: event author must equal the
-  // attested pubkey for the stated attester address.
   const { data: attestedPubkeys, isPending: pubkeysPending } = useQuery({
     queryKey: ["commons-confirmation-attested-pubkeys", attesterKey],
     queryFn: () => attestedPubkeysForAddresses(attesters),
@@ -92,49 +81,11 @@ export function useCommonsConfirmations(
     staleTime: ATTESTED_PUBKEYS_STALE_MS,
   });
 
-  // Gate 2 — isActiveVerifier OR across commercial chains (wagmi-cached).
-  const verifierContracts = useMemo((): KeyedContract[] => {
-    const contracts: KeyedContract[] = [];
-    for (const cid of commercialChainIds()) {
-      const staking = karProStakingAddress(cid);
-      if (!staking) continue;
-      for (const attester of attesters) {
-        contracts.push({
-          key: `active:${cid}:${attester}`,
-          address: staking,
-          abi: KarProStakingAbi,
-          functionName: "isActiveVerifier",
-          args: [attester],
-          chainId: wagmiChainId(cid),
-        });
-      }
-    }
-    return contracts;
-  }, [attesters]);
-
-  const verifierReads = useKeyedReadContracts({
-    contracts: verifierContracts,
-    query: { enabled: verifierContracts.length > 0 },
-  });
-  const verifierPending = verifierReads.isPending;
-
-  const activeVerifierByAttester = useMemo(() => {
-    const map = new Map<string, boolean>();
-    const chainIds = commercialChainIds().filter((cid) =>
-      Boolean(karProStakingAddress(cid)),
-    );
-    for (const attester of attesters) {
-      let active = false;
-      for (const cid of chainIds) {
-        if (verifierReads.get(`active:${cid}:${attester}`) === true) {
-          active = true;
-          break;
-        }
-      }
-      map.set(attester, active);
-    }
-    return map;
-  }, [attesters, verifierReads]);
+  const {
+    activeByAddress: activeVerifierByAttester,
+    isPending: verifierPending,
+    hasContracts: hasVerifierContracts,
+  } = useKarProMembershipActive(attesters);
 
   const confirmationsByManifest = useMemo(() => {
     const result = new Map<string, string[]>();
@@ -142,8 +93,6 @@ export function useCommonsConfirmations(
 
     for (const entry of entries) {
       const attester = entry.confirmation.attester.toLowerCase();
-      // Fail closed: no attested profile, author mismatch, or inactive
-      // verifier all exclude the confirmation from acceptance counts.
       const boundPubkey = attestedPubkeys.get(attester);
       if (!boundPubkey || boundPubkey !== entry.authorPubkey) continue;
       if (activeVerifierByAttester.get(attester) !== true) continue;
@@ -162,7 +111,7 @@ export function useCommonsConfirmations(
   const gatesLoading =
     entries.length > 0 &&
     attesters.length > 0 &&
-    (pubkeysPending || (verifierContracts.length > 0 && verifierPending));
+    (pubkeysPending || (hasVerifierContracts && verifierPending));
 
   return {
     confirmationsByManifest,

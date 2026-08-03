@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { ClockIcon } from "@/components/ui/icons";
 
@@ -13,12 +13,16 @@ import { ProShowroomVerificationFee } from "@/components/verifier/pro-showroom-v
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
-import { monoLink, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
+import { karProNetworkInstrumentLine } from "@/lib/kar-pro/membership-roster";
+import { proConsignmentsHref, proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
+import { categoryLabel, instrumentReadoutPanel, monoLink, monoLinkSm, sansLink, sansLinkUnderline } from "@/lib/design/instrument-classes";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
 import { formatPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
+import { isCommercialChainId } from "@/lib/web3/commercial-active";
+import { shortChainName } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
-import { proConsignmentsHref } from "@/lib/kar-pro/pro-consignments-href";
 import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +30,14 @@ const CONTAINER =
   "mx-auto w-full max-w-7xl xl:max-w-[80rem] px-6 md:px-8";
 
 const loadProShowroom = cache(getProShowroomData);
+
+function resolveShowroomChainParam(
+  raw: string | string[] | undefined,
+): number | null {
+  const parsed = parseOptionalChainParam(raw);
+  if (parsed == null || !isCommercialChainId(parsed)) return null;
+  return parsed;
+}
 
 function formatChainDate(timestampSec: string): string {
   const sec = Number.parseInt(timestampSec, 10);
@@ -127,12 +139,20 @@ function SectionHeader({
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ chain?: string | string[] }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const data = await loadProShowroom(slug);
-  if (!data) return { title: "Pro showroom" };
+  const sp = await searchParams;
+  const chainId = resolveShowroomChainParam(sp.chain);
+  const result = await loadProShowroom(slug, chainId);
+  if (result.kind === "missing") return { title: "Pro showroom" };
+  if (result.kind === "ambiguous") {
+    return { title: `${slug} · Choose network · Kargain` };
+  }
+  const data = result.data;
 
   if (!data.isActiveVerifier) {
     return {
@@ -153,15 +173,67 @@ export async function generateMetadata({
 
 export default async function ProShowroomPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ chain?: string | string[] }>;
 }) {
   const { slug } = await params;
-  const data = await loadProShowroom(slug);
-  if (!data) notFound();
+  const sp = await searchParams;
+  const chainId = resolveShowroomChainParam(sp.chain);
+  const result = await loadProShowroom(slug, chainId);
+  if (result.kind === "missing") notFound();
 
+  if (result.kind === "resolved" && chainId == null) {
+    redirect(proShowroomHref(slug, result.data.chainId));
+  }
+
+  if (result.kind === "ambiguous") {
+    return (
+      <div className="min-h-dvh bg-bg-primary text-text-primary">
+        <section className="w-full bg-bg-primary py-16">
+          <div className={CONTAINER}>
+            <div className={`${instrumentReadoutPanel} max-w-lg space-y-1`}>
+              <p className={categoryLabel}>Choose network</p>
+              <p className="font-sans text-sm text-text-secondary">
+                This showroom slug exists on more than one network. Pick the
+                membership you want to view.
+              </p>
+              <ul className="mt-4 divide-y divide-border-default">
+                {result.candidates.map((c) => (
+                  <li
+                    key={`${c.chainId}-${c.address}`}
+                    className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-sans text-sm text-text-primary">
+                        {c.name || navShortAddress(c.address)}
+                      </p>
+                      <p className="font-mono text-xs text-text-tertiary">
+                        {shortChainName(c.chainId)}{" "}
+                        <span className="tabular-nums">({c.chainId})</span>
+                      </p>
+                    </div>
+                    <Link
+                      href={proShowroomHref(slug, c.chainId)}
+                      className={monoLinkSm}
+                    >
+                      View →
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const data = result.data;
   const { address, verifier, profileMetadata } = data;
   const name = displayName(verifier?.name, address);
+  const membershipChainId = data.chainId;
 
   const showShowroom =
     data.isActiveVerifier ||
@@ -179,6 +251,12 @@ export default async function ProShowroomPage({
                 <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                   {name}
                 </h1>
+                <p className="mt-2 font-mono text-fluid-sm text-text-secondary">
+                  {karProNetworkInstrumentLine(membershipChainId)}{" "}
+                  <span className="tabular-nums text-text-tertiary">
+                    ({membershipChainId})
+                  </span>
+                </p>
               </div>
             </div>
           </div>
@@ -228,6 +306,12 @@ export default async function ProShowroomPage({
                 <h1 className="font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                   {name}
                 </h1>
+                <p className="font-mono text-fluid-sm text-text-secondary">
+                  {karProNetworkInstrumentLine(membershipChainId)}{" "}
+                  <span className="tabular-nums text-text-tertiary">
+                    ({membershipChainId})
+                  </span>
+                </p>
                 {profileMetadata?.description && (
                   <p className="font-sans text-fluid-body-lg font-normal leading-[1.55] text-text-secondary max-w-xl">
                     {profileMetadata.description}
@@ -278,6 +362,7 @@ export default async function ProShowroomPage({
             address={address}
             verifierName={name}
             ponderFeeWei={data.verificationFee}
+            chainId={membershipChainId}
           />
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -388,7 +473,7 @@ export default async function ProShowroomPage({
               </div>
               {data.activeConsignmentTotal > data.activeConsignments.length && (
                 <Link
-                  href={proConsignmentsHref(slug)}
+                  href={proConsignmentsHref(slug, membershipChainId)}
                   className={cn("mt-8 inline-block", sansLinkUnderline)}
                 >
                   View all {data.activeConsignmentTotal} consignments →

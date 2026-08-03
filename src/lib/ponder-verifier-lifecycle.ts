@@ -8,9 +8,16 @@
  * Verifier PK is chain-scoped: `${chainId}-${address.toLowerCase()}` (SPEC §I.12.12).
  */
 
+import { getAddress } from "viem";
+
 import { verifier } from "../../ponder.schema";
 import type { IndexedKarProMetadata } from "./ponder-kar-pro-metadata";
 import { EMPTY_INDEXED_KAR_PRO_METADATA } from "./ponder-kar-pro-metadata";
+
+/** Checksummed EOA for `verifier.address` column (matches passport.owner writes). */
+export function normalizeVerifierAddress(address: string): `0x${string}` {
+  return getAddress(address as `0x${string}`);
+}
 
 export type VerifierPlaceDenorm = Pick<
   IndexedKarProMetadata,
@@ -106,7 +113,7 @@ export function verifierJoinedRow(
   return {
     id,
     chainId,
-    address: verifierAddress,
+    address: normalizeVerifierAddress(verifierAddress),
     category: 5,
     name: "",
     slug: "",
@@ -130,7 +137,7 @@ export function verifierJoinedConflictUpdate(
 ): VerifierPatch {
   return {
     chainId,
-    address: verifierAddress,
+    address: normalizeVerifierAddress(verifierAddress),
     stakeAsset: normalizeStakeAsset(asset),
     stakeAmount: amount.toString(),
     active: true,
@@ -163,7 +170,7 @@ export function proPassMintedRow(
   return {
     id,
     chainId,
-    address: holder,
+    address: normalizeVerifierAddress(holder),
     category,
     name,
     slug,
@@ -189,7 +196,7 @@ export function proPassMintedConflictUpdate(
 ): VerifierPatch {
   return {
     chainId,
-    address: holder,
+    address: normalizeVerifierAddress(holder),
     category,
     name,
     slug,

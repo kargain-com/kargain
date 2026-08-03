@@ -16,7 +16,23 @@ export function shouldPollKarProVerifierProfile(
   return KAR_PRO_VERIFIER_POLL_INTERVAL_MS;
 }
 
+/** True while chain fallback is showing and Ponder membership is still catching up. */
+export function isKarProVerifierProfileSyncing(input: {
+  enabled: boolean;
+  hasChainProfile: boolean;
+  hasPonderProfile: boolean;
+  pollExhausted: boolean;
+}): boolean {
+  return (
+    input.enabled &&
+    input.hasChainProfile &&
+    !input.hasPonderProfile &&
+    !input.pollExhausted
+  );
+}
+
 export type ChainKarProProfileInput = {
+  chainId: number;
   address: string;
   category: number;
   name: string;
@@ -29,6 +45,7 @@ export function buildKarProProfileFromChain(
   input: ChainKarProProfileInput,
 ): KarProVerifierProfile {
   return {
+    chainId: input.chainId,
     address: input.address,
     category: input.category,
     name: input.name,

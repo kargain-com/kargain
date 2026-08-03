@@ -337,9 +337,25 @@ export async function fetchListingDetail(tokenId: string) {
   }
 }
 
-export async function fetchVerifierDetail(address: string) {
+/** Build Ponder verifier detail URL; prefer `?chainId=` (SPEC §I.12.12). */
+export function buildVerifierDetailQueryUrl(
+  address: string,
+  chainId?: number,
+  baseUrl: string = ponderBaseUrl(),
+): string {
+  const url = new URL(`${baseUrl}/verifiers/${address}`);
+  if (chainId != null && Number.isFinite(chainId) && chainId > 0) {
+    url.searchParams.set("chainId", String(Math.trunc(chainId)));
+  }
+  return url.toString();
+}
+
+export async function fetchVerifierDetail(
+  address: string,
+  chainId?: number,
+) {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/verifiers/${address}`);
+    const res = await ponderFetch(buildVerifierDetailQueryUrl(address, chainId));
     if (!res.ok) return null;
     return res.json();
   } catch {

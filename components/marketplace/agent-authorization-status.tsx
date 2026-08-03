@@ -56,7 +56,9 @@ export function AgentAuthorizationStatus({
   const wrongChain = walletChain !== chainId;
 
   const currencyCode: ListingCurrencyCode = "USD";
-  const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent);
+  const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent, {
+    chainId,
+  });
 
   const [txError, setTxError] = useState<string | null>(null);
 

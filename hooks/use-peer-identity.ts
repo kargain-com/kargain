@@ -1,10 +1,15 @@
 "use client";
 
-import { useAccount, useEnsName, useReadContract } from "wagmi";
+import { useEnsName, useReadContract } from "wagmi";
 
+import { useKarProMembershipRoster } from "@/hooks/use-kar-pro-membership-roster";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
-import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import {
+  karProAnyActive,
+  preferActiveMembershipChainId,
+} from "@/lib/kar-pro/membership-roster";
+import { isCommercialChainId } from "@/lib/web3/commercial-active";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -24,15 +29,23 @@ const EMPTY_PEER_IDENTITY: PeerIdentity = {
   isLoading: false,
 };
 
+/**
+ * Peer KarPro badge + display name.
+ * - Positive commercial `options.chainId` → membership on that chain only.
+ * - Omitted / null chain → anyActive from membership roster (not wallet target).
+ */
 export function usePeerIdentity(
   peerAddress: `0x${string}` | undefined,
   options?: { chainId?: number | null },
 ): PeerIdentity {
-  const { chainId: walletChainId } = useAccount();
-  const chainId =
-    options?.chainId !== undefined
+  const membershipChainId =
+    options?.chainId != null &&
+    Number.isFinite(options.chainId) &&
+    isCommercialChainId(options.chainId)
       ? options.chainId
-      : resolveKarProTargetChainId(walletChainId);
+      : null;
+
+  const useAnyActive = membershipChainId == null && Boolean(peerAddress);
 
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: peerAddress,
@@ -40,21 +53,43 @@ export function usePeerIdentity(
     query: { enabled: Boolean(peerAddress) },
   });
 
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const staking =
+    membershipChainId != null
+      ? karProStakingAddress(membershipChainId)
+      : undefined;
+  const wc =
+    membershipChainId != null ? wagmiChainId(membershipChainId) : undefined;
 
-  const { data: isActiveVerifier } = useReadContract({
+  const { data: chainActive, isPending: chainActivePending } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
     args: peerAddress ? [peerAddress] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(staking && peerAddress && chainId != null) },
+    query: {
+      enabled: Boolean(
+        membershipChainId != null && staking && peerAddress && wc != null,
+      ),
+    },
   });
 
+  const { rows: rosterRows, isPending: rosterPending } = useKarProMembershipRoster(
+    useAnyActive ? peerAddress : undefined,
+    null,
+  );
+
+  const isKarPro =
+    membershipChainId != null
+      ? chainActive === true
+      : karProAnyActive(rosterRows);
+
+  const detailChainId =
+    membershipChainId ??
+    (isKarPro ? preferActiveMembershipChainId(rosterRows, null) : null);
+
   const { profile: verifierProfile } = useKarProVerifierProfile(peerAddress, {
-    isActiveVerifier: isActiveVerifier === true,
-    chainId,
+    isActiveVerifier: isKarPro,
+    chainId: detailChainId,
     syncWhileMissing: false,
   });
 
@@ -63,11 +98,15 @@ export function usePeerIdentity(
   }
 
   const trimmedKarProName = verifierProfile?.name?.trim() ?? "";
+  const statusPending =
+    membershipChainId != null ? chainActivePending : rosterPending;
 
   return {
-    displayName: trimmedKarProName || ensName?.trim() || navShortAddress(peerAddress),
-    isKarPro: isActiveVerifier === true,
+    displayName:
+      trimmedKarProName || ensName?.trim() || navShortAddress(peerAddress),
+    isKarPro,
     profileHref: `/profile/${peerAddress}`,
-    isLoading: trimmedKarProName.length === 0 && ensNameLoading,
+    isLoading:
+      statusPending || (trimmedKarProName.length === 0 && ensNameLoading),
   };
 }

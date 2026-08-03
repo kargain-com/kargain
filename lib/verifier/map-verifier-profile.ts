@@ -12,8 +12,10 @@ export function mapVerifierDetailToProfile(
     metadataURI?: string;
   };
   const stake = detail.stake as { active?: boolean };
+  const chainId = Number(detail.chainId);
 
   return {
+    chainId: Number.isFinite(chainId) && chainId > 0 ? Math.trunc(chainId) : 0,
     address: String(detail.address ?? address),
     category: Number(identity?.category ?? 5),
     name: String(identity?.name ?? ""),

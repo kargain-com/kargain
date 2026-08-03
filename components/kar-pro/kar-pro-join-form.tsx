@@ -13,6 +13,10 @@ import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import {
+  KAR_PRO_PER_NETWORK_JOIN_DISCLOSURE,
+  karProAlreadyActiveElsewhereCopy,
+} from "@/lib/kar-pro/membership-roster";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
@@ -21,12 +25,39 @@ import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 
 type LoadingPhase = "idle" | "uploading";
 
+function JoinNetworkContext({
+  chainId,
+  otherActiveChainIds,
+}: {
+  chainId: number;
+  otherActiveChainIds: readonly number[];
+}) {
+  const networkLabel = shortChainName(chainId);
+  const alreadyElsewhere = karProAlreadyActiveElsewhereCopy(otherActiveChainIds);
+  return (
+    <div className="space-y-2">
+      <p className="font-mono text-xs tabular-nums text-text-tertiary">
+        Creating on {networkLabel}{" "}
+        <span className="text-text-tertiary">({chainId})</span>
+      </p>
+      {alreadyElsewhere ? (
+        <p className="font-sans text-xs text-text-tertiary">{alreadyElsewhere}</p>
+      ) : null}
+      <p className="font-sans text-fluid-sm text-text-secondary">
+        {KAR_PRO_PER_NETWORK_JOIN_DISCLOSURE}
+      </p>
+    </div>
+  );
+}
+
 export function KarProJoinForm({
   chainId,
   onSuccess,
+  otherActiveChainIds = [],
 }: {
   chainId: number;
   onSuccess: () => void;
+  otherActiveChainIds?: readonly number[];
 }) {
   const { address, connector } = useAccount();
   const { writeContractAsync } = useWriteContract();
@@ -51,7 +82,6 @@ export function KarProJoinForm({
   const { minStake, stakeLabel } = useMinStakeNative(chainId);
   const isBusy = loadingPhase !== "idle" || txPhase !== "idle";
   const stakeReady = minStake !== undefined;
-  const networkLabel = shortChainName(chainId);
 
   const onContinue = () => {
     if (!fields.name.trim()) {
@@ -130,10 +160,7 @@ export function KarProJoinForm({
   if (step === 1) {
     return (
       <div className="space-y-6">
-        <p className="font-mono text-xs tabular-nums text-text-tertiary">
-          Creating on {networkLabel}{" "}
-          <span className="text-text-tertiary">({chainId})</span>
-        </p>
+        <JoinNetworkContext chainId={chainId} otherActiveChainIds={otherActiveChainIds} />
         <KarProProfileFields
           values={fields}
           onChange={setFields}
@@ -160,10 +187,7 @@ export function KarProJoinForm({
 
   return (
     <div className="space-y-6">
-      <p className="font-mono text-xs tabular-nums text-text-tertiary">
-        Creating on {networkLabel}{" "}
-        <span className="text-text-tertiary">({chainId})</span>
-      </p>
+      <JoinNetworkContext chainId={chainId} otherActiveChainIds={otherActiveChainIds} />
       <article className="rounded-md border border-border-default bg-bg-card p-6">
         <p className="font-sans text-fluid-sm text-text-secondary">Profile summary</p>
         <p className="mt-2 font-sans text-base font-medium text-text-primary">{fields.name.trim()}</p>

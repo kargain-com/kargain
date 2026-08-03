@@ -16,10 +16,15 @@ import type {
 import type { VerifierPublicPassportRow } from "@/lib/verifier/fetch-verifier-public-data";
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { KarProStatusWidget } from "@/components/profile/karpro-status-widget";
+import { ProfileKarProNetworks } from "@/components/profile/profile-kar-pro-networks";
 import { ProfileVerifierStatsBand } from "@/components/profile/profile-verifier-stats-band";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { ProfileOutstandingTab } from "@/components/profile/profile-outstanding-tab";
 import { ProfileActionBanner } from "@/components/profile/profile-action-banner";
+import type {
+  KarProActiveMembershipFact,
+  KarProMembershipRow,
+} from "@/lib/kar-pro/membership-roster";
 import { AccountSetupBanner } from "@/components/profile/account-setup-banner";
 import { CommerceGuardianOpsLink } from "@/components/commerce/commerce-guardian-ops-link";
 import { ProfileClaimsTab } from "@/components/claims/profile-claims-tab";
@@ -84,6 +89,9 @@ export type ProfilePageProps = {
   wallet: Address;
   chainId: number;
   isActiveVerifier: boolean;
+  membershipRows: readonly KarProMembershipRow[];
+  activeMembershipFacts: readonly KarProActiveMembershipFact[];
+  preferredShowroomChainId: number | null;
   verifierProfile: KarProVerifierProfile | null;
   initialNostrProfile: NostrProfileData | null;
   passports: ProfileOwnedPassport[];
@@ -297,6 +305,9 @@ export function ProfilePage({
   wallet,
   chainId,
   isActiveVerifier,
+  membershipRows,
+  activeMembershipFacts,
+  preferredShowroomChainId,
   verifierProfile,
   initialNostrProfile,
   passports,
@@ -460,6 +471,7 @@ export function ProfilePage({
           karProCategory={verifierProfile?.category}
           isActiveVerifier={isActiveVerifier}
           proSlug={verifierProfile?.slug}
+          proShowroomChainId={preferredShowroomChainId}
           showEditButton={isOwner}
         />
 
@@ -469,18 +481,17 @@ export function ProfilePage({
 
         {isOwner && <CommerceGuardianOpsLink />}
 
+        <ProfileKarProNetworks facts={activeMembershipFacts} isOwner={isOwner} />
+
         <ProfileVerifierStatsBand
-          wallet={wallet}
-          isActiveVerifier={isActiveVerifier}
-          initialProfile={verifierProfile}
+          membershipRows={membershipRows}
           isOwner={isOwner}
-          nostrProfile={profile}
         />
 
         <KarProStatusWidget
           isOwner={isOwner}
           isActiveVerifier={isActiveVerifier}
-          joinedAt={verifierProfile?.joinedAt ?? 0}
+          membershipRows={membershipRows}
         />
 
         <ProfileActionBanner

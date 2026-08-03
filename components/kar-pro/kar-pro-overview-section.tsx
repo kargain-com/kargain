@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useReadContract } from "wagmi";
 
+import { KarProNetworksRoster } from "@/components/kar-pro/kar-pro-networks-roster";
 import { KarProSetupChecklist } from "@/components/kar-pro/kar-pro-setup-checklist";
 import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
@@ -10,6 +11,8 @@ import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
+import type { KarProMembershipRow } from "@/lib/kar-pro/membership-roster";
+import { karProNetworkInstrumentLine } from "@/lib/kar-pro/membership-roster";
 import { replaceKarProSectionUrl } from "@/lib/kar-pro/kar-pro-section-url";
 import { deriveSetupChecklist } from "@/lib/kar-pro/setup-checklist";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
@@ -26,6 +29,7 @@ type KarProOverviewSectionProps = {
   name: string;
   slug: string;
   messagingReady: boolean;
+  membershipRows: readonly KarProMembershipRow[];
 };
 
 function formatJoinedDate(timestamp: number): string {
@@ -46,6 +50,7 @@ export function KarProOverviewSection({
   name,
   slug,
   messagingReady,
+  membershipRows,
 }: KarProOverviewSectionProps) {
   const pathname = usePathname();
   const staking = karProStakingAddress(chainId);
@@ -80,6 +85,7 @@ export function KarProOverviewSection({
   return (
     <div className="space-y-6">
       {!checklist.allRequiredComplete && <KarProSetupChecklist checklist={checklist} />}
+      <KarProNetworksRoster rows={membershipRows} />
       <section className={`${instrumentReadoutPanel} space-y-4`}>
       <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-accent-warm">
         ✓ Active KarPro
@@ -87,12 +93,16 @@ export function KarProOverviewSection({
 
       <div className="space-y-1">
         <p className="font-mono text-fluid-sm text-text-secondary">
+          {karProNetworkInstrumentLine(chainId)}{" "}
+          <span className="tabular-nums text-text-tertiary">({chainId})</span>
+        </p>
+        <p className="font-mono text-fluid-sm text-text-secondary">
           Pass{" "}
           <ProPassIdLabel
             tokenId={resolvedPassId}
             chainId={chainId}
             prefix="none"
-            showChain={true}
+            showChain={false}
             variant="mono"
             className="text-fluid-sm"
           />

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProPassAbi } from "@/lib/contracts/abis.generated";
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
+import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
@@ -191,7 +192,7 @@ export function KarProProfileSection({
           </Button>
           {showroomSlug && (
             <Button type="button" variant="ghost" asChild>
-              <Link href={`/pro/${showroomSlug}`}>View showroom →</Link>
+              <Link href={proShowroomHref(showroomSlug, chainId)}>View showroom →</Link>
             </Button>
           )}
         </div>

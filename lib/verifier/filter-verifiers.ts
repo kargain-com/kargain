@@ -9,6 +9,8 @@ export type VerifierDirectorySortKey = "verifications" | "newest" | "lowestFee";
 export type FilterVerifiersOptions = {
   query: string;
   categoryIndex: number | null;
+  /** `null` = all commercial networks. */
+  chainId: number | null;
   sortKey: VerifierDirectorySortKey;
   activeOnly: boolean;
   lightningOnly?: boolean;
@@ -57,7 +59,9 @@ function compareLowestFee(a: VerifierDirectoryEntry, b: VerifierDirectoryEntry):
     return b.verificationCount - a.verificationCount;
   }
 
-  return a.address.localeCompare(b.address);
+  const byAddress = a.address.localeCompare(b.address);
+  if (byAddress !== 0) return byAddress;
+  return a.chainId - b.chainId;
 }
 
 function compareSecondarySort(
@@ -66,14 +70,25 @@ function compareSecondarySort(
   sortKey: VerifierDirectorySortKey,
 ): number {
   if (sortKey === "verifications") {
-    return b.verificationCount - a.verificationCount;
+    const byCount = b.verificationCount - a.verificationCount;
+    if (byCount !== 0) return byCount;
+    const byAddress = a.address.localeCompare(b.address);
+    if (byAddress !== 0) return byAddress;
+    return a.chainId - b.chainId;
   }
 
   if (sortKey === "newest") {
-    if (a.joinedAt === 0 && b.joinedAt === 0) return 0;
+    if (a.joinedAt === 0 && b.joinedAt === 0) {
+      const byAddress = a.address.localeCompare(b.address);
+      if (byAddress !== 0) return byAddress;
+      return a.chainId - b.chainId;
+    }
     if (a.joinedAt === 0) return 1;
     if (b.joinedAt === 0) return -1;
-    return b.joinedAt - a.joinedAt;
+    if (a.joinedAt !== b.joinedAt) return b.joinedAt - a.joinedAt;
+    const byAddress = a.address.localeCompare(b.address);
+    if (byAddress !== 0) return byAddress;
+    return a.chainId - b.chainId;
   }
 
   return compareLowestFee(a, b);
@@ -127,6 +142,10 @@ export function filterVerifiers(
 
   if (options.activeOnly) {
     result = result.filter((entry) => entry.active);
+  }
+
+  if (options.chainId != null) {
+    result = result.filter((entry) => entry.chainId === options.chainId);
   }
 
   if (options.query.trim()) {

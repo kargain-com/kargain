@@ -596,6 +596,7 @@ export function AuthorizeAuctionAgentDialog({
                   verifiers={verifiers}
                   onSelectAgent={handleSelectAgent}
                   layout="picker"
+                  lockedChainId={chainId}
                 />
               </div>
             )}

@@ -1,12 +1,6 @@
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { getPublicClient } from "@/lib/web3/public-client";
-
-export type ReadIsActiveVerifier = (
-  chainId: number,
-  wallet: `0x${string}`,
-) => Promise<boolean>;
 
 /**
  * Per-chain batch of `isActiveVerifier`. Return `null` when the chain read
@@ -18,12 +12,18 @@ export type ReadChainVerifierActive = (
   addresses: readonly `0x${string}`[],
 ) => Promise<boolean[] | null>;
 
-export type ActiveVerifiersBatchResult =
-  | { status: "success"; activeByAddress: Map<string, boolean> }
+export type VerifierMembershipRef = {
+  chainId: number;
+  address: `0x${string}`;
+};
+
+export type ActiveMembershipsBatchResult =
+  | { status: "success"; activeByMembership: Map<string, boolean> }
   | { status: "failure" };
 
-function commercialChainIds(): number[] {
-  return Object.keys(COMMERCIAL_ACTIVE).map(Number);
+/** Ponder-aligned membership key: `${chainId}-${address.toLowerCase()}`. */
+export function verifierMembershipKey(chainId: number, address: string): string {
+  return `${chainId}-${address.toLowerCase()}`;
 }
 
 async function readChainActiveMulticall(
@@ -52,73 +52,59 @@ async function readChainActiveMulticall(
 }
 
 /**
- * Commercial-union active map for many wallets (OR across COMMERCIAL_ACTIVE).
- * Empty input → success with empty map (no RPC).
- * `status: "failure"` only when every commercial chain read fails entirely.
+ * Per-membership `isActiveVerifier` (no OR across chains).
+ * Groups by chainId and multicalls only addresses present on that chain.
+ * Empty input → success with empty map. Failure only when every chain read fails.
  */
-export async function readActiveVerifiersOnCommercialChains(
-  addresses: readonly `0x${string}`[],
+export async function readActiveVerifierMemberships(
+  memberships: readonly VerifierMembershipRef[],
   deps?: { readChainActive?: ReadChainVerifierActive },
-): Promise<ActiveVerifiersBatchResult> {
-  if (addresses.length === 0) {
-    return { status: "success", activeByAddress: new Map() };
+): Promise<ActiveMembershipsBatchResult> {
+  if (memberships.length === 0) {
+    return { status: "success", activeByMembership: new Map() };
   }
 
   const read = deps?.readChainActive ?? readChainActiveMulticall;
-  const chainIds = commercialChainIds();
+  const byChain = new Map<number, `0x${string}`[]>();
+  for (const m of memberships) {
+    if (!Number.isFinite(m.chainId) || m.chainId <= 0) continue;
+    const list = byChain.get(m.chainId) ?? [];
+    const lower = m.address.toLowerCase();
+    if (!list.some((a) => a.toLowerCase() === lower)) {
+      list.push(m.address);
+    }
+    byChain.set(m.chainId, list);
+  }
+
+  if (byChain.size === 0) {
+    return { status: "success", activeByMembership: new Map() };
+  }
+
+  const chainEntries = [...byChain.entries()];
   const perChain = await Promise.all(
-    chainIds.map(async (chainId) => {
+    chainEntries.map(async ([chainId, addresses]) => {
       try {
-        return await read(chainId, addresses);
+        const row = await read(chainId, addresses);
+        return { chainId, addresses, row };
       } catch {
-        return null;
+        return { chainId, addresses, row: null as boolean[] | null };
       }
     }),
   );
 
-  const usable = perChain.filter((row): row is boolean[] => row != null);
+  const usable = perChain.filter((entry) => entry.row != null);
   if (usable.length === 0) {
     return { status: "failure" };
   }
 
-  const activeByAddress = new Map<string, boolean>();
-  for (let i = 0; i < addresses.length; i++) {
-    const key = addresses[i]!.toLowerCase();
-    let active = false;
-    for (const row of usable) {
-      if (row[i] === true) {
-        active = true;
-        break;
-      }
+  const activeByMembership = new Map<string, boolean>();
+  for (const { chainId, addresses, row } of usable) {
+    for (let i = 0; i < addresses.length; i++) {
+      activeByMembership.set(
+        verifierMembershipKey(chainId, addresses[i]!),
+        row![i] === true,
+      );
     }
-    activeByAddress.set(key, active);
   }
-  return { status: "success", activeByAddress };
-}
-
-/**
- * True if the wallet is an active KarPro verifier on any commercial chain
- * (84532 OR 11155111). Fail-closed per chain (missing staking / RPC throw → false).
- */
-export async function isActiveVerifierOnCommercialChains(
-  wallet: `0x${string}`,
-  deps?: { readIsActiveVerifier?: ReadIsActiveVerifier },
-): Promise<boolean> {
-  const batch = await readActiveVerifiersOnCommercialChains([wallet], {
-    readChainActive: deps?.readIsActiveVerifier
-      ? async (chainId, addresses) => {
-          const out: boolean[] = [];
-          for (const address of addresses) {
-            try {
-              out.push(await deps.readIsActiveVerifier!(chainId, address));
-            } catch {
-              out.push(false);
-            }
-          }
-          return out;
-        }
-      : undefined,
-  });
-  if (batch.status === "failure") return false;
-  return batch.activeByAddress.get(wallet.toLowerCase()) === true;
+  return { status: "success", activeByMembership };
 }

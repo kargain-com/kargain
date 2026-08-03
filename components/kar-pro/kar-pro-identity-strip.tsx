@@ -2,6 +2,7 @@
 
 import { ProPassIdLabel } from "@/components/kar-pro/pro-pass-id-label";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { karProNetworkInstrumentLine } from "@/lib/kar-pro/membership-roster";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 
 type KarProIdentityStripProps = {
@@ -37,12 +38,17 @@ export function KarProIdentityStrip({
       </h2>
 
       <p className="mt-2 font-mono text-fluid-sm text-text-secondary">
+        {karProNetworkInstrumentLine(chainId)}{" "}
+        <span className="tabular-nums text-text-tertiary">({chainId})</span>
+      </p>
+
+      <p className="mt-1 font-mono text-fluid-sm text-text-secondary">
         Pass{" "}
         <ProPassIdLabel
           tokenId={resolvedPassId}
           chainId={chainId}
           prefix="none"
-          showChain={true}
+          showChain={false}
           variant="mono"
           className="text-fluid-sm"
         />

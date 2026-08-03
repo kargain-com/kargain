@@ -1,8 +1,10 @@
 /**
  * Chain-authoritative verifier *active* merge for discovery surfaces.
  * Mirrors `resolveEffectiveListing`: successful chain reads win; Ponder is
- * fallback only when the commercial-union batch fails.
+ * fallback only when the membership batch fails.
  */
+
+import { verifierMembershipKey } from "@/lib/kar-pro/is-active-verifier-commercial";
 
 export type ChainVerifierRead = "success" | "failure";
 
@@ -20,20 +22,20 @@ export function resolveEffectiveVerifierActive(
 }
 
 /**
- * Filter directory rows by effective active status.
- * Map keys must be lowercased addresses; missing key on success → inactive.
+ * Filter directory rows by effective active status per membership.
+ * Map keys = {@link verifierMembershipKey}; missing key on success → inactive.
  */
 export function filterVerifierDirectoryEntries<
-  T extends { address: string; active: boolean },
+  T extends { address: string; chainId: number; active: boolean },
 >(
   rows: readonly T[],
   chainRead: ChainVerifierRead,
-  activeByAddress: ReadonlyMap<string, boolean>,
+  activeByMembership: ReadonlyMap<string, boolean>,
 ): T[] {
   return rows.filter((row) => {
-    const key = row.address.toLowerCase();
+    const key = verifierMembershipKey(row.chainId, row.address);
     const chainActive =
-      chainRead === "success" ? (activeByAddress.get(key) ?? false) : null;
+      chainRead === "success" ? (activeByMembership.get(key) ?? false) : null;
     return resolveEffectiveVerifierActive(chainRead, chainActive, row.active);
   });
 }

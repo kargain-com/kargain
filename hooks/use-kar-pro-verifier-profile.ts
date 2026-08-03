@@ -6,6 +6,7 @@ import { useState } from "react";
 import { fetchKarProVerifierProfile } from "@/app/actions/kar-pro-verifier";
 import { useKarProOnChainProfile } from "@/hooks/use-kar-pro-on-chain-profile";
 import {
+  isKarProVerifierProfileSyncing,
   KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS,
   shouldPollKarProVerifierProfile,
 } from "@/lib/kar-pro/kar-pro-verifier-profile";
@@ -36,7 +37,10 @@ export function useKarProVerifierProfile(
   const ponderQuery = useQuery({
     queryKey: ["kar-pro-verifier", address, chainId],
     queryFn: async () => {
-      const profile = await fetchKarProVerifierProfile(address!);
+      const profile = await fetchKarProVerifierProfile(
+        address!,
+        chainId ?? undefined,
+      );
       setNullFetchCount((prev) => (profile ? 0 : prev + 1));
       return profile;
     },
@@ -72,7 +76,12 @@ export function useKarProVerifierProfile(
     (ponderQuery.isPending || (chainReadsEnabled && chainQuery.isLoading)) &&
     !pollExhausted;
 
-  const isSyncing = enabled && Boolean(chainProfile) && !ponderProfile;
+  const isSyncing = isKarProVerifierProfileSyncing({
+    enabled,
+    hasChainProfile: Boolean(chainProfile),
+    hasPonderProfile: Boolean(ponderProfile),
+    pollExhausted,
+  });
 
   return {
     profile,

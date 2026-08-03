@@ -23,7 +23,7 @@ export function ListingAgentBuyerAttribution({ agentAddress, chainId }: Props) {
     syncWhileMissing: false,
   });
 
-  const profileHref = agentProfileHref(profile?.slug, agentAddress);
+  const profileHref = agentProfileHref(profile?.slug, agentAddress, chainId);
   const karProName = profile?.name?.trim() || (isKarPro ? displayName : "");
   const profileResolved = isKarPro && Boolean(karProName);
   const identityLoading =

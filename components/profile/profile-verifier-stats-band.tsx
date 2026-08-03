@@ -3,107 +3,52 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 
-import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
+import { activeMembershipChainIds } from "@/lib/kar-pro/membership-roster";
+import type { KarProMembershipRow } from "@/lib/kar-pro/membership-roster";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
-import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
-import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
-
-import {
-  VerificationFeeDisplay,
-  VerificationPaymentChips,
-} from "@/components/verifier/verification-fee-display";
+import { shortChainName } from "@/lib/web3/supported-chains";
 
 type ProfileVerifierStatsBandProps = {
-  wallet: `0x${string}`;
-  isActiveVerifier: boolean;
-  initialProfile: KarProVerifierProfile | null;
+  membershipRows: readonly KarProMembershipRow[];
   isOwner: boolean;
-  nostrProfile?: NostrProfileData | null;
 };
 
-function StatsSeparator() {
-  return <span className="text-text-tertiary" aria-hidden>·</span>;
-}
-
+/**
+ * Owner-only stake readout when wallet commercial matches an active membership.
+ * Public fee/count live on ProfileKarProNetworks — no OR + wallet fee collapse.
+ */
 export function ProfileVerifierStatsBand({
-  wallet,
-  isActiveVerifier,
-  initialProfile,
+  membershipRows,
   isOwner,
-  nostrProfile = null,
 }: ProfileVerifierStatsBandProps) {
   const { chainId: walletChainId } = useAccount();
   const chainId = resolveKarProTargetChainId(walletChainId);
-  const { profile: liveProfile } = useKarProVerifierProfile(wallet, {
-    isActiveVerifier: isActiveVerifier || Boolean(initialProfile?.active),
-    chainId,
-    syncWhileMissing: isOwner,
-  });
-  const { stakeLabel } = useMinStakeNative(chainId ?? undefined);
+  const activeIds = activeMembershipChainIds(membershipRows);
+  const walletOnActive =
+    chainId != null && activeIds.includes(chainId);
+  const { stakeLabel } = useMinStakeNative(walletOnActive ? chainId : undefined);
 
-  const profile = liveProfile ?? initialProfile;
-  const verificationCount = profile?.verificationCount ?? 0;
-  const verificationFee = profile?.verificationFee ?? 0n;
-  const showBand =
-    isActiveVerifier || verificationCount > 0 || Boolean(profile?.active);
-
-  if (!showBand) {
+  if (!isOwner || !walletOnActive || chainId == null) {
     return null;
   }
-
-  const memberSinceYear =
-    profile?.joinedAt != null && profile.joinedAt > 0
-      ? new Date(profile.joinedAt * 1000).getFullYear()
-      : null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border-default py-4">
       <span className="font-mono text-sm">
-        <span className="font-medium text-text-primary">{verificationCount}</span>
-        <span className="ml-1.5 text-text-secondary">verifications</span>
+        <span className="font-medium text-text-primary">{stakeLabel} ETH</span>
+        <span className="ml-1.5 text-text-secondary">
+          staked on {shortChainName(chainId)}
+        </span>
       </span>
-      {memberSinceYear != null && (
-        <>
-          <StatsSeparator />
-          <span className="font-mono text-sm">
-            <span className="text-text-secondary">Active since </span>
-            <span className="font-medium text-text-primary">{memberSinceYear}</span>
-          </span>
-        </>
-      )}
-      <StatsSeparator />
-      <span className="font-mono text-sm text-text-secondary">
-        <VerificationFeeDisplay
-          feeWei={verificationFee}
-          prefix="Verification fee "
-          primaryClassName="font-mono text-sm text-text-secondary tabular-nums"
-        />
-        {nostrProfile != null && (
-          <span className="ml-2 inline-flex align-middle">
-            <VerificationPaymentChips profile={nostrProfile} />
-          </span>
-        )}
-      </span>
-      {isOwner && isActiveVerifier && (
-        <>
-          <StatsSeparator />
-          <span className="font-mono text-sm">
-            <span className="font-medium text-text-primary">{stakeLabel} ETH</span>
-            <span className="ml-1.5 text-text-secondary">staked</span>
-          </span>
-          <StatsSeparator />
-          <Link href={karProSectionHref("membership")} className={monoLinkSm}>
-            Manage →
-          </Link>
-          <StatsSeparator />
-          <Link href={karProSectionHref("fee")} className={monoLinkSm}>
-            Edit fee →
-          </Link>
-        </>
-      )}
+      <Link href={karProSectionHref("membership")} className={monoLinkSm}>
+        Manage →
+      </Link>
+      <Link href={karProSectionHref("fee")} className={monoLinkSm}>
+        Edit fee →
+      </Link>
     </div>
   );
 }

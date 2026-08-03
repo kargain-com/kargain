@@ -12,6 +12,7 @@ function entry(
   overrides: Partial<VerifierDirectoryEntry> = {},
 ): VerifierDirectoryEntry {
   return {
+    chainId: 84532,
     address: "0xabcdef1234567890abcdef1234567890abcdef12",
     category: 0,
     name: "Alpha Mechanic",
@@ -69,6 +70,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers(entries, {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: true,
     });
@@ -84,11 +86,62 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers(entries, {
       query: "",
       categoryIndex: 2,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
     });
     assert.equal(result.length, 1);
     assert.equal(result[0]?.category, 2);
+  });
+
+  it("filters by chainId membership", () => {
+    const entries = [
+      entry({
+        address: "0x1111111111111111111111111111111111111111",
+        chainId: 84532,
+      }),
+      entry({
+        address: "0x1111111111111111111111111111111111111111",
+        chainId: 11155111,
+      }),
+      entry({
+        address: "0x2222222222222222222222222222222222222222",
+        chainId: 84532,
+      }),
+    ];
+    const result = filterVerifiers(entries, {
+      query: "",
+      categoryIndex: null,
+      chainId: 84532,
+      sortKey: "verifications",
+      activeOnly: false,
+    });
+    assert.equal(result.length, 2);
+    assert.ok(result.every((v) => v.chainId === 84532));
+  });
+
+  it("tie-breaks same address dual membership by chainId", () => {
+    const hub = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      chainId: 84532,
+      verificationCount: 5,
+    });
+    const spoke = entry({
+      address: "0x1111111111111111111111111111111111111111",
+      chainId: 11155111,
+      verificationCount: 5,
+    });
+    const result = filterVerifiers([spoke, hub], {
+      query: "",
+      categoryIndex: null,
+      chainId: null,
+      sortKey: "verifications",
+      activeOnly: false,
+    });
+    assert.deepEqual(
+      result.map((v) => v.chainId),
+      [84532, 11155111],
+    );
   });
 
   it("sorts by lowest fee with zero fees last", () => {
@@ -111,6 +164,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([zero, high, low], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "lowestFee",
       activeOnly: false,
     });
@@ -140,6 +194,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([fewer, more], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "lowestFee",
       activeOnly: false,
     });
@@ -172,6 +227,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers(entries, {
       query: "mechanic",
       categoryIndex: 0,
+      chainId: null,
       sortKey: "lowestFee",
       activeOnly: false,
     });
@@ -202,6 +258,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([lightning, noLightning], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       lightningOnly: true,
@@ -229,6 +286,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([loaded, unloaded], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       lightningOnly: true,
@@ -248,6 +306,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers(entries, {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       lightningOnly: false,
@@ -287,6 +346,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([other, emptyPlace, sameCountry, sameCity], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       preferredPlaceId: "osm:R123",
@@ -321,6 +381,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([fewer, more], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       preferredPlaceId: "osm:R123",
@@ -346,6 +407,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([low, high], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       preferredPlaceId: "",
@@ -372,6 +434,7 @@ describe("filterVerifiers", () => {
     const result = filterVerifiers([incomplete, match], {
       query: "",
       categoryIndex: null,
+      chainId: null,
       sortKey: "verifications",
       activeOnly: false,
       preferredPlaceId: "osm:R123",

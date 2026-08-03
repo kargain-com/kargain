@@ -11,6 +11,7 @@ import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
+import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
@@ -129,6 +130,9 @@ export function KarProMembershipSection({
               ? "Unbonding complete · Claim your stake"
               : "Unbonding · Stake unlocks after 14 days"
             : "Refundable after leave · 14-day unbond · No slash"}
+        </p>
+        <p className="font-sans text-xs text-text-tertiary">
+          {karProLeaveNetworkScopeCopy(chainId)}
         </p>
         {staking && (
           <p className="font-sans text-fluid-sm text-text-secondary">

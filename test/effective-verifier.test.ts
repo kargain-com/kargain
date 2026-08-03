@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { verifierMembershipKey } from "../lib/kar-pro/is-active-verifier-commercial.ts";
 import {
   filterVerifierDirectoryEntries,
   resolveEffectiveVerifierActive,
@@ -23,25 +24,33 @@ describe("resolveEffectiveVerifierActive", () => {
 describe("filterVerifierDirectoryEntries", () => {
   const A = "0xcFe194fea9727bD04dA8F78c2362680986e02dF1";
   const B = "0x1111111111111111111111111111111111111111";
+  const HUB = 84532;
+  const SPOKE = 11155111;
 
   const rows = [
-    { address: A, active: true, name: "a" },
-    { address: B, active: true, name: "b" },
+    { address: A, chainId: HUB, active: true, name: "a-hub" },
+    { address: A, chainId: SPOKE, active: true, name: "a-spoke" },
+    { address: B, chainId: HUB, active: true, name: "b-hub" },
   ];
 
-  it("success keeps only chain-active rows", () => {
-    const map = new Map<string, boolean>([[A.toLowerCase(), true]]);
+  it("success keeps only memberships active on their own chain", () => {
+    const map = new Map<string, boolean>([
+      [verifierMembershipKey(HUB, A), true],
+      [verifierMembershipKey(SPOKE, A), false],
+      [verifierMembershipKey(HUB, B), true],
+    ]);
     const filtered = filterVerifierDirectoryEntries(rows, "success", map);
     assert.deepEqual(
       filtered.map((r) => r.name),
-      ["a"],
+      ["a-hub", "b-hub"],
     );
   });
 
-  it("success hides ponder-active when chain inactive", () => {
+  it("success hides ponder-active when chain inactive for that membership", () => {
     const map = new Map<string, boolean>([
-      [A.toLowerCase(), false],
-      [B.toLowerCase(), false],
+      [verifierMembershipKey(HUB, A), false],
+      [verifierMembershipKey(SPOKE, A), false],
+      [verifierMembershipKey(HUB, B), false],
     ]);
     assert.deepEqual(filterVerifierDirectoryEntries(rows, "success", map), []);
   });
@@ -54,12 +63,14 @@ describe("filterVerifierDirectoryEntries", () => {
   it("failure keeps ponder-active rows", () => {
     const map = new Map<string, boolean>();
     const filtered = filterVerifierDirectoryEntries(rows, "failure", map);
-    assert.equal(filtered.length, 2);
+    assert.equal(filtered.length, 3);
   });
 
-  it("looks up addresses case-insensitively", () => {
-    const mixed = [{ address: A.toUpperCase() as string, active: true, name: "a" }];
-    const map = new Map<string, boolean>([[A.toLowerCase(), true]]);
+  it("looks up addresses case-insensitively within membership key", () => {
+    const mixed = [
+      { address: A.toUpperCase() as string, chainId: HUB, active: true, name: "a" },
+    ];
+    const map = new Map<string, boolean>([[verifierMembershipKey(HUB, A), true]]);
     assert.equal(filterVerifierDirectoryEntries(mixed, "success", map).length, 1);
   });
 });

@@ -8,6 +8,7 @@ import { KarProFeeSection } from "@/components/kar-pro/kar-pro-fee-section";
 import { KarProIdentityStrip } from "@/components/kar-pro/kar-pro-identity-strip";
 import { KarProJoinForm } from "@/components/kar-pro/kar-pro-join-form";
 import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
+import { KarProNetworksRoster } from "@/components/kar-pro/kar-pro-networks-roster";
 import { KarProOverviewSection } from "@/components/kar-pro/kar-pro-overview-section";
 import { KarProPaymentsSection } from "@/components/kar-pro/kar-pro-payments-section";
 import { KarProProfileSection } from "@/components/kar-pro/kar-pro-profile-section";
@@ -16,8 +17,10 @@ import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card"
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { useKarProMembershipRoster } from "@/hooks/use-kar-pro-membership-roster";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { otherActiveChainIdsFromRoster } from "@/lib/kar-pro/membership-roster";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -57,6 +60,8 @@ export function KarProClient({
   const isActiveVerifier = stakingReads.get("isActiveVerifier") === true;
   const { snapshot } = useMessagingSession();
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
+
+  const { rows: membershipRows } = useKarProMembershipRoster(address, chainId);
 
   const {
     profile: verifierProfile,
@@ -121,9 +126,15 @@ export function KarProClient({
   }
 
   if (!isActiveVerifier) {
+    const otherActive = otherActiveChainIdsFromRoster(membershipRows, chainId);
     return (
       <div className={containerClass}>
-        <KarProJoinForm chainId={chainId} onSuccess={handleJoinSuccess} />
+        <KarProNetworksRoster rows={membershipRows} />
+        <KarProJoinForm
+          chainId={chainId}
+          onSuccess={handleJoinSuccess}
+          otherActiveChainIds={otherActive}
+        />
       </div>
     );
   }
@@ -172,6 +183,7 @@ export function KarProClient({
             name={verifierProfile.name}
             slug={verifierProfile.slug}
             messagingReady={messagingReadyForChecklist(snapshot)}
+            membershipRows={membershipRows}
           />
         }
         profile={

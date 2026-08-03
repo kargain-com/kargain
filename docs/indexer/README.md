@@ -85,9 +85,9 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 | `GET /notifications/:address` | Notification feed: passport/mandate/claims + commerce lifecycle (`commerce.*`) + approaching deadlines from obligation derivation; `claim.recorded` unions `claim_credit` + `commerce_claim_credit` |
 | `GET /accounts/:address/claims` | Outstanding ClaimablePayouts balances (`amount > 0`); unions `pending_claim` + `commerce_claim`; optional `?chainId=`; each claim includes `credits[]` (asc by timestamp); `{ claims, total, page, limit }` |
 | `GET /accounts/:address/obligations` | Address-centric commerce facts bag for Outstanding panel + approaching feed (see commerce table above) |
-| `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm) |
-| `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`) |
-| `GET /verifiers/by-slug/:slug` | Resolve slug → address |
+| `GET /verifiers` | Verifier directory (`verificationFee` wei string; `locationLabel` / `locationPlaceId` / `locationCountryCode` from KarPro Arweave denorm; each row includes `chainId`) |
+| `GET /verifiers/:address` | Verifier profile (`verificationFee` wei string; place fields on `identity`). **Prefer `?chainId=`** (SPEC §I.12.12). Without `chainId`, first active row for the address (case-insensitive match on stored `address`) |
+| `GET /verifiers/by-slug/:slug` | Resolve slug → address (optional `?chainId=`) |
 | `GET /verifiers/:address/attestations` | Verifier attestations |
 
 ### Ponder reserved routes

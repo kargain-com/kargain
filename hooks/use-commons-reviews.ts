@@ -6,8 +6,8 @@ import type { Address } from "viem";
 import type { Filter } from "nostr-tools";
 import { useAccount } from "wagmi";
 
+import { useKarProMembershipActive } from "@/hooks/use-kar-pro-membership-active";
 import { useNostrKey } from "@/hooks/use-nostr-key";
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { COMMONS_REVIEWS_POLICY } from "@/lib/nostr/app-event-store";
 import {
   commonsReviewEntryFromEvent,
@@ -16,13 +16,6 @@ import {
 import { useLatestPerAuthorPerDEntries } from "@/lib/nostr/live-policy-subscription";
 import { attestedPubkeysForAddresses } from "@/lib/nostr/resolve-attested-profile";
 import type { CommonsReviewKind } from "@/lib/vincent-commons/review";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { commercialChainIds } from "@/lib/web3/chain-context";
-import {
-  useKeyedReadContracts,
-  type KeyedContract,
-} from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ATTESTED_PUBKEYS_STALE_MS = 5 * 60 * 1000;
 
@@ -44,8 +37,8 @@ type UseCommonsReviewsOptions = {
 type UseCommonsReviewsReturn = {
   /**
    * claimHash → tally of attesters that passed every gate: review signature,
-   * attested wallet↔Nostr binding matching the event author, and an
-   * `isActiveVerifier` chain read. Fail-closed — unresolved gates exclude.
+   * attested wallet↔Nostr binding matching the event author, and KarPro
+   * membership anyActive. Fail-closed — unresolved gates exclude.
    */
   verifiedByClaim: Map<string, CommonsReviewTally>;
   /** claimHash → connected wallet's own verdict (shown without count gating). */
@@ -102,49 +95,12 @@ export function useCommonsReviews(
     staleTime: ATTESTED_PUBKEYS_STALE_MS,
   });
 
-  // Gate 2 — isActiveVerifier OR across commercial chains (wagmi-cached).
-  const verifierContracts = useMemo((): KeyedContract[] => {
-    const contracts: KeyedContract[] = [];
-    for (const cid of commercialChainIds()) {
-      const staking = karProStakingAddress(cid);
-      if (!staking) continue;
-      for (const attester of attesters) {
-        contracts.push({
-          key: `active:${cid}:${attester}`,
-          address: staking,
-          abi: KarProStakingAbi,
-          functionName: "isActiveVerifier",
-          args: [attester],
-          chainId: wagmiChainId(cid),
-        });
-      }
-    }
-    return contracts;
-  }, [attesters]);
-
-  const verifierReads = useKeyedReadContracts({
-    contracts: verifierContracts,
-    query: { enabled: verifierContracts.length > 0 },
-  });
-  const verifierPending = verifierReads.isPending;
-
-  const activeVerifierByAttester = useMemo(() => {
-    const map = new Map<string, boolean>();
-    const chainIds = commercialChainIds().filter((cid) =>
-      Boolean(karProStakingAddress(cid)),
-    );
-    for (const attester of attesters) {
-      let active = false;
-      for (const cid of chainIds) {
-        if (verifierReads.get(`active:${cid}:${attester}`) === true) {
-          active = true;
-          break;
-        }
-      }
-      map.set(attester, active);
-    }
-    return map;
-  }, [attesters, verifierReads]);
+  // Gate 2 — KarPro anyActive via shared membership gate (not a local OR loop).
+  const {
+    activeByAddress: activeVerifierByAttester,
+    isPending: verifierPending,
+    hasContracts: hasVerifierContracts,
+  } = useKarProMembershipActive(attesters);
 
   const verifiedByClaim = useMemo(() => {
     const result = new Map<string, CommonsReviewTally>();
@@ -196,7 +152,7 @@ export function useCommonsReviews(
   const gatesLoading =
     entries.length > 0 &&
     attesters.length > 0 &&
-    (pubkeysPending || (verifierContracts.length > 0 && verifierPending));
+    (pubkeysPending || (hasVerifierContracts && verifierPending));
 
   return {
     verifiedByClaim,

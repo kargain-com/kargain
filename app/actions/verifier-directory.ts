@@ -1,10 +1,12 @@
 "use server";
 
-import { readActiveVerifiersOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
+import { readActiveVerifierMemberships } from "@/lib/kar-pro/is-active-verifier-commercial";
 import { filterVerifierDirectoryEntries } from "@/lib/verifier/effective-verifier";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type VerifierDirectoryEntry = {
+  /** Commercial chain of this membership (SPEC §I.12.12). */
+  chainId: number;
   address: `0x${string}`;
   category: number;
   name: string;
@@ -28,6 +30,7 @@ type ParsedVerifierDirectoryEntry = VerifierDirectoryEntry;
 type PonderVerifiersRawResponse = {
   verifiers: Array<{
     id?: string;
+    chainId?: number | string;
     address: string;
     category: number;
     name: string;
@@ -54,12 +57,22 @@ function parseVerificationFeeWire(raw: unknown): string {
   }
 }
 
-function parseVerifierEntry(
+function parsePositiveChainId(raw: unknown): number | null {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
+/** Parse one Ponder directory row; drop when chainId missing/invalid. */
+export function parseVerifierDirectoryEntry(
   row: PonderVerifiersRawResponse["verifiers"][number],
 ): ParsedVerifierDirectoryEntry | null {
   const address = (row.address || row.id || "").trim();
   if (!address.startsWith("0x")) return null;
+  const chainId = parsePositiveChainId(row.chainId);
+  if (chainId == null) return null;
   return {
+    chainId,
     address: address as `0x${string}`,
     category: Number(row.category ?? 5),
     name: String(row.name ?? ""),
@@ -80,23 +93,23 @@ async function fetchPonderVerifiers(): Promise<ParsedVerifierDirectoryEntry[]> {
   if (!res.ok) return [];
   const data = (await res.json()) as PonderVerifiersRawResponse;
   return (data.verifiers ?? [])
-    .map(parseVerifierEntry)
+    .map(parseVerifierDirectoryEntry)
     .filter((v): v is ParsedVerifierDirectoryEntry => v != null);
 }
 
 /**
- * Ponder discovery list filtered by commercial-union chain `isActiveVerifier`
+ * Ponder discovery list filtered by per-membership chain `isActiveVerifier`
  * when the batch succeeds; Ponder-only fallback when every chain read fails.
  */
 async function fetchEffectiveVerifiers(): Promise<ParsedVerifierDirectoryEntry[]> {
   const rows = await fetchPonderVerifiers();
-  const batch = await readActiveVerifiersOnCommercialChains(
-    rows.map((row) => row.address),
+  const batch = await readActiveVerifierMemberships(
+    rows.map((row) => ({ chainId: row.chainId, address: row.address })),
   );
   if (batch.status === "failure") {
     return filterVerifierDirectoryEntries(rows, "failure", new Map());
   }
-  return filterVerifierDirectoryEntries(rows, "success", batch.activeByAddress);
+  return filterVerifierDirectoryEntries(rows, "success", batch.activeByMembership);
 }
 
 /** Lightweight count for homepage stats — no Nostr relay round-trips. */

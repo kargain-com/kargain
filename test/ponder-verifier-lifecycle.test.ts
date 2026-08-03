@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAddress } from "viem";
 
 import { verifier } from "../ponder.schema.ts";
 import {
+  normalizeVerifierAddress,
   normalizeVerifierId,
   patchVerifierIfExists,
   proPassBurnedPatch,
@@ -62,6 +64,11 @@ describe("ponder verifier lifecycle builders", () => {
     );
   });
 
+  it("checksums verifier address column", () => {
+    assert.equal(normalizeVerifierAddress(VERIFIER_ADDR), getAddress(VERIFIER_ADDR));
+    assert.equal(normalizeVerifierAddress(HOLDER.toLowerCase()), getAddress(HOLDER));
+  });
+
   it("builds staking join row with chainId", () => {
     const row = verifierJoinedRow(
       HUB,
@@ -72,7 +79,7 @@ describe("ponder verifier lifecycle builders", () => {
     );
     assert.equal(row.id, `${HUB}-${VERIFIER_ADDR.toLowerCase()}`);
     assert.equal(row.chainId, HUB);
-    assert.equal(row.address, VERIFIER_ADDR);
+    assert.equal(row.address, getAddress(VERIFIER_ADDR));
     assert.equal(row.stakeAsset, "0x0000000000000000000000000000000000000000");
     assert.equal(row.stakeAmount, "50000000000000000");
     assert.equal(row.active, true);

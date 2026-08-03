@@ -82,12 +82,13 @@ function mapVerifierPassportRow(
 
 export async function fetchVerifierPublicData(
   address: string,
+  chainId?: number,
 ): Promise<VerifierPublicData> {
   const passportsUrl = buildVerifierPassportsQueryUrl(address);
   const attestationsUrl = buildVerifierAttestationsQueryUrl(address);
 
   const [detail, passportsRes, attestationsRes] = await Promise.all([
-    fetchVerifierDetail(address),
+    fetchVerifierDetail(address, chainId),
     ponderFetch(passportsUrl),
     ponderFetch(attestationsUrl),
   ]);

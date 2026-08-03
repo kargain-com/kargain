@@ -480,10 +480,11 @@ app.get("/verifiers/:address", async (c) => {
     id = normalizeVerifierId(chainId, address);
   } else {
     // Prefer ?chainId= (SPEC §I.12.12). Fallback: first active row for address.
+    // Case-insensitive: historical rows may be lowercase; writes store checksum.
     const rows = await db
       .select()
       .from(verifier)
-      .where(eq(verifier.address, address))
+      .where(sql`lower(${verifier.address}) = ${address.toLowerCase()}`)
       .orderBy(desc(verifier.active), desc(verifier.joinedAt))
       .limit(1);
     if (!rows[0]) {

@@ -119,6 +119,7 @@ export function useKarProOnChainProfile(
 
   return {
     profile: buildKarProProfileFromChain({
+      chainId: chainId!,
       address,
       category,
       name,

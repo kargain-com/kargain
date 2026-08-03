@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryLabel } from "@/lib/design/instrument-classes";
+import { KAR_PRO_PAYMENTS_NETWORK_SCOPE } from "@/lib/kar-pro/membership-roster";
 import type { PaymentMethodId } from "@/lib/nostr/payment-method-id";
 import { publishNostrProfile } from "@/lib/nostr/profile";
 import { acceptedPaymentMethods, paymentMethodIdsToArray } from "@/lib/verifier/payment-methods";
@@ -131,6 +132,9 @@ export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectio
           <p className={categoryLabel}>Accepted payment methods</p>
           <p className="mt-1 font-sans text-xs text-text-secondary">
             Owners see only the methods you enable when paying your verification fee.
+          </p>
+          <p className="mt-1 font-sans text-xs text-text-tertiary">
+            {KAR_PRO_PAYMENTS_NETWORK_SCOPE}
           </p>
         </div>
 

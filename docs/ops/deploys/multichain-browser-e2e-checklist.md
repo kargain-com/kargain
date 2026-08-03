@@ -49,7 +49,7 @@ A second Hardhat node + mock LZ relay + dual-chain Ponder inside `e2e-local` wou
 ### KarPro badge union
 
 1. [ ] Stake / join KarPro on **84532 only** → public profile shows KarPro badge
-2. [ ] Stake / join KarPro on **11155111 only** → public profile shows KarPro badge (commercial OR)
+2. [ ] Stake / join KarPro on **11155111 only** → public profile shows KarPro badge (roster `anyActive`)
 3. [ ] Become KarPro CTA follows **wallet commercial target** (not hub hardcode)
 
 ### Non-goals (this checklist)

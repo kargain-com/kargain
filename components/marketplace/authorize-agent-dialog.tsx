@@ -470,6 +470,7 @@ export function AuthorizeAgentDialog({
                   verifiers={verifiers}
                   onSelectAgent={handleSelectAgent}
                   layout="picker"
+                  lockedChainId={chainId}
                 />
               </div>
             )}

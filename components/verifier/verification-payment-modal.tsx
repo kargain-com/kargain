@@ -89,6 +89,8 @@ type VerificationPaymentModalProps = {
   verifierAddress: `0x${string}`;
   feeWei: bigint;
   verifierName?: string;
+  /** When set (showroom), fee/pay use this chain only — not wallet commercial target. */
+  membershipChainId?: number;
 };
 
 const GHOST_BUTTON_CLASS =
@@ -129,10 +131,16 @@ export function VerificationPaymentModal({
   verifierAddress,
   feeWei,
   verifierName,
+  membershipChainId,
 }: VerificationPaymentModalProps) {
   const walletChainId = useChainId();
-  const chainId = resolveKarProTargetChainId(walletChainId);
-  const commercialReady = chainId != null;
+  const chainId =
+    membershipChainId != null && Number.isFinite(membershipChainId)
+      ? membershipChainId
+      : resolveKarProTargetChainId(walletChainId);
+  const commercialReady =
+    chainId != null &&
+    (membershipChainId == null || walletChainId === membershipChainId);
   const wc = wagmiChainId(chainId ?? walletChainId);
   const { address, isConnected } = useAccount();
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
@@ -859,6 +867,7 @@ type VerificationPayButtonProps = {
   verifierAddress: `0x${string}`;
   verifierName?: string;
   feeWei: bigint;
+  membershipChainId?: number;
   variant?: "secondary" | "ghost" | "outline";
   size?: "default" | "sm";
 };
@@ -867,6 +876,7 @@ export function VerificationPayButton({
   verifierAddress,
   verifierName,
   feeWei,
+  membershipChainId,
   variant = "ghost",
   size,
 }: VerificationPayButtonProps) {
@@ -917,7 +927,9 @@ export function VerificationPayButton({
         verifierAddress={verifierAddress}
         feeWei={feeWei}
         verifierName={verifierName}
+        membershipChainId={membershipChainId}
       />
     </>
   );
 }
+

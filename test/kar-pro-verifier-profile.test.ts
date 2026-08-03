@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildKarProProfileFromChain,
+  isKarProVerifierProfileSyncing,
   KAR_PRO_VERIFIER_POLL_INTERVAL_MS,
   KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS,
   resolveKarProJoinedAt,
@@ -10,30 +11,26 @@ import {
   shouldPollKarProVerifierProfile,
 } from "../lib/kar-pro/kar-pro-verifier-profile.ts";
 
+const SAMPLE_PROFILE = {
+  chainId: 84532,
+  address: "0x1",
+  category: 0,
+  name: "Test",
+  slug: "test",
+  metadataURI: "ar://x",
+  active: true,
+  joinedAt: 1,
+  verificationCount: 0,
+  verificationFee: 0n,
+} as const;
+
 describe("shouldPollKarProVerifierProfile", () => {
   it("returns false when syncWhileMissing is disabled", () => {
     assert.equal(shouldPollKarProVerifierProfile(null, 0, false), false);
   });
 
   it("returns false when profile data is present", () => {
-    assert.equal(
-      shouldPollKarProVerifierProfile(
-        {
-          address: "0x1",
-          category: 0,
-          name: "Test",
-          slug: "test",
-          metadataURI: "ar://x",
-          active: true,
-          joinedAt: 1,
-          verificationCount: 0,
-          verificationFee: 0n,
-        },
-        5,
-        true,
-      ),
-      false,
-    );
+    assert.equal(shouldPollKarProVerifierProfile(SAMPLE_PROFILE, 5, true), false);
   });
 
   it("returns poll interval while data is missing and under max attempts", () => {
@@ -55,9 +52,69 @@ describe("shouldPollKarProVerifierProfile", () => {
   });
 });
 
+describe("isKarProVerifierProfileSyncing", () => {
+  it("is true while chain fallback is up and Ponder is still missing under poll budget", () => {
+    assert.equal(
+      isKarProVerifierProfileSyncing({
+        enabled: true,
+        hasChainProfile: true,
+        hasPonderProfile: false,
+        pollExhausted: false,
+      }),
+      true,
+    );
+  });
+
+  it("is false when poll is exhausted", () => {
+    assert.equal(
+      isKarProVerifierProfileSyncing({
+        enabled: true,
+        hasChainProfile: true,
+        hasPonderProfile: false,
+        pollExhausted: true,
+      }),
+      false,
+    );
+  });
+
+  it("is false when Ponder profile is present", () => {
+    assert.equal(
+      isKarProVerifierProfileSyncing({
+        enabled: true,
+        hasChainProfile: true,
+        hasPonderProfile: true,
+        pollExhausted: false,
+      }),
+      false,
+    );
+  });
+
+  it("is false when disabled or no chain fallback", () => {
+    assert.equal(
+      isKarProVerifierProfileSyncing({
+        enabled: false,
+        hasChainProfile: true,
+        hasPonderProfile: false,
+        pollExhausted: false,
+      }),
+      false,
+    );
+    assert.equal(
+      isKarProVerifierProfileSyncing({
+        enabled: true,
+        hasChainProfile: false,
+        hasPonderProfile: false,
+        pollExhausted: false,
+      }),
+      false,
+    );
+  });
+});
+
 describe("buildKarProProfileFromChain", () => {
   it("builds profile with chain defaults", () => {
     const profile = buildKarProProfileFromChain({
+      chainId: 84532,
       address: "0xabc",
       category: 2,
       name: "Inspector Pro",
@@ -66,6 +123,7 @@ describe("buildKarProProfileFromChain", () => {
       slug: "inspector-pro",
     });
 
+    assert.equal(profile.chainId, 84532);
     assert.equal(profile.address, "0xabc");
     assert.equal(profile.category, 2);
     assert.equal(profile.name, "Inspector Pro");
@@ -78,6 +136,7 @@ describe("buildKarProProfileFromChain", () => {
 
   it("defaults slug to empty string", () => {
     const profile = buildKarProProfileFromChain({
+      chainId: 11155111,
       address: "0xabc",
       category: 5,
       name: "Other",
@@ -85,6 +144,7 @@ describe("buildKarProProfileFromChain", () => {
       joinedAt: 0,
     });
 
+    assert.equal(profile.chainId, 11155111);
     assert.equal(profile.slug, "");
   });
 });

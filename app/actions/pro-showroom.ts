@@ -1,11 +1,13 @@
 "use server";
 
-import { getAddress } from "viem";
-
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { consignmentRecordToListingInput } from "@/lib/commerce/listing-view";
 import { fetchKarProMetadata } from "@/lib/kar-pro/fetch-kar-pro-metadata";
-import { isActiveVerifierOnCommercialChains } from "@/lib/kar-pro/is-active-verifier-commercial";
+import {
+  isActiveVerifierOnChain,
+  resolveProShowroomBySlug,
+  type ProShowroomSlugCandidate,
+} from "@/lib/kar-pro/resolve-pro-showroom";
 import {
   mapPonderListingToRow,
   type MarketplaceListingRow,
@@ -34,6 +36,8 @@ export type ProShowroomPassport = {
 export type ProShowroomData = {
   address: `0x${string}`;
   slug: string;
+  /** Membership network for this showroom session. */
+  chainId: number;
   verifier: VerifierRow | null;
   verifiedPassports: ProShowroomPassport[];
   verifiedPassportTotal: number;
@@ -46,6 +50,11 @@ export type ProShowroomData = {
   isActiveVerifier: boolean;
   verificationFee: bigint;
 };
+
+export type GetProShowroomResult =
+  | { kind: "resolved"; data: ProShowroomData }
+  | { kind: "ambiguous"; slug: string; candidates: ProShowroomSlugCandidate[] }
+  | { kind: "missing" };
 
 type PonderListingRaw = {
   id?: string;
@@ -111,18 +120,11 @@ function mapVerifierRow(
   };
 }
 
-export async function getProShowroomData(slug: string): Promise<ProShowroomData | null> {
-  let address: `0x${string}`;
-  try {
-    const verifierBySlug = await ponderFetch(`${ponderBaseUrl()}/verifiers/by-slug/${encodeURIComponent(slug)}`);
-    if (!verifierBySlug.ok) return null;
-    const data = (await verifierBySlug.json()) as { address?: string };
-    if (!data.address) return null;
-    address = getAddress(data.address);
-  } catch {
-    return null;
-  }
-
+async function loadResolvedShowroom(
+  slug: string,
+  chainId: number,
+  address: `0x${string}`,
+): Promise<ProShowroomData> {
   let isActiveVerifier = false;
   let verifier: VerifierRow | null = null;
   let verifiedPassports: ProShowroomPassport[] = [];
@@ -137,11 +139,11 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   try {
     const [activeOnChain, verifierData, listingsRes, consignmentsPage] =
       await Promise.all([
-      isActiveVerifierOnCommercialChains(address),
-      fetchVerifierPublicData(address),
-      ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
-      getConsignments({ agent: address, live: true, page: 1, limit: 100 }),
-    ]);
+        isActiveVerifierOnChain(address, chainId),
+        fetchVerifierPublicData(address, chainId),
+        ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
+        getConsignments({ agent: address, live: true, page: 1, limit: 100 }),
+      ]);
 
     isActiveVerifier = activeOnChain === true;
 
@@ -193,6 +195,7 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
   return {
     address,
     slug,
+    chainId,
     verifier,
     verifiedPassports,
     verifiedPassportTotal,
@@ -205,4 +208,25 @@ export async function getProShowroomData(slug: string): Promise<ProShowroomData 
     isActiveVerifier,
     verificationFee,
   };
+}
+
+/**
+ * Showroom membership from slug + optional `chainId` (URL `?chain=`).
+ * Ambiguous slug without chain → chooser candidates (never silent limit(1)).
+ */
+export async function getProShowroomData(
+  slug: string,
+  chainId: number | null = null,
+): Promise<GetProShowroomResult> {
+  const resolved = await resolveProShowroomBySlug(slug, chainId);
+  if (resolved.kind === "missing") return { kind: "missing" };
+  if (resolved.kind === "ambiguous") {
+    return { kind: "ambiguous", slug, candidates: resolved.candidates };
+  }
+  const data = await loadResolvedShowroom(
+    slug,
+    resolved.chainId,
+    resolved.address,
+  );
+  return { kind: "resolved", data };
 }

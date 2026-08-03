@@ -18,6 +18,7 @@ import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const headerActionClassName = "min-h-9 h-9 px-3 py-1.5 text-xs";
@@ -28,6 +29,8 @@ export interface IdentityHeaderProps {
   karProCategory?: number;
   isActiveVerifier?: boolean;
   proSlug?: string;
+  /** Membership chain for showroom link — required when proSlug is set. */
+  proShowroomChainId?: number | null;
   showEditButton?: boolean;
 }
 
@@ -55,6 +58,7 @@ export function IdentityHeader({
   karProCategory,
   isActiveVerifier = false,
   proSlug,
+  proShowroomChainId = null,
   showEditButton = true,
 }: IdentityHeaderProps) {
   const { isConnected } = useAccount();
@@ -161,8 +165,10 @@ export function IdentityHeader({
           )}
         </div>
 
-        {proSlug && (
-          <CrossLink href={`/pro/${proSlug}`}>View pro showroom</CrossLink>
+        {proSlug && proShowroomChainId != null && (
+          <CrossLink href={proShowroomHref(proSlug, proShowroomChainId)}>
+            View pro showroom
+          </CrossLink>
         )}
       </div>
     </div>
