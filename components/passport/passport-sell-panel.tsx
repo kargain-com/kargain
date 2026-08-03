@@ -29,6 +29,15 @@ import {
   encumbrancePermissionCopy,
   isEncumbrancePermissionAvailable,
 } from "@/lib/passport/encumbrance-permission";
+import {
+  SELL_AUCTION,
+  SELL_AUCTION_GROUP,
+  SELL_AUCTION_RUNNER_NOTE,
+  SELL_DELEGATE,
+  SELL_FIXED_PRICE_GROUP,
+  SELL_HEADING,
+  SELL_LIST,
+} from "@/lib/passport/sell-copy";
 import { deriveSellSurface } from "@/lib/passport/sell-surface";
 import {
   isOnChainNftOwner,
@@ -187,91 +196,122 @@ export function PassportSellPanel({
     isEncumbrancePermissionAvailable(facts.openConsignmentPermission) &&
     facts.hasLiveConsignment === false;
 
+  const showFixedPriceBlock =
+    (surface.showFixedPriceOpen && fixedPricePaused !== true) ||
+    surface.showFixedPriceGrant ||
+    (surface.showFixedPriceMandateCard &&
+      fixedMandate != null &&
+      mandateHasAgent(fixedMandate));
+
+  const showAuctionBlock =
+    surface.showAscendingRunnerNote ||
+    surface.showAuctionVerificationHint ||
+    (surface.showAscendingMandateCard &&
+      ascendingMandate != null &&
+      mandateHasAgent(ascendingMandate)) ||
+    surface.showAscendingOpen ||
+    surface.showAscendingGrant;
+
   return (
-    <div className="space-y-4 rounded-md border border-border-subtle bg-bg-surface p-4">
-      <h2 className="text-sm tracking-wide text-text-secondary">Sell</h2>
+    <div className="space-y-4">
+      <h2 className="text-sm tracking-wide text-text-secondary">{SELL_HEADING}</h2>
 
       {fixedPricePaused === true || ascendingPaused === true ? (
         <CommercePausedNotice />
       ) : null}
 
-      {surface.showFixedPriceOpen ? (
-        <div className="space-y-2">
-          {fixedPricePaused === true ? null : (
-            <Button asChild variant="secondary" className="w-full sm:w-auto">
+      {showFixedPriceBlock ? (
+        <div className="space-y-3">
+          <p className="text-xs tracking-wide text-text-tertiary">
+            {SELL_FIXED_PRICE_GROUP}
+          </p>
+
+          {surface.showFixedPriceOpen && fixedPricePaused !== true ? (
+            <Button
+              asChild
+              variant="secondary"
+              className="w-full cursor-default sm:w-auto"
+            >
               <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
-                Open fixed-price consignment
+                {SELL_LIST}
               </Link>
             </Button>
-          )}
+          ) : null}
+
+          {surface.showFixedPriceMandateCard &&
+          fixedMandate &&
+          mandateHasAgent(fixedMandate) ? (
+            <AgentAuthorizationStatus
+              chainId={chainId}
+              tokenId={tokenId}
+              mandate={fixedMandate}
+              listingActive={facts.fixedPrice.live === true}
+              onChanged={refetch}
+            />
+          ) : null}
+
+          {surface.showFixedPriceGrant ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setFixedPriceDialogOpen(true)}
+            >
+              {SELL_DELEGATE}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
-      {surface.showFixedPriceMandateCard &&
-      fixedMandate &&
-      mandateHasAgent(fixedMandate) ? (
-        <AgentAuthorizationStatus
-          chainId={chainId}
-          tokenId={tokenId}
-          mandate={fixedMandate}
-          listingActive={facts.fixedPrice.live === true}
-          onChanged={refetch}
-        />
-      ) : null}
+      {showAuctionBlock ? (
+        <div className="space-y-3">
+          <p className="text-xs tracking-wide text-text-tertiary">
+            {SELL_AUCTION_GROUP}
+          </p>
 
-      {surface.showFixedPriceGrant ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full sm:w-auto"
-          onClick={() => setFixedPriceDialogOpen(true)}
-        >
-          Grant fixed-price mandate
-        </Button>
-      ) : null}
+          {surface.showAscendingRunnerNote ? (
+            <p className="text-sm text-text-secondary">
+              {SELL_AUCTION_RUNNER_NOTE}
+            </p>
+          ) : null}
 
-      {surface.showAscendingRunnerNote ? (
-        <p className="text-sm text-text-secondary">
-          Ascending auctions are opened by an active KarPro verifier. Grant a
-          mandate to let a pro run the lot for you.
-        </p>
-      ) : null}
+          {surface.showAuctionVerificationHint ? (
+            <p className="text-sm text-text-secondary">
+              {AUCTION_REQUIRES_VERIFICATION_HINT}
+            </p>
+          ) : null}
 
-      {surface.showAuctionVerificationHint ? (
-        <p className="text-sm text-text-secondary">
-          {AUCTION_REQUIRES_VERIFICATION_HINT}
-        </p>
-      ) : null}
+          {surface.showAscendingMandateCard &&
+          ascendingMandate &&
+          mandateHasAgent(ascendingMandate) ? (
+            <AuctionAgentAuthorizationStatus
+              authorization={ascendingMandateAsAuth(ascendingMandate)}
+              now={now}
+              onManage={() => setAscendingDialogOpen(true)}
+            />
+          ) : null}
 
-      {surface.showAscendingMandateCard &&
-      ascendingMandate &&
-      mandateHasAgent(ascendingMandate) ? (
-        <AuctionAgentAuthorizationStatus
-          authorization={ascendingMandateAsAuth(ascendingMandate)}
-          now={now}
-          onManage={() => setAscendingDialogOpen(true)}
-        />
-      ) : null}
+          {surface.showAscendingOpen ? (
+            <CreateAuctionPanel
+              chainId={chainId}
+              tokenId={tokenId}
+              canOpen={canOpen}
+              isOwner
+              isActiveVerifier={isActiveVerifier === true}
+            />
+          ) : null}
 
-      {surface.showAscendingOpen ? (
-        <CreateAuctionPanel
-          chainId={chainId}
-          tokenId={tokenId}
-          canOpen={canOpen}
-          isOwner
-          isActiveVerifier={isActiveVerifier === true}
-        />
-      ) : null}
-
-      {surface.showAscendingGrant ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full sm:w-auto"
-          onClick={() => setAscendingDialogOpen(true)}
-        >
-          Grant ascending mandate
-        </Button>
+          {surface.showAscendingGrant ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setAscendingDialogOpen(true)}
+            >
+              {SELL_AUCTION}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       <AuthorizeAgentDialog
