@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { zeroAddress } from "viem";
 
+import { AVAILABLE, blocked } from "../lib/challenge/action-gate.ts";
 import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
 import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
@@ -15,7 +16,7 @@ const AGENT = "0x1111111111111111111111111111111111111111" as const;
 const OWNER = "0x2222222222222222222222222222222222222222" as const;
 const NOW = 2_000_000_000;
 
-const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
+const AVAILABLE_PERM: EncumbrancePermissionGate = { status: "available" };
 const REFUSED: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "refused",
@@ -34,11 +35,10 @@ const allHidden: SellSurfaceFlags = {
   showFixedPriceOpen: false,
   showFixedPriceGrant: false,
   showFixedPriceMandateCard: false,
-  showAscendingOpen: false,
+  ascendingSelfOpen: null,
   showAscendingGrant: false,
   showAscendingMandateCard: false,
   showAscendingRunnerNote: false,
-  showAuctionVerificationHint: false,
 };
 
 function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
@@ -49,7 +49,8 @@ function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
     expiry: 0,
     asset: zeroAddress,
     denominationKind: DENOMINATION_KIND.Fiat,
-    currencyCode: "0x5553440000000000000000000000000000000000000000000000000000000000",
+    currencyCode:
+      "0x5553440000000000000000000000000000000000000000000000000000000000",
     floor: 0n,
     compensationForm: COMPENSATION_FORM.Commission,
     commissionBps: 0,
@@ -76,7 +77,7 @@ function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
     hasLiveConsignment: false,
     fixedPriceConfigured: true,
     ascendingConfigured: true,
-    openConsignmentPermission: AVAILABLE,
+    openConsignmentPermission: AVAILABLE_PERM,
     isActiveVerifier: false,
     passportStatus: "UNVERIFIED",
     fixedPriceMandate: { value: null, now: NOW },
@@ -86,11 +87,11 @@ function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
 }
 
 describe("deriveSellSurface", () => {
-  it("hides everything for a non-owner", () => {
+  it("hides everything for non-owners", () => {
     assert.deepEqual(deriveSellSurface(input({ isOwner: false })), allHidden);
   });
 
-  it("hides everything while a live consignment exists", () => {
+  it("fails closed while live consignment holds the NFT", () => {
     assert.deepEqual(
       deriveSellSurface(input({ hasLiveConsignment: true })),
       allHidden,
@@ -139,7 +140,7 @@ describe("deriveSellSurface", () => {
     );
   });
 
-  it("replaces ascending grant with open for a KarPro owner only when VERIFIED", () => {
+  it("replaces ascending grant with available self-open for a KarPro owner when VERIFIED", () => {
     assert.deepEqual(
       deriveSellSurface(
         input({ isActiveVerifier: true, passportStatus: "VERIFIED" }),
@@ -148,12 +149,12 @@ describe("deriveSellSurface", () => {
         ...allHidden,
         showFixedPriceOpen: true,
         showFixedPriceGrant: true,
-        showAscendingOpen: true,
+        ascendingSelfOpen: AVAILABLE,
       },
     );
   });
 
-  it("Nuclear #4: KarPro owner UNVERIFIED gets auction hint, not ascending open", () => {
+  it("Nuclear #4: KarPro owner UNVERIFIED gets blocked self-open (dimmed Auction), not available", () => {
     assert.deepEqual(
       deriveSellSurface(
         input({ isActiveVerifier: true, passportStatus: "UNVERIFIED" }),
@@ -162,17 +163,16 @@ describe("deriveSellSurface", () => {
         ...allHidden,
         showFixedPriceOpen: true,
         showFixedPriceGrant: true,
-        showAuctionVerificationHint: true,
+        ascendingSelfOpen: blocked("not_verified"),
       },
     );
   });
 
-  it("Nuclear #4: unread status fails closed on ascending open", () => {
+  it("Nuclear #4: unread status fails closed on ascending self-open", () => {
     const flags = deriveSellSurface(
       input({ isActiveVerifier: true, passportStatus: undefined }),
     );
-    assert.equal(flags.showAscendingOpen, false);
-    assert.equal(flags.showAuctionVerificationHint, false);
+    assert.equal(flags.ascendingSelfOpen, null);
     assert.equal(flags.showFixedPriceOpen, true);
   });
 
@@ -239,10 +239,9 @@ describe("deriveSellSurface", () => {
 
   it("hides ascending actions when ascending is not configured", () => {
     const flags = deriveSellSurface(input({ ascendingConfigured: false }));
-    assert.equal(flags.showAscendingOpen, false);
+    assert.equal(flags.ascendingSelfOpen, null);
     assert.equal(flags.showAscendingGrant, false);
     assert.equal(flags.showAscendingRunnerNote, false);
-    assert.equal(flags.showAuctionVerificationHint, false);
     assert.equal(flags.showFixedPriceOpen, true);
   });
 
@@ -257,7 +256,7 @@ describe("deriveSellSurface", () => {
     );
     assert.equal(flags.showFixedPriceOpen, true);
     assert.equal(flags.showFixedPriceGrant, false);
-    assert.equal(flags.showAscendingOpen, false);
+    assert.equal(flags.ascendingSelfOpen, null);
     assert.equal(flags.showAscendingGrant, false);
   });
 

@@ -31,10 +31,9 @@ import {
 } from "@/lib/passport/encumbrance-permission";
 import {
   SELL_AUCTION,
-  SELL_AUCTION_GROUP,
   SELL_AUCTION_RUNNER_NOTE,
   SELL_DELEGATE,
-  SELL_FIXED_PRICE_GROUP,
+  SELL_DESCRIPTION,
   SELL_HEADING,
   SELL_LIST,
 } from "@/lib/passport/sell-copy";
@@ -71,8 +70,10 @@ type Props = {
 
 /**
  * Owner sell group for FixedPrice + Ascending modes (mandate grant / open).
- * Permission is `may(OpenConsignment)` + no live consignment. Ascending open
- * additionally requires VERIFIED (mirrors chain).
+ * Chrome matches Bridge (Level B card + secondary full-width CTAs). Permission
+ * is `may(OpenConsignment)` + no live consignment. Ascending self-open
+ * additionally requires VERIFIED (mirrors chain); blocked self-open keeps a
+ * dimmed Auction CTA with named status copy.
  */
 export function PassportSellPanel({
   chainId,
@@ -159,11 +160,10 @@ export function PassportSellPanel({
     surface.showFixedPriceOpen ||
     surface.showFixedPriceGrant ||
     surface.showFixedPriceMandateCard ||
-    surface.showAscendingOpen ||
+    surface.ascendingSelfOpen != null ||
     surface.showAscendingGrant ||
     surface.showAscendingMandateCard ||
-    surface.showAscendingRunnerNote ||
-    surface.showAuctionVerificationHint;
+    surface.showAscendingRunnerNote;
 
   if (!anyVisible) {
     const openGate = facts.openConsignmentPermission;
@@ -196,122 +196,103 @@ export function PassportSellPanel({
     isEncumbrancePermissionAvailable(facts.openConsignmentPermission) &&
     facts.hasLiveConsignment === false;
 
-  const showFixedPriceBlock =
-    (surface.showFixedPriceOpen && fixedPricePaused !== true) ||
-    surface.showFixedPriceGrant ||
-    (surface.showFixedPriceMandateCard &&
-      fixedMandate != null &&
-      mandateHasAgent(fixedMandate));
-
-  const showAuctionBlock =
-    surface.showAscendingRunnerNote ||
-    surface.showAuctionVerificationHint ||
-    (surface.showAscendingMandateCard &&
-      ascendingMandate != null &&
-      mandateHasAgent(ascendingMandate)) ||
-    surface.showAscendingOpen ||
-    surface.showAscendingGrant;
+  const selfOpen = surface.ascendingSelfOpen;
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm tracking-wide text-text-secondary">{SELL_HEADING}</h2>
+    <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
+      <h2 className="font-sans text-base font-medium text-text-primary">
+        {SELL_HEADING}
+      </h2>
+      <p className="font-sans text-sm text-text-secondary">{SELL_DESCRIPTION}</p>
 
       {fixedPricePaused === true || ascendingPaused === true ? (
         <CommercePausedNotice />
       ) : null}
 
-      {showFixedPriceBlock ? (
-        <div className="space-y-3">
-          <p className="text-xs tracking-wide text-text-tertiary">
-            {SELL_FIXED_PRICE_GROUP}
-          </p>
-
-          {surface.showFixedPriceOpen && fixedPricePaused !== true ? (
-            <Button
-              asChild
-              variant="secondary"
-              className="w-full cursor-default sm:w-auto"
-            >
-              <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
-                {SELL_LIST}
-              </Link>
-            </Button>
-          ) : null}
-
-          {surface.showFixedPriceMandateCard &&
-          fixedMandate &&
-          mandateHasAgent(fixedMandate) ? (
-            <AgentAuthorizationStatus
-              chainId={chainId}
-              tokenId={tokenId}
-              mandate={fixedMandate}
-              listingActive={facts.fixedPrice.live === true}
-              onChanged={refetch}
-            />
-          ) : null}
-
-          {surface.showFixedPriceGrant ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={() => setFixedPriceDialogOpen(true)}
-            >
-              {SELL_DELEGATE}
-            </Button>
-          ) : null}
-        </div>
+      {surface.showFixedPriceOpen && fixedPricePaused !== true ? (
+        <Button asChild variant="secondary" className="w-full">
+          <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
+            {SELL_LIST}
+          </Link>
+        </Button>
       ) : null}
 
-      {showAuctionBlock ? (
-        <div className="space-y-3">
-          <p className="text-xs tracking-wide text-text-tertiary">
-            {SELL_AUCTION_GROUP}
-          </p>
+      {surface.showFixedPriceMandateCard &&
+      fixedMandate &&
+      mandateHasAgent(fixedMandate) ? (
+        <AgentAuthorizationStatus
+          chainId={chainId}
+          tokenId={tokenId}
+          mandate={fixedMandate}
+          listingActive={facts.fixedPrice.live === true}
+          onChanged={refetch}
+        />
+      ) : null}
 
-          {surface.showAscendingRunnerNote ? (
-            <p className="text-sm text-text-secondary">
-              {SELL_AUCTION_RUNNER_NOTE}
-            </p>
-          ) : null}
+      {surface.showFixedPriceGrant ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setFixedPriceDialogOpen(true)}
+        >
+          {SELL_DELEGATE}
+        </Button>
+      ) : null}
 
-          {surface.showAuctionVerificationHint ? (
-            <p className="text-sm text-text-secondary">
-              {AUCTION_REQUIRES_VERIFICATION_HINT}
-            </p>
-          ) : null}
+      {surface.showAscendingRunnerNote ? (
+        <p className="font-sans text-sm text-text-secondary">
+          {SELL_AUCTION_RUNNER_NOTE}
+        </p>
+      ) : null}
 
-          {surface.showAscendingMandateCard &&
-          ascendingMandate &&
-          mandateHasAgent(ascendingMandate) ? (
-            <AuctionAgentAuthorizationStatus
-              authorization={ascendingMandateAsAuth(ascendingMandate)}
-              now={now}
-              onManage={() => setAscendingDialogOpen(true)}
-            />
-          ) : null}
+      {selfOpen?.status === "blocked" ? (
+        <p className="font-sans text-sm text-text-secondary" role="status">
+          {AUCTION_REQUIRES_VERIFICATION_HINT}
+        </p>
+      ) : null}
 
-          {surface.showAscendingOpen ? (
-            <CreateAuctionPanel
-              chainId={chainId}
-              tokenId={tokenId}
-              canOpen={canOpen}
-              isOwner
-              isActiveVerifier={isActiveVerifier === true}
-            />
-          ) : null}
+      {surface.showAscendingMandateCard &&
+      ascendingMandate &&
+      mandateHasAgent(ascendingMandate) ? (
+        <AuctionAgentAuthorizationStatus
+          authorization={ascendingMandateAsAuth(ascendingMandate)}
+          now={now}
+          onManage={() => setAscendingDialogOpen(true)}
+        />
+      ) : null}
 
-          {surface.showAscendingGrant ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={() => setAscendingDialogOpen(true)}
-            >
-              {SELL_AUCTION}
-            </Button>
-          ) : null}
-        </div>
+      {selfOpen?.status === "available" ? (
+        <CreateAuctionPanel
+          chainId={chainId}
+          tokenId={tokenId}
+          canOpen={canOpen}
+          isOwner
+          isActiveVerifier={isActiveVerifier === true}
+        />
+      ) : null}
+
+      {selfOpen?.status === "blocked" ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          disabled
+          aria-disabled="true"
+        >
+          {SELL_AUCTION}
+        </Button>
+      ) : null}
+
+      {surface.showAscendingGrant ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setAscendingDialogOpen(true)}
+        >
+          {SELL_AUCTION}
+        </Button>
       ) : null}
 
       <AuthorizeAgentDialog
@@ -328,6 +309,6 @@ export function PassportSellPanel({
         onOpenChange={setAscendingDialogOpen}
         onAuthorized={refetch}
       />
-    </div>
+    </section>
   );
 }

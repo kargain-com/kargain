@@ -1,3 +1,8 @@
+import {
+  AVAILABLE,
+  blocked,
+  type ActionGate,
+} from "@/lib/challenge/action-gate";
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import type { CommerceMode } from "@/lib/commerce/mode";
@@ -7,6 +12,9 @@ import {
 } from "@/lib/passport/encumbrance-permission";
 import type { PassportStatus } from "@/lib/types/ponder";
 
+/** Named cause when KarPro self-open is visible but refused (Bridge-style dimmed CTA). */
+export type AscendingSelfOpenCause = "not_verified";
+
 export type SellSurfaceFlags = {
   /** Open a fixed-price consignment directly. */
   showFixedPriceOpen: boolean;
@@ -14,18 +22,16 @@ export type SellSurfaceFlags = {
   showFixedPriceGrant: boolean;
   /** Manage an existing fixed-price mandate. */
   showFixedPriceMandateCard: boolean;
-  /** Open an ascending consignment directly (owner must be an active KarPro + VERIFIED). */
-  showAscendingOpen: boolean;
+  /**
+   * KarPro ascending self-open: `null` hidden; available → create form;
+   * blocked `not_verified` → dimmed Auction + status (feature exists, needs verify).
+   */
+  ascendingSelfOpen: ActionGate<AscendingSelfOpenCause> | null;
   /** Grant an ascending mandate so a KarPro can run the lot (status-free). */
   showAscendingGrant: boolean;
   showAscendingMandateCard: boolean;
   /** Quiet note: ascending requires a KarPro runner. */
   showAscendingRunnerNote: boolean;
-  /**
-   * Quiet hint: KarPro owner could open ascending except passport is not VERIFIED.
-   * Fixed-price paths ignore status.
-   */
-  showAuctionVerificationHint: boolean;
 };
 
 /** A mandate read together with the clock used to judge its expiry. */
@@ -63,11 +69,10 @@ const HIDDEN_FLAGS: SellSurfaceFlags = {
   showFixedPriceOpen: false,
   showFixedPriceGrant: false,
   showFixedPriceMandateCard: false,
-  showAscendingOpen: false,
+  ascendingSelfOpen: null,
   showAscendingGrant: false,
   showAscendingMandateCard: false,
   showAscendingRunnerNote: false,
-  showAuctionVerificationHint: false,
 };
 
 type MandateStanding = "none" | "active" | "expired";
@@ -83,8 +88,10 @@ function mandateStanding(state: MandateState | undefined): MandateStanding {
  * Pure owner sell-surface policy for the mode contracts.
  *
  * Encumbrance permission comes from `may(OpenConsignment)` and live-consignment
- * custody. Fixed-price open/grant ignore trust status. Ascending **open** requires
- * VERIFIED (mirrors chain); ascending **grant** stays status-free.
+ * custody. Fixed-price open/grant ignore trust status. Ascending **self-open**
+ * requires VERIFIED (mirrors chain); ascending **grant** stays status-free.
+ * KarPro + known non-VERIFIED keeps a blocked self-open gate so the Auction CTA
+ * stays visible (dimmed) with a named cause — same pattern as Bridge.
  */
 export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
   if (!input.isOwner || input.hasLiveConsignment !== false) {
@@ -107,23 +114,26 @@ export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
   const verified = input.passportStatus === "VERIFIED";
   const statusKnown = input.passportStatus !== undefined;
 
+  let ascendingSelfOpen: ActionGate<AscendingSelfOpenCause> | null = null;
+  if (ascendingFree && input.isActiveVerifier === true) {
+    if (statusKnown) {
+      ascendingSelfOpen = verified
+        ? AVAILABLE
+        : blocked("not_verified");
+    }
+  }
+
   return {
     showFixedPriceOpen: input.fixedPriceConfigured,
     showFixedPriceGrant: fixedPriceFree,
     showFixedPriceMandateCard:
       input.fixedPriceConfigured && fixedPriceKnown && fixedPriceStanding !== "none",
-    showAscendingOpen:
-      ascendingFree && input.isActiveVerifier === true && verified,
+    ascendingSelfOpen,
     showAscendingGrant: ascendingFree && input.isActiveVerifier === false,
     showAscendingMandateCard:
       input.ascendingConfigured && ascendingKnown && ascendingStanding !== "none",
     showAscendingRunnerNote:
       input.ascendingConfigured && input.isActiveVerifier === false,
-    showAuctionVerificationHint:
-      ascendingFree &&
-      input.isActiveVerifier === true &&
-      statusKnown &&
-      !verified,
   };
 }
 
