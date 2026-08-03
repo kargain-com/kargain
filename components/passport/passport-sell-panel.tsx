@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 
 import { AuctionAgentAuthorizationStatus } from "@/components/auction/auction-agent-authorization-status";
@@ -83,6 +83,7 @@ export function PassportSellPanel({
   facts,
   now,
 }: Props) {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
@@ -210,10 +211,15 @@ export function PassportSellPanel({
       ) : null}
 
       {surface.showFixedPriceOpen && fixedPricePaused !== true ? (
-        <Button asChild variant="secondary" className="w-full">
-          <Link href={`/marketplace/${tokenId}/edit?chain=${chainId}`}>
-            {SELL_LIST}
-          </Link>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full cursor-default"
+          onClick={() => {
+            router.push(`/marketplace/${tokenId}/edit?chain=${chainId}`);
+          }}
+        >
+          {SELL_LIST}
         </Button>
       ) : null}
 
