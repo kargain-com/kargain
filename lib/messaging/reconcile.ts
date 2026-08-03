@@ -19,14 +19,20 @@ function wantsMessaging(state: MachineState): boolean {
   return state.intent === true;
 }
 
+function hasClientDemand(state: MachineState): boolean {
+  return state.clientDemand > 0;
+}
+
 function shouldProbe(state: MachineState): boolean {
   if (!wantsMessaging(state)) return false;
+  if (!hasClientDemand(state)) return false;
   if (state.networkRegistered !== null) return false;
   return state.intentLoaded;
 }
 
 function shouldBuild(state: MachineState): boolean {
   if (!wantsMessaging(state)) return false;
+  if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
   if (state.networkRegistered !== true) return false;
   if (state.localBuildReason !== null) return false;
@@ -37,6 +43,7 @@ function shouldBuild(state: MachineState): boolean {
 /** Create only on explicit enable / reset recovery — never auto on cutover. */
 function shouldCreate(state: MachineState): boolean {
   if (!wantsMessaging(state)) return false;
+  if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
   if (state.resetChain === "create") return true;
   if (!state.enableRequested) return false;

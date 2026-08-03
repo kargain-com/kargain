@@ -7,7 +7,7 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
 import {
   BUILD_DEADLINE_MS,
@@ -18,10 +18,15 @@ import { snapshotHasActionableNext } from "../lib/messaging/machine.ts";
 import {
   advanceAndSettle,
   createControlledClock,
+  disposeAllOpenSessions,
   hangUntilAbort,
   openSession,
   settleAsync,
 } from "./messaging-contract-harness.ts";
+
+afterEach(async () => {
+  await disposeAllOpenSessions();
+});
 
 function assertDeadlineBound(snapshot: SessionSnapshot, nowMs: number): void {
   if (snapshot.state === "reconciling") {
@@ -248,12 +253,17 @@ describe("messaging contract — scenarios", () => {
     });
     await settleAsync(clock);
     wallet.setAddress("0x2222222222222222222222222222222222222222");
-    session.syncWalletAddress();
+    session.changeAddress(wallet.getAddress()!);
     resolveProbe?.({ registered: true });
     await settleAsync(clock);
     const snap = session.getSnapshot();
-    // Stale probe must not activate the new address without a fresh intent load.
-    assert.notEqual(snap.state, "active");
+    // Stale probe must not publish a client for the new address.
+    assert.equal(session.getXmtpClient(), null);
+    if (snap.state === "active") {
+      assert.equal(snap.publiclyReachable, false);
+    } else {
+      assert.notEqual(snap.state, "active");
+    }
   });
 
   it("installation_limit on create → actionable snapshot; zero revoke/create until user acts", async () => {
@@ -403,8 +413,6 @@ describe("messaging contract — scenarios", () => {
           if (createCalls === 1) return { ok: false, reason: "installation_limit" };
           return { ok: true, client: fakeClient };
         },
-        // Simulate a prior client becoming available only after user free-slot with client:
-        // here free-slot refuses (no client); full revoke recovers.
         revokeAllInstallations: async () => ({ ok: true }),
       },
     });
@@ -418,6 +426,138 @@ describe("messaging contract — scenarios", () => {
     assert.equal(xmtp.calls.revokeAllInstallations, 1);
     assert.ok(createCalls >= 2);
     assert.equal(session.getSnapshot().state, "active");
+  });
+
+  it("dispose closes the owned client; live set empty", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => true },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    assert.equal(session.getSnapshot().state, "active");
+    assert.equal(xmtp.liveCount, 1);
+    session.dispose();
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.closeLocal >= 1);
+    assert.equal(xmtp.liveCount, 0);
+  });
+
+  it("address change closes the previous client", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp, wallet } = openSession(clock, {
+      nostr: { readIntent: async () => true },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    assert.equal(xmtp.liveCount, 1);
+    const closesBefore = xmtp.calls.closeLocal;
+    wallet.setAddress("0x2222222222222222222222222222222222222222");
+    session.changeAddress(wallet.getAddress()!);
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.closeLocal > closesBefore);
+    session.dispose();
+    await settleAsync(clock);
+    assert.equal(xmtp.liveCount, 0);
+  });
+
+  it("stale build result is closed immediately (never published)", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    let resolveBuild: ((v: { ok: true; client: typeof fakeClient }) => void) | undefined;
+    const { session, xmtp, wallet } = openSession(clock, {
+      nostr: { readIntent: async () => true },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () =>
+          new Promise((resolve) => {
+            resolveBuild = resolve;
+          }),
+      },
+    });
+    await settleAsync(clock);
+    wallet.setAddress("0x2222222222222222222222222222222222222222");
+    session.changeAddress(wallet.getAddress()!);
+    resolveBuild?.({ ok: true, client: fakeClient });
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.closeLocal >= 1);
+    assert.equal(xmtp.liveCount, 0);
+    assert.equal(session.getXmtpClient(), null);
+  });
+
+  it("stale create result is closed immediately (never published)", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    let resolveCreate: ((v: { ok: true; client: typeof fakeClient }) => void) | undefined;
+    const { session, xmtp, wallet } = openSession(clock, {
+      nostr: { readIntent: async () => null, publishIntent: async () => ({ ok: true }) },
+      xmtp: {
+        probeRegistration: async () => ({ registered: false }),
+        createWithSigner: async () =>
+          new Promise((resolve) => {
+            resolveCreate = resolve;
+          }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "enable" });
+    await settleAsync(clock);
+    wallet.setAddress("0x2222222222222222222222222222222222222222");
+    session.changeAddress(wallet.getAddress()!);
+    resolveCreate?.({ ok: true, client: fakeClient });
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.closeLocal >= 1);
+    assert.equal(xmtp.liveCount, 0);
+  });
+
+  it("closeLocal is idempotent; dead client does not produce error state", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => true },
+      xmtp: {
+        probeRegistration: async () => ({ registered: true }),
+        buildLocal: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispose();
+    await settleAsync(clock);
+    const closes = xmtp.calls.closeLocal;
+    xmtp.closeLocal(fakeClient);
+    xmtp.closeLocal(fakeClient);
+    assert.equal(xmtp.calls.closeLocal, closes + 2);
+    assert.equal(xmtp.liveCount, 0);
+    assert.notEqual(session.getSnapshot().state, "error");
+  });
+
+  it("ensureDurableStorage runs before create; refusal projects storageEvictable", async () => {
+    const clock = createControlledClock();
+    const fakeClient = { __brand: "XmtpLocalClient" as const };
+    const { session, xmtp } = openSession(clock, {
+      nostr: { readIntent: async () => null, publishIntent: async () => ({ ok: true }) },
+      xmtp: {
+        probeRegistration: async () => ({ registered: false }),
+        ensureDurableStorage: async () => ({ durable: false }),
+        createWithSigner: async () => ({ ok: true, client: fakeClient }),
+      },
+    });
+    await settleAsync(clock);
+    session.dispatch({ type: "enable" });
+    await settleAsync(clock);
+    assert.ok(xmtp.calls.ensureDurableStorage >= 1);
+    assert.ok(xmtp.calls.createWithSigner >= 1);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "active");
+    if (snap.state === "active") assert.equal(snap.storageEvictable, true);
   });
 
   it("contract wallet → unsupported; commands rejected", async () => {

@@ -3,11 +3,12 @@ import { getAddress } from "viem";
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 
 import type { XmtpDm, XmtpSdkClient } from "./adapters/xmtp-adapter";
-import { openDmWithPeer } from "./adapters/xmtp-adapter";
+import { openDmWithPeer, probePeerRegistration } from "./adapters/xmtp-adapter";
 import {
   peerReachabilityMessage,
   resolvePeerReachabilityFromProvider,
 } from "./can-message-peer";
+import { PROBE_DEADLINE_MS } from "./ports";
 
 export class ContactPeerError extends Error {
   constructor(message: string) {
@@ -22,6 +23,21 @@ function mapSdkError(error: unknown): string {
     return "This user has not enabled messages yet.";
   }
   return "Could not open conversation.";
+}
+
+/** Click-path registration probe — not used by browse reachability. */
+export async function checkXmtpReachable(address: `0x${string}`): Promise<boolean> {
+  const peer = getAddress(address);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROBE_DEADLINE_MS);
+  try {
+    const result = await probePeerRegistration(peer, controller.signal);
+    return result.registered;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export type ContactPeerInput = {
@@ -43,6 +59,13 @@ export async function contactPeer(input: ContactPeerInput): Promise<XmtpDm> {
   if (!reachability.reachable) {
     const copy = peerReachabilityMessage(reachability.reason);
     throw new ContactPeerError(copy ?? "This address cannot receive messages.");
+  }
+
+  const registered = await checkXmtpReachable(peer);
+  if (!registered) {
+    throw new ContactPeerError(
+      peerReachabilityMessage("not_registered") ?? "This user has not enabled messages yet.",
+    );
   }
 
   const activeClient = input.client ?? (await input.ensureReady());

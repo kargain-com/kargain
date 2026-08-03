@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpConversations, type ConversationSummary } from "@/hooks/use-xmtp-conversations";
@@ -110,6 +111,7 @@ export function MessageInboxClient() {
   const searchParams = useSearchParams();
   const { address, isConnected, connector } = useAccount();
   const { client, session, snapshot } = useMessagingSession();
+  useRequestLocalMessagingClient(isConnected);
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const isReady = snapshot.state === "active" && client != null;
   const { conversations, isLoading } = useXmtpConversations();

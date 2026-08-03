@@ -95,6 +95,7 @@ export function VerificationRequestButton({
 
     setActionError(null);
     setLoading(true);
+    session?.requestLocalClient();
     try {
       const data = await getProfileData(userAddress);
       const unverified = (data.passports as PassportRow[]).filter(
@@ -137,6 +138,7 @@ export function VerificationRequestButton({
             : "Could not open conversation.",
       );
     } finally {
+      session?.releaseLocalClient();
       setLoading(false);
     }
   };

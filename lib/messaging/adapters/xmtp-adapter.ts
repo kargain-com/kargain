@@ -19,6 +19,7 @@ import { getAddress, hexToBytes, type WalletClient } from "viem";
 import type {
   BuildLocalResult,
   CreateWithSignerResult,
+  DurableStorageResult,
   InstallationReadout,
   ProbeRegistrationResult,
   RevokeAllResult,
@@ -40,6 +41,11 @@ async function loadXmtp(): Promise<XmtpModule> {
     return mod;
   });
   return xmtpModulePromise;
+}
+
+/** Idle warm — load the SDK module only; does not build a client. */
+export function preloadXmtp(): Promise<XmtpModule> {
+  return loadXmtp();
 }
 
 function ensureXmtpModule(): XmtpModule {
@@ -313,6 +319,28 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
         return { ok: true, client: asBrand(client) } satisfies CreateWithSignerResult;
       } catch (error) {
         return classifyCreateError(error);
+      }
+    },
+
+    closeLocal(client) {
+      try {
+        unbrandClient(client).close();
+      } catch {
+        // Already shut down or worker dead — teardown must not fail the session.
+      }
+    },
+
+    async ensureDurableStorage(signal) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      try {
+        const storage = globalThis.navigator?.storage;
+        if (!storage || typeof storage.persist !== "function") {
+          return { durable: false } satisfies DurableStorageResult;
+        }
+        const durable = await storage.persist();
+        return { durable } satisfies DurableStorageResult;
+      } catch {
+        return { durable: false } satisfies DurableStorageResult;
       }
     },
 

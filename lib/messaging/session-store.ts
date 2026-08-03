@@ -47,14 +47,6 @@ export const createMessagingSession: CreateMessagingSession = (
 
   refreshCachedSnapshot();
 
-  function syncWalletAddress() {
-    const walletAddress = input.ports.wallet.getAddress();
-    const sessionAddress = runner.getState().address;
-    if (walletAddress && walletAddress.toLowerCase() !== sessionAddress.toLowerCase()) {
-      runner.onAddressChange(walletAddress);
-    }
-  }
-
   return {
     getSnapshot() {
       return cachedSnapshot;
@@ -64,7 +56,6 @@ export const createMessagingSession: CreateMessagingSession = (
       return () => listeners.delete(onChange);
     },
     dispatch(command: SessionCommand) {
-      syncWalletAddress();
       if (cachedSnapshot.state === "disconnected" || cachedSnapshot.state === "unsupported") {
         return;
       }
@@ -90,7 +81,15 @@ export const createMessagingSession: CreateMessagingSession = (
       started = true;
       runner.start();
     },
-    syncWalletAddress,
+    requestLocalClient() {
+      runner.requestLocalClient();
+    },
+    releaseLocalClient() {
+      runner.releaseLocalClient();
+    },
+    changeAddress(address: string) {
+      runner.onAddressChange(address);
+    },
     dispose() {
       runner.dispose();
       listeners.clear();

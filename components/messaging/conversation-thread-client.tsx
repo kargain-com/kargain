@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { KarProBadge } from "@/components/ui/kar-pro-badge";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { useXmtpMessages } from "@/hooks/use-xmtp-messages";
 import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
@@ -47,6 +48,7 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 function ConversationThreadBody({ conversationId }: Props) {
   const { isConnected } = useAccount();
   const { client, snapshot } = useMessagingSession();
+  useRequestLocalMessagingClient(isConnected);
   const isReady = snapshot.state === "active" && client != null;
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const { conversations } = useXmtpConversations();

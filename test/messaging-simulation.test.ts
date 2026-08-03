@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
 import type { SessionCommand, SessionSnapshot } from "../lib/messaging/ports.ts";
 import { snapshotHasActionableNext } from "../lib/messaging/machine.ts";
@@ -15,10 +15,15 @@ import {
   createFakeNostrPolicyPort,
   createFakeWalletPort,
   createFakeXmtpPort,
+  disposeAllOpenSessions,
   hangUntilAbort,
   openSession,
   settleAsync,
 } from "./messaging-contract-harness.ts";
+
+afterEach(async () => {
+  await disposeAllOpenSessions();
+});
 
 const SIMULATION_SEEDS = [1, 42, 1337, 9001, 0xdeadbeef, 8675309, 314159];
 const STEPS_PER_SEED = 250;
@@ -117,6 +122,8 @@ describe("messaging simulation — seeded invariants", () => {
           current ? { ok: true } : { ok: false, reason: "no_current_installation" },
         revokeAllInstallations: async () => ({ ok: true }),
         readInstallations: async () => ({ installations: [], currentInstallationId: null }),
+        closeLocal: () => {},
+        ensureDurableStorage: async () => ({ durable: true }),
       });
 
       const nostr = createFakeNostrPolicyPort({
@@ -130,11 +137,13 @@ describe("messaging simulation — seeded invariants", () => {
       });
 
       const wallet = createFakeWalletPort();
-      const { session } = openSession(clock, {
+      const { session, xmtp: sessionXmtp } = openSession(clock, {
         xmtp: {
           probeRegistration: xmtp.probeRegistration.bind(xmtp),
           buildLocal: xmtp.buildLocal.bind(xmtp),
           createWithSigner: xmtp.createWithSigner.bind(xmtp),
+          closeLocal: xmtp.closeLocal.bind(xmtp),
+          ensureDurableStorage: xmtp.ensureDurableStorage.bind(xmtp),
           revokeOtherInstallations: xmtp.revokeOtherInstallations.bind(xmtp),
           revokeAllInstallations: xmtp.revokeAllInstallations.bind(xmtp),
           readInstallations: xmtp.readInstallations.bind(xmtp),
@@ -165,7 +174,8 @@ describe("messaging simulation — seeded invariants", () => {
             .toString(16)
             .padStart(40, "0");
           wallet.setAddress(`0x${hex}`);
-          session.getSnapshot();
+          session.changeAddress(`0x${hex}`);
+          session.requestLocalClient();
           await settleAsync(clock);
         } else {
           session.dispatch(action.command);
@@ -177,6 +187,10 @@ describe("messaging simulation — seeded invariants", () => {
         assert.ok(maxInFlight <= 1, `max in-flight ops ${maxInFlight} > 1 at step ${step}`);
         assertActionableNext(snap);
       }
+
+      session.dispose();
+      await settleAsync(clock);
+      assert.equal(sessionXmtp.liveCount, 0, "dispose must close every acquired client");
     });
   }
 });

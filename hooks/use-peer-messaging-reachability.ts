@@ -42,7 +42,7 @@ export function usePeerMessagingReachability(peerAddress: Address | undefined): 
       } catch {
         if (cancelled) return;
         setReachable(false);
-        setReason("not_registered");
+        setReason("protocol");
       } finally {
         if (!cancelled) setIsChecking(false);
       }

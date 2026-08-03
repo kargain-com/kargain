@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { MessagingSetupError, type InstallationDisplay } from "@/components/messaging/messaging-setup-error";
 import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
 import type { InstallationReadout } from "@/lib/messaging/ports";
 import {
   canWalletEnableMessaging,
@@ -82,6 +83,7 @@ export function MessagingSetupCard({
   className,
 }: Props) {
   const { snapshot, dispatch, session } = useMessagingSession();
+  useRequestLocalMessagingClient(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [installations, setInstallations] = useState<InstallationDisplay | null>(null);
 

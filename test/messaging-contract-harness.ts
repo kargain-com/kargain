@@ -3,6 +3,8 @@
  * R1 replaces {@link createMessagingSession} with the real factory.
  */
 
+import assert from "node:assert/strict";
+
 import { createMessagingSession } from "../lib/messaging/session-store.ts";
 
 import type {
@@ -84,11 +86,7 @@ export function createControlledClock(startMs = 0): ControlledClock {
         };
         signal?.addEventListener("abort", onAbort, { once: true });
         waiters.push(waiter);
-        if (waiter.dueMs <= now) {
-          removeWaiter(waiter);
-          signal?.removeEventListener("abort", onAbort);
-          resolve();
-        }
+        // Never sync-resolve — even sleep(0) waits for flush (macrotask stand-in).
       });
     },
   };
@@ -104,6 +102,8 @@ export type FakeXmtpHandlers = {
     address: string,
     signal?: AbortSignal,
   ) => Promise<CreateWithSignerResult>;
+  closeLocal?: (client: XmtpLocalClient) => void;
+  ensureDurableStorage?: (signal?: AbortSignal) => Promise<{ durable: boolean }>;
   revokeOtherInstallations?: (
     address: string,
     signal?: AbortSignal,
@@ -125,10 +125,14 @@ export type FakeXmtpPort = XmtpPort & {
     probeRegistration: number;
     buildLocal: number;
     createWithSigner: number;
+    closeLocal: number;
+    ensureDurableStorage: number;
     revokeOtherInstallations: number;
     revokeAllInstallations: number;
     readInstallations: number;
   };
+  /** Live client handles not yet closed (balance invariant). */
+  liveCount: number;
   /** Last currentClient passed to revokeOtherInstallations (for exclude-current asserts). */
   lastRevokeOthersClient: XmtpLocalClient | null | undefined;
 };
@@ -155,14 +159,31 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     probeRegistration: 0,
     buildLocal: 0,
     createWithSigner: 0,
+    closeLocal: 0,
+    ensureDurableStorage: 0,
     revokeOtherInstallations: 0,
     revokeAllInstallations: 0,
     readInstallations: 0,
   };
+  const live = new Set<XmtpLocalClient>();
   let lastRevokeOthersClient: XmtpLocalClient | null | undefined;
+  let clientSeq = 0;
+
+  function trackAcquire(client: XmtpLocalClient): XmtpLocalClient {
+    live.add(client);
+    return client;
+  }
+
+  function defaultClient(): XmtpLocalClient {
+    clientSeq += 1;
+    return { __brand: "XmtpLocalClient", __id: clientSeq } as XmtpLocalClient;
+  }
 
   return {
     calls,
+    get liveCount() {
+      return live.size;
+    },
     get lastRevokeOthersClient() {
       return lastRevokeOthersClient;
     },
@@ -173,13 +194,31 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     },
     async buildLocal(address, signal) {
       calls.buildLocal += 1;
-      if (handlers.buildLocal) return handlers.buildLocal(address, signal);
+      if (handlers.buildLocal) {
+        const result = await handlers.buildLocal(address, signal);
+        if (result.ok) trackAcquire(result.client);
+        return result;
+      }
       return { ok: false, reason: "not_registered" };
     },
     async createWithSigner(address, signal) {
       calls.createWithSigner += 1;
-      if (handlers.createWithSigner) return handlers.createWithSigner(address, signal);
-      return { ok: true, client: fakeClient };
+      if (handlers.createWithSigner) {
+        const result = await handlers.createWithSigner(address, signal);
+        if (result.ok) trackAcquire(result.client);
+        return result;
+      }
+      return { ok: true, client: trackAcquire(defaultClient()) };
+    },
+    closeLocal(client) {
+      calls.closeLocal += 1;
+      live.delete(client);
+      if (handlers.closeLocal) handlers.closeLocal(client);
+    },
+    async ensureDurableStorage(signal) {
+      calls.ensureDurableStorage += 1;
+      if (handlers.ensureDurableStorage) return handlers.ensureDurableStorage(signal);
+      return { durable: true };
     },
     async revokeOtherInstallations(address, signal, currentClient) {
       calls.revokeOtherInstallations += 1;
@@ -292,6 +331,31 @@ export function createFakeWalletPort(
 
 const TEST_ADDRESS = "0x1111111111111111111111111111111111111111";
 
+type OpenSessionHandle = {
+  session: ReturnType<typeof createMessagingSession>;
+  xmtp: FakeXmtpPort;
+  nostr: FakeNostrPolicyPort;
+  wallet: FakeWalletPort;
+  clock: ControlledClock;
+  cache: ReturnType<typeof createInMemoryMessagingCache>;
+};
+
+const openSessionHandles: OpenSessionHandle[] = [];
+
+/** Teardown invariant — every openSession must leave zero live XMTP clients. */
+export async function disposeAllOpenSessions(): Promise<void> {
+  const handles = openSessionHandles.splice(0);
+  for (const handle of handles) {
+    handle.session.dispose();
+    await settleAsync(handle.clock);
+    assert.equal(
+      handle.xmtp.liveCount,
+      0,
+      "live-client balance: every acquired client must be closed at teardown",
+    );
+  }
+}
+
 export async function settleAsync(clock: ControlledClock, rounds = 40): Promise<void> {
   for (let i = 0; i < rounds; i += 1) {
     await clock.flush();
@@ -319,7 +383,7 @@ export function openSession(
     cacheSeed?: Partial<CacheEntry>;
     env?: string;
   } = {},
-) {
+): OpenSessionHandle {
   const xmtp = createFakeXmtpPort(handlers.xmtp);
   const nostr = createFakeNostrPolicyPort(handlers.nostr);
   const wallet = createFakeWalletPort(handlers.wallet);
@@ -333,12 +397,13 @@ export function openSession(
     clock,
     cache,
   });
-  // Wire env through effects via session — createMessagingSession does not take env;
-  // cooldown helpers use getMessagingXmtpEnv() or memory fallback. Tests pass env via
-  // markRevokeAllAt(getMessagingXmtpEnv() or "production", address).
   void handlers.env;
   session.start();
-  return { session, xmtp, nostr, wallet, clock, cache };
+  // Contract / simulation surfaces need a local client (probe/build).
+  session.requestLocalClient();
+  const handle = { session, xmtp, nostr, wallet, clock, cache };
+  openSessionHandles.push(handle);
+  return handle;
 }
 
 export { createMessagingSession, TEST_ADDRESS };

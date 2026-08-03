@@ -35,9 +35,16 @@ export type MachineState = {
   revokeMode: RevokeMode | null;
   /** Full-revoke refused because cooldown has not elapsed. */
   revokeAllCooldown: boolean;
+  /**
+   * Result of ensureDurableStorage before first create.
+   * null = not yet asked; false → project storageEvictable on active.
+   */
+  storageDurable: boolean | null;
   enableRequested: boolean;
   disableRequested: boolean;
   resetRequested: boolean;
+  /** Surfaces that need a local XMTP client (inbox / DM / enable). Probe/build gated on this. */
+  clientDemand: number;
 };
 
 export function createInitialMachineState(address: string): MachineState {
@@ -57,9 +64,11 @@ export function createInitialMachineState(address: string): MachineState {
     resetChain: null,
     revokeMode: null,
     revokeAllCooldown: false,
+    storageDurable: null,
     enableRequested: false,
     disableRequested: false,
     resetRequested: false,
+    clientDemand: 0,
   };
 }
 
@@ -77,12 +86,14 @@ export type MachineEvent =
   | { type: "reset_chain_set"; stage: MachineState["resetChain"] }
   | { type: "revoke_mode_set"; mode: RevokeMode | null }
   | { type: "revoke_all_cooldown_set"; blocked: boolean }
+  | { type: "storage_durable_set"; durable: boolean }
   | { type: "enable_requested" }
   | { type: "disable_requested" }
   | { type: "reset_requested" }
   | { type: "enable_cleared" }
   | { type: "disable_cleared" }
-  | { type: "reset_cleared" };
+  | { type: "reset_cleared" }
+  | { type: "client_demand_delta"; delta: 1 | -1 };
 
 export function transitionMachine(state: MachineState, event: MachineEvent): MachineState {
   switch (event.type) {
@@ -129,6 +140,8 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
       return { ...state, revokeMode: event.mode };
     case "revoke_all_cooldown_set":
       return { ...state, revokeAllCooldown: event.blocked };
+    case "storage_durable_set":
+      return { ...state, storageDurable: event.durable };
     case "enable_requested":
       return { ...state, enableRequested: true, disableRequested: false };
     case "disable_requested":
@@ -145,6 +158,11 @@ export function transitionMachine(state: MachineState, event: MachineEvent): Mac
         resetRequested: false,
         resetChain: null,
         revokeMode: null,
+      };
+    case "client_demand_delta":
+      return {
+        ...state,
+        clientDemand: Math.max(0, state.clientDemand + event.delta),
       };
     default:
       return state;
@@ -194,16 +212,19 @@ export function projectSnapshot(
 
   if (state.localClient) {
     const reachable = publiclyReachable(state.networkRegistered, state.intent);
+    const storageEvictable =
+      state.storageDurable === false ? ({ storageEvictable: true as const } as const) : {};
     if (state.publishPending || state.publishError) {
       return {
         state: "active",
         publiclyReachable: reachable,
         ...(state.publishPending ? { publishPending: true as const } : {}),
         ...(state.publishError ? { publishError: state.publishError } : {}),
+        ...storageEvictable,
         next: "retry",
       };
     }
-    return { state: "active", publiclyReachable: reachable };
+    return { state: "active", publiclyReachable: reachable, ...storageEvictable };
   }
 
   if (state.lastError) {
@@ -249,6 +270,17 @@ export function projectSnapshot(
       reason: "not_registered",
       next: "enable",
     };
+  }
+
+  // Intent on, no local client demanded yet — dormant (no probe/build). Not setup-needed.
+  if (
+    state.intentLoaded &&
+    state.intent === true &&
+    state.clientDemand <= 0 &&
+    !state.localClient &&
+    !state.enableRequested
+  ) {
+    return { state: "active", publiclyReachable: false };
   }
 
   if (!state.intentLoaded) {

@@ -24,6 +24,8 @@ import { getMessagingXmtpEnv } from "./xmtp-env";
 export type EffectsRunner = {
   start(): void;
   dispatch(command: SessionCommand): void;
+  requestLocalClient(): void;
+  releaseLocalClient(): void;
   onAddressChange(address: string): void;
   getState(): MachineState;
   getInFlightCount(): number;
@@ -63,6 +65,27 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
   function isStale(opGeneration: number): boolean {
     return opGeneration !== generation;
+  }
+
+  /**
+   * Sole owner of published-client teardown.
+   * Clear ownership + notify first (unless alreadyDetached); destroy after one
+   * macrotask so consumers that key streams on `client` can detach.
+   */
+  function abandonOwnedClient(
+    client: XmtpLocalClient,
+    opts: { defer: boolean; alreadyDetached?: boolean },
+  ) {
+    if (!opts.alreadyDetached && state.localClient === client) {
+      apply({ type: "local_client_set", client: null });
+    }
+    if (opts.defer) {
+      void clock.sleep(0).then(() => {
+        ports.xmtp.closeLocal(client);
+      });
+    } else {
+      ports.xmtp.closeLocal(client);
+    }
   }
 
   function abortInFlight() {
@@ -113,7 +136,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
     const raced = await Promise.race([work, timeout]);
 
-    if (isStale(opGeneration)) return "timeout";
     if (raced.kind === "timeout") {
       abortController?.abort();
       return "timeout";
@@ -122,6 +144,8 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       if (signal.aborted || isAbortError(raced.err)) return "timeout";
       throw raced.err;
     }
+    // Return the value even when stale so the caller can closeLocal an orphan
+    // that never entered machine state (address change mid-build/create).
     return raced.value;
   }
 
@@ -158,8 +182,19 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
           return;
         }
+        if (state.storageDurable === null) {
+          const durableResult = await ports.xmtp.ensureDurableStorage(createSignal);
+          if (isStale(opGeneration) || createSignal.aborted) {
+            apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
+            return;
+          }
+          apply({ type: "storage_durable_set", durable: durableResult.durable });
+        }
         const result = await ports.xmtp.createWithSigner(state.address, createSignal);
-        if (isStale(opGeneration)) return;
+        if (isStale(opGeneration)) {
+          if (result.ok) ports.xmtp.closeLocal(result.client);
+          return;
+        }
         if (createSignal.aborted && !result.ok) {
           apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
           return;
@@ -205,7 +240,10 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
             ports.xmtp.buildLocal(state.address, signal),
           );
-          if (isStale(opGeneration)) return;
+          if (isStale(opGeneration)) {
+            if (result !== "timeout" && result.ok) ports.xmtp.closeLocal(result.client);
+            return;
+          }
           if (result === "timeout") {
             apply({ type: "last_error_set", reason: "timeout" });
             break;
@@ -268,7 +306,12 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
               break;
             }
             markRevokeAllAt(env, state.address, clock.nowMs());
-            apply({ type: "local_client_set", client: null });
+            const owned = state.localClient;
+            if (owned) {
+              abandonOwnedClient(owned, { defer: true });
+            } else {
+              apply({ type: "local_client_set", client: null });
+            }
             apply({ type: "reset_chain_set", stage: "create" });
             cache.invalidate(state.address);
             break;
@@ -487,8 +530,19 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
           break;
       }
     },
+    requestLocalClient() {
+      if (disposed) return;
+      apply({ type: "client_demand_delta", delta: 1 });
+      scheduleLoop();
+    },
+    releaseLocalClient() {
+      if (disposed) return;
+      apply({ type: "client_demand_delta", delta: -1 });
+      scheduleLoop();
+    },
     onAddressChange(address: string) {
       if (address.toLowerCase() === state.address.toLowerCase()) return;
+      const previousClient = state.localClient;
       abortInFlight();
       createAbortController?.abort();
       createAbortController = null;
@@ -500,6 +554,9 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       };
       inFlightCount = 0;
       notify();
+      if (previousClient) {
+        abandonOwnedClient(previousClient, { defer: true, alreadyDetached: true });
+      }
       void loadIntent();
     },
     getState() {
@@ -510,6 +567,10 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     },
     dispose() {
       disposed = true;
+      const owned = state.localClient;
+      if (owned) {
+        abandonOwnedClient(owned, { defer: true });
+      }
       abortInFlight();
       createAbortController?.abort();
       createAbortController = null;

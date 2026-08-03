@@ -27,7 +27,7 @@ function buildListingInquiryMessage(tokenId: string): string {
 export function SellerContactButton({ peerAddress, label, listingTokenId }: Props) {
   const { address, isConnected, connector } = useAccount();
   const router = useRouter();
-  const { snapshot, dispatch, client, session } = useMessagingSession();
+  const { snapshot, dispatch, session } = useMessagingSession();
   const needsMessagingSetup = needsMessagingSetupCard(snapshot);
   const { profile: peerProfile } = useNostrProfile(peerAddress);
   const { reachable, message, isLoading } = usePeerMessagingReachability(peerAddress);
@@ -65,6 +65,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
   const handleClick = async () => {
     setActionError(null);
     setBusy(true);
+    session?.requestLocalClient();
     try {
       if (needsMessagingSetup) {
         dispatch({ type: "enable" });
@@ -100,6 +101,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
             : "Could not open conversation.",
       );
     } finally {
+      session?.releaseLocalClient();
       setBusy(false);
     }
   };

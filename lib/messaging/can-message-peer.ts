@@ -1,5 +1,3 @@
-import { getAddress } from "viem";
-
 import type { NostrProfileData } from "@/lib/nostr/parse-profile-content";
 import { isMessagesAccepting } from "@/lib/nostr/messages-enabled";
 import {
@@ -10,9 +8,6 @@ import {
   readAccountKindOnCommercialChains,
 } from "@/lib/web3/wallet-account";
 
-import { PROBE_DEADLINE_MS } from "./ports";
-import { probePeerRegistration } from "./adapters/xmtp-adapter";
-
 export type PeerReachabilityReason =
   | "disabled"
   | "not_registered"
@@ -20,24 +15,8 @@ export type PeerReachabilityReason =
   | "contract"
   | null;
 
-const peerProbePort = { probeRegistration: probePeerRegistration };
-
 export function peerAcceptsMessages(profile: NostrProfileData | null | undefined): boolean {
   return isMessagesAccepting(profile);
-}
-
-export async function checkXmtpReachable(address: `0x${string}`): Promise<boolean> {
-  const peer = getAddress(address);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_DEADLINE_MS);
-  try {
-    const result = await peerProbePort.probeRegistration(peer, controller.signal);
-    return result.registered;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function peerAccountKind(
@@ -48,6 +27,7 @@ async function peerAccountKind(
   return readAccountKindOnCommercialChains(peerAddress);
 }
 
+/** Browse CTA — intent + protocol + account-kind. No XMTP registration probe. */
 export async function resolvePeerReachability(
   peerAddress: `0x${string}`,
   nostrProfile: NostrProfileData | null | undefined,
@@ -64,11 +44,6 @@ export async function resolvePeerReachability(
   const kind = await peerAccountKind(peerAddress, chainId);
   if (messagingWalletError(kind)) {
     return { reachable: false, reason: "contract" };
-  }
-
-  const registered = await checkXmtpReachable(peerAddress);
-  if (!registered) {
-    return { reachable: false, reason: "not_registered" };
   }
 
   return { reachable: true, reason: null };
@@ -88,6 +63,7 @@ export function peerReachabilityMessage(reason: PeerReachabilityReason): string 
   }
 }
 
+/** Browse CTA via injected provider — same gates as resolvePeerReachability (no XMTP). */
 export async function resolvePeerReachabilityFromProvider(
   peerAddress: `0x${string}`,
   nostrProfile: NostrProfileData | null | undefined,
@@ -104,11 +80,6 @@ export async function resolvePeerReachabilityFromProvider(
   const kind = await readAccountKindFromProvider(provider, peerAddress);
   if (messagingWalletError(kind)) {
     return { reachable: false, reason: "contract" };
-  }
-
-  const registered = await checkXmtpReachable(peerAddress);
-  if (!registered) {
-    return { reachable: false, reason: "not_registered" };
   }
 
   return { reachable: true, reason: null };

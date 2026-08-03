@@ -86,6 +86,11 @@ export type SessionSnapshot =
       publishPending?: true;
       /** Disable or enable publish failed — inbox stays readable. */
       publishError?: "publish_failed";
+      /**
+       * `navigator.storage.persist()` refused or unavailable — installation is
+       * evictable (signature + inbox update + archive risk on eviction).
+       */
+      storageEvictable?: true;
       /** Present when publish-only retry is required (no second XMTP signature). */
       next?: "retry";
     }
@@ -126,6 +131,10 @@ export type RevokeAllResult =
   | { ok: true }
   | { ok: false; reason: "cooldown" };
 
+export type DurableStorageResult = {
+  durable: boolean;
+};
+
 /**
  * XMTP side effects the core may request. Adapters wrap `@xmtp/client`
  * (R1+); R0 tests use fakes only.
@@ -138,6 +147,16 @@ export type XmtpPort = {
    * AbortSignal → reason `create_cancelled`.
    */
   createWithSigner(address: string, signal?: AbortSignal): Promise<CreateWithSignerResult>;
+  /**
+   * Shut down a local client handle. Idempotent; never throws into the caller
+   * (already-closed / dead worker must not become a session error).
+   */
+  closeLocal(client: XmtpLocalClient): void;
+  /**
+   * Request persistent storage before the first create. Refusal means this
+   * device's installation is evictable.
+   */
+  ensureDurableStorage(signal?: AbortSignal): Promise<DurableStorageResult>;
   /**
    * Revoke every installation except this browser's. Refuses when
    * `currentClient` is absent — never silently becomes full revoke.
@@ -216,8 +235,15 @@ export type MessagingSession = {
   isRevokeAllOnCooldown(): boolean;
   /** Idempotent — begins background reconcile after mount. */
   start(): void;
-  /** Sync machine address when the wallet port address changes. */
-  syncWalletAddress(): void;
+  /** Raise demand for probe/build (inbox, DM, enable CTA). */
+  requestLocalClient(): void;
+  /** Drop one demand ref; probe/build stop when demand hits 0. */
+  releaseLocalClient(): void;
+  /**
+   * Harness / tests: replace machine address.
+   * Production address changes go through the session registry (release + acquire).
+   */
+  changeAddress(address: string): void;
   dispose(): void;
 };
 
