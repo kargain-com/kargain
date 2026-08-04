@@ -1,14 +1,19 @@
-import type { XmtpSdkClient } from "./adapters/xmtp-adapter";
+import type { ConsentState, XmtpSdkClient } from "./adapters/xmtp-adapter";
 import {
   ethereumAddressFromInboxState,
+  inboxConsentStates,
+  listDmsByConsent,
+  requestConsentStates,
   syncConversationsAndMessages,
   truncatePreview,
 } from "./adapters/xmtp-adapter";
+import { applyConsentCutover } from "./consent-cutover";
 import {
   filterRenderableUserMessages,
   isRenderableUserMessage,
   userMessageBody,
 } from "./message-content";
+import { applyRelationshipAllow } from "./relationship-allow";
 
 export type ConversationSummary = {
   id: string;
@@ -18,7 +23,7 @@ export type ConversationSummary = {
   unreadCount: number;
 };
 
-type DmConversation = Awaited<ReturnType<XmtpSdkClient["conversations"]["listDms"]>>[number];
+type DmConversation = Awaited<ReturnType<typeof listDmsByConsent>>[number];
 
 async function unreadFromProtocolReadState(
   client: XmtpSdkClient,
@@ -96,14 +101,11 @@ export function sumUnreadCounts(summaries: ConversationSummary[]): number {
   return summaries.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
 }
 
-/**
- * Load inbox summaries. Syncs conversations and messages from the network first.
- */
-export async function loadConversationSummaries(
+async function summariesForConsent(
   client: XmtpSdkClient,
+  consentStates: ConsentState[],
 ): Promise<ConversationSummary[]> {
-  await syncConversationsAndMessages(client);
-  const dms = await client.conversations.listDms();
+  const dms = await listDmsByConsent(client, consentStates);
   const peerInboxIds = await Promise.all(dms.map((dm) => dm.peerInboxId()));
   const uniquePeerIds = [...new Set(peerInboxIds)];
   const inboxStates =
@@ -118,4 +120,45 @@ export async function loadConversationSummaries(
     dms.map((dm) => buildConversationSummary(client, dm, inboxStateByInboxId)),
   );
   return sortConversationSummaries(summaries);
+}
+
+/**
+ * Load summaries for one consent partition. Syncs Allowed+Unknown first.
+ * Inbox callers pass Allowed; Requests pass Unknown.
+ */
+export async function loadConversationSummaries(
+  client: XmtpSdkClient,
+  options: { consentStates: ConsentState[] },
+): Promise<ConversationSummary[]> {
+  await syncConversationsAndMessages(client);
+  return summariesForConsent(client, options.consentStates);
+}
+
+/**
+ * Sync once, optionally apply cutover + relationship allow, then list both partitions.
+ */
+export async function loadConsentPartitionedSummaries(
+  client: XmtpSdkClient,
+  opts: {
+    userAddress: `0x${string}` | null;
+    applyCutoverAndRelationship: boolean;
+  },
+): Promise<{
+  conversations: ConversationSummary[];
+  requestConversations: ConversationSummary[];
+}> {
+  await syncConversationsAndMessages(client);
+
+  if (opts.applyCutoverAndRelationship) {
+    await applyConsentCutover(client);
+    if (opts.userAddress) {
+      await applyRelationshipAllow(client, opts.userAddress);
+    }
+  }
+
+  const [conversations, requestConversations] = await Promise.all([
+    summariesForConsent(client, inboxConsentStates()),
+    summariesForConsent(client, requestConsentStates()),
+  ]);
+  return { conversations, requestConversations };
 }

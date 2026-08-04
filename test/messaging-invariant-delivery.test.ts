@@ -181,7 +181,7 @@ describe("I11 display surfaces sync before local reads", () => {
           networkSynced = true;
         },
         sync: async () => {},
-        listDms: async () => [dm],
+        listDms: async (_options?: { consentStates?: number[] }) => [dm],
       },
       preferences: {
         getInboxStates: async (ids: string[]) =>
@@ -197,7 +197,9 @@ describe("I11 display surfaces sync before local reads", () => {
       },
     };
     assert.equal(await dm.lastMessage(), null);
-    const summaries = await loadConversationSummaries(client as never);
+    const summaries = await loadConversationSummaries(client as never, {
+      consentStates: [1],
+    });
     assert.equal(networkSynced, true);
     const row = summaries[0] as ConversationSummary;
     assert.equal(row.lastMessage, "delivered while offline");
@@ -225,7 +227,7 @@ export async function loadConversationSummaries(client) {
     const clean = `
 export async function loadConversationSummaries(client) {
   await syncConversationsAndMessages(client);
-  return client.conversations.listDms();
+  return listDmsByConsent(client, consentStates);
 }
 `;
     assert.deepEqual(rawSyncViolations(clean), []);

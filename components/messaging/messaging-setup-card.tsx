@@ -4,11 +4,15 @@ import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { MessagingSetupError, type InstallationDisplay } from "@/components/messaging/messaging-setup-error";
+import { MessagingSetupError } from "@/components/messaging/messaging-setup-error";
 import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useRequestLocalMessagingClient } from "@/hooks/use-request-local-messaging-client";
-import type { InstallationReadout, SessionSnapshot } from "@/lib/messaging/ports";
+import {
+  toInstallationDisplay,
+  type InstallationDisplay,
+} from "@/lib/messaging/installation-display";
+import type { SessionSnapshot } from "@/lib/messaging/ports";
 import {
   canWalletEnableMessaging,
   enableWalletSignaturesCopy,
@@ -76,29 +80,6 @@ function errorBody(reason: string): { title: string; body: string } {
   return {
     title: "Could not restore your messages on this device",
     body: "Local access on this browser could not be restored. Use the action below to continue.",
-  };
-}
-
-function formatInstallationAge(createdAtMs: number | null, nowMs: number): string {
-  if (createdAtMs === null) return "age unknown";
-  const ageMs = Math.max(0, nowMs - createdAtMs);
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 60) return `${minutes}m old`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h old`;
-  const days = Math.floor(hours / 24);
-  return `${days}d old`;
-}
-
-function toInstallationDisplay(readout: InstallationReadout, nowMs: number): InstallationDisplay {
-  return {
-    count: readout.installations.length,
-    currentInstallationId: readout.currentInstallationId,
-    rows: readout.installations.map((installation) => ({
-      id: installation.id,
-      ageLabel: formatInstallationAge(installation.createdAtMs, nowMs),
-      isCurrent: installation.id === readout.currentInstallationId,
-    })),
   };
 }
 

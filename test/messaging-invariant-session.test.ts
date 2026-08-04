@@ -120,7 +120,12 @@ describe("I5 session core has no React and no parallel session Maps", () => {
     const settings = stripComments(
       fs.readFileSync(path.join(ROOT, "components/profile/messaging-settings-section.tsx"), "utf8"),
     );
-    assert.doesNotMatch(settings, /requestLocalClient|useRequestLocalMessagingClient/);
+    assert.doesNotMatch(
+      settings,
+      /requestLocalClient|useRequestLocalMessagingClient|preloadXmtp|loadXmtp/,
+    );
+    assert.ok(settings.includes("shouldShowMessagingDevices"));
+    assert.ok(settings.includes("MessagingDevicesPanel"));
   });
 
   it("behavioural: idle warm only when reachable and no client", () => {

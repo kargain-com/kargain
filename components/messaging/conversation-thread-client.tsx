@@ -26,6 +26,10 @@ import {
   clearComposeDraftStorage,
   peekComposeDraft,
 } from "@/lib/messaging/compose-draft";
+import {
+  blockConversation,
+  isRequestConversation,
+} from "@/lib/messaging/consent-actions";
 import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
@@ -54,10 +58,16 @@ function ConversationThreadBody({ conversationId }: Props) {
   useRequestLocalMessagingClient(isConnected);
   const isReady = snapshot.state === "active" && client != null;
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
-  const { conversations, markConversationSeen } = useXmtpConversations();
+  const {
+    conversations,
+    requestConversations,
+    markConversationSeen,
+    refreshConsentLists,
+  } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
   const [draft, setDraft] = useState(() => peekComposeDraft(conversationId) ?? "");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -67,10 +77,16 @@ function ConversationThreadBody({ conversationId }: Props) {
     clearComposeDraftStorage(conversationId);
   }, [conversationId]);
 
-  const peerAddressRaw = useMemo(
-    () => conversations.find((conversation) => conversation.id === conversationId)?.peerAddress,
-    [conversations, conversationId],
+  const isRequest = useMemo(
+    () => isRequestConversation(requestConversations, conversationId),
+    [requestConversations, conversationId],
   );
+
+  const peerAddressRaw = useMemo(() => {
+    const fromInbox = conversations.find((c) => c.id === conversationId)?.peerAddress;
+    if (fromInbox) return fromInbox;
+    return requestConversations.find((c) => c.id === conversationId)?.peerAddress;
+  }, [conversations, requestConversations, conversationId]);
   const listPeerAddress = parsePeerAddress(peerAddressRaw);
   const [fallbackPeerAddress, setFallbackPeerAddress] = useState<`0x${string}` | undefined>();
   const peerAddress = listPeerAddress ?? fallbackPeerAddress;
@@ -143,8 +159,21 @@ function ConversationThreadBody({ conversationId }: Props) {
       if (composerRef.current) {
         composerRef.current.style.height = "auto";
       }
+      // Reply promotes request → inbox in the same act.
+      refreshConsentLists();
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "Could not send message.");
+    }
+  };
+
+  const onBlock = async () => {
+    if (!client || blockBusy) return;
+    setBlockBusy(true);
+    try {
+      await blockConversation(client, conversationId);
+      refreshConsentLists();
+    } finally {
+      setBlockBusy(false);
     }
   };
 
@@ -169,7 +198,21 @@ function ConversationThreadBody({ conversationId }: Props) {
             )}
             {isKarPro && <KarProBadge className="shrink-0" />}
           </div>
+          {isRequest && (
+            <p className="text-xs text-text-tertiary">Request</p>
+          )}
         </div>
+        {isRequest && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={blockBusy}
+            onClick={() => void onBlock()}
+          >
+            Block
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto pb-4">

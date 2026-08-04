@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { getAddress } from "viem";
 import { useAccount } from "wagmi";
 
 import { useMessagingSession } from "@/hooks/use-messaging-session";
@@ -24,7 +25,7 @@ import {
   type XmtpSdkClient,
 } from "@/lib/messaging/adapters/xmtp-adapter";
 import {
-  loadConversationSummaries,
+  loadConsentPartitionedSummaries,
   sumUnreadCounts,
   type ConversationSummary,
 } from "@/lib/messaging/conversations";
@@ -32,10 +33,12 @@ import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
 
 const CATCH_UP_DISMISSED_KEY = "xmtp:catchUpDismissed";
 
-type SyncTrigger = "client" | "manual" | "stream" | "recovery";
+type SyncTrigger = "client" | "manual" | "stream" | "recovery" | "request";
 
 type XmtpConversationsContextValue = {
   conversations: ConversationSummary[];
+  requestConversations: ConversationSummary[];
+  requestCount: number;
   isLoading: boolean;
   unreadTotal: number;
   catchUpNewCount: number;
@@ -44,6 +47,8 @@ type XmtpConversationsContextValue = {
   dismissCatchUp: () => void;
   /** Optimistic local clear + protocol receipt (pending retry on failure). */
   markConversationSeen: (conversationId: string) => void;
+  /** Accept / Block / send-promote — re-list both partitions from the protocol. */
+  refreshConsentLists: () => void;
 };
 
 const XmtpConversationsContext = createContext<XmtpConversationsContextValue | null>(null);
@@ -60,6 +65,9 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
   const { address } = useAccount();
   const { client } = useMessagingSession();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [requestConversations, setRequestConversations] = useState<ConversationSummary[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [catchUpNewCount, setCatchUpNewCount] = useState(0);
@@ -76,9 +84,12 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
   const recoveryInFlightRef = useRef(false);
   const autoRecoveryUsedRef = useRef(false);
   const openStreamsRef = useRef<((c: XmtpSdkClient) => Promise<void>) | null>(null);
+  /** Cutover + relationship allow run on first attach and on new Unknown; not every stream message. */
+  const cutoverDoneForClientRef = useRef<object | null>(null);
 
   const unreadTotal = useMemo(() => sumUnreadCounts(conversations), [conversations]);
   unreadTotalRef.current = unreadTotal;
+  const requestCount = requestConversations.length;
 
   const persistPending = useCallback(() => {
     const addr = addressRef.current;
@@ -130,12 +141,33 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
       const preUnread = unreadTotalRef.current;
       const trackCatchUp = trigger === "recovery" || trigger === "manual";
 
+      const applyCutoverAndRelationship =
+        cutoverDoneForClientRef.current !== activeClient ||
+        trigger === "request" ||
+        trigger === "client";
+
       setIsLoading(true);
       try {
         await flushPendingReceipts(activeClient);
-        const summaries = await loadConversationSummaries(activeClient);
-        const newUnread = sumUnreadCounts(summaries);
-        setConversations(summaries);
+        let userAddress: `0x${string}` | null = null;
+        if (addressRef.current) {
+          try {
+            userAddress = getAddress(addressRef.current);
+          } catch {
+            userAddress = null;
+          }
+        }
+        const { conversations: inbox, requestConversations: requests } =
+          await loadConsentPartitionedSummaries(activeClient, {
+            userAddress,
+            applyCutoverAndRelationship,
+          });
+        if (applyCutoverAndRelationship) {
+          cutoverDoneForClientRef.current = activeClient;
+        }
+        const newUnread = sumUnreadCounts(inbox);
+        setConversations(inbox);
+        setRequestConversations(requests);
         const syncedAt = Date.now();
         lastSyncAtRef.current = syncedAt;
         setLastSyncAt(syncedAt);
@@ -149,6 +181,7 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
         }
       } catch {
         setConversations([]);
+        setRequestConversations([]);
       } finally {
         syncInFlightRef.current = false;
         setIsLoading(false);
@@ -190,7 +223,13 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
         onConversation: () => {
           void runSync("stream");
         },
+        onRequestConversation: () => {
+          void runSync("request");
+        },
         onMessage: () => {
+          void runSync("stream");
+        },
+        onConsentChange: () => {
           void runSync("stream");
         },
         onFail: () => {
@@ -227,13 +266,19 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
     })();
   }, [runSync, openStreams]);
 
+  const refreshConsentLists = useCallback(() => {
+    void runSync("stream");
+  }, [runSync]);
+
   useEffect(() => {
     if (!client) {
       setConversations([]);
+      setRequestConversations([]);
       setIsLoading(false);
       setLastSyncAt(null);
       setCatchUpNewCount(0);
       lastSyncAtRef.current = null;
+      cutoverDoneForClientRef.current = null;
       autoRecoveryUsedRef.current = false;
       const handle = deliveryHandleRef.current;
       deliveryHandleRef.current = null;
@@ -261,6 +306,8 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
   const value = useMemo(
     () => ({
       conversations,
+      requestConversations,
+      requestCount,
       isLoading,
       unreadTotal,
       catchUpNewCount,
@@ -268,9 +315,12 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
       refresh,
       dismissCatchUp,
       markConversationSeen,
+      refreshConsentLists,
     }),
     [
       conversations,
+      requestConversations,
+      requestCount,
       isLoading,
       unreadTotal,
       catchUpNewCount,
@@ -278,6 +328,7 @@ export function XmtpConversationsProvider({ children }: { children: ReactNode })
       refresh,
       dismissCatchUp,
       markConversationSeen,
+      refreshConsentLists,
     ],
   );
 

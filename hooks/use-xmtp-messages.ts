@@ -5,8 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ethereumAddressFromInboxState,
   getClientEthereumAddress,
+  MessagingConsentState,
   SortDirection,
   syncConversationMessages,
+  updateConversationConsent,
   type AsyncStreamProxy,
   type DecodedMessage,
   type XmtpDm,
@@ -84,6 +86,8 @@ export function useXmtpMessages(
       setIsSending(true);
 
       try {
+        // Sending is acceptance — promote Unknown → Allowed in the same act (P9).
+        await updateConversationConsent(conversation, MessagingConsentState.Allowed);
         await conversation.sendText(trimmed);
         const refreshed = await conversation.messages({
           limit: 80n,

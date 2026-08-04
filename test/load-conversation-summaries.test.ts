@@ -106,7 +106,7 @@ function makeFakeClient(opts: {
         syncAllCalls += 1;
         opts.onSyncAll?.();
       },
-      listDms: async () => opts.dms,
+      listDms: async (_options?: { consentStates?: number[] }) => opts.dms,
     },
     preferences: {
       getInboxStates: async (ids: string[]) => {
@@ -137,7 +137,9 @@ describe("loadConversationSummaries batching", () => {
       messages: async () => [],
     }));
     const client = makeFakeClient({ dms, inboxId });
-    const summaries = await loadConversationSummaries(client as never);
+    const summaries = await loadConversationSummaries(client as never, {
+      consentStates: [1],
+    });
     assert.equal(client.getInboxStatesCalls(), 1);
     assert.equal(client.syncAllCalls(), 1);
     assert.equal(summaries.length, 5);
@@ -171,7 +173,9 @@ describe("loadConversationSummaries batching", () => {
       },
     ];
     const client = makeFakeClient({ dms, inboxId });
-    const summaries = await loadConversationSummaries(client as never);
+    const summaries = await loadConversationSummaries(client as never, {
+      consentStates: [1],
+    });
     assert.equal(summaries[0]!.unreadCount, 3);
   });
 });

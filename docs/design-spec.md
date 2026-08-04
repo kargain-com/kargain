@@ -405,7 +405,9 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 #### Nostr identity
 
-Identity is deterministic from wallet `personal_sign`. Modules: [`key-manager.ts`](../lib/nostr/key-manager.ts), [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts), [`use-nostr-key.tsx`](../hooks/use-nostr-key.tsx).
+**Closed model.** Same EVM wallet → same Nostr key forever. Derivation is deterministic; there is no key rotation, relink, epoch, or key-lineage product. This matches ordinary Nostr practice (pubkey is the signing identity; clients such as Block Buzz do not rotate identity keys in-protocol). Wallet-anchored derivation is how Kargain obtains that key without a separate `nsec` UX — it does not invent a second identity layer to rotate.
+
+Modules: [`key-manager.ts`](../lib/nostr/key-manager.ts), [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts), [`use-nostr-key.tsx`](../hooks/use-nostr-key.tsx).
 
 | Item | Value |
 |------|-------|
@@ -414,7 +416,8 @@ Identity is deterministic from wallet `personal_sign`. Modules: [`key-manager.ts
 | Account gate | [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) — refuse `contract`; allow `eoa` / `eip7702` (same predicate as XMTP) |
 | Unlock | Corrupt, decrypt-fail, or sk≠signature → fail closed; never overwrite the stored key with a freshly derived one |
 | Passive pubkey | When pubkey cache empty and no in-memory sk: one `attestedPubkeyForAddress` attempt per mount (no wallet signature); cache result; `loading` during resolve so watchlist/notification reads do not flash empty |
-| Peer pin / rotation | Peer cache pins `{pubkey, boundCreatedAt}` after a verifying event. Warm author path never re-queries `#i`. **Any future Nostr key rotation must invalidate peer pins** (otherwise peers keep messaging the retired pubkey). |
+| Peer pin | Peer cache pins `{pubkey, boundCreatedAt}` after a verifying event. Warm author path never re-queries `#i`. Memo of the attested binding only — not a rotation hook |
+| Key rotation | **Not a task.** Do not open research, prompts, or HANDOFF “next” items on rotation / epoch / “identity continuation vs change.” Revisit only if a **demonstrated** hole shows the current model is broken (then change the model deliberately). Accepted residual: leaked Nostr sk while the wallet remains yours — same class as lost `nsec` elsewhere; prevention, not in-app recovery |
 
 #### Profile attestation
 
@@ -469,7 +472,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Layout | `max-w-lg`, full viewport height minus nav |
 | Account setup | Owner profile: [`AccountSetupBanner`](../components/profile/account-setup-banner.tsx) when `needsMessagingSetupCard(snapshot)`; links to `/profile/edit#messages` |
 | Pending claims | Global [`ClaimsPendingBanner`](../components/claims/claims-pending-banner.tsx) in site chrome when connected wallet has outstanding ClaimablePayouts balances (commercial-union indexer query); CTA → own profile `?tab=claims`. Owner-only **Claims** tab [`profile-claims-tab.tsx`](../components/claims/profile-claims-tab.tsx): amount (on-chain decimals/symbol), contract role, explanation from ledger `credits[]` (one line per credit origin — amount + reason; multi-origin balances list every credit), `withdrawClaim` via `useTxSync`. Notification type `claim.recorded` → same tab; body is **this credit’s** amount + reason only |
-| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable` (= intent published true); toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → Retry from `primaryActionFromSnapshot` (`next: "retry"`). Does **not** raise `clientDemand` / load the SDK |
+| Profile settings | [`MessagingSettingsSection`](../components/profile/messaging-settings-section.tsx) — **Private messages** [`Switch`](../components/ui/switch.tsx); `checked = active.publiclyReachable` (= intent published true); toggle on → `dispatch({ type: "enable" })`; off → confirm → `dispatch({ type: "disable" })`; publish failure → Retry from `primaryActionFromSnapshot` (`next: "retry"`). **Devices** ([`MessagingDevicesPanel`](../components/messaging/messaging-devices-panel.tsx) via [`installation-display.ts`](../lib/messaging/installation-display.ts)): `n / 10` + mono ages when `client` already present — Free / Revoke all (same commands as limit recovery). Does **not** raise `clientDemand` / load the SDK on open |
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — setup card when incomplete; else factual unreachable disclosure when `active && !publiclyReachable`; never blocks list/buy/edit |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` while `needsMessagingSetupCard`; checklist `messagingReadyForChecklist` false until reachable without publish failure |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
@@ -485,7 +488,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (UI deferred with budgets phase). OPFS classifier is UX for cross-tab only — not mint-budget protection |
 | Setup card | Primary CTA = `primaryActionFromSnapshot` only; idle `active` without `next` may hide; actionable `active` publish states stay visible. CTA disabled while `isUserOpInFlight(snapshot)` |
 | Setup card errors | Primary user copy `text-status-error`; no “still registered” claims on timeout/generic error; SDK diagnostic as secondary `text-text-tertiary font-mono text-xs` when masked |
-| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Device readout `count / 10` + mono ages via `session.readInstallations()`. Primary **Free a device slot** → `resetIdentity` from contract. Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). |
+| Installation limit | Actionable `needs_signature` / `error` with `installation_limit` — **no** auto revoke. Recovery composes the **same** [`MessagingDevicesPanel`](../components/messaging/messaging-devices-panel.tsx) as settings (`count / 10` + mono ages via `session.readInstallations()`). Primary **Free a device slot** → `resetIdentity`. Secondary **Revoke all devices** → confirm Dialog → `revokeAllInstallations` (publish intent false first → full revoke → create; refuse revoke if intent publish fails; 24h cooldown via `messaging:revoke-all:` cache key). Confirm body: other devices lose access, undeliverable until reactivated, inbox update budget is permanent (qualitative — no remaining-count). Healthy active management lives in profile settings when a client already exists. |
 | Nav status | [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx) — amber dot when `needsMessagingSetupCard`; warm unread dot from shared provider |
 | Provider mount | [`MessagingNotificationsProviders`](../components/providers/messaging-notifications-providers.tsx) always mounted in [`app-providers.tsx`](../components/providers/app-providers.tsx); guest hooks no-op until wallet connected |
 | XMTP SDK load | [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) only — lazy `import("@xmtp/client")` on first port call; idle `preloadXmtp` when `shouldIdleWarmXmtp` (intent known true via `publiclyReachable`, no local client) — never unconditional on wallet connect |
@@ -507,7 +510,7 @@ No per-message sender label in the bubble list. Publish/network gaps surface inl
 
 Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
 
-**Consent (P9 contract — not yet built).** XMTP carries consent per conversation as `Allowed` / `Denied` / `Unknown`; the protocol surface is `preferences.setConsentStates` / `getConsentState` / `streamConsent`, `conversation.consentState()` / `updateConsentState()`, and the `consentStates` filter on `list*` / `syncAll` / `streamAllMessages`. None of it is used today: the inbox lists every DM unfiltered, and every seller address is discoverable through Ponder, so an unsolicited-DM vector is open. This block is the contract to build against; behaviour below is normative and the model wins over any screen.
+**Consent (P9 — built).** XMTP carries consent per conversation as `Allowed` / `Denied` / `Unknown`; the protocol surface is `preferences.setConsentStates` / `getConsentState` / `streamConsent`, `conversation.consentState()` / `updateConsentState()`, and the `consentStates` filter on `list*` / `syncAll` / `streamAllMessages`. Adapter choke-points: [`xmtp-adapter.ts`](../lib/messaging/adapters/xmtp-adapter.ts) (`syncConversationsAndMessages`, `listDmsByConsent`, `openInboxDeliveryStreams`, `openDmWithPeer`); relationship auto-allow: [`relationship-allow.ts`](../lib/messaging/relationship-allow.ts); cutover: [`consent-cutover.ts`](../lib/messaging/consent-cutover.ts); Accept/Block: [`consent-actions.ts`](../lib/messaging/consent-actions.ts).
 
 **Model.** A cold first contact from a buyer to a seller **is the product** and must never be walled. Consent therefore separates rather than blocks:
 
@@ -519,25 +522,25 @@ Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Pr
 | The user blocks | `Denied` |
 | Provable on-chain relationship with the peer | `Allowed` without user action |
 
-**Provable relationship** means, and means only: the peer is counterparty, owner or agent on a live consignment or mandate with the user, or the peer is a verifier the user has contacted. It is read from the indexer through existing commercial-union queries — never inferred from message content, never from a Nostr profile field.
+**Provable relationship** means, and means only: the peer is counterparty, owner or agent on a live consignment or mandate with the user, or the peer is a verifier recorded on a passport the user owns (outbound contact is already `Allowed` via start). It is read from the indexer through existing commercial-union queries — never inferred from message content, never from a Nostr profile field. Evaluation runs on client attach and when a new Unknown conversation appears — not on every inbox render.
 
-**Requests is a visible area, not a spam folder.** It carries its own count, distinct from unread. Its rows show the same identity chrome as the inbox. Nothing there is hidden or auto-expired, and nothing about it gates commerce. A `Denied` conversation disappears from both lists and raises no notification; unblocking is available from profile settings, not from the row that was blocked.
+**Requests is a visible area, not a spam folder.** Sibling tabs under `/messages` (Inbox | Requests). It carries its own count, distinct from unread. Its rows show the same identity chrome as the inbox. Nothing there is hidden or auto-expired, and nothing about it gates commerce. Opening a request does **not** accept it. A `Denied` conversation disappears from both lists and raises no notification; unblocking is available from profile settings, not from the row that was blocked.
 
-**Cutover.** Existing conversations carry `Unknown`, so filtering naively would empty every inbox on first run. Apply the same rule that governs everything else rather than a migration shim: a conversation in which the user has **ever sent a message** is `Allowed`. That is "replying is acceptance" applied to history, resolved once at first load, not a compatibility path.
+**Cutover.** Existing conversations carry `Unknown`, so filtering naively would empty every inbox on first run. Apply the same rule that governs everything else rather than a migration shim: a conversation in which the user has **ever sent a message** is `Allowed`. That is "replying is acceptance" applied to history, resolved once at first load (protocol write — no surviving flag).
 
 **Surfaces.**
 
 | Element | Rule |
 |---------|------|
-| Inbox | `listDms` / `syncAll` / `streamAllDmMessages` filter `Allowed`. Unread and the nav dot count `Allowed` only |
-| Requests | Sibling list under `/messages`, own count, `Unknown` only; opening a request does **not** accept it |
-| Request row actions | **Accept** → `Allowed`; **Block** → `Denied`. Both write through `preferences.setConsentStates` and are reflected on other installations via `streamConsent` |
+| Inbox | `listDms` / `syncAll` / `streamAllDmMessages` filter `Allowed`. Unread and the nav warm dot count `Allowed` only |
+| Requests | Sibling list under `/messages`, own quiet count, `Unknown` only; opening a request does **not** accept it |
+| Request row actions | **Accept** → `Allowed`; **Block** → `Denied`. Both write through adapter → protocol and are reflected on other installations via `streamConsent` |
 | Composer in a request | Present. Sending is acceptance and promotes to `Allowed` in the same act — no separate confirm |
-| Nav | One indicator. Requests appear as a distinct, quieter count — never accent-warm, which is reserved for verified trust state |
+| Nav | One indicator. Requests appear as a distinct, quieter count — never accent-warm, which is reserved for verified trust state / Allowed unread |
 | Commerce | Consent state never gates listing, buying, mandating or verification. A blocked peer is a messaging fact only |
 | Copy | Factual, sentence case. Never "spam", never "suspicious" — the app does not know that. "Request" and "Blocked" |
 
-**Invariants this must add:** consent writes go through the protocol only (no local mirror of consent state); the inbox never displays an `Unknown` conversation; Requests never displays an `Allowed` or `Denied` one; a `Denied` conversation produces no notification on any surface; and the on-chain relationship auto-allow is derived from indexer reads, not from message contents.
+**Invariants this phase adds (I16–I20):** consent writes go through the protocol only (no local mirror of consent state); the inbox never displays an `Unknown` conversation; Requests never displays an `Allowed` or `Denied` one; a `Denied` conversation produces no notification on any surface; and the on-chain relationship auto-allow is derived from indexer reads, not from message contents. Executable: `test/messaging-invariant-consent.test.ts`.
 
 **Architectural invariants (P10)** — one sentence each. Executable suite: `test/messaging-invariant-*.test.ts` (helpers in `test/messaging-invariant-helpers.ts`); I9 / I10 / I15 proofs also under `test:nostr`.
 
@@ -558,6 +561,11 @@ Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Pr
 | I13 | Browse peer reachability never starts an XMTP module load; incomplete probes classify as `unknown`, never as unregistered. |
 | I14 | Protocol/system commits are not user messages (no bubble, no unread, no ellipsis fallback). |
 | I15 | Intent publish / Nostr identity on the messaging path goes through the single identity owner (`obtainKey` / `isKeyHeld`); declined ≠ failed. |
+| I16 | Consent state is written only through the XMTP adapter protocol APIs — no local mirror of consent. |
+| I17 | The inbox lists `Allowed` conversations only; Requests lists `Unknown` only. |
+| I18 | A `Denied` conversation produces no unread count and no delivery notification on any surface. |
+| I19 | On-chain relationship auto-allow is derived from indexer commercial-union reads, never from message content or profile fields. |
+| I20 | Historical cutover promotes Unknown+ever-sent to Allowed via the protocol once — no surviving migration flag. |
 
 ---
 

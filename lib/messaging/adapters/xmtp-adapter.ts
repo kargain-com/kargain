@@ -9,6 +9,8 @@ import type {
   AsyncStreamProxy,
   Client,
   ClientOptions,
+  Consent,
+  ConsentState,
   DecodedMessage,
   InboxState,
   Signer,
@@ -175,14 +177,54 @@ export function isText(message: DecodedMessage<unknown>): boolean {
   return ensureXmtpModule().isText(message);
 }
 
+/** Consent values — requires SDK module load (same pattern as SortDirection). */
+export const MessagingConsentState = {
+  get Unknown() {
+    return ensureXmtpModule().ConsentState.Unknown;
+  },
+  get Allowed() {
+    return ensureXmtpModule().ConsentState.Allowed;
+  },
+  get Denied() {
+    return ensureXmtpModule().ConsentState.Denied;
+  },
+} as const;
+
+export type { ConsentState };
+
+/** Sync Allowed + Unknown so inbox and Requests stay warm; never Denied. */
+export function deliverySyncConsentStates(): ConsentState[] {
+  const { ConsentState: CS } = ensureXmtpModule();
+  return [CS.Allowed, CS.Unknown];
+}
+
+export function inboxConsentStates(): ConsentState[] {
+  return [ensureXmtpModule().ConsentState.Allowed];
+}
+
+export function requestConsentStates(): ConsentState[] {
+  return [ensureXmtpModule().ConsentState.Unknown];
+}
+
+export function deniedConsentStates(): ConsentState[] {
+  return [ensureXmtpModule().ConsentState.Denied];
+}
+
 /**
  * Bring conversations and their messages from the network into the local store.
- * Consent filter omitted (same as unfiltered listDms until P9).
+ * Pass consentStates so delivery matches the list filter (P9).
+ * When the SDK module is ready and states are omitted, syncs Allowed+Unknown.
  */
 export async function syncConversationsAndMessages(
   client: XmtpSdkClient,
+  consentStates?: ConsentState[],
 ): Promise<void> {
-  await client.conversations.syncAll();
+  const states =
+    consentStates ??
+    (xmtpModule
+      ? [xmtpModule.ConsentState.Allowed, xmtpModule.ConsentState.Unknown]
+      : undefined);
+  await client.conversations.syncAll(states);
 }
 
 /** Bring one conversation's messages from the network into the local store. */
@@ -190,6 +232,50 @@ export async function syncConversationMessages(
   conversation: { sync: () => Promise<unknown> },
 ): Promise<void> {
   await conversation.sync();
+}
+
+/** List DMs filtered by protocol consent — sole listDms choke-point. */
+export async function listDmsByConsent(
+  client: XmtpSdkClient,
+  consentStates: ConsentState[],
+) {
+  return client.conversations.listDms({ consentStates });
+}
+
+export type ConsentWritableConversation = {
+  updateConsentState: (state: ConsentState) => Promise<unknown>;
+  consentState: () => Promise<ConsentState>;
+};
+
+/** Write Allowed / Denied / Unknown on a conversation via the protocol. */
+export async function updateConversationConsent(
+  conversation: ConsentWritableConversation,
+  state: ConsentState,
+): Promise<void> {
+  await conversation.updateConsentState(state);
+}
+
+export async function readConversationConsent(
+  conversation: ConsentWritableConversation,
+): Promise<ConsentState> {
+  return conversation.consentState();
+}
+
+/**
+ * Batch consent writes by peer inbox id (Accept / Block / relationship allow).
+ */
+export async function setConsentStatesByInboxId(
+  client: XmtpSdkClient,
+  records: Array<{ inboxId: string; state: ConsentState }>,
+): Promise<void> {
+  if (records.length === 0) return;
+  const { ConsentEntityType } = ensureXmtpModule();
+  const payload: Consent[] = records.map((row) => ({
+    entityType: ConsentEntityType.InboxId,
+    entity: row.inboxId,
+    state: row.state,
+  }));
+  await client.preferences.setConsentStates(payload);
 }
 
 export function getClientEthereumAddress(client: XmtpSdkClient): `0x${string}` | null {
@@ -315,8 +401,14 @@ async function closeLocalClient(client: XmtpLocalClient): Promise<void> {
 }
 
 export type InboxDeliveryHandlers = {
+  /** Allowed conversation appeared or changed — refresh inbox. */
   onConversation: () => void;
+  /** Unknown conversation appeared — refresh Requests (+ relationship eval). */
+  onRequestConversation: () => void;
+  /** Allowed-only message stream — refresh inbox unread. */
   onMessage: (conversationId: string) => void;
+  /** Consent preference changed on this or another installation. */
+  onConsentChange: () => void;
   /** Fired at most once per handle when a stream fails or errors. */
   onFail: () => void;
 };
@@ -326,8 +418,8 @@ export type InboxDeliveryHandle = {
 };
 
 /**
- * Open DM conversation + all-DM-message streams for inbox delivery.
- * Consent filter omitted so behaviour matches unfiltered `listDms()` (P9 owns Allowed).
+ * Open DM conversation + Allowed DM-message + consent streams for delivery.
+ * streamDms has no SDK consent filter — gate by conversation.consentState().
  * Streams are registered against `client` and ended by `closeLocal` / `handle.end()`.
  */
 export async function openInboxDeliveryStreams(
@@ -342,19 +434,41 @@ export async function openInboxDeliveryStreams(
     handlers.onFail();
   };
 
+  const { ConsentState: CS } = ensureXmtpModule();
+
   const dmStream = await client.conversations.streamDms({
-    onValue: () => {
-      if (ended) return;
-      handlers.onConversation();
+    onValue: (dm) => {
+      if (ended || !dm) return;
+      void (async () => {
+        try {
+          const state = await dm.consentState();
+          if (ended) return;
+          if (state === CS.Allowed) handlers.onConversation();
+          else if (state === CS.Unknown) handlers.onRequestConversation();
+          // Denied — ignore (no notification, no list refresh).
+        } catch {
+          // Consent read failed — do not invent a list placement.
+        }
+      })();
     },
     onFail: failOnce,
     onError: failOnce,
   });
 
   const msgStream = await client.conversations.streamAllDmMessages({
+    consentStates: [CS.Allowed],
     onValue: (message) => {
       if (ended) return;
       handlers.onMessage(message.conversationId);
+    },
+    onFail: failOnce,
+    onError: failOnce,
+  });
+
+  const consentStream = await client.preferences.streamConsent({
+    onValue: () => {
+      if (ended) return;
+      handlers.onConsentChange();
     },
     onFail: failOnce,
     onError: failOnce,
@@ -369,6 +483,11 @@ export async function openInboxDeliveryStreams(
     {
       end: async () => {
         await msgStream.end();
+      },
+    },
+    {
+      end: async () => {
+        await consentStream.end();
       },
     },
   ];
@@ -416,9 +535,12 @@ export async function openDmWithPeer(
 ) {
   const xmtp = ensureXmtpModule();
   const peer = getAddress(peerAddress);
-  return client.conversations.createDmWithIdentifier(
+  const dm = await client.conversations.createDmWithIdentifier(
     ethereumIdentifier(peer, xmtp.IdentifierKind),
   );
+  // User starts the conversation → Allowed (P9).
+  await dm.updateConsentState(xmtp.ConsentState.Allowed);
+  return dm;
 }
 
 export type XmtpDm = Awaited<ReturnType<typeof openDmWithPeer>>;
