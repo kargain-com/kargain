@@ -173,10 +173,6 @@ export function unbrandClient(client: XmtpLocalClient): Client<unknown> {
 
 export type XmtpSdkClient = Client<unknown>;
 
-export function isText(message: DecodedMessage<unknown>): boolean {
-  return ensureXmtpModule().isText(message);
-}
-
 /** Consent values — requires SDK module load (same pattern as SortDirection). */
 export const MessagingConsentState = {
   get Unknown() {
@@ -191,12 +187,6 @@ export const MessagingConsentState = {
 } as const;
 
 export type { ConsentState };
-
-/** Sync Allowed + Unknown so inbox and Requests stay warm; never Denied. */
-export function deliverySyncConsentStates(): ConsentState[] {
-  const { ConsentState: CS } = ensureXmtpModule();
-  return [CS.Allowed, CS.Unknown];
-}
 
 export function inboxConsentStates(): ConsentState[] {
   return [ensureXmtpModule().ConsentState.Allowed];
@@ -255,12 +245,6 @@ export async function updateConversationConsent(
   await conversation.updateConsentState(state);
 }
 
-export async function readConversationConsent(
-  conversation: ConsentWritableConversation,
-): Promise<ConsentState> {
-  return conversation.consentState();
-}
-
 /**
  * Batch consent writes by peer inbox id (Accept / Block / relationship allow).
  */
@@ -312,22 +296,12 @@ export function truncatePreview(text: string, max = 60): string {
   return `${trimmed.slice(0, max - 1)}…`;
 }
 
-export function dateToSentAfterNs(date: Date): bigint {
-  return BigInt(date.getTime()) * 1_000_000n;
-}
-
 /** Endable stream handle owned by the adapter registry. */
 type RegisteredStream = {
   end: () => Promise<void>;
 };
 
 const streamsByClient = new Map<object, Set<RegisteredStream>>();
-let liveInboxStreamCount = 0;
-
-/** Test/teardown invariant — inbox delivery streams still open. */
-export function getLiveInboxStreamCount(): number {
-  return liveInboxStreamCount;
-}
 
 function registerClientStream(client: object, stream: RegisteredStream): void {
   let set = streamsByClient.get(client);
@@ -336,14 +310,12 @@ function registerClientStream(client: object, stream: RegisteredStream): void {
     streamsByClient.set(client, set);
   }
   set.add(stream);
-  liveInboxStreamCount += 1;
 }
 
 function unregisterClientStream(client: object, stream: RegisteredStream): void {
   const set = streamsByClient.get(client);
   if (!set || !set.has(stream)) return;
   set.delete(stream);
-  liveInboxStreamCount = Math.max(0, liveInboxStreamCount - 1);
   if (set.size === 0) streamsByClient.delete(client);
 }
 
@@ -360,7 +332,6 @@ async function endAllStreamsForClient(client: object): Promise<void> {
       } catch {
         // Teardown must not fail closeLocal.
       }
-      liveInboxStreamCount = Math.max(0, liveInboxStreamCount - 1);
     }),
   );
 }
@@ -557,7 +528,7 @@ export const SortDirection = {
 
 export type { AsyncStreamProxy, DecodedMessage };
 
-export function buildXmtpEoaSigner(
+function buildXmtpEoaSigner(
   walletClient: WalletClient,
   address: `0x${string}`,
   IdentifierKind: XmtpModule["IdentifierKind"],
@@ -575,7 +546,7 @@ export function buildXmtpEoaSigner(
   };
 }
 
-export async function resolveInboxId(address: `0x${string}`): Promise<string> {
+async function resolveInboxId(address: `0x${string}`): Promise<string> {
   const xmtp = ensureXmtpModule();
   const identifier = ethereumIdentifier(address, xmtp.IdentifierKind);
   const env = getMessagingXmtpEnv() as XmtpEnv;

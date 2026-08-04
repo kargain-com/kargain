@@ -161,15 +161,6 @@ export function clearStoredComposeDraft(conversationId: string): void {
   memoryComposeDrafts.delete(key);
 }
 
-/**
- * @deprecated Prefer peek + clear after commit. Kept for tests that need atomic consume.
- */
-export function takeStoredComposeDraft(conversationId: string): string | null {
-  const value = peekStoredComposeDraft(conversationId);
-  clearStoredComposeDraft(conversationId);
-  return value;
-}
-
 /** Test helper — clear all in-memory compose drafts. */
 export function clearComposeDraftsForTest(): void {
   memoryComposeDrafts.clear();

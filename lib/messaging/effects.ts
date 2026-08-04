@@ -443,7 +443,9 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
             apply({ type: "awaiting_signature_set", reason: "installation_limit" });
             break;
           }
-          apply({ type: "reset_chain_set", stage: "create" });
+          // Slot freed while signed in — nothing to mint. End the chain;
+          // do not hand an unconsumed create authorisation forward (I2).
+          apply({ type: "reset_cleared" });
           break;
         }
         default:

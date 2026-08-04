@@ -39,8 +39,6 @@ export type SessionCommand =
   | { type: "retry" }
   | { type: "cancel" };
 
-export type SessionCommandType = SessionCommand["type"];
-
 export type ReconcilingOp =
   | "intent"
   | "sdk"

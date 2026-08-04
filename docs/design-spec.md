@@ -407,6 +407,8 @@ Do not vary avatar shape by role. **IdentityAvatar** / **EnsAvatar:** round only
 
 **Closed model.** Same EVM wallet → same Nostr key forever. Derivation is deterministic; there is no key rotation, relink, epoch, or key-lineage product. This matches ordinary Nostr practice (pubkey is the signing identity; clients such as Block Buzz do not rotate identity keys in-protocol). Wallet-anchored derivation is how Kargain obtains that key without a separate `nsec` UX — it does not invent a second identity layer to rotate.
 
+**Why “no rotation” is safe here (not a shrug).** A leaked Nostr sk reaches **public** signed activity only — kind:0 profile / intent, Commons comments, watchlist, notification-state, offers — and does **not** reach DMs: the XMTP installation key is independent and lives in OPFS. That separation is why the activation annex rejected NIP-17 as transport ([§5](./research/messaging-activation-audit-2026.md#5-xmtp-vs-nostr-nip-17)): NIP-17 would have put private messages behind the same deterministic key. “No rotation” is portable **because** messaging stayed on XMTP — the decisions are coherent, not convenient.
+
 Modules: [`key-manager.ts`](../lib/nostr/key-manager.ts), [`key-manager-crypto.ts`](../lib/nostr/key-manager-crypto.ts), [`use-nostr-key.tsx`](../hooks/use-nostr-key.tsx).
 
 | Item | Value |
@@ -416,8 +418,9 @@ Modules: [`key-manager.ts`](../lib/nostr/key-manager.ts), [`key-manager-crypto.t
 | Account gate | [`supportsPersonalSignIdentity`](../lib/web3/wallet-account.ts) — refuse `contract`; allow `eoa` / `eip7702` (same predicate as XMTP) |
 | Unlock | Corrupt, decrypt-fail, or sk≠signature → fail closed; never overwrite the stored key with a freshly derived one |
 | Passive pubkey | When pubkey cache empty and no in-memory sk: one `attestedPubkeyForAddress` attempt per mount (no wallet signature); cache result; `loading` during resolve so watchlist/notification reads do not flash empty |
-| Peer pin | Peer cache pins `{pubkey, boundCreatedAt}` after a verifying event. Warm author path never re-queries `#i`. Memo of the attested binding only — not a rotation hook |
-| Key rotation | **Not a task.** Do not open research, prompts, or HANDOFF “next” items on rotation / epoch / “identity continuation vs change.” Revisit only if a **demonstrated** hole shows the current model is broken (then change the model deliberately). Accepted residual: leaked Nostr sk while the wallet remains yours — same class as lost `nsec` elsewhere; prevention, not in-app recovery |
+| Peer pin | Peer cache pins `{pubkey, boundCreatedAt}` after a verifying event. Warm author path never re-queries `#i`. Memo of the attested binding only — not a rotation hook. **Pin stops a different pubkey** (eclipse / challenger); it does **not** detect or block an attacker who already holds **this** sk |
+| Key rotation | **Not a task.** Do not open research, prompts, or HANDOFF “next” items on rotation / epoch / “identity continuation vs change.” Revisit only if a **demonstrated** hole shows the current model is broken (then change the model deliberately) |
+| Accepted residual (theft of this sk) | Attacker is cryptographically indistinguishable from the owner — no detection signal. Concrete messaging instance: forge `messagesEnabled: false` and silence the seller ([RC-15](./research/messaging-activation-audit-2026.md) in the activation annex). Same class as lost `nsec` elsewhere: prevention (do not export sk), not in-app recovery. Peer pin ≠ theft protection |
 
 #### Profile attestation
 
@@ -482,7 +485,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Peer reachability | Browse CTA: intent + protocol + account-kind only ([`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) — no XMTP probe, no module load). Click path: [`contactPeer`](../lib/messaging/contact-peer.ts) establishes readiness via `ensureXmtpModuleReady` (same owner as session `ensureModule`), then probes registration under `PEER_REGISTRATION_DEADLINE_MS` (network only). Incomplete probe → `unknown` — copy asserts nothing about the peer’s registration |
 | Session ownership | One [`MessagingSessionProvider`](../components/providers/messaging-session-provider.tsx) under notifications providers; refcounted [`session-registry`](../lib/messaging/session-registry.ts); address change = release old / acquire new (no `syncWalletAddress`) |
 | Lazy client | Build/create require `clientDemand`; SDK module load is prerequisite effect `sdk` (`ensureModule`) with **no** wall deadline — never inside `BUILD_DEADLINE_MS`. Registration derived from build/create |
-| Installation mint | Create only after a **completed** build reports `not_registered` (`registrationStatus === "unregistered"`), or post-revoke `resetChain === "create"`. Any other build outcome is not authorisation. Create **start** consumes enable + clears registration to `unknown` — one user authorisation, at most one create attempt |
+| Installation mint | Create only after a **completed** build reports `not_registered` (`registrationStatus === "unregistered"`), or **full-revoke** `resetChain === "create"`. Preserve-current revoke (`resetIdentity` / free slot) **ends the chain** (`reset_cleared`) — it does not authorise a remint. Any other build outcome is not authorisation. Create **start** consumes enable + clears registration to `unknown` — one user authorisation, at most one create attempt |
 | XMTP client | `useMessagingSession().client` from session `getXmtpClient()`; inbox refresh owned by [`XmtpConversationsProvider`](../components/providers/xmtp-conversations-provider.tsx) via `loadConversationSummaries` → `syncAll` (runs only when `client` present) |
 | Client lifecycle | Sole abandon owner = effects `abandonOwnedClient` (incl. address change with `alreadyDetached`); clear-then-defer `clock.sleep(0)`. `closeLocal` returns `Promise<void>`; `whenLocalIdle` serialises the next build/create **outside** `BUILD_DEADLINE_MS`. Orphans that never entered state close immediately — including late-ok builds after deadline timeout |
 | Storage durability | `ensureDurableStorage` before first `createWithSigner`; refusal → `active.storageEvictable` (UI deferred with budgets phase). OPFS classifier is UX for cross-tab only — not mint-budget protection |
@@ -547,7 +550,7 @@ Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Pr
 | ID | Invariant |
 |----|-----------|
 | I1 | Module loading is never inside a wall-clock deadline or abort timer. |
-| I2 | Only a completed negative registration answer (`unregistered` or post-revoke `resetChain === "create"`) authorises minting an installation. |
+| I2 | Only a completed negative registration answer (`unregistered` or **full-revoke** `resetChain === "create"`) authorises minting an installation. Preserve-current revoke consumes the chain (no hanging create stage). |
 | I3 | Every acquired SDK client handle has a release path, and the next acquisition serialises behind that release. |
 | I4 | Browser storage under `lib/messaging` has one owner: [`cache-adapter.ts`](../lib/messaging/adapters/cache-adapter.ts). |
 | I5 | The session core (`machine` / `effects` / `reconcile` / `registry` / `session-store`) contains no React and no module-scope session instances outside the registry. |
@@ -1669,4 +1672,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.133 (August 2026 — §4.12 consent contract + P10 invariants; compose-draft peek/clear). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.134 (August 2026 — §4.12 I2 preserve-current clears reset chain; full-revoke alone remints). Update when tokens, app shell, or component contracts change.*

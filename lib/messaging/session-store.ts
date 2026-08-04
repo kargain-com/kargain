@@ -112,5 +112,3 @@ export const createMessagingSession: CreateMessagingSession = (
     },
   };
 };
-
-export { createMessagingSession as default };

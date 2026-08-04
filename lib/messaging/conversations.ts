@@ -63,7 +63,7 @@ async function lastRenderablePreview(
   };
 }
 
-export async function buildConversationSummary(
+async function buildConversationSummary(
   client: XmtpSdkClient,
   dm: DmConversation,
   inboxStateByInboxId: Map<

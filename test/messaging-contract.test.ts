@@ -330,6 +330,7 @@ describe("messaging contract — scenarios", () => {
     assert.equal(xmtp.calls.revokeOtherInstallations, 1);
     assert.equal(xmtp.lastRevokeOthersClient, fakeClient);
     assert.equal(xmtp.calls.revokeAllInstallations, 0);
+    assert.equal(xmtp.calls.createWithSigner, 0);
     assert.equal(session.getSnapshot().state, "active");
   });
 

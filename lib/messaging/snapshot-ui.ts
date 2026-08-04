@@ -128,10 +128,6 @@ export function isUserOpInFlight(snapshot: SessionSnapshot): boolean {
   return snapshot.state === "reconciling" && USER_OPS.has(snapshot.op);
 }
 
-export function isMessagingActive(snapshot: SessionSnapshot): boolean {
-  return snapshot.state === "active";
-}
-
 export function messagingUnsupportedCopy(snapshot: SessionSnapshot): string | null {
   if (snapshot.state === "unsupported") {
     return "Smart contract wallets cannot use encrypted messages on this network.";

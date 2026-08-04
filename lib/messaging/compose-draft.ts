@@ -43,19 +43,6 @@ export function clearComposeDraftStorage(conversationId: string): void {
   clearStoredComposeDraft(conversationId);
 }
 
-/** Drop seed + storage when leaving the conversation for good. */
-export function releaseComposeDraftSeed(conversationId: string): void {
-  mountSeeds.delete(conversationId);
-  clearStoredComposeDraft(conversationId);
-}
-
-/** @deprecated Prefer peek + clearComposeDraftStorage after commit. */
-export function takeComposeDraft(conversationId: string): string | null {
-  const value = peekComposeDraft(conversationId);
-  releaseComposeDraftSeed(conversationId);
-  return value;
-}
-
 /** Test helper — reset mount seeds (pairs with cache-adapter clearComposeDraftsForTest). */
 export function clearComposeDraftMountSeedsForTest(): void {
   mountSeeds.clear();

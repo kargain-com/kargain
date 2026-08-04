@@ -14,9 +14,9 @@ import { clearComposeDraftsForTest } from "../lib/messaging/adapters/cache-adapt
 import {
   buildListingInquiryDraft,
   clearComposeDraftMountSeedsForTest,
+  clearComposeDraftStorage,
   peekComposeDraft,
   setComposeDraft,
-  takeComposeDraft,
 } from "../lib/messaging/compose-draft.ts";
 import {
   loadConversationSummaries,
@@ -97,11 +97,14 @@ describe("I8 only user Send transmits", () => {
   // Blind spot: cannot see an entry path that calls send via a re-exported
   // helper whose name is not send/sendText.
 
-  it("behavioural: draft peek then take clears; entry stages only", () => {
+  it("behavioural: draft peek then clear storage; entry stages only", () => {
     setComposeDraft("c1", "  hello  ");
     assert.equal(peekComposeDraft("c1"), "hello");
     assert.equal(peekComposeDraft("c1"), "hello");
-    assert.equal(takeComposeDraft("c1"), "hello");
+    clearComposeDraftStorage("c1");
+    // Mount seed survives storage clear (StrictMode remount).
+    assert.equal(peekComposeDraft("c1"), "hello");
+    clearComposeDraftMountSeedsForTest();
     assert.equal(peekComposeDraft("c1"), null);
     assert.match(buildListingInquiryDraft("42"), /interested in your listing/i);
   });

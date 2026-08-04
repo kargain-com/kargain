@@ -3,11 +3,6 @@
  * release schedules destroy on one macrotask; a same-tick acquire cancels it.
  */
 
-export type SessionRegistryEntry<T> = {
-  session: T;
-  refCount: number;
-};
-
 export type SessionRegistryClock = {
   /** Schedule destroy; return a cancel handle. Default: setTimeout(0). */
   scheduleDestroy(fn: () => void): { cancel(): void };
