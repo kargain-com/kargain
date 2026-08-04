@@ -71,8 +71,8 @@ describe("messaging wall-clock budgets (value pins)", () => {
   });
 });
 
-describe("messaging localStorage choke-point", () => {
-  it("only cache-adapter may mention localStorage under lib/messaging", () => {
+describe("messaging browser-storage choke-point", () => {
+  it("only cache-adapter may mention localStorage or sessionStorage under lib/messaging", () => {
     const messagingLib = path.join(ROOT, "lib/messaging");
     const violations: string[] = [];
     for (const file of listTsFiles(messagingLib)) {
@@ -80,7 +80,10 @@ describe("messaging localStorage choke-point", () => {
       if (rel === "lib/messaging/adapters/cache-adapter.ts") continue;
       const text = stripComments(fs.readFileSync(file, "utf8"));
       if (/\blocalStorage\b/.test(text)) {
-        violations.push(rel);
+        violations.push(`${rel}: localStorage`);
+      }
+      if (/\bsessionStorage\b/.test(text)) {
+        violations.push(`${rel}: sessionStorage`);
       }
     }
     assert.deepEqual(violations, []);

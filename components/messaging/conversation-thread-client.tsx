@@ -22,6 +22,7 @@ import {
   type XmtpDm,
 } from "@/lib/messaging/adapters/xmtp-adapter";
 import { formatRelativeTime } from "@/lib/format/relative-time";
+import { takeComposeDraft } from "@/lib/messaging/compose-draft";
 import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
@@ -56,6 +57,14 @@ function ConversationThreadBody({ conversationId }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const draftSeededRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (draftSeededRef.current === conversationId) return;
+    draftSeededRef.current = conversationId;
+    const staged = takeComposeDraft(conversationId);
+    if (staged) setDraft(staged);
+  }, [conversationId]);
 
   const peerAddressRaw = useMemo(
     () => conversations.find((conversation) => conversation.id === conversationId)?.peerAddress,

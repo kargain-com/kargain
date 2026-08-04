@@ -5,13 +5,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ethereumAddressFromInboxState,
   getClientEthereumAddress,
-  messageText,
   SortDirection,
+  syncConversationMessages,
   type AsyncStreamProxy,
   type DecodedMessage,
   type XmtpDm,
   type XmtpSdkClient,
 } from "@/lib/messaging/adapters/xmtp-adapter";
+import {
+  filterRenderableUserMessages,
+  isRenderableUserMessage,
+  userMessageBody,
+} from "@/lib/messaging/message-content";
 
 export type XmtpMessage = {
   id: string;
@@ -36,7 +41,7 @@ function mapDecodedMessage(
   return {
     id: message.id,
     senderAddress,
-    content: messageText(message),
+    content: userMessageBody(message),
     sentAt: message.sentAt,
     isMine,
   };
@@ -80,8 +85,12 @@ export function useXmtpMessages(
 
       try {
         await conversation.sendText(trimmed);
-        const refreshed = await conversation.messages({ limit: 80n, direction: SortDirection.Ascending });
-        const inboxIds = [...new Set(refreshed.map((m) => m.senderInboxId))];
+        const refreshed = await conversation.messages({
+          limit: 80n,
+          direction: SortDirection.Ascending,
+        });
+        const visible = filterRenderableUserMessages(refreshed);
+        const inboxIds = [...new Set(visible.map((m) => m.senderInboxId))];
         const missing = inboxIds.filter((id) => !addressByInboxRef.current.has(id));
         if (missing.length > 0) {
           const states = await client.preferences.getInboxStates(missing);
@@ -91,7 +100,7 @@ export function useXmtpMessages(
           }
         }
         setMessages(
-          refreshed.map((m) => mapDecodedMessage(m, client, addressByInboxRef.current)),
+          visible.map((m) => mapDecodedMessage(m, client, addressByInboxRef.current)),
         );
       } catch (error) {
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
@@ -116,9 +125,10 @@ export function useXmtpMessages(
     const load = async () => {
       setIsLoading(true);
       try {
-        await client.conversations.sync();
         const conversation = await client.conversations.getConversationById(conversationId);
         if (!conversation || cancelled) return;
+
+        await syncConversationMessages(conversation);
 
         try {
           const peerInboxId = await (conversation as XmtpDm).peerInboxId();
@@ -129,8 +139,12 @@ export function useXmtpMessages(
           // Not a DM or peer lookup failed — continue loading messages.
         }
 
-        const loaded = await conversation.messages({ limit: 80n, direction: SortDirection.Ascending });
-        const inboxIds = [...new Set(loaded.map((m) => m.senderInboxId))];
+        const loaded = await conversation.messages({
+          limit: 80n,
+          direction: SortDirection.Ascending,
+        });
+        const visible = filterRenderableUserMessages(loaded);
+        const inboxIds = [...new Set(visible.map((m) => m.senderInboxId))];
         const missing = inboxIds.filter((id) => !addressByInboxRef.current.has(id));
         if (missing.length > 0) {
           const states = await client.preferences.getInboxStates(missing);
@@ -141,13 +155,19 @@ export function useXmtpMessages(
         }
 
         if (!cancelled) {
-          setMessages(loaded.map((m) => mapDecodedMessage(m, client, addressByInboxRef.current)));
+          setMessages(
+            visible.map((m) => mapDecodedMessage(m, client, addressByInboxRef.current)),
+          );
         }
 
         stream = await conversation.stream({
           onValue: (message) => {
             if (cancelled) return;
-            if (!addressByInboxRef.current.has(message.senderInboxId) && client.inboxId !== message.senderInboxId) {
+            if (!isRenderableUserMessage(message)) return;
+            if (
+              !addressByInboxRef.current.has(message.senderInboxId) &&
+              client.inboxId !== message.senderInboxId
+            ) {
               void client.preferences.getInboxStates([message.senderInboxId]).then((states) => {
                 const eth = ethereumAddressFromInboxState(states[0]);
                 if (eth) addressByInboxRef.current.set(message.senderInboxId, eth);

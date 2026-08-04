@@ -97,7 +97,7 @@ describe("messaging delivery policy (P8)", () => {
     assert.equal(/streamAllDmMessages\(\s*\{[^}]*consentStates/.test(text), false);
   });
 
-  it("messaging library does not mention localStorage outside cache-adapter", () => {
+  it("messaging library does not mention browser storage outside cache-adapter", () => {
     const messagingLib = path.join(ROOT, "lib/messaging");
     const violations: string[] = [];
     for (const file of listTsFiles(messagingLib)) {
@@ -105,13 +105,17 @@ describe("messaging delivery policy (P8)", () => {
       if (rel === "lib/messaging/adapters/cache-adapter.ts") continue;
       const text = stripComments(fs.readFileSync(file, "utf8"));
       if (/\blocalStorage\b/.test(text)) {
-        violations.push(rel);
+        violations.push(`${rel}: localStorage`);
+      }
+      if (/\bsessionStorage\b/.test(text)) {
+        violations.push(`${rel}: sessionStorage`);
       }
     }
     assert.deepEqual(violations, []);
     const cache = fs.readFileSync(CACHE, "utf8");
     assert.ok(cache.includes("xmtp:lastseen:"));
     assert.ok(cache.includes("isMessagingStorageAvailable"));
+    assert.ok(cache.includes("messaging:compose-draft:"));
   });
 
   it("stream acquisition has matching release path (handle.end + closeLocal)", () => {

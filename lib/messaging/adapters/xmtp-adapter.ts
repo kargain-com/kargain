@@ -175,9 +175,21 @@ export function isText(message: DecodedMessage<unknown>): boolean {
   return ensureXmtpModule().isText(message);
 }
 
-export function messageText(message: DecodedMessage<unknown>): string {
-  if (isText(message)) return String(message.content ?? "");
-  return message.fallback ?? "…";
+/**
+ * Bring conversations and their messages from the network into the local store.
+ * Consent filter omitted (same as unfiltered listDms until P9).
+ */
+export async function syncConversationsAndMessages(
+  client: XmtpSdkClient,
+): Promise<void> {
+  await client.conversations.syncAll();
+}
+
+/** Bring one conversation's messages from the network into the local store. */
+export async function syncConversationMessages(
+  conversation: { sync: () => Promise<unknown> },
+): Promise<void> {
+  await conversation.sync();
 }
 
 export function getClientEthereumAddress(client: XmtpSdkClient): `0x${string}` | null {

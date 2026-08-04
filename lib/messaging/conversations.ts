@@ -1,9 +1,14 @@
 import type { XmtpSdkClient } from "./adapters/xmtp-adapter";
 import {
   ethereumAddressFromInboxState,
-  messageText,
+  syncConversationsAndMessages,
   truncatePreview,
 } from "./adapters/xmtp-adapter";
+import {
+  filterRenderableUserMessages,
+  isRenderableUserMessage,
+  userMessageBody,
+} from "./message-content";
 
 export type ConversationSummary = {
   id: string;
@@ -26,7 +31,31 @@ async function unreadFromProtocolReadState(
     ownReadNs !== undefined
       ? { sentAfterNs: ownReadNs, excludeSenderInboxIds: [client.inboxId] }
       : { excludeSenderInboxIds: [client.inboxId] };
-  return Number(await dm.countMessages(options));
+  // Prefer listing + filter: countMessages includes protocol commits.
+  const recent = await dm.messages(options);
+  return filterRenderableUserMessages(recent).length;
+}
+
+async function lastRenderablePreview(
+  dm: DmConversation,
+): Promise<{ text: string | null; at: Date | null }> {
+  const last = await dm.lastMessage();
+  if (last && isRenderableUserMessage(last)) {
+    return {
+      text: truncatePreview(userMessageBody(last)),
+      at: last.sentAt ?? null,
+    };
+  }
+  // Walk recent history for the last user-visible message (skip protocol events).
+  // Descending = 1 (wasm SortDirection) — avoids requiring the SDK module here.
+  const recent = await dm.messages({ limit: 40n, direction: 1 });
+  const renderable = filterRenderableUserMessages(recent);
+  const tip = renderable[0];
+  if (!tip) return { text: null, at: null };
+  return {
+    text: truncatePreview(userMessageBody(tip)),
+    at: tip.sentAt ?? null,
+  };
 }
 
 export async function buildConversationSummary(
@@ -41,9 +70,7 @@ export async function buildConversationSummary(
   const peerAddress =
     ethereumAddressFromInboxState(inboxStateByInboxId.get(peerInboxId)) ?? peerInboxId;
 
-  const last = await dm.lastMessage();
-  const lastMessage = last ? truncatePreview(messageText(last)) : null;
-  const lastMessageAt = last?.sentAt ?? null;
+  const { text: lastMessage, at: lastMessageAt } = await lastRenderablePreview(dm);
   const unreadCount = await unreadFromProtocolReadState(client, dm);
 
   return {
@@ -70,12 +97,12 @@ export function sumUnreadCounts(summaries: ConversationSummary[]): number {
 }
 
 /**
- * Load inbox summaries. Inbox states are resolved in one batch for all peers.
+ * Load inbox summaries. Syncs conversations and messages from the network first.
  */
 export async function loadConversationSummaries(
   client: XmtpSdkClient,
 ): Promise<ConversationSummary[]> {
-  await client.conversations.sync();
+  await syncConversationsAndMessages(client);
   const dms = await client.conversations.listDms();
   const peerInboxIds = await Promise.all(dms.map((dm) => dm.peerInboxId()));
   const uniquePeerIds = [...new Set(peerInboxIds)];

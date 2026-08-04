@@ -72,22 +72,40 @@ describe("sumUnreadCounts", () => {
 type FakeDm = {
   id: string;
   peerInboxId: () => Promise<string>;
-  lastMessage: () => Promise<null>;
+  lastMessage: () => Promise<null | { content: string; contentType?: { authorityId: string; typeId: string }; sentAt?: Date }>;
   lastReadTimes: () => Promise<Map<string, bigint>>;
-  countMessages: (opts?: { sentAfterNs?: bigint; excludeSenderInboxIds?: string[] }) => Promise<bigint>;
+  messages: (opts?: {
+    sentAfterNs?: bigint;
+    excludeSenderInboxIds?: string[];
+    limit?: bigint;
+    direction?: number;
+  }) => Promise<
+    Array<{
+      content: string;
+      contentType?: { authorityId: string; typeId: string };
+      sentAt?: Date;
+      senderInboxId?: string;
+    }>
+  >;
 };
 
 function makeFakeClient(opts: {
   dms: FakeDm[];
   inboxId: string;
   onGetInboxStates?: (ids: string[]) => void;
+  onSyncAll?: () => void;
 }) {
   let getInboxStatesCalls = 0;
+  let syncAllCalls = 0;
   return {
     inboxId: opts.inboxId,
     getInboxStatesCalls: () => getInboxStatesCalls,
+    syncAllCalls: () => syncAllCalls,
     conversations: {
-      sync: async () => {},
+      syncAll: async () => {
+        syncAllCalls += 1;
+        opts.onSyncAll?.();
+      },
       listDms: async () => opts.dms,
     },
     preferences: {
@@ -116,15 +134,16 @@ describe("loadConversationSummaries batching", () => {
       peerInboxId: async () => `peer-${i}`,
       lastMessage: async () => null,
       lastReadTimes: async () => new Map([[inboxId, 0n]]),
-      countMessages: async () => 0n,
+      messages: async () => [],
     }));
     const client = makeFakeClient({ dms, inboxId });
     const summaries = await loadConversationSummaries(client as never);
     assert.equal(client.getInboxStatesCalls(), 1);
+    assert.equal(client.syncAllCalls(), 1);
     assert.equal(summaries.length, 5);
   });
 
-  it("unread uses protocol lastReadTimes watermark", async () => {
+  it("unread uses protocol lastReadTimes watermark and filters protocol events", async () => {
     const inboxId = "self-inbox";
     const dms: FakeDm[] = [
       {
@@ -132,10 +151,22 @@ describe("loadConversationSummaries batching", () => {
         peerInboxId: async () => "peer-1",
         lastMessage: async () => null,
         lastReadTimes: async () => new Map([[inboxId, 1_000n]]),
-        countMessages: async (opts) => {
-          assert.equal(opts?.sentAfterNs, 1_000n);
-          assert.deepEqual(opts?.excludeSenderInboxIds, [inboxId]);
-          return 3n;
+        messages: async (opts) => {
+          if (opts?.sentAfterNs !== undefined) {
+            assert.equal(opts.sentAfterNs, 1_000n);
+            assert.deepEqual(opts?.excludeSenderInboxIds, [inboxId]);
+            return [
+              { content: "a", contentType: { authorityId: "xmtp.org", typeId: "text" } },
+              {
+                content: "skip",
+                contentType: { authorityId: "xmtp.org", typeId: "group_updated" },
+              },
+              { content: "b", contentType: { authorityId: "xmtp.org", typeId: "text" } },
+              { content: "c", contentType: { authorityId: "xmtp.org", typeId: "text" } },
+            ];
+          }
+          // lastRenderablePreview walk when lastMessage is null
+          return [];
         },
       },
     ];

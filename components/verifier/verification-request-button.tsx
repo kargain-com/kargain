@@ -12,6 +12,7 @@ import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
+import { setComposeDraft } from "@/lib/messaging/compose-draft";
 import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
@@ -127,7 +128,7 @@ export function VerificationRequestButton({
         nostrProfile: verifierProfile,
         provider,
       });
-      await dm.sendText(messageText);
+      setComposeDraft(dm.id, messageText);
       router.push(`/messages/${dm.id}`);
     } catch (e) {
       setActionError(

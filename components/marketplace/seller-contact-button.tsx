@@ -9,9 +9,12 @@ import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
+import {
+  buildListingInquiryDraft,
+  setComposeDraft,
+} from "@/lib/messaging/compose-draft";
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
 import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
-import { formatPassportTitle } from "@/lib/passport/passport-token-id";
 import { isMessageablePeerOnCommercialChains } from "@/lib/web3/wallet-account";
 
 type Props = {
@@ -19,10 +22,6 @@ type Props = {
   label: string;
   listingTokenId?: string | null;
 };
-
-function buildListingInquiryMessage(tokenId: string): string {
-  return `Hi, I'm interested in your listing for ${formatPassportTitle(tokenId)}.`;
-}
 
 export function SellerContactButton({ peerAddress, label, listingTokenId }: Props) {
   const { address, isConnected, connector } = useAccount();
@@ -86,10 +85,7 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
         provider,
       });
       if (listingTokenId) {
-        const last = await conversation.lastMessage();
-        if (!last) {
-          await conversation.sendText(buildListingInquiryMessage(listingTokenId));
-        }
+        setComposeDraft(conversation.id, buildListingInquiryDraft(listingTokenId));
       }
       router.push(`/messages/${conversation.id}`);
     } catch (e) {

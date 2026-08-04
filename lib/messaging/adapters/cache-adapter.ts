@@ -1,6 +1,6 @@
 /**
- * Session-scoped observation memos. Only this module may touch localStorage
- * under lib/messaging/.
+ * Session-scoped observation memos and ephemeral messaging storage.
+ * Only this module may touch localStorage / sessionStorage under lib/messaging/.
  */
 
 export type CacheEntry = {
@@ -104,6 +104,68 @@ export function writePendingReceipts(
 /** Test helper — clear pending receipts for an address. */
 export function clearPendingReceipts(env: string, address: string): void {
   writePendingReceipts(env, address, []);
+}
+
+/** Tab-scoped compose drafts (take clears; dies with the tab). */
+function composeDraftKey(conversationId: string): string {
+  return `messaging:compose-draft:${conversationId}`;
+}
+
+const memoryComposeDrafts = new Map<string, string>();
+
+function isMessagingSessionStorageAvailable(): boolean {
+  return typeof sessionStorage !== "undefined";
+}
+
+/** Stage a composer draft until the thread takes it. */
+export function writeComposeDraft(conversationId: string, text: string): void {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  const key = composeDraftKey(conversationId);
+  if (isMessagingSessionStorageAvailable()) {
+    try {
+      sessionStorage.setItem(key, trimmed);
+    } catch {
+      // Private mode / quota — draft is best-effort.
+    }
+    return;
+  }
+  memoryComposeDrafts.set(key, trimmed);
+}
+
+/** Read and clear a staged draft for this conversation (once). */
+export function takeStoredComposeDraft(conversationId: string): string | null {
+  const key = composeDraftKey(conversationId);
+  if (isMessagingSessionStorageAvailable()) {
+    try {
+      const value = sessionStorage.getItem(key);
+      sessionStorage.removeItem(key);
+      const trimmed = value?.trim() ?? "";
+      return trimmed.length > 0 ? trimmed : null;
+    } catch {
+      return null;
+    }
+  }
+  const value = memoryComposeDrafts.get(key);
+  memoryComposeDrafts.delete(key);
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Test helper — clear all in-memory compose drafts. */
+export function clearComposeDraftsForTest(): void {
+  memoryComposeDrafts.clear();
+  if (!isMessagingSessionStorageAvailable()) return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith("messaging:compose-draft:")) keys.push(k);
+    }
+    for (const k of keys) sessionStorage.removeItem(k);
+  } catch {
+    // ignore
+  }
 }
 
 export type MessagingCachePort = {
