@@ -140,6 +140,11 @@ export type XmtpPort = {
   ensureModule(signal?: AbortSignal): Promise<void>;
   /** True after a successful ensureModule / preload settled. */
   isModuleReady(): boolean;
+  /**
+   * Resolves when no local-client release is outstanding. Acquisition
+   * (build/create) must await this outside any wall-clock deadline.
+   */
+  whenLocalIdle(): Promise<void>;
   buildLocal(address: string, signal?: AbortSignal): Promise<BuildLocalResult>;
   /**
    * User-signature path. No wall timeout (waits on wallet); cancellable via
@@ -147,10 +152,10 @@ export type XmtpPort = {
    */
   createWithSigner(address: string, signal?: AbortSignal): Promise<CreateWithSignerResult>;
   /**
-   * Shut down a local client handle. Idempotent; never throws into the caller
-   * (already-closed / dead worker must not become a session error).
+   * Shut down a local client handle. Completes when streams have ended and the
+   * SDK client is closed. Idempotent; never rejects into the caller.
    */
-  closeLocal(client: XmtpLocalClient): void;
+  closeLocal(client: XmtpLocalClient): Promise<void>;
   /**
    * Request persistent storage before the first create. Refusal means this
    * device's installation is evictable.

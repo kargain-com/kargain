@@ -95,12 +95,13 @@ export function createControlledClock(startMs = 0): ControlledClock {
 export type FakeXmtpHandlers = {
   ensureModule?: (signal?: AbortSignal) => Promise<void>;
   isModuleReady?: () => boolean;
+  whenLocalIdle?: () => Promise<void>;
   buildLocal?: (address: string, signal?: AbortSignal) => Promise<BuildLocalResult>;
   createWithSigner?: (
     address: string,
     signal?: AbortSignal,
   ) => Promise<CreateWithSignerResult>;
-  closeLocal?: (client: XmtpLocalClient) => void;
+  closeLocal?: (client: XmtpLocalClient) => void | Promise<void>;
   ensureDurableStorage?: (signal?: AbortSignal) => Promise<{ durable: boolean }>;
   revokeOtherInstallations?: (
     address: string,
@@ -121,6 +122,7 @@ export type FakeXmtpHandlers = {
 export type FakeXmtpPort = XmtpPort & {
   calls: {
     ensureModule: number;
+    whenLocalIdle: number;
     buildLocal: number;
     createWithSigner: number;
     closeLocal: number;
@@ -135,6 +137,9 @@ export type FakeXmtpPort = XmtpPort & {
   lastRevokeOthersClient: XmtpLocalClient | null | undefined;
   /** Test control — mark module ready without ensureModule. */
   setModuleReady(ready: boolean): void;
+  /** Test control — block whenLocalIdle until released. */
+  blockIdle(): void;
+  releaseIdle(): void;
 };
 
 /** Never-resolving promise (until abort) — hang fixture. */
@@ -155,6 +160,7 @@ export function hangUntilAbort<T>(signal?: AbortSignal): Promise<T> {
 export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPort {
   const calls = {
     ensureModule: 0,
+    whenLocalIdle: 0,
     buildLocal: 0,
     createWithSigner: 0,
     closeLocal: 0,
@@ -167,6 +173,9 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
   let lastRevokeOthersClient: XmtpLocalClient | null | undefined;
   let clientSeq = 0;
   let moduleReady = false;
+  let releaseTail: Promise<void> = Promise.resolve();
+  let idleBlocked: Promise<void> | null = null;
+  let releaseIdleBlock: (() => void) | null = null;
 
   function trackAcquire(client: XmtpLocalClient): XmtpLocalClient {
     live.add(client);
@@ -189,6 +198,16 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     setModuleReady(ready) {
       moduleReady = ready;
     },
+    blockIdle() {
+      idleBlocked = new Promise<void>((resolve) => {
+        releaseIdleBlock = resolve;
+      });
+    },
+    releaseIdle() {
+      releaseIdleBlock?.();
+      releaseIdleBlock = null;
+      idleBlocked = null;
+    },
     async ensureModule(signal) {
       calls.ensureModule += 1;
       if (handlers.ensureModule) {
@@ -202,6 +221,15 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
     isModuleReady() {
       if (handlers.isModuleReady) return handlers.isModuleReady();
       return moduleReady;
+    },
+    async whenLocalIdle() {
+      calls.whenLocalIdle += 1;
+      if (handlers.whenLocalIdle) {
+        await handlers.whenLocalIdle();
+        return;
+      }
+      if (idleBlocked) await idleBlocked;
+      await releaseTail;
     },
     async buildLocal(address, signal) {
       calls.buildLocal += 1;
@@ -221,10 +249,21 @@ export function createFakeXmtpPort(handlers: FakeXmtpHandlers = {}): FakeXmtpPor
       }
       return { ok: true, client: trackAcquire(defaultClient()) };
     },
-    closeLocal(client) {
+    async closeLocal(client) {
       calls.closeLocal += 1;
-      live.delete(client);
-      if (handlers.closeLocal) handlers.closeLocal(client);
+      const work = async () => {
+        live.delete(client);
+        if (handlers.closeLocal) await handlers.closeLocal(client);
+      };
+      const run = releaseTail.then(work, work);
+      releaseTail = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      await run.then(
+        () => undefined,
+        () => undefined,
+      );
     },
     async ensureDurableStorage(signal) {
       calls.ensureDurableStorage += 1;

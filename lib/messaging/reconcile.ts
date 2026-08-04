@@ -37,29 +37,18 @@ function shouldBuild(state: MachineState): boolean {
   return true;
 }
 
-/** Create only on explicit enable / reset recovery — never auto on cutover. */
+/** Create only on a completed not_registered build, or post-revoke create stage. */
 function shouldCreate(state: MachineState): boolean {
   if (!hasClientDemand(state)) return false;
   if (state.localClient) return false;
 
-  // Storage busy — never mint an installation while the local DB cannot open.
-  if (state.lastError === "opfs_lock" || state.localBuildReason === "opfs_lock") {
-    return false;
-  }
-
-  // Full-revoke publishes intent false before revoke; create must still run.
+  // User-authorised remint after full/partial revoke — consumed at create start.
   if (state.resetChain === "create") return true;
 
   if (!wantsMessaging(state)) return false;
   if (!state.enableRequested) return false;
-  // Prefer silent build first when not yet attempted.
-  if (
-    state.registrationStatus !== "unregistered" &&
-    state.localBuildReason === null
-  ) {
-    return false;
-  }
-  return true;
+  // Positive answer only: completed build reported this device has no installation.
+  return state.registrationStatus === "unregistered";
 }
 
 function shouldPublishTrue(state: MachineState): boolean {

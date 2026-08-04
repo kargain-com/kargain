@@ -267,6 +267,41 @@ async function endAllStreamsForClient(client: object): Promise<void> {
   );
 }
 
+/** Serialises local-client release so the next acquire cannot open OPFS early. */
+let localReleaseTail: Promise<void> = Promise.resolve();
+
+function enqueueLocalRelease(work: () => Promise<void>): Promise<void> {
+  const run = localReleaseTail.then(work, work);
+  localReleaseTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+async function whenLocalReleaseIdle(): Promise<void> {
+  await localReleaseTail;
+}
+
+async function closeLocalClient(client: XmtpLocalClient): Promise<void> {
+  return enqueueLocalRelease(async () => {
+    const raw = unbrandClient(client);
+    try {
+      await endAllStreamsForClient(raw);
+    } catch {
+      // ignore
+    }
+    try {
+      raw.close();
+    } catch {
+      // Already shut down or worker dead — teardown must not fail the session.
+    }
+  });
+}
+
 export type InboxDeliveryHandlers = {
   onConversation: () => void;
   onMessage: (conversationId: string) => void;
@@ -486,6 +521,7 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
     },
 
     async buildLocal(address, signal) {
+      await whenLocalReleaseIdle();
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
         const xmtp = ensureXmtpModule();
@@ -518,6 +554,7 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
     },
 
     async createWithSigner(address, signal) {
+      await whenLocalReleaseIdle();
       const walletClient = input.getWalletClient();
       if (!walletClient) {
         return { ok: false, reason: "build_failed" };
@@ -537,17 +574,13 @@ export function createXmtpAdapter(input: CreateXmtpAdapterInput): XmtpPort {
       }
     },
 
-    closeLocal(client) {
-      const raw = unbrandClient(client);
-      void endAllStreamsForClient(raw).finally(() => {
-        try {
-          raw.close();
-        } catch {
-          // Already shut down or worker dead — teardown must not fail the session.
-        }
-      });
+    whenLocalIdle() {
+      return whenLocalReleaseIdle();
     },
 
+    closeLocal(client) {
+      return closeLocalClient(client);
+    },
     async ensureDurableStorage(signal) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {

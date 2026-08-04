@@ -87,7 +87,10 @@ describe("messaging delivery policy (P8)", () => {
     assert.ok(text.includes("openInboxDeliveryStreams"));
     assert.ok(text.includes("endAllStreamsForClient"));
     assert.ok(text.includes("getLiveInboxStreamCount"));
-    assert.match(text, /closeLocal\s*\([^)]*\)\s*\{[\s\S]*endAllStreamsForClient/);
+    assert.match(text, /closeLocalClient[\s\S]*endAllStreamsForClient|endAllStreamsForClient[\s\S]*closeLocalClient/);
+    assert.ok(text.includes("closeLocal(client)"));
+    assert.ok(text.includes("closeLocalClient"));
+    assert.ok(text.includes("endAllStreamsForClient"));
     assert.ok(text.includes("streamDms"));
     assert.ok(text.includes("streamAllDmMessages"));
     // Consent omitted — no Allowed-only filter on the open call.

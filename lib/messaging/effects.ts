@@ -81,7 +81,8 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
   /**
    * Sole owner of published-client teardown.
    * Clear ownership + notify first (unless alreadyDetached); destroy after one
-   * macrotask so consumers that key streams on `client` can detach.
+   * macrotask so consumers that key streams on `client` can detach. Completion
+   * is observed via the adapter release queue (`whenLocalIdle`).
    */
   function abandonOwnedClient(
     client: XmtpLocalClient,
@@ -90,12 +91,13 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     if (!opts.alreadyDetached && state.localClient === client) {
       apply({ type: "local_client_set", client: null });
     }
+    const release = () => {
+      void ports.xmtp.closeLocal(client);
+    };
     if (opts.defer) {
-      void clock.sleep(0).then(() => {
-        ports.xmtp.closeLocal(client);
-      });
+      void clock.sleep(0).then(release);
     } else {
-      ports.xmtp.closeLocal(client);
+      release();
     }
   }
 
@@ -132,7 +134,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
 
   function closeOrphanBuildResult(result: BuildLocalResult | "timeout" | undefined): void {
     if (result && result !== "timeout" && result.ok) {
-      ports.xmtp.closeLocal(result.client);
+      void ports.xmtp.closeLocal(result.client);
     }
   }
 
@@ -188,20 +190,33 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
     if (plan.kind !== "run" || disposed) return;
 
     const opGeneration = generation;
-    const deadlineMs = deadlineFor(plan);
-    apply({
-      type: "effect_started",
-      op: plan.effect,
-      deadlineMs,
-      generation: opGeneration,
-    });
 
     if (plan.effect === "create") {
+      const deadlineMs = deadlineFor(plan);
+      apply({
+        type: "effect_started",
+        op: plan.effect,
+        deadlineMs,
+        generation: opGeneration,
+      });
       createAbortController?.abort();
       createAbortController = new AbortController();
       const createSignal = createAbortController.signal;
       inFlightCount = 1;
+      // Consume mint authorisation before any irreversible work — one enable /
+      // reset stage yields at most one create attempt.
+      const fromReset = state.resetChain === "create";
+      apply({ type: "enable_cleared" });
+      apply({ type: "registration_set", status: "unknown" });
+      if (fromReset) {
+        apply({ type: "reset_cleared" });
+      }
       try {
+        await ports.xmtp.whenLocalIdle();
+        if (isStale(opGeneration) || createSignal.aborted) {
+          apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
+          return;
+        }
         await ports.wallet.waitUntilReady(createSignal);
         if (isStale(opGeneration) || createSignal.aborted) {
           apply({ type: "awaiting_signature_set", reason: "create_cancelled" });
@@ -217,7 +232,7 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
         }
         const result = await ports.xmtp.createWithSigner(state.address, createSignal);
         if (isStale(opGeneration)) {
-          if (result.ok) ports.xmtp.closeLocal(result.client);
+          if (result.ok) void ports.xmtp.closeLocal(result.client);
           return;
         }
         if (createSignal.aborted && !result.ok) {
@@ -239,6 +254,85 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
       return;
     }
 
+    if (plan.effect === "build") {
+      // Idle wait is outside the wall deadline — held handles must not burn it.
+      const signal = beginInFlight().signal;
+      try {
+        apply({
+          type: "effect_started",
+          op: "build",
+          deadlineMs: Number.MAX_SAFE_INTEGER,
+          generation: opGeneration,
+        });
+        await ports.xmtp.whenLocalIdle();
+        if (isStale(opGeneration) || signal.aborted) return;
+        const deadlineMs = clock.nowMs() + BUILD_DEADLINE_MS;
+        apply({
+          type: "effect_started",
+          op: "build",
+          deadlineMs,
+          generation: opGeneration,
+        });
+        const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
+          ports.xmtp.buildLocal(state.address, signal),
+        );
+        if (isStale(opGeneration)) {
+          closeOrphanBuildResult(result);
+          return;
+        }
+        if (result === "timeout") {
+          apply({ type: "last_error_set", reason: "timeout" });
+          return;
+        }
+        const mapped = applyBuildResult(result);
+        if (mapped.registrationStatus) {
+          apply({ type: "registration_set", status: mapped.registrationStatus });
+        }
+        if (mapped.client) {
+          apply({ type: "local_client_set", client: mapped.client });
+        } else {
+          apply({
+            type: "local_client_set",
+            client: null,
+            reason: mapped.reason ?? undefined,
+          });
+          // Park on awaiting unless enable already holds a not_registered
+          // answer — shouldCreate runs on the next tick (positive answer only).
+          const deferToCreate =
+            mapped.awaiting === "not_registered" && state.enableRequested;
+          if (mapped.awaiting && !deferToCreate) {
+            apply({ type: "awaiting_signature_set", reason: mapped.awaiting });
+          }
+          if (mapped.lastError) {
+            apply({ type: "last_error_set", reason: mapped.lastError });
+          }
+        }
+      } catch (err) {
+        if (!isStale(opGeneration)) {
+          if (isAbortError(err)) {
+            // Cancelled mid-op — do not pretend timeout.
+          } else {
+            apply({
+              type: "last_error_set",
+              reason: "unknown",
+              cause: formatUnknownCause(err),
+            });
+          }
+        }
+      } finally {
+        endInFlight();
+      }
+      return;
+    }
+
+    const deadlineMs = deadlineFor(plan);
+    apply({
+      type: "effect_started",
+      op: plan.effect,
+      deadlineMs,
+      generation: opGeneration,
+    });
+
     const signal = beginInFlight().signal;
 
     try {
@@ -257,41 +351,6 @@ export function createEffectsRunner(input: CreateEffectsRunnerInput): EffectsRun
               reason: "unknown",
               cause: formatUnknownCause(err),
             });
-          }
-          break;
-        }
-        case "build": {
-          const result = await runWithDeadline(opGeneration, deadlineMs, signal, () =>
-            ports.xmtp.buildLocal(state.address, signal),
-          );
-          if (isStale(opGeneration)) {
-            closeOrphanBuildResult(result);
-            return;
-          }
-          if (result === "timeout") {
-            apply({ type: "last_error_set", reason: "timeout" });
-            break;
-          }
-          const mapped = applyBuildResult(result);
-          if (mapped.registrationStatus) {
-            apply({ type: "registration_set", status: mapped.registrationStatus });
-          }
-          if (mapped.client) {
-            apply({ type: "local_client_set", client: mapped.client });
-          } else {
-            apply({
-              type: "local_client_set",
-              client: null,
-              reason: mapped.reason ?? undefined,
-            });
-            // With enable requested, fall through to create — do not park on awaiting.
-            // Storage failures set lastError and must never fall through.
-            if (mapped.awaiting && !state.enableRequested) {
-              apply({ type: "awaiting_signature_set", reason: mapped.awaiting });
-            }
-            if (mapped.lastError) {
-              apply({ type: "last_error_set", reason: mapped.lastError });
-            }
           }
           break;
         }

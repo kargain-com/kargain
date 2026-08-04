@@ -129,11 +129,10 @@ describe("messaging contract — scenarios", () => {
     if (snap.state === "needs_signature") assert.equal(snap.reason, "build_failed");
   });
 
-  it("enable while background build in flight → createWithSigner after settle without client", async () => {
+  it("enable while background build fails → zero creates (failure is not mint authorisation)", async () => {
     const clock = createControlledClock();
     let releaseBuild: (() => void) | undefined;
-    const fakeClient = { __brand: "XmtpLocalClient" as const };
-    const { session, xmtp, nostr } = openSession(clock, {
+    const { session, xmtp } = openSession(clock, {
       nostr: {
         readIntent: async () => ({ status: "answered", intent: null }),
         publishIntent: async () => ({ ok: true }),
@@ -141,9 +140,12 @@ describe("messaging contract — scenarios", () => {
       xmtp: {
         buildLocal: async () =>
           new Promise((resolve) => {
-            releaseBuild = () => resolve({ ok: false, reason: "build_failed" });
+            releaseBuild = () =>
+              resolve({ ok: false, reason: "build_failed" });
           }),
-        createWithSigner: async () => ({ ok: true, client: fakeClient }),
+        createWithSigner: async () => {
+          throw new Error("create must not run after build_failed");
+        },
       },
     });
     await settleAsync(clock);
@@ -153,9 +155,10 @@ describe("messaging contract — scenarios", () => {
     assert.equal(xmtp.calls.createWithSigner, 0);
     releaseBuild?.();
     await settleAsync(clock);
-    assert.ok(xmtp.calls.createWithSigner >= 1);
-    assert.ok(nostr.calls.publishIntent >= 1);
-    assert.equal(session.getSnapshot().state, "active");
+    assert.equal(xmtp.calls.createWithSigner, 0);
+    const snap = session.getSnapshot();
+    assert.equal(snap.state, "needs_signature");
+    if (snap.state === "needs_signature") assert.equal(snap.reason, "build_failed");
   });
 
   it("disable: publishIntent(false) before local teardown", async () => {

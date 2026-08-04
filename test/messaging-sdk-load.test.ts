@@ -322,12 +322,17 @@ export async function checkXmtpReachable(address) {
     assert.ok(text.includes('case "sdk"'));
     assert.ok(text.includes("ensureModule"));
     assert.equal(/case "sdk":[\s\S]{0,400}runWithDeadline/.test(text), false);
-    assert.ok(/case "build":[\s\S]{0,200}runWithDeadline/.test(text));
+    assert.ok(text.includes('plan.effect === "build"'));
+    assert.ok(/plan\.effect === "build"[\s\S]{0,800}runWithDeadline/.test(text));
+    assert.ok(/whenLocalIdle[\s\S]{0,400}runWithDeadline/.test(text));
   });
 
-  it("shouldCreate refuses opfs_lock", () => {
+  it("shouldCreate authorises only positive not_registered (no denylist)", () => {
     const text = fs.readFileSync(path.join(ROOT, "lib/messaging/reconcile.ts"), "utf8");
-    assert.ok(text.includes('localBuildReason === "opfs_lock"'));
-    assert.ok(text.includes('lastError === "opfs_lock"'));
+    const match = text.match(/function shouldCreate\([\s\S]*?\n\}/);
+    assert.ok(match);
+    assert.ok(match![0].includes('registrationStatus === "unregistered"'));
+    assert.equal(match![0].includes("localBuildReason"), false);
+    assert.equal(match![0].includes("opfs_lock"), false);
   });
 });

@@ -80,7 +80,7 @@ describe("messaging client lifecycle policy", () => {
     // Stale build: isStale then close orphan via closeOrphanBuildResult
     assert.match(
       text,
-      /case "build":[\s\S]*if \(isStale\(opGeneration\)\) \{\s*closeOrphanBuildResult\(result\)/,
+      /plan\.effect === "build"[\s\S]*if \(isStale\(opGeneration\)\) \{\s*closeOrphanBuildResult\(result\)/,
     );
     // Timeout path closes late-ok clients
     assert.ok(text.includes("closeOrphanBuildResult"));
@@ -91,13 +91,19 @@ describe("messaging client lifecycle policy", () => {
     // Stale create: isStale then closeLocal on ok client
     assert.match(
       text,
-      /createWithSigner[\s\S]*if \(isStale\(opGeneration\)\) \{\s*if \(result\.ok\) ports\.xmtp\.closeLocal/,
+      /createWithSigner[\s\S]*if \(isStale\(opGeneration\)\) \{\s*if \(result\.ok\) void ports\.xmtp\.closeLocal/,
+    );
+    // Build deadline starts after whenLocalIdle
+    assert.match(
+      text,
+      /plan\.effect === "build"[\s\S]*whenLocalIdle[\s\S]*BUILD_DEADLINE_MS[\s\S]*runWithDeadline/,
     );
   });
 
-  it("ports declare closeLocal, ensureModule, and ensureDurableStorage; active may carry storageEvictable", () => {
+  it("ports declare closeLocal, whenLocalIdle, ensureModule, and ensureDurableStorage; active may carry storageEvictable", () => {
     const ports = fs.readFileSync(path.join(ROOT, "lib/messaging/ports.ts"), "utf8");
-    assert.match(ports, /closeLocal\s*\(\s*client:\s*XmtpLocalClient\s*\)\s*:\s*void/);
+    assert.match(ports, /closeLocal\s*\(\s*client:\s*XmtpLocalClient\s*\)\s*:\s*Promise<\s*void\s*>/);
+    assert.match(ports, /whenLocalIdle\s*\(\s*\)\s*:\s*Promise<\s*void\s*>/);
     assert.match(ports, /ensureModule/);
     assert.match(ports, /isModuleReady/);
     assert.match(ports, /ensureDurableStorage/);
