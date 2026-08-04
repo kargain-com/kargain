@@ -148,6 +148,8 @@ describe("intent publish signature counts", () => {
 });
 
 describe("nostr-adapter identity owner", () => {
+  // I15 — Blind spot: declined≠failed is proven for the adapter port; a surface
+  // that maps signature_declined to publish_failed in UI copy is out of scope here.
   it("declined unlock → signature_declined not publish_failed", async () => {
     const identity: NostrIdentityCapability = {
       async obtainKey() {

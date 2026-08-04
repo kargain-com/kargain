@@ -376,3 +376,83 @@ describe("nostr querySync write policy", () => {
     assert.ok(adapterSrc.includes("obtainKey"));
   });
 });
+
+describe("I9 coverage reader feeds write decisions (P10)", () => {
+  // Blind spot: cannot see a publisher that uses querySync via eval or a
+  // dynamically imported module outside PUBLISH_PATH_OWNERS.
+
+  it("catches a constructed querySync on a publish-path owner", () => {
+    const dirty = `
+export async function saveFavorites() {
+  const events = await pool.querySync([{ kinds: [30000] }]);
+  await publish(events);
+}
+`;
+    assert.equal(QUERY_SYNC_CALL.test(dirty), true);
+    const clean = `
+export async function saveFavorites() {
+  const coverage = await fetchRelayCoverage(filter);
+  await publish(coverage.answeredRelays);
+}
+`;
+    assert.equal(QUERY_SYNC_CALL.test(clean), false);
+    assert.equal(FETCH_RELAY_COVERAGE.test(clean), true);
+  });
+});
+
+describe("I10 attested-profile sole owner + skew bound (P10)", () => {
+  // Blind spot: skew presence is textual — a renamed constant with the same
+  // numeric literal would pass until resolve-attested-profile behavioural tests fail.
+
+  it("catches a constructed ethereum identity-tag query outside the resolver", () => {
+    const dirty = `
+export async function lookupPeer(address) {
+  return pool.querySync([{ "#i": ["ethereum:" + address] }]);
+}
+`;
+    assert.ok(/#i["']?\s*:/.test(dirty) && /ethereum:/.test(dirty));
+    const clean = `
+export async function lookupPeer(address) {
+  return resolveAttestedProfile(address);
+}
+`;
+    assert.equal(/#i["']?\s*:/.test(clean) && /ethereum:/.test(clean), false);
+  });
+
+  it("catches removal of the skew export name", () => {
+    const dirty = `
+export function isCreatedAtWithinReadSkew(created, now) {
+  return Math.abs(created - now) <= 3600;
+}
+`;
+    assert.equal(dirty.includes("ATTESTED_PROFILE_CREATED_AT_SKEW_SECONDS"), false);
+    const live = fs.readFileSync(
+      path.join(ROOT, "lib/nostr/resolve-attested-profile.ts"),
+      "utf8",
+    );
+    assert.ok(live.includes("ATTESTED_PROFILE_CREATED_AT_SKEW_SECONDS"));
+  });
+});
+
+describe("I15 messaging identity owner (P10)", () => {
+  // Blind spot: transitive reachability walk misses packages outside lib/hooks.
+
+  it("catches a constructed getOrCreateNostrKey on the messaging adapter", () => {
+    const dirty = `
+export function createNostrPolicyAdapter(deps) {
+  return {
+    async obtainKey() {
+      return getOrCreateNostrKey(deps.address);
+    },
+  };
+}
+`;
+    assert.ok(dirty.includes("getOrCreateNostrKey"));
+    const live = fs.readFileSync(
+      path.join(ROOT, "lib/messaging/adapters/nostr-adapter.ts"),
+      "utf8",
+    );
+    assert.equal(live.includes("getOrCreateNostrKey"), false);
+    assert.ok(live.includes("obtainKey"));
+  });
+});

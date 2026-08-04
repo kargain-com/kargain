@@ -473,7 +473,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Seller warning | [`SellerMessagingBanner`](../components/marketplace/seller-messaging-banner.tsx) on own active listing detail + manage listing — setup card when incomplete; else factual unreachable disclosure when `active && !publiclyReachable`; never blocks list/buy/edit |
 | KarPro | Post-join [`MessagingSetupCard`](../components/messaging/messaging-setup-card.tsx) with `context="karpro"` while `needsMessagingSetupCard`; checklist `messagingReadyForChecklist` false until reachable without publish failure |
 | `?to=` pre-fill | `/messages?to={address}` opens DM after `awaitActiveSnapshot`; uses [`contactPeer`](../lib/messaging/contact-peer.ts); URL param stripped on mount |
-| Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — stages listing inquiry via [`compose-draft.ts`](../lib/messaging/compose-draft.ts) (`setComposeDraft` → cache-adapter sessionStorage), then navigates to `/messages/{id}`; thread [`takeComposeDraft`](../lib/messaging/compose-draft.ts) prefills the composer. **Nothing is sent until the user presses Send** |
+| Listing inquiry DM | [`SellerContactButton`](../components/marketplace/seller-contact-button.tsx) with `listingTokenId` — stages listing inquiry via [`compose-draft.ts`](../lib/messaging/compose-draft.ts) (`setComposeDraft` → cache-adapter), then navigates to `/messages/{id}`; thread peeks via `peekComposeDraft` (pure) and clears storage after commit. **Nothing is sent until the user presses Send** |
 | Verification request DM | [`verification-request-button.tsx`](../components/verifier/verification-request-button.tsx) — same draft owner + navigate; never auto-`sendText` |
 | Profile entry | Identity header **Message** / **Request verification** when peer reachable; else copy from [`peerReachabilityMessage`](../lib/messaging/can-message-peer.ts) |
 | Peer reachability | Browse CTA: intent + protocol + account-kind only ([`can-message-peer.ts`](../lib/messaging/can-message-peer.ts) — no XMTP probe, no module load). Click path: [`contactPeer`](../lib/messaging/contact-peer.ts) establishes readiness via `ensureXmtpModuleReady` (same owner as session `ensureModule`), then probes registration under `PEER_REGISTRATION_DEADLINE_MS` (network only). Incomplete probe → `unknown` — copy asserts nothing about the peer’s registration |
@@ -506,6 +506,58 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 No per-message sender label in the bubble list. Publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 
 Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
+
+**Consent (P9 contract — not yet built).** XMTP carries consent per conversation as `Allowed` / `Denied` / `Unknown`; the protocol surface is `preferences.setConsentStates` / `getConsentState` / `streamConsent`, `conversation.consentState()` / `updateConsentState()`, and the `consentStates` filter on `list*` / `syncAll` / `streamAllMessages`. None of it is used today: the inbox lists every DM unfiltered, and every seller address is discoverable through Ponder, so an unsolicited-DM vector is open. This block is the contract to build against; behaviour below is normative and the model wins over any screen.
+
+**Model.** A cold first contact from a buyer to a seller **is the product** and must never be walled. Consent therefore separates rather than blocks:
+
+| Transition | Resulting state |
+|------------|-----------------|
+| The user starts the conversation | `Allowed` |
+| The user sends any message in it | `Allowed` — replying is acceptance |
+| Someone else starts it | `Unknown` — lands in **Requests**, never dropped, never silent |
+| The user blocks | `Denied` |
+| Provable on-chain relationship with the peer | `Allowed` without user action |
+
+**Provable relationship** means, and means only: the peer is counterparty, owner or agent on a live consignment or mandate with the user, or the peer is a verifier the user has contacted. It is read from the indexer through existing commercial-union queries — never inferred from message content, never from a Nostr profile field.
+
+**Requests is a visible area, not a spam folder.** It carries its own count, distinct from unread. Its rows show the same identity chrome as the inbox. Nothing there is hidden or auto-expired, and nothing about it gates commerce. A `Denied` conversation disappears from both lists and raises no notification; unblocking is available from profile settings, not from the row that was blocked.
+
+**Cutover.** Existing conversations carry `Unknown`, so filtering naively would empty every inbox on first run. Apply the same rule that governs everything else rather than a migration shim: a conversation in which the user has **ever sent a message** is `Allowed`. That is "replying is acceptance" applied to history, resolved once at first load, not a compatibility path.
+
+**Surfaces.**
+
+| Element | Rule |
+|---------|------|
+| Inbox | `listDms` / `syncAll` / `streamAllDmMessages` filter `Allowed`. Unread and the nav dot count `Allowed` only |
+| Requests | Sibling list under `/messages`, own count, `Unknown` only; opening a request does **not** accept it |
+| Request row actions | **Accept** → `Allowed`; **Block** → `Denied`. Both write through `preferences.setConsentStates` and are reflected on other installations via `streamConsent` |
+| Composer in a request | Present. Sending is acceptance and promotes to `Allowed` in the same act — no separate confirm |
+| Nav | One indicator. Requests appear as a distinct, quieter count — never accent-warm, which is reserved for verified trust state |
+| Commerce | Consent state never gates listing, buying, mandating or verification. A blocked peer is a messaging fact only |
+| Copy | Factual, sentence case. Never "spam", never "suspicious" — the app does not know that. "Request" and "Blocked" |
+
+**Invariants this must add:** consent writes go through the protocol only (no local mirror of consent state); the inbox never displays an `Unknown` conversation; Requests never displays an `Allowed` or `Denied` one; a `Denied` conversation produces no notification on any surface; and the on-chain relationship auto-allow is derived from indexer reads, not from message contents.
+
+**Architectural invariants (P10)** — one sentence each. Executable suite: `test/messaging-invariant-*.test.ts` (helpers in `test/messaging-invariant-helpers.ts`); I9 / I10 / I15 proofs also under `test:nostr`.
+
+| ID | Invariant |
+|----|-----------|
+| I1 | Module loading is never inside a wall-clock deadline or abort timer. |
+| I2 | Only a completed negative registration answer (`unregistered` or post-revoke `resetChain === "create"`) authorises minting an installation. |
+| I3 | Every acquired SDK client handle has a release path, and the next acquisition serialises behind that release. |
+| I4 | Browser storage under `lib/messaging` has one owner: [`cache-adapter.ts`](../lib/messaging/adapters/cache-adapter.ts). |
+| I5 | The session core (`machine` / `effects` / `reconcile` / `registry` / `session-store`) contains no React and no module-scope session instances outside the registry. |
+| I6 | Every primary interface command is projected from the session contract (`primaryActionFromSnapshot` / `snapshot.next`) — surfaces do not invent commands. |
+| I7 | No timer drives conversation or message synchronisation. |
+| I8 | Only the user’s Send action transmits a message; entry paths may stage a draft only. |
+| I9 | A read that feeds a write decision uses the coverage reader (not a stale allowlist / `querySync` on write owners). |
+| I10 | The attested-profile resolver is the sole owner of identity-tag queries, and its created_at skew bound cannot be removed. |
+| I11 | Every surface that displays messages has fetched them via the sync choke-points (`syncAll` for inbox, `conversation.sync` for a thread) before local reads. |
+| I12 | `Client.create` / `Client.build` / `Client.close` and raw `syncAll` / `conversations.sync` exist only behind the XMTP adapter choke-point. |
+| I13 | Browse peer reachability never starts an XMTP module load; incomplete probes classify as `unknown`, never as unregistered. |
+| I14 | Protocol/system commits are not user messages (no bubble, no unread, no ellipsis fallback). |
+| I15 | Intent publish / Nostr identity on the messaging path goes through the single identity owner (`obtainKey` / `isKeyHeld`); declined ≠ failed. |
 
 ---
 
@@ -1609,4 +1661,4 @@ On viewports `< lg`, transactional panels (buy, offers, delist, agent actions) r
 
 ---
 
-*Document version: 5.131 (August 2026 — §4.12 compose draft + message syncAll / conversation.sync + content filter). Update when tokens, app shell, or component contracts change.*
+*Document version: 5.133 (August 2026 — §4.12 consent contract + P10 invariants; compose-draft peek/clear). Update when tokens, app shell, or component contracts change.*

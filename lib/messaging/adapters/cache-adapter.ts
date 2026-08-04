@@ -106,7 +106,7 @@ export function clearPendingReceipts(env: string, address: string): void {
   writePendingReceipts(env, address, []);
 }
 
-/** Tab-scoped compose drafts (take clears; dies with the tab). */
+/** Tab-scoped compose drafts (die with the tab). */
 function composeDraftKey(conversationId: string): string {
   return `messaging:compose-draft:${conversationId}`;
 }
@@ -117,7 +117,7 @@ function isMessagingSessionStorageAvailable(): boolean {
   return typeof sessionStorage !== "undefined";
 }
 
-/** Stage a composer draft until the thread takes it. */
+/** Stage a composer draft until the thread peeks and clears storage after commit. */
 export function writeComposeDraft(conversationId: string, text: string): void {
   const trimmed = text.trim();
   if (!trimmed) return;
@@ -133,23 +133,41 @@ export function writeComposeDraft(conversationId: string, text: string): void {
   memoryComposeDrafts.set(key, trimmed);
 }
 
-/** Read and clear a staged draft for this conversation (once). */
-export function takeStoredComposeDraft(conversationId: string): string | null {
+/** Pure read — does not mutate storage. */
+export function peekStoredComposeDraft(conversationId: string): string | null {
   const key = composeDraftKey(conversationId);
   if (isMessagingSessionStorageAvailable()) {
     try {
-      const value = sessionStorage.getItem(key);
-      sessionStorage.removeItem(key);
-      const trimmed = value?.trim() ?? "";
+      const trimmed = sessionStorage.getItem(key)?.trim() ?? "";
       return trimmed.length > 0 ? trimmed : null;
     } catch {
       return null;
     }
   }
-  const value = memoryComposeDrafts.get(key);
-  memoryComposeDrafts.delete(key);
-  const trimmed = value?.trim() ?? "";
+  const trimmed = memoryComposeDrafts.get(key)?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Remove a staged draft from browser/memory storage. */
+export function clearStoredComposeDraft(conversationId: string): void {
+  const key = composeDraftKey(conversationId);
+  if (isMessagingSessionStorageAvailable()) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+  memoryComposeDrafts.delete(key);
+}
+
+/**
+ * @deprecated Prefer peek + clear after commit. Kept for tests that need atomic consume.
+ */
+export function takeStoredComposeDraft(conversationId: string): string | null {
+  const value = peekStoredComposeDraft(conversationId);
+  clearStoredComposeDraft(conversationId);
+  return value;
 }
 
 /** Test helper — clear all in-memory compose drafts. */

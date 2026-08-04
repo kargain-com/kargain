@@ -22,7 +22,10 @@ import {
   type XmtpDm,
 } from "@/lib/messaging/adapters/xmtp-adapter";
 import { formatRelativeTime } from "@/lib/format/relative-time";
-import { takeComposeDraft } from "@/lib/messaging/compose-draft";
+import {
+  clearComposeDraftStorage,
+  peekComposeDraft,
+} from "@/lib/messaging/compose-draft";
 import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
 
 type Props = {
@@ -53,17 +56,15 @@ function ConversationThreadBody({ conversationId }: Props) {
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const { conversations, markConversationSeen } = useXmtpConversations();
   const { messages, isLoading, sendMessage, isSending } = useXmtpMessages(client, conversationId);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => peekComposeDraft(conversationId) ?? "");
   const [sendError, setSendError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const draftSeededRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (draftSeededRef.current === conversationId) return;
-    draftSeededRef.current = conversationId;
-    const staged = takeComposeDraft(conversationId);
-    if (staged) setDraft(staged);
+    // Storage clear after commit — render/initializer only peeks (pure).
+    // Keep mountSeeds so StrictMode remount can re-seed from memory.
+    clearComposeDraftStorage(conversationId);
   }, [conversationId]);
 
   const peerAddressRaw = useMemo(
@@ -258,5 +259,5 @@ function ConversationThreadBody({ conversationId }: Props) {
 }
 
 export function ConversationThreadClient({ conversationId }: Props) {
-  return <ConversationThreadBody conversationId={conversationId} />;
+  return <ConversationThreadBody key={conversationId} conversationId={conversationId} />;
 }
