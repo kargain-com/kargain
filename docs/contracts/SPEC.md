@@ -547,6 +547,18 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
   - **(e) No ops smoke-mint on mainnet.** Mainnet forbids ops/smoke `mintPassport` and live `pnpm smoke:bridge` on commercial KarPassport (infra proof = `bridge:wire:read-only` / §7.6 read-back). Placeholder URIs (e.g. `ar://nuclear-smoke`) are forbidden on commercial stacks. Testnet live smoke requires a **pre-minted** `--token-id` with valid metadata — auto-mint is disabled (`scripts/lib/smoke-bridge-policy.ts`). Home passport has **no user burn** (permanent invariant; foreign `bridgeBurn` only) — ops must not create leftover commercial home NFTs.
 - **Risk framing.** Kargain bridges passport identity/metadata (spoke mints **UNVERIFIED** per §7.1; trust is never ported), not fungible value custody. Blast radius of a messaging compromise is data integrity, not fund loss. This framing does **not** relax any rule above.
 
+### 7.7 Messaging fee payer (normative)
+
+Normative rule for XMTP (or any successor) network fees on commercial mainnet. Same gate class as [§7.6](#76-layerzero-security-configuration-normative) Phase 2: an external protocol dependency on the critical path to commercial mainnet product completeness — not a messaging-phase backlog item.
+
+**Payer ownership.** When the messaging network charges for traffic, the payer is the user (or an equivalent protocol user-pays path). Kargain MUST NOT fund a payer allowance, MUST NOT deposit USDC (or any fee token) into a Payer Registry for user messages, and MUST NOT hold a payer private key that pays for user messages. Platform treasury never subsidizes messaging.
+
+**Fail-closed consequence (explicit).** Until a protocol path exists where fees for user-originated messages are charged to the user’s own payer balance (or an equivalent user-pays mechanism), commercial mainnet Kargain ships **without** buyer↔seller private messaging. Cold buyer contact is a product surface (consent / Requests); that surface stays unavailable on paid mainnet rather than running on a platform-funded gateway. Clearing this gate is required for commercial mainnet messaging — the same class of blocker as clearing §7.6 before a mainnet bridge pathway.
+
+**Third-party gateways allowed.** This rule forbids Kargain funding and Kargain-held payer keys. It does **not** forbid a user paying a third-party gateway operator for signing and forwarding — the same pattern as a user paying an RPC provider. Whether such operators exist is outside this specification; client wiring MAY point at a user-chosen third-party gateway when the fee is not drawn from a Kargain-funded allowance.
+
+**Not in this section.** Whether fees are currently enforced on the live XMTP network, migration timelines, and issue trackers for user-funded / delegated signing are maintainer status (HANDOFF), not SPEC law. This section remains true after fees turn on.
+
 ---
 
 ### I.8. Security model
