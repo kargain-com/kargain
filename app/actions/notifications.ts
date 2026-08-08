@@ -17,6 +17,8 @@ export type PonderPassportBatchRow = {
 export type PonderListingBatchRow = {
   tokenId: string;
   active: boolean;
+  price?: string | number;
+  denominationKind?: number;
   fiatPrice1e8: string | number;
 };
 
@@ -110,6 +112,8 @@ export async function fetchListingBatch(tokenIds: string[]): Promise<ListingBatc
     const listings = (data.listings ?? []).map((row) => ({
       tokenId: row.tokenId ?? row.id ?? "",
       active: row.active,
+      price: row.price,
+      denominationKind: row.denominationKind,
       fiatPrice1e8: row.fiatPrice1e8,
     }));
     return { listings };

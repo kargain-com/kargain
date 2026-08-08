@@ -14,6 +14,7 @@ import {
   DENOMINATION_KIND,
   type DenominationKind,
 } from "@/lib/commerce/denomination";
+import { askingPriceInputUnit } from "@/lib/commerce/listing-price-display";
 import type { OpenableTerms } from "@/lib/commerce/openable-terms";
 import { SETTLEMENT_NOTE_WRITE_DISCLOSURE } from "@/lib/marketplace/settlement-note";
 
@@ -24,6 +25,7 @@ type Props = {
   onSettlementAssetChange: (token: string) => void;
   denominationKind: DenominationKind;
   onDenominationKindChange: (kind: DenominationKind) => void;
+  chainId: number;
   priceInput: string;
   onPriceInputChange: (value: string) => void;
   askingCurrency: string;
@@ -47,6 +49,7 @@ export function ListingSellerSettlementPanel({
   onSettlementAssetChange,
   denominationKind,
   onDenominationKindChange,
+  chainId,
   priceInput,
   onPriceInputChange,
   askingCurrency,
@@ -66,6 +69,12 @@ export function ListingSellerSettlementPanel({
   const fiatReason = selectedAsset?.fiatUnavailableReason;
   const showFiatControls =
     denominationKind === DENOMINATION_KIND.Fiat && fiatAllowed;
+  const priceUnit = askingPriceInputUnit({
+    denominationKind,
+    fiatCurrencyCode: askingCurrency,
+    settlementAsset,
+    chainId,
+  });
 
   return (
     <div className="space-y-4">
@@ -192,7 +201,7 @@ export function ListingSellerSettlementPanel({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={priceInputId}>Asking price</Label>
+            <Label htmlFor={priceInputId}>Asking price ({priceUnit})</Label>
             <Input
               id={priceInputId}
               inputMode="decimal"

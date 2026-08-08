@@ -253,6 +253,7 @@ export function AgentUpdateListingPanel({
           onSettlementAssetChange={() => {}}
           denominationKind={DENOMINATION_KIND.Fiat}
           onDenominationKindChange={() => {}}
+          chainId={chainId}
           priceInput=""
           onPriceInputChange={() => {}}
           askingCurrency={listingCurrency}

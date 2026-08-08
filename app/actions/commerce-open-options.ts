@@ -12,7 +12,7 @@ import {
   commerceModeAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
-import { shortAddress } from "@/lib/web3/wallet-display";
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
@@ -49,6 +49,7 @@ function parsePaymentTokens(
   rows: PaymentTokensResponse["paymentTokens"],
   modeContract: string,
   mode: CommerceMode,
+  chainId: number,
 ): OpenPaymentTokenInput[] {
   if (!rows) return [];
   const modeLc = modeContract.toLowerCase();
@@ -64,12 +65,20 @@ function parsePaymentTokens(
       continue;
     }
     if (token.toLowerCase() === zeroAddress) continue;
+    const meta = resolveSettlementAssetMeta({ chainId, asset: token });
+    const ponderDecimals = Number.isFinite(row.decimals)
+      ? Number(row.decimals)
+      : null;
+    const decimals =
+      ponderDecimals != null && ponderDecimals > 0
+        ? ponderDecimals
+        : (meta.decimals ?? 18);
     out.push({
       token,
       feed: row.feed?.trim() ?? "",
-      decimals: Number.isFinite(row.decimals) ? Number(row.decimals) : 18,
+      decimals,
       active: row.active !== false,
-      label: shortAddress(token),
+      label: meta.label,
     });
   }
   return out;
@@ -154,6 +163,7 @@ export async function getOpenableTerms(
             tokensJson.paymentTokens,
             modeAddress,
             mode,
+            chainId,
           ),
           currencyFeeds: [],
         }),
@@ -183,6 +193,7 @@ export async function getOpenableTerms(
           tokensJson.paymentTokens,
           modeAddress,
           mode,
+          chainId,
         ),
         currencyFeeds: parseCurrencyFeeds(feedsJson.currencyFeeds, modeAddress),
       }),

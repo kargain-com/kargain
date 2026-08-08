@@ -22,8 +22,13 @@ import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useClaimAssetMeta } from "@/hooks/use-claim-asset-meta";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import {
+  deriveListingAskingPrice,
+  formatListingAssetAsking,
+} from "@/lib/commerce/listing-price-display";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
+import type { ActiveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { FIXED_PRICE_R1_DISCLOSURE } from "@/lib/marketplace/fixed-price-r1-disclosure";
@@ -38,7 +43,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   chainId: number;
   tokenId: string;
-  listing: { seller: `0x${string}`; fiatPrice1e8: string; fiatCurrency: number };
+  listing: ActiveEffectiveListing;
   passportStatus: PassportStatus;
   duplicateVin: boolean;
   hadDispute: boolean;
@@ -190,13 +195,29 @@ export function ListingBuyPanel({
   });
 
   const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
+  const asking = deriveListingAskingPrice({
+    denominationKind: listing.denominationKind,
+    price: listing.price,
+    currencyCode: listing.currencyCode,
+    asset: listing.asset,
+    chainId,
+    erc20Decimals: assetMeta.decimals,
+  });
+  const sellerReceives =
+    asking.status === "asset"
+      ? formatListingAssetAsking(
+          asking.amount,
+          asking.decimals,
+          asking.unitLabel,
+        )
+      : asking.status === "fiat"
+        ? `${formatFiat1e8(asking.amount1e8)} ${fiatCurrencyLabel(listingCurrency)}`
+        : "—";
   const isSeller = Boolean(
     address &&
       listing.seller &&
       address.toLowerCase() === listing.seller.toLowerCase(),
   );
-
-  const sellerReceives = `${formatFiat1e8(BigInt(listing.fiatPrice1e8))} ${fiatCurrencyLabel(listingCurrency)}`;
 
   const needsApproval = useMemo(() => {
     if (isNative || allowance == null || quote == null) return false;
@@ -324,8 +345,15 @@ export function ListingBuyPanel({
   const priceBlock = (
     <div className="rounded-md border border-border-default bg-bg-surface p-4 space-y-2">
       <ListingDisplayPrice
-        fiatPrice1e8={listing.fiatPrice1e8}
-        fiatCurrency={listing.fiatCurrency}
+        facts={{
+          chainId,
+          price: listing.price,
+          denominationKind: listing.denominationKind,
+          asset: listing.asset,
+          currencyCode: listing.currencyCode,
+          fiatCurrency: listing.fiatCurrency,
+          erc20Decimals: assetMeta.decimals,
+        }}
         showLabel
         label="asking"
       />
@@ -339,8 +367,13 @@ export function ListingBuyPanel({
     directPaymentNote.length > 0 ? (
       <DirectPaymentNote
         note={directPaymentNote}
-        fiatPrice1e8={listing.fiatPrice1e8}
+        chainId={chainId}
+        price={listing.price}
+        denominationKind={listing.denominationKind}
+        asset={listing.asset}
+        currencyCode={listing.currencyCode}
         fiatCurrency={listing.fiatCurrency}
+        erc20Decimals={assetMeta.decimals}
       />
     ) : null;
 
@@ -408,8 +441,15 @@ export function ListingBuyPanel({
     <>
       <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
         <ListingDisplayPrice
-          fiatPrice1e8={listing.fiatPrice1e8}
-          fiatCurrency={listing.fiatCurrency}
+          facts={{
+            chainId,
+            price: listing.price,
+            denominationKind: listing.denominationKind,
+            asset: listing.asset,
+            currencyCode: listing.currencyCode,
+            fiatCurrency: listing.fiatCurrency,
+            erc20Decimals: assetMeta.decimals,
+          }}
           showLabel
           label="asking"
         />

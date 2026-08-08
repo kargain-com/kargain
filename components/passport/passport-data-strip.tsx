@@ -2,24 +2,20 @@
 
 import { useMemo, type ReactNode } from "react";
 
+import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
 import {
   monoLink,
-  monoNumeric,
   serialLabel,
 } from "@/lib/design/instrument-classes";
-import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import type { PassportCustody } from "@/lib/marketplace/passport-custody";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import { formatMileage } from "@/lib/passport/format-mileage";
 import type { PassportStatus } from "@/lib/types/ponder";
 
 type Props = {
-  listing?: {
-    active: boolean;
-    fiatPrice1e8: string;
-    fiatCurrency: number;
-  } | null;
+  listing?: FixedPriceListingDetailProp | null;
+  chainId: number;
   mileageKm?: number | null;
   status: PassportStatus;
   verifier: string;
@@ -36,13 +32,12 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export function PassportDataStrip({
   listing,
+  chainId,
   mileageKm,
   status,
   verifier,
   custody,
 }: Props) {
-  const { convertPrice } = useDisplayCurrency();
-
   const cells = useMemo<DataStripCell[]>(() => {
     const next: DataStripCell[] = [];
 
@@ -51,12 +46,16 @@ export function PassportDataStrip({
         key: "price",
         label: "Price",
         value: (
-          <p className={monoNumeric}>
-            {convertPrice(
-              BigInt(listing.fiatPrice1e8),
-              normalizeListingFiatCurrency(listing.fiatCurrency),
-            )}
-          </p>
+          <ListingDisplayPrice
+            facts={{
+              chainId,
+              price: listing.price,
+              denominationKind: listing.denominationKind,
+              asset: listing.asset,
+              currencyCode: listing.currencyCode,
+              fiatCurrency: listing.fiatCurrency,
+            }}
+          />
         ),
       });
     }
@@ -65,7 +64,7 @@ export function PassportDataStrip({
       next.push({
         key: "mileage",
         label: "Mileage",
-        value: <p className={monoNumeric}>{formatMileage(mileageKm)}</p>,
+        value: <p className="font-mono text-sm tabular-nums text-text-primary">{formatMileage(mileageKm)}</p>,
       });
     }
 
@@ -100,7 +99,7 @@ export function PassportDataStrip({
     });
 
     return next;
-  }, [convertPrice, custody, listing, mileageKm, status, verifier]);
+  }, [chainId, custody, listing, mileageKm, status, verifier]);
 
   if (cells.length < 2) return null;
 

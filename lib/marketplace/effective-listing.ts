@@ -1,20 +1,35 @@
+import { zeroAddress } from "viem";
+
+import {
+  DENOMINATION_KIND,
+  type DenominationKind,
+  parseDenominationKind,
+} from "@/lib/commerce/denomination";
 import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import type { OnChainListingRow } from "@/lib/marketplace/parse-on-chain-listing";
 
 export type ChainListingRead = "pending" | "success" | "failure";
 
+/** Active listing facts for detail/buy — denomination-aware. */
 export type ActiveEffectiveListing = {
   active: true;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
   seller: `0x${string}`;
+  price: string;
+  denominationKind: DenominationKind;
+  asset: `0x${string}`;
+  currencyCode: string;
+  fiatCurrency: number;
 };
 
 type PonderListing = {
   active: boolean;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
   seller: `0x${string}`;
+  price?: string;
+  fiatPrice1e8?: string;
+  denominationKind?: number;
+  asset?: string;
+  currencyCode?: string;
+  fiatCurrency: number;
 };
 
 function activeChainListing(
@@ -23,9 +38,12 @@ function activeChainListing(
   if (!row?.active) return null;
   return {
     active: true,
-    fiatPrice1e8: String(row.fiatPrice1e8),
-    fiatCurrency: normalizeListingFiatCurrency(row.fiatCurrency),
     seller: row.seller,
+    price: String(row.price),
+    denominationKind: row.denominationKind,
+    asset: row.asset,
+    currencyCode: row.currencyCode,
+    fiatCurrency: normalizeListingFiatCurrency(row.fiatCurrency),
   };
 }
 
@@ -33,11 +51,30 @@ function activePonderListing(
   listing: PonderListing | null,
 ): ActiveEffectiveListing | null {
   if (!listing?.active) return null;
+  const denominationKind =
+    parseDenominationKind(listing.denominationKind) ??
+    (listing.fiatPrice1e8 != null &&
+    listing.fiatPrice1e8 !== "0" &&
+    listing.price == null
+      ? DENOMINATION_KIND.Fiat
+      : DENOMINATION_KIND.Asset);
+  const price =
+    listing.price ??
+    (denominationKind === DENOMINATION_KIND.Fiat
+      ? (listing.fiatPrice1e8 ?? "0")
+      : (listing.fiatPrice1e8 ?? "0"));
+  let asset: `0x${string}` = zeroAddress;
+  if (listing.asset) {
+    asset = listing.asset as `0x${string}`;
+  }
   return {
     active: true,
-    fiatPrice1e8: listing.fiatPrice1e8,
-    fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency),
     seller: listing.seller,
+    price: String(price),
+    denominationKind,
+    asset,
+    currencyCode: listing.currencyCode ?? "",
+    fiatCurrency: normalizeListingFiatCurrency(listing.fiatCurrency),
   };
 }
 

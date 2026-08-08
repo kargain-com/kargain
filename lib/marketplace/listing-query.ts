@@ -3,6 +3,7 @@ import {
   isLegacyFiatCurrency,
   legacyFiatToCode,
 } from "@/lib/marketplace/currency-code";
+import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import {
   displayAmountToUsd1e8,
   isPriceCurrency,
@@ -68,6 +69,8 @@ export type ListingFilterFields = {
   fiatPrice1e8: bigint;
   fiatCurrency: number;
   listedAt: bigint;
+  /** When Asset, row is excluded from fiat USD bounds / sort as unpriced in fiat. */
+  denominationKind?: number;
 };
 
 export type EnrichedListingForFilter = ListingFilterFields & PassportFilterFields;
@@ -97,6 +100,9 @@ function resolveRowUsd1e8(
   row: ListingFilterFields,
   rates: PartialFxRates | null,
 ): bigint | null {
+  // Asset-denominated lots have no fiat USD without inventing FX.
+  if (row.denominationKind === DENOMINATION_KIND.Asset) return null;
+  if (row.fiatPrice1e8 <= 0n) return null;
   if (row.fiatCurrency === 0) return row.fiatPrice1e8;
   if (!isLegacyFiatCurrency(row.fiatCurrency)) return row.fiatPrice1e8;
   return listingToUsd1e8(row.fiatPrice1e8, row.fiatCurrency, rates);

@@ -20,6 +20,7 @@ import type {
   ConsignmentRecord,
   MandateRecord,
 } from "@/lib/commerce/ponder-consignment";
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
@@ -67,6 +68,10 @@ function useFloorUnits(row: MoneyRow) {
     asset: row.asset,
     erc20Decimals:
       typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    assetLabel: resolveSettlementAssetMeta({
+      chainId: row.chainId,
+      asset: row.asset,
+    }).label,
   });
 }
 

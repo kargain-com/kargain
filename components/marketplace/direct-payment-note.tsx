@@ -5,6 +5,11 @@ import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { QrCode } from "@/components/ui/qr-code";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
+import {
+  DENOMINATION_KIND,
+  type DenominationKind,
+} from "@/lib/commerce/denomination";
+import { deriveListingAskingPrice } from "@/lib/commerce/listing-price-display";
 import { instrumentReadoutPanel } from "@/lib/design/instrument-classes";
 import {
   detectPaymentIdentifiers,
@@ -21,8 +26,13 @@ import {
 
 type DirectPaymentNoteProps = {
   note: string;
-  fiatPrice1e8: string | bigint;
+  chainId: number;
+  price: string | bigint;
+  denominationKind: DenominationKind;
+  asset?: string | null;
+  currencyCode?: string | null;
   fiatCurrency: number;
+  erc20Decimals?: number | null;
 };
 
 function kindLabel(kind: PaymentIdentifier["kind"]): string {
@@ -74,8 +84,13 @@ function IdentifierBlock({ id }: { id: PaymentIdentifier }) {
 
 export function DirectPaymentNote({
   note,
-  fiatPrice1e8,
+  chainId,
+  price,
+  denominationKind,
+  asset,
+  currencyCode,
   fiatCurrency,
+  erc20Decimals,
 }: DirectPaymentNoteProps) {
   const identifiers = useMemo(() => detectPaymentIdentifiers(note), [note]);
   const hasLightningIdentifier = identifiers.some((id) => id.kind !== "btc-address");
@@ -85,11 +100,29 @@ export function DirectPaymentNote({
   const displayRates = useDisplayCurrency();
   const rates = useMemo(() => pickPartialFxRates(displayRates), [displayRates]);
 
+  const asking = useMemo(
+    () =>
+      deriveListingAskingPrice({
+        denominationKind,
+        price,
+        currencyCode,
+        asset,
+        chainId,
+        erc20Decimals,
+      }),
+    [denominationKind, price, currencyCode, asset, chainId, erc20Decimals],
+  );
+
   const listingUsd1e8 = useMemo(() => {
-    const amount =
-      typeof fiatPrice1e8 === "bigint" ? fiatPrice1e8 : BigInt(fiatPrice1e8);
-    return listingToUsd1e8(amount, normalizeListingFiatCurrency(fiatCurrency), rates);
-  }, [fiatPrice1e8, fiatCurrency, rates]);
+    // Asset lots have no fiat USD without inventing FX — skip advisory threshold.
+    if (asking.status !== "fiat") return null;
+    if (denominationKind !== DENOMINATION_KIND.Fiat) return null;
+    return listingToUsd1e8(
+      asking.amount1e8,
+      normalizeListingFiatCurrency(fiatCurrency),
+      rates,
+    );
+  }, [asking, denominationKind, fiatCurrency, rates]);
 
   const showLargeAmountAdvisory =
     hasLightningIdentifier &&

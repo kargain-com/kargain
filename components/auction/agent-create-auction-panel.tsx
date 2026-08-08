@@ -120,7 +120,7 @@ export function AgentCreateAuctionPanel({
     nowSeconds: nowSec,
   });
 
-  const assetLabel = auctionAssetLabelFromAddress(mandate?.asset);
+  const assetLabel = auctionAssetLabelFromAddress(mandate?.asset, chainId);
   const reserve = useMemo(
     () => parseOwnerMinAsset(reserveStr, assetLabel),
     [reserveStr, assetLabel],

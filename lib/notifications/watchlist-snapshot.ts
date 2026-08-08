@@ -75,10 +75,21 @@ export function diffSnapshots(
   previous: WatchlistSnapshot[],
   current: WatchlistSnapshot[],
 ): WatchlistSnapshotDiff[] {
-  const previousByToken = new Map(previous.map((s) => [s.tokenId, s]));
+  const normalize = (s: WatchlistSnapshot): WatchlistSnapshot => ({
+    ...s,
+    price: s.price ?? s.fiatPrice1e8 ?? "0",
+    denominationKind:
+      s.denominationKind === 0 || s.denominationKind === 1
+        ? s.denominationKind
+        : 1,
+  });
+  const previousByToken = new Map(
+    previous.map((s) => [s.tokenId, normalize(s)]),
+  );
   const diffs: WatchlistSnapshotDiff[] = [];
 
-  for (const newSnap of current) {
+  for (const newSnapRaw of current) {
+    const newSnap = normalize(newSnapRaw);
     const oldSnap = previousByToken.get(newSnap.tokenId);
     if (!oldSnap) continue;
 
@@ -100,7 +111,11 @@ export function diffSnapshots(
       });
     }
 
-    if (oldSnap.fiatPrice1e8 !== newSnap.fiatPrice1e8 && newSnap.active) {
+    if (
+      (oldSnap.price !== newSnap.price ||
+        oldSnap.denominationKind !== newSnap.denominationKind) &&
+      newSnap.active
+    ) {
       diffs.push({
         tokenId: newSnap.tokenId,
         changeType: "price_changed",

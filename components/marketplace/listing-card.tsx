@@ -162,8 +162,13 @@ export function ListingCard({ row }: Props) {
 
           <div className="mt-auto flex flex-col gap-2.5 pt-1.5">
             <ListingDisplayPrice
-              fiatPrice1e8={row.fiatPrice1e8}
-              fiatCurrency={row.fiatCurrency}
+              facts={{
+                chainId: row.chainId,
+                price: row.price,
+                denominationKind: row.denominationKind,
+                asset: row.asset,
+                fiatCurrency: row.fiatCurrency,
+              }}
             />
             <PassportIdLabel
               tokenId={row.tokenId}

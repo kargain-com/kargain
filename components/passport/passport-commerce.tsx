@@ -15,23 +15,14 @@ import {
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { isEncumbrancePermissionAvailable } from "@/lib/passport/encumbrance-permission";
+import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
-
-type ListingProp = {
-  active: boolean;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  seller: `0x${string}`;
-  agent?: string;
-  returnRequestedAt?: string | number;
-  externalPaymentConfirmedAt?: string | number;
-};
 
 type Props = {
   chainId: number;
   tokenId: string;
-  listing: ListingProp | null;
+  listing: FixedPriceListingDetailProp | null;
   initialAuction: AuctionRow | null;
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;

@@ -19,7 +19,13 @@ import {
 function buildSnapshots(
   tokenIds: string[],
   passports: Array<{ id: string; status: string; updatedAt: string | number }>,
-  listings: Array<{ tokenId: string; active: boolean; fiatPrice1e8: string | number }>,
+  listings: Array<{
+    tokenId: string;
+    active: boolean;
+    fiatPrice1e8: string | number;
+    price?: string | number;
+    denominationKind?: number;
+  }>,
 ): WatchlistSnapshot[] {
   const passportById = new Map(passports.map((p) => [p.id, p]));
   const listingByToken = new Map(listings.map((l) => [l.tokenId, l]));
@@ -28,11 +34,21 @@ function buildSnapshots(
   return tokenIds.map((tokenId) => {
     const passport = passportById.get(tokenId);
     const listing = listingByToken.get(tokenId);
+    const fiatPrice1e8 =
+      listing?.fiatPrice1e8 != null ? String(listing.fiatPrice1e8) : "0";
+    const denominationKind =
+      listing?.denominationKind === 0 || listing?.denominationKind === 1
+        ? listing.denominationKind
+        : 1;
+    const price =
+      listing?.price != null ? String(listing.price) : fiatPrice1e8;
     return {
       tokenId,
       status: passport?.status ?? "UNVERIFIED",
       active: listing?.active ?? false,
-      fiatPrice1e8: listing?.fiatPrice1e8 != null ? String(listing.fiatPrice1e8) : "0",
+      price,
+      denominationKind,
+      fiatPrice1e8,
       updatedAt: passport?.updatedAt != null ? String(passport.updatedAt) : "0",
       capturedAt,
     };

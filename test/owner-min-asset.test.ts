@@ -49,16 +49,18 @@ describe("auctionAssetLabelFromAddress", () => {
     assert.equal(
       auctionAssetLabelFromAddress(
         "0x0000000000000000000000000000000000000000",
+        84532,
       ),
       "ETH",
     );
-    assert.equal(auctionAssetLabelFromAddress(null), "ETH");
+    assert.equal(auctionAssetLabelFromAddress(null, 84532), "ETH");
   });
 
-  it("maps non-zero to USDC", () => {
+  it("maps registered USDC to USDC", () => {
     assert.equal(
       auctionAssetLabelFromAddress(
         "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        84532,
       ),
       "USDC",
     );

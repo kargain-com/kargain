@@ -7,8 +7,8 @@ import type { PonderListingInput } from "@/lib/marketplace/map-ponder-listing";
 
 /**
  * Bridge an indexed fixed-price consignment onto the browse listing shape.
- * Asset-denominated lots have no fiat price; they carry `0` so cards fall back
- * to the on-chain quote rather than inventing a converted number.
+ * Carries denomination + raw price + asset so cards can show Asset units or
+ * Fiat without inventing FX.
  */
 function consignmentFieldsToListingInput(
   row: {
@@ -18,6 +18,7 @@ function consignmentFieldsToListingInput(
     seller: string;
     denominationKind: number;
     price: string | bigint;
+    asset?: string | null;
     currencyCode?: string | null;
     phase: string;
     openedAt: string | number;
@@ -38,14 +39,18 @@ function consignmentFieldsToListingInput(
 ): PonderListingInput {
   const fiat = row.denominationKind === DENOMINATION_KIND.Fiat;
   const price =
-    typeof row.price === "bigint" ? row.price.toString() : row.price;
+    typeof row.price === "bigint" ? row.price.toString() : String(row.price);
   return {
     id: row.id,
     tokenId: row.tokenId,
     chainId: row.chainId,
     seller: row.seller,
+    price,
+    denominationKind: row.denominationKind,
+    asset: row.asset ?? undefined,
+    /** Fiat lots only — asset lots must not feed display/filter as $0. */
     fiatPrice1e8: fiat ? price : "0",
-    currencyCode: fiat ? (row.currencyCode ?? "USD") : "USD",
+    currencyCode: fiat ? (row.currencyCode ?? "USD") : row.currencyCode ?? "",
     active: row.phase === "offered" || row.phase === "binding",
     listedAt: row.openedAt,
     passportStatus: row.status ?? undefined,
@@ -85,6 +90,7 @@ export function consignmentRecordToListingInput(
     seller: row.seller,
     denominationKind: row.denominationKind,
     price: row.price,
+    asset: row.asset,
     currencyCode: row.currencyCode,
     phase: row.phase,
     openedAt: row.openedAt,

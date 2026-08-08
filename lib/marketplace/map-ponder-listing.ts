@@ -9,6 +9,11 @@ export type PonderListingInput = {
   tokenId: string;
   chainId: number;
   seller: string;
+  /** Raw consignment price (fiat 1e8 or asset units). */
+  price?: string | number;
+  denominationKind?: number;
+  asset?: string;
+  /** Fiat 1e8 when denomination is Fiat; "0" for asset (not for display). */
   fiatPrice1e8: string | number;
   fiatCurrency?: number;
   currencyCode?: string;
@@ -36,6 +41,11 @@ export type MarketplaceListingRow = {
   chainId: number;
   tokenId: string;
   seller: `0x${string}`;
+  /** Raw consignment price string. */
+  price: string;
+  denominationKind: number;
+  asset: string;
+  /** Fiat 1e8 when Fiat; "0" for asset lots (filters only). */
   fiatPrice1e8: string;
   fiatCurrency: number;
   passportStatus: PassportStatus;
@@ -77,10 +87,23 @@ function coverPhotoUrl(coverPhotoUri: string | undefined): string | null {
 
 export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceListingRow {
   const status = (listing.passportStatus ?? "UNVERIFIED") as PassportStatus;
+  const denominationKind =
+    listing.denominationKind === 0 || listing.denominationKind === 1
+      ? listing.denominationKind
+      : 1;
+  const price =
+    listing.price != null
+      ? String(listing.price)
+      : String(listing.fiatPrice1e8 ?? "0");
   return {
     chainId: listing.chainId,
     tokenId: listing.tokenId,
     seller: listing.seller as `0x${string}`,
+    price,
+    denominationKind,
+    asset: listing.asset?.trim()
+      ? listing.asset
+      : "0x0000000000000000000000000000000000000000",
     fiatPrice1e8: String(listing.fiatPrice1e8),
     fiatCurrency: listing.fiatCurrency != null
       ? normalizeListingFiatCurrency(listing.fiatCurrency)

@@ -5,7 +5,6 @@ import { Suspense } from "react";
 
 import { getAuctionDetail } from "@/app/actions/auction-detail";
 import { WarningIcon } from "@/components/ui/icons";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { formatKarPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
@@ -73,12 +72,6 @@ export default function MarketplaceListingPage({
   );
 }
 
-function isPonderListingActive(raw: unknown): boolean {
-  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const active = (raw as { active?: unknown }).active;
-  return active === true || active === "true";
-}
-
 async function MarketplaceListingInner({
   params,
   searchParams,
@@ -97,9 +90,9 @@ async function MarketplaceListingInner({
     notFound();
   }
 
-  const [result, listingRaw] = await Promise.all([
+  const [result, listing] = await Promise.all([
     fetchPassportDetailCached(raw, hintChainId),
-    fetchListingDetail(raw),
+    fetchListingDetail(raw, hintChainId ?? undefined),
   ]);
 
   if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
@@ -158,25 +151,10 @@ async function MarketplaceListingInner({
   const originChainId = result.passport.chainId;
   const auctionResult = await getAuctionDetail(raw);
 
-  const listingActive = isPonderListingActive(listingRaw);
-  const listing = listingRaw
-    ? {
-        active: listingActive,
-        fiatPrice1e8: String(
-          (listingRaw as { fiatPrice1e8: string | number }).fiatPrice1e8 ?? "0",
-        ),
-        fiatCurrency: normalizeListingFiatCurrency(
-          (listingRaw as { fiatCurrency: number | string }).fiatCurrency,
-        ),
-        seller: (listingRaw as { seller: string }).seller as `0x${string}`,
-        agent: (listingRaw as { agent?: string }).agent,
-        returnRequestedAt: (listingRaw as { returnRequestedAt?: string | number })
-          .returnRequestedAt,
-        externalPaymentConfirmedAt: (
-          listingRaw as { externalPaymentConfirmedAt?: string | number }
-        ).externalPaymentConfirmedAt,
-      }
-    : null;
+  // Prefer custody-scoped consignment when the parallel hint fetch missed chain.
+  const listingProp =
+    listing ??
+    (await fetchListingDetail(raw, commerceChainId));
 
   return (
     <div className="min-h-dvh bg-bg-primary">
@@ -188,7 +166,7 @@ async function MarketplaceListingInner({
         metadata={result.metadata}
         metadataError={result.metadataError}
         indexerPending={result.indexerPending}
-        listing={listing}
+        listing={listingProp}
         auction={auctionResult.ok ? auctionResult.auction : null}
       />
     </div>

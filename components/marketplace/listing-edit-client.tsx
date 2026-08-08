@@ -27,6 +27,10 @@ import {
   type DenominationKind,
   encodeCurrencyCode,
 } from "@/lib/commerce/denomination";
+import {
+  deriveListingAskingPrice,
+  formatListingAssetAsking,
+} from "@/lib/commerce/listing-price-display";
 import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
@@ -152,8 +156,6 @@ export function ListingEditClient({
   const row = commerce.listing;
   const active = row?.active ?? false;
   const seller = row?.seller;
-  const fiatPrice1e8 = row?.fiatPrice1e8 ?? 0n;
-  const listedFiat = row?.fiatCurrency ?? 0;
 
   const onChainNote = commerce.settlementNote;
 
@@ -434,7 +436,25 @@ export function ListingEditClient({
     );
   }
 
-  const displayCurrency = fiatCurrencyLabel(listedFiat);
+  const listedAsking = row
+    ? deriveListingAskingPrice({
+        denominationKind: row.denominationKind,
+        price: row.price,
+        currencyCode: row.currencyCode,
+        asset: row.asset,
+        chainId,
+      })
+    : { status: "unresolved" as const };
+  const listedAskingLabel =
+    listedAsking.status === "asset"
+      ? formatListingAssetAsking(
+          listedAsking.amount,
+          listedAsking.decimals,
+          listedAsking.unitLabel,
+        )
+      : listedAsking.status === "fiat"
+        ? `${formatFiat1e8(listedAsking.amount1e8)} ${fiatCurrencyLabel(row?.fiatCurrency ?? 0)}`
+        : "—";
 
   const panelShared = {
     openOptions,
@@ -443,6 +463,7 @@ export function ListingEditClient({
     onSettlementAssetChange: setSettlementAsset,
     denominationKind,
     onDenominationKindChange: setDenominationKind,
+    chainId,
     askingCurrency,
     onAskingCurrencyChange: setAskingCurrency,
   } as const;
@@ -463,7 +484,7 @@ export function ListingEditClient({
           <>
             <p className="text-xs text-text-secondary pt-2">Asking price</p>
             <p className="font-mono text-lg font-medium tabular-nums text-text-primary">
-              {formatFiat1e8(fiatPrice1e8)} {displayCurrency}
+              {listedAskingLabel}
             </p>
           </>
         ) : (

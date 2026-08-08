@@ -26,6 +26,7 @@ import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { commerceModeAddress, hasCommerceMode } from "@/lib/commerce/mode";
 import { isZeroAddress } from "@/lib/commerce/consignment";
 import { effectiveRecallRequestedAt } from "@/lib/commerce/recall";
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { resolveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
@@ -37,24 +38,15 @@ import {
 } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
+import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-type ListingProp = {
-  active: boolean;
-  fiatPrice1e8: string;
-  fiatCurrency: number;
-  seller: `0x${string}`;
-  agent?: string;
-  returnRequestedAt?: string | number;
-  externalPaymentConfirmedAt?: string | number;
-};
-
 type Props = {
   chainId: number;
   tokenId: string;
-  listing: ListingProp | null;
+  listing: FixedPriceListingDetailProp | null;
   /** Ponder passport owner (fallback while chain loads). */
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
@@ -209,6 +201,10 @@ export function ListingDetailClientIsland({
     asset: commerce.asset,
     erc20Decimals:
       typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    assetLabel: resolveSettlementAssetMeta({
+      chainId,
+      asset: commerce.asset,
+    }).label,
   });
   const showOwnerFloor = Boolean(
     showRecallFlow &&

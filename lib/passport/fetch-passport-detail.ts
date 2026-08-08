@@ -1,6 +1,9 @@
 import { cache } from "react";
 
+import { consignmentToListingInput } from "@/lib/commerce/listing-view";
+import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { mapPonderListingToRow } from "@/lib/marketplace/map-ponder-listing";
 import { fetchChainPassportDetail, readTokenUriOnChain } from "@/lib/passport/build-chain-passport-detail";
 import {
   effectiveTokenUri,
@@ -327,11 +330,61 @@ export async function fetchPassportDetail(
 /** Per-request dedupe for generateMetadata + page render. */
 export const fetchPassportDetailCached = cache(fetchPassportDetail);
 
-export async function fetchListingDetail(tokenId: string) {
+export type FixedPriceListingDetailProp = {
+  active: boolean;
+  seller: `0x${string}`;
+  price: string;
+  denominationKind: number;
+  asset: string;
+  currencyCode: string;
+  fiatCurrency: number;
+  /** Fiat 1e8 when Fiat; "0" for asset. */
+  fiatPrice1e8: string;
+  agent?: string;
+  returnRequestedAt?: string | number;
+  externalPaymentConfirmedAt?: string | number;
+};
+
+/**
+ * Live fixed-price consignment for passport/marketplace detail (Ponder).
+ * Prefer `/consignments/by-token` — legacy `/listings/:id` is retired.
+ */
+export async function fetchListingDetail(
+  tokenId: string,
+  chainId?: number,
+): Promise<FixedPriceListingDetailProp | null> {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/listings/${tokenId}`);
+    const url = new URL(
+      `${ponderBaseUrl()}/consignments/by-token/${tokenId}`,
+    );
+    url.searchParams.set("mode", "fixedPrice");
+    if (chainId != null && Number.isFinite(chainId) && chainId > 0) {
+      url.searchParams.set("chainId", String(Math.trunc(chainId)));
+    }
+    const res = await ponderFetch(url);
     if (!res.ok) return null;
-    return res.json();
+    const json = (await res.json()) as { consignment?: PonderConsignmentRow };
+    const row = json.consignment;
+    if (!row) return null;
+    const input = consignmentToListingInput(row);
+    const mapped = mapPonderListingToRow(input);
+    const active =
+      row.phase === "offered" || row.phase === "binding";
+    return {
+      active,
+      seller: mapped.seller,
+      price: mapped.price,
+      denominationKind: mapped.denominationKind,
+      asset: mapped.asset,
+      currencyCode:
+        typeof row.currencyCode === "string" ? row.currencyCode : "",
+      fiatCurrency: mapped.fiatCurrency,
+      fiatPrice1e8: mapped.fiatPrice1e8,
+      agent: mapped.agent ?? undefined,
+      returnRequestedAt: mapped.returnRequestedAt ?? undefined,
+      externalPaymentConfirmedAt:
+        mapped.externalPaymentConfirmedAt ?? undefined,
+    };
   } catch {
     return null;
   }

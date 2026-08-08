@@ -14,6 +14,7 @@ import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
 
 type Props = {
   authorization: AuctionAgentAuth;
+  chainId: number;
   now: number;
   onManage: () => void;
 };
@@ -27,10 +28,11 @@ function formatExpiry(expiry: bigint): string {
 
 export function AuctionAgentAuthorizationStatus({
   authorization,
+  chainId,
   now,
   onManage,
 }: Props) {
-  const assetLabel = auctionAssetLabelFromAddress(authorization.asset);
+  const assetLabel = auctionAssetLabelFromAddress(authorization.asset, chainId);
   const expired = isAuctionAuthExpired(authorization.expiry, now);
 
   return (

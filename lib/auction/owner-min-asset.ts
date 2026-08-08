@@ -1,11 +1,6 @@
-import {
-  formatEther,
-  formatUnits,
-  getAddress,
-  parseEther,
-  parseUnits,
-  zeroAddress,
-} from "viem";
+import { formatEther, formatUnits, parseEther, parseUnits } from "viem";
+
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 
 export type AuctionAssetLabel = "ETH" | "USDC";
 
@@ -48,14 +43,17 @@ export function isValidOwnerMinAsset(
   return parsed != null && parsed > 0n;
 }
 
-/** Map chain asset address to UI label (native zero = ETH). */
+/**
+ * Map chain asset address to ascending UI label (ETH | USDC).
+ * Delegates identity to {@link resolveSettlementAssetMeta}; unknown non-native
+ * admits collapse to USDC (sole ERC-20 on commercial chains today).
+ */
 export function auctionAssetLabelFromAddress(
   asset: string | undefined | null,
+  chainId: number,
 ): AuctionAssetLabel {
-  if (!asset?.trim()) return "ETH";
-  try {
-    return getAddress(asset) === zeroAddress ? "ETH" : "USDC";
-  } catch {
-    return "USDC";
-  }
+  const meta = resolveSettlementAssetMeta({ chainId, asset });
+  if (meta.identity === "native") return "ETH";
+  if (meta.identity === "usdc") return "USDC";
+  return "USDC";
 }

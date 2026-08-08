@@ -263,6 +263,7 @@ export function PassportSellPanel({
       mandateHasAgent(ascendingMandate) ? (
         <AuctionAgentAuthorizationStatus
           authorization={ascendingMandateAsAuth(ascendingMandate)}
+          chainId={chainId}
           now={now}
           onManage={() => setAscendingDialogOpen(true)}
         />

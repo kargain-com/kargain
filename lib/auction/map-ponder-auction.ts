@@ -1,3 +1,4 @@
+import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
 import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -181,9 +182,12 @@ function normalizePhase(phase: string): PonderAuctionPhase {
   return "CREATED";
 }
 
-/** `""` asset = native ETH; otherwise treat as USDC for Phase A. */
-export function auctionAssetLabel(asset: string | undefined | null): "ETH" | "USDC" {
-  return !asset || asset.trim() === "" ? "ETH" : "USDC";
+/** Native / empty → ETH; otherwise USDC via settlement-asset identity. */
+export function auctionAssetLabel(
+  asset: string | undefined | null,
+  chainId: number,
+): "ETH" | "USDC" {
+  return auctionAssetLabelFromAddress(asset, chainId);
 }
 
 export function auctionPhaseLabel(phase: PonderAuctionPhase | AuctionUiState): string {
@@ -258,7 +262,7 @@ export function mapPonderAuctionRow(raw: PonderAuctionRaw): AuctionRow {
     seller: (raw.seller || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     agent,
     asset,
-    assetLabel: auctionAssetLabel(asset),
+    assetLabel: auctionAssetLabel(asset, chainId),
     reserve: toBigInt(raw.reserve),
     duration: toBigInt(raw.duration),
     agentFeeBps: Number(raw.agentFeeBps ?? 0),

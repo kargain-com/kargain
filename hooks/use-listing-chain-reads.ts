@@ -126,6 +126,8 @@ export function useListingChainReads(input: {
     seller: reads.asString("consignmentSellerOf"),
     price: reads.asBigint("consignmentPriceOf"),
     currencyCode,
+    denominationKind,
+    asset: reads.asString("consignmentAssetOf"),
   });
 
   const agentRaw = reads.get("consignmentAgentOf");

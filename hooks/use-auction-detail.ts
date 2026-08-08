@@ -10,6 +10,7 @@ import {
   type AuctionRow,
   type AuctionUiState,
 } from "@/lib/auction/map-ponder-auction";
+import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
 import {
   deriveAscendingSettlementState,
   isAscendingSettlementPollActive,
@@ -143,7 +144,10 @@ export function useAuctionDetail({
             ? null
             : onChain.agent,
         asset: onChain.assetNormalized,
-        assetLabel: onChain.assetNormalized === "" ? "ETH" : "USDC",
+        assetLabel: auctionAssetLabelFromAddress(
+          onChain.assetNormalized || null,
+          chainId,
+        ),
         reserve: onChain.reserve,
         duration: onChain.duration,
         agentFeeBps: onChain.agentFeeBps,
@@ -189,9 +193,7 @@ export function useAuctionDetail({
         : base.agent,
       asset: onChain?.assetNormalized ?? base.asset,
       assetLabel: onChain
-        ? onChain.assetNormalized === ""
-          ? "ETH"
-          : "USDC"
+        ? auctionAssetLabelFromAddress(onChain.assetNormalized || null, chainId)
         : base.assetLabel,
       reserve: onChain?.reserve ?? base.reserve,
       duration: onChain?.duration ?? base.duration,

@@ -26,6 +26,7 @@ import {
 } from "@/lib/design/instrument-classes";
 import { resolvePassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
+import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import { formatKarPassportTitle } from "@/lib/passport/passport-token-id";
 import { getDisputeBannerText } from "@/lib/passport/record-types";
 import { showFixedAfterDisputeBanner } from "@/lib/passport/trust-signals";
@@ -43,15 +44,7 @@ type Props = {
   metadata: PassportMetadata | null;
   metadataError?: boolean;
   indexerPending?: boolean;
-  listing?: {
-    active: boolean;
-    fiatPrice1e8: string;
-    fiatCurrency: number;
-    seller: `0x${string}`;
-    agent?: string;
-    returnRequestedAt?: string | number;
-    externalPaymentConfirmedAt?: string | number;
-  } | null;
+  listing?: FixedPriceListingDetailProp | null;
   auction?: AuctionRow | null;
 };
 
@@ -223,6 +216,7 @@ export function PassportDetailView({
             <div className="mt-5">
               <PassportDataStrip
                 listing={listing}
+                chainId={chainId}
                 mileageKm={metadata?.mileageKm ?? null}
                 status={passport.status}
                 verifier={passport.verifier}

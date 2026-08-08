@@ -64,6 +64,10 @@ export type WatchlistSnapshot = {
   tokenId: string;
   status: string;
   active: boolean;
+  /** Raw consignment price (fiat 1e8 or asset units). */
+  price: string;
+  denominationKind: number;
+  /** @deprecated Prefer `price` + `denominationKind` for change detection. */
   fiatPrice1e8: string;
   updatedAt: string;
   capturedAt: number;
