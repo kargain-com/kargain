@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { erc20Abi, formatUnits, isAddressEqual, zeroAddress } from "viem";
+import { erc20Abi, isAddressEqual, zeroAddress } from "viem";
 import {
   useAccount,
   useBalance,
@@ -25,12 +25,12 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
   deriveListingAskingPrice,
   formatListingAssetAsking,
+  toAskingDisplaySource,
 } from "@/lib/commerce/listing-price-display";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ActiveEffectiveListing } from "@/lib/marketplace/effective-listing";
-import { fiatCurrencyLabel, formatFiat1e8 } from "@/lib/marketplace/fiat-format";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
+import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { FIXED_PRICE_R1_DISCLOSURE } from "@/lib/marketplace/fixed-price-r1-disclosure";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -194,7 +194,7 @@ export function ListingBuyPanel({
     query: { enabled: Boolean(address && isNative) },
   });
 
-  const listingCurrency = normalizeListingFiatCurrency(listing.fiatCurrency);
+  const { convertPrice, ethUsd } = useDisplayCurrency();
   const asking = deriveListingAskingPrice({
     denominationKind: listing.denominationKind,
     price: listing.price,
@@ -203,6 +203,10 @@ export function ListingBuyPanel({
     chainId,
     erc20Decimals: assetMeta.decimals,
   });
+  const askingDisplay = toAskingDisplaySource(asking, {
+    ethUsd1e8: ethUsd ?? null,
+  });
+  // Asset: settlement units (payout truth). Fiat: nav display currency.
   const sellerReceives =
     asking.status === "asset"
       ? formatListingAssetAsking(
@@ -210,8 +214,8 @@ export function ListingBuyPanel({
           asking.decimals,
           asking.unitLabel,
         )
-      : asking.status === "fiat"
-        ? `${formatFiat1e8(asking.amount1e8)} ${fiatCurrencyLabel(listingCurrency)}`
+      : askingDisplay != null
+        ? convertPrice(askingDisplay.amount1e8, askingDisplay.listingCurrency)
         : "—";
   const isSeller = Boolean(
     address &&
@@ -323,7 +327,7 @@ export function ListingBuyPanel({
     if (quoteUnavailable || quote == null) return "Unavailable";
     const decimals = assetMeta.decimals ?? 18;
     const symbol = assetMeta.symbol ?? assetMeta.nativeSymbol;
-    return `${formatUnits(quote, decimals)} ${symbol}`;
+    return formatListingAssetAsking(quote, decimals, symbol);
   })();
 
   const buyDisabled =
@@ -357,9 +361,6 @@ export function ListingBuyPanel({
         showLabel
         label="asking"
       />
-      <p className="font-sans text-xs text-text-secondary">
-        Checkout settles in {assetMeta.symbol ?? assetMeta.nativeSymbol}.
-      </p>
     </div>
   );
 

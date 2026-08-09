@@ -48,6 +48,8 @@ export type MarketplaceListingRow = {
   /** Fiat 1e8 when Fiat; "0" for asset lots (filters only). */
   fiatPrice1e8: string;
   fiatCurrency: number;
+  /** ISO / decoded currency code when present (fiat lots). */
+  currencyCode?: string | null;
   passportStatus: PassportStatus;
   updatedAtBlock: string;
   tokenUri: string;
@@ -108,6 +110,7 @@ export function mapPonderListingToRow(listing: PonderListingInput): MarketplaceL
     fiatCurrency: listing.fiatCurrency != null
       ? normalizeListingFiatCurrency(listing.fiatCurrency)
       : legacyFiatFromCurrencyCode(listing.currencyCode ?? "USD"),
+    currencyCode: listing.currencyCode ?? null,
     passportStatus: status,
     updatedAtBlock: String(listing.listedAt),
     tokenUri: listing.tokenUri ?? "",

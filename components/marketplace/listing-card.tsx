@@ -167,6 +167,7 @@ export function ListingCard({ row }: Props) {
                 price: row.price,
                 denominationKind: row.denominationKind,
                 asset: row.asset,
+                currencyCode: row.currencyCode,
                 fiatCurrency: row.fiatCurrency,
               }}
             />

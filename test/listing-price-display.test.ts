@@ -1,16 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { join } from "node:path";
 
 import { DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import {
   askingPriceInputUnit,
+  askingSettlementDisclosure,
   deriveListingAskingPrice,
   formatListingAssetAsking,
+  toAskingDisplaySource,
 } from "../lib/commerce/listing-price-display.ts";
+import { FIAT_SCALE } from "../lib/marketplace/price-normalize.ts";
 
 const BASE = 84532;
 const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const ZERO = "0x0000000000000000000000000000000000000000";
+const ROOT = join(import.meta.dirname, "..");
 
 describe("deriveListingAskingPrice", () => {
   it("formats fiat 1e8 asking", () => {
@@ -39,9 +45,10 @@ describe("deriveListingAskingPrice", () => {
     if (asking.status === "asset") {
       assert.equal(asking.decimals, 6);
       assert.equal(asking.unitLabel, "USDC");
+      assert.equal(asking.identity, "usdc");
       assert.equal(
         formatListingAssetAsking(asking.amount, asking.decimals, asking.unitLabel),
-        "350000 USDC",
+        "350,000 USDC",
       );
     }
   });
@@ -77,6 +84,88 @@ describe("deriveListingAskingPrice", () => {
   });
 });
 
+describe("toAskingDisplaySource", () => {
+  it("pegs USDC asset asking to USD 1e8 for convertPrice", () => {
+    const asking = deriveListingAskingPrice({
+      denominationKind: DENOMINATION_KIND.Asset,
+      price: 350000000000n,
+      asset: USDC,
+      chainId: BASE,
+    });
+    const source = toAskingDisplaySource(asking);
+    assert.ok(source);
+    assert.equal(source!.listingCurrency, 0);
+    assert.equal(source!.amount1e8, 350_000n * FIAT_SCALE);
+  });
+
+  it("converts native asset asking via ethUsd1e8", () => {
+    const asking = deriveListingAskingPrice({
+      denominationKind: DENOMINATION_KIND.Asset,
+      price: 10n ** 18n, // 1 ETH
+      asset: ZERO,
+      chainId: BASE,
+    });
+    const ethUsd = 2500n * FIAT_SCALE;
+    const source = toAskingDisplaySource(asking, { ethUsd1e8: ethUsd });
+    assert.ok(source);
+    assert.equal(source!.amount1e8, ethUsd);
+    assert.equal(source!.listingCurrency, 0);
+  });
+
+  it("returns null for native without eth rate", () => {
+    const asking = deriveListingAskingPrice({
+      denominationKind: DENOMINATION_KIND.Asset,
+      price: 10n ** 18n,
+      asset: ZERO,
+      chainId: BASE,
+    });
+    assert.equal(toAskingDisplaySource(asking), null);
+    assert.equal(toAskingDisplaySource(asking, { ethUsd1e8: null }), null);
+  });
+
+  it("returns null for unknown asset identity", () => {
+    const asking = deriveListingAskingPrice({
+      denominationKind: DENOMINATION_KIND.Asset,
+      price: 1000n,
+      asset: "0x2222222222222222222222222222222222222222",
+      chainId: BASE,
+      erc20Decimals: 18,
+    });
+    assert.equal(asking.status, "asset");
+    if (asking.status === "asset") {
+      assert.equal(asking.identity, "unknown");
+    }
+    assert.equal(toAskingDisplaySource(asking), null);
+  });
+
+  it("passes fiat asking through for convertPrice", () => {
+    const asking = deriveListingAskingPrice({
+      denominationKind: DENOMINATION_KIND.Fiat,
+      price: 100n * FIAT_SCALE,
+      currencyCode: "EUR",
+      asset: ZERO,
+      chainId: BASE,
+    });
+    const source = toAskingDisplaySource(asking);
+    assert.ok(source);
+    assert.equal(source!.amount1e8, 100n * FIAT_SCALE);
+    assert.equal(source!.listingCurrency, 1); // EUR
+  });
+});
+
+describe("askingSettlementDisclosure", () => {
+  it("formats sole settlement disclosure copy", () => {
+    assert.equal(
+      askingSettlementDisclosure("USDC"),
+      "Checkout settles in USDC.",
+    );
+    assert.equal(
+      askingSettlementDisclosure("ETH"),
+      "Checkout settles in ETH.",
+    );
+  });
+});
+
 describe("askingPriceInputUnit", () => {
   it("returns USDC for asset denomination on registered token", () => {
     assert.equal(
@@ -99,5 +188,32 @@ describe("askingPriceInputUnit", () => {
       }),
       "EUR",
     );
+  });
+});
+
+describe("listing asking display policy", () => {
+  it("chrome consumes disclosure owner; buy panel does not fork Checkout settles copy", () => {
+    const owner = readFileSync(
+      join(ROOT, "lib/commerce/listing-price-display.ts"),
+      "utf8",
+    );
+    assert.match(owner, /askingSettlementDisclosure/);
+    assert.match(owner, /Checkout settles in/);
+
+    const chrome = readFileSync(
+      join(ROOT, "components/marketplace/listing-display-price.tsx"),
+      "utf8",
+    );
+    assert.match(chrome, /askingSettlementDisclosure/);
+    assert.match(chrome, /toAskingDisplaySource/);
+    assert.match(chrome, /convertPrice/);
+
+    const buy = readFileSync(
+      join(ROOT, "components/marketplace/listing-buy-panel.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(buy, /Checkout settles/);
+    assert.match(buy, /formatListingAssetAsking/);
+    assert.match(buy, /ListingDisplayPrice/);
   });
 });

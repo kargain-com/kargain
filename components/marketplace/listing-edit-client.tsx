@@ -10,6 +10,7 @@ import {
   useWriteContract,
 } from "wagmi";
 
+import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
@@ -27,11 +28,6 @@ import {
   type DenominationKind,
   encodeCurrencyCode,
 } from "@/lib/commerce/denomination";
-import {
-  deriveListingAskingPrice,
-  formatListingAssetAsking,
-} from "@/lib/commerce/listing-price-display";
-import { formatFiat1e8, fiatCurrencyLabel } from "@/lib/marketplace/fiat-format";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   AUCTION_REQUIRES_VERIFICATION_HINT,
@@ -436,26 +432,6 @@ export function ListingEditClient({
     );
   }
 
-  const listedAsking = row
-    ? deriveListingAskingPrice({
-        denominationKind: row.denominationKind,
-        price: row.price,
-        currencyCode: row.currencyCode,
-        asset: row.asset,
-        chainId,
-      })
-    : { status: "unresolved" as const };
-  const listedAskingLabel =
-    listedAsking.status === "asset"
-      ? formatListingAssetAsking(
-          listedAsking.amount,
-          listedAsking.decimals,
-          listedAsking.unitLabel,
-        )
-      : listedAsking.status === "fiat"
-        ? `${formatFiat1e8(listedAsking.amount1e8)} ${fiatCurrencyLabel(row?.fiatCurrency ?? 0)}`
-        : "—";
-
   const panelShared = {
     openOptions,
     openOptionsPending,
@@ -480,12 +456,20 @@ export function ListingEditClient({
       <section className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-4">
         <p className="text-xs text-text-secondary">Token</p>
         <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" variant="mono" className="text-sm text-text-primary" />
-        {active ? (
+        {active && row ? (
           <>
             <p className="text-xs text-text-secondary pt-2">Asking price</p>
-            <p className="font-mono text-lg font-medium tabular-nums text-text-primary">
-              {listedAskingLabel}
-            </p>
+            <ListingDisplayPrice
+              facts={{
+                chainId,
+                price: row.price,
+                denominationKind: row.denominationKind,
+                asset: row.asset,
+                currencyCode: row.currencyCode,
+                fiatCurrency: row.fiatCurrency,
+              }}
+              className="font-mono text-lg font-medium tabular-nums text-text-primary"
+            />
           </>
         ) : (
           <p className="text-sm text-text-secondary">Not currently listed</p>

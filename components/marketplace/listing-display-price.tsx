@@ -3,15 +3,12 @@
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { browsePrice } from "@/lib/design/instrument-classes";
 import {
-  legacyFiatFromCurrencyCode,
-  type LegacyFiatCurrency,
-} from "@/lib/marketplace/currency-code";
-import { normalizeListingFiatCurrency } from "@/lib/marketplace/price-normalize";
-import {
+  askingSettlementDisclosure,
   deriveListingAskingPrice,
   formatListingAssetAsking,
-  type ListingAskingPrice,
+  toAskingDisplaySource,
 } from "@/lib/commerce/listing-price-display";
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import {
   DENOMINATION_KIND,
   type DenominationKind,
@@ -40,38 +37,13 @@ type Props = {
   className?: string;
 };
 
-function askingToDisplayString(
-  asking: ListingAskingPrice,
-  convertPrice: (
-    amount1e8: bigint,
-    fiatCurrency: LegacyFiatCurrency,
-  ) => string,
-  fiatCurrencyFallback: LegacyFiatCurrency,
-): string {
-  if (asking.status === "unresolved") return "—";
-  if (asking.status === "asset") {
-    return formatListingAssetAsking(
-      asking.amount,
-      asking.decimals,
-      asking.unitLabel,
-    );
-  }
-  const fiatEnum =
-    asking.currencyCode && asking.currencyCode.length > 0
-      ? normalizeListingFiatCurrency(
-          legacyFiatFromCurrencyCode(asking.currencyCode),
-        )
-      : fiatCurrencyFallback;
-  return convertPrice(asking.amount1e8, fiatEnum);
-}
-
 export function ListingDisplayPrice({
   facts,
   showLabel = false,
   label = "asking",
   className,
 }: Props) {
-  const { convertPrice } = useDisplayCurrency();
+  const { convertPrice, ethUsd } = useDisplayCurrency();
   const denominationKind =
     facts.denominationKind === DENOMINATION_KIND.Asset ||
     facts.denominationKind === DENOMINATION_KIND.Fiat
@@ -91,21 +63,57 @@ export function ListingDisplayPrice({
     erc20Decimals: facts.erc20Decimals,
   });
 
-  const fiatFallback =
-    facts.fiatCurrency != null
-      ? normalizeListingFiatCurrency(facts.fiatCurrency)
-      : 0;
-  const price = askingToDisplayString(asking, convertPrice, fiatFallback);
+  const displaySource = toAskingDisplaySource(asking, {
+    ethUsd1e8: ethUsd ?? null,
+  });
+
+  let primary: string;
+  if (asking.status === "unresolved") {
+    primary = "—";
+  } else if (displaySource != null) {
+    primary = convertPrice(displaySource.amount1e8, displaySource.listingCurrency);
+  } else if (asking.status === "asset") {
+    primary = formatListingAssetAsking(
+      asking.amount,
+      asking.decimals,
+      asking.unitLabel,
+    );
+  } else {
+    primary = "—";
+  }
+
+  const settlementUnit =
+    asking.status === "asset"
+      ? asking.unitLabel
+      : resolveSettlementAssetMeta({
+          chainId: facts.chainId,
+          asset: facts.asset,
+        }).label;
+  const disclosure =
+    asking.status === "asset" || asking.status === "fiat"
+      ? askingSettlementDisclosure(settlementUnit)
+      : null;
+
   const labelText = label === "asking" ? "Asking price" : "Price";
 
   if (showLabel) {
     return (
       <div className={className}>
         <p className="font-sans text-xs text-text-tertiary">{labelText}</p>
-        <p className={PRICE_CLASS}>{price}</p>
+        <p className={PRICE_CLASS}>{primary}</p>
+        {disclosure ? (
+          <p className="font-sans text-xs text-text-secondary">{disclosure}</p>
+        ) : null}
       </div>
     );
   }
 
-  return <p className={cn(PRICE_CLASS, className)}>{price}</p>;
+  return (
+    <div className={cn(className)}>
+      <p className={PRICE_CLASS}>{primary}</p>
+      {disclosure ? (
+        <p className="font-sans text-xs text-text-secondary">{disclosure}</p>
+      ) : null}
+    </div>
+  );
 }

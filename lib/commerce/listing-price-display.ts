@@ -1,6 +1,9 @@
 /**
- * Sole derivation of fixed-price Asking price display — Asset token units or
- * Fiat 1e8. Matches settlement (`quoteBuy` returns price as-is under Asset).
+ * Sole derivation of fixed-price Asking price — on-chain truth (fiat 1e8 /
+ * asset units) plus display-only FX source for nav convertPrice.
+ *
+ * Settlement (`quoteBuy`) always uses asset/fiat on-chain units; display may
+ * peg USDC→USD or convert native via injected ETH/USD without inventing feeds.
  */
 
 import { formatUnits } from "viem";
@@ -10,7 +13,15 @@ import {
   decodeCurrencyCode,
   type DenominationKind,
 } from "@/lib/commerce/denomination";
-import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
+import {
+  resolveSettlementAssetMeta,
+  type SettlementAssetIdentity,
+} from "@/lib/commerce/settlement-asset-meta";
+import {
+  legacyFiatFromCurrencyCode,
+  type LegacyFiatCurrency,
+} from "@/lib/marketplace/currency-code";
+import { FIAT_SCALE } from "@/lib/marketplace/price-normalize";
 
 export type ListingAskingPrice =
   | {
@@ -23,8 +34,15 @@ export type ListingAskingPrice =
       amount: bigint;
       decimals: number;
       unitLabel: string;
+      identity: SettlementAssetIdentity;
     }
   | { status: "unresolved" };
+
+/** Input for {@link convertPrice} — display FX only, not settlement. */
+export type AskingDisplaySource = {
+  amount1e8: bigint;
+  listingCurrency: LegacyFiatCurrency;
+};
 
 function toBigInt(price: string | bigint | number | null | undefined): bigint | null {
   if (price == null) return null;
@@ -101,21 +119,77 @@ export function deriveListingAskingPrice(input: {
     amount,
     decimals,
     unitLabel: meta.label,
+    identity: meta.identity,
   };
 }
 
-/** Format asset asking amount (no inventing fiat). Trailing zeros trimmed. */
+/** Sole settlement-form disclosure under Asking. */
+export function askingSettlementDisclosure(unitLabel: string): string {
+  const label = unitLabel.trim();
+  if (!label) return "Checkout settles in the listing settlement asset.";
+  return `Checkout settles in ${label}.`;
+}
+
+/**
+ * Map Asking truth → convertPrice inputs (display FX).
+ * USDC pegs 1:1 to USD for display; native needs ethUsd1e8; unknown → null.
+ */
+export function toAskingDisplaySource(
+  asking: ListingAskingPrice,
+  opts?: { ethUsd1e8?: bigint | null },
+): AskingDisplaySource | null {
+  if (asking.status === "unresolved") return null;
+
+  if (asking.status === "fiat") {
+    return {
+      amount1e8: asking.amount1e8,
+      listingCurrency: legacyFiatFromCurrencyCode(asking.currencyCode),
+    };
+  }
+
+  if (asking.identity === "usdc") {
+    const scale = 10n ** BigInt(asking.decimals);
+    if (scale <= 0n) return null;
+    return {
+      amount1e8: (asking.amount * FIAT_SCALE) / scale,
+      listingCurrency: 0, // USD
+    };
+  }
+
+  if (asking.identity === "native") {
+    const ethUsd = opts?.ethUsd1e8;
+    if (ethUsd == null || ethUsd <= 0n) return null;
+    const scale = 10n ** BigInt(asking.decimals);
+    if (scale <= 0n) return null;
+    return {
+      amount1e8: (asking.amount * ethUsd) / scale,
+      listingCurrency: 0, // USD
+    };
+  }
+
+  return null;
+}
+
+/** Format asset settlement amount with grouping (no inventing fiat). */
 export function formatListingAssetAsking(
   amount: bigint,
   decimals: number,
   unitLabel: string,
 ): string {
   const raw = formatUnits(amount, decimals);
-  // Avoid scientific notation for large whole USDC amounts
   const trimmed = raw.includes(".")
     ? raw.replace(/\.?0+$/, "")
     : raw;
-  return `${trimmed} ${unitLabel}`;
+  const n = Number.parseFloat(trimmed);
+  if (!Number.isFinite(n)) return `${trimmed} ${unitLabel}`;
+  const frac = trimmed.includes(".")
+    ? (trimmed.split(".")[1]?.length ?? 0)
+    : 0;
+  const grouped = n.toLocaleString("en-US", {
+    maximumFractionDigits: Math.min(frac, 8),
+    minimumFractionDigits: 0,
+  });
+  return `${grouped} ${unitLabel}`;
 }
 
 /** Human unit for the asking-price input (form chrome). */
