@@ -23,13 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useFacets } from "@/hooks/use-facets";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
-import { shouldFetchListingFacets } from "@/lib/marketplace/listing-facets-fetch";
-import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
-import { CRYPTO_DISPLAY_CONFIG } from "@/lib/marketplace/fx-rate-registry";
 import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import {
   countActiveFilters,
@@ -42,9 +38,9 @@ import {
 import {
   rateRequiredForPriceCurrency,
   ratesReadyForPriceCurrency,
-  usdFacetRangeToCrypto,
 } from "@/lib/marketplace/price-normalize";
 import { STATUS_FILTER_OPTIONS } from "@/components/marketplace/filter-constants";
+import { FUEL_TYPE_OPTIONS } from "@/lib/passport/metadata-form-options";
 import { cn } from "@/lib/utils";
 
 function FilterTrigger({
@@ -147,13 +143,8 @@ export function MarketFilterBar() {
     setPriceOpen(open);
   };
 
-  const facetsEnabled = shouldFetchListingFacets({
-    priceOpen,
-    makeOpen,
-    fuelOpen,
-    drawerOpen,
-  });
-  const { facets } = useFacets({ enabled: facetsEnabled });
+  /** Remote facets not registered — static option lists only until Phase 1. */
+  const facets = null;
 
   useMarketRatesRequest(priceOpen && rateRequiredForPriceCurrency(displayCurrency));
 
@@ -167,8 +158,8 @@ export function MarketFilterBar() {
 
   const activeCount = countActiveFilters(filters);
   const drawerCount = countDrawerActiveFilters(filters);
-  const makeOptions = facets?.makes ?? [];
-  const fuelOptions = facets?.fuelTypes ?? [];
+  const makeOptions: string[] = [];
+  const fuelOptions = [...FUEL_TYPE_OPTIONS];
 
   const statusLabel =
     STATUS_FILTER_OPTIONS.find((o) => o.value === filters.status)?.label ?? "Status";
@@ -187,31 +178,6 @@ export function MarketFilterBar() {
       ? formatMultiValueChipLabel(filters.fuelTypes)
       : `${filters.fuelTypes.slice(0, 2).join(", ")} (+${filters.fuelTypes.length - 2})`
     : "Fuel";
-
-  const fiatPriceRange =
-    displayCurrency === "EUR"
-      ? (facets?.priceRanges?.EUR ??
-        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
-      : (facets?.priceRanges?.USD ??
-        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
-
-  const usdRangeForCrypto =
-    facets?.priceRanges?.USD ??
-    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
-
-  let priceRange = fiatPriceRange;
-  if (isCryptoDisplayCurrency(displayCurrency)) {
-    const config = CRYPTO_DISPLAY_CONFIG[displayCurrency];
-    const cryptoRate = filterRates[config.rateField];
-    if (cryptoRate != null) {
-      priceRange = usdFacetRangeToCrypto(
-        usdRangeForCrypto.min,
-        usdRangeForCrypto.max,
-        cryptoRate,
-        config.scale,
-      );
-    }
-  }
 
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
   const priceDraftHasBounds = Boolean(priceDraft.priceMin || priceDraft.priceMax);
@@ -320,7 +286,7 @@ export function MarketFilterBar() {
                       id="bar-price-min"
                       type="number"
                       min={0}
-                      placeholder={facets ? String(priceRange.min || "") : pricePlaceholder}
+                      placeholder={pricePlaceholder}
                       value={priceDraft.priceMin}
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMin: e.target.value }))
@@ -336,7 +302,7 @@ export function MarketFilterBar() {
                       id="bar-price-max"
                       type="number"
                       min={0}
-                      placeholder={facets ? String(priceRange.max || "") : pricePlaceholder}
+                      placeholder={pricePlaceholder}
                       value={priceDraft.priceMax}
                       onChange={(e) =>
                         setPriceDraft((d) => ({ ...d, priceMax: e.target.value }))

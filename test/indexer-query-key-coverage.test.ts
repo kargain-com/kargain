@@ -103,9 +103,8 @@ describe("indexer query key coverage", () => {
     );
   });
 
-  it("requires listing-facets and kar-pro-slug-availability in the indexer registry", () => {
+  it("requires kar-pro-slug-availability in the indexer registry", () => {
     const set = new Set(INDEXER_QUERY_KEY_PREFIXES);
-    assert.ok(set.has("listing-facets"));
     assert.ok(set.has("kar-pro-slug-availability"));
   });
 });

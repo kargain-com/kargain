@@ -31,6 +31,14 @@ import {
   LIVE_PHASES,
   OPEN_PHASES,
 } from "../lib/ponder-commerce";
+import {
+  buildBrowseFilterConditions,
+  buildBrowseOrderBy,
+  emptyStatusCounts,
+  foldStatusCounts,
+  mergeBrowseWhere,
+  parseConsignmentBrowseFilters,
+} from "../lib/ponder-consignment-browse";
 import { loadObligationFacts } from "./load-obligation-facts";
 
 function parsePage(raw: string | undefined): number {
@@ -70,32 +78,12 @@ function jsonBody<T>(value: T): T {
 const LIVE_PHASE_LIST = [...LIVE_PHASES];
 const OPEN_PHASE_LIST = [...OPEN_PHASES];
 
-/**
- * Flatten passport denorm onto the consignment wire — matches
- * `PonderConsignmentRow` (status/make/…/custodyChain). Nested `passport`
- * objects are not part of the product contract.
- */
-async function enrichConsignment(row: typeof consignment.$inferSelect) {
-  const [terms, hold, settlement, pass] = await Promise.all([
-    row.mode === "ascending"
-      ? db.select().from(ascendingTerms).where(eq(ascendingTerms.id, row.id)).limit(1)
-      : Promise.resolve([] as (typeof ascendingTerms.$inferSelect)[]),
-    row.mode === "ascending"
-      ? db.select().from(consignmentHold).where(eq(consignmentHold.id, row.id)).limit(1)
-      : Promise.resolve([] as (typeof consignmentHold.$inferSelect)[]),
-    db
-      .select()
-      .from(consignmentSettlement)
-      .where(eq(consignmentSettlement.id, row.id))
-      .limit(1),
-    db.select().from(passport).where(eq(passport.id, row.tokenId)).limit(1),
-  ]);
-  const p = pass[0];
+type ConsignmentRow = typeof consignment.$inferSelect;
+type PassportRow = typeof passport.$inferSelect;
+
+function flattenPassportDenorm(row: ConsignmentRow, p: PassportRow | undefined) {
   return {
     ...row,
-    ascendingTerms: terms[0] ?? null,
-    hold: hold[0] ?? null,
-    settlement: settlement[0] ?? null,
     status: p?.status ?? null,
     coverPhotoUri: p?.coverPhotoUri ?? null,
     make: p?.make ?? null,
@@ -105,10 +93,73 @@ async function enrichConsignment(row: typeof consignment.$inferSelect) {
     verifier: p?.verifier ?? null,
     mileageKm: p?.mileageKm ?? null,
     duplicateVin: p?.duplicateVin ?? null,
+    fuelType: p?.fuelType ?? null,
+    bodyType: p?.bodyType ?? null,
+    transmission: p?.transmission ?? null,
+    condition: p?.condition ?? null,
+    vehicleType: p?.vehicleType ?? null,
+    colour: p?.colour ?? null,
+    locationPlaceId: p?.locationPlaceId ?? null,
     custodyChain: p?.custodyChain ?? row.chainId,
     /** Immutable passport origin (`tokenId >> 128`). */
     originChainId: p?.chainId ?? row.chainId,
   };
+}
+
+/**
+ * Batch enrich — query count independent of page size.
+ * Flattens passport denorm onto the consignment wire (no nested passport object).
+ */
+async function enrichConsignmentsBatch(rows: ConsignmentRow[]) {
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const tokenIds = [...new Set(rows.map((r) => r.tokenId))];
+  const ascendingIds = rows.filter((r) => r.mode === "ascending").map((r) => r.id);
+
+  const [passports, settlements, terms, holds] = await Promise.all([
+    tokenIds.length > 0
+      ? db.select().from(passport).where(inArray(passport.id, tokenIds))
+      : Promise.resolve([] as PassportRow[]),
+    ids.length > 0
+      ? db
+          .select()
+          .from(consignmentSettlement)
+          .where(inArray(consignmentSettlement.id, ids))
+      : Promise.resolve([] as (typeof consignmentSettlement.$inferSelect)[]),
+    ascendingIds.length > 0
+      ? db
+          .select()
+          .from(ascendingTerms)
+          .where(inArray(ascendingTerms.id, ascendingIds))
+      : Promise.resolve([] as (typeof ascendingTerms.$inferSelect)[]),
+    ascendingIds.length > 0
+      ? db
+          .select()
+          .from(consignmentHold)
+          .where(inArray(consignmentHold.id, ascendingIds))
+      : Promise.resolve([] as (typeof consignmentHold.$inferSelect)[]),
+  ]);
+
+  const passportById = new Map(passports.map((p) => [p.id, p]));
+  const settlementById = new Map(settlements.map((s) => [s.id, s]));
+  const termsById = new Map(terms.map((t) => [t.id, t]));
+  const holdById = new Map(holds.map((h) => [h.id, h]));
+
+  return rows.map((row) => {
+    const flat = flattenPassportDenorm(row, passportById.get(row.tokenId));
+    return {
+      ...flat,
+      ascendingTerms: termsById.get(row.id) ?? null,
+      hold: holdById.get(row.id) ?? null,
+      settlement: settlementById.get(row.id) ?? null,
+    };
+  });
+}
+
+async function enrichConsignment(row: ConsignmentRow) {
+  const [enriched] = await enrichConsignmentsBatch([row]);
+  return enriched!;
 }
 
 export function registerCommerceRoutes(app: Hono): void {
@@ -137,15 +188,50 @@ export function registerCommerceRoutes(app: Hono): void {
     const sellerParam = c.req.query("seller");
     const agentParam = c.req.query("agent");
 
-    const conditions = [];
+    const browseFilters = parseConsignmentBrowseFilters({
+      search: c.req.query("search"),
+      make: c.req.query("make"),
+      model: c.req.query("model"),
+      yearMin: c.req.query("yearMin"),
+      yearMax: c.req.query("yearMax"),
+      mileageMin: c.req.query("mileageMin"),
+      mileageMax: c.req.query("mileageMax"),
+      fuelType: c.req.query("fuelType"),
+      bodyType: c.req.query("bodyType"),
+      transmission: c.req.query("transmission"),
+      condition: c.req.query("condition"),
+      vehicleType: c.req.query("vehicleType"),
+      placeId: c.req.query("placeId"),
+      colour: c.req.query("colour"),
+      status: c.req.query("status"),
+      priceMin: c.req.query("priceMin"),
+      priceMax: c.req.query("priceMax"),
+      priceCurrency: c.req.query("priceCurrency"),
+      eurUsdRate: c.req.query("eurUsdRate"),
+      ethUsdRate: c.req.query("ethUsdRate"),
+      btcUsdRate: c.req.query("btcUsdRate"),
+      cnyUsdRate: c.req.query("cnyUsdRate"),
+      inrUsdRate: c.req.query("inrUsdRate"),
+      brlUsdRate: c.req.query("brlUsdRate"),
+      idrUsdRate: c.req.query("idrUsdRate"),
+      audUsdRate: c.req.query("audUsdRate"),
+      aedUsdRate: c.req.query("aedUsdRate"),
+      krwUsdRate: c.req.query("krwUsdRate"),
+      rubUsdRate: c.req.query("rubUsdRate"),
+      jpyUsdRate: c.req.query("jpyUsdRate"),
+      sort: c.req.query("sort"),
+      verifiedFirst: c.req.query("verifiedFirst"),
+    });
+
+    const baseConditions = [];
     if (mode === "fixedPrice" || mode === "ascending") {
-      conditions.push(eq(consignment.mode, mode));
+      baseConditions.push(eq(consignment.mode, mode));
     }
     // `active` = open for buy/bid (offered|binding). Held stays out of browse.
     if (active === true) {
-      conditions.push(inArray(consignment.phase, OPEN_PHASE_LIST));
+      baseConditions.push(inArray(consignment.phase, OPEN_PHASE_LIST));
     } else if (active === false) {
-      conditions.push(
+      baseConditions.push(
         sql`${consignment.phase} NOT IN (${sql.join(
           OPEN_PHASE_LIST.map((p) => sql`${p}`),
           sql`, `,
@@ -156,36 +242,56 @@ export function registerCommerceRoutes(app: Hono): void {
       if (!ALL_COMMERCE_PHASES.has(phase)) {
         return c.json({ error: "Invalid phase" }, 400);
       }
-      conditions.push(eq(consignment.phase, phase));
+      baseConditions.push(eq(consignment.phase, phase));
     }
     if (chainId !== undefined) {
-      conditions.push(eq(consignment.chainId, chainId));
+      baseConditions.push(eq(consignment.chainId, chainId));
     }
     if (sellerParam) {
       const seller = parseAddressParam(sellerParam);
       if (!seller) return c.json({ error: "Invalid seller" }, 400);
-      conditions.push(eq(consignment.seller, seller));
+      baseConditions.push(eq(consignment.seller, seller));
     }
     if (agentParam) {
       const agent = parseAddressParam(agentParam);
       if (!agent) return c.json({ error: "Invalid agent" }, 400);
-      conditions.push(eq(consignment.agent, agent));
+      baseConditions.push(eq(consignment.agent, agent));
     }
 
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const filterResult = buildBrowseFilterConditions(browseFilters);
+    const where = mergeBrowseWhere(baseConditions, filterResult);
+    const orderBy = buildBrowseOrderBy(browseFilters, filterResult.rates);
 
-    const [rows, totalRow] = await Promise.all([
+    const [joinedRows, totalRow, statusRows] = await Promise.all([
       db
-        .select()
+        .select({ consignment })
         .from(consignment)
+        .leftJoin(passport, eq(consignment.tokenId, passport.id))
         .where(where)
-        .orderBy(desc(consignment.openedAt))
+        .orderBy(...orderBy)
         .limit(limit)
         .offset(offset),
-      db.select({ value: count() }).from(consignment).where(where),
+      db
+        .select({ value: count() })
+        .from(consignment)
+        .leftJoin(passport, eq(consignment.tokenId, passport.id))
+        .where(where),
+      db
+        .select({
+          status: passport.status,
+          total: count(),
+        })
+        .from(consignment)
+        .leftJoin(passport, eq(consignment.tokenId, passport.id))
+        .where(where)
+        .groupBy(passport.status),
     ]);
 
-    const consignments = await Promise.all(rows.map((r) => enrichConsignment(r)));
+    const rows = joinedRows.map((r) => r.consignment);
+    const consignments = await enrichConsignmentsBatch(rows);
+    const statusCounts = filterResult.empty
+      ? emptyStatusCounts()
+      : foldStatusCounts(statusRows);
 
     return c.json(
       jsonBody({
@@ -193,6 +299,7 @@ export function registerCommerceRoutes(app: Hono): void {
         total: totalRow[0]?.value ?? 0,
         page,
         limit,
+        statusCounts,
       }),
     );
   });
@@ -410,7 +517,7 @@ export function registerCommerceRoutes(app: Hono): void {
       db.select({ value: count() }).from(consignment).where(where),
     ]);
 
-    const consignments = await Promise.all(rows.map((r) => enrichConsignment(r)));
+    const consignments = await enrichConsignmentsBatch(rows);
     return c.json(
       jsonBody({
         consignments,

@@ -53,7 +53,7 @@ const DEFAULT_WINDOW_DAYS = 14;
 const PAGE_LIMIT = 100;
 const RELAY_QUERY_MAX_WAIT_MS = 5000;
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchMetadataJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`GET ${url} failed: HTTP ${res.status}`);
@@ -130,8 +130,8 @@ async function main(): Promise<void> {
   console.log(`Fetching VERIFIED passports from ${ponderUrl} …`);
   const { observations, verifierByTokenId, metadataFailures } =
     await fetchVerifiedObservations({
-      ponderUrl,
-      fetchJson,
+      ponderOrigin: ponderUrl,
+      fetchMetadataJson,
       pageLimit: PAGE_LIMIT,
     });
   console.log(

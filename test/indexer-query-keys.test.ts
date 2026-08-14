@@ -11,7 +11,6 @@ import {
 /** Commerce / portfolio keys that must stay in the sync contract. */
 const REQUIRED_COMMERCE_PREFIXES = [
   "marketplace-listings",
-  "listing-facets",
   "watchlist-listings",
   "watchlist-batch",
   "consignments",

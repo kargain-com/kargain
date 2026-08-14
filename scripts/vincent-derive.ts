@@ -13,8 +13,8 @@
  *     [--baseline path/to/published-epoch.jsonl] \
  *     [--cross-check]
  *
- * Network wiring (fetchJson) lives here; lib/vincent-commons stays pure —
- * the shared observations-source module takes fetchJson by injection.
+ * Network wiring lives here; lib/vincent-commons stays pure —
+ * Ponder reads use ponderFetch (no-store); metadata fetch is injected.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ const DEFAULT_PONDER_URL = "https://ponder.kargain.com";
 const DEFAULT_OUT_DIR = ".vincent-commons";
 const PAGE_LIMIT = 100;
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchMetadataJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`GET ${url} failed: HTTP ${res.status}`);
@@ -202,8 +202,8 @@ async function main(): Promise<void> {
 
   console.log(`Fetching VERIFIED passports from ${ponderUrl} …`);
   const { observations, metadataFailures } = await fetchVerifiedObservations({
-    ponderUrl,
-    fetchJson,
+    ponderOrigin: ponderUrl,
+    fetchMetadataJson,
     pageLimit: PAGE_LIMIT,
   });
   // Every Ponder row yields exactly one observation or one metadata failure.

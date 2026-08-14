@@ -1,4 +1,5 @@
 import { slugFormatStatus } from "@/lib/kar-pro/kar-pro-slug-rules";
+import { buildSlugAvailableUrl } from "@/lib/web3/ponder-fetch";
 
 export type SlugAvailabilityResult = {
   available: boolean;
@@ -18,12 +19,8 @@ export function buildSlugAvailablePath(
   slug: string,
   ownerAddress?: string,
 ): string {
-  const params = new URLSearchParams();
-  if (ownerAddress?.trim()) {
-    params.set("address", ownerAddress.trim());
-  }
-  const query = params.toString();
-  return `/verifiers/slug-available/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`;
+  const url = new URL(buildSlugAvailableUrl(slug, ownerAddress));
+  return `${url.pathname}${url.search}`;
 }
 
 /** Map a successful Ponder JSON body onto the wire result (taken vs available). */

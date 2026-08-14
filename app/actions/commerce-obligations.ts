@@ -1,7 +1,7 @@
 "use server";
 
 import type { ObligationFacts } from "@/lib/obligation";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type ObligationsFactsResponse = ObligationFacts & {
   address: string;
@@ -24,14 +24,9 @@ const UNRESOLVED_FACTS: ObligationFacts = {
 export async function getAccountObligations(
   address: string,
 ): Promise<GetObligationsResult> {
-  const base = ponderBaseUrl();
-  if (!base) {
-    return { ok: false, facts: UNRESOLVED_FACTS };
-  }
-
   try {
     const res = await ponderFetch(
-      `${base}/accounts/${encodeURIComponent(address)}/obligations`,
+      buildPonderUrl("accounts.obligations", { address }).toString(),
     );
     if (!res.ok) {
       return { ok: false, facts: UNRESOLVED_FACTS };

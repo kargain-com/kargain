@@ -1,49 +1,77 @@
-import { index, onchainTable } from "ponder";
+import { index, onchainTable, sql } from "ponder";
 
-export const passport = onchainTable("passport", (t) => ({
-  id: t.text().primaryKey(),
-  /** Immutable origin — `chainIdOf(tokenId)` (= `tokenId >> 128`). */
-  chainId: t.integer().notNull(),
-  /** Network where the usable instance currently lives (SPEC §I.12.8). */
-  custodyChain: t.integer().notNull(),
-  /** Timestamp of last accepted custody-changing event (monotonic gate). */
-  custodyUpdatedAt: t.bigint().notNull().default(0n),
-  owner: t.text().notNull(),
-  status: t.text().notNull(),
-  verifier: t.text().notNull().default(""),
-  verifiedAt: t.bigint().notNull().default(0n),
-  tokenUri: t.text().notNull().default(""),
-  coverPhotoUri: t.text().notNull().default(""),
-  vin: t.text().notNull().default(""),
-  make: t.text().notNull().default(""),
-  model: t.text().notNull().default(""),
-  year: t.integer().notNull().default(0),
-  mileageKm: t.integer().notNull().default(0),
-  lastDisputer: t.text().notNull().default(""),
-  disputeReason: t.text().notNull().default(""),
-  disputeWithdrawnAt: t.bigint().notNull().default(0n),
-  lastVerificationResetAt: t.bigint().notNull().default(0n),
-  duplicateVin: t.boolean().notNull().default(false),
-  lastMetadataChangeAt: t.bigint().notNull().default(0n),
-  verificationResetCount: t.integer().notNull().default(0),
-  hadDispute: t.boolean().notNull().default(false),
-  lastDisputeResolvedAt: t.bigint().notNull().default(0n),
-  /** Last closed dispute path: confirm | reject | expire | withdraw | "". */
-  lastDisputeTerminal: t.text().notNull().default(""),
-  disputeOpenedAt: t.bigint().notNull().default(0n),
-  fuelType: t.text().notNull().default(""),
-  bodyType: t.text().notNull().default(""),
-  transmission: t.text().notNull().default(""),
-  condition: t.text().notNull().default(""),
-  vehicleType: t.text().notNull().default(""),
-  colour: t.text().notNull().default(""),
-  locationLabel: t.text().notNull().default(""),
-  locationPlaceId: t.text().notNull().default(""),
-  locationCountryCode: t.text().notNull().default(""),
-  disputeDeposit: t.bigint(),
-  createdAt: t.bigint().notNull(),
-  updatedAt: t.bigint().notNull(),
-}));
+export const passport = onchainTable(
+  "passport",
+  (t) => ({
+    id: t.text().primaryKey(),
+    /** Immutable origin — `chainIdOf(tokenId)` (= `tokenId >> 128`). */
+    chainId: t.integer().notNull(),
+    /** Network where the usable instance currently lives (SPEC §I.12.8). */
+    custodyChain: t.integer().notNull(),
+    /** Timestamp of last accepted custody-changing event (monotonic gate). */
+    custodyUpdatedAt: t.bigint().notNull().default(0n),
+    owner: t.text().notNull(),
+    status: t.text().notNull(),
+    verifier: t.text().notNull().default(""),
+    verifiedAt: t.bigint().notNull().default(0n),
+    tokenUri: t.text().notNull().default(""),
+    coverPhotoUri: t.text().notNull().default(""),
+    vin: t.text().notNull().default(""),
+    make: t.text().notNull().default(""),
+    model: t.text().notNull().default(""),
+    year: t.integer().notNull().default(0),
+    mileageKm: t.integer().notNull().default(0),
+    lastDisputer: t.text().notNull().default(""),
+    disputeReason: t.text().notNull().default(""),
+    disputeWithdrawnAt: t.bigint().notNull().default(0n),
+    lastVerificationResetAt: t.bigint().notNull().default(0n),
+    duplicateVin: t.boolean().notNull().default(false),
+    lastMetadataChangeAt: t.bigint().notNull().default(0n),
+    verificationResetCount: t.integer().notNull().default(0),
+    hadDispute: t.boolean().notNull().default(false),
+    lastDisputeResolvedAt: t.bigint().notNull().default(0n),
+    /** Last closed dispute path: confirm | reject | expire | withdraw | "". */
+    lastDisputeTerminal: t.text().notNull().default(""),
+    disputeOpenedAt: t.bigint().notNull().default(0n),
+    fuelType: t.text().notNull().default(""),
+    bodyType: t.text().notNull().default(""),
+    transmission: t.text().notNull().default(""),
+    condition: t.text().notNull().default(""),
+    vehicleType: t.text().notNull().default(""),
+    colour: t.text().notNull().default(""),
+    locationLabel: t.text().notNull().default(""),
+    locationPlaceId: t.text().notNull().default(""),
+    locationCountryCode: t.text().notNull().default(""),
+    disputeDeposit: t.bigint(),
+    createdAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (table) => ({
+    /** Browse: status=, verifiedFirst, statusCounts groupBy */
+    statusIdx: index().on(table.status),
+    /** Browse: lower(make)= — matches buildBrowseFilterConditions */
+    makeIdx: index().on(sql`lower(${table.make})`),
+    /** Browse: lower(model)= */
+    modelIdx: index().on(sql`lower(${table.model})`),
+    /** Browse: yearMin/yearMax */
+    yearIdx: index().on(table.year),
+    /** Browse: mileageMin/mileageMax + mileage_asc ORDER BY */
+    mileageIdx: index().on(table.mileageKm),
+    /** Browse: placeId= → locationPlaceId */
+    placeIdx: index().on(table.locationPlaceId),
+    /** Browse: fuelType CSV → lower(fuelType) IN (…) */
+    fuelIdx: index().on(sql`lower(${table.fuelType})`),
+    /** Browse: bodyType CSV → lower(bodyType) IN (…) */
+    bodyIdx: index().on(sql`lower(${table.bodyType})`),
+    /** Browse: transmission CSV → lower(transmission) IN (…) */
+    transmissionIdx: index().on(sql`lower(${table.transmission})`),
+    /** Browse: condition CSV → lower(condition) IN (…) */
+    conditionIdx: index().on(sql`lower(${table.condition})`),
+    /** Browse: vehicleType CSV → lower(vehicleType) IN (…) */
+    vehicleIdx: index().on(sql`lower(${table.vehicleType})`),
+    // colour / search: ILIKE '%…%' — no btree; see MIGRATION-V2 (no pg_trgm yet)
+  }),
+);
 
 export const passportUriHistory = onchainTable("passport_uri_history", (t) => ({
   id: t.text().primaryKey(),

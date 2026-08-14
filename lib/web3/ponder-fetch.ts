@@ -1,33 +1,52 @@
 /**
  * Choke-point for mutable Ponder HTTP reads (protocol projection state).
  *
- * Always uses `cache: "no-store"` so Next Data Cache cannot serve a pre-tx
- * snapshot after `useTxSync` → `router.refresh()`. Content-addressed blobs
- * (Arweave / KarPro metadata) keep their own TTL fetches — do not route them
- * through this helper.
+ * Transport: {@link ponderFetch} / {@link ponderBaseUrl} (always `cache: "no-store"`).
+ * Contract: typed URL build + response parse via re-exported client helpers.
+ * Content-addressed blobs (Arweave / KarPro metadata) keep their own TTL fetches —
+ * do not route them through this helper.
  */
 
-const DEFAULT_PONDER_BASE_URL = "http://localhost:42069";
+export {
+  ponderBaseUrl,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch-transport";
 
-/** Trimmed `PONDER_SQL_API_URL`, or local Ponder default. */
-export function ponderBaseUrl(
-  envValue: string | undefined = process.env.PONDER_SQL_API_URL,
-): string {
-  const trimmed = envValue?.trim().replace(/\/+$/, "") ?? "";
-  return trimmed || DEFAULT_PONDER_BASE_URL;
-}
+export {
+  asConsignmentId,
+  asPassportTokenId,
+  consignmentIdFromUnknown,
+  passportTokenIdFromUnknown,
+  type ConsignmentId,
+  type PassportTokenId,
+} from "@/lib/web3/ponder-ids";
 
-/**
- * `fetch` for Ponder state URLs. Forces `cache: "no-store"` and drops Next
- * `next.revalidate` so caller cache hints cannot win.
- */
-export function ponderFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  if (init == null) {
-    return fetch(input, { cache: "no-store" });
-  }
-  const { next: _next, ...rest } = init as RequestInit & { next?: unknown };
-  return fetch(input, { ...rest, cache: "no-store" });
-}
+export {
+  CONSIGNMENT_BROWSE_FILTER_QUERY_KEYS,
+  PONDER_FORBIDDEN_PATH_SUBSTRINGS,
+  PONDER_IMPLEMENTED_ROUTES,
+  consignmentsListQueryKeys,
+  routeById,
+  type PonderRouteDef,
+} from "@/lib/web3/ponder-endpoints";
+
+export {
+  buildConsignmentsListUrl,
+  buildPassportListPath,
+  buildPassportListUrl,
+  buildPonderUrl,
+  buildSlugAvailableUrl,
+  buildVerifierAttestationsUrl,
+  buildVerifierDetailUrl,
+  buildVerifierPassportsUrl,
+  fetchBidsForPassportToken,
+  fetchConsignmentById,
+  fetchConsignmentByToken,
+  fetchConsignmentBids,
+  fetchPassportByToken,
+  fetchStatus,
+  parseConsignmentEnvelope,
+  ponderGet,
+  type ListConsignmentsQuery,
+  type PonderQuery,
+} from "@/lib/web3/ponder-client";

@@ -1,12 +1,14 @@
-import { getAddress } from "viem";
-
+import {
+  buildPonderUrl,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
+import { commercialChainIds } from "@/lib/web3/chain-context";
+import { isCommercialChainId } from "@/lib/web3/commercial-active";
 import {
   readActiveVerifierMemberships,
   verifierMembershipKey,
 } from "@/lib/kar-pro/is-active-verifier-commercial";
-import { commercialChainIds } from "@/lib/web3/chain-context";
-import { isCommercialChainId } from "@/lib/web3/commercial-active";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { getAddress } from "viem";
 
 export type ProShowroomSlugCandidate = {
   chainId: number;
@@ -33,10 +35,11 @@ async function fetchBySlugOnChain(
   chainId: number,
 ): Promise<ProShowroomSlugCandidate | null> {
   try {
-    const url = new URL(
-      `${ponderBaseUrl()}/verifiers/by-slug/${encodeURIComponent(slug)}`,
+    const url = buildPonderUrl(
+      "verifiers.bySlug",
+      { slug },
+      { chainId },
     );
-    url.searchParams.set("chainId", String(chainId));
     const res = await ponderFetch(url.toString());
     if (!res.ok) return null;
     const data = (await res.json()) as BySlugWire;

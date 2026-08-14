@@ -118,6 +118,13 @@ export type PonderConsignmentRow = {
   originChainId?: number | null;
   mileageKm?: number | null;
   duplicateVin?: boolean | null;
+  fuelType?: string | null;
+  bodyType?: string | null;
+  transmission?: string | null;
+  condition?: string | null;
+  vehicleType?: string | null;
+  colour?: string | null;
+  locationPlaceId?: string | null;
   terms?: PonderAscendingTermsRow | null;
   hold?: PonderConsignmentHoldRow | null;
 };

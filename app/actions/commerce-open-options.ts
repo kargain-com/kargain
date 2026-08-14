@@ -13,7 +13,7 @@ import {
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
 export type OpenableTermsResult = {
@@ -140,12 +140,16 @@ export async function getOpenableTerms(
     };
   }
 
-  const base = ponderBaseUrl();
-  const tokensUrl = new URL(`${base}/commerce-payment-tokens`);
-  tokensUrl.searchParams.set("chainId", String(chainId));
-  tokensUrl.searchParams.set("modeContract", modeAddress);
-  tokensUrl.searchParams.set("active", "true");
-  tokensUrl.searchParams.set("limit", "100");
+  const tokensUrl = buildPonderUrl(
+    "commerce.paymentTokens",
+    {},
+    {
+      chainId,
+      modeContract: modeAddress,
+      active: true,
+      limit: 100,
+    },
+  );
 
   try {
     if (mode === "ascending") {
@@ -170,10 +174,15 @@ export async function getOpenableTerms(
       };
     }
 
-    const feedsUrl = new URL(`${base}/commerce-currency-feeds`);
-    feedsUrl.searchParams.set("chainId", String(chainId));
-    feedsUrl.searchParams.set("modeContract", modeAddress);
-    feedsUrl.searchParams.set("limit", "100");
+    const feedsUrl = buildPonderUrl(
+      "commerce.currencyFeeds",
+      {},
+      {
+        chainId,
+        modeContract: modeAddress,
+        limit: 100,
+      },
+    );
 
     const [tokensRes, feedsRes] = await Promise.all([
       ponderFetch(tokensUrl),

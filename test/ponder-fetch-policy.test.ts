@@ -10,11 +10,22 @@ const SCAN_DIRS = [
   path.join(ROOT, "app/actions"),
   path.join(ROOT, "lib/passport"),
   path.join(ROOT, "lib/verifier"),
+  path.join(ROOT, "lib/kar-pro"),
+  path.join(ROOT, "lib/vincent-commons"),
 ] as const;
 
 /** Content-addressed blobs may keep TTL — not mutable Ponder state. */
 const ALLOWLIST = new Set([
   path.join(ROOT, "lib/passport/fetch-arweave-metadata.ts"),
+  path.join(ROOT, "lib/kar-pro/fetch-kar-pro-metadata.ts"),
+]);
+
+const OWNER_FILES = new Set([
+  path.join(ROOT, "lib/web3/ponder-fetch.ts"),
+  path.join(ROOT, "lib/web3/ponder-fetch-transport.ts"),
+  path.join(ROOT, "lib/web3/ponder-client.ts"),
+  path.join(ROOT, "lib/web3/ponder-endpoints.ts"),
+  path.join(ROOT, "lib/web3/ponder-ids.ts"),
 ]);
 
 const FORBIDDEN = [
@@ -25,6 +36,7 @@ const FORBIDDEN = [
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];
+  if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -41,7 +53,7 @@ describe("ponder fetch policy", () => {
     const violations: string[] = [];
     for (const dir of SCAN_DIRS) {
       for (const file of listTsFiles(dir)) {
-        if (ALLOWLIST.has(file)) continue;
+        if (ALLOWLIST.has(file) || OWNER_FILES.has(file)) continue;
         const text = fs.readFileSync(file, "utf8");
         for (const rule of FORBIDDEN) {
           if (rule.re.test(text)) {
@@ -53,32 +65,30 @@ describe("ponder fetch policy", () => {
     assert.deepEqual(violations, []);
   });
 
-  it("routes scanned Ponder HTTP through ponderFetch / ponderBaseUrl", () => {
+  it("routes scanned Ponder HTTP through @/lib/web3/ponder-fetch", () => {
     const missing: string[] = [];
     for (const dir of SCAN_DIRS) {
       for (const file of listTsFiles(dir)) {
-        if (ALLOWLIST.has(file)) continue;
+        if (ALLOWLIST.has(file) || OWNER_FILES.has(file)) continue;
         const text = fs.readFileSync(file, "utf8");
-        if (!text.includes("PONDER_SQL_API_URL") && !/\$\{ponderBaseUrl\(\)\}/.test(text) && !text.includes("ponderFetch(")) {
-          // Files without Ponder I/O are fine
-          continue;
-        }
         if (text.includes("PONDER_SQL_API_URL")) {
           missing.push(`${path.relative(ROOT, file)}: still uses PONDER_SQL_API_URL`);
         }
-        // If the file calls into Ponder paths via template/base, require helper import
-        if (
-          /\/(listings|auctions|verifiers|passports|notifications|agents\/|owners\/|status|profile\/)/.test(
-            text,
-          ) &&
-          text.includes("ponderBaseUrl")
-        ) {
-          if (!text.includes('from "@/lib/web3/ponder-fetch"') && !text.includes("from '../lib/web3/ponder-fetch")) {
-            // app/lib imports always use @/
-            if (!text.includes("@/lib/web3/ponder-fetch")) {
-              missing.push(`${path.relative(ROOT, file)}: missing ponder-fetch import`);
-            }
-          }
+        const touchesPonder =
+          text.includes("ponderFetch(") ||
+          text.includes("ponderBaseUrl") ||
+          text.includes("buildPonderUrl") ||
+          text.includes("buildConsignmentsListUrl") ||
+          text.includes("fetchConsignmentByToken") ||
+          text.includes("fetchPassportByToken") ||
+          text.includes("fetchStatus") ||
+          text.includes("ponderGet");
+        if (!touchesPonder) continue;
+        if (!text.includes('@/lib/web3/ponder-fetch')) {
+          missing.push(`${path.relative(ROOT, file)}: missing ponder-fetch import`);
+        }
+        if (/new URL\(\s*`\$\{ponderBaseUrl\(\)\}/.test(text)) {
+          missing.push(`${path.relative(ROOT, file)}: manual URL from ponderBaseUrl`);
         }
       }
     }

@@ -1,5 +1,5 @@
 /**
- * Shared Vincent Commons observations source — fixture fetchJson tests:
+ * Shared Vincent Commons observations source — fixture tests:
  * pagination stop conditions, maxPages cap, the three metadata failure
  * reasons, verifier map extraction, and concurrency-order determinism.
  */
@@ -52,39 +52,45 @@ type FixtureOptions = {
   onFetch?: (url: string) => void | Promise<void>;
 };
 
-function fixtureFetchJson(options: FixtureOptions) {
+function fixtureFetches(options: FixtureOptions) {
   const requestedUrls: string[] = [];
-  const fetchJson = async (url: string): Promise<unknown> => {
+
+  const fetchPonderJson = async (url: string): Promise<unknown> => {
     requestedUrls.push(url);
     await options.onFetch?.(url);
-
     const pageMatch = url.match(/[?&]page=(\d+)/);
-    if (pageMatch) {
-      const page = Number(pageMatch[1]);
-      return {
-        passports: options.pages[page - 1] ?? [],
-        total: options.total,
-      };
-    }
+    if (!pageMatch) throw new Error(`unexpected ponder url: ${url}`);
+    const page = Number(pageMatch[1]);
+    return {
+      passports: options.pages[page - 1] ?? [],
+      total: options.total,
+    };
+  };
 
+  const fetchMetadataJson = async (url: string): Promise<unknown> => {
+    requestedUrls.push(url);
+    await options.onFetch?.(url);
     const tokenId = url.match(/\/tx-([^/]+)$/)?.[1] ?? "";
     if (options.failFetchFor?.has(tokenId)) {
       throw new Error("network down");
     }
     return options.metadataByTokenId?.[tokenId] ?? metadata(tokenId);
   };
-  return { fetchJson, requestedUrls };
+
+  return { fetchPonderJson, fetchMetadataJson, requestedUrls };
 }
 
 describe("fetchVerifiedObservations — pagination", () => {
   it("stops when accumulated rows reach total", async () => {
-    const { fetchJson, requestedUrls } = fixtureFetchJson({
-      pages: [[row("1"), row("2")], [row("3")]],
-      total: 3,
-    });
+    const { fetchPonderJson, fetchMetadataJson, requestedUrls } =
+      fixtureFetches({
+        pages: [[row("1"), row("2")], [row("3")]],
+        total: 3,
+      });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
       pageLimit: 2,
     });
 
@@ -97,13 +103,15 @@ describe("fetchVerifiedObservations — pagination", () => {
   });
 
   it("stops on an empty page even when total overstates", async () => {
-    const { fetchJson, requestedUrls } = fixtureFetchJson({
-      pages: [[row("1")], []],
-      total: 10,
-    });
+    const { fetchPonderJson, fetchMetadataJson, requestedUrls } =
+      fixtureFetches({
+        pages: [[row("1")], []],
+        total: 10,
+      });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
       pageLimit: 1,
     });
 
@@ -112,13 +120,15 @@ describe("fetchVerifiedObservations — pagination", () => {
   });
 
   it("caps at maxPages", async () => {
-    const { fetchJson, requestedUrls } = fixtureFetchJson({
-      pages: [[row("1")], [row("2")], [row("3")]],
-      total: 3,
-    });
+    const { fetchPonderJson, fetchMetadataJson, requestedUrls } =
+      fixtureFetches({
+        pages: [[row("1")], [row("2")], [row("3")]],
+        total: 3,
+      });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
       pageLimit: 1,
       maxPages: 2,
     });
@@ -130,7 +140,7 @@ describe("fetchVerifiedObservations — pagination", () => {
 
 describe("fetchVerifiedObservations — observations and failures", () => {
   it("prefers metadata fields and falls back to row fields", async () => {
-    const { fetchJson } = fixtureFetchJson({
+    const { fetchPonderJson, fetchMetadataJson } = fixtureFetches({
       pages: [[row("1")]],
       total: 1,
       metadataByTokenId: {
@@ -138,8 +148,9 @@ describe("fetchVerifiedObservations — observations and failures", () => {
       },
     });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
     });
 
     assert.equal(result.observations.length, 1);
@@ -150,13 +161,14 @@ describe("fetchVerifiedObservations — observations and failures", () => {
   });
 
   it("reports unsupported-token-uri for non-ar URIs", async () => {
-    const { fetchJson } = fixtureFetchJson({
+    const { fetchPonderJson, fetchMetadataJson } = fixtureFetches({
       pages: [[row("1", { tokenUri: "https://example.com/1.json" })]],
       total: 1,
     });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
     });
 
     assert.equal(result.observations.length, 0);
@@ -166,14 +178,15 @@ describe("fetchVerifiedObservations — observations and failures", () => {
   });
 
   it("reports metadata-fetch-failed when the gateway fetch throws", async () => {
-    const { fetchJson } = fixtureFetchJson({
+    const { fetchPonderJson, fetchMetadataJson } = fixtureFetches({
       pages: [[row("1")]],
       total: 1,
       failFetchFor: new Set(["1"]),
     });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
     });
 
     assert.deepEqual(result.metadataFailures, [
@@ -182,14 +195,15 @@ describe("fetchVerifiedObservations — observations and failures", () => {
   });
 
   it("reports metadata-parse-failed when the JSON is not passport metadata", async () => {
-    const { fetchJson } = fixtureFetchJson({
+    const { fetchPonderJson, fetchMetadataJson } = fixtureFetches({
       pages: [[row("1")]],
       total: 1,
       metadataByTokenId: { "1": ["not", "metadata"] },
     });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
     });
 
     assert.deepEqual(result.metadataFailures, [
@@ -198,7 +212,7 @@ describe("fetchVerifiedObservations — observations and failures", () => {
   });
 
   it("maps verifiers lowercased and skips empty ones", async () => {
-    const { fetchJson } = fixtureFetchJson({
+    const { fetchPonderJson, fetchMetadataJson } = fixtureFetches({
       pages: [
         [
           row("1", { verifier: "0xABCDEF0000000000000000000000000000000001" }),
@@ -209,8 +223,9 @@ describe("fetchVerifiedObservations — observations and failures", () => {
       total: 3,
     });
     const result = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson,
+      ponderOrigin: "https://ponder.example",
+      fetchPonderJson,
+      fetchMetadataJson,
     });
 
     assert.deepEqual(result.verifierByTokenId, {
@@ -224,16 +239,15 @@ describe("fetchVerifiedObservations — concurrency determinism", () => {
     const pages = [[row("1"), row("2"), row("3"), row("4"), row("5")]];
 
     const sequential = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson: fixtureFetchJson({ pages, total: 5 }).fetchJson,
+      ponderOrigin: "https://ponder.example",
+      ...fixtureFetches({ pages, total: 5 }),
       concurrency: 1,
     });
 
-    // Delay earlier rows longer so completion order inverts request order.
     let delay = 25;
     const concurrent = await fetchVerifiedObservations({
-      ponderUrl: "https://ponder.example",
-      fetchJson: fixtureFetchJson({
+      ponderOrigin: "https://ponder.example",
+      ...fixtureFetches({
         pages,
         total: 5,
         onFetch: async (url) => {
@@ -243,7 +257,7 @@ describe("fetchVerifiedObservations — concurrency determinism", () => {
             await new Promise((resolve) => setTimeout(resolve, wait));
           }
         },
-      }).fetchJson,
+      }),
       concurrency: 8,
     });
 

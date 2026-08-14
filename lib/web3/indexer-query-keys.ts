@@ -11,7 +11,6 @@
  */
 export const INDEXER_QUERY_KEY_PREFIXES = [
   "marketplace-listings",
-  "listing-facets",
   "watchlist-listings",
   "watchlist-batch",
   "consignments",

@@ -2,7 +2,7 @@
 
 import { getAddress, zeroAddress } from "viem";
 
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type CommercePaymentTokenRow = {
   chainId: number;
@@ -35,9 +35,7 @@ export async function getCommercePaymentTokenCandidates(): Promise<{
   tokens: CommercePaymentTokenRow[];
   ponderError?: "PONDER_UNAVAILABLE";
 }> {
-  const base = ponderBaseUrl();
-  const url = new URL(`${base}/commerce-payment-tokens`);
-  url.searchParams.set("limit", "200");
+  const url = buildPonderUrl("commerce.paymentTokens", {}, { limit: 200 });
 
   try {
     const res = await ponderFetch(url);

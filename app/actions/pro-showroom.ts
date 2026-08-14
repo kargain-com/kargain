@@ -18,7 +18,6 @@ import type {
   PonderVerifierAttestation,
   VerifierRow,
 } from "@/lib/types/ponder";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type ProShowroomPassport = {
   tokenId: string;
@@ -56,54 +55,6 @@ export type GetProShowroomResult =
   | { kind: "ambiguous"; slug: string; candidates: ProShowroomSlugCandidate[] }
   | { kind: "missing" };
 
-type PonderListingRaw = {
-  id?: string;
-  tokenId?: string;
-  chainId?: number;
-  seller?: string;
-  fiatPrice1e8?: string | number;
-  fiatCurrency?: number;
-  active?: boolean;
-  listedAt?: string | number;
-  passportStatus?: string;
-  make?: string;
-  model?: string;
-  year?: number;
-  mileageKm?: number;
-  fuelType?: string;
-  bodyType?: string;
-  transmission?: string;
-  tokenUri?: string;
-  coverPhotoUri?: string;
-  duplicateVin?: boolean;
-  verifier?: string;
-};
-
-function mapListingRaw(listing: PonderListingRaw) {
-  return mapPonderListingToRow({
-    id: String(listing.id ?? listing.tokenId ?? ""),
-    tokenId: String(listing.tokenId ?? listing.id ?? ""),
-    chainId: Number(listing.chainId ?? 0),
-    seller: String(listing.seller ?? ""),
-    fiatPrice1e8: listing.fiatPrice1e8 ?? "0",
-    fiatCurrency: listing.fiatCurrency,
-    active: listing.active === true,
-    listedAt: listing.listedAt ?? "0",
-    passportStatus: listing.passportStatus,
-    make: listing.make,
-    model: listing.model,
-    year: listing.year,
-    mileageKm: listing.mileageKm,
-    fuelType: listing.fuelType,
-    bodyType: listing.bodyType,
-    transmission: listing.transmission,
-    tokenUri: listing.tokenUri,
-    coverPhotoUri: listing.coverPhotoUri,
-    duplicateVin: listing.duplicateVin,
-    verifier: listing.verifier,
-  });
-}
-
 function mapVerifierRow(
   profile: NonNullable<Awaited<ReturnType<typeof fetchVerifierPublicData>>["profile"]>,
   address: `0x${string}`,
@@ -137,11 +88,11 @@ async function loadResolvedShowroom(
   let verificationFee = 0n;
 
   try {
-    const [activeOnChain, verifierData, listingsRes, consignmentsPage] =
+    const [activeOnChain, verifierData, sellerLots, consignmentsPage] =
       await Promise.all([
         isActiveVerifierOnChain(address, chainId),
         fetchVerifierPublicData(address, chainId),
-        ponderFetch(`${ponderBaseUrl()}/profile/${address}/listings`),
+        getConsignments({ seller: address, live: true, page: 1, limit: 100 }),
         getConsignments({ agent: address, live: true, page: 1, limit: 100 }),
       ]);
 
@@ -167,12 +118,11 @@ async function loadResolvedShowroom(
     recentAttestations = verifierData.attestations;
     attestationTotal = verifierData.attestationTotal;
 
-    if (listingsRes.ok) {
-      const data = (await listingsRes.json()) as { listings?: PonderListingRaw[] };
-      activeListings = (data.listings ?? [])
-        .filter((l) => l.active === true)
-        .map(mapListingRaw);
-    }
+    activeListings = sellerLots.ponderError
+      ? []
+      : sellerLots.rows.map((row) =>
+          mapPonderListingToRow(consignmentRecordToListingInput(row)),
+        );
 
     activeConsignments = consignmentsPage.rows.map((row) =>
       mapPonderListingToRow(consignmentRecordToListingInput(row)),

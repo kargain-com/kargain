@@ -2,7 +2,7 @@
 
 import { getAddress } from "viem";
 
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type PendingClaimCreditApiRow = {
   id: string;
@@ -58,12 +58,16 @@ export async function getPendingClaims(
   if (!account) return { ...EMPTY, page, limit };
 
   try {
-    const url = new URL(`${ponderBaseUrl()}/accounts/${account}/claims`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(limit));
-    if (chainId != null && Number.isFinite(chainId)) {
-      url.searchParams.set("chainId", String(chainId));
-    }
+    const url = buildPonderUrl(
+      "accounts.claims",
+      { address: account },
+      {
+        page,
+        limit,
+        chainId:
+          chainId != null && Number.isFinite(chainId) ? chainId : undefined,
+      },
+    );
     const res = await ponderFetch(url.toString());
     if (!res.ok) {
       return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };

@@ -1,7 +1,6 @@
 import { cache } from "react";
 
 import { consignmentToListingInput } from "@/lib/commerce/listing-view";
-import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { mapPonderListingToRow } from "@/lib/marketplace/map-ponder-listing";
 import { fetchChainPassportDetail, readTokenUriOnChain } from "@/lib/passport/build-chain-passport-detail";
@@ -21,7 +20,12 @@ import type {
   PonderUriHistoryEntry,
 } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import {
+  buildVerifierDetailUrl,
+  fetchConsignmentByToken,
+  fetchPassportByToken,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
 import { getPublicClient } from "@/lib/web3/public-client";
 
 export type PassportDetailResult =
@@ -256,7 +260,7 @@ export async function fetchPassportDetail(
 ): Promise<PassportDetailResult> {
   let raw: unknown;
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/passports/${tokenId}`);
+    const res = await fetchPassportByToken(tokenId);
     if (res.status === 404) {
       if (chainId == null) return { ok: false, error: "NOT_FOUND" };
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
@@ -354,18 +358,15 @@ export async function fetchListingDetail(
   chainId?: number,
 ): Promise<FixedPriceListingDetailProp | null> {
   try {
-    const url = new URL(
-      `${ponderBaseUrl()}/consignments/by-token/${tokenId}`,
-    );
-    url.searchParams.set("mode", "fixedPrice");
-    if (chainId != null && Number.isFinite(chainId) && chainId > 0) {
-      url.searchParams.set("chainId", String(Math.trunc(chainId)));
-    }
-    const res = await ponderFetch(url);
-    if (!res.ok) return null;
-    const json = (await res.json()) as { consignment?: PonderConsignmentRow };
-    const row = json.consignment;
-    if (!row) return null;
+    const lot = await fetchConsignmentByToken(tokenId, {
+      mode: "fixedPrice",
+      chainId:
+        chainId != null && Number.isFinite(chainId) && chainId > 0
+          ? Math.trunc(chainId)
+          : undefined,
+    });
+    if (!lot.ok || lot.consignment == null) return null;
+    const row = lot.consignment;
     const input = consignmentToListingInput(row);
     const mapped = mapPonderListingToRow(input);
     const active =
@@ -394,13 +395,13 @@ export async function fetchListingDetail(
 export function buildVerifierDetailQueryUrl(
   address: string,
   chainId?: number,
-  baseUrl: string = ponderBaseUrl(),
 ): string {
-  const url = new URL(`${baseUrl}/verifiers/${address}`);
-  if (chainId != null && Number.isFinite(chainId) && chainId > 0) {
-    url.searchParams.set("chainId", String(Math.trunc(chainId)));
-  }
-  return url.toString();
+  return buildVerifierDetailUrl(
+    address,
+    chainId != null && Number.isFinite(chainId) && chainId > 0
+      ? Math.trunc(chainId)
+      : undefined,
+  );
 }
 
 export async function fetchVerifierDetail(

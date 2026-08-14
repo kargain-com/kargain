@@ -10,7 +10,13 @@ import {
   type PonderConsignmentRow,
 } from "@/lib/commerce/ponder-consignment";
 import type { CommerceMode } from "@/lib/commerce/mode";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import {
+  buildConsignmentsListUrl,
+  fetchBidsForPassportToken,
+  fetchConsignmentBids,
+  fetchConsignmentByToken,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
 
 export type ConsignmentsPage = {
   ok: true;
@@ -41,6 +47,11 @@ type ConsignmentsResponse = {
   total?: number;
   page?: number;
   limit?: number;
+  statusCounts?: {
+    UNVERIFIED?: number;
+    VERIFIED?: number;
+    DISPUTED?: number;
+  };
 };
 
 type BidsResponse = {
@@ -74,23 +85,6 @@ function emptyPage(page: number): ConsignmentsPage {
   };
 }
 
-function consignmentsUrl(query: ConsignmentQuery): URL {
-  const url = new URL(`${ponderBaseUrl()}/consignments`);
-  const { page = 1, limit = 48 } = query;
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("limit", String(limit));
-  if (query.mode) url.searchParams.set("mode", query.mode);
-  // API filter is `active` → OPEN_PHASES (offered|binding). `live` is the
-  // product name in this action; do not send a phantom `live` query key.
-  if (query.live === true) url.searchParams.set("active", "true");
-  else if (query.live === false) url.searchParams.set("active", "false");
-  if (query.phase) url.searchParams.set("phase", query.phase);
-  if (query.chainId != null) url.searchParams.set("chainId", String(query.chainId));
-  if (query.seller) url.searchParams.set("seller", query.seller);
-  if (query.agent) url.searchParams.set("agent", query.agent);
-  return url;
-}
-
 export async function getConsignments(
   query: ConsignmentQuery = {},
 ): Promise<ConsignmentsPage> {
@@ -98,7 +92,18 @@ export async function getConsignments(
   const limit = query.limit ?? 48;
 
   try {
-    const res = await ponderFetch(consignmentsUrl(query).toString());
+    const url = buildConsignmentsListUrl({
+      page,
+      limit,
+      mode: query.mode,
+      active:
+        query.live === true ? true : query.live === false ? false : undefined,
+      phase: query.phase,
+      chainId: query.chainId,
+      seller: query.seller,
+      agent: query.agent,
+    });
+    const res = await ponderFetch(url.toString());
     if (!res.ok) return emptyPage(page);
 
     const data = (await res.json()) as ConsignmentsResponse;
@@ -117,23 +122,45 @@ export async function getConsignments(
   }
 }
 
+/** Live-lot ambient stats — totals from browse envelope (`limit=1`). */
+export async function fetchLiveConsignmentBrowseStats(mode?: CommerceMode): Promise<{
+  total: number;
+  verified: number;
+}> {
+  try {
+    const res = await ponderFetch(
+      buildConsignmentsListUrl({
+        mode,
+        active: true,
+        page: 1,
+        limit: 1,
+      }).toString(),
+    );
+    if (!res.ok) return { total: 0, verified: 0 };
+    const data = (await res.json()) as ConsignmentsResponse;
+    const total = data.total;
+    const verified = data.statusCounts?.VERIFIED;
+    return {
+      total:
+        typeof total === "number" && Number.isFinite(total) && total > 0
+          ? Math.floor(total)
+          : 0,
+      verified:
+        typeof verified === "number" && Number.isFinite(verified) && verified > 0
+          ? Math.floor(verified)
+          : 0,
+    };
+  } catch {
+    return { total: 0, verified: 0 };
+  }
+}
+
 /** Live-lot count for ambient stats — `0` when the indexer is unreachable. */
 export async function fetchLiveConsignmentCount(
   mode?: CommerceMode,
 ): Promise<number> {
-  try {
-    const res = await ponderFetch(
-      consignmentsUrl({ mode, live: true, page: 1, limit: 1 }).toString(),
-    );
-    if (!res.ok) return 0;
-    const data = (await res.json()) as ConsignmentsResponse;
-    const total = data.total;
-    return typeof total === "number" && Number.isFinite(total) && total > 0
-      ? Math.floor(total)
-      : 0;
-  } catch {
-    return 0;
-  }
+  const stats = await fetchLiveConsignmentBrowseStats(mode);
+  return stats.total;
 }
 
 export async function getConsignmentDetail(
@@ -141,17 +168,15 @@ export async function getConsignmentDetail(
   mode: CommerceMode,
 ): Promise<ConsignmentDetailResult> {
   try {
-    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}`);
-    url.searchParams.set("mode", mode);
-
-    const res = await ponderFetch(url.toString());
-    if (res.status === 404) return { ok: true, consignment: null };
-    if (!res.ok) {
+    const lot = await fetchConsignmentByToken(tokenId, { mode });
+    if (!lot.ok) {
       return { ok: true, consignment: null, ponderError: "PONDER_UNAVAILABLE" };
     }
-
-    const raw = (await res.json()) as PonderConsignmentRow;
-    return { ok: true, consignment: mapConsignmentRow(raw) };
+    if (lot.consignment == null) return { ok: true, consignment: null };
+    return {
+      ok: true,
+      consignment: mapConsignmentRow(lot.consignment),
+    };
   } catch {
     return { ok: true, consignment: null, ponderError: "PONDER_UNAVAILABLE" };
   }
@@ -165,15 +190,32 @@ export async function getConsignmentBids(
   const limit = opts?.limit ?? 50;
 
   try {
-    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}/bids`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(limit));
     if (opts?.consignmentId) {
-      url.searchParams.set("consignmentId", opts.consignmentId);
+      const res = await fetchConsignmentBids(opts.consignmentId, { page, limit });
+      if (!res.ok) {
+        return {
+          ok: true,
+          bids: [],
+          total: 0,
+          page,
+          totalPages: 0,
+          ponderError: "PONDER_UNAVAILABLE",
+        };
+      }
+      const data = (await res.json()) as BidsResponse;
+      const bids = mapConsignmentBidRows(data.bids);
+      const total = data.total ?? bids.length;
+      return {
+        ok: true,
+        bids,
+        total,
+        page: data.page ?? page,
+        totalPages: Math.max(1, Math.ceil(total / (data.limit || limit))),
+      };
     }
 
-    const res = await ponderFetch(url.toString());
-    if (!res.ok) {
+    const result = await fetchBidsForPassportToken(tokenId, { page, limit });
+    if (!result.ok) {
       return {
         ok: true,
         bids: [],
@@ -183,8 +225,10 @@ export async function getConsignmentBids(
         ponderError: "PONDER_UNAVAILABLE",
       };
     }
-
-    const data = (await res.json()) as BidsResponse;
+    if (result.body == null) {
+      return { ok: true, bids: [], total: 0, page, totalPages: 0 };
+    }
+    const data = result.body as BidsResponse;
     const bids = mapConsignmentBidRows(data.bids);
     const total = data.total ?? bids.length;
 

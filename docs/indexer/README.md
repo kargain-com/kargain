@@ -49,10 +49,10 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 
 | Route | Purpose |
 |-------|---------|
-| `GET /consignments` | Browse (`mode`, `active` = offered\|binding, `phase`, `seller`, `agent`, `chainId`) |
-| `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred, else latest historical) |
-| `GET /consignments/:id` | Deep link by append-only id (“sale N”) |
-| `GET /consignments/:id/bids` | Ascending bid history |
+| `GET /consignments` | Browse with passport join filters/sort (`mode`, `active` = offered\|binding, `phase`, `seller`, `agent`, `chainId`, `page`, `limit`, plus search/make/model/year/mileage/price+FX/CSV vehicle attrs/placeId/colour/status/sort/verifiedFirst). Envelope: `{ consignments, total, page, limit, statusCounts }`. `total` and `statusCounts` use the same predicates as the page. |
+| `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred, else latest historical); response `{ consignment }` |
+| `GET /consignments/:id` | Deep link by append-only consignment id (**not** passport `tokenId`); response `{ consignment }` |
+| `GET /consignments/:id/bids` | Ascending bid history for that consignment id |
 | `GET /agents/:address/mandates` | Agent portfolio (`?active=`) |
 | `GET /owners/:address/mandates` | Owner delegated tab (`?active=`) |
 | `GET /agents/:address/consignments` | Agent lots (`?awaiting=`, `?phase=`) |
@@ -66,6 +66,8 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 
 Holds and ascending terms stay **embedded** in `GET /consignments/:id` (no standalone `/holds`). `vin_index` is an internal write-side index that drives product via `passport.duplicateVin` — not a missing HTTP surface.
 
+**Not registered (do not call):** `GET /consignments/stats`, `GET /consignments/facets`, legacy `GET /listings*`, `GET /auctions*`. Ambient marketplace counts use browse `total` + `statusCounts.VERIFIED` (`limit=1`) plus auction/verifier counts — not a stats route.
+
 ## Verifier lifecycle (bounded indexing)
 
 Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error). KarPro Arweave metadata denorms `slug` plus Place fields (`locationLabel`, `locationPlaceId`, `locationCountryCode`) on mint/profile update (empty when incomplete or missing).
@@ -75,6 +77,8 @@ Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisput
 ## HTTP API
 
 Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, verifier, notifications, claims union) and [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) (consignments, mandates, challenges, commerce config — see table above). Bigints are serialized as strings in JSON.
+
+**App reads:** product code builds Ponder URLs only through the typed owner in [`lib/web3/ponder-fetch.ts`](../../lib/web3/ponder-fetch.ts) (catalog + client + `cache: "no-store"` transport). Do not hand-build `${PONDER_SQL_API_URL}/…` paths in actions/lib.
 
 | Endpoint | Purpose |
 |----------|---------|

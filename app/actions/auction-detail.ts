@@ -10,9 +10,11 @@ import { consignmentToAuctionRaw } from "@/lib/commerce/auction-view";
 import {
   mapConsignmentBidRows,
   type PonderConsignmentBidRow,
-  type PonderConsignmentRow,
 } from "@/lib/commerce/ponder-consignment";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import {
+  fetchBidsForPassportToken,
+  fetchConsignmentByToken,
+} from "@/lib/web3/ponder-fetch";
 
 export type AuctionDetailResult =
   | { ok: true; auction: AuctionRow | null; ponderError?: string }
@@ -38,21 +40,20 @@ export async function getAuctionDetail(
   tokenId: string,
 ): Promise<AuctionDetailResult> {
   try {
-    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}`);
-    url.searchParams.set("mode", "ascending");
-
-    const res = await ponderFetch(url.toString());
-    if (res.status === 404) {
-      return { ok: true, auction: null };
-    }
-    if (!res.ok) {
+    const lot = await fetchConsignmentByToken(tokenId, { mode: "ascending" });
+    if (!lot.ok) {
       return { ok: true, auction: null, ponderError: "PONDER_UNAVAILABLE" };
     }
-    const raw = (await res.json()) as PonderConsignmentRow;
-    if (!raw?.tokenId) {
+    if (lot.consignment == null) {
       return { ok: true, auction: null };
     }
-    return { ok: true, auction: mapPonderAuctionRow(consignmentToAuctionRaw(raw)) };
+    if (!lot.consignment.tokenId) {
+      return { ok: true, auction: null };
+    }
+    return {
+      ok: true,
+      auction: mapPonderAuctionRow(consignmentToAuctionRaw(lot.consignment)),
+    };
   } catch {
     return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
@@ -71,12 +72,12 @@ export async function getAuctionBids(
   const limit = opts?.limit ?? 50;
 
   try {
-    const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}/bids`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(limit));
-
-    const res = await ponderFetch(url.toString());
-    if (!res.ok) {
+    const result = await fetchBidsForPassportToken(tokenId, {
+      mode: "ascending",
+      page,
+      limit,
+    });
+    if (!result.ok) {
       return {
         ok: true,
         bids: [],
@@ -86,8 +87,11 @@ export async function getAuctionBids(
         ponderError: "PONDER_UNAVAILABLE",
       };
     }
+    if (result.body == null) {
+      return { ok: true, bids: [], total: 0, page, totalPages: 0 };
+    }
 
-    const data = (await res.json()) as BidsResponse;
+    const data = result.body as BidsResponse;
     let bids: AuctionBid[] = mapConsignmentBidRows(data.bids).map((bid) => ({
       id: bid.id,
       tokenId: bid.tokenId,

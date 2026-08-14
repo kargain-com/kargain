@@ -2,7 +2,6 @@
 
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { z } from "zod";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
@@ -22,6 +21,14 @@ import {
   type ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
 import type { PassportStatus } from "@/lib/types/ponder";
+import {
+  buildConsignmentsListUrl,
+  buildPassportListUrl,
+  buildPonderUrl,
+  fetchConsignmentByToken,
+  fetchPassportByToken,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
 
 export type MarketplaceListingRow = MarketplaceListingRowType;
 
@@ -70,53 +77,57 @@ export type MarketplaceListingsResult = {
   ponderError?: string;
 };
 
-
 type ConsignmentsResponse = {
   consignments?: PonderConsignmentRow[];
   total?: number;
   page?: number;
   limit?: number;
+  statusCounts?: {
+    UNVERIFIED?: number;
+    VERIFIED?: number;
+    DISPUTED?: number;
+  };
 };
 
-function buildPonderListingsUrl(p: z.infer<typeof filterSchema>): URL {
-  const url = new URL(`${ponderBaseUrl()}/consignments`);
-  url.searchParams.set("mode", "fixedPrice");
-  url.searchParams.set("active", "true");
-  url.searchParams.set("page", String(p.page));
-  url.searchParams.set("limit", String(p.limit));
-  url.searchParams.set("verifiedFirst", "true");
-  if (p.search) url.searchParams.set("search", p.search);
-  if (p.make) url.searchParams.set("make", p.make);
-  if (p.model) url.searchParams.set("model", p.model);
-  if (p.yearMin != null) url.searchParams.set("yearMin", String(p.yearMin));
-  if (p.yearMax != null) url.searchParams.set("yearMax", String(p.yearMax));
-  if (p.mileageMin != null) url.searchParams.set("mileageMin", String(p.mileageMin));
-  if (p.mileageMax != null) url.searchParams.set("mileageMax", String(p.mileageMax));
-  if (p.priceMin) url.searchParams.set("priceMin", p.priceMin);
-  if (p.priceMax) url.searchParams.set("priceMax", p.priceMax);
-  if (p.priceCurrency) url.searchParams.set("priceCurrency", p.priceCurrency);
-  if (p.eurUsdRate) url.searchParams.set("eurUsdRate", p.eurUsdRate);
-  if (p.ethUsdRate) url.searchParams.set("ethUsdRate", p.ethUsdRate);
-  if (p.cnyUsdRate) url.searchParams.set("cnyUsdRate", p.cnyUsdRate);
-  if (p.inrUsdRate) url.searchParams.set("inrUsdRate", p.inrUsdRate);
-  if (p.brlUsdRate) url.searchParams.set("brlUsdRate", p.brlUsdRate);
-  if (p.idrUsdRate) url.searchParams.set("idrUsdRate", p.idrUsdRate);
-  if (p.audUsdRate) url.searchParams.set("audUsdRate", p.audUsdRate);
-  if (p.aedUsdRate) url.searchParams.set("aedUsdRate", p.aedUsdRate);
-  if (p.krwUsdRate) url.searchParams.set("krwUsdRate", p.krwUsdRate);
-  if (p.rubUsdRate) url.searchParams.set("rubUsdRate", p.rubUsdRate);
-  if (p.jpyUsdRate) url.searchParams.set("jpyUsdRate", p.jpyUsdRate);
-  if (p.btcUsdRate) url.searchParams.set("btcUsdRate", p.btcUsdRate);
-  if (p.fuelType) url.searchParams.set("fuelType", p.fuelType);
-  if (p.bodyType) url.searchParams.set("bodyType", p.bodyType);
-  if (p.transmission) url.searchParams.set("transmission", p.transmission);
-  if (p.condition) url.searchParams.set("condition", p.condition);
-  if (p.vehicleType) url.searchParams.set("vehicleType", p.vehicleType);
-  if (p.placeId) url.searchParams.set("placeId", p.placeId);
-  if (p.colour) url.searchParams.set("colour", p.colour);
-  if (p.status !== "all") url.searchParams.set("status", p.status);
-  if (p.sort !== "newest") url.searchParams.set("sort", p.sort);
-  return url;
+/** Marketplace browse — sends all catalog filter/sort/FX keys the handler reads. */
+function buildMarketplaceBrowseUrl(p: z.infer<typeof filterSchema>): URL {
+  return buildConsignmentsListUrl({
+    mode: "fixedPrice",
+    active: true,
+    page: p.page,
+    limit: p.limit,
+    search: p.search,
+    make: p.make,
+    model: p.model,
+    yearMin: p.yearMin,
+    yearMax: p.yearMax,
+    mileageMin: p.mileageMin,
+    mileageMax: p.mileageMax,
+    priceMin: p.priceMin,
+    priceMax: p.priceMax,
+    priceCurrency: p.priceCurrency,
+    eurUsdRate: p.eurUsdRate,
+    ethUsdRate: p.ethUsdRate,
+    cnyUsdRate: p.cnyUsdRate,
+    inrUsdRate: p.inrUsdRate,
+    brlUsdRate: p.brlUsdRate,
+    idrUsdRate: p.idrUsdRate,
+    audUsdRate: p.audUsdRate,
+    aedUsdRate: p.aedUsdRate,
+    krwUsdRate: p.krwUsdRate,
+    rubUsdRate: p.rubUsdRate,
+    jpyUsdRate: p.jpyUsdRate,
+    btcUsdRate: p.btcUsdRate,
+    fuelType: p.fuelType,
+    bodyType: p.bodyType,
+    transmission: p.transmission,
+    condition: p.condition,
+    vehicleType: p.vehicleType,
+    placeId: p.placeId,
+    colour: p.colour,
+    status: p.status === "all" ? undefined : p.status,
+    sort: p.sort,
+  });
 }
 
 export async function searchMarketplaceListings(
@@ -124,7 +135,7 @@ export async function searchMarketplaceListings(
 ): Promise<MarketplaceListingsResult> {
   const p = filterSchema.parse(input);
   try {
-    const res = await ponderFetch(buildPonderListingsUrl(p).toString());
+    const res = await ponderFetch(buildMarketplaceBrowseUrl(p).toString());
     if (!res.ok) {
       return {
         ok: true,
@@ -168,7 +179,7 @@ export async function searchMarketplaceFromUrlQuery(
 
 export async function getPassportFromPonder(tokenId: string) {
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/passports/${tokenId}`);
+    const res = await fetchPassportByToken(tokenId);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -182,8 +193,9 @@ export async function getProfileData(address: string): Promise<{
 }> {
   try {
     const [passportsRes, consignmentsPage] = await Promise.all([
-      ponderFetch(`${ponderBaseUrl()}/profile/${address}/passports`),
-      // Seller live lots (offered|binding) — same filter as marketplace browse.
+      ponderFetch(
+        buildPonderUrl("profile.passports", { address }).toString(),
+      ),
       getConsignments({ seller: address, live: true, limit: 100 }),
     ]);
 
@@ -217,11 +229,13 @@ export async function getPassportsByVerifier(
   address: string,
 ): Promise<VerifierPassportRow[]> {
   try {
-    const url = new URL(`${ponderBaseUrl()}/passports`);
-    url.searchParams.set("verifier", address);
-    url.searchParams.set("status", "VERIFIED");
-    url.searchParams.set("limit", "100");
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch(
+      buildPassportListUrl({
+        verifier: address,
+        status: "VERIFIED",
+        limit: 100,
+      }).toString(),
+    );
     if (!res.ok) return [];
     const data = (await res.json()) as { passports: Array<Record<string, unknown>> };
     return (data.passports ?? []).map((p) => ({
@@ -236,35 +250,13 @@ export async function getPassportsByVerifier(
   }
 }
 
-export async function fetchMarketplaceStats() {
-  try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/consignments/stats`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
-
-export async function fetchListingFacets() {
-  try {
-    const res = await ponderFetch(`${ponderBaseUrl()}/consignments/facets`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
-
 export async function loadFavoriteListingCards(tokenIds: string[]) {
   const rows = await Promise.all(
     tokenIds.map(async (tokenId) => {
       try {
-        const url = new URL(`${ponderBaseUrl()}/consignments/${tokenId}`);
-        url.searchParams.set("mode", "fixedPrice");
-        const res = await ponderFetch(url.toString());
-        if (!res.ok) return null;
-        const row = (await res.json()) as PonderConsignmentRow;
+        const lot = await fetchConsignmentByToken(tokenId, { mode: "fixedPrice" });
+        if (!lot.ok || lot.consignment == null) return null;
+        const row = lot.consignment;
         const input = consignmentToListingInput(row);
         if (!input.active) return null;
         return mapPonderListingToRow(input);

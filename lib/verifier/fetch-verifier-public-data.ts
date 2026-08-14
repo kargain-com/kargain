@@ -3,29 +3,23 @@ import type { VerifierPassportRow } from "@/app/actions/marketplace-listings";
 import { fetchVerifierDetail } from "@/lib/passport/fetch-passport-detail";
 import type { PassportStatus, PonderVerifierAttestation } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import {
+  buildVerifierAttestationsUrl,
+  buildVerifierPassportsUrl,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
 
 import { mapVerifierDetailToProfile } from "./map-verifier-profile";
 
-export function buildVerifierPassportsQueryUrl(
-  address: string,
-  baseUrl: string = ponderBaseUrl(),
-): string {
-  const url = new URL(`${baseUrl}/passports`);
-  url.searchParams.set("verifier", address);
-  url.searchParams.set("status", "VERIFIED");
-  url.searchParams.set("limit", "100");
-  return url.toString();
+export function buildVerifierPassportsQueryUrl(address: string): string {
+  return buildVerifierPassportsUrl(address);
 }
 
 export function buildVerifierAttestationsQueryUrl(
   address: string,
-  baseUrl: string = ponderBaseUrl(),
   limit = 100,
 ): string {
-  const url = new URL(`${baseUrl}/verifiers/${address}/attestations`);
-  url.searchParams.set("limit", String(limit));
-  return url.toString();
+  return buildVerifierAttestationsUrl(address, limit);
 }
 
 export type VerifierPublicPassportRow = VerifierPassportRow & {

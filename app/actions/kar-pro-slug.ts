@@ -1,12 +1,14 @@
 "use server";
 
-import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 import {
-  buildSlugAvailablePath,
+  buildSlugAvailableUrl,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
+import {
   slugAvailabilityFromPonderPayload,
   type SlugAvailabilityResult,
 } from "@/lib/kar-pro/slug-availability";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { isValidSlug } from "@/lib/kar-pro/kar-pro-slug-rules";
 
 /**
  * Check slug uniqueness against Ponder. Soft-fails to `{ reason: "error" }`
@@ -26,7 +28,7 @@ export async function checkSlugAvailability(
   }
 
   try {
-    const res = await ponderFetch(`${ponderBaseUrl()}${buildSlugAvailablePath(trimmed, ownerAddress)}`);
+    const res = await ponderFetch(buildSlugAvailableUrl(trimmed, ownerAddress));
     if (!res.ok) {
       return { available: false, reason: "error" };
     }

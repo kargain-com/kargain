@@ -6,7 +6,7 @@ import {
   type MandateRecord,
   type PonderMandateRow,
 } from "@/lib/commerce/ponder-consignment";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type MandatesPage = {
   ok: true;
@@ -28,7 +28,7 @@ export type MandateQuery = {
   mode?: CommerceMode;
   /** Standing grants only — omit to include revoked history. */
   active?: boolean;
-  /** Grants with no live consignment yet (agent "awaiting" queue). */
+  /** Retained for callers; handler does not filter on this key. */
   hasLiveConsignment?: boolean;
   page?: number;
   limit?: number;
@@ -46,22 +46,25 @@ function emptyPage(page: number): MandatesPage {
 }
 
 async function fetchMandates(
-  path: string,
+  routeId: "agents.mandates" | "owners.mandates",
+  address: string,
   query: MandateQuery,
 ): Promise<MandatesPage> {
   const page = query.page ?? 1;
   const limit = query.limit ?? 24;
+  void query.mode;
+  void query.hasLiveConsignment;
 
   try {
-    const url = new URL(`${ponderBaseUrl()}${path}`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(limit));
-    if (query.mode) url.searchParams.set("mode", query.mode);
-    if (query.active != null) url.searchParams.set("active", String(query.active));
-    if (query.hasLiveConsignment != null) {
-      url.searchParams.set("hasLiveConsignment", String(query.hasLiveConsignment));
-    }
-
+    const url = buildPonderUrl(
+      routeId,
+      { address },
+      {
+        page,
+        limit,
+        active: query.active,
+      },
+    );
     const res = await ponderFetch(url.toString());
     if (!res.ok) return emptyPage(page);
 
@@ -86,7 +89,7 @@ export async function getAgentMandates(
   address: string,
   query: MandateQuery = {},
 ): Promise<MandatesPage> {
-  return fetchMandates(`/agents/${address}/mandates`, query);
+  return fetchMandates("agents.mandates", address, query);
 }
 
 /** Grants issued by an owner (delegated vehicles). */
@@ -94,7 +97,7 @@ export async function getOwnerMandates(
   address: string,
   query: MandateQuery = {},
 ): Promise<MandatesPage> {
-  return fetchMandates(`/owners/${address}/mandates`, query);
+  return fetchMandates("owners.mandates", address, query);
 }
 
 /** Active grant count for a profile tab badge — `0` when unreachable. */

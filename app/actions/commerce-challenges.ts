@@ -7,7 +7,7 @@ import {
   type ChallengeStatus,
   type PonderChallengeRow,
 } from "@/lib/commerce/ponder-consignment";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type ChallengesPage = {
   ok: true;
@@ -54,14 +54,18 @@ export async function getChallenges(
   const limit = query.limit ?? 24;
 
   try {
-    const url = new URL(`${ponderBaseUrl()}/challenges`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(limit));
-    if (query.instance) url.searchParams.set("instance", query.instance);
-    if (query.status) url.searchParams.set("status", query.status);
-    if (query.unresolved) url.searchParams.set("unresolved", "true");
-    if (query.challenger) url.searchParams.set("challenger", query.challenger);
-    if (query.subjectId) url.searchParams.set("subjectId", query.subjectId);
+    const url = buildPonderUrl(
+      "challenges.list",
+      {},
+      {
+        page,
+        limit,
+        instance: query.instance,
+        status: query.status,
+        challenger: query.challenger,
+        subjectId: query.subjectId,
+      },
+    );
 
     const res = await ponderFetch(url.toString());
     if (!res.ok) return emptyPage(page);

@@ -2,7 +2,7 @@
 
 import { getAddress, type Address } from "viem";
 
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 /**
  * Verifier addresses recorded on passports owned by `address`.
@@ -11,8 +11,6 @@ import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 export async function getOwnerPassportVerifierAddresses(
   address: string,
 ): Promise<Address[]> {
-  const base = ponderBaseUrl();
-  if (!base) return [];
   let owner: Address;
   try {
     owner = getAddress(address as `0x${string}`);
@@ -21,7 +19,7 @@ export async function getOwnerPassportVerifierAddresses(
   }
   try {
     const res = await ponderFetch(
-      `${base}/profile/${encodeURIComponent(owner)}/passports`,
+      buildPonderUrl("profile.passports", { address: owner }).toString(),
     );
     if (!res.ok) return [];
     const body = (await res.json()) as { passports?: unknown[] };

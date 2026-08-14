@@ -7,7 +7,7 @@ import {
 } from "@/lib/auction/map-ponder-auction";
 import { consignmentToAuctionRaw } from "@/lib/commerce/auction-view";
 import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildConsignmentsListUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type AuctionBrowseResult = {
   ok: true;
@@ -26,12 +26,12 @@ type ConsignmentsResponse = {
 };
 
 function ascendingUrl(page: number, limit: number): URL {
-  const url = new URL(`${ponderBaseUrl()}/consignments`);
-  url.searchParams.set("mode", "ascending");
-  url.searchParams.set("active", "true");
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("limit", String(limit));
-  return url;
+  return buildConsignmentsListUrl({
+    mode: "ascending",
+    active: true,
+    page,
+    limit,
+  });
 }
 
 /** Live ascending-lot total for homepage stats — no row mapping. */

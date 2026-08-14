@@ -4,12 +4,20 @@
  * One implementation of the Ponder `/passports?status=VERIFIED` pagination,
  * per-tokenUri metadata fetch, and observation building consumed by both
  * scripts/vincent-derive.ts (CLI) and app/actions/vincent-commons.ts (F-2
- * Commons queue). Pure module: `fetchJson` is injected by the caller — no
- * env access, no logging here.
+ * Commons queue).
+ *
+ * Ponder reads always go through `ponderFetch` (forced no-store transport)
+ * unless tests inject `fetchPonderJson`. Metadata (Arweave/HTTP) uses a
+ * separate inject so it is never confused with the Ponder transport.
  */
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import type { VincentObservation } from "@/lib/vincent-commons/derive-claims";
+import {
+  buildPassportListPath,
+  ponderBaseUrl,
+  ponderFetch,
+} from "@/lib/web3/ponder-fetch";
 
 export type FetchJson = (url: string) => Promise<unknown>;
 
@@ -39,23 +47,52 @@ export type CommonsObservationsResult = {
 };
 
 export type FetchVerifiedObservationsOptions = {
-  ponderUrl: string;
-  fetchJson: FetchJson;
+  /** CLI override of Ponder origin; default `ponderBaseUrl()`. */
+  ponderOrigin?: string;
+  /**
+   * Test-only Ponder JSON inject. Production/CLI omit — default wraps
+   * `ponderFetch` so `no-store` always applies.
+   */
+  fetchPonderJson?: FetchJson;
+  /** Metadata HTTP (Arweave gateway). Defaults to `fetch`. Tests inject. */
+  fetchMetadataJson?: FetchJson;
   pageLimit?: number;
   maxPages?: number;
   concurrency?: number;
 };
 
+async function defaultPonderJson(url: string): Promise<unknown> {
+  const res = await ponderFetch(url);
+  if (!res.ok) {
+    throw new Error(`GET ${url} failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function defaultMetadataJson(url: string): Promise<unknown> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`GET ${url} failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 async function fetchVerifiedPassports(
-  ponderUrl: string,
-  fetchJson: FetchJson,
+  ponderOrigin: string,
+  fetchPonderJson: FetchJson,
   pageLimit: number,
   maxPages: number,
 ): Promise<PonderPassportRow[]> {
+  const origin = ponderOrigin.replace(/\/+$/, "");
   const rows: PonderPassportRow[] = [];
   for (let page = 1; page <= maxPages; page += 1) {
-    const url = `${ponderUrl}/passports?status=VERIFIED&verifiedFirst=false&page=${page}&limit=${pageLimit}`;
-    const body = (await fetchJson(url)) as PassportsPage;
+    const path = buildPassportListPath({
+      status: "VERIFIED",
+      verifiedFirst: false,
+      page,
+      limit: pageLimit,
+    });
+    const body = (await fetchPonderJson(`${origin}${path}`)) as PassportsPage;
     rows.push(...body.passports);
     if (rows.length >= body.total || body.passports.length === 0) break;
   }
@@ -91,7 +128,7 @@ type ObservationOutcome =
 
 async function buildObservation(
   row: PonderPassportRow,
-  fetchJson: FetchJson,
+  fetchMetadataJson: FetchJson,
 ): Promise<ObservationOutcome> {
   const url = arUriToHttp(row.tokenUri);
   if (!url) {
@@ -100,7 +137,7 @@ async function buildObservation(
 
   let metadata: ReturnType<typeof parseMetadataJson>;
   try {
-    metadata = parseMetadataJson(await fetchJson(url));
+    metadata = parseMetadataJson(await fetchMetadataJson(url));
   } catch {
     return { failure: { tokenId: row.id, reason: "metadata-fetch-failed" } };
   }
@@ -131,31 +168,37 @@ async function buildObservation(
  * yields exactly one observation or one metadata failure.
  */
 export async function fetchVerifiedObservations(
-  options: FetchVerifiedObservationsOptions,
+  options: FetchVerifiedObservationsOptions = {},
 ): Promise<CommonsObservationsResult> {
   const {
-    ponderUrl,
-    fetchJson,
+    ponderOrigin = ponderBaseUrl(),
+    fetchPonderJson = defaultPonderJson,
+    fetchMetadataJson = defaultMetadataJson,
     pageLimit = 100,
     maxPages = Number.POSITIVE_INFINITY,
     concurrency = 1,
   } = options;
 
-  const rows = await fetchVerifiedPassports(ponderUrl, fetchJson, pageLimit, maxPages);
-
-  const verifierByTokenId: Record<string, string> = {};
-  for (const row of rows) {
-    const verifier = (row.verifier ?? "").trim().toLowerCase();
-    if (verifier) verifierByTokenId[row.id] = verifier;
-  }
+  const rows = await fetchVerifiedPassports(
+    ponderOrigin,
+    fetchPonderJson,
+    pageLimit,
+    maxPages,
+  );
 
   const outcomes = await mapWithConcurrency(rows, concurrency, (row) =>
-    buildObservation(row, fetchJson),
+    buildObservation(row, fetchMetadataJson),
   );
 
   const observations: VincentObservation[] = [];
   const metadataFailures: CommonsMetadataFailure[] = [];
-  for (const outcome of outcomes) {
+  const verifierByTokenId: Record<string, string> = {};
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const outcome = outcomes[i];
+    const verifier = row.verifier?.trim().toLowerCase();
+    if (verifier) verifierByTokenId[row.id] = verifier;
     if ("observation" in outcome) {
       observations.push(outcome.observation);
     } else {

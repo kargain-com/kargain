@@ -7,7 +7,7 @@ import {
   type PonderVerifierDirectoryRow,
   type VerifierDirectoryEntry,
 } from "@/lib/verifier/parse-directory-entry";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
+import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 type VerifierDirectoryResult = {
   verifiers: VerifierDirectoryEntry[];
@@ -18,7 +18,7 @@ type PonderVerifiersRawResponse = {
 };
 
 async function fetchPonderVerifiers(): Promise<VerifierDirectoryEntry[]> {
-  const res = await ponderFetch(`${ponderBaseUrl()}/verifiers`);
+  const res = await ponderFetch(buildPonderUrl("verifiers.list").toString());
   if (!res.ok) return [];
   const data = (await res.json()) as PonderVerifiersRawResponse;
   return (data.verifiers ?? [])
