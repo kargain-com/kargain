@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import {
   ShieldCheckIcon,
@@ -10,6 +8,7 @@ import {
 } from "@/components/ui/icons";
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
+import { ListingCardAttributionLink } from "@/components/marketplace/listing-card-attribution-link";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { ContentImage } from "@/components/media/content-image";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
@@ -60,13 +59,12 @@ function AttributionRow({
       <Icon size={12} className={cn("shrink-0", iconClassName)} aria-hidden />
       <p className="font-sans text-xs text-text-secondary truncate">
         {label}{" "}
-        <Link
+        <ListingCardAttributionLink
           href={`/profile/${address}`}
           className={cn(ATTRIBUTION_LINK_BASE, linkClassName)}
-          onClick={(e) => e.stopPropagation()}
         >
           {shortAddress(address)}
-        </Link>
+        </ListingCardAttributionLink>
       </p>
     </div>
   );

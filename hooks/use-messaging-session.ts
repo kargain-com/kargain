@@ -9,5 +9,9 @@ import {
 
 /** Thin context reader — session ownership lives in MessagingSessionProvider. */
 export function useMessagingSession(): MessagingSessionContextValue {
-  return useContext(MessagingSessionContext);
+  const ctx = useContext(MessagingSessionContext);
+  if (!ctx) {
+    throw new Error("useMessagingSession must be used within MessagingSessionProvider");
+  }
+  return ctx;
 }

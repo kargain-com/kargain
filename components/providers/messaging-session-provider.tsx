@@ -63,9 +63,8 @@ const DISCONNECTED_VALUE: MessagingSessionContextValue = {
   session: null,
 };
 
-export const MessagingSessionContext = createContext<MessagingSessionContextValue>(
-  DISCONNECTED_VALUE,
-);
+export const MessagingSessionContext =
+  createContext<MessagingSessionContextValue | null>(null);
 
 const browserClock = {
   nowMs: () => Date.now(),

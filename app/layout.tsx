@@ -4,7 +4,6 @@ import { GeistSans } from "geist/font/sans";
 import { Inter } from "next/font/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
-import { SiteChrome } from "@/components/shell/site-chrome";
 
 import "./globals.css";
 
@@ -62,9 +61,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-dvh font-sans">
-        <AppProviders>
-          <SiteChrome>{children}</SiteChrome>
-        </AppProviders>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

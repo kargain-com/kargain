@@ -197,7 +197,7 @@ Reference: [`app/kar-pro/page.tsx`](../app/kar-pro/page.tsx), [`app/pro/[slug]/p
 
 ### 4.7 Top navbar
 
-Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top-nav.tsx).
+Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top-nav.tsx) inside server [`SiteChrome`](../components/shell/site-chrome.tsx) (`app/(public)/layout.tsx` / `app/(identity)/layout.tsx`). Public routes pass `identityBadges={false}` (Messages/Alerts links without live dots); identity routes pass `identityBadges` (Nostr + messaging providers mounted).
 
 | Property | Value |
 |----------|-------|
@@ -218,9 +218,9 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **Logo:** [`KargainLogo`](../components/ui/kargain-logo.tsx) at 24px + wordmark "Kargain". Mobile: icon only — wordmark `hidden sm:block`.
 
-**Messages:** `InboxIcon` (size 20). Nav dot via [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx): amber when account messaging setup is incomplete; warm accent when unread. Desktop only (`hidden md:inline-flex`); requires wallet connected.
+**Messages:** `InboxIcon` (size 20). Nav dot via [`MessagingNavStatus`](../components/messaging/messaging-nav-status.tsx): amber when account messaging setup is incomplete; warm accent when unread. Desktop only (`hidden md:inline-flex`); requires wallet connected **and** identity chrome (`identityBadges`) — public home/about/terms/privacy show the link without the live badge.
 
-**Alerts:** `NotificationIcon` (size 20). Unread: dot badge via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx). Desktop only (`hidden md:inline-flex`); link always visible, badge when wallet connected.
+**Alerts:** `NotificationIcon` (size 20). Unread: dot badge via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx). Desktop only (`hidden md:inline-flex`); link when wallet connected; live badge only with `identityBadges`.
 
 **Become KarPro:** [`useShowBecomeKarPro`](../hooks/use-show-become-karpro.ts) — shown when wallet connected and not an active verifier on the **wallet’s commercial chain** (84532 or 11155111); non-commercial wallet still shows the CTA and `/kar-pro` prompts a network switch. Mobile top nav: compact **KarPro** label; desktop: **Become KarPro**.
 
@@ -261,9 +261,9 @@ Implementation: [`components/shell/mobile-bottom-nav.tsx`](../components/shell/m
 | Slot | Icon | Target | Notes |
 |------|------|--------|-------|
 | Marketplace | `grid` (Mono Icons) | `/` | [`GridIcon`](../components/ui/icons.tsx) from canonical icon module; compass motif elsewhere per §10.5 |
-| Messages | `message-alt` (Mono Icons) | `/messages` | Always visible; dot badge when wallet connected and unread |
+| Messages | `message-alt` (Mono Icons) | `/messages` | Always visible; live dot when wallet connected **and** identity chrome (`identityBadges`) |
 | FAB (center) | `add` (Mono Icons) | `/passport/new` | `h-12 w-12 rounded-full bg-accent-warm text-bg-primary`, `AddIcon` size 22, `-top-3`; icon-only; no border or ring |
-| Alerts | `notification` (Mono Icons) | `/notifications` | Unread dot via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx); default tab = Alerts inbox |
+| Alerts | `notification` (Mono Icons) | `/notifications` | Live unread via [`NotificationsUnreadBadge`](../components/notifications/notifications-unread-badge.tsx) when identity chrome; default tab = Alerts inbox |
 | Profile | avatar or `user` (Mono Icons) | `/profile/{address}` or `/profile/edit` | [`IdentityAvatar`](../components/identity/identity-avatar.tsx) when connected (Nostr → ENS → identicon); "Connect" when disconnected |
 
 **Icons:** All product surfaces use Mono Icons from [`components/ui/icons.tsx`](../components/ui/icons.tsx). Regenerate with `pnpm generate:icons` after whitelist changes in [`scripts/generate-icons.mjs`](../scripts/generate-icons.mjs). See §7.
@@ -629,7 +629,7 @@ Implementation: [`passport-detail-view.tsx`](../components/passport/passport-det
 
 ### 4.15 Site footer
 
-Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-footer.tsx).
+Implementation: [`components/shell/site-footer.tsx`](../components/shell/site-footer.tsx) — rendered from **server** [`SiteChrome`](../components/shell/site-chrome.tsx) only (not imported into client nav).
 
 | Property | Value |
 |----------|-------|

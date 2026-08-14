@@ -94,7 +94,11 @@ function ProfileNavTab({
   );
 }
 
-export function MobileBottomNav() {
+export function MobileBottomNav({
+  identityBadges = false,
+}: {
+  identityBadges?: boolean;
+}) {
   const path = usePathname();
   const { address, isConnected } = useAccount();
 
@@ -124,7 +128,11 @@ export function MobileBottomNav() {
             label="Messages"
             icon={MessageAltIcon}
             active={path.startsWith("/messages")}
-            badge={isConnected ? <MessagingNavStatus className="-top-0.5 -right-0.5" /> : undefined}
+            badge={
+              isConnected && identityBadges ? (
+                <MessagingNavStatus className="-top-0.5 -right-0.5" />
+              ) : undefined
+            }
           />
 
           <div className="flex items-end justify-center">
@@ -148,7 +156,11 @@ export function MobileBottomNav() {
             label="Alerts"
             icon={NotificationIcon}
             active={path.startsWith("/notifications")}
-            badge={isConnected ? <NotificationsUnreadBadge className="-top-0.5 -right-0.5" /> : undefined}
+            badge={
+              isConnected && identityBadges ? (
+                <NotificationsUnreadBadge className="-top-0.5 -right-0.5" />
+              ) : undefined
+            }
           />
 
           <ProfileNavTab

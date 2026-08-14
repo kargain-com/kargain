@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 
@@ -12,11 +10,24 @@ function NavFallback() {
   return <div className="h-14 border-b border-border-default bg-bg-primary" aria-hidden />;
 }
 
-export function SiteChrome({ children }: { children: ReactNode }) {
+export type SiteChromeProps = {
+  children: ReactNode;
+  /**
+   * When true, Messages/Alerts show live unread/setup badges (identity routes
+   * with Nostr + messaging providers). Public routes pass false.
+   */
+  identityBadges?: boolean;
+};
+
+/** Server shell — client leaves only for nav/banner; footer stays server. */
+export function SiteChrome({
+  children,
+  identityBadges = false,
+}: SiteChromeProps) {
   return (
     <>
       <Suspense fallback={<NavFallback />}>
-        <AppTopNav />
+        <AppTopNav identityBadges={identityBadges} />
       </Suspense>
       <Suspense fallback={null}>
         <ClaimsPendingBanner />
@@ -34,7 +45,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
         </div>
       </Suspense>
       <Suspense fallback={null}>
-        <MobileBottomNav />
+        <MobileBottomNav identityBadges={identityBadges} />
       </Suspense>
     </>
   );

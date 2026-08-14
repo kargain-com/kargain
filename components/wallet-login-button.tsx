@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { getAddress } from "viem";
-import { useAccount, useConnect, useDisconnect, useChainId } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useChainId, useConfig } from "wagmi";
 import type { Connector } from "wagmi";
 
 import {
@@ -40,6 +40,7 @@ import {
   isMobileBrowser,
   walletConnectProjectId,
 } from "@/lib/web3/wallet-connect";
+import { ensureWalletConnectConnector } from "@/lib/web3/wagmi-config";
 import { identiconBackground, navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
@@ -71,8 +72,14 @@ export function WalletLoginButton() {
   const [copied, setCopied] = useState(false);
   const { address, isConnected } = useAccount();
   const walletChainId = useChainId();
+  const config = useConfig();
   const { disconnect } = useDisconnect();
   const { connect, connectors, isPending, error } = useConnect();
+
+  const openConnect = useCallback(() => {
+    setConnectOpen(true);
+    void ensureWalletConnectConnector(config);
+  }, [config]);
 
   const visibleConnectors = useMemo(
     () => connectors.filter(isConnectorVisible),
@@ -186,7 +193,7 @@ export function WalletLoginButton() {
     <>
       <button
         type="button"
-        onClick={() => setConnectOpen(true)}
+        onClick={openConnect}
         className={cn(
           "inline-flex h-9 items-center gap-2 rounded-sm border border-border-hover bg-transparent px-4 font-sans text-sm font-medium text-text-primary transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
           shellControlHover,
@@ -196,7 +203,13 @@ export function WalletLoginButton() {
         Connect wallet
       </button>
 
-      <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
+      <Dialog
+        open={connectOpen}
+        onOpenChange={(open) => {
+          setConnectOpen(open);
+          if (open) void ensureWalletConnectConnector(config);
+        }}
+      >
         <DialogContent showClose className="max-w-sm rounded-lg border-border-default bg-bg-card p-6">
           <DialogHeader className="space-y-1 pr-8">
             <DialogTitle className="font-display text-xl font-medium tracking-[-0.02em] text-text-primary">

@@ -23,7 +23,12 @@ import { cn } from "@/lib/utils";
 import { hasCommerceMode } from "@/lib/commerce/mode";
 import { resolveAuctionsNavChainId } from "@/lib/web3/chain-context";
 
-export function AppTopNav() {
+export type AppTopNavProps = {
+  /** Live Messages/Alerts badges — only when identity providers are mounted. */
+  identityBadges?: boolean;
+};
+
+export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
   const path = usePathname();
   const sp = useSearchParams();
   const { isConnected } = useAccount();
@@ -105,7 +110,9 @@ export function AppTopNav() {
               className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
               <NotificationIcon size={20} className="transition-colors duration-200" aria-hidden />
-              <NotificationsUnreadBadge className="top-1.5 right-1.5" />
+              {identityBadges ? (
+                <NotificationsUnreadBadge className="top-1.5 right-1.5" />
+              ) : null}
             </Link>
           )}
           {isConnected && (
@@ -115,7 +122,9 @@ export function AppTopNav() {
               className="group relative hidden h-9 w-9 items-center justify-center rounded-sm text-text-secondary transition-colors duration-200 hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:inline-flex"
             >
               <InboxIcon size={20} className="transition-colors duration-200" aria-hidden />
-              <MessagingNavStatus className="top-1.5 right-1.5" />
+              {identityBadges ? (
+                <MessagingNavStatus className="top-1.5 right-1.5" />
+              ) : null}
             </Link>
           )}
           {showBecomeKarPro && (

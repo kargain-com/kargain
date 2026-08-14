@@ -1,12 +1,12 @@
 import { ExternalLinkIcon } from "@/components/ui/icons";
 import Link from "next/link";
 
+import { FooterCopyrightYear } from "@/components/shell/footer-copyright-year";
+
 const linkClassName =
   "font-sans text-sm text-text-secondary transition-colors hover:text-text-primary";
 
 export function SiteFooter() {
-  const year = new Date().getFullYear();
-
   return (
     <footer
       className="border-t border-border-default bg-bg-primary pb-20 md:pb-0"
@@ -15,7 +15,7 @@ export function SiteFooter() {
       <div className="mx-auto w-full max-w-7xl px-6 py-6 md:px-8 xl:max-w-[80rem]">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="font-mono text-xs text-text-tertiary">
-            © {year} Kargain · MIT License
+            © <FooterCopyrightYear /> Kargain · MIT License
           </p>
 
           <nav
