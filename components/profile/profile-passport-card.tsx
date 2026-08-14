@@ -1,9 +1,13 @@
 import Link from "next/link";
 
+import { ContentImage } from "@/components/media/content-image";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import {
-  LISTING_CARD_IMAGE,
+  LISTING_CARD_IMAGE_SIZES_NARROW,
+  isListingCardFirstViewport,
+} from "@/lib/marketplace/listing-card-grid";
+import {
   LISTING_CARD_IMAGE_FRAME,
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
@@ -32,6 +36,8 @@ export type ProfilePassportCardProps = {
   /** Own-profile bridge transit overlay. */
   transitBadge?: string | null;
   hrefChainId?: number;
+  /** Index in the profile grid — first-viewport covers get `priority`. */
+  index?: number;
 };
 
 /** Reserved two-line title block — keeps tile height stable across labels. */
@@ -53,7 +59,10 @@ export function ProfilePassportCard({
   imageUrl,
   transitBadge,
   hrefChainId,
+  index,
 }: ProfilePassportCardProps) {
+  const priority =
+    index !== undefined ? isListingCardFirstViewport(index) : false;
   const bridgedAway =
     !transitBadge && isProfilePassportBridgedAway(chainId, custodyChain);
   // Inventory presence from indexer location — not escrow custody.
@@ -93,11 +102,11 @@ export function ProfilePassportCard({
     >
       <div className={LISTING_CARD_IMAGE_FRAME}>
         {imageUrl ? (
-          <img
+          <ContentImage
             src={imageUrl}
             alt={title}
-            className={LISTING_CARD_IMAGE}
-            loading="lazy"
+            sizes={LISTING_CARD_IMAGE_SIZES_NARROW}
+            priority={priority}
           />
         ) : (
           <div className={LISTING_CARD_IMAGE_PLACEHOLDER}>No image</div>

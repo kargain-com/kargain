@@ -105,9 +105,9 @@ export function ProActiveConsignmentsClient({
   return (
     <>
       <ul className={LISTING_CARD_GRID_PRO}>
-        {rows.map((row) => (
+        {rows.map((row, index) => (
           <li key={row.tokenId}>
-            <ListingCard row={row} />
+            <ListingCard row={row} index={index} />
           </li>
         ))}
       </ul>

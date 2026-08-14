@@ -86,9 +86,9 @@ export function WatchlistClient({ layout = "wide" }: Props) {
             />
           )}
           <ul className={gridClass}>
-            {listings.map((row) => (
+            {listings.map((row, index) => (
               <li key={row.tokenId}>
-                <ListingCard row={row} />
+                <ListingCard row={row} index={index} />
               </li>
             ))}
           </ul>

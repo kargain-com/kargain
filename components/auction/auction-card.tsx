@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { UserIcon } from "@/components/ui/icons";
 
+import { ContentImage } from "@/components/media/content-image";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { Card, CardContent } from "@/components/ui/card";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
@@ -13,7 +14,10 @@ import {
 } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import {
-  LISTING_CARD_IMAGE,
+  LISTING_CARD_IMAGE_SIZES,
+  isListingCardFirstViewport,
+} from "@/lib/marketplace/listing-card-grid";
+import {
   LISTING_CARD_IMAGE_FRAME,
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
@@ -24,9 +28,13 @@ type Props = {
   row: AuctionRow;
   /** Shared minute-granularity wall clock (unix seconds). */
   now: number;
+  /** Index in the browse grid — first-viewport covers get `priority`. */
+  index?: number;
 };
 
-export function AuctionCard({ row, now }: Props) {
+export function AuctionCard({ row, now, index }: Props) {
+  const priority =
+    index !== undefined ? isListingCardFirstViewport(index) : false;
   const hasBid = row.highestBid > 0n && row.startedAt > 0n;
   const awaitingFirstBid = row.startedAt === 0n;
   const priceLabel = hasBid
@@ -52,11 +60,11 @@ export function AuctionCard({ row, now }: Props) {
       >
         <div className={LISTING_CARD_IMAGE_FRAME}>
           {row.imageUrl ? (
-            <img
+            <ContentImage
               src={row.imageUrl}
               alt={row.title}
-              className={LISTING_CARD_IMAGE}
-              loading="lazy"
+              sizes={LISTING_CARD_IMAGE_SIZES}
+              priority={priority}
             />
           ) : (
             <div className={LISTING_CARD_IMAGE_PLACEHOLDER}>No image</div>

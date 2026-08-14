@@ -449,8 +449,8 @@ export default async function ProShowroomPage({
             <EmptyState variant="content" level="B" title="No active listings." />
           ) : (
             <div className={LISTING_CARD_GRID_PRO}>
-              {data.activeListings.map((listing) => (
-                <ListingCard key={listing.tokenId} row={listing} />
+              {data.activeListings.map((listing, index) => (
+                <ListingCard key={listing.tokenId} row={listing} index={index} />
               ))}
             </div>
           )}
@@ -467,8 +467,12 @@ export default async function ProShowroomPage({
           ) : (
             <>
               <div className={LISTING_CARD_GRID_PRO}>
-                {data.activeConsignments.map((listing) => (
-                  <ListingCard key={`consign-${listing.tokenId}`} row={listing} />
+                {data.activeConsignments.map((listing, index) => (
+                  <ListingCard
+                    key={`consign-${listing.tokenId}`}
+                    row={listing}
+                    index={index}
+                  />
                 ))}
               </div>
               {data.activeConsignmentTotal > data.activeConsignments.length && (

@@ -14,6 +14,7 @@ import {
   type TouchEvent,
 } from "react";
 
+import { ContentImage } from "@/components/media/content-image";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InstrumentFrame } from "@/components/ui/instrument-frame";
 import { resolveUri } from "@/lib/storage/resolve-uri";
@@ -223,10 +224,15 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             type="button"
             onClick={openLightbox}
             onKeyDown={onHeroKeyDown}
-            className="block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+            className="relative block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
             aria-label="View full screen"
           >
-            <img src={mainUrl} alt="" className="h-full w-full object-cover" />
+            <ContentImage
+              src={mainUrl}
+              alt=""
+              sizes="(max-width: 768px) 100vw, 56rem"
+              priority
+            />
           </button>
 
           {hasMultiple && (
@@ -268,7 +274,7 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
               aria-label={`Photo ${index + 1}`}
               aria-current={index === selected ? "true" : undefined}
             >
-              <img src={url} alt="" className="h-full w-full object-cover" />
+              <ContentImage src={url} alt="" sizes="64px" />
             </button>
           ))}
         </div>
@@ -303,7 +309,15 @@ export function PassportPhotoGallery({ photos, chainId, verified = false }: Prop
             onTouchMove={hasMultiple ? swipe.onTouchMove : undefined}
             onTouchEnd={hasMultiple ? swipe.onTouchEnd : undefined}
           >
-            <img src={mainUrl} alt="" className="max-h-full max-w-full object-contain" />
+            <div className="relative h-full w-full min-h-[50vh]">
+              <ContentImage
+                src={mainUrl}
+                alt=""
+                sizes="100vw"
+                fit="contain"
+                priority
+              />
+            </div>
             {hasMultiple && (
               <>
                 <GalleryNavButton

@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowRightIcon, ShieldWarningIcon } from "@/components/ui/icons";
-import Image from "next/image";
 import Link from "next/link";
 
+import { ContentImage } from "@/components/media/content-image";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import {
   challengeInstanceLabel,
@@ -70,13 +70,7 @@ export function ChallengeRow({
       <div className="flex gap-0 sm:gap-4">
         {coverUri && (
           <div className="relative hidden w-28 shrink-0 self-stretch sm:block">
-            <Image
-              src={coverUri}
-              alt=""
-              fill
-              className="object-cover"
-              sizes="112px"
-            />
+            <ContentImage src={coverUri} alt="" sizes="112px" />
           </div>
         )}
 

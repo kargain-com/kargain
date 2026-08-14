@@ -153,9 +153,9 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
 
         <FadeUp>
           <ul className={LISTING_CARD_GRID_WIDE}>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <li key={`${row.chainId}-${row.tokenId}`}>
-                <ListingCard row={row} />
+                <ListingCard row={row} index={index} />
               </li>
             ))}
           </ul>

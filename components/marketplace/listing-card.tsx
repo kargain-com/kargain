@@ -11,6 +11,7 @@ import {
 
 import type { MarketplaceListingRow } from "@/app/actions/marketplace-listings";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
+import { ContentImage } from "@/components/media/content-image";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { VerifierInactiveBadge } from "@/components/passport/verifier-inactive-badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +22,10 @@ import {
 } from "@/lib/design/instrument-classes";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import {
-  LISTING_CARD_IMAGE,
+  LISTING_CARD_IMAGE_SIZES,
+  isListingCardFirstViewport,
+} from "@/lib/marketplace/listing-card-grid";
+import {
   LISTING_CARD_IMAGE_FRAME,
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
@@ -30,6 +34,8 @@ import { shortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
   row: MarketplaceListingRow;
+  /** Index in the browse grid — first-viewport covers get `priority`. */
+  index?: number;
 };
 
 const ATTRIBUTION_LINK_BASE =
@@ -70,8 +76,10 @@ function titleIncludesYear(title: string, year: number | null): boolean {
   return year != null && title.startsWith(`${year} `);
 }
 
-export function ListingCard({ row }: Props) {
+export function ListingCard({ row, index }: Props) {
   const disputer = row.lastDisputer.trim();
+  const priority =
+    index !== undefined ? isListingCardFirstViewport(index) : false;
 
   return (
     <Link
@@ -88,11 +96,11 @@ export function ListingCard({ row }: Props) {
       >
         <div className={LISTING_CARD_IMAGE_FRAME}>
           {row.imageUrl ? (
-            <img
+            <ContentImage
               src={row.imageUrl}
               alt={row.title}
-              className={LISTING_CARD_IMAGE}
-              loading="lazy"
+              sizes={LISTING_CARD_IMAGE_SIZES}
+              priority={priority}
             />
           ) : (
             <div className={LISTING_CARD_IMAGE_PLACEHOLDER}>No image</div>

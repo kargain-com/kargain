@@ -62,9 +62,9 @@ export function AuctionBrowse({ initialPage, chainId }: Props) {
   return (
     <div className={cn(MARKETPLACE_SHELL_CONTAINER, "pb-16")}>
       <ul className={LISTING_CARD_GRID_WIDE}>
-        {rows.map((row) => (
+        {rows.map((row, index) => (
           <li key={row.tokenId} className="min-h-0">
-            <AuctionCard row={row} now={now} />
+            <AuctionCard row={row} now={now} index={index} />
           </li>
         ))}
       </ul>

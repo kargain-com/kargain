@@ -559,7 +559,7 @@ export function ProfilePage({
                 />
               ) : (
                 <ul className={LISTING_CARD_GRID_NARROW}>
-                  {passports.map((p) => {
+                  {passports.map((p, index) => {
                     const transit = passportTransitOverlays.get(p.tokenId);
                     return (
                       <li key={`${p.tokenId}-${p.custodyChain}`} className="min-h-0">
@@ -575,6 +575,7 @@ export function ProfilePage({
                           imageUrl={p.imageUrl}
                           transitBadge={transit?.badge}
                           hrefChainId={transit?.hrefChainId}
+                          index={index}
                         />
                       </li>
                     );
@@ -601,7 +602,7 @@ export function ProfilePage({
                 />
               ) : (
                 <ul className={LISTING_CARD_GRID_NARROW}>
-                  {listings.map((l) => (
+                  {listings.map((l, index) => (
                     <li key={`${l.tokenId}-${l.custodyChain}`} className="min-h-0">
                       <ProfilePassportCard
                         tokenId={l.tokenId}
@@ -613,6 +614,7 @@ export function ProfilePage({
                         year={l.year}
                         vin={l.vin}
                         imageUrl={l.imageUrl}
+                        index={index}
                       />
                     </li>
                   ))}
@@ -648,7 +650,7 @@ export function ProfilePage({
                 </div>
               ) : (
                 <ul className={LISTING_CARD_GRID_NARROW}>
-                  {verifiedPassports.map((p) => (
+                  {verifiedPassports.map((p, index) => (
                     <li key={`${p.tokenId}-${p.custodyChain}`} className="min-h-0">
                       <ProfilePassportCard
                         tokenId={p.tokenId}
@@ -660,6 +662,7 @@ export function ProfilePage({
                         year={p.year}
                         vin={p.vin}
                         imageUrl={p.imageUrl}
+                        index={index}
                       />
                     </li>
                   ))}
