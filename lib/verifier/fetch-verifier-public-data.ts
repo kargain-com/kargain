@@ -83,14 +83,14 @@ export async function fetchVerifierPublicData(
 
   const [detail, passportsRes, attestationsRes] = await Promise.all([
     fetchVerifierDetail(address, chainId),
-    ponderFetch(passportsUrl),
-    ponderFetch(attestationsUrl),
+    ponderFetch("passports", passportsUrl),
+    ponderFetch("verifiers", attestationsUrl),
   ]);
 
   let verifiedPassports: VerifierPublicPassportRow[] = [];
   let verifiedPassportTotal = 0;
   if (passportsRes.ok) {
-    const data = (await passportsRes.json()) as {
+    const data = passportsRes.body as {
       passports?: Array<Record<string, unknown>>;
       total?: number;
     };
@@ -103,7 +103,7 @@ export async function fetchVerifierPublicData(
   let attestations: PonderVerifierAttestation[] = [];
   let attestationTotal = 0;
   if (attestationsRes.ok) {
-    const data = (await attestationsRes.json()) as {
+    const data = attestationsRes.body as {
       attestations?: PonderVerifierAttestation[];
       total?: number;
     };

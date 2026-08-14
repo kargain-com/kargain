@@ -67,10 +67,10 @@ export async function getChallenges(
       },
     );
 
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("challenges", url.toString());
     if (!res.ok) return emptyPage(page);
 
-    const data = (await res.json()) as ChallengesResponse;
+    const data = res.body as ChallengesResponse;
     let rows = mapChallengeRows(data.challenges);
     if (query.unresolved) {
       rows = rows.filter(

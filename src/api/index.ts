@@ -21,8 +21,12 @@ import {
 import { buildNotificationFeed } from "./notifications-query";
 import { registerCommerceRoutes } from "./commerce-routes";
 import { normalizeVerifierId } from "../lib/ponder-verifier-lifecycle";
+import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
 const app = new Hono();
+
+/** Cache-Control / ETag owner — must register before any routes. */
+app.use("*", ponderHttpCacheMiddleware);
 
 registerCommerceRoutes(app);
 const STATUS_ORDER = sql`CASE ${passport.status}

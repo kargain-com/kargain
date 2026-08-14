@@ -1,86 +1,61 @@
 /**
- * Typed Ponder HTTP client — sole product builder of Ponder URLs and sole
- * parser of consignment wire envelopes. Transport stays in ponder-fetch.ts.
+ * Typed Ponder HTTP client — sole parser of consignment wire envelopes and
+ * tagged projection GETs ({@link ponderTaggedJson}). URL builders live in
+ * {@link ./ponder-urls} (client-safe). `/status` stays uncached transport.
  */
 
 import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
-import {
-  consignmentsListQueryKeys,
-  routeById,
-  type PonderRouteDef,
-} from "@/lib/web3/ponder-endpoints";
+import type { IndexerQueryKeyPrefix } from "@/lib/web3/indexer-query-keys";
 import {
   asConsignmentId,
   asPassportTokenId,
   type ConsignmentId,
   type PassportTokenId,
 } from "@/lib/web3/ponder-ids";
-import { ponderBaseUrl, ponderFetch } from "@/lib/web3/ponder-fetch-transport";
+import { ponderStatusFetch } from "@/lib/web3/ponder-fetch-transport";
+import {
+  ponderTaggedJson,
+  type PonderTaggedResult,
+} from "@/lib/web3/ponder-tagged-read";
+import {
+  buildPonderUrl,
+  type PonderQuery,
+} from "@/lib/web3/ponder-urls";
 
-export type PonderQuery = Record<string, string | number | boolean | undefined | null>;
+export type { PonderTaggedResult };
+export type { PonderQuery, ListConsignmentsQuery } from "@/lib/web3/ponder-urls";
+export {
+  buildConsignmentsListUrl,
+  buildPassportListPath,
+  buildPassportListUrl,
+  buildPonderUrl,
+  buildSlugAvailableUrl,
+  buildVerifierAttestationsUrl,
+  buildVerifierDetailUrl,
+  buildVerifierPassportsUrl,
+} from "@/lib/web3/ponder-urls";
 
-function assertKnownRoute(id: string): PonderRouteDef {
-  const route = routeById(id);
-  if (!route) throw new Error(`Ponder route not in catalog: ${id}`);
-  return route;
-}
-
-function assertQueryKeys(route: PonderRouteDef, query: PonderQuery): void {
-  for (const key of Object.keys(query)) {
-    if (query[key] === undefined || query[key] === null) continue;
-    if (!route.query.includes(key)) {
-      throw new Error(
-        `Ponder query key "${key}" is not allowed on ${route.id} (allowed: ${route.query.join(", ") || "(none)"})`,
-      );
-    }
-  }
-}
-
-function fillPath(
-  pattern: string,
-  params: Record<string, string>,
-): string {
-  let out = pattern;
-  for (const [key, value] of Object.entries(params)) {
-    const token = `:${key}`;
-    if (!out.includes(token)) {
-      throw new Error(`Ponder path ${pattern} has no :${key}`);
-    }
-    out = out.replace(token, encodeURIComponent(value));
-  }
-  if (out.includes(":")) {
-    throw new Error(`Ponder path still has placeholders: ${out}`);
-  }
-  return out;
-}
-
-function applyQuery(url: URL, query: PonderQuery): void {
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null) continue;
-    url.searchParams.set(key, String(value));
-  }
-}
-
-/** Build an absolute Ponder URL for a catalog route. */
-export function buildPonderUrl(
-  routeId: string,
-  pathParams: Record<string, string> = {},
-  query: PonderQuery = {},
-): URL {
-  const route = assertKnownRoute(routeId);
-  assertQueryKeys(route, query);
-  const path = fillPath(route.path, pathParams);
-  const url = new URL(`${ponderBaseUrl()}${path}`);
-  applyQuery(url, query);
-  return url;
+/**
+ * Product Ponder GET — requires a cache tag from {@link IndexerQueryKeyPrefix}.
+ * Returns serializable status + JSON body (not a Response).
+ */
+export async function ponderFetch(
+  tag: IndexerQueryKeyPrefix,
+  url: string,
+): Promise<PonderTaggedResult> {
+  return ponderTaggedJson(tag, url);
 }
 
 export async function ponderGet(
+  tag: IndexerQueryKeyPrefix,
   routeId: string,
   pathParams?: Record<string, string>,
   query?: PonderQuery,
-): Promise<Response> {
-  return ponderFetch(buildPonderUrl(routeId, pathParams, query).toString());
+): Promise<PonderTaggedResult> {
+  return ponderFetch(
+    tag,
+    buildPonderUrl(routeId, pathParams, query).toString(),
+  );
 }
 
 export type ConsignmentEnvelope = { consignment: unknown };
@@ -118,61 +93,6 @@ export function parseConsignmentEnvelope(
   return isPonderConsignmentRow(consignment) ? consignment : null;
 }
 
-export type ListConsignmentsQuery = {
-  page?: number;
-  limit?: number;
-  mode?: "fixedPrice" | "ascending";
-  active?: boolean;
-  phase?: string;
-  chainId?: number;
-  seller?: string;
-  agent?: string;
-  search?: string;
-  make?: string;
-  model?: string;
-  yearMin?: number;
-  yearMax?: number;
-  mileageMin?: number;
-  mileageMax?: number;
-  priceMin?: string;
-  priceMax?: string;
-  priceCurrency?: string;
-  eurUsdRate?: string;
-  ethUsdRate?: string;
-  cnyUsdRate?: string;
-  inrUsdRate?: string;
-  brlUsdRate?: string;
-  idrUsdRate?: string;
-  audUsdRate?: string;
-  aedUsdRate?: string;
-  krwUsdRate?: string;
-  rubUsdRate?: string;
-  jpyUsdRate?: string;
-  btcUsdRate?: string;
-  fuelType?: string;
-  bodyType?: string;
-  transmission?: string;
-  condition?: string;
-  vehicleType?: string;
-  placeId?: string;
-  colour?: string;
-  status?: string;
-  sort?: string;
-  verifiedFirst?: boolean;
-};
-
-/** Browse consignments — only handler-supported query keys. */
-export function buildConsignmentsListUrl(query: ListConsignmentsQuery = {}): URL {
-  const allowed = new Set(consignmentsListQueryKeys());
-  const q: PonderQuery = {};
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null) continue;
-    if (!allowed.has(key)) continue;
-    q[key] = value;
-  }
-  return buildPonderUrl("consignments.list", {}, q);
-}
-
 export async function fetchConsignmentByToken(
   tokenId: PassportTokenId | string,
   query: { mode?: "fixedPrice" | "ascending"; chainId?: number } = {},
@@ -183,6 +103,7 @@ export async function fetchConsignmentByToken(
 }> {
   const id = typeof tokenId === "string" ? asPassportTokenId(tokenId) : tokenId;
   const res = await ponderGet(
+    "consignment-detail",
     "consignments.byToken",
     { tokenId: id },
     {
@@ -192,8 +113,11 @@ export async function fetchConsignmentByToken(
   );
   if (res.status === 404) return { status: 404, consignment: null, ok: true };
   if (!res.ok) return { status: res.status, consignment: null, ok: false };
-  const json: unknown = await res.json();
-  return { status: res.status, consignment: parseConsignmentEnvelope(json), ok: true };
+  return {
+    status: res.status,
+    consignment: parseConsignmentEnvelope(res.body),
+    ok: true,
+  };
 }
 
 export async function fetchConsignmentById(
@@ -204,21 +128,30 @@ export async function fetchConsignmentById(
   ok: boolean;
 }> {
   const id =
-    typeof consignmentId === "string" ? asConsignmentId(consignmentId) : consignmentId;
-  const res = await ponderGet("consignments.byId", { id });
+    typeof consignmentId === "string"
+      ? asConsignmentId(consignmentId)
+      : consignmentId;
+  const res = await ponderGet("consignment-detail", "consignments.byId", {
+    id,
+  });
   if (res.status === 404) return { status: 404, consignment: null, ok: true };
   if (!res.ok) return { status: res.status, consignment: null, ok: false };
-  const json: unknown = await res.json();
-  return { status: res.status, consignment: parseConsignmentEnvelope(json), ok: true };
+  return {
+    status: res.status,
+    consignment: parseConsignmentEnvelope(res.body),
+    ok: true,
+  };
 }
 
 export async function fetchConsignmentBids(
   consignmentId: ConsignmentId | string,
   query: { page?: number; limit?: number } = {},
-): Promise<Response> {
+): Promise<PonderTaggedResult> {
   const id =
-    typeof consignmentId === "string" ? asConsignmentId(consignmentId) : consignmentId;
-  return ponderGet("consignments.bids", { id }, query);
+    typeof consignmentId === "string"
+      ? asConsignmentId(consignmentId)
+      : consignmentId;
+  return ponderGet("consignment-bids", "consignments.bids", { id }, query);
 }
 
 /**
@@ -243,7 +176,9 @@ export async function fetchBidsForPassportToken(
     mode: query.mode,
     chainId: query.chainId,
   });
-  if (!lot.ok) return { status: lot.status, ok: false, consignmentId: null, body: null };
+  if (!lot.ok) {
+    return { status: lot.status, ok: false, consignmentId: null, body: null };
+  }
   if (lot.consignment == null) {
     return { status: 404, ok: true, consignmentId: null, body: null };
   }
@@ -259,68 +194,33 @@ export async function fetchBidsForPassportToken(
     status: res.status,
     ok: true,
     consignmentId,
-    body: await res.json(),
+    body: res.body,
   };
 }
 
 export async function fetchPassportByToken(
   tokenId: PassportTokenId | string,
-): Promise<Response> {
+  opts?: { live?: boolean },
+): Promise<PonderTaggedResult> {
   const id = typeof tokenId === "string" ? asPassportTokenId(tokenId) : tokenId;
-  return ponderGet("passports.byId", { tokenId: id });
+  const url = buildPonderUrl("passports.byId", { tokenId: id }).toString();
+  if (opts?.live) {
+    const res = await ponderStatusFetch(url);
+    const text = await res.text();
+    let body: unknown = null;
+    if (text.length > 0) {
+      try {
+        body = JSON.parse(text) as unknown;
+      } catch {
+        body = null;
+      }
+    }
+    return { status: res.status, ok: res.ok, body };
+  }
+  return ponderGet("passport-detail", "passports.byId", { tokenId: id });
 }
 
-export function buildPassportListUrl(query: PonderQuery): URL {
-  return buildPonderUrl("passports.list", {}, query);
-}
-
-/** Path + query only — for CLI tools that supply a custom Ponder origin. */
-export function buildPassportListPath(query: PonderQuery): string {
-  const url = buildPassportListUrl(query);
-  return `${url.pathname}${url.search}`;
-}
-
-export function buildVerifierDetailUrl(
-  address: string,
-  chainId?: number,
-): string {
-  return buildPonderUrl(
-    "verifiers.byAddress",
-    { address },
-    chainId != null ? { chainId } : {},
-  ).toString();
-}
-
-export function buildVerifierPassportsUrl(address: string): string {
-  return buildPonderUrl("passports.list", {}, {
-    verifier: address,
-    status: "VERIFIED",
-    limit: 100,
-  }).toString();
-}
-
-export function buildVerifierAttestationsUrl(
-  address: string,
-  limit = 100,
-): string {
-  return buildPonderUrl(
-    "verifiers.attestations",
-    { address },
-    { limit },
-  ).toString();
-}
-
-export function buildSlugAvailableUrl(
-  slug: string,
-  ownerAddress?: string,
-): string {
-  return buildPonderUrl(
-    "verifiers.slugAvailable",
-    { slug },
-    ownerAddress?.trim() ? { address: ownerAddress.trim() } : {},
-  ).toString();
-}
-
+/** Uncached `/status` for T4 indexer wait — not a projection cache entry. */
 export async function fetchStatus(): Promise<Response> {
-  return ponderGet("status");
+  return ponderStatusFetch(buildPonderUrl("status").toString());
 }

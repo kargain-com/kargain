@@ -257,10 +257,15 @@ export async function fetchPassportDetail(
   tokenId: string,
   /** Optional RPC hint for Ponder-miss only — never invent hub when absent. */
   chainId?: number | null,
+  /**
+   * Uncached Ponder GET for indexer catch-up polls (bridge / entity drift).
+   * Page/RSC omit this — they use tagged `"use cache"`.
+   */
+  opts?: { live?: boolean },
 ): Promise<PassportDetailResult> {
   let raw: unknown;
   try {
-    const res = await fetchPassportByToken(tokenId);
+    const res = await fetchPassportByToken(tokenId, opts);
     if (res.status === 404) {
       if (chainId == null) return { ok: false, error: "NOT_FOUND" };
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
@@ -274,7 +279,7 @@ export async function fetchPassportDetail(
       };
     }
     if (!res.ok) return { ok: false, error: "PONDER_UNAVAILABLE" };
-    raw = await res.json();
+    raw = res.body;
   } catch {
     return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
@@ -409,9 +414,12 @@ export async function fetchVerifierDetail(
   chainId?: number,
 ) {
   try {
-    const res = await ponderFetch(buildVerifierDetailQueryUrl(address, chainId));
+    const res = await ponderFetch(
+      "verifiers",
+      buildVerifierDetailQueryUrl(address, chainId),
+    );
     if (!res.ok) return null;
-    return res.json();
+    return res.body;
   } catch {
     return null;
   }

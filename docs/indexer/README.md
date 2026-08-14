@@ -7,7 +7,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **VPS full reindex done** — [ponder.kargain.com](https://ponder.kargain.com) matches. Smoke: `GET /consignments`, `GET /commerce-payment-tokens`, obligations, notifications ([OPERATIONS.md](./OPERATIONS.md)).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications.
 
 ## Contract addresses for indexer
 
@@ -78,7 +78,9 @@ Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisput
 
 Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, verifier, notifications, claims union) and [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts) (consignments, mandates, challenges, commerce config — see table above). Bigints are serialized as strings in JSON.
 
-**App reads:** product code builds Ponder URLs only through the typed owner in [`lib/web3/ponder-fetch.ts`](../../lib/web3/ponder-fetch.ts) (catalog + client + `cache: "no-store"` transport). Do not hand-build `${PONDER_SQL_API_URL}/…` paths in actions/lib.
+**App reads:** product code builds Ponder URLs and tagged reads only through [`lib/web3/ponder-fetch.ts`](../../lib/web3/ponder-fetch.ts) (`ponderFetch(tag, url)` → `"use cache"` + `cacheTag`; tags = `INDEXER_QUERY_KEY_PREFIXES`). Invalidation: `syncReads` → `updateTag`. Do not hand-build `${PONDER_SQL_API_URL}/…` paths in actions/lib.
+
+**Response cache headers (indexer → edge):** one middleware on the Hono `app` ([`ponder-http-cache-middleware.ts`](../../src/lib/ponder-http-cache-middleware.ts)) sets `Cache-Control` + weak `ETag` and answers `If-None-Match` with **304**. Freshness class per route is data in [`ponder-http-freshness.ts`](../../src/lib/ponder-http-freshness.ts) (`config` / `catalog` / `entity` / `account` / `ephemeral` — **not** Truth layers T1–T6). Protocol projections keep **zero** edge TTL; Cloudflare may enable only `ephemeral` + `config` ([OPERATIONS.md §6.2](./OPERATIONS.md)). No CF purge from user txs. A Hono route without a class fails closed (500 + `private, no-store`); coverage: `test/ponder-http-freshness-policy.test.ts`.
 
 | Endpoint | Purpose |
 |----------|---------|

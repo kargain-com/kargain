@@ -26,12 +26,13 @@ export async function getAccountObligations(
 ): Promise<GetObligationsResult> {
   try {
     const res = await ponderFetch(
+      "outstanding-obligations",
       buildPonderUrl("accounts.obligations", { address }).toString(),
     );
     if (!res.ok) {
       return { ok: false, facts: UNRESOLVED_FACTS };
     }
-    const body = (await res.json()) as ObligationsFactsResponse;
+    const body = res.body as ObligationsFactsResponse;
     const {
       unresolved,
       consignments,

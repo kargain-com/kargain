@@ -18,9 +18,12 @@ type PonderVerifiersRawResponse = {
 };
 
 async function fetchPonderVerifiers(): Promise<VerifierDirectoryEntry[]> {
-  const res = await ponderFetch(buildPonderUrl("verifiers.list").toString());
+  const res = await ponderFetch(
+    "verifiers",
+    buildPonderUrl("verifiers.list").toString(),
+  );
   if (!res.ok) return [];
-  const data = (await res.json()) as PonderVerifiersRawResponse;
+  const data = res.body as PonderVerifiersRawResponse;
   return (data.verifiers ?? [])
     .map(parseVerifierDirectoryEntry)
     .filter((v): v is VerifierDirectoryEntry => v != null);

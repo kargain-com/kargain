@@ -68,11 +68,11 @@ export async function getPendingClaims(
           chainId != null && Number.isFinite(chainId) ? chainId : undefined,
       },
     );
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("pending-claims", url.toString());
     if (!res.ok) {
       return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
     }
-    return (await res.json()) as PendingClaimsResponse;
+    return res.body as PendingClaimsResponse;
   } catch {
     return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
   }

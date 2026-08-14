@@ -19,10 +19,11 @@ export async function getOwnerPassportVerifierAddresses(
   }
   try {
     const res = await ponderFetch(
+      "profile-passports",
       buildPonderUrl("profile.passports", { address: owner }).toString(),
     );
     if (!res.ok) return [];
-    const body = (await res.json()) as { passports?: unknown[] };
+    const body = res.body as { passports?: unknown[] };
     const out: Address[] = [];
     for (const raw of body.passports ?? []) {
       if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;

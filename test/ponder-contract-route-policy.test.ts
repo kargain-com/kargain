@@ -22,7 +22,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_FILES = new Set([
   path.join(ROOT, "lib/web3/ponder-fetch.ts"),
   path.join(ROOT, "lib/web3/ponder-fetch-transport.ts"),
+  path.join(ROOT, "lib/web3/ponder-urls.ts"),
   path.join(ROOT, "lib/web3/ponder-client.ts"),
+  path.join(ROOT, "lib/web3/ponder-tagged-read.ts"),
   path.join(ROOT, "lib/web3/ponder-endpoints.ts"),
   path.join(ROOT, "lib/web3/ponder-ids.ts"),
 ]);

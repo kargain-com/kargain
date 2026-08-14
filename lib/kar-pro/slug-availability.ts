@@ -1,5 +1,5 @@
 import { slugFormatStatus } from "@/lib/kar-pro/kar-pro-slug-rules";
-import { buildSlugAvailableUrl } from "@/lib/web3/ponder-fetch";
+import { buildSlugAvailableUrl } from "@/lib/web3/ponder-urls";
 
 export type SlugAvailabilityResult = {
   available: boolean;

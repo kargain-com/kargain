@@ -153,9 +153,9 @@ export async function getOpenableTerms(
 
   try {
     if (mode === "ascending") {
-      const tokensRes = await ponderFetch(tokensUrl);
+      const tokensRes = await ponderFetch("commerce-payment-tokens", tokensUrl.toString());
       if (!tokensRes.ok) return unresolved(mode, chainId);
-      const tokensJson = (await tokensRes.json()) as PaymentTokensResponse;
+      const tokensJson = tokensRes.body as PaymentTokensResponse;
       return {
         ok: true,
         options: deriveOpenableTerms({
@@ -185,12 +185,12 @@ export async function getOpenableTerms(
     );
 
     const [tokensRes, feedsRes] = await Promise.all([
-      ponderFetch(tokensUrl),
-      ponderFetch(feedsUrl),
+      ponderFetch("commerce-payment-tokens", tokensUrl.toString()),
+      ponderFetch("commerce-currency-feeds", feedsUrl.toString()),
     ]);
     if (!tokensRes.ok || !feedsRes.ok) return unresolved(mode, chainId);
-    const tokensJson = (await tokensRes.json()) as PaymentTokensResponse;
-    const feedsJson = (await feedsRes.json()) as CurrencyFeedsResponse;
+    const tokensJson = tokensRes.body as PaymentTokensResponse;
+    const feedsJson = feedsRes.body as CurrencyFeedsResponse;
     return {
       ok: true,
       options: deriveOpenableTerms({

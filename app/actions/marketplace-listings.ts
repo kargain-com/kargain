@@ -135,7 +135,10 @@ export async function searchMarketplaceListings(
 ): Promise<MarketplaceListingsResult> {
   const p = filterSchema.parse(input);
   try {
-    const res = await ponderFetch(buildMarketplaceBrowseUrl(p).toString());
+    const res = await ponderFetch(
+      "marketplace-listings",
+      buildMarketplaceBrowseUrl(p).toString(),
+    );
     if (!res.ok) {
       return {
         ok: true,
@@ -146,7 +149,7 @@ export async function searchMarketplaceListings(
         ponderError: "PONDER_UNAVAILABLE",
       };
     }
-    const data = (await res.json()) as ConsignmentsResponse;
+    const data = res.body as ConsignmentsResponse;
     const rows = (data.consignments ?? []).map((row) =>
       mapPonderListingToRow(consignmentToListingInput(row)),
     );
@@ -181,7 +184,7 @@ export async function getPassportFromPonder(tokenId: string) {
   try {
     const res = await fetchPassportByToken(tokenId);
     if (!res.ok) return null;
-    return res.json();
+    return res.body;
   } catch {
     return null;
   }
@@ -194,13 +197,14 @@ export async function getProfileData(address: string): Promise<{
   try {
     const [passportsRes, consignmentsPage] = await Promise.all([
       ponderFetch(
+        "profile-passports",
         buildPonderUrl("profile.passports", { address }).toString(),
       ),
       getConsignments({ seller: address, live: true, limit: 100 }),
     ]);
 
     const passports = passportsRes.ok
-      ? ((await passportsRes.json()) as { passports: unknown[] }).passports
+      ? (passportsRes.body as { passports: unknown[] }).passports
           .map(mapProfilePassport)
           .filter((p): p is ProfilePassportRow => p != null)
       : [];
@@ -230,6 +234,7 @@ export async function getPassportsByVerifier(
 ): Promise<VerifierPassportRow[]> {
   try {
     const res = await ponderFetch(
+      "passports",
       buildPassportListUrl({
         verifier: address,
         status: "VERIFIED",
@@ -237,7 +242,7 @@ export async function getPassportsByVerifier(
       }).toString(),
     );
     if (!res.ok) return [];
-    const data = (await res.json()) as { passports: Array<Record<string, unknown>> };
+    const data = res.body as { passports: Array<Record<string, unknown>> };
     return (data.passports ?? []).map((p) => ({
       tokenId: String(p.id ?? ""),
       status: (p.status as PassportStatus) ?? "UNVERIFIED",

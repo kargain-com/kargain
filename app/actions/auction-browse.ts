@@ -37,10 +37,10 @@ function ascendingUrl(page: number, limit: number): URL {
 /** Live ascending-lot total for homepage stats — no row mapping. */
 export async function fetchActiveAuctionCount(): Promise<number> {
   try {
-    const res = await ponderFetch(ascendingUrl(1, 1).toString());
+    const res = await ponderFetch("ascending-browse", ascendingUrl(1, 1).toString());
     if (!res.ok) return 0;
 
-    const data = (await res.json()) as ConsignmentsResponse;
+    const data = res.body as ConsignmentsResponse;
     const total = data.total;
     return typeof total === "number" && Number.isFinite(total) && total > 0
       ? Math.floor(total)
@@ -61,7 +61,7 @@ export async function searchActiveAuctions(opts?: {
   void opts?.chainId;
 
   try {
-    const res = await ponderFetch(ascendingUrl(page, limit).toString());
+    const res = await ponderFetch("ascending-browse", ascendingUrl(page, limit).toString());
     if (!res.ok) {
       return {
         ok: true,
@@ -73,7 +73,7 @@ export async function searchActiveAuctions(opts?: {
       };
     }
 
-    const data = (await res.json()) as ConsignmentsResponse;
+    const data = res.body as ConsignmentsResponse;
     const mapped = (data.consignments ?? []).map((row) =>
       mapPonderAuctionRow(consignmentToAuctionRaw(row)),
     );

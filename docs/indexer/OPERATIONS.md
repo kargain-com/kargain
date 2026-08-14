@@ -287,7 +287,101 @@ curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDe
 curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/mandates?active=false' | jq '.total, .page, .limit'
 ```
 
+**Browse Phase 1 filter divergence (B1) — run after a schema/index reindex to prove filters are live:**
+
+```bash
+# Unfiltered active page vs a filter that must empty the set (bodies + total must differ).
+curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true' | jq '{total, statusCounts, n:(.consignments|length)}'
+curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&make=Honda' | jq '{total, statusCounts, n:(.consignments|length)}'
+# Expect: Honda total = 0 when no Honda lots; total and body must not match unfiltered when the set empties.
+# Case-insensitive make (lower() index predicate):
+curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&make=Test' | jq .total
+curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&make=test' | jq .total   # must equal the previous
+# CSV fuel predicate:
+curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&fuelType=Petrol' | jq .total
+```
+
+**Tip check:** compare `/status` block numbers to public RPC `eth_blockNumber` for 84532 and 11155111 — lag ≤ ~5 blocks is live.
+
+**EXPLAIN ANALYZE (optional, VPS Postgres only):** confirm planner uses `lower(make)` / `lower(fuel_type)` expression indexes on filtered browse. Not available from the public HTTP API — run on the indexer DB host after reindex. With one live lot the plan is not diagnostic; revisit when `consignment` volume grows (see MIGRATION-V2). Does **not** block Phase 2 HTTP cache headers.
+
 Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
+
+### 6.0 App ↔ indexer shipping (normative, keep light)
+
+Monorepo reality: **one `git push` to `master` deploys the Next app on Vercel automatically.** The Ponder indexer is a **separate** VPS process (this runbook). There is **no** separate “app deploy” step after reindex.
+
+**Default practice (do this; do not invent heavier orchestration):**
+
+1. Push schema/index/handler changes to `master` as usual (Vercel ships the app).
+2. On the VPS, pull and run this reindex runbook **as soon as practical**.
+3. Smoke `/ready` + `/status` (tip) + **B1** above. Until B1 passes, treat marketplace filters as not proven — during the window the UI may send browse params the old indexer ignores (**fail-open**: wider unfiltered results, not corrupt money/custody).
+4. Do **not** build staging-branch / Ignore-Build / two-commit / “indexer-before-push” rituals unless a change fails closed on money, custody, or auth, or the ignore-window becomes hours of user-visible lies.
+
+### 6.1 Browse Phase 1 cutover proof (August 14, 2026)
+
+Recorded against [ponder.kargain.com](https://ponder.kargain.com) after the Phase 1 index reindex (~12:19 UTC):
+
+| Check | Result |
+|-------|--------|
+| `GET /ready` | **HTTP 200** |
+| `GET /status` tip | baseSepolia **45470826** (RPC lag **5**); ethereumSepolia **11487147** (RPC lag **0**) — both at tip |
+| payment-tokens | `total: 4` |
+| passports | `total: 6` |
+| B1 unfiltered `active=true` | `total: 1`, `statusCounts.UNVERIFIED: 1` |
+| B1 `make=Honda` | `total: 0`, empty `statusCounts`, **body ≠ unfiltered** |
+| B1 `make=Test` / `make=test` | both `total: 1` (CI via `lower(make)`) |
+| B1 `fuelType=Other` / `Petrol` | `1` / `0` |
+| B1 `status=UNVERIFIED` / `VERIFIED` | `1` / `0` |
+| EXPLAIN ANALYZE | **Not run** from agent host (no indexer DB access); optional residual on VPS |
+| App | **Live** on Vercel from `master` push `cbe07d2` (automatic; not a second ops step) |
+
+### 6.2 Cloudflare Cache Rules (Phase 2 — maintainer; not agent-run)
+
+Ponder JSON paths are **not** in Cloudflare’s default cacheable extensions, so without Cache Rules you will keep seeing `CF-Cache-Status: DYNAMIC` even after origin sends `Cache-Control`. Origin headers alone are insufficient; rules make the path **eligible**, then origin `Cache-Control` / Edge TTL govern storage.
+
+**Prerequisite:** indexer image with Phase 2 middleware deployed (origin returns `Cache-Control` + `ETag` on custom Hono routes). Do **not** put Cache Rules on Ponder reserved `/health`, `/ready`, `/status`.
+
+#### Normative: partial Cloudflare enable (stable)
+
+There is **no** Cloudflare purge on the user-tx path. With `s-maxage=0` on `catalog` / `entity` / `account`, Cloudflare does not store those responses. The only edge-cached class is `config` (Timelock-paced; action gates read chain). User-transaction freshness is **Next Data Cache** only: tagged `"use cache"` + `syncReads` → `updateTag` (see REFERENCE T3/T4). Do **not** add CF purge from `syncReads` — it would clean nothing the signal dirties.
+
+**Enable now (only these two rules):**
+
+| Order | Rule name | Matching | Then |
+|------|-----------|----------|------|
+| 1 | `ponder-ephemeral-bypass` | URI Path starts with `/verifiers/slug-available` | Bypass cache (Eligible for cache: **No**) |
+| 2 | `ponder-config` | URI Path is `/commerce-modes` OR `/commerce-payment-tokens` OR `/commerce-currency-feeds` | Eligible for cache: **Yes**; Edge TTL: Use cache-control header if present, fallback **300s** |
+
+**Do not create** a catch-all “cache all of `ponder.kargain.com`” rule. Do **not** raise shared TTL on `catalog` / `entity` / `account` without a separate Timelock/ops design — Phase 3 does **not** unlock CF projection TTL.
+
+**Why `config` is safe:** Timelock-paced; money/pause action gates read chain (e.g. `use-commerce-mode-paused` → `paused()`, not indexer).
+
+Origin class → `Cache-Control` (middleware):
+
+| Class | Paths (summary) | Origin `Cache-Control` | CF rule now? |
+|-------|-----------------|------------------------|--------------|
+| `config` | `/commerce-modes`, `/commerce-payment-tokens`, `/commerce-currency-feeds` | `public, max-age=30, s-maxage=300, stale-while-revalidate=60` | **Yes** (rule 2) |
+| `ephemeral` | `/verifiers/slug-available/:slug` | `private, no-store` | **Yes** (rule 1 bypass) |
+| `catalog` | browse/lists | `public, max-age=0, s-maxage=0, must-revalidate` | **No** |
+| `entity` | by-id / by-token / batch / … | `public, max-age=0, s-maxage=0, must-revalidate` | **No** |
+| `account` | notifications / claims / obligations | `public, max-age=0, s-maxage=0, must-revalidate` | **No** |
+
+`catalog` / `entity` / `account` still emit weak `ETag`; conditional `If-None-Match` → **304** saves body bytes without storing a stale shared HIT as fresh.
+
+**Prove `config` eligibility / HIT** (after VPS redeploy + rules 1–2):
+
+```bash
+# Warm
+curl -sSI 'https://ponder.kargain.com/commerce-modes?limit=1' | tr -d '\r' | grep -iE '^(HTTP/|cf-cache-status|cache-control|etag|age):'
+# Second request — expect CF-Cache-Status: HIT (or REVALIDATED / EXPIRED after TTL), not DYNAMIC
+curl -sSI 'https://ponder.kargain.com/commerce-modes?limit=1' | tr -d '\r' | grep -iE '^(HTTP/|cf-cache-status|cache-control|etag|age):'
+
+# Catalog must stay uncached at edge (DYNAMIC — not a warm HIT of an old list)
+curl -sSI 'https://ponder.kargain.com/consignments?limit=1' | tr -d '\r' | grep -iE '^(HTTP/|cf-cache-status|cache-control|etag):'
+```
+
+**Notes:** Push to `master` deploys the Next app only; redeploy the **VPS ponder container** for middleware headers. App projection cache is Next Data Cache (T3), not Cloudflare.
 
 ---
 

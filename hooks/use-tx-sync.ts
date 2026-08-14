@@ -8,6 +8,7 @@ import { useChainId, useConfig, useSwitchChain } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { getIndexerBlockNumber } from "@/app/actions/indexer-status";
+import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -24,6 +25,8 @@ export type TxSyncSuccess = {
 };
 
 export type TxSyncResult = TxSyncSuccess | false;
+
+export type SyncReadsResult = { ok: boolean };
 
 export { TX_SYNC_LAG_ADVISORY };
 
@@ -82,17 +85,28 @@ export function useTxSync(chainId: number) {
   );
 
   /**
-   * Sole client-read refresh after indexer truth advanced without a new wallet
-   * write (e.g. bridge destination custody). Same invalidate + route refresh as
-   * `runTx` post-sync — does not move `phase` / busy.
+   * Sole client-read refresh after indexer truth advanced.
+   * Order: updateTag (Next Data Cache) → RQ invalidate → router.refresh.
+   * Revalidation failure surfaces via `syncLagged` (same advisory as indexer lag).
    */
-  const syncReads = useCallback(async () => {
+  const syncReads = useCallback(async (): Promise<SyncReadsResult> => {
+    let revalidateOk = true;
+    try {
+      const result = await revalidateIndexerCache();
+      revalidateOk = result.ok;
+    } catch {
+      revalidateOk = false;
+    }
+
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["readContract"] }),
       queryClient.invalidateQueries({ queryKey: ["readContracts"] }),
       invalidateIndexerQueries(queryClient),
     ]);
     router.refresh();
+
+    if (!revalidateOk) setSyncLagged(true);
+    return { ok: revalidateOk };
   }, [queryClient, router]);
 
   const runTx = useCallback(
@@ -122,8 +136,8 @@ export function useTxSync(chainId: number) {
           wait,
         });
 
-        await syncReads();
-        setSyncLagged(!synced);
+        const revalidate = await syncReads();
+        setSyncLagged(!synced || !revalidate.ok);
         return { receipt, synced };
       } catch (err) {
         setError((options?.mapError ?? txErrorMessage)(err));

@@ -52,11 +52,12 @@ type PonderProfilePassportsResponse = {
 export async function fetchOwnedPassportTokenIds(address: string): Promise<string[]> {
   try {
     const res = await ponderFetch(
+      "owned-passport-token-ids",
       buildPonderUrl("profile.passports", { address }).toString(),
     );
     if (!res.ok) return [];
 
-    const data = (await res.json()) as PonderProfilePassportsResponse;
+    const data = res.body as PonderProfilePassportsResponse;
     return (data.passports ?? [])
       .map((p) => String(p.id ?? "").trim())
       .filter((id) => id.length > 0);
@@ -75,12 +76,12 @@ export async function fetchNotificationFeed(
       { address },
       { since, limit: 50 },
     );
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("ponder-notifications", url.toString());
     if (!res.ok) {
       return { items: [], ponderError: "PONDER_UNAVAILABLE" };
     }
 
-    const data = (await res.json()) as PonderNotificationsResponse;
+    const data = res.body as PonderNotificationsResponse;
     return { items: data.items ?? [] };
   } catch {
     return { items: [], ponderError: "PONDER_UNAVAILABLE" };
@@ -91,11 +92,11 @@ export async function fetchPassportBatch(tokenIds: string[]): Promise<PassportBa
   if (tokenIds.length === 0) return { passports: [] };
   try {
     const url = buildPonderUrl("passports.batch", {}, { ids: tokenIds.join(",") });
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("passports", url.toString());
     if (!res.ok) {
       return { passports: [], ponderError: "PONDER_UNAVAILABLE" };
     }
-    const data = (await res.json()) as PonderPassportBatchResponse;
+    const data = res.body as PonderPassportBatchResponse;
     return { passports: data.passports ?? [] };
   } catch {
     return { passports: [], ponderError: "PONDER_UNAVAILABLE" };

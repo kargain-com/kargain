@@ -28,11 +28,14 @@ export async function checkSlugAvailability(
   }
 
   try {
-    const res = await ponderFetch(buildSlugAvailableUrl(trimmed, ownerAddress));
+    const res = await ponderFetch(
+      "kar-pro-slug-availability",
+      buildSlugAvailableUrl(trimmed, ownerAddress),
+    );
     if (!res.ok) {
       return { available: false, reason: "error" };
     }
-    const data = (await res.json()) as { available?: boolean };
+    const data = res.body as { available?: boolean };
     return slugAvailabilityFromPonderPayload(data);
   } catch {
     return { available: false, reason: "error" };

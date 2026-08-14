@@ -21,9 +21,9 @@ export async function getVerifierAttestations(
       { address },
       { limit, offset },
     );
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("verifiers", url.toString());
     if (!res.ok) return { ...EMPTY_RESPONSE, limit, offset };
-    return (await res.json()) as PonderVerifierAttestationsResponse;
+    return res.body as PonderVerifierAttestationsResponse;
   } catch {
     return { ...EMPTY_RESPONSE, limit, offset };
   }

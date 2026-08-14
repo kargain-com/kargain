@@ -33,6 +33,12 @@ const REQUIRED_COMMERCE_PREFIXES = [
   "pending-claims",
   "commerce-open-options",
   "commerce-payment-tokens",
+  "commerce-modes",
+  "commerce-currency-feeds",
+  "passport-detail",
+  "passports",
+  "verifiers",
+  "profile-passports",
 ] as const;
 
 describe("INDEXER_QUERY_KEY_PREFIXES", () => {

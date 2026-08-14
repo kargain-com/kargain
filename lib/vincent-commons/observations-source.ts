@@ -6,9 +6,8 @@
  * scripts/vincent-derive.ts (CLI) and app/actions/vincent-commons.ts (F-2
  * Commons queue).
  *
- * Ponder reads always go through `ponderFetch` (forced no-store transport)
- * unless tests inject `fetchPonderJson`. Metadata (Arweave/HTTP) uses a
- * separate inject so it is never confused with the Ponder transport.
+ * Default Ponder JSON uses uncached transport (CLI-safe). The Next product
+ * path injects a tagged `"use cache"` reader.
  */
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
@@ -16,8 +15,8 @@ import type { VincentObservation } from "@/lib/vincent-commons/derive-claims";
 import {
   buildPassportListPath,
   ponderBaseUrl,
-  ponderFetch,
 } from "@/lib/web3/ponder-fetch";
+import { ponderTransportFetch } from "@/lib/web3/ponder-fetch-transport";
 
 export type FetchJson = (url: string) => Promise<unknown>;
 
@@ -50,8 +49,8 @@ export type FetchVerifiedObservationsOptions = {
   /** CLI override of Ponder origin; default `ponderBaseUrl()`. */
   ponderOrigin?: string;
   /**
-   * Test-only Ponder JSON inject. Production/CLI omit — default wraps
-   * `ponderFetch` so `no-store` always applies.
+   * Test/Next inject for Ponder JSON. Production CLI omit — default uses
+   * uncached transport. Next Commons action injects tagged `"use cache"`.
    */
   fetchPonderJson?: FetchJson;
   /** Metadata HTTP (Arweave gateway). Defaults to `fetch`. Tests inject. */
@@ -62,7 +61,7 @@ export type FetchVerifiedObservationsOptions = {
 };
 
 async function defaultPonderJson(url: string): Promise<unknown> {
-  const res = await ponderFetch(url);
+  const res = await ponderTransportFetch(url);
   if (!res.ok) {
     throw new Error(`GET ${url} failed: HTTP ${res.status}`);
   }

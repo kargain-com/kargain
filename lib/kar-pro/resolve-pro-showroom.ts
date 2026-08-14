@@ -40,9 +40,9 @@ async function fetchBySlugOnChain(
       { slug },
       { chainId },
     );
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("verifiers", url.toString());
     if (!res.ok) return null;
-    const data = (await res.json()) as BySlugWire;
+    const data = res.body as BySlugWire;
     if (!data.address) return null;
     const address = getAddress(data.address);
     const wireChain =

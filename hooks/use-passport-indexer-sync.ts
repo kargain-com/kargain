@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { getPassportDetail } from "@/app/actions/passport-detail";
+import { getPassportDetailLive } from "@/app/actions/passport-detail";
 import { useTxSync } from "@/hooks/use-tx-sync";
 import {
   INDEXER_SYNC_INTERVAL_MS,
@@ -10,7 +10,7 @@ import {
   pollUntil,
 } from "@/lib/web3/tx-sync";
 
-type PassportDetailResult = Awaited<ReturnType<typeof getPassportDetail>>;
+type PassportDetailResult = Awaited<ReturnType<typeof getPassportDetailLive>>;
 type PassportPollStatus = "idle" | "polling" | "matched" | "exhausted";
 
 function foregroundWait(
@@ -79,7 +79,7 @@ export function usePassportIndexerPoll(
 
     void pollUntil({
       poll: async () => {
-        const result = await getPassportDetail(tokenId, chainId);
+        const result = await getPassportDetailLive(tokenId, chainId);
         if (active) {
           setState((previous) =>
             previous.key === pollKey

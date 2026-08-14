@@ -4,6 +4,8 @@
  * invalidated together with wagmi chain reads — otherwise browse/portfolio UI
  * can stay on a pre-tx cache while detail surfaces already show chain truth.
  *
+ * Same strings are Next `"use cache"` / `cacheTag` / `updateTag` labels (T3).
+ *
  * When adding a client `queryKey: ["prefix", …]` under hooks/ or components/:
  * 1. If it reads mutable Ponder state → append `prefix` here.
  * 2. Otherwise → append to `NON_INDEXER_QUERY_KEY_PREFIXES`.
@@ -33,6 +35,12 @@ export const INDEXER_QUERY_KEY_PREFIXES = [
   "pending-claims",
   "commerce-open-options",
   "commerce-payment-tokens",
+  "commerce-modes",
+  "commerce-currency-feeds",
+  "passport-detail",
+  "passports",
+  "verifiers",
+  "profile-passports",
 ] as const;
 
 /**

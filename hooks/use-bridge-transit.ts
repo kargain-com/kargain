@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "r
 import { getAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 
-import { getPassportDetail } from "@/app/actions/passport-detail";
+import { getPassportDetailLive } from "@/app/actions/passport-detail";
 import { useTxSync } from "@/hooks/use-tx-sync";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -184,7 +184,7 @@ export function useBridgeTransit(opts: {
 
     void (async () => {
       const result = await pollUntil({
-        poll: () => getPassportDetail(tokenId, dstChainId),
+        poll: () => getPassportDetailLive(tokenId, dstChainId),
         predicate: (detail) =>
           isBridgeDestinationCustodyIndexed(detail, dstChainId),
         intervalMs: INDEXER_SYNC_INTERVAL_MS,

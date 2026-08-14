@@ -38,9 +38,9 @@ export async function getCommercePaymentTokenCandidates(): Promise<{
   const url = buildPonderUrl("commerce.paymentTokens", {}, { limit: 200 });
 
   try {
-    const res = await ponderFetch(url);
+    const res = await ponderFetch("commerce-payment-tokens", url.toString());
     if (!res.ok) return { tokens: [], ponderError: "PONDER_UNAVAILABLE" };
-    const json = (await res.json()) as PaymentTokensResponse;
+    const json = res.body as PaymentTokensResponse;
     const tokens: CommercePaymentTokenRow[] = [];
     for (const row of json.paymentTokens ?? []) {
       if (

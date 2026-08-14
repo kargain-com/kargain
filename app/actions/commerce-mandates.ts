@@ -65,10 +65,12 @@ async function fetchMandates(
         active: query.active,
       },
     );
-    const res = await ponderFetch(url.toString());
+    const tag =
+      routeId === "agents.mandates" ? "agent-mandates" : "owner-mandates";
+    const res = await ponderFetch(tag, url.toString());
     if (!res.ok) return emptyPage(page);
 
-    const data = (await res.json()) as MandatesResponse;
+    const data = res.body as MandatesResponse;
     const rows = mapMandateRows(data.mandates);
     const total = data.total ?? rows.length;
 

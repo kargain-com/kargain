@@ -103,10 +103,10 @@ export async function getConsignments(
       seller: query.seller,
       agent: query.agent,
     });
-    const res = await ponderFetch(url.toString());
+    const res = await ponderFetch("consignments", url.toString());
     if (!res.ok) return emptyPage(page);
 
-    const data = (await res.json()) as ConsignmentsResponse;
+    const data = res.body as ConsignmentsResponse;
     const rows = mapConsignmentRows(data.consignments);
     const total = data.total ?? rows.length;
 
@@ -129,6 +129,7 @@ export async function fetchLiveConsignmentBrowseStats(mode?: CommerceMode): Prom
 }> {
   try {
     const res = await ponderFetch(
+      "consignments",
       buildConsignmentsListUrl({
         mode,
         active: true,
@@ -137,7 +138,7 @@ export async function fetchLiveConsignmentBrowseStats(mode?: CommerceMode): Prom
       }).toString(),
     );
     if (!res.ok) return { total: 0, verified: 0 };
-    const data = (await res.json()) as ConsignmentsResponse;
+    const data = res.body as ConsignmentsResponse;
     const total = data.total;
     const verified = data.statusCounts?.VERIFIED;
     return {
@@ -202,7 +203,7 @@ export async function getConsignmentBids(
           ponderError: "PONDER_UNAVAILABLE",
         };
       }
-      const data = (await res.json()) as BidsResponse;
+      const data = res.body as BidsResponse;
       const bids = mapConsignmentBidRows(data.bids);
       const total = data.total ?? bids.length;
       return {

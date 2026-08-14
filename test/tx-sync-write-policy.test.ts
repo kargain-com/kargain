@@ -78,6 +78,7 @@ describe("tx-sync write policy", () => {
     const text = fs.readFileSync(transitHook, "utf8");
     assert.match(text, /useTxSync/);
     assert.match(text, /syncReads/);
+    assert.match(text, /getPassportDetailLive/);
     assert.match(text, /isBridgeDestinationCustodyIndexed/);
     assert.match(text, /pollUntil/);
     assert.equal(text.includes("invalidateQueries("), false);
@@ -96,10 +97,43 @@ describe("tx-sync write policy", () => {
     const text = fs.readFileSync(hook, "utf8");
     assert.match(text, /useTxSync/);
     assert.match(text, /syncReads/);
+    assert.match(text, /getPassportDetailLive/);
     assert.match(text, /INDEXER_SYNC_INTERVAL_MS/);
     assert.match(text, /INDEXER_SYNC_MAX_ATTEMPTS/);
     assert.equal(text.includes("router.refresh("), false);
     assert.equal(text.includes("KAR_PRO_VERIFIER_POLL"), false);
+  });
+
+  it("sole updateTag / revalidateTag owner is revalidate-indexer-cache action", () => {
+    const allow = path.join(ROOT, "app/actions/revalidate-indexer-cache.ts");
+    const violations: string[] = [];
+    for (const dir of [
+      path.join(ROOT, "app"),
+      path.join(ROOT, "lib"),
+      path.join(ROOT, "hooks"),
+      path.join(ROOT, "components"),
+    ]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const file of listTsxFiles(dir)) {
+        if (file === allow) continue;
+        const text = fs.readFileSync(file, "utf8");
+        if (text.includes("updateTag(") || text.includes("revalidateTag(")) {
+          violations.push(path.relative(ROOT, file));
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+    const owner = fs.readFileSync(allow, "utf8");
+    assert.match(owner, /updateTag\(/);
+    assert.match(owner, /INDEXER_QUERY_KEY_PREFIXES/);
+  });
+
+  it("syncReads invokes revalidateIndexerCache before refresh", () => {
+    const text = fs.readFileSync(path.join(HOOKS, "use-tx-sync.ts"), "utf8");
+    assert.match(text, /revalidateIndexerCache/);
+    assert.ok(
+      text.indexOf("revalidateIndexerCache") < text.indexOf("router.refresh()"),
+    );
   });
 
   it("does not resurrect auction post-tx dual-path symbols", () => {
