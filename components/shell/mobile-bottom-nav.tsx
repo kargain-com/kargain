@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
-import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
-import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import {
   AddIcon,
@@ -18,6 +17,22 @@ import {
   type IconComponent,
 } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+
+const MessagingNavStatus = dynamic(
+  () =>
+    import("@/components/messaging/messaging-nav-status").then(
+      (m) => m.MessagingNavStatus,
+    ),
+  { ssr: false },
+);
+
+const NotificationsUnreadBadge = dynamic(
+  () =>
+    import("@/components/notifications/notifications-unread-badge").then(
+      (m) => m.NotificationsUnreadBadge,
+    ),
+  { ssr: false },
+);
 
 function NavTab({
   href,

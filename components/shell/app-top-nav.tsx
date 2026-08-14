@@ -8,11 +8,10 @@ import {
   NotificationIcon,
   ShieldCheckIcon,
 } from "@/components/ui/icons";
+import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAccount, useChainId } from "wagmi";
 
-import { MessagingNavStatus } from "@/components/messaging/messaging-nav-status";
-import { NotificationsUnreadBadge } from "@/components/notifications/notifications-unread-badge";
 import { ChainSelector } from "@/components/shell/chain-selector";
 import { CurrencySelector } from "@/components/shell/currency-selector";
 import { KargainLogo } from "@/components/ui/kargain-logo";
@@ -22,6 +21,22 @@ import { shellControlHover } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 import { hasCommerceMode } from "@/lib/commerce/mode";
 import { resolveAuctionsNavChainId } from "@/lib/web3/chain-context";
+
+const MessagingNavStatus = dynamic(
+  () =>
+    import("@/components/messaging/messaging-nav-status").then(
+      (m) => m.MessagingNavStatus,
+    ),
+  { ssr: false },
+);
+
+const NotificationsUnreadBadge = dynamic(
+  () =>
+    import("@/components/notifications/notifications-unread-badge").then(
+      (m) => m.NotificationsUnreadBadge,
+    ),
+  { ssr: false },
+);
 
 export type AppTopNavProps = {
   /** Live Messages/Alerts badges — only when identity providers are mounted. */

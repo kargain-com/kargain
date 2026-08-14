@@ -106,4 +106,22 @@ describe("provider scope policy", () => {
     assert.match(chrome, /SiteFooter/);
     assert.match(chrome, /identityBadges/);
   });
+
+  it("nav must not statically import identity badge modules", () => {
+    for (const rel of [
+      "components/shell/app-top-nav.tsx",
+      "components/shell/mobile-bottom-nav.tsx",
+    ]) {
+      const text = read(rel);
+      assert.doesNotMatch(
+        text,
+        /from\s+["']@\/components\/messaging\/messaging-nav-status["']/,
+      );
+      assert.doesNotMatch(
+        text,
+        /from\s+["']@\/components\/notifications\/notifications-unread-badge["']/,
+      );
+      assert.match(text, /next\/dynamic/);
+    }
+  });
 });
