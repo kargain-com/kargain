@@ -63,3 +63,13 @@ export {
   parseChallenge,
   parseChallengeTerminal,
 } from "@/lib/challenge/wire";
+
+export {
+  type ChallengeBrowseFilterId,
+  type ChallengeBrowseQueryParams,
+  type ChallengeBrowseQueryResult,
+  CHALLENGE_BROWSE_FILTER_OPTIONS,
+  challengeBrowseFilterToQuery,
+  challengeUnresolvedStatuses,
+  parseChallengeStatusFilter,
+} from "@/lib/challenge/browse-filters";

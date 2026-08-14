@@ -130,6 +130,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["marketplace-browse-filter-invariant.test.ts"],
   },
   {
+    id: "challenges-browse-filters",
+    owner:
+      "lib/challenge/browse-filters.ts · app/actions/commerce-challenges.ts · src/api/commerce-routes.ts · components/challenges/challenges-client.tsx",
+    rule:
+      "Challenges chrome chips → one query owner; unresolved ≡ isChallengeUnresolved; totals share SQL predicates; no client re-filter",
+    guardTests: ["challenges-browse-filter-invariant.test.ts"],
+  },
+  {
     id: "custom-error-coverage",
     owner: "contracts ABIs · Hardhat suites · lib/marketplace/tx-error-message.ts",
     rule: "Declared custom errors have revertsWith; UI names money-path outcomes",

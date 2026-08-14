@@ -27,9 +27,8 @@ type ChallengesResponse = {
 
 export type ChallengeQuery = {
   instance?: ChallengeInstance;
-  status?: ChallengeStatus;
-  /** `open` + `judged` — anything still awaiting a terminal action. */
-  unresolved?: boolean;
+  /** Single status or CSV (`open,judged`) — expanded by browse-filters owner. */
+  status?: ChallengeStatus | string;
   challenger?: string;
   subjectId?: string;
   page?: number;
@@ -71,13 +70,8 @@ export async function getChallenges(
     if (!res.ok) return emptyPage(page);
 
     const data = res.body as ChallengesResponse;
-    let rows = mapChallengeRows(data.challenges);
-    if (query.unresolved) {
-      rows = rows.filter(
-        (row) => row.status === "open" || row.status === "judged",
-      );
-    }
-    const total = query.unresolved ? rows.length : (data.total ?? rows.length);
+    const rows = mapChallengeRows(data.challenges);
+    const total = data.total ?? rows.length;
 
     return {
       ok: true,

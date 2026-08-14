@@ -31,6 +31,7 @@ import {
   LIVE_PHASES,
   OPEN_PHASES,
 } from "../lib/ponder-commerce";
+import { parseChallengeStatusFilter } from "../../lib/challenge/browse-filters";
 import {
   buildBrowseFilterConditions,
   buildBrowseOrderBy,
@@ -583,17 +584,22 @@ export function registerCommerceRoutes(app: Hono): void {
     const limit = parseLimit(c.req.query("limit"));
     const offset = (page - 1) * limit;
     const instance = c.req.query("instance");
-    const status = c.req.query("status");
     const subjectId = c.req.query("subjectId");
     const challengerParam = c.req.query("challenger");
     const chainId = parseOptionalChainId(c.req.query("chainId"));
+    const statuses = parseChallengeStatusFilter(c.req.query("status"));
+    if (statuses === null) {
+      return c.json({ error: "Invalid status" }, 400);
+    }
 
     const conditions = [];
     if (instance === "passport" || instance === "ascending") {
       conditions.push(eq(challenge.instance, instance));
     }
-    if (status) {
-      conditions.push(eq(challenge.status, status));
+    if (statuses && statuses.length === 1) {
+      conditions.push(eq(challenge.status, statuses[0]!));
+    } else if (statuses && statuses.length > 1) {
+      conditions.push(inArray(challenge.status, statuses));
     }
     if (subjectId) {
       conditions.push(eq(challenge.subjectId, subjectId));

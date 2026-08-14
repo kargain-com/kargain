@@ -103,6 +103,7 @@ Examples that **do not** require reindex:
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
 - Owner consignment read API (July 2026): superseded by consignment mandate routes — **redeploy ponder image only** when schema unchanged; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
 - Asking USD browse SQL (August 2026): `consignmentPriceUsdSql` consumes `askingUsdcFacts` — **redeploy ponder image only**; no schema wipe (query expression, not stored row shape)
+- Challenges browse `status` CSV / `IN` (August 2026): `GET /challenges` — **redeploy ponder image only**; no schema wipe
 
 ---
 

@@ -12,7 +12,6 @@ export function challengesQueryKey(query: ChallengeQuery = {}) {
     "challenges",
     query.instance ?? "all",
     query.status ?? "all",
-    query.unresolved ? "unresolved" : "any",
     query.challenger?.toLowerCase() ?? "",
     query.subjectId ?? "",
     query.page ?? 1,

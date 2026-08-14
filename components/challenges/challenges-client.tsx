@@ -1,7 +1,6 @@
 "use client";
 
 import { ShieldWarningIcon } from "@/components/ui/icons";
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -9,73 +8,29 @@ import { ChallengeRow, ChallengeRowSkeleton } from "@/components/challenges/chal
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useChallenges } from "@/hooks/use-challenges";
-import { isChallengeUnresolved } from "@/lib/commerce/challenge-display";
-import type {
-  ChallengeInstance,
-  ChallengeRecord,
-} from "@/lib/commerce/ponder-consignment";
-import { ctaLink, serialLabel } from "@/lib/design/instrument-classes";
+import {
+  CHALLENGE_BROWSE_FILTER_OPTIONS,
+  challengeBrowseFilterToQuery,
+  type ChallengeBrowseFilterId,
+} from "@/lib/challenge/browse-filters";
+import { serialLabel } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
-
-type FilterId = "unresolved" | "passport" | "ascending" | "mine";
-
-const FILTER_OPTIONS: { id: FilterId; label: string }[] = [
-  { id: "unresolved", label: "Needs action" },
-  { id: "passport", label: "Verification" },
-  { id: "ascending", label: "Auction settlement" },
-  { id: "mine", label: "Opened by me" },
-];
-
-function filterChallenges(
-  rows: ChallengeRecord[],
-  filter: FilterId,
-  viewer: string | undefined,
-): ChallengeRecord[] {
-  switch (filter) {
-    case "unresolved":
-      return rows.filter((row) => isChallengeUnresolved(row.status));
-    case "passport":
-      return rows.filter((row) => row.instance === "passport");
-    case "ascending":
-      return rows.filter((row) => row.instance === "ascending");
-    case "mine":
-      if (!viewer) return [];
-      return rows.filter(
-        (row) => row.challenger.toLowerCase() === viewer.toLowerCase(),
-      );
-  }
-}
 
 export function ChallengesClient() {
   const { address, isConnected } = useAccount();
-  const [filter, setFilter] = useState<FilterId>("unresolved");
+  const [filter, setFilter] = useState<ChallengeBrowseFilterId>("unresolved");
 
-  const instanceParam: ChallengeInstance | undefined =
-    filter === "passport"
-      ? "passport"
-      : filter === "ascending"
-        ? "ascending"
-        : undefined;
-
-  const { data, isLoading, isError } = useChallenges(
-    {
-      instance: instanceParam,
-      limit: 48,
-      unresolved: filter === "unresolved",
-    },
-    isConnected,
+  const browse = useMemo(
+    () => challengeBrowseFilterToQuery(filter, address),
+    [filter, address],
   );
 
-  const rows = useMemo(() => {
-    const base = data?.rows ?? [];
-    if (filter === "mine") {
-      return filterChallenges(base, "mine", address);
-    }
-    if (filter === "unresolved") {
-      return base.filter((row) => isChallengeUnresolved(row.status));
-    }
-    return base;
-  }, [data?.rows, filter, address]);
+  const { data, isLoading, isError } = useChallenges(
+    browse.ok ? { ...browse.query, limit: 48 } : {},
+    isConnected && browse.ok,
+  );
+
+  const rows = data?.rows ?? [];
 
   if (!isConnected) {
     return (
@@ -98,7 +53,7 @@ export function ChallengesClient() {
       </p>
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Challenge filters">
-        {FILTER_OPTIONS.map((option) => (
+        {CHALLENGE_BROWSE_FILTER_OPTIONS.map((option) => (
           <button
             key={option.id}
             type="button"
