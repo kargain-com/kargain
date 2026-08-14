@@ -5,6 +5,7 @@ import { DEFAULT_MARKET_FILTERS } from "../lib/marketplace/filter-params.ts";
 import {
   marketplaceListingsNeedClientRates,
   marketplaceListingsRatesReady,
+  marketplaceListingsShouldForwardRates,
   searchParamsToUrlSearchParams,
 } from "../lib/marketplace/listings-prefetch.ts";
 
@@ -21,6 +22,17 @@ describe("listings-prefetch", () => {
         priceCurrency: "USD",
       }),
       false,
+    );
+  });
+
+  it("USD price filter still forwards rates when the client has them", () => {
+    assert.equal(
+      marketplaceListingsShouldForwardRates({
+        ...DEFAULT_MARKET_FILTERS,
+        priceMin: "10000",
+        priceCurrency: "USD",
+      }),
+      true,
     );
   });
 

@@ -5,13 +5,17 @@ import { join } from "node:path";
 
 import { DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import {
+  askingAssetAmountToUsd1e8,
+  askingNativeDecimals,
   askingPriceInputUnit,
   askingSettlementDisclosure,
+  askingUsdcFacts,
   deriveListingAskingPrice,
   formatListingAssetAsking,
   toAskingDisplaySource,
 } from "../lib/commerce/listing-price-display.ts";
 import { FIAT_SCALE } from "../lib/marketplace/price-normalize.ts";
+import { COMMERCIAL_ACTIVE } from "../lib/web3/commercial-active.ts";
 
 const BASE = 84532;
 const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -96,6 +100,10 @@ describe("toAskingDisplaySource", () => {
     assert.ok(source);
     assert.equal(source!.listingCurrency, 0);
     assert.equal(source!.amount1e8, 350_000n * FIAT_SCALE);
+    assert.equal(
+      askingAssetAmountToUsd1e8(350000000000n, 6, "usdc"),
+      350_000n * FIAT_SCALE,
+    );
   });
 
   it("converts native asset asking via ethUsd1e8", () => {
@@ -150,6 +158,27 @@ describe("toAskingDisplaySource", () => {
     assert.ok(source);
     assert.equal(source!.amount1e8, 100n * FIAT_SCALE);
     assert.equal(source!.listingCurrency, 1); // EUR
+  });
+});
+
+describe("askingUsdcFacts", () => {
+  it("covers every COMMERCIAL_ACTIVE USDC address with USDC identity decimals", () => {
+    const facts = askingUsdcFacts();
+    const committed = Object.values(COMMERCIAL_ACTIVE).map((s) =>
+      s.usdc.toLowerCase(),
+    );
+    assert.deepEqual(
+      facts.map((f) => f.address.toLowerCase()).sort(),
+      [...committed].sort(),
+    );
+    for (const fact of facts) {
+      assert.equal(fact.decimals, 6);
+      assert.equal(
+        COMMERCIAL_ACTIVE[fact.chainId]?.usdc.toLowerCase(),
+        fact.address.toLowerCase(),
+      );
+    }
+    assert.equal(askingNativeDecimals(), 18);
   });
 });
 

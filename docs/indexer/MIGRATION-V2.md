@@ -241,7 +241,7 @@ Generation v2 allows listing in any registered fiat `currencyCode`. The app disp
 
 Chainlink on-chain feeds remain authoritative for **checkout quotes**; CoinGecko fills display gaps where no on-chain feed exists on testnet.
 
-Browse filter/sort: optional `*UsdRate` query params on `GET /consignments` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY (and EUR/ETH/BTC) when the browse path forwards them. All non-USD display currencies require live CoinGecko (or Chainlink for EUR/ETH) rates — no hardcoded peg fallbacks. Legacy `GET /listings` was removed with MarketplaceEscrow.
+Browse filter/sort: optional `*UsdRate` query params on `GET /consignments` for CNY/INR/BRL/IDR/AUD/AED/KRW/RUB/JPY (and EUR/ETH/BTC) when the browse path forwards them. All non-USD display currencies require live CoinGecko (or Chainlink for EUR/ETH) rates — no hardcoded peg fallbacks. **Asking USD in SQL** is the same facts as card display: [`listing-price-display.ts`](../../lib/commerce/listing-price-display.ts) `askingUsdcFacts` (USDC Asset peg, native via `ethUsdRate`, unknown ERC-20 NULL). Legacy `GET /listings` was removed with MarketplaceEscrow.
 
 **Display selector (June 30, 2026):** 13 options — `USD, EUR, CNY, INR, BRL, IDR, AUD, AED, KRW, RUB, JPY, ETH, BTC`. **84532 listing creation stays USD-only.**
 

@@ -16,9 +16,8 @@ import {
 } from "@/components/ui/sheet";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFilterNavigation } from "@/hooks/use-market-filters";
-import { isCryptoDisplayCurrency } from "@/lib/marketplace/currency-code";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
-import { CRYPTO_DISPLAY_CONFIG, pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
+import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import {
   DEFAULT_MARKET_FILTERS,
   priceFilterPlaceholder,
@@ -29,12 +28,11 @@ import type { PassportLocationSelection } from "@/lib/passport/metadata-form";
 import {
   rateRequiredForPriceCurrency,
   ratesReadyForPriceCurrency,
-  usdFacetRangeToCrypto,
 } from "@/lib/marketplace/price-normalize";
-import type { FacetsResponse } from "@/lib/types/ponder";
 import {
   BODY_TYPE_OPTIONS,
   CONDITION_OPTIONS,
+  FUEL_TYPE_OPTIONS,
   TRANSMISSION_OPTIONS,
   VEHICLE_TYPE_OPTIONS,
 } from "@/lib/passport/metadata-form-options";
@@ -94,10 +92,9 @@ function toggleInList(list: string[], item: string): string[] {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  facets: FacetsResponse | null;
 };
 
-export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
+export function MarketFilterDrawer({ open, onOpenChange }: Props) {
   const { filters, pushFilters } = useMarketFilterNavigation();
   const fxContext = useDisplayCurrency();
   const filterRates = pickPartialFxRates(fxContext);
@@ -119,46 +116,13 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
     onOpenChange(next);
   };
 
-  const makeOptions = facets?.makes ?? [];
-  const modelOptions = draft.make ? (facets?.models[draft.make] ?? []) : [];
-  const fuelOptions = facets?.fuelTypes ?? [];
-  const bodyOptions = facets?.bodyTypes?.length ? facets.bodyTypes : [...BODY_TYPE_OPTIONS];
-  const transmissionOptions = facets?.transmissions?.length
-    ? facets.transmissions
-    : [...TRANSMISSION_OPTIONS];
+  const fuelOptions = [...FUEL_TYPE_OPTIONS];
+  const bodyOptions = [...BODY_TYPE_OPTIONS];
+  const transmissionOptions = [...TRANSMISSION_OPTIONS];
 
   const patchDraft = (patch: Partial<MarketFilterState>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
   };
-
-  const mileageMaxPlaceholder = facets?.mileageMax
-    ? facets.mileageMax.toLocaleString("en-US")
-    : "";
-
-  const fiatPriceRange =
-    displayCurrency === "EUR"
-      ? (facets?.priceRanges?.EUR ??
-        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const))
-      : (facets?.priceRanges?.USD ??
-        ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const));
-
-  const usdRangeForCrypto =
-    facets?.priceRanges?.USD ??
-    ({ min: facets?.priceMin ?? 0, max: facets?.priceMax ?? 0 } as const);
-
-  let priceRange = fiatPriceRange;
-  if (isCryptoDisplayCurrency(displayCurrency)) {
-    const config = CRYPTO_DISPLAY_CONFIG[displayCurrency];
-    const cryptoRate = filterRates[config.rateField];
-    if (cryptoRate != null) {
-      priceRange = usdFacetRangeToCrypto(
-        usdRangeForCrypto.min,
-        usdRangeForCrypto.max,
-        cryptoRate,
-        config.scale,
-      );
-    }
-  }
 
   const pricePlaceholder = priceFilterPlaceholder(displayCurrency);
   const draftHasPriceBounds = Boolean(draft.priceMin || draft.priceMax);
@@ -201,7 +165,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
                   id="drawer-price-min"
                   type="number"
                   min={0}
-                  placeholder={facets ? String(priceRange.min || "") : pricePlaceholder}
+                  placeholder={pricePlaceholder}
                   value={draft.priceMin}
                   onChange={(e) => patchDraft({ priceMin: e.target.value })}
                   className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -215,7 +179,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
                   id="drawer-price-max"
                   type="number"
                   min={0}
-                  placeholder={facets ? String(priceRange.max || "") : pricePlaceholder}
+                  placeholder={pricePlaceholder}
                   value={draft.priceMax}
                   onChange={(e) => patchDraft({ priceMax: e.target.value })}
                   className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -228,7 +192,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
             <FilterCombobox
               id="drawer-filter-make"
               value={draft.make}
-              options={makeOptions}
+              options={[]}
               placeholder="Search makes…"
               onChange={(make) => patchDraft({ make, model: "" })}
             />
@@ -239,7 +203,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
               <FilterCombobox
                 id="drawer-filter-model"
                 value={draft.model}
-                options={modelOptions}
+                options={[]}
                 placeholder="All models"
                 onChange={(model) => patchDraft({ model })}
               />
@@ -271,7 +235,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
                   id="drawer-year-min"
                   type="number"
                   min={0}
-                  placeholder={facets ? String(facets.yearMin || "") : ""}
+                  placeholder=""
                   value={draft.yearMin}
                   onChange={(e) => patchDraft({ yearMin: e.target.value })}
                   className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -285,7 +249,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
                   id="drawer-year-max"
                   type="number"
                   min={0}
-                  placeholder={facets ? String(facets.yearMax || "") : ""}
+                  placeholder=""
                   value={draft.yearMax}
                   onChange={(e) => patchDraft({ yearMax: e.target.value })}
                   className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -318,7 +282,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
                   id="drawer-mileage-max"
                   type="number"
                   min={0}
-                  placeholder={mileageMaxPlaceholder}
+                  placeholder=""
                   value={draft.mileageMax}
                   onChange={(e) => patchDraft({ mileageMax: e.target.value })}
                   className="min-w-0 min-h-11 w-full rounded-sm border border-border-default bg-bg-card px-3 font-mono text-sm text-text-primary focus:border-accent-warm focus:outline-none"
@@ -468,7 +432,7 @@ export function MarketFilterDrawer({ open, onOpenChange, facets }: Props) {
               onOpenChange(false);
             }}
           >
-            Show results{facets ? ` (${facets.totalActive})` : ""}
+            Show results
           </Button>
         </SheetFooter>
       </SheetContent>

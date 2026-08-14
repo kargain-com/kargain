@@ -108,6 +108,7 @@ export function MarketFilterBar() {
   const filterRates = pickPartialFxRates(fxContext);
   const { displayCurrency, isRatesLoading } = fxContext;
   const [searchInput, setSearchInput] = useState(filters.search);
+  const [makeInput, setMakeInput] = useState(filters.make);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [makeOpen, setMakeOpen] = useState(false);
@@ -121,6 +122,12 @@ export function MarketFilterBar() {
   if (filters.search !== prevFilterSearch) {
     setPrevFilterSearch(filters.search);
     setSearchInput(filters.search);
+  }
+
+  const [prevFilterMake, setPrevFilterMake] = useState(filters.make);
+  if (filters.make !== prevFilterMake) {
+    setPrevFilterMake(filters.make);
+    setMakeInput(filters.make);
   }
 
   const [prevPriceMin, setPrevPriceMin] = useState(filters.priceMin);
@@ -143,12 +150,10 @@ export function MarketFilterBar() {
     setPriceOpen(open);
   };
 
-  /** Remote facets not registered — static option lists only until Phase 1. */
-  const facets = null;
-
   useMarketRatesRequest(priceOpen && rateRequiredForPriceCurrency(displayCurrency));
 
   const debouncedSearch = useDebouncedValue(searchInput, 300);
+  const debouncedMake = useDebouncedValue(makeInput, 300);
 
   useEffect(() => {
     if (debouncedSearch !== filters.search) {
@@ -156,9 +161,14 @@ export function MarketFilterBar() {
     }
   }, [debouncedSearch, filters.search, patchFilters]);
 
+  useEffect(() => {
+    if (debouncedMake !== filters.make) {
+      patchFilters({ make: debouncedMake, model: "", page: 1 });
+    }
+  }, [debouncedMake, filters.make, patchFilters]);
+
   const activeCount = countActiveFilters(filters);
   const drawerCount = countDrawerActiveFilters(filters);
-  const makeOptions: string[] = [];
   const fuelOptions = [...FUEL_TYPE_OPTIONS];
 
   const statusLabel =
@@ -344,13 +354,11 @@ export function MarketFilterBar() {
               <PopoverContent className="w-64">
                 <FilterCombobox
                   id="bar-filter-make"
-                  value={filters.make}
-                  options={makeOptions}
+                  value={makeInput}
+                  options={[]}
                   placeholder="Search makes…"
-                  onChange={(make) => {
-                    patchFilters({ make, model: "", page: 1 });
-                    setMakeOpen(false);
-                  }}
+                  onChange={setMakeInput}
+                  onOptionSelect={() => setMakeOpen(false)}
                 />
               </PopoverContent>
             </Popover>
@@ -404,7 +412,7 @@ export function MarketFilterBar() {
         </div>
       </div>
 
-      <MarketFilterDrawer open={drawerOpen} onOpenChange={setDrawerOpen} facets={facets} />
+      <MarketFilterDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
     </>
   );
 }

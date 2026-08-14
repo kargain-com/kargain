@@ -6,7 +6,7 @@
  * peg USDC→USD or convert native via injected ETH/USD without inventing feeds.
  */
 
-import { formatUnits } from "viem";
+import { formatUnits, zeroAddress } from "viem";
 
 import {
   DENOMINATION_KIND,
@@ -22,6 +22,7 @@ import {
   type LegacyFiatCurrency,
 } from "@/lib/marketplace/currency-code";
 import { FIAT_SCALE } from "@/lib/marketplace/price-normalize";
+import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
 
 export type ListingAskingPrice =
   | {
@@ -43,6 +44,86 @@ export type AskingDisplaySource = {
   amount1e8: bigint;
   listingCurrency: LegacyFiatCurrency;
 };
+
+/** USDC Asking row — addresses from COMMERCIAL_ACTIVE; decimals from settlement identity. */
+export type AskingUsdcFact = {
+  chainId: number;
+  address: `0x${string}`;
+  decimals: number;
+};
+
+/** Native (zero) asset — SQL and display treat empty/zero as this identity. */
+export const ASKING_NATIVE_ASSET = zeroAddress;
+
+export function askingAssetUsdScale(decimals: number): bigint {
+  return 10n ** BigInt(decimals);
+}
+
+/**
+ * Every commercial USDC admit used for Asking USD 1e8 (cards + browse SQL).
+ * Fail-closed if a committed stack's USDC is not a USDC identity.
+ */
+export function askingUsdcFacts(): AskingUsdcFact[] {
+  const facts: AskingUsdcFact[] = [];
+  for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
+    const meta = resolveSettlementAssetMeta({
+      chainId: stack.chainId,
+      asset: stack.usdc,
+    });
+    if (meta.identity !== "usdc" || meta.decimals == null) {
+      throw new Error(
+        `COMMERCIAL_ACTIVE USDC on chain ${stack.chainId} is not a USDC Asking identity`,
+      );
+    }
+    facts.push({
+      chainId: stack.chainId,
+      address: stack.usdc,
+      decimals: meta.decimals,
+    });
+  }
+  return facts;
+}
+
+/** Native Asking decimals — must agree across COMMERCIAL_ACTIVE. */
+export function askingNativeDecimals(): number {
+  const found = new Set<number>();
+  for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
+    const meta = resolveSettlementAssetMeta({
+      chainId: stack.chainId,
+      asset: ASKING_NATIVE_ASSET,
+    });
+    if (meta.identity !== "native" || meta.decimals == null) {
+      throw new Error(
+        `native Asking decimals unresolved on chain ${stack.chainId}`,
+      );
+    }
+    found.add(meta.decimals);
+  }
+  if (found.size !== 1) {
+    throw new Error("commercial chains disagree on native Asking decimals");
+  }
+  return [...found][0]!;
+}
+
+/** Asset Asking → USD 1e8. Unknown identity or missing ETH rate → null. */
+export function askingAssetAmountToUsd1e8(
+  amount: bigint,
+  decimals: number,
+  identity: SettlementAssetIdentity,
+  ethUsd1e8?: bigint | null,
+): bigint | null {
+  if (decimals < 0 || !Number.isFinite(decimals)) return null;
+  const scale = askingAssetUsdScale(decimals);
+  if (scale <= 0n) return null;
+  if (identity === "usdc") {
+    return (amount * FIAT_SCALE) / scale;
+  }
+  if (identity === "native") {
+    if (ethUsd1e8 == null || ethUsd1e8 <= 0n) return null;
+    return (amount * ethUsd1e8) / scale;
+  }
+  return null;
+}
 
 function toBigInt(price: string | bigint | number | null | undefined): bigint | null {
   if (price == null) return null;
@@ -147,27 +228,14 @@ export function toAskingDisplaySource(
     };
   }
 
-  if (asking.identity === "usdc") {
-    const scale = 10n ** BigInt(asking.decimals);
-    if (scale <= 0n) return null;
-    return {
-      amount1e8: (asking.amount * FIAT_SCALE) / scale,
-      listingCurrency: 0, // USD
-    };
-  }
-
-  if (asking.identity === "native") {
-    const ethUsd = opts?.ethUsd1e8;
-    if (ethUsd == null || ethUsd <= 0n) return null;
-    const scale = 10n ** BigInt(asking.decimals);
-    if (scale <= 0n) return null;
-    return {
-      amount1e8: (asking.amount * ethUsd) / scale,
-      listingCurrency: 0, // USD
-    };
-  }
-
-  return null;
+  const amount1e8 = askingAssetAmountToUsd1e8(
+    asking.amount,
+    asking.decimals,
+    asking.identity,
+    opts?.ethUsd1e8,
+  );
+  if (amount1e8 == null) return null;
+  return { amount1e8, listingCurrency: 0 };
 }
 
 /** Format asset settlement amount with grouping (no inventing fiat). */

@@ -11,6 +11,8 @@ type FilterComboboxProps = {
   disabled?: boolean;
   placeholder?: string;
   onChange: (value: string) => void;
+  /** Fired when the user picks a suggestion (not on typed input). */
+  onOptionSelect?: (value: string) => void;
   className?: string;
 };
 
@@ -21,6 +23,7 @@ export function FilterCombobox({
   disabled,
   placeholder,
   onChange,
+  onOptionSelect,
   className,
 }: FilterComboboxProps) {
   const [open, setOpen] = useState(false);
@@ -54,9 +57,10 @@ export function FilterCombobox({
         value={query}
         placeholder={placeholder}
         onChange={(e) => {
-          setQuery(e.target.value);
+          const next = e.target.value;
+          setQuery(next);
           setOpen(true);
-          if (!e.target.value) onChange("");
+          onChange(next);
         }}
         onFocus={() => setOpen(true)}
         className="w-full min-h-11 rounded-sm border border-border-default bg-bg-card px-4 py-3 font-sans text-sm text-text-primary transition-colors focus:border-accent-warm focus:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
@@ -76,6 +80,7 @@ export function FilterCombobox({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   onChange(opt);
+                  onOptionSelect?.(opt);
                   setQuery(opt);
                   setOpen(false);
                 }}

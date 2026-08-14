@@ -49,7 +49,7 @@ Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/
 
 | Route | Purpose |
 |-------|---------|
-| `GET /consignments` | Browse with passport join filters/sort (`mode`, `active` = offered\|binding, `phase`, `seller`, `agent`, `chainId`, `page`, `limit`, plus search/make/model/year/mileage/price+FX/CSV vehicle attrs/placeId/colour/status/sort/verifiedFirst). Envelope: `{ consignments, total, page, limit, statusCounts }`. `total` and `statusCounts` use the same predicates as the page. |
+| `GET /consignments` | Browse with passport join filters/sort (`mode`, `active` = offered\|binding, `phase`, `seller`, `agent`, `chainId`, `page`, `limit`, plus search/make/model/year/mileage/price+FX/CSV vehicle attrs/placeId/colour/status/sort/verifiedFirst). Price/sort USD 1e8 = Asking facts (`listing-price-display`: fiat + USDC peg + native ETH). Envelope: `{ consignments, total, page, limit, statusCounts }`. `total` and `statusCounts` use the same predicates as the page. |
 | `GET /consignments/by-token/:tokenId` | Passport commerce rail (live preferred, else latest historical); response `{ consignment }` |
 | `GET /consignments/:id` | Deep link by append-only consignment id (**not** passport `tokenId`); response `{ consignment }` |
 | `GET /consignments/:id/bids` | Ascending bid history for that consignment id |

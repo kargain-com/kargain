@@ -20,6 +20,12 @@ import {
 
 import { DENOMINATION_KIND } from "../../lib/commerce/denomination";
 import {
+  ASKING_NATIVE_ASSET,
+  askingAssetUsdScale,
+  askingNativeDecimals,
+  askingUsdcFacts,
+} from "../../lib/commerce/listing-price-display";
+import {
   parseConsignmentBrowseFilters,
   parseFxRatesFromQuery,
   resolveFilterBoundsUsd1e8,
@@ -56,14 +62,18 @@ function csvColumnMatch(
 }
 
 /**
- * SQL expression: fiat consignment price → USD 1e8, or NULL when Asset / unpriced / missing rate.
+ * SQL expression: consignment Asking → USD 1e8.
+ * Asset conversion facts come from listing-price-display (USDC peg, native ETH).
+ * Unknown Asset / unpriced / missing rate → NULL.
  */
 export function consignmentPriceUsdSql(rates: PartialFxRates | null): SQL {
-  const scale = FIAT_SCALE.toString();
+  const fiatScale = FIAT_SCALE.toString();
+  const nativeScale = askingAssetUsdScale(askingNativeDecimals()).toString();
   const rateLit = (v: bigint | null | undefined) =>
     v != null && v > 0n ? v.toString() : "0";
 
   const eur = rateLit(rates?.eurUsd);
+  const eth = rateLit(rates?.ethUsd);
   const cny = rateLit(rates?.cnyUsd);
   const inr = rateLit(rates?.inrUsd);
   const brl = rateLit(rates?.brlUsd);
@@ -74,30 +84,42 @@ export function consignmentPriceUsdSql(rates: PartialFxRates | null): SQL {
   const rub = rateLit(rates?.rubUsd);
   const jpy = rateLit(rates?.jpyUsd);
 
+  const usdcBranches = askingUsdcFacts().map((fact) => {
+    const assetScale = askingAssetUsdScale(fact.decimals).toString();
+    return sql`WHEN ${consignment.denominationKind} = ${DENOMINATION_KIND.Asset} AND ${consignment.chainId} = ${fact.chainId} AND lower(${consignment.asset}) = ${fact.address.toLowerCase()} THEN (${consignment.price} * ${sql.raw(fiatScale)}::numeric) / ${sql.raw(assetScale)}::numeric`;
+  });
+
+  const nativeAddr = ASKING_NATIVE_ASSET.toLowerCase();
+
   return sql`(CASE
-    WHEN ${consignment.denominationKind} = ${DENOMINATION_KIND.Asset} THEN NULL
     WHEN ${consignment.price} <= 0 THEN NULL
+    ${sql.join(usdcBranches, sql` `)}
+    WHEN ${consignment.denominationKind} = ${DENOMINATION_KIND.Asset}
+      AND (${consignment.asset} = ${""} OR lower(${consignment.asset}) = ${nativeAddr})
+      AND ${sql.raw(eth)}::numeric > 0
+      THEN (${consignment.price} * ${sql.raw(eth)}::numeric) / ${sql.raw(nativeScale)}::numeric
+    WHEN ${consignment.denominationKind} = ${DENOMINATION_KIND.Asset} THEN NULL
     WHEN upper(${consignment.currencyCode}) IN ('USD', '') THEN ${consignment.price}
     WHEN upper(${consignment.currencyCode}) = 'EUR' AND ${sql.raw(eur)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(eur)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(eur)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'CNY' AND ${sql.raw(cny)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(cny)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(cny)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'INR' AND ${sql.raw(inr)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(inr)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(inr)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'BRL' AND ${sql.raw(brl)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(brl)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(brl)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'IDR' AND ${sql.raw(idr)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(idr)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(idr)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'AUD' AND ${sql.raw(aud)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(aud)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(aud)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'AED' AND ${sql.raw(aed)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(aed)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(aed)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'KRW' AND ${sql.raw(krw)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(krw)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(krw)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'RUB' AND ${sql.raw(rub)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(rub)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(rub)}::numeric) / ${sql.raw(fiatScale)}::numeric
     WHEN upper(${consignment.currencyCode}) = 'JPY' AND ${sql.raw(jpy)}::numeric > 0
-      THEN (${consignment.price} * ${sql.raw(jpy)}::numeric) / ${sql.raw(scale)}::numeric
+      THEN (${consignment.price} * ${sql.raw(jpy)}::numeric) / ${sql.raw(fiatScale)}::numeric
     ELSE NULL
   END)`;
 }

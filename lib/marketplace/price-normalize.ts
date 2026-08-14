@@ -183,32 +183,4 @@ export function displayAmountToUsd1e8(
   return (fiat1e8 * fiatRate) / FIAT_SCALE;
 }
 
-/** USD 1e8 → ETH display number (for facet placeholders). */
-export function fiat1e8ToEthWei(usd1e8: bigint, ethUsd: bigint): number {
-  const ethWei = (usd1e8 * ETH_SCALE) / ethUsd;
-  return Number(ethWei) / Number(ETH_SCALE);
-}
-
-/** USD 1e8 → BTC display number (for facet placeholders). */
-export function fiat1e8ToBtc(usd1e8: bigint, btcUsd: bigint): number {
-  const btcSat = (usd1e8 * BTC_SCALE) / btcUsd;
-  return Number(btcSat) / Number(BTC_SCALE);
-}
-
-/** Convert USD facet bounds to crypto display units for filter sliders. */
-export function usdFacetRangeToCrypto(
-  usdMin: number,
-  usdMax: number,
-  cryptoUsd: bigint,
-  scale: bigint,
-): { min: number; max: number } {
-  const toUnits = (usd: number): number => {
-    if (!usd) return 0;
-    const usd1e8 = BigInt(Math.round(usd * Number(FIAT_SCALE)));
-    const units = (usd1e8 * scale) / cryptoUsd;
-    return Number(units) / Number(scale);
-  };
-  return { min: toUnits(usdMin), max: toUnits(usdMax) };
-}
-
 export { FIAT_RATE_KEYS };

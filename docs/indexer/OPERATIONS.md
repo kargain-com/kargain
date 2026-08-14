@@ -1,8 +1,8 @@
 # Ponder indexer operations (VPS reindex runbook)
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; filter facets; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` / `custodyChain` columns + chain-scoped verifier keys).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; passport denorm columns; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` / `custodyChain` columns + chain-scoped verifier keys).
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), browse filter facets, **listing card cover photos**, **notifications feed**, or **dual-chain custody / verifier identity** will be wrong until new on-chain events occur.
+Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), **listing card cover photos**, **notifications feed**, or **dual-chain custody / verifier identity** will be wrong until new on-chain events occur. Browse filter SQL that only changes the query expression (Asking USD CASE) needs an indexer **image redeploy**, not this wipe.
 
 ---
 
@@ -102,6 +102,7 @@ Examples that **do not** require reindex:
 - Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
 - Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
 - Owner consignment read API (July 2026): superseded by consignment mandate routes — **redeploy ponder image only** when schema unchanged; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
+- Asking USD browse SQL (August 2026): `consignmentPriceUsdSql` consumes `askingUsdcFacts` — **redeploy ponder image only**; no schema wipe (query expression, not stored row shape)
 
 ---
 

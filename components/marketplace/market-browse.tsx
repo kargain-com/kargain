@@ -25,6 +25,7 @@ import { pickPartialFxRates } from "@/lib/marketplace/fx-rate-registry";
 import {
   marketplaceListingsNeedClientRates,
   marketplaceListingsRatesReady,
+  marketplaceListingsShouldForwardRates,
 } from "@/lib/marketplace/listings-prefetch";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +43,12 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
   const ratesReady = marketplaceListingsRatesReady(filters, filterRates);
 
   const apiInput = useMemo(
-    () => marketFiltersToApiInput(filters, needsRates ? filterRates : undefined),
-    [filters, filterRates, needsRates],
+    () =>
+      marketFiltersToApiInput(
+        filters,
+        marketplaceListingsShouldForwardRates(filters) ? filterRates : undefined,
+      ),
+    [filters, filterRates],
   );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 

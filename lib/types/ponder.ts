@@ -78,34 +78,6 @@ export type VerifierRow = {
   verificationCount: number;
 };
 
-export type FacetsResponse = {
-  makes: string[];
-  models: Record<string, string[]>;
-  yearMin: number;
-  yearMax: number;
-  years: number[];
-  priceMin: number;
-  priceMax: number;
-  priceRanges: {
-    USD: { min: number; max: number };
-    EUR: { min: number; max: number };
-  };
-  mileageMax: number;
-  fuelTypes: string[];
-  bodyTypes: string[];
-  transmissions: string[];
-  conditions: string[];
-  vehicleTypes: string[];
-  fiatCurrencies: number[];
-  totalActive: number;
-  statusCounts: Record<PassportStatus, number>;
-};
-
-export type MarketplaceStatsResponse = {
-  totalActive: number;
-  statusCounts: Record<PassportStatus, number>;
-};
-
 export type PonderListingsResponse = {
   listings: ListingRow[];
   total: number;

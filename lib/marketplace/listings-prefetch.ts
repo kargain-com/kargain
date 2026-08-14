@@ -20,6 +20,19 @@ export function marketplaceListingsNeedClientRates(filters: MarketFilterState): 
   return needsRatesForFilter || needsRatesForSort;
 }
 
+/**
+ * Forward live FX to Ponder when price bounds or price sort are active
+ * (USD+USDC Asking still works without rates; native lots need ethUsd when present).
+ */
+export function marketplaceListingsShouldForwardRates(
+  filters: MarketFilterState,
+): boolean {
+  return (
+    marketplaceListingsNeedClientRates(filters) ||
+    Boolean(filters.priceMin.trim() || filters.priceMax.trim())
+  );
+}
+
 /** True when required FX rates for browse filters/sort are available. */
 export function marketplaceListingsRatesReady(
   filters: MarketFilterState,
