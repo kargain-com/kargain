@@ -5,6 +5,7 @@
 | Read this if you need… | Section |
 |------------------------|---------|
 | Current stack (generation v2) | [Part I](#part-i--generation-v2-current) |
+| Non-EVM commercial chains + parameter model | [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative) |
 | Historical v1.x behavior | [Part II](#part-ii--generation-v1x-historical-reference) |
 | Passport JSON (`tokenURI`) | [Part III](#part-iii--metadata-wire-format) |
 | v1 → v2 migration summary | [Part IV](#part-iv--migration-reference-v1--generation-v2) |
@@ -412,7 +413,7 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 | Abandonment window | **30 days** | Length captured into `AuctionTerms` at open; **deadline** set when reversal becomes pending |
 | Challenge bond | **0.01 ETH** | Exact match at `open` |
 
-Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — governance storage for those fields is read when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot…" / "snapshot: minIncrementBps frozen…"). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is captured when a challenge opens. See the provenance table.
+Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — governance storage for those fields is read when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot…" / "snapshot: minIncrementBps frozen…"). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is captured when a challenge opens. See the provenance table. **Target model ([§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative) §10):** the seven auction bounds/step/windows above (not the challenge bond) converge to **implementation model constants** at the next full commercial redeploy; `auctionRules()` view shape and `AuctionRulesSet` event shape are preserved (seven fields filled from constants; event also emitted at `initialize`); the indexer `commerce_mode` projection therefore does not change shape. Until that redeploy, this section’s live `setAuctionRules` wording remains accurate.
 
 #### Parameter provenance — what to read, and from where
 
@@ -493,15 +494,18 @@ Used as **owner / UUPS authority** on commerce mode proxies (`FixedPriceConsignm
 
 ### 7.4 LayerZero EndpointV2 — testnet EIDs
 
-| Network | chainId | EID |
-|---------|---------|-----|
+| Network | chainId / namespace | EID |
+|---------|-------------------|-----|
 | Base Sepolia | 84532 | 40245 |
 | Ethereum Sepolia | 11155111 | 40161 |
+| Solana Devnet | `2_000_040_168` (planned; [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)) | 40168 |
 | Polygon Amoy | 80002 | 40267 |
 
 EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib/chainlink-feeds.ts`).
 
 **Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`.
+
+**Planned pathway (40245 ↔ 40168)** — Solana Devnet spoke ([§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)). Library / executor / DVN addresses: **from snapshot** only (not listed here until the pathway is wired).
 
 | Side | sendUln302 | receiveUln302 | executor |
 |------|------------|---------------|----------|
@@ -532,7 +536,7 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 
 - **No defaults.** Default send/receive library and DVN configurations are forbidden. Every OApp/ONFT deployment MUST explicitly pin send and receive libraries and the per-pathway DVN set (required + optional). Never depend on LayerZero Labs-controlled defaults.
 - **DVN quorum.** Minimum **2** required DVNs from independent operators on testnet pathways; **3–5** on any mainnet pathway. LayerZero Labs DVN MAY be one required DVN; it MUST NOT be the only one. **1-of-1** DVN configurations are forbidden permanently.
-- **EID allowlist + star topology.** Testnet wire scripts allow only EIDs `{40245, 40161}` and only the hub↔spoke star (no spoke↔spoke peers). Never wire testnet EIDs to mainnet EIDs.
+- **EID allowlist + star topology.** Testnet wire scripts allow hub↔spoke stars only (no spoke↔spoke peers). Live allowlist today: `{40245, 40161}`; planned addition `{40245, 40168}` per [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative). Never wire testnet EIDs to mainnet EIDs.
 - **Read-back.** After every config write, re-read on-chain state and fail if `requiredDVNCount < 2`, a default library is in use, a dead DVN is in the required set, or peers are non-reciprocal. Ops drift check: `pnpm bridge:wire:read-only` (zero transactions).
 - **Receive library change policy.** Initial `setReceiveLibrary` only. Changing an already-set **non-default** receive library is refused by `bridge-wire` — use the explicit `setReceiveLibraryTimeout` / grace-period procedure (out of scope for the wire script).
 - **Pinned metadata.** Library and DVN addresses MUST come from the committed LayerZero metadata snapshot (`pnpm lz:snapshot`), not from chat or memory. Snapshot `endpointV2` MUST equal `LZ_ENDPOINT_V2_BY_CHAIN`.
@@ -545,6 +549,8 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
   - **(c) DVN count.** Testnet minimum is **2** required DVNs (Labs + Nethermind). Mainnet MUST use **3–5** independent required DVNs.
   - **(d) Research gates.** Also confirm from the research doc: (1) LayerZero **default migration** to 5/5 (or documented floor) is complete, (2) a **timelock on library upgrades** is in place, and (3) **6+ months** without new LayerZero security incidents.
   - **(e) No ops smoke-mint on mainnet.** Mainnet forbids ops/smoke `mintPassport` and live `pnpm smoke:bridge` on commercial KarPassport (infra proof = `bridge:wire:read-only` / §7.6 read-back). Placeholder URIs (e.g. `ar://nuclear-smoke`) are forbidden on commercial stacks. Testnet live smoke requires a **pre-minted** `--token-id` with valid metadata — auto-mint is disabled (`scripts/lib/smoke-bridge-policy.ts`). Home passport has **no user burn** (permanent invariant; foreign `bridgeBurn` only) — ops must not create leftover commercial home NFTs.
+  - **(f) Upgrade-authority revocation.** Before any commercial mainnet pathway on a chain whose programs are upgradeable, decide and record whether the upgrade authority is revoked (or equivalently locked under Timelock-only governance with no residual deployer key). BPF chains that revoke upgrade authority lose the ability to patch defects without redeploy — the decision is explicit, not default-open.
+  - **(g) Dedicated RPC for non-EVM commercial mainnet.** Any non-EVM commercial mainnet MUST run against a dedicated RPC node (not a shared public endpoint relied on as production infrastructure). Testnet may use public endpoints per [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative).
 - **Risk framing.** Kargain bridges passport identity/metadata (spoke mints **UNVERIFIED** per §7.1; trust is never ported), not fungible value custody. Blast radius of a messaging compromise is data integrity, not fund loss. This framing does **not** relax any rule above.
 
 ### 7.7 Messaging fee payer (normative)
@@ -578,9 +584,10 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 | Risk | Mitigation / acceptance |
 |------|-------------------------|
 | **`platformRecipient` immutable** | Wrong address at deploy is permanent; verify before deploy |
+| **`MIN_STAKE_FLOOR` bytecode constant** | Pinned at 0.001 ether in `KarProStaking`; a non-ETH-native EVM commercial chain would need a bytecode change for a correct sybil floor. Recorded; not scheduled; not Nuclear #5 volume A |
 | **Open-window griefing freeze** | Up to 14d freeze (auctions/bridge/URI) for gas cost; FixedPrice buy on an already-offered consignment still allowed; counter = owner-funded independent Reject → bond to platform |
 | **No bond ceiling** | Governance can raise deposit enough to make verifications unchallengeable; Timelock48h visibility + cancel is the control |
-| **Reverting seller** | Seller contract wallet can block ETH payout; document for buyers |
+| **Reverting seller** | Seller contract wallet that reverts on native receive does **not** block settlement: `_paySplit` → `_payNative` (`ClaimablePayouts`, `NATIVE_PUSH_GAS`) credits a claim and the lot closes. The seller can only block **their own** payout until a successful `withdrawClaim` |
 | **Agent price / commission** | Under Commission the agent may lower (never raise) snapshotted `commissionBps` (C2); under Margin there is no agent fee object — the agent sets price and keeps the residual. Owner protection is snapshotted `floor` via `_computeAgentedSplitAmounts` / `BelowFloor` (C6). **Split arithmetic (live Nuclear #3):** platform floored first `⌊S·p/B⌋`, owner floored kept rate `⌊S·(B−p−c)/B⌋`, agent residual. Off-chain mirror: `lib/commerce/agented-split.ts`. Buyers should quote immediately before purchase |
 | **Oracle staleness** | Per-feed `stalenessTolerance` on FixedPrice (native, payment token, currency); bounds 60s–72h; P4 rule `2 × max(obs, publishedHb)`; stale feeds revert quote/buy (`StalePrice`); no global default |
 | **External payment trust** | `confirmExternalPayment` is seller attestation — no on-chain payment proof |
@@ -736,9 +743,9 @@ Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`ch
 
 Every commercial Kargain chain runs the **identical** stack: `KarPassport` + KarProPass + KarProStaking + **FixedPriceConsignment** + **AscendingConsignment** + one `KarPassportBridgeGateway`. There is exactly **one** passport contract type and **one** bridge contract type across all chains. The thin `KarPassportONFT721`, `ProxyONFT721Adapter`, and legacy **`MarketplaceEscrow` / `AuctionEscrow`** are retired.
 
-**Identity.** `tokenId = (chainId << 128) | localSeq`; `chainIdOf(tokenId)` is the immutable **origin/home** chain. tokenIds are globally unique and **travel unchanged** — the gateway never re-encodes an id.
+**Identity.** High 128 bits of `tokenId` are a **Kargain chain namespace** (historically an EVM EIP-155 `chainId`). `tokenId = (namespace << 128) | localSeq`; `chainIdOf(tokenId)` is the immutable **origin/home** namespace. tokenIds are globally unique and **travel unchanged** — the gateway never re-encodes an id. Non-EVM namespace allocation: [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative).
 
-**Custody = lock-and-mint.** A token's canonical row lives on its home chain. When bridged away, the home gateway **locks** it and the destination gateway **mints a representation** with the same tokenId. *Origin/home* (`chainIdOf`) and *routing hub* (the LayerZero star center, currently EID 40245 Base) are **distinct**: messages relay **through the hub**, not "to the origin first." Star topology and the `{40245, 40161}` EID allowlist are unchanged (§7.6).
+**Custody = lock-and-mint.** A token's canonical row lives on its home chain. When bridged away, the home gateway **locks** it and the destination gateway **mints a representation** with the same tokenId. *Origin/home* (`chainIdOf`) and *routing hub* (the LayerZero star center, currently EID 40245 Base) are **distinct**: messages relay **through the hub**, not "to the origin first." Star topology (hub↔spoke only; no spoke↔spoke peers) and the EID allowlist are in §7.6; planned third spoke EID 40168 in [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative).
 
 ### 12.2 Master custody invariant
 
@@ -764,7 +771,7 @@ LeaveChain is refused when: an intrinsic verification challenge is active; a reg
 
 ### 12.7 Bridge entrypoints (gateway-only)
 
-`KarPassport` exposes, callable **only** by the bound `bridgeGateway`: `bridgeMint(to, tokenId, uri)` (require `chainIdOf != local`, not-exists; status UNVERIFIED); `bridgeBurn(tokenId)` (require `chainIdOf != local`); `setCustodyLock(tokenId, bool)`; `bridgeResetOnUnlock(tokenId, uri)` (status→UNVERIFIED, clear verifier; emit `VerificationReset` only if prior was VERIFIED; set URI when provided). The gateway is bound **once** via `setBridgeGateway` (one-time, owner-only — same pattern as `KarProPass.setStaking`). Unlock releases only a token the gateway actually holds and had locked. `KarPassport` imports no LayerZero — it knows only a `bridgeGateway` address (§7.6 provider isolation).
+`KarPassport` exposes, callable **only** by the bound `bridgeGateway`: `bridgeMint(to, tokenId, uri)` (require `chainIdOf != local`, not-exists; status UNVERIFIED); `bridgeBurn(tokenId)` (require `chainIdOf != local`); `setCustodyLock(tokenId, bool)`; `bridgeResetOnUnlock(tokenId, uri)` (status→UNVERIFIED, clear verifier; emit `VerificationReset` only if prior was VERIFIED; set URI when provided). The gateway is bound **once** via `setBridgeGateway` (one-time, owner-only — `GatewayAlreadySet` after first bind). **`KarProPass.setStaking` is not the same pattern:** it may be called again with a non-zero address (no already-set guard); only `ZeroAddress` is refused. Do not equate the two bindings in ops or prose. Unlock releases only a token the gateway actually holds and had locked. `KarPassport` imports no LayerZero — it knows only a `bridgeGateway` address (§7.6 provider isolation).
 
 ### 12.8 Records are chain-sharded, globally aggregated
 
@@ -797,7 +804,7 @@ Contract addresses are **not** unique across networks. The same CREATE address h
 
 **Normative:**
 
-- Every off-chain identify / filter of protocol contracts **must** use `(chainId, address)` — never an address string alone.
+- Every off-chain identify / filter of protocol contracts **must** use `(chainId, address)` — never an address string alone. For non-EVM commercial chains, `address` is the chain-native account encoding (not assumed hex); parsing and comparison are VM-aware ([§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)).
 - Denylist, address resolvers, and indexer compound keys are **per-chain**.
 - Today's `SEPOLIA_HISTORICAL_DENYLIST` is **84532-only**; `kargainContractDenylist(chainId)` builds per-chain lists from `COMMERCIAL_ACTIVE` + that historical set. Applying Base historical addresses chain-blind would treat live 11155111 contracts as abandoned.
 
@@ -805,6 +812,207 @@ Contract addresses are **not** unique across networks. The same CREATE address h
 
 - **C3 (indexer):** entity / API keys include `chainId` (no address-only identity across commercial chains).
 - **C4 (app):** messaging/profile denylist is per-chain via `kargainContractDenylist(chainId)` (C4.1); do not reuse Base historical addresses for other `chainId`s.
+
+---
+
+---
+
+### I.13. Non-EVM commercial chains and the protocol parameter model (normative)
+
+> **Scope.** Extends [§I.12](#i12-multi-chain-architecture-normative) for commercial chains whose execution environment is not the EVM, and states the protocol-wide parameter and money model that every commercial chain (EVM and non-EVM) must obey. LayerZero pathway security remains [§7.6](#76-layerzero-security-configuration-normative). Where this section and §I.12 conflict on namespace identity, wire format, star routing, or non-EVM address identity, **this section wins**; custody/trust/metadata invariants §12.2–§12.5 are restated as binding with no exception.
+
+#### 13.1 Chain namespace registry
+
+Extends §12.1 identity. Supersedes the assumption that the high 128 bits of `tokenId` are always an EIP-155 chain id.
+
+- High 128 bits of `tokenId` are a **Kargain chain namespace**. EVM commercial chains use their EIP-155 id (84532, 11155111, …).
+- Non-EVM commercial chains use the reserved band **`2_000_000_000 … 2_147_483_647`**, allocated as **`2_000_000_000 + LayerZero EID`**.
+- First allocation: Solana Devnet LayerZero EID **40168** → namespace **`2_000_040_168`**.
+- **Why the upper bound:** every Ponder `chainId` / `custodyChain` column in `ponder.schema.ts` is `t.integer()` → Postgres `integer` (int4) max **2_147_483_647**. The band must stay inside that type so indexer keys remain exact.
+- **Why below 2^53:** JavaScript `Number` is IEEE-754 float with a 53-bit integer mantissa; namespaces must remain exactly representable in client and Node tooling without BigInt-only paths for every filter.
+- **Disjointness:** no EVM commercial EIP-155 id may fall in the reserved band; no two commercial chains may share a namespace. Enforced as a `test:verify` obligation on the commercial stack registry.
+
+#### 13.2 Why the deployed EVM stack needs no change for interop
+
+Load-bearing facts (do not “fix” them for SVM):
+
+- Gateway `_isHome(tokenId)` ⇔ `(tokenId >> 128) == block.chainid` (`KarPassportBridgeGateway`).
+- `bridgeMint` / `bridgeBurn` refuse when `chainIdOf(tokenId) == block.chainid` (foreign-only); home paths use lock/unlock.
+
+A Solana-origin token has namespace `2_000_040_168 ≠ 84532` and `≠ 11155111`, so every live EVM gateway already treats it as foreign: mint/burn representation paths apply; home lock/unlock paths do not. **Interop with a new namespace requires no bytecode change on existing EVM passports/gateways** for the home/foreign branch — only peers, pathways, and destination programs.
+
+#### 13.3 Wire format (ONFT721 message)
+
+Extends §12.5 (URI travels). Codec as compiled in `@layerzerolabs/onft-evm` `ONFT721MsgCodec.sol`:
+
+| Region | Bytes | Constant | Content |
+|--------|-------|----------|---------|
+| `sendTo` | `[0, 32)` | `SEND_TO_OFFSET = 32` | 32-byte recipient key |
+| `tokenId` | `[32, 64)` | `TOKEN_ID_OFFSET = 64` | `uint256` tokenId |
+| compose payload | `[64, …)` | length > 64 ⇒ `isComposed()` | ONFT compose extension |
+
+- `composeMsg` after the 32-byte `composeFrom` sender prefix is a Solidity **ABI-encoded `string`** (the URI). Kargain’s gateway always builds `composeMsg = abi.encode(uri)` so the message is composed whenever encode reports compose; **`SEND` vs `SEND_AND_COMPOSE` is selected in Executor options**, not by omitting URI bytes.
+- Receiver skips exactly **32** bytes of sender (`_SENDER_BYTES`) before `abi.decode(..., (string))`.
+- Non-EVM → EVM: left-pad a 20-byte EVM address into `sendTo`. EVM → non-EVM: write the full 32-byte destination key unchanged.
+- `KarPassportBridgeGateway` **overrides `_lzReceive`** and **does not call `sendCompose`**; compose data is carried in the ONFT message body and consumed in-gateway.
+
+#### 13.3a Metadata transport
+
+Extends §12.5 / §12.8. Three classes:
+
+| Class | Travels? |
+|-------|----------|
+| Content bytes on Arweave (or equivalent) | No |
+| URI pointer | Yes — every message, both directions |
+| Records / URI history / verification status | No — chain-sharded; indexer unions per §12.8 |
+
+**Ordering invariant:** URI is read **before** debit (`KarPassportBridgeGateway.send`: `tokenURI` then `_debit`). Reason: foreign `bridgeBurn` must not clear metadata mid-send.
+
+**Compose on send:** a non-EVM sender MUST always build compose (same obligation as the live EVM gateway).
+
+**Live EVM receive when compose is absent or tail ≤ 32 bytes** (read `_lzReceive`): `uri` stays the empty string `""`; **mint or unlock still proceeds**. This is **not** fail-closed on the EVM gateway. A non-EVM receiver **MAY** be strictly fail-closed on absent/short compose — named asymmetry (preserves I3 metadata authority by refusing a silent empty write at destination policy).
+
+**Empty URI on unlock:** `bridgeResetOnUnlock` adopts URI only when `bytes(uri).length > 0`; empty means **do not change** home URI. Production path that intentionally unlocks with empty URI: `recoverLockedHome` (Approach A, §12.11).
+
+**Destination budget:** if the destination execution budget cannot cover the full URI, **refuse the send — never truncate** the pointer (§12.9 / I7: truncation forges metadata on a custodial path).
+
+#### 13.4 Executor options by destination class
+
+| Destination class | `gas` meaning | `value` |
+|-------------------|---------------|---------|
+| EVM | EVM gas | zero |
+| Non-EVM | destination execution budget | funds rent for accounts created during receive |
+
+**`combineOptions` (read `OAppOptionsType3.combineOptions`):** if no enforced options, return caller `_extraOptions` (even empty/legacy); if no caller options, return enforced; if both, require type-3 extras, then **`bytes.concat(enforced, _extraOptions[2:])`** — append extra option bytes after stripping the 2-byte type prefix from extras. NatSpec documents that duplicated lzReceive gas/value options are **combined additively off-chain by verifier/executor**; the Solidity function itself concatenates option payloads, it does not arithmetic-sum gas fields on-chain.
+
+**URI ceiling (EVM receive gas model):** from `lib/web3/bridge/lz-receive-gas.ts`:
+
+`required = max(ENFORCED_GAS_SEND_AND_COMPOSE, ceil((LZ_RECEIVE_GAS_BASE + len × LZ_RECEIVE_GAS_PER_URI_BYTE) × (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS) / 10_000))` with floor **250_000**, base **137_973**, per-byte **1_000**, margin **1_500** bps, cap **1_000_000**.
+
+- `len = 731` → required **999_319** ≤ cap.
+- `len = 732` → required **1_000_469** > cap → refuse.
+
+**Enforced URI ceiling: 731 UTF-8 bytes.** Coupled rules: (1) non-EVM local URI-write cap ≥ this ceiling; (2) non-EVM receive budgeted for the full ceiling; (3) receive never rejects solely on URI length once the send cleared the ceiling check.
+
+#### 13.5 Star topology with N spokes
+
+Extends §12.1 routing; amends §7.6 allowlist wording.
+
+- Hub: EID **40245** (Base Sepolia). Spokes: **40161** (Ethereum Sepolia), **40168** (Solana Devnet, planned).
+- Spoke↔spoke peers **forbidden**.
+- Spoke↔spoke transfer = **two user transactions**: spoke A → hub, then hub → spoke B. UI MUST present two hops. §12.2 holds at every step: after hop 1 usable instance is on the hub; after hop 2 on spoke B; never two usable instances.
+- Required-DVN sets and confirmations are **per pathway** (minimum 2 independent operators on testnet; 3–5 on mainnet per §7.6). A new pathway’s operator set is chosen from the pinned snapshot for **both** ends — never copied from an existing pathway. A pathway whose snapshot does not expose two independent DVNs present at both ends is refused; the 1-of-1 prohibition admits **no** non-EVM exception (§7.6 + §13.13).
+
+#### 13.6 Trust, custody-lock, metadata authority
+
+Restates §12.3, §12.4, §12.5 as binding with **no** exception on any commercial VM.
+
+On a chain whose NFT substrate offers a freeze primitive: custody-lock is **program state checked by every mutating instruction**; freeze is a **second layer** against transfers outside the program — **never a substitute**, because freezing does not block metadata update.
+
+#### 13.7 Encumbrance without read-only cross-program calls
+
+Extends §12.6 / encumbrance E1–E6.
+
+- The answer belongs to the **source**. Each registered source maintains an answer record at an address derived from a registry-declared seed under its own program; the passport derives that address per currently registered source and reads it.
+- Map: **E1** register sources; **E4** add/remove; **E5** intrinsic challenge forbids without self-registry; **E6** unanswerable → named refuse (`SourceUnanswerable` / equivalent).
+- Uninitialised record = no obligation. Wrong owning program, wrong discriminator, or insufficient data = unanswerable.
+- **`may` does not consult `custodyLocked`** (`KarPassport.may`: exists → active challenge → staticcall sources). A locked home token is prevented from leaving by **custody** (gateway owns the NFT after lock) plus `_requireNotBridgedAway` on owner trust-mutating paths — not by `may`.
+- Encumbrance is the **secondary** guard; custody is **primary**. `AscendingConsignment.may` answers on **unresolved settlement**, not on “live lot exists.”
+
+#### 13.8 Governance and upgradeability
+
+- EVM today: KarPassport, KarProPass, KarProStaking **immutable**; FixedPrice / Ascending **UUPS**.
+- On BPF: equivalent of immutability is **revoking upgrade authority**, which also removes defect-fix without redeploy. Testnet: config owner and upgrade authority for commerce programs and staking = 48h-timelocked multisig (mirrors EVM Timelock split); gateway and pro-pass MAY remain on deployer key as EVM testnet already allows. Commercial mainnet revocation decision: §7.6 Phase 2 **(f)**.
+
+#### 13.9 Key roles and the treasury
+
+Normative deploy law:
+
+| Role | Temperature | On-chain surface |
+|------|-------------|------------------|
+| Fee sink | Cold | Modes `platformRecipient` |
+| Forfeit sink | Cold | Passport `platformRecipient` (forfeit alias) + Ascending `forfeitRecipient` |
+| Guardian | Hot | Modes `guardian` (`setGuardian` under Timelock) |
+
+Three **distinct** accounts. Sinks are **immutable by design** (Accepted risk: *`platformRecipient` immutable — Wrong address at deploy is permanent; verify before deploy*). Rotation = smart account whose **signers** rotate without changing the on-chain address. Deploy-time: a native push to each cold sink MUST succeed within `NATIVE_PUSH_GAS` (**30_000**); otherwise every payout silently becomes a claim (`ClaimablePayouts`). **No recipient setter** is added: the passport is not upgradeable; a Timelock setter would widen that containment boundary.
+
+#### 13.10 Protocol parameter model (three tiers)
+
+Protocol-wide (not SVM-specific). Target after the next full commercial redeploy; live Ascending `setAuctionRules` until then per §I.5.
+
+| Tier | Examples | Where / how changed |
+|------|----------|---------------------|
+| **Model constants** | Auction duration bounds, extension window, min increment bps, protection bounds, abandonment window, settlement challenge window; already-constant `DISPUTE_WINDOW`, recall cooldown, unbonding period; **`MIN_STAKE_FLOOR`** (on generation v2 EVM the sybil floor is pinned in bytecode at the ETH-denominated weight) | Implementation bytecode; identical on every chain; change by SPEC revision + redeploy/upgrade — **not** a Timelock knob |
+| **Locally governed** | Payment tokens, feeds, staleness, guardian, encumbrance sources, gateway bind | Each chain’s own Timelock; non-portable |
+| **Weight-derived** | `minStakeNative`, verification `disputeDeposit`, ascending settlement `challengeBond` | Native storage per chain; derived from declared weight |
+
+**Declared economic weight (unit ETH)** — intentional amounts (Nuclear #4 live law):
+
+| Parameter | Weight (ETH) |
+|-----------|--------------|
+| `minStakeNative` | **0.05** |
+| `MIN_STAKE_FLOOR` | **0.001** |
+| Verification `disputeDeposit` | **0.01** |
+| Ascending settlement `challengeBond` | **0.01** |
+
+On ETH-native chains the on-chain wei equals the weight. Elsewhere derive native amounts via a script that reads **only on-chain** FX sources and records result, source, address, and block/slot in the manifest. `test:verify` checks every commercial manifest against this table within a stated tolerance band. **No quotation appears in any stake/bond instruction** — the bond requires an exact amount, the buyer’s protection window is finite, and a challenge that cannot open is a remedy lost irreversibly. Bids, prices, floors, bps shares, and second-denominated windows are never FX-converted. **Unit-change rule:** switching the declared unit (e.g. ETH→BTC) costs one sentence in this section and one derive-script branch — **zero** contract change, because no contract stores a unit tag. **No chain is a parameter anchor or remote writer.** Cross-chain parameter push is outside this section and requires its own security review if ever proposed.
+
+#### 13.11 Money vocabulary
+
+On every commercial chain: native gas token carries gas, verifier stake, challenge bonds, and the informational `verificationFee`; price / bid / floor / checkout use that chain’s native token or an admitted stablecoin-class payment token; the verifier credential is a soulbound NFT and not money. Kargain issues **no** fungible token of its own. Wrapping native solely to satisfy a token standard for stake/bonds is forbidden. If a token-join path is ever enabled it may only admit an already-admitted stablecoin-class asset.
+
+#### 13.12 Indexer projection rebuild
+
+A non-EVM projection is rebuilt from the indexer’s own append-only **raw** layer, never from chain history depth (public endpoints are not a production history guarantee; shipping model remains schema change → full reindex). Catch-up applies only within a bounded lag window; exceeding it is an incident. The raw layer has exactly one writer and is never rewritten.
+
+#### 13.13 §7.6 applied to a non-EVM pathway
+
+Every §7.6 rule binds unchanged. Additions: pathway refused if the pinned snapshot does not expose two independent DVN operators **present at both ends**; 1-of-1 has no non-EVM exception. §12.9 (unlock = crown-jewel) applies identically to a non-EVM home unlock.
+
+#### 13.14 Named divergences
+
+Each entry: mechanism may differ; named invariant preserved. A divergence without a preserved invariant is a defect.
+
+| # | Non-EVM / port note | EVM counterpart | Preserved invariant |
+|---|---------------------|-----------------|---------------------|
+| D-01 | Payout reachability checked before attempt where substrate requires | ClaimablePayouts after failed push | I5 — settlement completes; unpaid → claim |
+| D-02 | No reentrancy-guard construct | OZ `ReentrancyGuard` | Single-entry critical sections by program design |
+| D-03 | Libraries merged (no EIP-170 split) | Ascending Open/Hold libs | Same external behavior / event order |
+| D-04 | Cannot refuse direct native transfer; amounts never from balance | `msg.value` / pull | I5 / exact-bond accounting |
+| D-05 | Clock source (slot/time) | `block.timestamp` | Window maths in seconds as specified |
+| D-06 | Upgrade authority vs immutability | Immutable passport / UUPS modes | §13.8 + §7.6 (f) |
+| D-07 | Oracle + confidence bound | Chainlink + staleness | P4-class freshness; new named confidence rule on SVM |
+| D-08 | `SourceUnanswerable` mechanism | staticcall gas + returndata | E6 — silence ≠ permission |
+| D-09 | Escrow approval carrier | ERC-721 approve / setApprovalForAll | Custody before open |
+| D-10 | Record storage | `records[]` | §12.8 chain-sharded history |
+| D-11 | Credential non-transferability | soulbound `_update` | One pass per address; freeze ≠ full substitute |
+| D-12 | No ERC-165 / receiver callbacks as on EVM | IERC721Receiver | Safe mint/transfer semantics named |
+| D-13 | No Solidity storage gaps | `__gap` | Layout discipline per program |
+| D-14 | `may` ignores custody-lock | same on EVM | Custody primary; encumbrance secondary |
+| D-15 | Native amounts only for stake/bonds | `address(0)` wei | §13.10–§13.11 |
+| D-16 | Receive may fail-closed on absent compose | EVM leaves `uri=""` and continues | I3 — named asymmetry |
+| D-17 | Records/passport state survive burn of representation | `bridgeBurn` leaves `records[]` | §12.8 |
+| D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
+| D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
+
+#### 13.15 Free testnet dependencies
+
+| Dependency class | Free / public option |
+|------------------|----------------------|
+| EVM RPC | Public endpoints already used (e.g. base.org, publicnode) |
+| Solana RPC | Public Devnet RPC + local `solana-test-validator` for heavy runs |
+| LayerZero metadata | `pnpm lz:snapshot` (free API → committed snapshot) |
+| Irys / Arweave upload | Devnet / free tier suitable for test pointers |
+| Multisig | Squads on Devnet (faucet SOL) / Safe on EVM testnet |
+| FX for derive | On-chain price accounts / Chainlink `eth_call` only |
+
+**Rule:** no service without which the protocol cannot be built, deployed, or tested may be a **required** paid dependency on testnet. Dedicated node for commercial mainnet: §7.6 Phase 2 **(g)**.
+
+#### 13.16 Security
+
+- Separate key families per VM; **no** derivation path between EVM and non-EVM keys.
+- Private messaging unavailable on a non-EVM account is a **named refusal in the UI**, same gate class as §7.7.
+- Part III PII rules bind the indexer raw layer identically — see Part III; not restated here.
 
 ---
 
