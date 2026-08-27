@@ -9,6 +9,14 @@ export {
   bridgeDstEid,
   bridgeTokenAddress,
   layerZeroScanTxUrl,
+  resolveBridgeRoute,
+} from "./bridge-config";
+export type {
+  BridgeRouteHop,
+  BridgeRouteOk,
+  BridgeRouteRefusal,
+  BridgeRouteRefusalReason,
+  BridgeRouteResult,
 } from "./bridge-config";
 export { getBridgeReadClient } from "./bridge-read-client";
 export { onftSentGuidFromLogs } from "./bridge-guid";
@@ -26,5 +34,10 @@ export {
   ENFORCED_GAS_SEND_AND_COMPOSE,
   requiredLzReceiveGasForByteLength,
   requiredLzReceiveGasForUri,
+  requiredNonEvmReceiveBudgetForByteLength,
+  requiredReceiveBudgetForDestinationClass,
+  type DestinationExecutionClass,
   type LzReceiveGasResult,
+  type NonEvmReceiveBudgetParams,
+  type NonEvmReceiveBudgetResult,
 } from "./lz-receive-gas";

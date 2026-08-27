@@ -1,6 +1,9 @@
 /**
  * Pure LayerZero pathway builders and §7.6 validators.
  * No I/O — addresses/EIDs come from the metadata snapshot + manifests.
+ *
+ * Topology: one hub, N spokes. A pathway is valid iff exactly one end is the hub.
+ * Required DVNs and confirmations are per-pathway. ULN/executor encoders are EVM-only.
  */
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -17,20 +20,18 @@ import {
   ENFORCED_GAS_SEND_AND_COMPOSE,
 } from "../../lib/web3/bridge/lz-receive-gas.js";
 import {
+  confirmationDirectionKey,
   EID_HUB,
   EID_SPOKE,
-  REQUIRED_DVN_IDS,
-  type LayerZeroChainSnapshot,
+  isEvmLayerZeroChain,
+  KNOWN_TESTNET_SPOKE_EIDS,
+  pathwayPairKey,
+  pathwayRecord,
+  sha256Canonical,
+  spokeEidsFromSnapshot,
+  type LayerZeroEvmChainSnapshot,
   type LayerZeroMetadataSnapshot,
 } from "./layerzero-metadata.js";
-
-export const ALLOWED_EIDS = new Set<number>([EID_HUB, EID_SPOKE]);
-
-/** Star topology: hub ↔ spoke only. */
-export const STAR_REMOTE_EID: Record<typeof EID_HUB | typeof EID_SPOKE, typeof EID_HUB | typeof EID_SPOKE> = {
-  [EID_HUB]: EID_SPOKE,
-  [EID_SPOKE]: EID_HUB,
-};
 
 export const CONFIG_TYPE_EXECUTOR = 1;
 export const CONFIG_TYPE_ULN = 2;
@@ -72,36 +73,59 @@ export type EnforcedOptionParam = {
 };
 
 export type PathwayPeers = {
-  hubEid: typeof EID_HUB;
-  spokeEid: typeof EID_SPOKE;
+  hubEid: number;
+  spokeEid: number;
   hubOApp: Address;
   spokeOApp: Address;
 };
 
-export function assertAllowedEid(eid: number): asserts eid is typeof EID_HUB | typeof EID_SPOKE {
-  if (!ALLOWED_EIDS.has(eid)) {
-    throw new Error(`EID ${eid} is not in the testnet allowlist {${EID_HUB}, ${EID_SPOKE}}`);
-  }
+export type UlnEnvironment = "testnet" | "mainnet";
+
+export function isKnownTestnetStarEid(eid: number): boolean {
+  return eid === EID_HUB || KNOWN_TESTNET_SPOKE_EIDS.includes(eid);
 }
 
-export function assertTestnetPathway(srcEid: number, dstEid: number): void {
-  assertAllowedEid(srcEid);
-  assertAllowedEid(dstEid);
-  if (srcEid === dstEid) {
-    throw new Error(`Pathway cannot be self-referential (eid ${srcEid})`);
-  }
-  if (STAR_REMOTE_EID[srcEid] !== dstEid) {
+export function assertAllowedEid(eid: number): void {
+  if (!isKnownTestnetStarEid(eid)) {
     throw new Error(
-      `Star topology violation: only hub ${EID_HUB} ↔ spoke ${EID_SPOKE} is allowed (got ${srcEid}→${dstEid})`,
+      `EID ${eid} is not in the testnet star {hub ${EID_HUB}, spokes ${KNOWN_TESTNET_SPOKE_EIDS.join(",")}}`,
     );
   }
 }
 
-export function remoteEidFor(localEid: typeof EID_HUB | typeof EID_SPOKE): typeof EID_HUB | typeof EID_SPOKE {
-  return STAR_REMOTE_EID[localEid];
+/**
+ * A pathway is valid iff exactly one end is the hub. Spoke↔spoke is refused by name.
+ */
+export function assertStarPathway(srcEid: number, dstEid: number): void {
+  if (srcEid === dstEid) {
+    throw new Error(`Pathway cannot be self-referential (eid ${srcEid})`);
+  }
+  const srcIsHub = srcEid === EID_HUB;
+  const dstIsHub = dstEid === EID_HUB;
+  if (!srcIsHub && !dstIsHub) {
+    throw new Error(`Spoke↔spoke pathway refused: ${srcEid}→${dstEid}`);
+  }
+  const spoke = srcIsHub ? dstEid : srcEid;
+  if (!KNOWN_TESTNET_SPOKE_EIDS.includes(spoke)) {
+    throw new Error(
+      `Star topology violation: ${spoke} is not a spoke of hub ${EID_HUB} (got ${srcEid}→${dstEid})`,
+    );
+  }
 }
 
-/** Sort + dedupe addresses ascending (checksum-cased for determinism via getAddress). */
+/** Previous name — star pathway (hub↔spoke only). */
+export const assertTestnetPathway = assertStarPathway;
+
+export function remoteEidsFor(
+  localEid: number,
+  spokeEids: readonly number[] = KNOWN_TESTNET_SPOKE_EIDS,
+): number[] {
+  if (localEid === EID_HUB) return [...spokeEids];
+  if (spokeEids.includes(localEid)) return [EID_HUB];
+  throw new Error(`EID ${localEid} is not the hub or a known spoke`);
+}
+
+/** Sort + dedupe addresses ascending (checksum-cased for determinism via getAddress). EVM-only. */
 export function sortAndDedupeAddresses(addresses: readonly Address[]): Address[] {
   const seen = new Set<string>();
   const out: Address[] = [];
@@ -120,15 +144,24 @@ export function buildUlnConfig(params: {
   confirmations: number;
   requiredDVNs: readonly Address[];
   optionalDVNs?: readonly Address[];
+  environment?: UlnEnvironment;
 }): UlnConfig {
   if (!Number.isInteger(params.confirmations) || params.confirmations < 1) {
     throw new Error(`confirmations must be a positive integer (got ${params.confirmations})`);
   }
   const requiredDVNs = sortAndDedupeAddresses(params.requiredDVNs);
   const optionalDVNs = sortAndDedupeAddresses(params.optionalDVNs ?? []);
-  if (requiredDVNs.length !== 2) {
+  const env = params.environment ?? "testnet";
+  const n = requiredDVNs.length;
+  if (env === "testnet") {
+    if (n < 2) {
+      throw new Error(
+        `requiredDVNCount must be at least 2 on testnet after sort/dedupe (got ${n})`,
+      );
+    }
+  } else if (n < 3 || n > 5) {
     throw new Error(
-      `requiredDVNCount must be 2 after sort/dedupe (got ${requiredDVNs.length})`,
+      `requiredDVNCount must be 3–5 on mainnet after sort/dedupe (got ${n})`,
     );
   }
   if (optionalDVNs.length !== 0) {
@@ -136,7 +169,7 @@ export function buildUlnConfig(params: {
   }
   return {
     confirmations: BigInt(params.confirmations),
-    requiredDVNCount: 2,
+    requiredDVNCount: n,
     optionalDVNCount: 0,
     optionalDVNThreshold: 0,
     requiredDVNs,
@@ -262,8 +295,22 @@ export function addressToBytes32(addr: Address): Hex {
   return padHex(getAddress(addr), { size: 32 });
 }
 
+export function requireEvmChain(
+  snapshot: LayerZeroMetadataSnapshot,
+  eid: number,
+): LayerZeroEvmChainSnapshot {
+  const chain = snapshot.chains[eid];
+  if (!chain) {
+    throw new Error(`Snapshot has no chain for eid ${eid}`);
+  }
+  if (!isEvmLayerZeroChain(chain)) {
+    throw new Error(`EID ${eid} is not an EVM snapshot chain`);
+  }
+  return chain;
+}
+
 export function assertLibrariesPinned(
-  chain: LayerZeroChainSnapshot,
+  chain: LayerZeroEvmChainSnapshot,
   observed: {
     sendLibrary: Address;
     receiveLibrary: Address;
@@ -312,18 +359,30 @@ export function assertNoDeadDvnInRequired(
   return [];
 }
 
-export function assertRequiredDvnCount(requiredDVNCount: number): string[] {
-  if (requiredDVNCount < 2) {
-    return [`requiredDVNCount ${requiredDVNCount} < 2 (§7.6)`];
+export function assertRequiredDvnCount(
+  requiredDVNCount: number,
+  environment: UlnEnvironment = "testnet",
+): string[] {
+  if (environment === "testnet") {
+    if (requiredDVNCount < 2) {
+      return [`requiredDVNCount ${requiredDVNCount} < 2 (§7.6)`];
+    }
+    return [];
+  }
+  if (requiredDVNCount < 3 || requiredDVNCount > 5) {
+    return [`requiredDVNCount ${requiredDVNCount} not in 3–5 for mainnet (§7.6)`];
   }
   return [];
 }
 
 export function assertReciprocalPeers(peers: PathwayPeers): string[] {
   const errors: string[] = [];
-  if (peers.hubEid !== EID_HUB || peers.spokeEid !== EID_SPOKE) {
+  if (peers.hubEid !== EID_HUB) {
+    errors.push(`peer hubEid must be ${EID_HUB} (got ${peers.hubEid})`);
+  }
+  if (peers.spokeEid === EID_HUB || !KNOWN_TESTNET_SPOKE_EIDS.includes(peers.spokeEid)) {
     errors.push(
-      `peer EIDs must be hub ${EID_HUB} / spoke ${EID_SPOKE} (got ${peers.hubEid}/${peers.spokeEid})`,
+      `peer spokeEid must be a spoke of hub ${EID_HUB} (got ${peers.spokeEid})`,
     );
   }
   if (getAddress(peers.hubOApp) === zeroAddress) {
@@ -338,40 +397,60 @@ export function assertReciprocalPeers(peers: PathwayPeers): string[] {
   return errors;
 }
 
-/** Required DVN addresses for a local chain from the snapshot. */
-export function requiredDvnsFromSnapshot(chain: LayerZeroChainSnapshot): Address[] {
-  return REQUIRED_DVN_IDS.map((id) => getAddress(chain.dvns[id]));
+/** Required EVM DVN addresses on `localEid` for the pathway to `remoteEid`. */
+export function requiredDvnsForPathway(
+  snapshot: LayerZeroMetadataSnapshot,
+  localEid: number,
+  remoteEid: number,
+): Address[] {
+  const record = pathwayRecord(snapshot, localEid, remoteEid);
+  const chain = requireEvmChain(snapshot, localEid);
+  const ids = record.requiredDvnIds;
+  if (ids.length === 0) {
+    throw new Error(
+      `Pathway ${localEid}↔${remoteEid} has no requiredDvnIds (refuse silent live-pair copy)`,
+    );
+  }
+  return ids.map((id) => {
+    const addr = chain.dvns[id];
+    if (!addr) {
+      throw new Error(`DVN ${id} missing on eid ${localEid} for pathway ${localEid}↔${remoteEid}`);
+    }
+    return getAddress(addr);
+  });
 }
 
 export function ulnConfirmationsForDirection(
   snapshot: LayerZeroMetadataSnapshot,
-  srcEid: typeof EID_HUB | typeof EID_SPOKE,
-  dstEid: typeof EID_HUB | typeof EID_SPOKE,
+  srcEid: number,
+  dstEid: number,
 ): number {
-  assertTestnetPathway(srcEid, dstEid);
-  if (srcEid === EID_HUB && dstEid === EID_SPOKE) {
-    return snapshot.confirmations["40245→40161"];
+  assertStarPathway(srcEid, dstEid);
+  const record = pathwayRecord(snapshot, srcEid, dstEid);
+  const key = confirmationDirectionKey(srcEid, dstEid);
+  const value = record.confirmations[key];
+  if (value == null) {
+    throw new Error(`No confirmations for ${key} on pathway ${pathwayPairKey(srcEid, dstEid)}`);
   }
-  return snapshot.confirmations["40161→40245"];
+  return value;
 }
 
 /**
  * Canonical applied-config object hashed into pathwayConfigHash on successful wire.
+ * Confirmation keys keep `${src}→${dst}` form so 40245↔40161 stays byte-identical
+ * through the topology refactor.
  */
 export type AppliedPathwayConfig = {
-  hubEid: typeof EID_HUB;
-  spokeEid: typeof EID_SPOKE;
+  hubEid: number;
+  spokeEid: number;
   hubOApp: Address;
   spokeOApp: Address;
-  confirmations: { "40245→40161": number; "40161→40245": number };
-  requiredDvns: {
-    [EID_HUB]: Address[];
-    [EID_SPOKE]: Address[];
-  };
-  libraries: {
-    [EID_HUB]: { sendUln302: Address; receiveUln302: Address; executor: Address };
-    [EID_SPOKE]: { sendUln302: Address; receiveUln302: Address; executor: Address };
-  };
+  confirmations: Record<string, number>;
+  requiredDvns: Record<number, Address[]>;
+  libraries: Record<
+    number,
+    { sendUln302: Address; receiveUln302: Address; executor: Address }
+  >;
   enforcedGas: {
     send: typeof ENFORCED_GAS_SEND;
     sendAndCompose: typeof ENFORCED_GAS_SEND_AND_COMPOSE;
@@ -379,32 +458,49 @@ export type AppliedPathwayConfig = {
   metadataSha256: string;
 };
 
+export function pathwayChainsDigest(
+  snapshot: LayerZeroMetadataSnapshot,
+  hubEid: number,
+  spokeEid: number,
+): string {
+  const hub = snapshot.chains[hubEid];
+  const spoke = snapshot.chains[spokeEid];
+  if (!hub || !spoke) {
+    throw new Error(`Cannot digest pathway ${hubEid}↔${spokeEid}: missing chain snapshot`);
+  }
+  return sha256Canonical({ [hubEid]: hub, [spokeEid]: spoke });
+}
+
 export function buildAppliedPathwayConfig(
   snapshot: LayerZeroMetadataSnapshot,
   peers: PathwayPeers,
 ): AppliedPathwayConfig {
-  const hub = snapshot.chains[EID_HUB];
-  const spoke = snapshot.chains[EID_SPOKE];
+  const hubEid = peers.hubEid;
+  const spokeEid = peers.spokeEid;
+  const hub = requireEvmChain(snapshot, hubEid);
+  const spoke = requireEvmChain(snapshot, spokeEid);
+  const hubToSpoke = confirmationDirectionKey(hubEid, spokeEid);
+  const spokeToHub = confirmationDirectionKey(spokeEid, hubEid);
   return {
-    hubEid: EID_HUB,
-    spokeEid: EID_SPOKE,
+    hubEid,
+    spokeEid,
     hubOApp: getAddress(peers.hubOApp),
     spokeOApp: getAddress(peers.spokeOApp),
     confirmations: {
-      "40245→40161": snapshot.confirmations["40245→40161"],
-      "40161→40245": snapshot.confirmations["40161→40245"],
+      [hubToSpoke]: ulnConfirmationsForDirection(snapshot, hubEid, spokeEid),
+      [spokeToHub]: ulnConfirmationsForDirection(snapshot, spokeEid, hubEid),
     },
     requiredDvns: {
-      [EID_HUB]: requiredDvnsFromSnapshot(hub),
-      [EID_SPOKE]: requiredDvnsFromSnapshot(spoke),
+      [hubEid]: requiredDvnsForPathway(snapshot, hubEid, spokeEid),
+      [spokeEid]: requiredDvnsForPathway(snapshot, spokeEid, hubEid),
     },
     libraries: {
-      [EID_HUB]: {
+      [hubEid]: {
         sendUln302: getAddress(hub.sendUln302),
         receiveUln302: getAddress(hub.receiveUln302),
         executor: getAddress(hub.executor),
       },
-      [EID_SPOKE]: {
+      [spokeEid]: {
         sendUln302: getAddress(spoke.sendUln302),
         receiveUln302: getAddress(spoke.receiveUln302),
         executor: getAddress(spoke.executor),
@@ -414,6 +510,12 @@ export function buildAppliedPathwayConfig(
       send: ENFORCED_GAS_SEND,
       sendAndCompose: ENFORCED_GAS_SEND_AND_COMPOSE,
     },
-    metadataSha256: snapshot.sha256,
+    metadataSha256: pathwayChainsDigest(snapshot, hubEid, spokeEid),
   };
 }
+
+export function hashAppliedPathwayConfig(applied: AppliedPathwayConfig): Hex {
+  return `0x${sha256Canonical(applied)}`;
+}
+
+export { EID_HUB, EID_SPOKE, spokeEidsFromSnapshot };

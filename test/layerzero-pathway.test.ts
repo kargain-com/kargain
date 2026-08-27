@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -8,20 +8,26 @@ import { getAddress, zeroAddress } from "viem";
 import {
   canonicalizeJson,
   CONFIRMATIONS_FALLBACK,
+  classifyLayerZeroVm,
   EID_HUB,
+  EID_SOLANA_DEVNET,
   EID_SPOKE,
+  HUB_SOLANA_DEVNET_REQUIRED_DVN_IDS,
+  isEvmLayerZeroChain,
   loadLayerZeroMetadataSnapshot,
+  pathwayPairKey,
   sha256Canonical,
+  SNAPSHOT_PATH,
   snapshotWithoutHash,
   type LayerZeroMetadataSnapshot,
 } from "../scripts/lib/layerzero-metadata.js";
 import {
-  ALLOWED_EIDS,
   assertAllowedEid,
   assertLibrariesPinned,
   assertNoDeadDvnInRequired,
   assertReciprocalPeers,
   assertRequiredDvnCount,
+  assertStarPathway,
   assertTestnetPathway,
   buildEnforcedOptions,
   buildExecutorConfig,
@@ -29,11 +35,11 @@ import {
   ENFORCED_GAS_SEND,
   ENFORCED_GAS_SEND_AND_COMPOSE,
   EXECUTOR_MAX_MESSAGE_SIZE,
+  isKnownTestnetStarEid,
   MSG_TYPE_SEND,
   MSG_TYPE_SEND_AND_COMPOSE,
-  remoteEidFor,
+  remoteEidsFor,
   sortAndDedupeAddresses,
-  STAR_REMOTE_EID,
 } from "../scripts/lib/layerzero-pathway.js";
 
 const A = getAddress("0x000000000000000000000000000000000000000a");
@@ -41,25 +47,31 @@ const B = getAddress("0x000000000000000000000000000000000000000b");
 const C = getAddress("0x000000000000000000000000000000000000000c");
 
 describe("EID allowlist + star topology", () => {
-  it("allows only 40245 and 40161", () => {
-    assert.equal(ALLOWED_EIDS.has(EID_HUB), true);
-    assert.equal(ALLOWED_EIDS.has(EID_SPOKE), true);
-    assert.equal(ALLOWED_EIDS.has(40267), false);
-    assert.throws(() => assertAllowedEid(30101), /allowlist/);
+  it("allows hub and known spokes; refuses Amoy 40267", () => {
+    assert.equal(isKnownTestnetStarEid(EID_HUB), true);
+    assert.equal(isKnownTestnetStarEid(EID_SPOKE), true);
+    assert.equal(isKnownTestnetStarEid(EID_SOLANA_DEVNET), true);
+    assert.equal(isKnownTestnetStarEid(40267), false);
+    assert.throws(() => assertAllowedEid(30101), /not in the testnet star/);
+    assert.throws(() => assertAllowedEid(40267), /not in the testnet star/);
   });
 
-  it("maps hub ↔ spoke only", () => {
-    assert.equal(STAR_REMOTE_EID[EID_HUB], EID_SPOKE);
-    assert.equal(STAR_REMOTE_EID[EID_SPOKE], EID_HUB);
-    assert.equal(remoteEidFor(EID_HUB), EID_SPOKE);
-    assert.doesNotThrow(() => assertTestnetPathway(EID_HUB, EID_SPOKE));
+  it("pathway valid iff exactly one end is the hub; spoke↔spoke refused by name", () => {
+    assert.deepEqual(remoteEidsFor(EID_HUB, [EID_SPOKE]), [EID_SPOKE]);
+    assert.deepEqual(remoteEidsFor(EID_SPOKE, [EID_SPOKE]), [EID_HUB]);
+    assert.doesNotThrow(() => assertStarPathway(EID_HUB, EID_SPOKE));
     assert.doesNotThrow(() => assertTestnetPathway(EID_SPOKE, EID_HUB));
-    assert.throws(() => assertTestnetPathway(EID_HUB, EID_HUB), /self-referential|Star/);
+    assert.doesNotThrow(() => assertStarPathway(EID_HUB, EID_SOLANA_DEVNET));
+    assert.throws(() => assertStarPathway(EID_HUB, EID_HUB), /self-referential/);
+    assert.throws(
+      () => assertStarPathway(EID_SPOKE, EID_SOLANA_DEVNET),
+      /Spoke↔spoke pathway refused/,
+    );
   });
 });
 
 describe("buildUlnConfig", () => {
-  it("sorts and dedupes required DVNs; count === 2; optional empty", () => {
+  it("sorts and dedupes required DVNs; count follows list; optional empty", () => {
     const cfg = buildUlnConfig({
       confirmations: CONFIRMATIONS_FALLBACK,
       requiredDVNs: [B, A, B],
@@ -72,10 +84,33 @@ describe("buildUlnConfig", () => {
     assert.equal(cfg.confirmations, BigInt(CONFIRMATIONS_FALLBACK));
   });
 
-  it("rejects wrong required count and non-empty optional", () => {
+  it("allows three required DVNs on testnet; rejects 3–5 violation on mainnet", () => {
+    const three = buildUlnConfig({
+      confirmations: 5,
+      requiredDVNs: [A, B, C],
+    });
+    assert.equal(three.requiredDVNCount, 3);
+    assert.throws(
+      () =>
+        buildUlnConfig({
+          confirmations: 5,
+          requiredDVNs: [A, B],
+          environment: "mainnet",
+        }),
+      /3–5 on mainnet/,
+    );
+    const main = buildUlnConfig({
+      confirmations: 15,
+      requiredDVNs: [A, B, C],
+      environment: "mainnet",
+    });
+    assert.equal(main.requiredDVNCount, 3);
+  });
+
+  it("rejects too few required and non-empty optional", () => {
     assert.throws(
       () => buildUlnConfig({ confirmations: 5, requiredDVNs: [A] }),
-      /requiredDVNCount must be 2/,
+      /at least 2 on testnet/,
     );
     assert.throws(
       () =>
@@ -106,7 +141,6 @@ describe("buildExecutorConfig + enforcedOptions", () => {
     assert.match(opts[0].options, /^0x[0-9a-f]+$/i);
     assert.match(opts[1].options, /^0x[0-9a-f]+$/i);
     assert.notEqual(opts[0].options, opts[1].options);
-    // Gas constants are the source of the Options encoding.
     assert.equal(ENFORCED_GAS_SEND, 100_000);
     assert.equal(ENFORCED_GAS_SEND_AND_COMPOSE, 250_000);
   });
@@ -130,7 +164,7 @@ describe("validators", () => {
   it("detects default library and mismatched snapshot libs", () => {
     const chain = {
       chainKey: "base-sepolia",
-      chainId: 84532 as const,
+      chainId: 84532,
       eid: EID_HUB,
       endpointV2: A,
       sendUln302: A,
@@ -179,18 +213,25 @@ describe("snapshot hash validation", () => {
     const snap = loadLayerZeroMetadataSnapshot();
     assert.equal(typeof snap.sha256, "string");
     assert.equal(snap.sha256.length, 64);
-    assert.equal(snap.confirmations.source, "explicit-fallback");
-    assert.equal(snap.confirmations["40245→40161"], CONFIRMATIONS_FALLBACK);
-    const recomputed = sha256Canonical(snapshotWithoutHash(snap));
-    assert.equal(recomputed, snap.sha256);
+    const stored = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")) as {
+      sha256: string;
+    } & Record<string, unknown>;
+    const { sha256, ...rest } = stored;
+    assert.equal(sha256Canonical(rest), sha256);
+    assert.equal(snap.sha256, sha256);
+    const live = snap.pathways[pathwayPairKey(EID_HUB, EID_SPOKE)];
+    assert.ok(live);
+    assert.equal(live.source, "explicit-fallback");
+    assert.equal(live.confirmations["40245→40161"], CONFIRMATIONS_FALLBACK);
   });
 
   it("refuses drifted snapshot unless allowDrift", () => {
     const snap = loadLayerZeroMetadataSnapshot();
     const dir = mkdtempSync(join(tmpdir(), "lz-snap-"));
     const path = join(dir, "snapshot.json");
+    const { pathways: _p, ...fileShaped } = snap;
     const drifted: LayerZeroMetadataSnapshot = {
-      ...snap,
+      ...fileShaped,
       sha256: "0".repeat(64),
     };
     writeFileSync(path, `${JSON.stringify(drifted)}\n`);
@@ -207,6 +248,77 @@ describe("snapshot hash validation", () => {
     assert.equal(
       canonicalizeJson({ b: 1, a: 2 }),
       canonicalizeJson({ a: 2, b: 1 }),
+    );
+  });
+});
+
+describe("star snapshot 40168 SVM row", () => {
+  it("EVM 40245/40161 objects stay field-identical to the July pin", () => {
+    const snap = loadLayerZeroMetadataSnapshot();
+    const hub = snap.chains[EID_HUB];
+    const spoke = snap.chains[EID_SPOKE];
+    assert.ok(hub && isEvmLayerZeroChain(hub));
+    assert.ok(spoke && isEvmLayerZeroChain(spoke));
+    assert.equal(hub.endpointV2, "0x6EDCE65403992e310A62460808c4b910D972f10f");
+    assert.equal(spoke.endpointV2, "0x6EDCE65403992e310A62460808c4b910D972f10f");
+    assert.equal(hub.dvns["layerzero-labs"], "0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6");
+    assert.equal(spoke.dvns.nethermind, "0x68802e01D6321D5159208478f297d7007A7516Ed");
+    assert.ok(!("vm" in hub) || (hub as { vm?: string }).vm !== "svm");
+  });
+
+  it("has no top-level confirmations dual; pathways own confirmations", () => {
+    const stored = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    assert.equal("confirmations" in stored, false);
+    const snap = loadLayerZeroMetadataSnapshot();
+    assert.equal(
+      "confirmations" in (snap as unknown as Record<string, unknown>),
+      false,
+    );
+    const live = snap.pathways[pathwayPairKey(EID_HUB, EID_SPOKE)];
+    assert.ok(live);
+    assert.equal(live.confirmations["40245→40161"], CONFIRMATIONS_FALLBACK);
+  });
+
+  it("40168 is SVM base58; required pair is labs+p2p; confirmations explicit-fallback", () => {
+    const snap = loadLayerZeroMetadataSnapshot();
+    const svm = snap.chains[EID_SOLANA_DEVNET];
+    assert.ok(svm);
+    assert.equal(isEvmLayerZeroChain(svm), false);
+    assert.equal(svm.vm, "svm");
+    assert.doesNotMatch(svm.endpointV2, /^0x/i);
+    assert.doesNotMatch(svm.dvns["layerzero-labs"] ?? "", /^0x/i);
+    const rec = snap.pathways[pathwayPairKey(EID_HUB, EID_SOLANA_DEVNET)];
+    assert.ok(rec);
+    assert.deepEqual(rec.requiredDvnIds, [...HUB_SOLANA_DEVNET_REQUIRED_DVN_IDS]);
+    assert.notDeepEqual(rec.requiredDvnIds, ["layerzero-labs", "nethermind"]);
+    assert.equal(rec.source, "explicit-fallback");
+    assert.equal(rec.confirmations["40245→40168"], CONFIRMATIONS_FALLBACK);
+    assert.equal(rec.confirmations["40168→40245"], CONFIRMATIONS_FALLBACK);
+  });
+
+  it("SVM snapshot normalize does not call getAddress", () => {
+    const src = readFileSync(
+      join(process.cwd(), "scripts/lib/layerzero-metadata.ts"),
+      "utf8",
+    );
+    const match = src.match(/function svmAddr\([\s\S]*?\n\}/);
+    assert.ok(match);
+    assert.doesNotMatch(match[0], /getAddress/);
+    assert.match(match[0], /normalizeProtocolAddressForVm\(\s*"svm"/);
+  });
+});
+
+describe("classifyLayerZeroVm", () => {
+  it("missing vm or evm → EVM; svm → SVM; unknown → named refusal", () => {
+    assert.equal(classifyLayerZeroVm({}), "evm");
+    assert.equal(classifyLayerZeroVm({ vm: "evm" }), "evm");
+    assert.equal(classifyLayerZeroVm({ vm: "svm" }), "svm");
+    assert.throws(
+      () => classifyLayerZeroVm({ vm: "aptos" }),
+      /Unknown LayerZero chain vm: aptos/,
     );
   });
 });

@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-07-20T12:09:58.763Z",
+  "fetchedAt": "2026-08-27T09:38:12.125Z",
   "source": "https://metadata.layerzero-api.com/v1/metadata",
   "chains": {
     "40161": {
@@ -18,6 +18,21 @@
       },
       "deadDvn": "0x8b450b0acF56E1B0e25C581bB04FBAbeeb0644b8"
     },
+    "40168": {
+      "vm": "svm",
+      "chainKey": "solana-testnet",
+      "namespace": 2000040168,
+      "eid": 40168,
+      "endpointV2": "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
+      "sendUln302": "7a4WjyR8VZ7yZz5XJAKm39BUGn5iT9CKcv2pmG9tdXVH",
+      "receiveUln302": "7a4WjyR8VZ7yZz5XJAKm39BUGn5iT9CKcv2pmG9tdXVH",
+      "executor": "6doghB248px58JSSwG4qejQ46kFMW4AMj7vzJnWZHNZn",
+      "dvns": {
+        "layerzero-labs": "4VDjp6XQaxoZf5RGwiPU9NR1EXSZn2TP4ATMmiSzLfhb",
+        "p2p": "29EKzmCscUg8mf4f5uskwMqvu2SXM8hKF1gWi1cCBoKT"
+      },
+      "deadDvn": null
+    },
     "40245": {
       "chainKey": "base-sepolia",
       "chainId": 84532,
@@ -35,10 +50,29 @@
       "deadDvn": "0x78551ADC2553EF1858a558F5300F7018Aad2FA7e"
     }
   },
-  "confirmations": {
-    "40245→40161": 5,
-    "40161→40245": 5,
-    "source": "explicit-fallback"
+  "pathways": {
+    "40161-40245": {
+      "requiredDvnIds": [
+        "layerzero-labs",
+        "nethermind"
+      ],
+      "confirmations": {
+        "40245→40161": 5,
+        "40161→40245": 5
+      },
+      "source": "explicit-fallback"
+    },
+    "40168-40245": {
+      "requiredDvnIds": [
+        "layerzero-labs",
+        "p2p"
+      ],
+      "confirmations": {
+        "40245→40168": 5,
+        "40168→40245": 5
+      },
+      "source": "explicit-fallback"
+    }
   },
-  "sha256": "1e0a5eda896ad43522624e5b0832e92b139076055325c1ff2e42e69072c60782"
+  "sha256": "6e40a022c463ff5d4fd92504d5b1702a2618b000cf2fc02545599648dfb96000"
 }

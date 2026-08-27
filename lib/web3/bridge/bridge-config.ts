@@ -19,25 +19,95 @@ export const EID_BY_CHAIN: Readonly<Record<number, number>> = {
   [BRIDGE_SPOKE_CHAIN_ID]: 40161,
 };
 
-const COUNTERPART: Readonly<Record<number, number>> = {
-  [BRIDGE_HUB_CHAIN_ID]: BRIDGE_SPOKE_CHAIN_ID,
-  [BRIDGE_SPOKE_CHAIN_ID]: BRIDGE_HUB_CHAIN_ID,
-};
-
 export const BRIDGE_DELIVERY_POLL_MS = 8_000;
 export const BRIDGE_DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const LZ_SCAN_TESTNET_TX = "https://testnet.layerzeroscan.com/tx";
 
+export type BridgeRouteHop = {
+  srcChainId: number;
+  dstChainId: number;
+};
+
+export type BridgeRouteOk = {
+  ok: true;
+  hops: BridgeRouteHop[];
+};
+
+export type BridgeRouteRefusalReason =
+  | "unknown_src"
+  | "unknown_dst"
+  | "same_chain";
+
+export type BridgeRouteRefusal = {
+  ok: false;
+  reason: BridgeRouteRefusalReason;
+};
+
+export type BridgeRouteResult = BridgeRouteOk | BridgeRouteRefusal;
+
+function isCommercialBridgeChain(chainId: number): boolean {
+  return Object.prototype.hasOwnProperty.call(EID_BY_CHAIN, chainId);
+}
+
+function commercialSpokeChainIds(): number[] {
+  return Object.keys(EID_BY_CHAIN)
+    .map(Number)
+    .filter((id) => id !== BRIDGE_HUB_CHAIN_ID)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Sole owner of hub/spoke hop sequences.
+ * One hop hub↔spoke; two hops spoke↔spoke via the hub (unreachable among
+ * current commercial stacks). Missing network is a named refusal — never a
+ * silent hub default.
+ */
+export function resolveBridgeRoute(
+  src: number,
+  dst: number,
+): BridgeRouteResult {
+  if (src === dst) {
+    return { ok: false, reason: "same_chain" };
+  }
+  if (!isCommercialBridgeChain(src)) {
+    return { ok: false, reason: "unknown_src" };
+  }
+  if (!isCommercialBridgeChain(dst)) {
+    return { ok: false, reason: "unknown_dst" };
+  }
+  const srcIsHub = src === BRIDGE_HUB_CHAIN_ID;
+  const dstIsHub = dst === BRIDGE_HUB_CHAIN_ID;
+  if (srcIsHub !== dstIsHub) {
+    return { ok: true, hops: [{ srcChainId: src, dstChainId: dst }] };
+  }
+  return {
+    ok: true,
+    hops: [
+      { srcChainId: src, dstChainId: BRIDGE_HUB_CHAIN_ID },
+      { srcChainId: BRIDGE_HUB_CHAIN_ID, dstChainId: dst },
+    ],
+  };
+}
+
 export function bridgeAdapterAddress(
-  chainId: number = BRIDGE_HUB_CHAIN_ID,
+  chainId: number,
 ): `0x${string}` | undefined {
   return bridgeGatewayAddress(chainId);
 }
 
-/** Star counterpart chain for `src` (hub↔spoke). */
+/**
+ * Star counterpart chain for `src` (hub↔spoke).
+ * Hub counterpart is unique while there is one commercial spoke.
+ */
 export function bridgeCounterpartChainId(src: number): number | undefined {
-  return COUNTERPART[src];
+  if (!isCommercialBridgeChain(src)) return undefined;
+  const dst =
+    src === BRIDGE_HUB_CHAIN_ID
+      ? (commercialSpokeChainIds()[0] ?? BRIDGE_SPOKE_CHAIN_ID)
+      : BRIDGE_HUB_CHAIN_ID;
+  const route = resolveBridgeRoute(src, dst);
+  return route.ok ? dst : undefined;
 }
 
 /**
@@ -45,7 +115,7 @@ export function bridgeCounterpartChainId(src: number): number | undefined {
  * (EID of the star counterpart).
  */
 export function bridgeDstEid(srcChainId: number): number | undefined {
-  const dst = COUNTERPART[srcChainId];
+  const dst = bridgeCounterpartChainId(srcChainId);
   if (dst == null) return undefined;
   return EID_BY_CHAIN[dst];
 }

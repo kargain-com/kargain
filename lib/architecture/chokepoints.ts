@@ -201,6 +201,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "Protocol address normalize/compare by namespace; no dual toLowerCase match",
     guardTests: ["network-class-policy.test.ts"],
   },
+  {
+    id: "bridge-route-resolver",
+    owner: "lib/web3/bridge/bridge-config.ts",
+    rule: "resolveBridgeRoute owns hub/spoke hops; no second counterpart map under lib/hooks/components",
+    guardTests: ["bridge-route-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

@@ -8,7 +8,6 @@
  *
  * Addresses from manifests + LayerZero metadata snapshot only — no hardcodes.
  */
-import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { config as loadEnv } from "dotenv";
 import {
@@ -35,11 +34,10 @@ import {
   type DeployerClients,
 } from "./lib/deployer-viem.js";
 import {
-  canonicalizeJson,
   EID_HUB,
   EID_SPOKE,
   loadLayerZeroMetadataSnapshot,
-  type LayerZeroChainSnapshot,
+  type LayerZeroEvmChainSnapshot,
   type LayerZeroMetadataSnapshot,
 } from "./lib/layerzero-metadata.js";
 import {
@@ -58,8 +56,9 @@ import {
   CONFIG_TYPE_ULN,
   encodeExecutorConfig,
   encodeUlnConfig,
-  remoteEidFor,
-  requiredDvnsFromSnapshot,
+  hashAppliedPathwayConfig,
+  requireEvmChain,
+  requiredDvnsForPathway,
   ulnConfirmationsForDirection,
   type PathwayPeers,
   type UlnConfig,
@@ -147,13 +146,13 @@ function sidePublic(clients: SideClients): PublicClient {
 
 type SideContext = {
   label: string;
-  localEid: typeof EID_HUB | typeof EID_SPOKE;
-  remoteEid: typeof EID_HUB | typeof EID_SPOKE;
+  localEid: number;
+  remoteEid: number;
   localChainId: 84532 | 11155111;
   oapp: Address;
   remoteOApp: Address;
-  chainSnap: LayerZeroChainSnapshot;
-  remoteSnap: LayerZeroChainSnapshot;
+  chainSnap: LayerZeroEvmChainSnapshot;
+  remoteSnap: LayerZeroEvmChainSnapshot;
   clients: SideClients;
   oappAbi: typeof KarPassportBridgeGatewayAbi;
 };
@@ -220,7 +219,11 @@ async function wireSide(
     side.localEid,
     remoteEid,
   );
-  const requiredDVNs = requiredDvnsFromSnapshot(side.chainSnap);
+  const requiredDVNs = requiredDvnsForPathway(
+    snapshot,
+    side.localEid,
+    remoteEid,
+  );
   const uln = buildUlnConfig({ confirmations, requiredDVNs });
   const executor = buildExecutorConfig(side.chainSnap.executor);
   const enforced = buildEnforcedOptions(remoteEid);
@@ -558,6 +561,7 @@ async function wireSide(
 }
 
 function printTable(
+  snapshot: LayerZeroMetadataSnapshot,
   sides: { side: SideContext; results: ActionResult[] }[],
   errors: string[],
 ): void {
@@ -573,7 +577,7 @@ function printTable(
       `  sendUln302=${side.chainSnap.sendUln302}  receiveUln302=${side.chainSnap.receiveUln302}  executor=${side.chainSnap.executor}`,
     );
     lines.push(
-      `  requiredDVNs=${requiredDvnsFromSnapshot(side.chainSnap).join(",")}`,
+      `  requiredDVNs=${requiredDvnsForPathway(snapshot, side.localEid, side.remoteEid).join(",")}`,
     );
     for (const r of results) {
       lines.push(`  [${r.status}] ${r.action}: ${r.detail}`);
@@ -669,12 +673,12 @@ async function main(): Promise<void> {
     const side: SideContext = {
       label: "HUB Base Sepolia",
       localEid: EID_HUB,
-      remoteEid: remoteEidFor(EID_HUB),
+      remoteEid: EID_SPOKE,
       localChainId: SEPOLIA_CHAIN_ID,
       oapp: hubOApp,
       remoteOApp: effectiveSpoke,
-      chainSnap: snapshot.chains[EID_HUB],
-      remoteSnap: snapshot.chains[EID_SPOKE],
+      chainSnap: requireEvmChain(snapshot, EID_HUB),
+      remoteSnap: requireEvmChain(snapshot, EID_SPOKE),
       clients: makeClients(baseSepolia, hubRpcUrl(), flags.readOnly),
       oappAbi: KarPassportBridgeGatewayAbi,
     };
@@ -686,12 +690,12 @@ async function main(): Promise<void> {
     const side: SideContext = {
       label: "SPOKE Ethereum Sepolia",
       localEid: EID_SPOKE,
-      remoteEid: remoteEidFor(EID_SPOKE),
+      remoteEid: EID_HUB,
       localChainId: SPOKE_CHAIN_ID,
       oapp: spokeOApp,
       remoteOApp: effectiveHub,
-      chainSnap: snapshot.chains[EID_SPOKE],
-      remoteSnap: snapshot.chains[EID_HUB],
+      chainSnap: requireEvmChain(snapshot, EID_SPOKE),
+      remoteSnap: requireEvmChain(snapshot, EID_HUB),
       clients: makeClients(sepolia, spokeRpcUrl(), flags.readOnly),
       oappAbi: KarPassportBridgeGatewayAbi,
     };
@@ -699,7 +703,7 @@ async function main(): Promise<void> {
     sideRuns.push({ side, results });
   }
 
-  printTable(sideRuns, allErrors);
+  printTable(snapshot, sideRuns, allErrors);
 
   const fullWireSuccess =
     !flags.readOnly &&
@@ -716,8 +720,7 @@ async function main(): Promise<void> {
       hubOApp,
       spokeOApp,
     });
-    const pathwayConfigHash =
-      `0x${createHash("sha256").update(canonicalizeJson(applied), "utf8").digest("hex")}` as Hex;
+    const pathwayConfigHash = hashAppliedPathwayConfig(applied);
     const peersBook: SpokePathwayPeers = {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,

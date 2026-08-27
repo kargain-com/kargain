@@ -85,3 +85,108 @@ export function requiredLzReceiveGasForByteLength(
 export function requiredLzReceiveGasForUri(uri: string): LzReceiveGasResult {
   return requiredLzReceiveGasForByteLength(utf8ByteLength(uri));
 }
+
+/** Destination execution class for receive-budget dispatch (not an EID). */
+export type DestinationExecutionClass = "evm" | "non-evm";
+
+/**
+ * Injected non-EVM compute + rent parameters. No committed values this phase
+ * (measure S3, pin S4). Callers must pass every field.
+ */
+export type NonEvmReceiveBudgetParams = {
+  computeBase: number;
+  computePerUriByte: number;
+  computeMarginBps: number;
+  computeFloor: number;
+  computeCap: number;
+  rentBase: number;
+  rentPerUriByte: number;
+  rentCap: number;
+};
+
+export type NonEvmReceiveBudgetOk = {
+  ok: true;
+  compute: number;
+  rent: number;
+};
+
+export type NonEvmReceiveBudgetCapExceeded = {
+  ok: false;
+  reason: "exceeds_cap";
+  dimension: "compute" | "rent";
+  required: number;
+  cap: number;
+};
+
+export type NonEvmReceiveBudgetResult =
+  | NonEvmReceiveBudgetOk
+  | NonEvmReceiveBudgetCapExceeded;
+
+/**
+ * Required compute + rent for a non-EVM destination given URI byte length.
+ * All numeric inputs are injected. Fail closed (do not truncate) when compute
+ * or rent exceeds its cap.
+ */
+export function requiredNonEvmReceiveBudgetForByteLength(
+  byteLength: number,
+  params: NonEvmReceiveBudgetParams,
+): NonEvmReceiveBudgetResult {
+  const len = Math.max(0, Math.floor(byteLength));
+  const computeModeled =
+    params.computeBase + len * params.computePerUriByte;
+  const computeMargined = Math.ceil(
+    (computeModeled * (10_000 + params.computeMarginBps)) / 10_000,
+  );
+  const compute = Math.max(params.computeFloor, computeMargined);
+  if (compute > params.computeCap) {
+    return {
+      ok: false,
+      reason: "exceeds_cap",
+      dimension: "compute",
+      required: compute,
+      cap: params.computeCap,
+    };
+  }
+  const rent = params.rentBase + len * params.rentPerUriByte;
+  if (rent > params.rentCap) {
+    return {
+      ok: false,
+      reason: "exceeds_cap",
+      dimension: "rent",
+      required: rent,
+      cap: params.rentCap,
+    };
+  }
+  return { ok: true, compute, rent };
+}
+
+export function requiredNonEvmReceiveBudgetForUri(
+  uri: string,
+  params: NonEvmReceiveBudgetParams,
+): NonEvmReceiveBudgetResult {
+  return requiredNonEvmReceiveBudgetForByteLength(utf8ByteLength(uri), params);
+}
+
+export type ReceiveBudgetForClassResult =
+  | LzReceiveGasResult
+  | NonEvmReceiveBudgetResult;
+
+/**
+ * Dispatch receive budget by destination class. EVM path is the existing gas
+ * owner; non-EVM requires injected params (no committed numbers).
+ */
+export function requiredReceiveBudgetForDestinationClass(
+  destinationClass: DestinationExecutionClass,
+  uri: string,
+  nonEvmParams?: NonEvmReceiveBudgetParams,
+): ReceiveBudgetForClassResult {
+  if (destinationClass === "evm") {
+    return requiredLzReceiveGasForUri(uri);
+  }
+  if (nonEvmParams == null) {
+    throw new Error(
+      "non-EVM receive budget requires injected compute/rent parameters",
+    );
+  }
+  return requiredNonEvmReceiveBudgetForUri(uri, nonEvmParams);
+}

@@ -9,6 +9,9 @@ import {
   LZ_RECEIVE_MEASURED_500_CHAR_GAS,
   requiredLzReceiveGasForByteLength,
   requiredLzReceiveGasForUri,
+  requiredNonEvmReceiveBudgetForByteLength,
+  requiredReceiveBudgetForDestinationClass,
+  type NonEvmReceiveBudgetParams,
 } from "../lib/web3/bridge/lz-receive-gas";
 
 const TYPICAL_AR =
@@ -76,5 +79,67 @@ describe("requiredLzReceiveGasForUri", () => {
       requiredLzReceiveGasForUri(multi),
       requiredLzReceiveGasForByteLength(3),
     );
+  });
+});
+
+const INJECTED_NON_EVM: NonEvmReceiveBudgetParams = {
+  computeBase: 10,
+  computePerUriByte: 2,
+  computeMarginBps: 1_000,
+  computeFloor: 20,
+  computeCap: 100,
+  rentBase: 5,
+  rentPerUriByte: 1,
+  rentCap: 50,
+};
+
+describe("non-EVM receive budget (injected params)", () => {
+  it("computes compute + rent from URI byte length", () => {
+    const r = requiredNonEvmReceiveBudgetForByteLength(4, INJECTED_NON_EVM);
+    assert.equal(r.ok, true);
+    if (r.ok) {
+      // modeled compute 10+8=18, +10% = 20, floor 20
+      assert.equal(r.compute, 20);
+      assert.equal(r.rent, 9);
+    }
+  });
+
+  it("refuses when compute exceeds cap (does not truncate)", () => {
+    const r = requiredNonEvmReceiveBudgetForByteLength(80, INJECTED_NON_EVM);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.reason, "exceeds_cap");
+      assert.equal(r.dimension, "compute");
+      assert.ok(r.required > r.cap);
+    }
+  });
+
+  it("refuses when rent exceeds cap (does not truncate)", () => {
+    const params = { ...INJECTED_NON_EVM, computeCap: 10_000, rentCap: 8 };
+    const r = requiredNonEvmReceiveBudgetForByteLength(4, params);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.dimension, "rent");
+      assert.equal(r.cap, 8);
+      assert.ok(r.required > 8);
+    }
+  });
+
+  it("dispatcher takes destination class, not an EID; EVM path unchanged", () => {
+    const uri = TYPICAL_AR;
+    assert.deepEqual(
+      requiredReceiveBudgetForDestinationClass("evm", uri),
+      requiredLzReceiveGasForUri(uri),
+    );
+    assert.throws(
+      () => requiredReceiveBudgetForDestinationClass("non-evm", uri),
+      /injected compute\/rent parameters/,
+    );
+    const r = requiredReceiveBudgetForDestinationClass(
+      "non-evm",
+      "ab",
+      INJECTED_NON_EVM,
+    );
+    assert.equal(r.ok, true);
   });
 });
