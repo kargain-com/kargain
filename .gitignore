@@ -55,6 +55,10 @@ Thumbs.db
 test-results
 *.tsbuildinfo
 
+# SVM / Solana (source under svm/ is tracked; build deps are not)
+svm/**/target/
+svm/lab/node_modules/
+
 # internal docs (local only — not in git)
 /AGENTS.md
 /docs/*

@@ -1,0 +1,27 @@
+# Standalone package; excluded from svm workspace.
+[workspace]
+
+[package]
+name = "lab_harness"
+version = "0.1.0"
+edition = "2021"
+description = "S3 laboratory harness — PDA asset create, freeze thaw+burn, plugin authority proofs"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "lab_harness"
+
+[dependencies]
+borsh = "1.5"
+mpl-core = { version = "=0.11.2", default-features = false }
+solana-program = "2.3"
+
+[features]
+no-entrypoint = []
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
