@@ -1,11 +1,20 @@
 /**
- * Committed commercial stacks keyed by chainId (SPEC §I.12.12).
+ * Committed commercial stacks keyed by namespace (SPEC §I.12.12 / §I.13.1).
  * Canonical human tables: docs/contracts/SPEC.md Part I.9.x
  *
  * Resolution for Ponder/tooling: optional PONDER_* env (84532 debug) →
- * local deployments/<chainId>.json → COMMERCIAL_ACTIVE[chainId].
+ * local deployments/<chainId>.json → COMMERCIAL_ACTIVE[namespace].
  * Gitignored manifests stay deploy-machine artifacts only.
+ *
+ * Sole owner of the commercial-network set / `isCommercialChainId` predicate.
+ * Tooling (feeds, nuclear) imports from here — do not redefine the allowlist.
  */
+
+import {
+  asKargainNamespace,
+  mintKargainNamespace,
+  type KargainNamespace,
+} from "@/lib/web3/kargain-namespace";
 
 export type CommercialActiveBlocks = {
   timelock?: number;
@@ -20,8 +29,13 @@ export type CommercialActiveBlocks = {
   ascendingConsignmentImpl?: number;
 };
 
-export type CommercialActiveStack = {
-  chainId: number;
+/** Native gas-token unit metadata — declare only; formatters rewired in S8. */
+export type CommercialNativeUnit = {
+  symbol: string;
+  decimals: number;
+};
+
+type CommercialActiveStackShared = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
@@ -37,17 +51,38 @@ export type CommercialActiveStack = {
   fixedPriceConsignmentImpl?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
+  /** LayerZero EndpointV2 — EVM hex form today; value shape follows VM. */
   layerZeroEndpoint: `0x${string}`;
   platformRecipient: `0x${string}`;
   deployer: `0x${string}`;
   upgradeAuthority: `0x${string}`;
   indexFromBlock: number;
   blocks: CommercialActiveBlocks;
+  nativeUnit: CommercialNativeUnit;
 };
+
+/**
+ * EVM commercial stack. `chainId` is the EIP-155 id and equals `namespace`
+ * for every current entry (SPEC §13.1 non-collision).
+ */
+export type EvmCommercialActiveStack = CommercialActiveStackShared & {
+  vm: "evm";
+  namespace: KargainNamespace;
+  /** EIP-155 chain id — equals Number(namespace) for EVM stacks. */
+  chainId: number;
+};
+
+/** Discriminated commercial stack — only `evm` until an SVM row lands. */
+export type CommercialActiveStack = EvmCommercialActiveStack;
+
+const ETH_NATIVE_UNIT = { symbol: "ETH", decimals: 18 } as const satisfies CommercialNativeUnit;
 
 /** Base Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.1); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
 const BASE_SEPOLIA_84532 = {
+  vm: "evm",
+  namespace: mintKargainNamespace(84532),
   chainId: 84532,
+  nativeUnit: ETH_NATIVE_UNIT,
   karPassport: "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
   karProPass: "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
   karProStaking: "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
@@ -75,11 +110,14 @@ const BASE_SEPOLIA_84532 = {
     ascendingConsignment: 44_957_521,
     bridgeGateway: 44_957_539,
   },
-} as const satisfies CommercialActiveStack;
+} as const satisfies EvmCommercialActiveStack;
 
 /** Ethereum Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.2); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
 const ETHEREUM_SEPOLIA_11155111 = {
+  vm: "evm",
+  namespace: mintKargainNamespace(11155111),
   chainId: 11155111,
+  nativeUnit: ETH_NATIVE_UNIT,
   karPassport: "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
   karProPass: "0xb83b89f4a7303f005dA8c0787e904104a1030128",
   karProStaking: "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
@@ -107,32 +145,75 @@ const ETHEREUM_SEPOLIA_11155111 = {
     ascendingConsignment: 11_404_229,
     bridgeGateway: 11_404_235,
   },
-} as const satisfies CommercialActiveStack;
+} as const satisfies EvmCommercialActiveStack;
+
+/** EIP-155 ids of committed commercial EVM stacks — sole allowlist for tooling. */
+export type CommercialChainId =
+  | typeof BASE_SEPOLIA_84532.chainId
+  | typeof ETHEREUM_SEPOLIA_11155111.chainId;
 
 /**
  * Active commercial protocol stacks. Add a new entry when bringing up another chain;
- * do not reuse addresses across chainIds (SPEC §I.12.12).
+ * do not reuse addresses across namespaces (SPEC §I.12.12).
+ * Registry key = namespace (equals EIP-155 for current EVM rows).
  */
-export const COMMERCIAL_ACTIVE: Readonly<Record<number, CommercialActiveStack>> = {
+export const COMMERCIAL_ACTIVE: Readonly<
+  Record<CommercialChainId, CommercialActiveStack>
+> = {
   [BASE_SEPOLIA_84532.chainId]: BASE_SEPOLIA_84532,
   [ETHEREUM_SEPOLIA_11155111.chainId]: ETHEREUM_SEPOLIA_11155111,
 };
 
-export function commercialActive(chainId: number): CommercialActiveStack | undefined {
-  return COMMERCIAL_ACTIVE[chainId];
+/** Sorted commercial EIP-155 ids (nuclear / feeds / UI lists). */
+export function commercialEip155Ids(): readonly CommercialChainId[] {
+  return (Object.keys(COMMERCIAL_ACTIVE) as unknown as CommercialChainId[])
+    .map(Number)
+    .sort((a, b) => a - b) as CommercialChainId[];
+}
+
+export function commercialActive(
+  chainId: number,
+): CommercialActiveStack | undefined {
+  return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId)
+    ? COMMERCIAL_ACTIVE[chainId as CommercialChainId]
+    : undefined;
 }
 
 /** True when `chainId` has a committed commercial stack (84532, 11155111, …). */
-export function isCommercialChainId(chainId: number): boolean {
+export function isCommercialChainId(
+  chainId: number,
+): chainId is CommercialChainId {
   return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId);
 }
 
 export function requireCommercialActive(chainId: number): CommercialActiveStack {
-  const stack = COMMERCIAL_ACTIVE[chainId];
+  const stack = commercialActive(chainId);
   if (!stack) {
     throw new Error(
       `No COMMERCIAL_ACTIVE entry for chain ${chainId} — add the stack to lib/web3/commercial-active.ts after deploy`,
     );
   }
   return stack;
+}
+
+/**
+ * EIP-155 id for a commercial namespace. Fails by name when the stack is not EVM.
+ * For current stacks, namespace number equals EIP-155.
+ */
+export function eip155Of(namespace: KargainNamespace | number): number {
+  const stack = commercialActive(Number(namespace));
+  if (!stack) {
+    throw new Error(`eip155Of: no COMMERCIAL_ACTIVE entry for namespace ${namespace}`);
+  }
+  if (stack.vm !== "evm") {
+    throw new Error(
+      `eip155Of: namespace ${namespace} is not an EVM commercial stack (vm=${String((stack as { vm: string }).vm)})`,
+    );
+  }
+  return stack.chainId;
+}
+
+/** Namespace brand for a known commercial EIP-155 / registry key. */
+export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamespace {
+  return asKargainNamespace(requireCommercialActive(chainId).namespace);
 }

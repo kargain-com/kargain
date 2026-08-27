@@ -24,10 +24,10 @@ import {
   ETHEREUM_SEPOLIA_PUBLIC_RPC,
   SEPOLIA_PUBLIC_RPC,
 } from "../lib/web3/sepolia-addresses.js";
+import { isCommercialChainId } from "../lib/web3/commercial-active.js";
 import {
   assertNuclearFeedsFresh,
   getChainFeedConfig,
-  isCommercialChainId,
   resolveUsdcUsdFeedForAdmit,
   verifyFeedBytecode,
 } from "./lib/chainlink-feeds.js";

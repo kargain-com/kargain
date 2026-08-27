@@ -4,12 +4,8 @@ import { useSwitchChain } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import { commercialChainIds } from "@/lib/web3/chain-context";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
-
-const COMMERCIAL_CHAIN_IDS = Object.keys(COMMERCIAL_ACTIVE)
-  .map(Number)
-  .sort((a, b) => a - b);
 
 type Props = {
   title?: string;
@@ -29,7 +25,7 @@ export function KarProNetworkPrompt({
         title={title}
       />
       <ul className="flex flex-col gap-2">
-        {COMMERCIAL_CHAIN_IDS.map((id) => (
+        {commercialChainIds().map((id) => (
           <li key={id}>
             <Button
               type="button"

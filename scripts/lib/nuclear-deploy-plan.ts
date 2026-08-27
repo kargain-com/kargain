@@ -6,11 +6,14 @@
 import { getAddress } from "viem";
 
 import {
+  commercialEip155Ids,
+  isCommercialChainId,
+  type CommercialChainId,
+} from "../../lib/web3/commercial-active.js";
+import {
   CHAINLINK_FEEDS,
   getChainFeedConfig,
-  isCommercialChainId,
   lzEndpointForChain,
-  type CommercialChainId,
   LZ_ENDPOINT_V2_BY_CHAIN,
 } from "./chainlink-feeds.js";
 import {
@@ -19,8 +22,6 @@ import {
   MARKETPLACE_FEE_BPS,
 } from "./verify-constructor-args.js";
 import { SEPOLIA_FALLBACK } from "./load-deployment.js";
-
-export const COMMERCIAL_CHAIN_IDS = [84532, 11155111] as const satisfies readonly CommercialChainId[];
 
 /** USD-only: no setCurrencyFeed for non-USD entries even when live in CHAINLINK_FEEDS. */
 export type NuclearRegistryPolicy = "usd-only";
@@ -81,7 +82,9 @@ export type NuclearDeployPlan = {
 
 export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
   if (!isCommercialChainId(chainId)) {
-    throw new Error(`Nuclear deploy only supports 84532|11155111, got ${chainId}`);
+    throw new Error(
+      `Nuclear deploy only supports commercial EIP-155 ids (${commercialEip155Ids().join("|")}), got ${chainId}`,
+    );
   }
 
   const feedConfig = getChainFeedConfig(chainId);

@@ -1,5 +1,10 @@
 import { type PublicClient, getAddress, type Hex, type Abi } from "viem";
 
+import {
+  isCommercialChainId,
+  type CommercialChainId,
+} from "../../lib/web3/commercial-active.js";
+
 export type CurrencyFeedEntry = {
   code: string;
   feed: `0x${string}`;
@@ -220,17 +225,13 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
   },
 };
 
-/** LayerZero EndpointV2 — same address on Base Sepolia and Ethereum Sepolia today. */
-export const LZ_ENDPOINT_V2_BY_CHAIN: Record<84532 | 11155111, `0x${string}`> = {
+/** LayerZero EndpointV2 — EVM hex per commercial EIP-155 (values follow VM; map is not the commercial definition). */
+export const LZ_ENDPOINT_V2_BY_CHAIN: {
+  readonly [K in CommercialChainId]: `0x${string}`;
+} = {
   84532: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   11155111: "0x6EDCE65403992e310A62460808c4b910D972f10f",
 };
-
-export type CommercialChainId = keyof typeof LZ_ENDPOINT_V2_BY_CHAIN;
-
-export function isCommercialChainId(chainId: number): chainId is CommercialChainId {
-  return chainId === 84532 || chainId === 11155111;
-}
 
 export function lzEndpointForChain(chainId: number): `0x${string}` {
   if (!isCommercialChainId(chainId)) {

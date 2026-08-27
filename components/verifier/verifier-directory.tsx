@@ -25,7 +25,7 @@ import {
   formatVerifierDirectoryResultCount,
   type VerifierDirectorySortKey,
 } from "@/lib/verifier/filter-verifiers";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import { commercialChainIds } from "@/lib/web3/chain-context";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
@@ -42,10 +42,6 @@ import {
 
 const CATEGORY_LABELS = KAR_PRO_CATEGORY_OPTIONS.map((o) => o.label);
 const CATEGORY_CHIPS = ["All", ...CATEGORY_LABELS] as const;
-
-const COMMERCIAL_NETWORK_IDS = Object.keys(COMMERCIAL_ACTIVE)
-  .map(Number)
-  .sort((a, b) => a - b);
 
 type Props = {
   verifiers: VerifierDirectoryEntry[];
@@ -358,7 +354,7 @@ export function VerifierDirectory({
           >
             All networks
           </button>
-          {COMMERCIAL_NETWORK_IDS.map((id) => {
+          {commercialChainIds().map((id) => {
             const isActive = networkFilter === id;
             return (
               <button

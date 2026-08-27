@@ -152,11 +152,13 @@ function historicalDenylist(chainId: number): readonly `0x${string}`[] {
 /**
  * Kargain-owned contracts for profile/messaging denylist on `chainId`
  * (active commercial stack + per-chain historical). Excludes timelock.
- * SPEC §I.12.12 — never apply chain-blind.
+ * SPEC §I.12.12 — never apply chain-blind. Accessors are EVM `0x` hex
+ * while every commercial row is `vm: "evm"`; SVM address forms come with an SVM row.
  */
 export function kargainContractDenylist(chainId: number): readonly `0x${string}`[] {
   const active = commercialActive(chainId);
   if (!active) return [];
+  if (active.vm !== "evm") return [];
   return [
     active.karPassport,
     active.karProPass,

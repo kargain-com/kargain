@@ -1,8 +1,13 @@
 import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicClient } from "viem";
 
+import {
+  DECLARED_DISPUTE_DEPOSIT_WEI,
+  DECLARED_MIN_STAKE_NATIVE_WEI,
+} from "../../lib/web3/declared-weights.js";
+
 export const ZERO = "0x0000000000000000000000000000000000000000" as const;
-export const MIN_STAKE = 50_000_000_000_000_000n; // 0.05 ether
-export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n; // 0.01 ether
+export const MIN_STAKE = DECLARED_MIN_STAKE_NATIVE_WEI;
+export const DISPUTE_DEPOSIT = DECLARED_DISPUTE_DEPOSIT_WEI;
 /** AscendingConsignment minimum auction duration (matches contract minDuration floor). */
 export const THREE_DAYS = 3n * 24n * 60n * 60n;
 

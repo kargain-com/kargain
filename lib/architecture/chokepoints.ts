@@ -183,6 +183,24 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "Latest-per-author-per-d live subscribe merge/teardown owned here",
     guardTests: ["live-policy-subscription.test.ts"],
   },
+  {
+    id: "commercial-stack-registry",
+    owner: "lib/web3/commercial-active.ts · lib/web3/kargain-namespace.ts",
+    rule: "Sole commercial-network set / isCommercialChainId; vm-tagged registry; eip155Of",
+    guardTests: ["network-class-policy.test.ts"],
+  },
+  {
+    id: "declared-weights",
+    owner: "lib/web3/declared-weights.ts",
+    rule: "SPEC §13.10 wei literals (stake/bonds) live only in declared-weights",
+    guardTests: ["network-class-policy.test.ts"],
+  },
+  {
+    id: "protocol-address-compare",
+    owner: "lib/web3/protocol-address.ts",
+    rule: "Protocol address normalize/compare by namespace; no dual toLowerCase match",
+    guardTests: ["network-class-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

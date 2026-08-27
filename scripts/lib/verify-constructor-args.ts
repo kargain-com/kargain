@@ -1,6 +1,10 @@
 import { encodeFunctionData, getAddress } from "viem";
 
 import {
+  DECLARED_ASCENDING_CHALLENGE_BOND_WEI,
+  DECLARED_DISPUTE_DEPOSIT_WEI,
+} from "../../lib/web3/declared-weights.js";
+import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
 } from "../../lib/contracts/abis.generated.js";
@@ -21,10 +25,10 @@ export {
   MIN_FEED_STALENESS,
   MAX_FEED_STALENESS,
 } from "./chainlink-feeds.js";
-export const DISPUTE_DEPOSIT = 10_000_000_000_000_000n;
+export const DISPUTE_DEPOSIT = DECLARED_DISPUTE_DEPOSIT_WEI;
 
 /** Ascending nuclear defaults (governance-mutable after deploy; model §11 / §7.3). */
-export const ASCENDING_CHALLENGE_BOND = DISPUTE_DEPOSIT;
+export const ASCENDING_CHALLENGE_BOND = DECLARED_ASCENDING_CHALLENGE_BOND_WEI;
 export const ASCENDING_CHALLENGE_WINDOW = 14n * 24n * 60n * 60n;
 export const ASCENDING_MIN_DURATION = 3n * 24n * 60n * 60n;
 export const ASCENDING_MAX_DURATION = 30n * 24n * 60n * 60n;

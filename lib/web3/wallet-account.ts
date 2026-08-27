@@ -1,6 +1,4 @@
-import { getAddress } from "viem";
-
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import { commercialEip155Ids } from "@/lib/web3/commercial-active";
 import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
@@ -11,6 +9,11 @@ import {
   bridgeGatewayAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
+import {
+  normalizeProtocolAddress,
+  protocolAddressDedupKey,
+  protocolAddressesEqual,
+} from "@/lib/web3/protocol-address";
 import { getPublicClient } from "@/lib/web3/public-client";
 import { getViemChain } from "@/lib/web3/supported-chains";
 
@@ -28,14 +31,6 @@ export function classifyBytecode(code: string | undefined | null): WalletAccount
     return "eip7702";
   }
   return "contract";
-}
-
-function normalizeAddress(address: string): `0x${string}` | null {
-  try {
-    return getAddress(address);
-  } catch {
-    return null;
-  }
 }
 
 /** On-chain protocol contracts — not timelock (env-only when TimelockController exists). */
@@ -56,19 +51,22 @@ export function allProtocolAddresses(chainId: number): `0x${string}`[] {
   const out: `0x${string}`[] = [];
   for (const addr of candidates) {
     if (!addr) continue;
-    const key = addr.toLowerCase();
-    if (seen.has(key)) continue;
+    const key = protocolAddressDedupKey(chainId, addr);
+    if (key == null || seen.has(key)) continue;
     seen.add(key);
-    out.push(addr);
+    const normalized = normalizeProtocolAddress(chainId, addr);
+    if (normalized == null) continue;
+    out.push(normalized as `0x${string}`);
   }
   return out;
 }
 
 export function isProtocolAddress(address: string, chainId: number): boolean {
-  const normalized = normalizeAddress(address);
+  const normalized = normalizeProtocolAddress(chainId, address);
   if (!normalized) return false;
-  const lower = normalized.toLowerCase();
-  return allProtocolAddresses(chainId).some((addr) => addr.toLowerCase() === lower);
+  return allProtocolAddresses(chainId).some((addr) =>
+    protocolAddressesEqual(chainId, addr, normalized),
+  );
 }
 
 /**
@@ -76,9 +74,7 @@ export function isProtocolAddress(address: string, chainId: number): boolean {
  * Membership remains per-chainId (SPEC §I.12.12) — no flat address-only set.
  */
 export function isProtocolAddressOnCommercialChains(address: string): boolean {
-  return Object.keys(COMMERCIAL_ACTIVE).some((id) =>
-    isProtocolAddress(address, Number(id)),
-  );
+  return commercialEip155Ids().some((id) => isProtocolAddress(address, id));
 }
 
 export function isMessageablePeer(address: string, chainId: number): boolean {
@@ -109,7 +105,7 @@ export async function readAccountKind(
 export async function readAccountKindOnCommercialChains(
   address: `0x${string}`,
 ): Promise<WalletAccountKind> {
-  const chainIds = Object.keys(COMMERCIAL_ACTIVE).map(Number);
+  const chainIds = commercialEip155Ids();
   const kinds = await Promise.all(
     chainIds.map((id) => readAccountKind(id, address)),
   );
@@ -138,7 +134,7 @@ export async function readAccountKindFromProvider(
 }
 
 export function explorerAddressUrl(chainId: number, address: string): string {
-  const normalized = normalizeAddress(address) ?? address;
+  const normalized = normalizeProtocolAddress(chainId, address) ?? address;
   const explorer =
     getViemChain(chainId)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
   return `${explorer}/address/${normalized}`;

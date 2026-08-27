@@ -5,14 +5,10 @@ import {
   deriveKarProMembershipRoster,
   type KarProMembershipRow,
 } from "@/lib/kar-pro/membership-roster";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import { commercialChainIds } from "@/lib/web3/chain-context";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-
-const COMMERCIAL_CHAIN_IDS = Object.keys(COMMERCIAL_ACTIVE)
-  .map(Number)
-  .sort((a, b) => a - b);
 
 /**
  * Live per-chain `isActiveVerifier` roster for the connected wallet.
@@ -23,9 +19,10 @@ export function useKarProMembershipRoster(
   walletCommercialChainId: number | null,
 ): { rows: KarProMembershipRow[]; isPending: boolean } {
   const enabled = Boolean(address);
+  const chainIds = commercialChainIds();
 
   const contracts = enabled
-    ? COMMERCIAL_CHAIN_IDS.flatMap((chainId) => {
+    ? chainIds.flatMap((chainId) => {
         const staking = karProStakingAddress(chainId);
         const wc = wagmiChainId(chainId);
         if (!staking || address == null) return [];
@@ -48,7 +45,7 @@ export function useKarProMembershipRoster(
   });
 
   const activeByChain = new Map<number, boolean | undefined>();
-  for (const chainId of COMMERCIAL_CHAIN_IDS) {
+  for (const chainId of chainIds) {
     if (!enabled || reads.isPending) {
       activeByChain.set(chainId, undefined);
       continue;
@@ -63,7 +60,7 @@ export function useKarProMembershipRoster(
   }
 
   const rows = deriveKarProMembershipRoster({
-    commercialChainIds: COMMERCIAL_CHAIN_IDS,
+    commercialChainIds: chainIds,
     walletChainId: walletCommercialChainId,
     activeByChain,
   });

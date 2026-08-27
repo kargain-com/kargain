@@ -1,4 +1,4 @@
-import { COMMERCIAL_ACTIVE, isCommercialChainId } from "@/lib/web3/commercial-active";
+import { commercialEip155Ids, isCommercialChainId } from "@/lib/web3/commercial-active";
 import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
 
 /**
@@ -8,9 +8,7 @@ import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
 
 /** Sorted commercial chain ids from COMMERCIAL_ACTIVE (UI lists, OR loops). */
 export function commercialChainIds(): readonly number[] {
-  return Object.keys(COMMERCIAL_ACTIVE)
-    .map(Number)
-    .sort((a, b) => a - b);
+  return commercialEip155Ids();
 }
 
 /**
@@ -85,7 +83,10 @@ export function resolveAuctionsNavChainId(input: {
   return null;
 }
 
-/** Explicit FX pin — Chainlink display feeds (not commerce default). */
+/**
+ * Explicit FX pin — Chainlink display feeds (not commerce default).
+ * Env pin (not registry-derived); leave as literal until multi-hub FX (S4+).
+ */
 export const FX_RATE_CHAIN_ID = 84532;
 
 export function fxRateChainId(): number {
@@ -94,7 +95,7 @@ export function fxRateChainId(): number {
 
 /**
  * Explicit Irys/gateway env class pin (testnet class until mainnet).
- * Not a commerce-chain default.
+ * Not a commerce-chain default. Env pin — not registry-derived.
  */
 export const STORAGE_ENV_CHAIN_ID = 84532;
 

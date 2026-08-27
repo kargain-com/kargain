@@ -1,6 +1,8 @@
 import type { Chain } from "viem/chains";
 import { baseSepolia, hardhat, sepolia } from "viem/chains";
 
+import { eip155Of, isCommercialChainId } from "@/lib/web3/commercial-active";
+
 const enableLocalChain = process.env.NEXT_PUBLIC_ENABLE_LOCAL_CHAIN === "1";
 
 export const kargainChains: readonly [Chain, ...Chain[]] = enableLocalChain
@@ -9,13 +11,20 @@ export const kargainChains: readonly [Chain, ...Chain[]] = enableLocalChain
 
 export type KargainChainId = (typeof kargainChains)[number]["id"];
 
-/** Use where `chainId` is parsed from URL/query but wagmi expects the configured chain union. */
-export function wagmiChainId(chainId: number): KargainChainId {
-  return chainId as KargainChainId;
-}
-
 const byId = new Map<number, Chain>();
 for (const c of kargainChains) byId.set(c.id, c);
+
+/**
+ * Use where `chainId` is parsed from URL/query but wagmi expects the configured chain union.
+ * Commercial namespaces resolve EIP-155 via `eip155Of` (never a blind cast).
+ */
+export function wagmiChainId(chainId: number): KargainChainId {
+  const eip155 = isCommercialChainId(chainId) ? eip155Of(chainId) : chainId;
+  if (!byId.has(eip155)) {
+    throw new Error(`wagmiChainId: ${chainId} is not in the Kargain write-union`);
+  }
+  return eip155 as KargainChainId;
+}
 
 export function getViemChain(chainId: number): Chain | undefined {
   return byId.get(chainId);
