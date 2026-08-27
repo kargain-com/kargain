@@ -1,0 +1,14 @@
+[package]
+name = "kargain-claimable-payouts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "ClaimablePayouts primitive — amounts from stored state (D-04)"
+
+[dependencies]
+kargain-errors = { workspace = true }
+thiserror = { workspace = true }
+borsh = { workspace = true }
+
+[dev-dependencies]

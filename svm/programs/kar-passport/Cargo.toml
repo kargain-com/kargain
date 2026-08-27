@@ -1,0 +1,22 @@
+[package]
+name = "kar-passport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "KarPassport SVM program — Metaplex Core asset + Kargain state"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_passport"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+mpl-core = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-bonded-challenge = { workspace = true }
+kargain-claimable-payouts = { workspace = true }

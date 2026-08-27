@@ -1,0 +1,15 @@
+[package]
+name = "kargain-bonded-challenge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "BondedChallenge automaton — two instances, one crate"
+
+[dependencies]
+kargain-errors = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
+thiserror = { workspace = true }
+borsh = { workspace = true }
+
+[dev-dependencies]

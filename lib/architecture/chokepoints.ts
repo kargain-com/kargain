@@ -139,8 +139,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "custom-error-coverage",
-    owner: "contracts ABIs · Hardhat suites · lib/marketplace/tx-error-message.ts",
-    rule: "Declared custom errors have revertsWith; UI names money-path outcomes",
+    owner: "contracts ABIs · Hardhat suites · lib/marketplace/tx-error-message.ts · svm/crates/kargain-errors",
+    rule: "Declared custom errors have revertsWith; Rust KargainError names mirror Solidity (SVM-only allowlist); UI names money-path outcomes",
     guardTests: [
       "error-coverage-policy.test.ts",
       "error-name-truth-policy.test.ts",

@@ -909,7 +909,7 @@ Extends §12.1 routing; amends §7.6 allowlist wording.
 
 Restates §12.3, §12.4, §12.5 as binding with **no** exception on any commercial VM.
 
-On a chain whose NFT substrate offers a freeze primitive: custody-lock is **program state checked by every mutating instruction**; freeze is a **second layer** against transfers outside the program — **never a substitute**, because freezing does not block metadata update.
+On a chain whose NFT substrate offers a freeze primitive: custody-lock is **program state checked by every mutating instruction**; freeze is a **second layer** against transfers outside the program — **never a substitute**, because freezing does not block metadata update. Where the substrate uses a permanent freeze plugin, the plugin MAY remain attached with `frozen=false` at rest; freeze authority that must act in-program is a **program PDA** (a bare program id cannot ed25519-sign).
 
 #### 13.7 Encumbrance without read-only cross-program calls
 
@@ -993,7 +993,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-14 | `may` ignores custody-lock | same on EVM | Custody primary; encumbrance secondary |
 | D-15 | Native amounts only for stake/bonds | `address(0)` wei | §13.10–§13.11 |
 | D-16 | Receive may fail-closed on absent compose | EVM leaves `uri=""` and continues | I3 — named asymmetry |
-| D-17 | Records/passport state survive burn of representation | `bridgeBurn` leaves `records[]` | §12.8 |
+| D-17 | Records/passport **state** survive burn of representation; mint existence = live Core asset account (a one-byte Core burn tombstone still owned by Core is **not** a live asset — remint must not be refused by leftover state PDA) | `bridgeBurn` leaves `records[]`; `_ownerOf` / `_requireExists` | §12.8; TokenExists ≠ state PDA |
 | D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
 | D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
 

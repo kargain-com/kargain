@@ -9,9 +9,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  collectAllSolidityCustomErrorNames,
+  loadKargainErrorEnumNames,
+  parseKargainErrorEnumNames,
+  SVM_ONLY_ERROR_NAMES,
+} from "./error-coverage-policy.test.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACTS_DIR = path.join(ROOT, "contracts");
+const SVM_KARGAIN_ERRORS_RS = path.join(
+  ROOT,
+  "svm/crates/kargain-errors/src/lib.rs",
+);
 
 /**
  * One truthful English family that legitimately covers ≥2 distinct normalized
@@ -644,5 +654,56 @@ describe("error-name-truth-policy", () => {
       `Obsolete normaliser aliases (remove from ERROR_NORMALISER_ALIASES): ${obsolete.join(", ")}`,
     );
     assert.ok(needed.length === ERROR_NORMALISER_ALIASES.length);
+  });
+
+  it("thiserror Display strings match KargainError variant names", () => {
+    const source = fs.readFileSync(SVM_KARGAIN_ERRORS_RS, "utf8");
+    const pairs: { display: string; variant: string }[] = [];
+    const pairRe =
+      /#\[error\("([A-Za-z0-9_]+)"\)\]\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d+/g;
+    let match: RegExpExecArray | null;
+    while ((match = pairRe.exec(source)) !== null) {
+      pairs.push({ display: match[1]!, variant: match[2]! });
+    }
+    const variants = parseKargainErrorEnumNames(source);
+    assert.equal(
+      pairs.length,
+      variants.length,
+      `expected one #[error("…")] per variant; got ${pairs.length} attrs for ${variants.length} variants`,
+    );
+    const mismatches = pairs.filter((p) => p.display !== p.variant);
+    assert.deepEqual(
+      mismatches,
+      [],
+      `Display≠variant (indexer/UI contract):\n${mismatches
+        .map((p) => `  ${p.variant} vs "${p.display}"`)
+        .join("\n")}`,
+    );
+  });
+
+  it("bidirectional: Rust KargainError ↔ Solidity custom errors (SVM-only allowlist)", () => {
+    const rust = loadKargainErrorEnumNames();
+    const solidity = collectAllSolidityCustomErrorNames();
+    const svmOnly = new Set<string>(SVM_ONLY_ERROR_NAMES);
+
+    // Rust → Solidity (except D-16 SVM-only).
+    const rustMissingSolidity = rust.filter((n) => !svmOnly.has(n) && !solidity.has(n));
+    assert.deepEqual(
+      rustMissingSolidity,
+      [],
+      `Rust names without Solidity declaration:\n${rustMissingSolidity.join("\n")}`,
+    );
+
+    // Solidity → Rust for names that claim to be in the shared enum:
+    // every non-SVM-only Rust name must be a Solidity custom error (above), and
+    // every SVM-only name must be Rust-only (below). Inverse: Solidity must not
+    // declare SVM-only names; Solidity names absent from Rust are EVM-only (ok).
+    for (const name of svmOnly) {
+      assert.ok(rust.includes(name), `SVM-only ${name} missing from KargainError`);
+      assert.ok(!solidity.has(name), `SVM-only ${name} must stay out of Solidity`);
+    }
+
+    // Allowlist stays exact — no silent growth without D-16 justification.
+    assert.deepEqual([...SVM_ONLY_ERROR_NAMES].sort(), ["ComposeRequired", "ComposeUndecodable"]);
   });
 });

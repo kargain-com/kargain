@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/kargain-errors",
+  "crates/kargain-onft-codec",
+  "crates/kargain-claimable-payouts",
+  "crates/kargain-bonded-challenge",
+  "programs/kar-passport",
+  "programs/kar-gateway",
+  "programs/mock-staking",
+  "programs/mock-endpoint",
+]
+exclude = [
+  "lab/programs/lab_harness",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+borsh = { version = "1.5", features = ["derive"] }
+thiserror = "2"
+# Program crates: pin to lab-proven BPF pair (RESULTS.md).
+solana-program = "2.3"
+mpl-core = { version = "=0.11.2", default-features = false }
+kargain-errors = { path = "crates/kargain-errors" }
+kargain-onft-codec = { path = "crates/kargain-onft-codec" }
+kargain-claimable-payouts = { path = "crates/kargain-claimable-payouts" }
+kargain-bonded-challenge = { path = "crates/kargain-bonded-challenge" }

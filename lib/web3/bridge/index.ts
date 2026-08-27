@@ -20,6 +20,20 @@ export type {
 } from "./bridge-config";
 export { getBridgeReadClient } from "./bridge-read-client";
 export { onftSentGuidFromLogs } from "./bridge-guid";
+export {
+  SEND_TO_OFFSET,
+  TOKEN_ID_OFFSET,
+  SENDER_BYTES,
+  abiEncodeString,
+  decodeAbiString,
+  decodeOnftMessage,
+  encodeOnftMessage,
+  evmAddressToSendTo,
+  tokenIdFromParts,
+  uriFailClosed,
+  type OnftComposeErrorName,
+  type OnftMessage,
+} from "./onft-msg-codec";
 export { quoteMessagingFee } from "./bridge-quote";
 export {
   BridgeUriTooLongError,

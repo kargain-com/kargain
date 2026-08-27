@@ -1,0 +1,18 @@
+[package]
+name = "mock-endpoint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Local-stand LayerZero Endpoint mock — clear account layout only"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "mock_endpoint"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }

@@ -1,0 +1,10 @@
+[package]
+name = "kargain-onft-codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "ONFT721 message codec — byte-identical with @layerzerolabs/onft-evm"
+
+[dependencies]
+thiserror = { workspace = true }

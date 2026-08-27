@@ -1,0 +1,13 @@
+[package]
+name = "kargain-errors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Stable Kargain protocol error names and codes (EVM parity)"
+
+[dependencies]
+thiserror = { workspace = true }
+num_enum = "0.7"
+
+[dev-dependencies]

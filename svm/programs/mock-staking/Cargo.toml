@@ -1,0 +1,18 @@
+[package]
+name = "mock-staking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "MockKarProActive spirit — toggleable isActiveVerifier for tests"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "mock_staking"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }

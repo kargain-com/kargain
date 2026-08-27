@@ -1,0 +1,23 @@
+[package]
+name = "kar-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "KarPassportBridgeGateway SVM program — ONFT send/receive + recover"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_gateway"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+mpl-core = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-onft-codec = { workspace = true }
+kar-passport = { path = "../kar-passport", features = ["no-entrypoint"] }
+mock-endpoint = { path = "../mock-endpoint", features = ["no-entrypoint"] }
