@@ -12,7 +12,7 @@ import {
 } from "../lib/commerce/payment-token-revoke-surface.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OPS_PAGE = path.join(ROOT, "app/ops/commerce-pause/page.tsx");
+const OPS_PAGE = path.join(ROOT, "app/(identity)/ops/commerce-pause/page.tsx");
 const REVOKE_SECTION = path.join(
   ROOT,
   "components/commerce/commerce-revoke-ops-section.tsx",

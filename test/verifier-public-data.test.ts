@@ -13,7 +13,7 @@ const BASE = "http://localhost:42069";
 
 describe("buildVerifierPassportsQueryUrl", () => {
   it("requests VERIFIED passports for the verifier only", () => {
-    const url = new URL(buildVerifierPassportsQueryUrl(ADDRESS, BASE));
+    const url = new URL(buildVerifierPassportsQueryUrl(ADDRESS));
     assert.equal(url.pathname, "/passports");
     assert.equal(url.searchParams.get("verifier"), ADDRESS);
     assert.equal(url.searchParams.get("status"), "VERIFIED");
@@ -23,7 +23,7 @@ describe("buildVerifierPassportsQueryUrl", () => {
 
 describe("buildVerifierAttestationsQueryUrl", () => {
   it("requests attestations for the verifier", () => {
-    const url = new URL(buildVerifierAttestationsQueryUrl(ADDRESS, BASE));
+    const url = new URL(buildVerifierAttestationsQueryUrl(ADDRESS));
     assert.equal(url.pathname, `/verifiers/${ADDRESS}/attestations`);
     assert.equal(url.searchParams.get("limit"), "100");
   });

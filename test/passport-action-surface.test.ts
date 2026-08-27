@@ -293,7 +293,7 @@ describe("actions panel consumes action-surface", () => {
 
   it("edit route names refusals via action-surface and reserves notFound for absence", () => {
     const src = readFileSync(
-      join(process.cwd(), "app/passport/[tokenId]/edit/page.tsx"),
+      join(process.cwd(), "app/(identity)/passport/[tokenId]/edit/page.tsx"),
       "utf8",
     );
     assert.match(src, /resolvePassportEditAccess/);
