@@ -58,7 +58,7 @@ describe("commerce carry-forward scenarios (§15.2 step 7)", () => {
   it("Silently lost ledger: pause+UUPS restored; proFeeBps still absent", () => {
     assert.ok(source("contracts/lib/ConsignmentBase.sol").includes("function pause"));
     assert.ok(source("contracts/FixedPriceConsignment.sol").includes("_authorizeUpgrade"));
-    assert.ok(source("contracts/AscendingConsignment.sol").includes("setAuctionRules"));
+    assert.ok(source("contracts/AscendingConsignment.sol").includes("setChallengeBond"));
     assert.equal(
       /proFeeBps/.test(source("contracts/FixedPriceConsignment.sol")) ||
         /proFeeBps/.test(source("contracts/AscendingConsignment.sol")),

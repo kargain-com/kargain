@@ -188,13 +188,6 @@ export async function deployAscendingConsignment(
     forfeitRecipient: `0x${string}`;
     challengeBond: bigint;
     challengeWindow: bigint;
-    minDuration: bigint;
-    maxDuration: bigint;
-    extensionWindow: bigint;
-    minIncrementBps: bigint;
-    minProtectionWindow: bigint;
-    maxProtectionWindow: bigint;
-    abandonmentWindow: bigint;
     owner: `0x${string}`;
     guardian: `0x${string}`;
     /** Deploy harness artifact instead of production (fee snapshot tests). */
@@ -215,13 +208,6 @@ export async function deployAscendingConsignment(
       params.forfeitRecipient,
       params.challengeBond,
       params.challengeWindow,
-      params.minDuration,
-      params.maxDuration,
-      params.extensionWindow,
-      params.minIncrementBps,
-      params.minProtectionWindow,
-      params.maxProtectionWindow,
-      params.abandonmentWindow,
       params.owner,
       params.guardian,
     ],

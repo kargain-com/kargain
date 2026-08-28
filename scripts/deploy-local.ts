@@ -12,14 +12,7 @@ import {
   stackToDeploymentAddresses,
 } from "./lib/local-stack.js";
 import {
-  ASCENDING_ABANDONMENT_WINDOW,
   ASCENDING_CHALLENGE_WINDOW,
-  ASCENDING_EXTENSION_WINDOW,
-  ASCENDING_MAX_DURATION,
-  ASCENDING_MAX_PROTECTION_WINDOW,
-  ASCENDING_MIN_DURATION,
-  ASCENDING_MIN_INCREMENT_BPS,
-  ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
 } from "./lib/verify-constructor-args.js";
@@ -70,13 +63,6 @@ async function main() {
       forfeitRecipient: modePlatform,
       challengeBond: DISPUTE_DEPOSIT,
       challengeWindow: ASCENDING_CHALLENGE_WINDOW,
-      minDuration: ASCENDING_MIN_DURATION,
-      maxDuration: ASCENDING_MAX_DURATION,
-      extensionWindow: ASCENDING_EXTENSION_WINDOW,
-      minIncrementBps: ASCENDING_MIN_INCREMENT_BPS,
-      minProtectionWindow: ASCENDING_MIN_PROTECTION_WINDOW,
-      maxProtectionWindow: ASCENDING_MAX_PROTECTION_WINDOW,
-      abandonmentWindow: ASCENDING_ABANDONMENT_WINDOW,
       owner: deployer,
       guardian,
     });

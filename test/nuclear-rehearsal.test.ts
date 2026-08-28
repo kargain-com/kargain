@@ -44,11 +44,7 @@ import {
 import { NUCLEAR_DEPLOY_STEPS } from "../scripts/lib/nuclear-deploy-plan.js";
 import { getChainFeedConfig } from "../scripts/lib/chainlink-feeds.js";
 import {
-  ASCENDING_ABANDONMENT_WINDOW,
   ASCENDING_CHALLENGE_BOND,
-  ASCENDING_EXTENSION_WINDOW,
-  ASCENDING_MAX_DURATION,
-  ASCENDING_MAX_PROTECTION_WINDOW,
   ASCENDING_MIN_DURATION,
   ASCENDING_MIN_INCREMENT_BPS,
   ASCENDING_MIN_PROTECTION_WINDOW,
@@ -215,7 +211,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
 
   it("atomic init: proxy state live after deploy; re-initialize reverts", async () => {
     assert.equal(await stack.fixedPrice.read.VERSION(), "2.4.0-rc.1");
-    assert.equal(await stack.ascending.read.VERSION(), "2.4.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.5.0-rc.1");
     assert.equal(
       getAddress((await stack.fixedPrice.read.owner([])) as string),
       getAddress(stack.timelock.address),
@@ -399,24 +395,15 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
     );
   });
 
-  it("Timelock: Ascending setAuctionRules + approve/revoke payment token + guardian", async () => {
+  it("Timelock: Ascending setChallengeBond + approve/revoke payment token + guardian", async () => {
     const newBond = ASCENDING_CHALLENGE_BOND * 2n;
     await viaTimelock(
-      "Ascending.setAuctionRules",
+      "Ascending.setChallengeBond",
       stack.ascending.address,
       encodeFunctionData({
         abi: AscendingConsignmentAbi,
-        functionName: "setAuctionRules",
-        args: [
-          ASCENDING_MIN_DURATION,
-          ASCENDING_MAX_DURATION,
-          ASCENDING_EXTENSION_WINDOW,
-          ASCENDING_MIN_INCREMENT_BPS,
-          ASCENDING_MIN_PROTECTION_WINDOW,
-          ASCENDING_MAX_PROTECTION_WINDOW,
-          ASCENDING_ABANDONMENT_WINDOW,
-          newBond,
-        ],
+        functionName: "setChallengeBond",
+        args: [newBond],
       }),
     );
     const rules = (await stack.ascending.read.auctionRules([])) as
@@ -567,7 +554,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       encodeUpgradeToAndCall(nextImpl.address),
     );
 
-    assert.equal(await stack.ascending.read.VERSION(), "2.4.0-rc.1");
+    assert.equal(await stack.ascending.read.VERSION(), "2.5.0-rc.1");
     assert.equal(await stack.ascending.read.auctionEndsAt([tokenId]), endsAt);
     assert.equal(await stack.ascending.read.auctionHighestBid([tokenId]), high);
     assert.equal(
@@ -700,7 +687,7 @@ describe("Nuclear #2 deployment rehearsal", { concurrency: 1 }, () => {
       "FixedPrice.setCurrencyFeed",
       "FixedPrice.setNativeUsdStalenessTolerance",
       "FixedPrice.setGuardian",
-      "Ascending.setAuctionRules",
+      "Ascending.setChallengeBond",
       "Ascending.approvePaymentToken",
       "Ascending.setGuardian",
       "KarPassport.addEncumbranceSource",

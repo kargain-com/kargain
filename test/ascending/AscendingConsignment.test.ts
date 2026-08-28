@@ -12,6 +12,15 @@ import {
   increaseTime,
   ZERO,
 } from "../../scripts/lib/local-stack.js";
+import {
+  ASCENDING_ABANDONMENT_WINDOW,
+  ASCENDING_EXTENSION_WINDOW,
+  ASCENDING_MAX_DURATION,
+  ASCENDING_MAX_PROTECTION_WINDOW,
+  ASCENDING_MIN_DURATION,
+  ASCENDING_MIN_INCREMENT_BPS,
+  ASCENDING_MIN_PROTECTION_WINDOW,
+} from "../../scripts/lib/verify-constructor-args.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -28,13 +37,14 @@ const INTENT_LEAVE = 0;
 const TOKEN = 1n;
 const RESERVE = parseEther("1");
 const BOND = parseEther("0.01");
-const MIN_DURATION = 100n;
-const MAX_DURATION = 10_000n;
-const DURATION = 1_000n;
-const EXTENSION = 50n;
-const MIN_INCREMENT_BPS = 300n;
-const PROTECTION = 1_000n;
-const ABANDONMENT = 200n;
+const MIN_DURATION = ASCENDING_MIN_DURATION;
+const MAX_DURATION = ASCENDING_MAX_DURATION;
+const DURATION = ASCENDING_MIN_DURATION;
+const EXTENSION = ASCENDING_EXTENSION_WINDOW;
+const MIN_INCREMENT_BPS = ASCENDING_MIN_INCREMENT_BPS;
+const PROTECTION = ASCENDING_MIN_PROTECTION_WINDOW;
+const MAX_PROTECTION_WINDOW = ASCENDING_MAX_PROTECTION_WINDOW;
+const ABANDONMENT = ASCENDING_ABANDONMENT_WINDOW;
 const CHALLENGE_WINDOW = 300n;
 
 {
@@ -96,16 +106,13 @@ describe("AscendingConsignment", () => {
   let stranger: WalletClient;
   let guardian: WalletClient;
 
-  async function deployMode(overrides: {
-    minProtectionWindow?: bigint;
-    maxProtectionWindow?: bigint;
-    abandonmentWindow?: bigint;
-    extensionWindow?: bigint;
-    challengeWindow?: bigint;
-    minDuration?: bigint;
-    maxDuration?: bigint;
-    harness?: boolean;
-  } = {}) {
+  async function deployMode(
+    overrides: {
+      challengeWindow?: bigint;
+      challengeBond?: bigint;
+      harness?: boolean;
+    } = {},
+  ) {
     connection = await hardhat.network.connect();
     viem = connection.viem;
     publicClient = await viem.getPublicClient();
@@ -121,15 +128,8 @@ describe("AscendingConsignment", () => {
       platformRecipient: platform.account.address,
       feeBps: PLATFORM_FEE_BPS,
       forfeitRecipient: forfeit.account.address,
-      challengeBond: BOND,
+      challengeBond: overrides.challengeBond ?? BOND,
       challengeWindow: overrides.challengeWindow ?? CHALLENGE_WINDOW,
-      minDuration: overrides.minDuration ?? MIN_DURATION,
-      maxDuration: overrides.maxDuration ?? MAX_DURATION,
-      extensionWindow: overrides.extensionWindow ?? EXTENSION,
-      minIncrementBps: MIN_INCREMENT_BPS,
-      minProtectionWindow: overrides.minProtectionWindow ?? PROTECTION,
-      maxProtectionWindow: overrides.maxProtectionWindow ?? PROTECTION * 10n,
-      abandonmentWindow: overrides.abandonmentWindow ?? ABANDONMENT,
       owner: owner.account.address,
       guardian: guardian.account.address,
       harness: overrides.harness ?? false,
@@ -173,16 +173,9 @@ describe("AscendingConsignment", () => {
     await mode.write.settle([TOKEN], { account: stranger.account });
   }
 
-  type AuctionRulesPartial = {
-    minDuration?: bigint;
-    maxDuration?: bigint;
-    extensionWindow?: bigint;
-    minIncrementBps?: bigint;
-    minProtectionWindow?: bigint;
-    maxProtectionWindow?: bigint;
-    abandonmentWindow?: bigint;
-    challengeBond?: bigint;
-  };
+  async function setChallengeBond(challengeBond: bigint) {
+    await mode.write.setChallengeBond([challengeBond], { account: owner.account });
+  }
 
   async function readAuctionRules() {
     const r = (await mode.read.auctionRules()) as {
@@ -207,30 +200,12 @@ describe("AscendingConsignment", () => {
     };
   }
 
-  /** Full-set governance write — single-field patches merge onto live rules. */
-  async function setAuctionRules(partial: AuctionRulesPartial = {}) {
-    const cur = await readAuctionRules();
-    await mode.write.setAuctionRules(
-      [
-        partial.minDuration ?? cur.minDuration,
-        partial.maxDuration ?? cur.maxDuration,
-        partial.extensionWindow ?? cur.extensionWindow,
-        partial.minIncrementBps ?? cur.minIncrementBps,
-        partial.minProtectionWindow ?? cur.minProtectionWindow,
-        partial.maxProtectionWindow ?? cur.maxProtectionWindow,
-        partial.abandonmentWindow ?? cur.abandonmentWindow,
-        partial.challengeBond ?? cur.challengeBond,
-      ],
-      { account: owner.account },
-    );
-  }
-
   beforeEach(async () => {
     await deployMode();
   });
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
-    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.5.0-rc.1");
   });
 
   it("S30: challenge config getters readable before any open", async () => {
@@ -343,7 +318,7 @@ describe("AscendingConsignment", () => {
       revertsWith("ProtectionOutOfBounds"),
     );
     await assert.rejects(
-      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, PROTECTION * 10n + 1n], {
+      mode.write.openAscendingDirect([TOKEN, ZERO, RESERVE, DURATION, MAX_PROTECTION_WINDOW + 1n], {
         account: owner.account,
       }),
       revertsWith("ProtectionOutOfBounds"),
@@ -358,7 +333,7 @@ describe("AscendingConsignment", () => {
     );
   });
 
-  it("BadDuration / BadConfig on invalid initialize and governance params", async () => {
+  it("BadConfig on zero challenge bond at initialize", async () => {
     await assert.rejects(
       deployAscendingConsignment(viem, {
         passport: passport.address,
@@ -366,36 +341,8 @@ describe("AscendingConsignment", () => {
         platformRecipient: platform.account.address,
         feeBps: PLATFORM_FEE_BPS,
         forfeitRecipient: forfeit.account.address,
-        challengeBond: BOND,
+        challengeBond: 0n,
         challengeWindow: CHALLENGE_WINDOW,
-        minDuration: MIN_DURATION,
-        maxDuration: MAX_DURATION,
-        extensionWindow: 0n,
-        minIncrementBps: MIN_INCREMENT_BPS,
-        minProtectionWindow: PROTECTION,
-        maxProtectionWindow: PROTECTION * 10n,
-        abandonmentWindow: ABANDONMENT,
-        owner: owner.account.address,
-        guardian: guardian.account.address,
-      }),
-      revertsWith("BadConfig"),
-    );
-    await assert.rejects(
-      deployAscendingConsignment(viem, {
-        passport: passport.address,
-        karProStaking: staking.address,
-        platformRecipient: platform.account.address,
-        feeBps: PLATFORM_FEE_BPS,
-        forfeitRecipient: forfeit.account.address,
-        challengeBond: BOND,
-        challengeWindow: CHALLENGE_WINDOW,
-        minDuration: 500n,
-        maxDuration: 100n,
-        extensionWindow: EXTENSION,
-        minIncrementBps: MIN_INCREMENT_BPS,
-        minProtectionWindow: PROTECTION,
-        maxProtectionWindow: PROTECTION * 10n,
-        abandonmentWindow: ABANDONMENT,
         owner: owner.account.address,
         guardian: guardian.account.address,
       }),
@@ -454,7 +401,7 @@ describe("AscendingConsignment", () => {
     );
   });
 
-  it("B3 snapshot: extension frozen at open; storage change only affects later lots", async () => {
+  it("B3 snapshot: extension frozen at open from model constants", async () => {
     await openDirect(RESERVE, DURATION);
     assert.equal(Number(await mode.read.auctionExtensionWindow([TOKEN])), Number(EXTENSION));
     await firstBid();
@@ -470,14 +417,12 @@ describe("AscendingConsignment", () => {
       remainingA >= Number(EXTENSION) - 2,
       `lot A anti-snipe leaves ~${EXTENSION}s, got ${remainingA}`,
     );
-
-    const beforeGov = Number(await mode.read.auctionEndsAt([TOKEN]));
-    await setAuctionRules({ extensionWindow: 1n });
-    assert.equal(Number(await mode.read.auctionEndsAt([TOKEN])), beforeGov, "governance alone does not rewrite endsAt");
-    assert.equal(Number(await mode.read.auctionExtensionWindow([TOKEN])), Number(EXTENSION), "lot A snapshot unchanged");
-    assert.equal(Number((await readAuctionRules()).extensionWindow), 1);
-    // Live remaining unchanged by governance (same endsAt).
-    assert.equal(Number(await mode.read.auctionEndsAt([TOKEN])), ends2);
+    assert.equal(
+      Number(await mode.read.auctionExtensionWindow([TOKEN])),
+      Number(EXTENSION),
+      "lot A snapshot unchanged",
+    );
+    assert.equal(Number((await readAuctionRules()).extensionWindow), Number(EXTENSION));
 
     // Finish lot A so custody returns for token B open on a fresh passport.
     await increaseTime(publicClient, BigInt(remainingA + 5));
@@ -490,30 +435,25 @@ describe("AscendingConsignment", () => {
     await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
-    assert.equal(Number(await mode.read.auctionExtensionWindow([tokenB])), 1);
+    assert.equal(Number(await mode.read.auctionExtensionWindow([tokenB])), Number(EXTENSION));
     await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
-    // Leave 2s headroom: increaseTime+mine then the bid block each consume a second.
-    await increaseTime(publicClient, DURATION - 2n);
+    await increaseTime(publicClient, DURATION - EXTENSION + 1n);
     const raiseB = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
     await mode.write.bid([tokenB, raiseB], { account: bidder2.account, value: raiseB });
     const afterBid = await publicClient.getBlock();
     const endsB2 = Number(await mode.read.auctionEndsAt([tokenB]));
     const remainingB = endsB2 - Number(afterBid.timestamp);
     assert.ok(
-      remainingB <= 3,
-      `lot B extension leaves ~1s remaining, remaining=${remainingB}`,
+      remainingB >= Number(EXTENSION) - 2,
+      `lot B extension leaves ~${EXTENSION}s remaining, got ${remainingB}`,
     );
   });
 
-  it("snapshot: minIncrementBps frozen at open; later lots use storage", async () => {
+  it("snapshot: minIncrementBps frozen at open from model constants", async () => {
     await openDirect();
     await firstBid();
     assert.equal(Number(await mode.read.auctionMinIncrementBps([TOKEN])), Number(MIN_INCREMENT_BPS));
-
-    const newBps = 5_000n; // 50%
-    await setAuctionRules({ minIncrementBps: newBps });
-    assert.equal(Number((await readAuctionRules()).minIncrementBps), Number(newBps));
-    assert.equal(Number(await mode.read.auctionMinIncrementBps([TOKEN])), Number(MIN_INCREMENT_BPS));
+    assert.equal(Number((await readAuctionRules()).minIncrementBps), Number(MIN_INCREMENT_BPS));
 
     const oldNext = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
     await mode.write.bid([TOKEN, oldNext], { account: bidder2.account, value: oldNext });
@@ -528,14 +468,14 @@ describe("AscendingConsignment", () => {
     await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
-    assert.equal(Number(await mode.read.auctionMinIncrementBps([tokenB])), Number(newBps));
+    assert.equal(Number(await mode.read.auctionMinIncrementBps([tokenB])), Number(MIN_INCREMENT_BPS));
     await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
     await assert.rejects(
-      mode.write.bid([tokenB, oldNext], { account: bidder2.account, value: oldNext }),
+      mode.write.bid([tokenB, RESERVE], { account: bidder2.account, value: RESERVE }),
       revertsWith("BidTooLow"),
     );
-    const newNext = RESERVE + (RESERVE * newBps) / 10_000n;
-    await mode.write.bid([tokenB, newNext], { account: bidder2.account, value: newNext });
+    const validNext = RESERVE + (RESERVE * MIN_INCREMENT_BPS) / 10_000n;
+    await mode.write.bid([tokenB, validNext], { account: bidder2.account, value: validNext });
   });
 
   // ---- B1 single exit ----
@@ -959,53 +899,45 @@ describe("AscendingConsignment", () => {
       revertsWith("WrongValue"),
     );
 
-    await assert.rejects(
-      setAuctionRules({ minIncrementBps: 0n }),
-      revertsWith("BadConfig"),
-    );
+    await assert.rejects(setChallengeBond(0n), revertsWith("BadConfig"));
   });
 
-  it("H1 snapshot: protection frozen at settle from open terms; later lots use storage", async () => {
+  it("H1 snapshot: protection frozen at settle from open terms", async () => {
     await openDirect();
     await firstBid();
     assert.equal(Number(await mode.read.auctionProtectionWindow([TOKEN])), Number(PROTECTION));
     await settleAfterEnd();
     const ends = Number(await mode.read.holdProtectionEndsAt([TOKEN]));
-    await setAuctionRules({ minProtectionWindow: 10n, maxProtectionWindow: 10n });
-    assert.equal(Number(await mode.read.holdProtectionEndsAt([TOKEN])), ends);
-    assert.equal(Number((await readAuctionRules()).minProtectionWindow), 10);
-    assert.equal(Number((await readAuctionRules()).maxProtectionWindow), 10);
+    assert.equal(Number((await readAuctionRules()).minProtectionWindow), Number(PROTECTION));
+    assert.equal(Number((await readAuctionRules()).maxProtectionWindow), Number(MAX_PROTECTION_WINDOW));
 
     await mode.write.confirmReceipt([TOKEN], { account: buyer.account });
 
     const tokenB = 2n;
     await activate(owner);
     await mintAndApprove(tokenB);
-    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, 10n], {
+    await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
-    assert.equal(Number(await mode.read.auctionProtectionWindow([tokenB])), 10);
+    assert.equal(Number(await mode.read.auctionProtectionWindow([tokenB])), Number(PROTECTION));
     await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
     await increaseTime(publicClient, DURATION + 2n);
     const beforeSettle = await publicClient.getBlock();
     await mode.write.settle([tokenB], { account: stranger.account });
     const protectionEnds = Number(await mode.read.holdProtectionEndsAt([tokenB]));
     assert.ok(
-      protectionEnds <= Number(beforeSettle.timestamp) + 12,
-      `lot B protection ~10s from settle, got ${protectionEnds - Number(beforeSettle.timestamp)}`,
+      protectionEnds >= Number(beforeSettle.timestamp) + Number(PROTECTION) - 2,
+      `lot B protection ~${PROTECTION}s from settle, got ${protectionEnds - Number(beforeSettle.timestamp)}`,
     );
   });
 
-  it("snapshot: abandonmentWindow copied to Hold at settle; later upholds use storage", async () => {
+  it("snapshot: abandonmentWindow copied to Hold at settle from model constants", async () => {
     await openDirect();
     await firstBid();
     assert.equal(Number(await mode.read.auctionAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
     await settleAfterEnd();
     assert.equal(Number(await mode.read.holdAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
-
-    await setAuctionRules({ abandonmentWindow: 50n });
-    assert.equal(Number((await readAuctionRules()).abandonmentWindow), 50);
-    assert.equal(Number(await mode.read.holdAbandonmentWindow([TOKEN])), Number(ABANDONMENT));
+    assert.equal(Number((await readAuctionRules()).abandonmentWindow), Number(ABANDONMENT));
 
     await mode.write.open([TOKEN], { account: buyer.account, value: BOND });
     await activateJudge();
@@ -1027,19 +959,19 @@ describe("AscendingConsignment", () => {
     await mode.write.openAscendingDirect([tokenB, ZERO, RESERVE, DURATION, PROTECTION], {
       account: owner.account,
     });
-    assert.equal(Number(await mode.read.auctionAbandonmentWindow([tokenB])), 50);
+    assert.equal(Number(await mode.read.auctionAbandonmentWindow([tokenB])), Number(ABANDONMENT));
     await mode.write.bid([tokenB, RESERVE], { account: buyer.account, value: RESERVE });
     await increaseTime(publicClient, DURATION + 2n);
     await mode.write.settle([tokenB], { account: stranger.account });
-    assert.equal(Number(await mode.read.holdAbandonmentWindow([tokenB])), 50);
+    assert.equal(Number(await mode.read.holdAbandonmentWindow([tokenB])), Number(ABANDONMENT));
     await mode.write.open([tokenB], { account: buyer.account, value: BOND });
     await activateJudge();
     const beforeB = await publicClient.getBlock();
     await mode.write.judge([tokenB, 0], { account: judge.account });
     const deadlineB = Number(await mode.read.holdAbandonmentDeadline([tokenB]));
     assert.ok(
-      deadlineB <= Number(beforeB.timestamp) + 55,
-      `lot B abandonment ~50s, got ${deadlineB - Number(beforeB.timestamp)}`,
+      deadlineB >= Number(beforeB.timestamp) + Number(ABANDONMENT) - 2,
+      `lot B abandonment ~${ABANDONMENT}s, got ${deadlineB - Number(beforeB.timestamp)}`,
     );
   });
 
@@ -1155,27 +1087,13 @@ describe("AscendingConsignment", () => {
     });
   });
 
-  it("setAuctionRules: inverted duration / zero bond revert; live duration + open challenge bond snapshotted", async () => {
+  it("setChallengeBond: zero bond reverts; open challenge bond snapshotted", async () => {
     await openDirect();
     const durationAtOpen = (await mode.read.auctionDuration([TOKEN])) as bigint;
-    await assert.rejects(
-      setAuctionRules({ minDuration: MAX_DURATION + 1n }),
-      revertsWith("BadConfig"),
-    );
-    await assert.rejects(
-      setAuctionRules({ maxDuration: MIN_DURATION - 1n }),
-      revertsWith("BadConfig"),
-    );
-    await assert.rejects(
-      setAuctionRules({ challengeBond: 0n }),
-      revertsWith("BadConfig"),
-    );
-
-    await setAuctionRules({
-      minDuration: MIN_DURATION + 10n,
-      maxDuration: MAX_DURATION - 10n,
-    });
+    await assert.rejects(setChallengeBond(0n), revertsWith("BadConfig"));
     assert.equal(await mode.read.auctionDuration([TOKEN]), durationAtOpen);
+    assert.equal((await readAuctionRules()).minDuration, MIN_DURATION);
+    assert.equal((await readAuctionRules()).maxDuration, MAX_DURATION);
 
     await firstBid();
     await settleAfterEnd();
@@ -1183,7 +1101,7 @@ describe("AscendingConsignment", () => {
     const frozenBond = (await mode.read.challengeBondAmount([TOKEN])) as bigint;
     assert.equal(frozenBond, BOND);
     const newBond = BOND * 2n;
-    await setAuctionRules({ challengeBond: newBond });
+    await setChallengeBond(newBond);
     assert.equal((await readAuctionRules()).challengeBond, newBond);
     assert.equal(await mode.read.challengeBondAmount([TOKEN]), frozenBond);
   });
@@ -1199,7 +1117,7 @@ describe("AscendingConsignment", () => {
       revertsWith("OwnableUnauthorizedAccount"),
     );
     await mode.write.upgradeToAndCall([nextImpl.address, "0x"], { account: owner.account });
-    assert.equal(await mode.read.VERSION(), "2.4.0-rc.1");
+    assert.equal(await mode.read.VERSION(), "2.5.0-rc.1");
     assert.equal(await mode.read.auctionEndsAt([TOKEN]), endsAt);
     assert.equal(await mode.read.auctionHighestBid([TOKEN]), RESERVE);
   });

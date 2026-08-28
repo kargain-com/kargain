@@ -46,33 +46,27 @@ contract AscendingConsignment is
 {
     using SafeERC20 for IERC20;
 
-    string public constant VERSION = "2.4.0-rc.1";
+    string public constant VERSION = "2.5.0-rc.1";
 
     uint256 internal constant _BPS = 10_000;
     /// @dev KarPassport.Status.VERIFIED — ascending open requires verified readiness at the mode.
     uint8 private constant _PASSPORT_VERIFIED = 1;
+
+    /// @dev Model constants (SPEC §I.13.10 tier 1) — identical on every chain; change by redeploy only.
+    uint40 public constant MIN_DURATION = 3 days;
+    uint40 public constant MAX_DURATION = 30 days;
+    uint40 public constant EXTENSION_WINDOW = 15 minutes;
+    uint16 public constant MIN_INCREMENT_BPS = 300;
+    uint40 public constant MIN_PROTECTION_WINDOW = 7 days;
+    uint40 public constant MAX_PROTECTION_WINDOW = 45 days;
+    uint40 public constant ABANDONMENT_WINDOW = 30 days;
 
     IERC721 public karPassport;
     IKarProActive public karProStaking;
     /// @dev Settlement challenge bond (exact match at open). Captured into Challenge at open (§11).
     uint256 private _challengeBond;
 
-    /// @dev Live auction rules (future opens / bids / settles). Read via `auctionRules()`.
-    uint40 internal minDuration;
-    uint40 internal maxDuration;
-    /// @dev Anti-sniping window in live storage. Snapshotted into AuctionTerms at open — governance
-    ///      changes do not rewrite an already-open lot's extensionWindow or endsAt alone.
-    uint40 internal extensionWindow;
-    /// @dev Minimum raise over the standing high bid, in bps (live storage). Snapshotted at open;
-    ///      later setAuctionRules values apply only to subsequently opened lots.
-    uint16 internal minIncrementBps;
-    /// @dev Opener protection bounds. Lot hold length is snapshotted at open into AuctionTerms.
-    uint40 internal minProtectionWindow;
-    uint40 internal maxProtectionWindow;
-    /// @dev Abandonment length applied when reversal becomes pending (CH5). Mutable for future reversals only.
-    uint40 internal abandonmentWindow;
-
-    /// @notice Complete live auction-rule set (governance + open floors/bounds).
+    /// @notice Complete live auction-rule set (constants + governance bond).
     struct AuctionRules {
         uint40 minDuration;
         uint40 maxDuration;
@@ -90,7 +84,7 @@ contract AscendingConsignment is
     mapping(address => bool) public paymentTokenEnabled;
 
     /// @dev ClaimablePayouts / BondedChallenge / ConsignmentBase own their gaps. Child reserve.
-    uint256[48] private __gap;
+    uint256[55] private __gap;
 
     error AscendingOpenPath();
     error TermsFixed();
@@ -164,13 +158,6 @@ contract AscendingConsignment is
         address forfeitRecipient_,
         uint256 challengeBond_,
         uint256 challengeWindow_,
-        uint40 minDuration_,
-        uint40 maxDuration_,
-        uint40 extensionWindow_,
-        uint16 minIncrementBps_,
-        uint40 minProtectionWindow_,
-        uint40 maxProtectionWindow_,
-        uint40 abandonmentWindow_,
         address initialOwner_,
         address guardian_
     ) external initializer {
@@ -178,10 +165,17 @@ contract AscendingConsignment is
             revert ZeroAddress();
         }
         if (challengeBond_ == 0) revert BadConfig();
-        if (minDuration_ == 0 || maxDuration_ < minDuration_) revert BadConfig();
-        if (extensionWindow_ == 0 || abandonmentWindow_ == 0) revert BadConfig();
-        if (minProtectionWindow_ == 0 || maxProtectionWindow_ < minProtectionWindow_) revert BadConfig();
-        if (minIncrementBps_ == 0 || minIncrementBps_ > _BPS) revert BadConfig();
+        AscendingOpenLib.requireAuctionRules(
+            MIN_DURATION,
+            MAX_DURATION,
+            EXTENSION_WINDOW,
+            MIN_INCREMENT_BPS,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
+            ABANDONMENT_WINDOW,
+            challengeBond_,
+            _BPS
+        );
 
         __ConsignmentBase_init(platformRecipient_, feeBps_, initialOwner_, guardian_);
         _configureBondedChallenge(forfeitRecipient_, challengeWindow_);
@@ -189,59 +183,45 @@ contract AscendingConsignment is
         karPassport = IERC721(passport_);
         karProStaking = IKarProActive(karProStaking_);
         _challengeBond = challengeBond_;
-        minDuration = minDuration_;
-        maxDuration = maxDuration_;
-        extensionWindow = extensionWindow_;
-        minIncrementBps = minIncrementBps_;
-        minProtectionWindow = minProtectionWindow_;
-        maxProtectionWindow = maxProtectionWindow_;
-        abandonmentWindow = abandonmentWindow_;
+
+        emit AuctionRulesSet(
+            MIN_DURATION,
+            MAX_DURATION,
+            EXTENSION_WINDOW,
+            MIN_INCREMENT_BPS,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
+            ABANDONMENT_WINDOW,
+            challengeBond_
+        );
     }
 
     // ---- Admin ----
 
-    /// @notice Replace the full live auction-rule set (future opens / bids / settles / challenges).
-    /// @dev Timelock queue is serialized: a later scheduled full-set execute wins over an earlier one.
-    ///      Protection fields are opener bounds only — they do not rewrite a lot's snapshotted hold length.
-    function setAuctionRules(
-        uint40 minDuration_,
-        uint40 maxDuration_,
-        uint40 extensionWindow_,
-        uint16 minIncrementBps_,
-        uint40 minProtectionWindow_,
-        uint40 maxProtectionWindow_,
-        uint40 abandonmentWindow_,
-        uint256 challengeBond_
-    ) external onlyOwner {
+    /// @notice Replace the live settlement challenge bond (future opens / challenges only).
+    function setChallengeBond(uint256 challengeBond_) external onlyOwner {
         AscendingOpenLib.requireAuctionRules(
-            minDuration_,
-            maxDuration_,
-            extensionWindow_,
-            minIncrementBps_,
-            minProtectionWindow_,
-            maxProtectionWindow_,
-            abandonmentWindow_,
+            MIN_DURATION,
+            MAX_DURATION,
+            EXTENSION_WINDOW,
+            MIN_INCREMENT_BPS,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
+            ABANDONMENT_WINDOW,
             challengeBond_,
             _BPS
         );
 
-        minDuration = minDuration_;
-        maxDuration = maxDuration_;
-        extensionWindow = extensionWindow_;
-        minIncrementBps = minIncrementBps_;
-        minProtectionWindow = minProtectionWindow_;
-        maxProtectionWindow = maxProtectionWindow_;
-        abandonmentWindow = abandonmentWindow_;
         _challengeBond = challengeBond_;
 
         emit AuctionRulesSet(
-            minDuration_,
-            maxDuration_,
-            extensionWindow_,
-            minIncrementBps_,
-            minProtectionWindow_,
-            maxProtectionWindow_,
-            abandonmentWindow_,
+            MIN_DURATION,
+            MAX_DURATION,
+            EXTENSION_WINDOW,
+            MIN_INCREMENT_BPS,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
+            ABANDONMENT_WINDOW,
             challengeBond_
         );
     }
@@ -301,10 +281,10 @@ contract AscendingConsignment is
             duration,
             protectionWindow_,
             asset,
-            minDuration,
-            maxDuration,
-            minProtectionWindow,
-            maxProtectionWindow,
+            MIN_DURATION,
+            MAX_DURATION,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
             asset == address(0) || paymentTokenEnabled[asset]
         );
 
@@ -324,9 +304,9 @@ contract AscendingConsignment is
             tokenId,
             duration,
             protectionWindow_,
-            extensionWindow,
-            abandonmentWindow,
-            minIncrementBps,
+            EXTENSION_WINDOW,
+            ABANDONMENT_WINDOW,
+            MIN_INCREMENT_BPS,
             reserve
         );
     }
@@ -350,10 +330,10 @@ contract AscendingConsignment is
             duration,
             protectionWindow_,
             m.asset,
-            minDuration,
-            maxDuration,
-            minProtectionWindow,
-            maxProtectionWindow,
+            MIN_DURATION,
+            MAX_DURATION,
+            MIN_PROTECTION_WINDOW,
+            MAX_PROTECTION_WINDOW,
             m.asset == address(0) || paymentTokenEnabled[m.asset]
         );
         _requireAgentedPriceMeetsFloor(reserve, m.floor, m.compensation, platformFeeBps);
@@ -374,9 +354,9 @@ contract AscendingConsignment is
             tokenId,
             duration,
             protectionWindow_,
-            extensionWindow,
-            abandonmentWindow,
-            minIncrementBps,
+            EXTENSION_WINDOW,
+            ABANDONMENT_WINDOW,
+            MIN_INCREMENT_BPS,
             reserve
         );
     }
@@ -580,17 +560,17 @@ contract AscendingConsignment is
         return _auction[tokenId].minIncrementBps;
     }
 
-    /// @notice Live auction-rule set (governance storage; lot snapshots are separate views).
+    /// @notice Live auction-rule set (model constants + governance bond; lot snapshots are separate views).
     /// @dev Protection fields are opener bounds only — lot hold length is `auctionProtectionWindow(tokenId)`.
     function auctionRules() external view returns (AuctionRules memory) {
         return AuctionRules({
-            minDuration: minDuration,
-            maxDuration: maxDuration,
-            extensionWindow: extensionWindow,
-            minIncrementBps: minIncrementBps,
-            minProtectionWindow: minProtectionWindow,
-            maxProtectionWindow: maxProtectionWindow,
-            abandonmentWindow: abandonmentWindow,
+            minDuration: MIN_DURATION,
+            maxDuration: MAX_DURATION,
+            extensionWindow: EXTENSION_WINDOW,
+            minIncrementBps: MIN_INCREMENT_BPS,
+            minProtectionWindow: MIN_PROTECTION_WINDOW,
+            maxProtectionWindow: MAX_PROTECTION_WINDOW,
+            abandonmentWindow: ABANDONMENT_WINDOW,
             challengeBond: _challengeBond
         });
     }

@@ -7542,6 +7542,97 @@ export const AscendingConsignmentAbi = [
   },
   {
     "inputs": [],
+    "name": "ABANDONMENT_WINDOW",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "EXTENSION_WINDOW",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_DURATION",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_PROTECTION_WINDOW",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_DURATION",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_INCREMENT_BPS",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_PROTECTION_WINDOW",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "UPGRADE_INTERFACE_VERSION",
     "outputs": [
       {
@@ -8412,41 +8503,6 @@ export const AscendingConsignmentAbi = [
         "type": "uint256"
       },
       {
-        "internalType": "uint40",
-        "name": "minDuration_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "maxDuration_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "extensionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint16",
-        "name": "minIncrementBps_",
-        "type": "uint16"
-      },
-      {
-        "internalType": "uint40",
-        "name": "minProtectionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "maxProtectionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "abandonmentWindow_",
-        "type": "uint40"
-      },
-      {
         "internalType": "address",
         "name": "initialOwner_",
         "type": "address"
@@ -9161,47 +9217,12 @@ export const AscendingConsignmentAbi = [
   {
     "inputs": [
       {
-        "internalType": "uint40",
-        "name": "minDuration_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "maxDuration_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "extensionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint16",
-        "name": "minIncrementBps_",
-        "type": "uint16"
-      },
-      {
-        "internalType": "uint40",
-        "name": "minProtectionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "maxProtectionWindow_",
-        "type": "uint40"
-      },
-      {
-        "internalType": "uint40",
-        "name": "abandonmentWindow_",
-        "type": "uint40"
-      },
-      {
         "internalType": "uint256",
         "name": "challengeBond_",
         "type": "uint256"
       }
     ],
-    "name": "setAuctionRules",
+    "name": "setChallengeBond",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

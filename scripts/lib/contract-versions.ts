@@ -12,7 +12,7 @@ export const CONTRACT_VERSIONS = {
   /** @deprecated C2 — removed adapter; retained for verify/historical label lookups */
   ProxyONFT721Adapter: "1.1.0-rc.1",
   FixedPriceConsignment: "2.4.0-rc.1",
-  AscendingConsignment: "2.4.0-rc.1",
+  AscendingConsignment: "2.5.0-rc.1",
 } as const;
 
 export type ContractVersionName = keyof typeof CONTRACT_VERSIONS;

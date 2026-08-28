@@ -39,7 +39,7 @@ export const NUCLEAR_TIMELOCK_OWNER_OPS = [
   "FixedPrice.unpause",
   "FixedPrice.upgradeToAndCall",
   "Ascending.approvePaymentToken",
-  "Ascending.setAuctionRules",
+  "Ascending.setChallengeBond",
   "Ascending.setGuardian",
   "Ascending.unpause",
   "Ascending.upgradeToAndCall",

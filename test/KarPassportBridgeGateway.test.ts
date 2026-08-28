@@ -31,7 +31,6 @@ import {
 } from "viem";
 
 import {
-  DISPUTE_DEPOSIT,
   deployAscendingConsignment,
   deployCommerceBaseStack,
   deployFixedPriceConsignment,
@@ -42,6 +41,13 @@ import {
   type ViemSuite,
   ZERO,
 } from "../scripts/lib/local-stack.js";
+import {
+  ASCENDING_ABANDONMENT_WINDOW,
+  ASCENDING_EXTENSION_WINDOW,
+  ASCENDING_MIN_DURATION,
+  ASCENDING_MIN_INCREMENT_BPS,
+  ASCENDING_MIN_PROTECTION_WINDOW,
+} from "../scripts/lib/verify-constructor-args.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EID_HUB = 1;
@@ -57,15 +63,14 @@ const THIRD_ORIGIN = 999n;
 const BYTES32_ZERO =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const DENOM_ASSET = { kind: 0, currencyCode: BYTES32_ZERO } as const;
-const ASC_MIN_DURATION = 10n;
-const ASC_MAX_DURATION = 10_000n;
-const ASC_DURATION = 20n;
-const ASC_EXTENSION = 5n;
-const ASC_MIN_INCREMENT_BPS = 300n;
-const ASC_PROTECTION = 10n;
-const ASC_ABANDONMENT = 20n;
+const ASC_MIN_DURATION = ASCENDING_MIN_DURATION;
+const ASC_DURATION = ASCENDING_MIN_DURATION;
+const ASC_EXTENSION = ASCENDING_EXTENSION_WINDOW;
+const ASC_MIN_INCREMENT_BPS = ASCENDING_MIN_INCREMENT_BPS;
+const ASC_PROTECTION = ASCENDING_MIN_PROTECTION_WINDOW;
+const ASC_ABANDONMENT = ASCENDING_ABANDONMENT_WINDOW;
 const ASC_CHALLENGE_WINDOW = 30n;
-const ASC_BOND = DISPUTE_DEPOSIT;
+const ASC_BOND = parseEther("0.01");
 const ASC_RESERVE = parseEther("1");
 const PLATFORM_FEE_BPS = 250n;
 const MAX_STALENESS = 3600n;
@@ -630,13 +635,6 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
         forfeitRecipient: admin.account.address,
         challengeBond: ASC_BOND,
         challengeWindow: ASC_CHALLENGE_WINDOW,
-        minDuration: ASC_MIN_DURATION,
-        maxDuration: ASC_MAX_DURATION,
-        extensionWindow: ASC_EXTENSION,
-        minIncrementBps: ASC_MIN_INCREMENT_BPS,
-        minProtectionWindow: ASC_PROTECTION,
-        maxProtectionWindow: ASC_PROTECTION * 10n,
-        abandonmentWindow: ASC_ABANDONMENT,
         owner: admin.account.address,
         guardian: admin.account.address,
       });
@@ -842,13 +840,6 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       forfeitRecipient: admin.account.address,
       challengeBond: ASC_BOND,
       challengeWindow: ASC_CHALLENGE_WINDOW,
-      minDuration: ASC_MIN_DURATION,
-      maxDuration: ASC_MAX_DURATION,
-      extensionWindow: ASC_EXTENSION,
-      minIncrementBps: ASC_MIN_INCREMENT_BPS,
-      minProtectionWindow: ASC_PROTECTION,
-      maxProtectionWindow: ASC_PROTECTION * 10n,
-      abandonmentWindow: ASC_ABANDONMENT,
       owner: admin.account.address,
       guardian: admin.account.address,
     });
