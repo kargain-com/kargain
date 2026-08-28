@@ -65,8 +65,8 @@ pub fn encode(
     out.extend_from_slice(&send_to);
     out.extend_from_slice(&token_id);
     let has_compose = if let Some(inner) = compose_msg {
-        // composeFrom is filled by the endpoint on send; for local round-trips we
-        // place a 32-byte zero sender placeholder matching receiver skip length.
+        // composeFrom is written by the ONFT send path (msg.sender on EVM); local
+        // encoders use a 32-byte zero placeholder matching receiver skip length.
         out.extend_from_slice(&[0u8; SENDER_BYTES]);
         out.extend_from_slice(inner);
         true

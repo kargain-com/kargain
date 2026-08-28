@@ -64,7 +64,7 @@ export function abiEncodeString(uri: string): Uint8Array {
  * Encode like ONFT721MsgCodec.encode(sendTo, tokenId, composeMsg).
  * `composeInner` is the inner payload (typically ABI-encoded URI) — without
  * composeFrom. When present, a 32-byte zero composeFrom placeholder is prepended
- * (endpoint fills sender on-chain; local round-trips use zeros).
+ * (Solidity send path writes msg.sender on-chain; local round-trips use zeros).
  */
 export function encodeOnftMessage(
   sendTo: Uint8Array,

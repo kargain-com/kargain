@@ -844,6 +844,7 @@ Extends §12.5 (URI travels). Codec as compiled in `@layerzerolabs/onft-evm` `ON
 | compose payload | `[64, …)` | length > 64 ⇒ `isComposed()` | ONFT compose extension |
 
 - `composeMsg` after the 32-byte `composeFrom` sender prefix is a Solidity **ABI-encoded `string`** (the URI). Kargain’s gateway always builds `composeMsg = abi.encode(uri)` so the message is composed whenever encode reports compose; **`SEND` vs `SEND_AND_COMPOSE` is selected in Executor options**, not by omitting URI bytes.
+- **`composeFrom` semantics (non-authorizing):** the 32-byte prefix is the **EOA that invoked `send()`** on the source chain (`ONFT721MsgCodec.encode` uses `msg.sender`). It is **not** the source OApp/gateway identity. **No receiver on any VM may authorize** based on `composeFrom` — peer authorization uses LayerZero **`Origin.sender`** alone. Rust/TS decoders may skip these bytes; test and fixture corpus values for `composeFrom` are **arbitrary by design** once this rule is in force — do not re-derive them as source identity.
 - Receiver skips exactly **32** bytes of sender (`_SENDER_BYTES`) before `abi.decode(..., (string))`.
 - Non-EVM → EVM: left-pad a 20-byte EVM address into `sendTo`. EVM → non-EVM: write the full 32-byte destination key unchanged.
 - `KarPassportBridgeGateway` **overrides `_lzReceive`** and **does not call `sendCompose`**; compose data is carried in the ONFT message body and consumed in-gateway.

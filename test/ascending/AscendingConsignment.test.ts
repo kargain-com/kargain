@@ -14,6 +14,7 @@ import {
 } from "../../scripts/lib/local-stack.js";
 import {
   ASCENDING_ABANDONMENT_WINDOW,
+  ASCENDING_CHALLENGE_BOND,
   ASCENDING_EXTENSION_WINDOW,
   ASCENDING_MAX_DURATION,
   ASCENDING_MAX_PROTECTION_WINDOW,
@@ -36,7 +37,7 @@ const INTENT_OPEN = 1;
 const INTENT_LEAVE = 0;
 const TOKEN = 1n;
 const RESERVE = parseEther("1");
-const BOND = parseEther("0.01");
+const BOND = ASCENDING_CHALLENGE_BOND;
 const MIN_DURATION = ASCENDING_MIN_DURATION;
 const MAX_DURATION = ASCENDING_MAX_DURATION;
 const DURATION = ASCENDING_MIN_DURATION;
@@ -206,6 +207,56 @@ describe("AscendingConsignment", () => {
 
   it("VERSION matches CONTRACT_VERSIONS", async () => {
     assert.equal(await mode.read.VERSION(), "2.5.0-rc.1");
+  });
+
+  it("auctionRules and AuctionRulesSet at initialize match declared ASCENDING_* model", async () => {
+    const expected = {
+      minDuration: ASCENDING_MIN_DURATION,
+      maxDuration: ASCENDING_MAX_DURATION,
+      extensionWindow: ASCENDING_EXTENSION_WINDOW,
+      minIncrementBps: ASCENDING_MIN_INCREMENT_BPS,
+      minProtectionWindow: ASCENDING_MIN_PROTECTION_WINDOW,
+      maxProtectionWindow: ASCENDING_MAX_PROTECTION_WINDOW,
+      abandonmentWindow: ASCENDING_ABANDONMENT_WINDOW,
+      challengeBond: ASCENDING_CHALLENGE_BOND,
+    };
+    const rules = await readAuctionRules();
+    assert.equal(rules.minDuration, expected.minDuration);
+    assert.equal(rules.maxDuration, expected.maxDuration);
+    assert.equal(rules.extensionWindow, expected.extensionWindow);
+    assert.equal(rules.minIncrementBps, expected.minIncrementBps);
+    assert.equal(rules.minProtectionWindow, expected.minProtectionWindow);
+    assert.equal(rules.maxProtectionWindow, expected.maxProtectionWindow);
+    assert.equal(rules.abandonmentWindow, expected.abandonmentWindow);
+    assert.equal(rules.challengeBond, expected.challengeBond);
+
+    const logs = await publicClient.getContractEvents({
+      address: mode.address,
+      abi: mode.abi,
+      eventName: "AuctionRulesSet",
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+    assert.ok(logs.length >= 1, "expected AuctionRulesSet at initialize");
+    const initLog = logs[0]!;
+    const args = initLog.args as {
+      minDuration: number | bigint;
+      maxDuration: number | bigint;
+      extensionWindow: number | bigint;
+      minIncrementBps: number | bigint;
+      minProtectionWindow: number | bigint;
+      maxProtectionWindow: number | bigint;
+      abandonmentWindow: number | bigint;
+      challengeBond: bigint;
+    };
+    assert.equal(BigInt(args.minDuration), expected.minDuration);
+    assert.equal(BigInt(args.maxDuration), expected.maxDuration);
+    assert.equal(BigInt(args.extensionWindow), expected.extensionWindow);
+    assert.equal(BigInt(args.minIncrementBps), expected.minIncrementBps);
+    assert.equal(BigInt(args.minProtectionWindow), expected.minProtectionWindow);
+    assert.equal(BigInt(args.maxProtectionWindow), expected.maxProtectionWindow);
+    assert.equal(BigInt(args.abandonmentWindow), expected.abandonmentWindow);
+    assert.equal(args.challengeBond, expected.challengeBond);
   });
 
   it("S30: challenge config getters readable before any open", async () => {
@@ -1092,8 +1143,6 @@ describe("AscendingConsignment", () => {
     const durationAtOpen = (await mode.read.auctionDuration([TOKEN])) as bigint;
     await assert.rejects(setChallengeBond(0n), revertsWith("BadConfig"));
     assert.equal(await mode.read.auctionDuration([TOKEN]), durationAtOpen);
-    assert.equal((await readAuctionRules()).minDuration, MIN_DURATION);
-    assert.equal((await readAuctionRules()).maxDuration, MAX_DURATION);
 
     await firstBid();
     await settleAfterEnd();
