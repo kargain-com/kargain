@@ -68,6 +68,8 @@ export type DeploymentManifest = {
   eurFeed?: `0x${string}`;
   timelock?: `0x${string}`;
   platformRecipient?: `0x${string}`;
+  /** Forfeit sink — passport ctor + Ascending BondedChallenge (distinct from fee sink). */
+  forfeitRecipient?: `0x${string}`;
   deployer?: `0x${string}`;
   /** Timelock or deployer EOA recorded as manifest upgradeAuthority (historical manifests). */
   upgradeAuthority?: `0x${string}`;
@@ -210,6 +212,8 @@ function normalizeManifest(raw: DeploymentManifest): DeploymentManifest {
       ? { ascendingConsignmentImpl: getAddress(raw.ascendingConsignmentImpl) }
       : {}),
     ...(raw.commerceGuardian ? { commerceGuardian: getAddress(raw.commerceGuardian) } : {}),
+    ...(raw.platformRecipient ? { platformRecipient: getAddress(raw.platformRecipient) } : {}),
+    ...(raw.forfeitRecipient ? { forfeitRecipient: getAddress(raw.forfeitRecipient) } : {}),
     ...(raw.bridgeGateway ? { bridgeGateway: getAddress(raw.bridgeGateway) } : {}),
     ...(raw.layerZeroEndpoint ? { layerZeroEndpoint: getAddress(raw.layerZeroEndpoint) } : {}),
     ...(raw.historical ? { historical: normalizeHistorical(raw.historical) } : {}),

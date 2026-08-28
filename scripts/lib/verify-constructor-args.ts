@@ -50,11 +50,61 @@ export function resolveCommerceGuardian(
   return getAddress(raw);
 }
 
+/** Fail-closed: nuclear live deploy requires fee sink (modes `platformRecipient`). */
+export function resolvePlatformRecipient(
+  env: NodeJS.ProcessEnv = process.env,
+): `0x${string}` {
+  const raw = env.PLATFORM_RECIPIENT?.trim();
+  if (!raw) {
+    throw new Error("PLATFORM_RECIPIENT is required (fee sink; no default)");
+  }
+  return getAddress(raw);
+}
+
+/** Fail-closed: nuclear live deploy requires forfeit sink (passport + Ascending bond). */
+export function resolveForfeitRecipient(
+  env: NodeJS.ProcessEnv = process.env,
+): `0x${string}` {
+  const raw = env.FORFEIT_RECIPIENT?.trim();
+  if (!raw) {
+    throw new Error("FORFEIT_RECIPIENT is required (forfeit sink; no default)");
+  }
+  return getAddress(raw);
+}
+
+export type NuclearRoleParams = {
+  platformRecipient: `0x${string}`;
+  forfeitRecipient: `0x${string}`;
+  commerceGuardian: `0x${string}`;
+};
+
+/** Resolve all three protocol roles from env — no silent defaults. */
+export function resolveNuclearRoles(env: NodeJS.ProcessEnv = process.env): NuclearRoleParams {
+  return {
+    platformRecipient: resolvePlatformRecipient(env),
+    forfeitRecipient: resolveForfeitRecipient(env),
+    commerceGuardian: resolveCommerceGuardian(env),
+  };
+}
+
+function manifestPlatformRecipient(manifest: DeploymentManifest): `0x${string}` {
+  if (!manifest.platformRecipient) {
+    throw new Error("Manifest missing platformRecipient (fee sink; no default)");
+  }
+  return getAddress(manifest.platformRecipient);
+}
+
+function manifestForfeitRecipient(manifest: DeploymentManifest): `0x${string}` {
+  if (!manifest.forfeitRecipient) {
+    throw new Error("Manifest missing forfeitRecipient (forfeit sink; no default)");
+  }
+  return getAddress(manifest.forfeitRecipient);
+}
+
 export function karPassportConstructorArgs(manifest: DeploymentManifest) {
   const deployer = manifest.deployer ?? SEPOLIA_FALLBACK.deployer;
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
-  return [manifest.karProStaking, deployer, DISPUTE_DEPOSIT, platformRecipient] as const;
+  const forfeitRecipient = manifestForfeitRecipient(manifest);
+  return [manifest.karProStaking, deployer, DISPUTE_DEPOSIT, forfeitRecipient] as const;
 }
 
 export function karProStakingConstructorArgs(manifest: DeploymentManifest) {
@@ -91,8 +141,7 @@ export function fixedPriceConsignmentProxyConstructorArgs(manifest: DeploymentMa
     throw new Error("Manifest missing commerceGuardian for FixedPrice proxy verify args");
   }
   const nativeFeed = manifest.nativeFeed ?? SEPOLIA_FALLBACK.nativeFeed;
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
+  const platformRecipient = manifestPlatformRecipient(manifest);
   const feeds = getChainFeedConfig(manifest.chainId);
   const initData = encodeFunctionData({
     abi: FixedPriceConsignmentAbi,
@@ -123,8 +172,8 @@ export function ascendingConsignmentProxyConstructorArgs(manifest: DeploymentMan
   if (!guardian) {
     throw new Error("Manifest missing commerceGuardian for Ascending proxy verify args");
   }
-  const platformRecipient =
-    manifest.platformRecipient ?? SEPOLIA_FALLBACK.platformRecipient;
+  const platformRecipient = manifestPlatformRecipient(manifest);
+  const forfeitRecipient = manifestForfeitRecipient(manifest);
   const initData = encodeFunctionData({
     abi: AscendingConsignmentAbi,
     functionName: "initialize",
@@ -133,7 +182,7 @@ export function ascendingConsignmentProxyConstructorArgs(manifest: DeploymentMan
       manifest.karProStaking,
       platformRecipient,
       AUCTION_PLATFORM_FEE_BPS,
-      platformRecipient,
+      forfeitRecipient,
       ASCENDING_CHALLENGE_BOND,
       ASCENDING_CHALLENGE_WINDOW,
       ASCENDING_MIN_DURATION,

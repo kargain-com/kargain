@@ -34,6 +34,7 @@ const baseManifest: DeploymentManifest = {
   fixedPriceConsignmentImpl: "0x4444444444444444444444444444444444444444",
   ascendingConsignmentImpl: "0x5555555555555555555555555555555555555555",
   platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+  forfeitRecipient: "0x4444444444444444444444444444444444444444",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
   deployedAt: "2026-06-27T13:35:14.907Z",
   blocks: {},
@@ -46,7 +47,7 @@ describe("verify constructor args", () => {
       baseManifest.karProStaking,
       baseManifest.deployer,
       DISPUTE_DEPOSIT,
-      baseManifest.platformRecipient,
+      baseManifest.forfeitRecipient,
     ]);
   });
 
@@ -118,7 +119,39 @@ describe("verify constructor args", () => {
       data: args[1],
     });
     assert.equal(decoded.functionName, "initialize");
+    assert.equal(decoded.args?.[2], baseManifest.platformRecipient);
+    assert.equal(decoded.args?.[4], baseManifest.forfeitRecipient);
     assert.equal(decoded.args?.[3], AUCTION_PLATFORM_FEE_BPS);
+  });
+
+  it("throws when manifest missing platformRecipient", () => {
+    assert.throws(
+      () =>
+        fixedPriceConsignmentProxyConstructorArgs({
+          ...baseManifest,
+          platformRecipient: undefined,
+        }),
+      /platformRecipient/,
+    );
+  });
+
+  it("throws when manifest missing forfeitRecipient", () => {
+    assert.throws(
+      () =>
+        karPassportConstructorArgs({
+          ...baseManifest,
+          forfeitRecipient: undefined,
+        }),
+      /forfeitRecipient/,
+    );
+    assert.throws(
+      () =>
+        ascendingConsignmentProxyConstructorArgs({
+          ...baseManifest,
+          forfeitRecipient: undefined,
+        }),
+      /forfeitRecipient/,
+    );
   });
 
   it("throws when manifest missing ascendingConsignmentImpl", () => {

@@ -20,8 +20,8 @@ import {
   AUCTION_PLATFORM_FEE_BPS,
   DISPUTE_DEPOSIT,
   MARKETPLACE_FEE_BPS,
+  type NuclearRoleParams,
 } from "./verify-constructor-args.js";
-import { SEPOLIA_FALLBACK } from "./load-deployment.js";
 
 /** USD-only: no setCurrencyFeed for non-USD entries even when live in CHAINLINK_FEEDS. */
 export type NuclearRegistryPolicy = "usd-only";
@@ -65,6 +65,8 @@ export type NuclearDeployPlan = {
     /** AscendingConsignment platform fee bps (commerce cutover Phase 1: modes-only). */
     auctionPlatformFeeBps: bigint;
     platformRecipient: `0x${string}`;
+    forfeitRecipient: `0x${string}`;
+    commerceGuardian: `0x${string}`;
   };
   /** Chain-specific externals — only from verified tables (incl. per-feed tolerances). */
   externals: {
@@ -80,7 +82,10 @@ export type NuclearDeployPlan = {
   };
 };
 
-export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
+export function buildNuclearDeployPlan(
+  chainId: number,
+  roles: NuclearRoleParams,
+): NuclearDeployPlan {
   if (!isCommercialChainId(chainId)) {
     throw new Error(
       `Nuclear deploy only supports commercial EIP-155 ids (${commercialEip155Ids().join("|")}), got ${chainId}`,
@@ -102,7 +107,9 @@ export function buildNuclearDeployPlan(chainId: number): NuclearDeployPlan {
       disputeDeposit: DISPUTE_DEPOSIT,
       marketplaceFeeBps: MARKETPLACE_FEE_BPS,
       auctionPlatformFeeBps: AUCTION_PLATFORM_FEE_BPS,
-      platformRecipient: getAddress(SEPOLIA_FALLBACK.platformRecipient),
+      platformRecipient: getAddress(roles.platformRecipient),
+      forfeitRecipient: getAddress(roles.forfeitRecipient),
+      commerceGuardian: getAddress(roles.commerceGuardian),
     },
     externals: {
       usdc: getAddress(feedConfig.usdc),
@@ -172,6 +179,8 @@ export function formatNuclearParityTable(
       eth.params.auctionPlatformFeeBps.toString(),
     ],
     ["platformRecipient", base.params.platformRecipient, eth.params.platformRecipient],
+    ["forfeitRecipient", base.params.forfeitRecipient, eth.params.forfeitRecipient],
+    ["commerceGuardian", base.params.commerceGuardian, eth.params.commerceGuardian],
     ["tokenIdOffset", base.tokenIdOffset.toString(), eth.tokenIdOffset.toString()],
     ["usdc", base.externals.usdc, eth.externals.usdc],
     ["usdcUsdFeed", base.externals.usdcUsdFeed, eth.externals.usdcUsdFeed],

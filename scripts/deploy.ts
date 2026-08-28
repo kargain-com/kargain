@@ -9,8 +9,8 @@
  * of the nuclear deploy — modes only (SPEC §I.9.x, Nuclear #2 pending).
  *
  * `--dry-run` / `--compare`: print 84532 vs 11155111 parity table; no txs.
- * Live deploy requires DEPLOYER_PRIVATE_KEY, COMMERCE_GUARDIAN, and
- * `--network baseSepolia|ethereumSepolia`.
+ * Live deploy requires DEPLOYER_PRIVATE_KEY, PLATFORM_RECIPIENT, FORFEIT_RECIPIENT,
+ * COMMERCE_GUARDIAN, and `--network baseSepolia|ethereumSepolia`.
  */
 
 import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "viem";
@@ -62,7 +62,7 @@ import {
   ASCENDING_MIN_PROTECTION_WINDOW,
   AUCTION_PLATFORM_FEE_BPS,
   MARKETPLACE_FEE_BPS,
-  resolveCommerceGuardian,
+  resolveNuclearRoles,
 } from "./lib/verify-constructor-args.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -213,8 +213,9 @@ async function assertExternalBytecode(
 
 async function printDryRunCompare() {
   assertNuclearEncumbranceOrdering();
-  const base = buildNuclearDeployPlan(84532);
-  const eth = buildNuclearDeployPlan(11155111);
+  const roles = resolveNuclearRoles();
+  const base = buildNuclearDeployPlan(84532, roles);
+  const eth = buildNuclearDeployPlan(11155111, roles);
   console.log("Nuclear deploy dry-run — parameter parity (no txs)\n");
   console.log(formatNuclearParityTable(base, eth));
   console.log("\nSteps (identical both chains):");
@@ -302,13 +303,14 @@ async function runLiveDeploy() {
     process.exit(1);
   }
 
-  let commerceGuardian: `0x${string}`;
+  let roles: ReturnType<typeof resolveNuclearRoles>;
   try {
-    commerceGuardian = resolveCommerceGuardian();
+    roles = resolveNuclearRoles();
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   }
+  const commerceGuardian = roles.commerceGuardian;
 
   const hardhat = (await import("hardhat")).default;
   const connection = await hardhat.network.connect();
@@ -322,7 +324,7 @@ async function runLiveDeploy() {
     }
 
     assertNuclearEncumbranceOrdering();
-    const plan = buildNuclearDeployPlan(chainId);
+    const plan = buildNuclearDeployPlan(chainId, roles);
     const { params, externals } = plan;
 
     await assertExternalBytecode(publicClient, "nativeUsdFeed", externals.nativeUsdFeed);
@@ -378,7 +380,7 @@ async function runLiveDeploy() {
       staking.address,
       deployerAddress,
       params.disputeDeposit,
-      params.platformRecipient,
+      params.forfeitRecipient,
     ]);
 
     const fixedPriceImpl = await deployStep(
@@ -426,7 +428,7 @@ async function runLiveDeploy() {
         staking.address,
         params.platformRecipient,
         AUCTION_PLATFORM_FEE_BPS,
-        params.platformRecipient,
+        params.forfeitRecipient,
         ASCENDING_CHALLENGE_BOND,
         ASCENDING_CHALLENGE_WINDOW,
         ASCENDING_MIN_DURATION,
@@ -605,6 +607,7 @@ async function runLiveDeploy() {
       bridgeGateway: gateway.address,
       layerZeroEndpoint: externals.layerZeroEndpoint,
       platformRecipient: params.platformRecipient,
+      forfeitRecipient: params.forfeitRecipient,
       deployer: deployerAddress,
       upgradeAuthority,
       tokenIdOffset: plan.tokenIdOffset.toString(),

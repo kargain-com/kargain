@@ -19,15 +19,22 @@ import {
   MARKETPLACE_FEE_BPS,
 } from "../scripts/lib/verify-constructor-args.ts";
 
+/** Explicit role addresses for parity tests — no silent live-stack default. */
+const TEST_NUCLEAR_ROLES = {
+  platformRecipient: "0x1111111111111111111111111111111111111111",
+  forfeitRecipient: "0x2222222222222222222222222222222222222222",
+  commerceGuardian: "0x3333333333333333333333333333333333333333",
+} as const;
+
 describe("nuclear deploy plan", () => {
-  const base = buildNuclearDeployPlan(84532);
-  const eth = buildNuclearDeployPlan(11155111);
+  const base = buildNuclearDeployPlan(84532, TEST_NUCLEAR_ROLES);
+  const eth = buildNuclearDeployPlan(11155111, TEST_NUCLEAR_ROLES);
 
   it("rejects non-commercial chainIds", () => {
-    assert.throws(() => buildNuclearDeployPlan(31337), /84532\|11155111/);
+    assert.throws(() => buildNuclearDeployPlan(31337, TEST_NUCLEAR_ROLES), /84532\|11155111/);
     // Mainnet feed rows in CHAINLINK_FEEDS are configuration only — not Nuclear targets.
-    assert.throws(() => buildNuclearDeployPlan(1), /84532\|11155111/);
-    assert.throws(() => buildNuclearDeployPlan(8453), /84532\|11155111/);
+    assert.throws(() => buildNuclearDeployPlan(1, TEST_NUCLEAR_ROLES), /84532\|11155111/);
+    assert.throws(() => buildNuclearDeployPlan(8453, TEST_NUCLEAR_ROLES), /84532\|11155111/);
   });
 
   it("84532 vs 11155111 shared params are identical", () => {
@@ -38,6 +45,8 @@ describe("nuclear deploy plan", () => {
     assert.equal(base.params.marketplaceFeeBps, MARKETPLACE_FEE_BPS);
     assert.equal(base.params.auctionPlatformFeeBps, AUCTION_PLATFORM_FEE_BPS);
     assert.equal(base.params.platformRecipient, eth.params.platformRecipient);
+    assert.equal(base.params.forfeitRecipient, eth.params.forfeitRecipient);
+    assert.equal(base.params.commerceGuardian, eth.params.commerceGuardian);
     assert.equal(base.externals.nativeUsdStalenessTolerance, CHAINLINK_FEEDS[84532].nativeUsdStalenessTolerance);
     assert.equal(base.externals.usdcUsdStalenessTolerance, CHAINLINK_FEEDS[84532].usdcUsdStalenessTolerance);
     assert.equal(eth.externals.nativeUsdStalenessTolerance, CHAINLINK_FEEDS[11155111].nativeUsdStalenessTolerance);
