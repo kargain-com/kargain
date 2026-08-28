@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import hardhat from "hardhat";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
+  decodeFunctionData,
   encodeAbiParameters,
   encodePacked,
   getAddress,
@@ -28,9 +29,16 @@ import {
   type Hex,
   type PublicClient,
   type WalletClient,
+  parseEventLogs,
 } from "viem";
 
 import {
+  bytesEqual,
+  hexToUint8Array,
+} from "../lib/web3/bridge/onft-msg-codec.js";
+
+import {
+  DISPUTE_DEPOSIT,
   deployAscendingConsignment,
   deployCommerceBaseStack,
   deployFixedPriceConsignment,
@@ -74,6 +82,10 @@ const ASC_BOND = parseEther("0.01");
 const ASC_RESERVE = parseEther("1");
 const PLATFORM_FEE_BPS = 250n;
 const MAX_STALENESS = 3600n;
+const PACKET_NONCE_OFFSET = 1;
+const PACKET_GUID_OFFSET = 81;
+const PACKET_MESSAGE_OFFSET = 113;
+const URI_731 = `ar://${"x".repeat(731 - 5)}`;
 
 const require = createRequire(import.meta.url);
 const endpointArtifactPath = require
@@ -132,6 +144,112 @@ function encodeOnftMessage(params: {
 
 function encodeUriCompose(uri: string): Hex {
   return encodeAbiParameters([{ type: "string" }], [uri]);
+}
+
+function expectedOnftMessage(params: {
+  to: Address;
+  tokenId: bigint;
+  sender: Address;
+  uri: string;
+}): Hex {
+  return encodeOnftMessage({
+    to: params.to,
+    tokenId: params.tokenId,
+    sender: params.sender,
+    composeBody: encodeUriCompose(params.uri),
+  });
+}
+
+function extractPacketFields(encodedPayload: Hex): {
+  message: Hex;
+  guid: Hex;
+  nonce: bigint;
+} {
+  const packet = toBytes(encodedPayload);
+  assert.ok(packet.length >= PACKET_MESSAGE_OFFSET, "PacketSent payload too short");
+  return {
+    message: toHex(packet.slice(PACKET_MESSAGE_OFFSET)),
+    guid: toHex(packet.slice(PACKET_GUID_OFFSET, PACKET_MESSAGE_OFFSET)),
+    nonce: BigInt(toHex(packet.slice(PACKET_NONCE_OFFSET, 9))),
+  };
+}
+
+type CallFrame = {
+  from?: Address;
+  to?: Address;
+  input?: Hex;
+  calls?: CallFrame[];
+};
+
+function findCallInput(frame: CallFrame, target: Address, functionName: string): Hex | null {
+  if (frame.to && frame.input && getAddress(frame.to) === getAddress(target)) {
+    try {
+      const decoded = decodeFunctionData({ abi: endpointArtifact.abi, data: frame.input });
+      if (decoded.functionName === functionName) {
+        return frame.input;
+      }
+    } catch {
+      // not this call
+    }
+  }
+  for (const child of frame.calls ?? []) {
+    const found = findCallInput(child, target, functionName);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function captureOutboundOnftMessage(params: {
+  publicClient: PublicClient;
+  sendHash: Hex;
+  endpoint: EndpointMock;
+  gateway: Address;
+  srcEid: number;
+  dstEid: number;
+  receiver: Hex;
+}): Promise<{ message: Hex; guid: Hex; nonce: bigint }> {
+  const receipt = await params.publicClient.waitForTransactionReceipt({ hash: params.sendHash });
+  const packetSent = parseEventLogs({
+    abi: endpointArtifact.abi,
+    logs: receipt.logs,
+    eventName: "PacketSent",
+  }).filter((ev) => getAddress(ev.address) === getAddress(params.endpoint.address));
+
+  if (packetSent.length >= 1) {
+    const encodedPayload = packetSent[packetSent.length - 1]!.args.encodedPayload as Hex;
+    return extractPacketFields(encodedPayload);
+  }
+
+  const trace = (await params.publicClient.request({
+    method: "debug_traceTransaction",
+    params: [params.sendHash, { tracer: "callTracer" }],
+  })) as CallFrame;
+  const sendInput = findCallInput(trace, params.endpoint.address, "send");
+  assert.ok(sendInput, "endpoint.send call missing from send trace");
+  const decoded = decodeFunctionData({ abi: endpointArtifact.abi, data: sendInput });
+  assert.equal(decoded.functionName, "send");
+  const messagingParams = decoded.args[0] as {
+    message: Hex;
+  };
+  const nonce = (await params.endpoint.read.outboundNonce([
+    params.gateway,
+    params.dstEid,
+    params.receiver,
+  ])) as bigint;
+  const guid = keccak256(
+    encodePacked(
+      ["uint64", "uint32", "bytes32", "uint32", "bytes32"],
+      [nonce, params.srcEid, addressToBytes32(params.gateway), params.dstEid, params.receiver],
+    ),
+  );
+  return { message: messagingParams.message, guid, nonce };
+}
+
+function assertOnftMessagesEqual(captured: Hex, expected: Hex) {
+  assert.ok(
+    bytesEqual(hexToUint8Array(captured), hexToUint8Array(expected)),
+    "captured ONFT message !== encodeOnftMessage expectation",
+  );
 }
 
 function tokenIdOn(chainId: bigint, localSeq: bigint): bigint {
@@ -321,29 +439,37 @@ async function relaySend(params: {
   await params.src.stack.passport.write.setApprovalForAll([params.src.gateway.address, true], {
     account: params.senderAccount,
   });
-  await bridgeSend(
+  const sendHash = await bridgeSend(
     params.src.gateway,
     sendParam(params.dst.eid, recipient, params.tokenId),
     params.senderAccount,
   );
-  const message = encodeOnftMessage({
+  const captured = await captureOutboundOnftMessage({
+    publicClient: params.src.publicClient,
+    sendHash,
+    endpoint: params.src.endpoint,
+    gateway: params.src.gateway.address,
+    srcEid: params.src.eid,
+    dstEid: params.dst.eid,
+    receiver: addressToBytes32(params.dst.gateway.address),
+  });
+  const expected = expectedOnftMessage({
     to: recipient,
     tokenId: params.tokenId,
-    sender: params.src.gateway.address,
-    composeBody: encodeUriCompose(params.uri),
+    sender: params.senderAccount.address,
+    uri: params.uri,
   });
-  const nonce = nonceCounter++;
-  const guid = padHex(toHex(nonce), { size: 32 });
+  assertOnftMessagesEqual(captured.message, expected);
   await callLzReceive({
     oapp: params.dst.gateway,
     endpoint: params.dst.endpoint.address,
     origin: {
       srcEid: params.src.eid,
       sender: addressToBytes32(params.src.gateway.address),
-      nonce,
+      nonce: captured.nonce,
     },
-    guid,
-    message,
+    guid: captured.guid,
+    message: captured.message,
     publicClient: params.dst.publicClient,
     viem: params.dst.viem,
   });
@@ -416,6 +542,27 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
   afterEach(async () => {
     await hubConn.close();
     await spokeConn.close();
+  });
+
+  it("wire anchor: 731-byte URI round-trip uses Solidity send() bytes", async () => {
+    assert.equal(URI_731.length, 731);
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      URI_731,
+    );
+    await relaySend({
+      src: hub,
+      dst: spoke,
+      to: seller.account.address,
+      tokenId,
+      uri: URI_731,
+      senderAccount: seller.account,
+    });
+    assert.equal(await spoke.stack.passport.read.tokenURI([tokenId]), URI_731);
   });
 
   it("#1 master invariant: home lock + spoke mint UNVERIFIED; return unlocks", async () => {
