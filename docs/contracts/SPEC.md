@@ -49,7 +49,7 @@
 |----------|------------------|---------------|------|
 | KarPassport | `1.10.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
-| KarProStaking | `2.1.0-rc.1` | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave |
+| KarProStaking | `2.1.0-rc.1` live · **`2.2.0-rc.1` N5 source** | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave (N5 source: native-only join) |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
 | FixedPriceConsignment | `2.4.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
@@ -186,9 +186,13 @@ A state transition a party can be held to must leave a log complete enough to re
 
 `CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
 
-FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment `VERSION` **`2.3.0-rc.1`**.
+FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.4.0-rc.1` live (Nuclear #4 I.9)** · **`2.5.0-rc.1` N5 source** (S3.5 prep on `feat/solana-svm-port`, not cut over).
 
-**Ascending admin surface:** live auction rules (`minDuration` / `maxDuration` / `extensionWindow` / `minIncrementBps` / `minProtectionWindow` / `maxProtectionWindow` / `abandonmentWindow` / challenge bond) are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set). Protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Timelock queue is serialized — a later scheduled full-set execute wins over an earlier one. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
+**Ascending admin surface (live Nuclear #4):** auction bounds (`minDuration` … `abandonmentWindow`) plus challenge bond are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set).
+
+**Ascending admin surface (N5 source — ships at next cutover):** the seven auction bounds are **`public constant`** in bytecode (same numeric values as today’s deploy defaults); `auctionRules()` still returns eight fields (constants + stored bond); `initialize` emits `AuctionRulesSet` with those constants + init bond; Timelock may rotate **only** the settlement challenge bond via `setChallengeBond(uint256)` → `AuctionRulesSet` (constants + new bond). `setAuctionRules` is removed.
+
+**Both generations:** protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
 **EIP-170:** Ascending deployed bytecode **23855** (limit 24576, headroom **721**) with linked **`AscendingHoldLib`** + **`AscendingOpenLib`** (Hardhat link → `DELEGATECALL`; bid stays on the mode). FixedPrice **18070** (headroom **6506**). Combined mode headroom **7227**. Accountability event surface unchanged. Headroom is hundreds of bytes — not a multi-KB buffer; next feature that does not fit remains a model-boundary question ([commerce-model §11](../research/commerce-model-2026.md)).
 
@@ -200,7 +204,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment `VERSION`
 |----|-----------|
 | `pause` | Guardian (`NotGuardian`) |
 | `revokePaymentToken` | Guardian **or** owner (Timelock) — soft-disable; in-flight buy/bid/settle keep stored config (`NotGuardianOrOwner`) |
-| `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / `setAuctionRules` / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
+| `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / `setAuctionRules` (live) · **`setChallengeBond`** (N5 source) / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
 | Passport `addEncumbranceSource` / `removeEncumbranceSource` / `setDisputeDeposit` / `rescueExcessEth` | Owner (Timelock); `setBridgeGateway` one-shot |
 
 **Encumbrance:** `may(tokenId, Intent)` answers challenge + governed external sources only. **`OpenConsignment` does not require VERIFIED** — FixedPrice may open while UNVERIFIED when encumbrance allows. Ascending open enforces VERIFIED at the mode (`PassportNotVerified`). **`LeaveChain` readiness** is always true when encumbrance allows (unverified may travel). Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
@@ -311,40 +315,30 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-### I.4. KarProStaking (`2.1.0-rc.1`)
+### I.4. KarProStaking (`2.1.0-rc.1` live · **`2.2.0-rc.1` N5 source**)
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
-- **`becomeVerifierNative`** / **`becomeVerifierToken`** — permissionless join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed. **Product UI (intentional):** join offers **native only** (`KarProJoinForm` → `becomeVerifierNative`). The token path stays dormant until Timelock `setStakeToken` enables a stake asset — no join or ops UI for a governance-disabled capability. Do not build a token-join screen while `stakeToken` is unset.
-- **`Stake.asset`** — `address(0)` = native ETH, else the ERC-20 address recorded **at join**. Claim refunds that recorded asset (never the current `stakeToken` setting). Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
+- **`becomeVerifierNative`** — permissionless native join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed. **Product UI:** join is **native only** (`KarProJoinForm` → `becomeVerifierNative`).
+- **N5 source (S3.5 prep):** ERC-20 stake path removed — no `stakeToken`, `becomeVerifierToken`, or `setStakeToken`. Native-only join is the shipped model (§13.11). KarProPass + KarProStaking deploy as a **pair**; retargeting `setStaking` on an existing pass without redeploying both traps re-join (`test/kargain.contracts.test.ts` “retarget trap blocks re-join”).
+- **Live Nuclear #4:** bytecode still exposes dormant `becomeVerifierToken` / `setStakeToken` (never enabled; production `StakeTokenSet` count **0** on both commercial chains). UI already withholds token-join (S22). N5 cutover removes the dormant surface.
+- **`Stake.asset`** — always `address(0)` (native ETH) on N5 source; live chains may record ERC-20 only if token join had ever been enabled (never on commercial testnet). Claim refunds the recorded asset. Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
 - **Two-phase leave:** `leave()` ends the role immediately (`active = false`, burn try/catch), sets `unlockAt = now + UNBONDING_PERIOD` (**14 days**, equal to passport `DISPUTE_WINDOW` by design). `claimStake()` after unlock pays via ClaimablePayouts (failed push → withdrawable claim). **No slashing** in this ship. There is **no** dispute↔leave coupling — a future slash design must use a monotonic “not before” unlock timestamp (bug → early unlock), never a decrementing challenge counter (bug → permanent lock).
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
 - **`verificationFee`** — verifier-set wei amount; **informational only** (no on-chain payment enforcement on KarProStaking). The Kargain `/kar-pro` UI composes service margin (nav display currency) plus an estimated `verifyPassport` gas cost at save time and writes the sum as a single wei value via `setVerificationFee`. Accepted off-chain payment methods are signaled in Nostr kind 0 as optional `verifierPaymentMethods` (`eth`, `usdc`, `lightning`; absent = all three). Workflow: verifier sets fee → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
-- Constructor requires non-zero `proPass` (`ZeroAddress`). Stake storage layout ships only via full Nuclear redeploy (live: Nuclear #3).
-
-#### Dormant ERC-20 verifier stake (recorded option — not scheduled)
-
-After Nuclear #3, `stakeToken` is unset (`address(0)`) on both commercial chains. The constructor sets only `minStakeNative` (`KarProStaking.sol:90`); `stakeToken` / `minStakeToken` remain zero (`:59–60`). Calling `becomeVerifierToken` therefore reverts `TokenNotEnabled` (`:126`). The ERC-20 join path is a **complete but dormant** capability, not an unfinished one. Product UI already withholds token-join for that reason (S22).
-
-**Enabling (optional, not planned):** the Timelock owner proposes `setStakeToken(token, minAmount)` (`:208–213`). Admission runs `Erc20Admission.requireConforming(token)` before the minimum check; `minAmount == 0` reverts `ZeroMinStake` (`:210`, S33). Enabling is **per commercial chain** — each chain has its own `KarProStaking`, so a token may be live on one network and unset on another.
-
-**Rights today:** `becomeVerifierToken` records delivery (`balanceBefore` / `received`, `:131–134`) into `Stake.asset` / `amount`. `isActiveVerifier` returns only `stakes[a].active` (`:219–220`), so native and token joins currently grant the same professional gates. `KarPassport` reads that flag at `:365`, `:420`, and `:471`.
-
-**Collateral-weight caveat:** two assets that grant identical rights can drift in value independently. A fixed `minStakeToken` does not track `minStakeNative`, and nothing re-prices either. Whether the two floors are comparable skin in the game is a decision for the Timelock act that enables the token — the contract does not answer it. `Stake.asset` preserves the distinction if rights or reporting were ever differentiated later.
-
-This option is **recorded, not scheduled.** Do not invent a roadmap item, PENDING entry, or app task for it.
+- Constructor requires non-zero `proPass` (`ZeroAddress`). Stake storage layout ships only via full Nuclear redeploy.
 
 ### KarProStaking — function reference
 
 | Function | Access | Behavior |
 |----------|--------|----------|
 | `becomeVerifierNative` | anyone + ETH | Stake native (`asset = 0`); mint pass |
-| `becomeVerifierToken` | anyone | Stake configured ERC-20 (`asset = stakeToken` at join); mint pass |
 | `leave` | active verifier | End role; start 14d unbond; attempt burn (no payout yet) |
-| `claimStake` | after unlock | Pay recorded asset (or credit claim); clear unbond state |
+| `claimStake` | after unlock | Pay native stake (or credit claim); clear unbond state |
 | `setMinStakeNative` | owner | New minimum (≥ floor) for **new** joiners |
-| `setStakeToken` | owner | Enable/update ERC-20 stake token + min (does not rewrite existing stakes) |
 | `isActiveVerifier` | view | Active stake check |
 | `setVerificationFee` | active verifier | Set public fee signal (wei) |
+
+*Live Nuclear #4 only (removed in N5 source):* `becomeVerifierToken`, `setStakeToken`.
 
 ### KarProStaking — error reference
 
@@ -356,12 +350,8 @@ This option is **recorded, not scheduled.** Do not invent a roadmap item, PENDIN
 | `NotVerifier` | Leave or fee update without active stake |
 | `UnbondNotReady` | `claimStake` before unlock |
 | `NoUnbond` | `claimStake` with no pending unbond |
-| `TokenNotEnabled` | Token path not configured (`stakeToken == 0`) |
-| `ZeroMinStake` | `setStakeToken` with `minAmount == 0` |
 | `NoClaim` | `withdrawClaim` with zero pending balance |
 | `TransferFailed` | `withdrawClaim` transfer failed (`claimStake` credits a claim on push failure) |
-| `TokenHasNoCode` | `setStakeToken` address has no code |
-| `TokenNonConforming` | `setStakeToken` token fails ERC-20 transfer return probe |
 | `BelowMinStakeFloor` | Owner sets min below 0.001 ETH |
 | `ZeroAddress` | Constructor `proPass_ == 0` |
 
@@ -374,7 +364,7 @@ This option is **recorded, not scheduled.** Do not invent a roadmap item, PENDIN
 | Mode | VERSION | Role |
 |------|---------|------|
 | FixedPriceConsignment | `2.4.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
-| AscendingConsignment | `2.4.0-rc.1` | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
+| AscendingConsignment | `2.4.0-rc.1` live · **`2.5.0-rc.1` N5 source** | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
 **Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
@@ -401,19 +391,19 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 
 **Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
 
-**Ascending Nuclear initialize defaults** (governance-mutable after deploy; normative model §11 / §7.3):
+**Ascending Nuclear initialize defaults** (normative model §11 / §7.3):
 
-| Parameter | Default | Notes |
-|-----------|---------|--------|
-| Extension window | **900 seconds** | Captured into `AuctionTerms` at open; storage change affects later lots only |
-| Minimum increment | **300 bps** | Captured into `AuctionTerms` at open; storage change affects later lots only |
-| Duration bounds | **3–30 days** | Checked at open; Timelock `setAuctionRules` |
-| Protection bounds | **7–45 days** | Bounds, not a value — the opener chooses within them at open (`protectionWindow_`), captured into `AuctionTerms`, applied at `settle` |
-| Settlement challenge window | **14 days** | Ascending BondedChallenge instance — **same length** as KarPassport verification (model §7.3: discovery time lives in the protection hold, not in a second long clock) |
-| Abandonment window | **30 days** | Length captured into `AuctionTerms` at open; **deadline** set when reversal becomes pending |
-| Challenge bond | **0.01 ETH** | Exact match at `open` |
+| Parameter | Default | Live N4 governance | N5 source |
+|-----------|---------|-------------------|-----------|
+| Extension window | **900 seconds** | `setAuctionRules` | **`public constant`** |
+| Minimum increment | **300 bps** | `setAuctionRules` | **`public constant`** |
+| Duration bounds | **3–30 days** | `setAuctionRules` | **`public constant`** |
+| Protection bounds | **7–45 days** | `setAuctionRules` | **`public constant`** |
+| Settlement challenge window | **14 days** | one-shot at `initialize` | one-shot at `initialize` |
+| Abandonment window | **30 days** | `setAuctionRules` | **`public constant`** |
+| Challenge bond | **0.01 ETH** | `setAuctionRules` · init | **`setChallengeBond`** · init |
 
-Constants: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_EXTENSION_WINDOW`, `ASCENDING_MIN_INCREMENT_BPS`, `ASCENDING_MIN_PROTECTION_WINDOW` / `_MAX_`, `ASCENDING_CHALLENGE_WINDOW`, `ASCENDING_ABANDONMENT_WINDOW`). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — governance storage for those fields is read when a new lot opens (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` "B3 snapshot…" / "snapshot: minIncrementBps frozen…"). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is captured when a challenge opens. See the provenance table. **Target model ([§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative) §10):** the seven auction bounds/step/windows above (not the challenge bond) converge to **implementation model constants** at the next full commercial redeploy; `auctionRules()` view shape and `AuctionRulesSet` event shape are preserved (seven fields filled from constants; event also emitted at `initialize`); the indexer `commerce_mode` projection therefore does not change shape. Until that redeploy, this section’s live `setAuctionRules` wording remains accurate.
+Numeric mirrors: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_*` exports). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — on live N4, governance storage is read when a new lot opens; on N5 source, constants are read (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` snapshot cases). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is rotatable via `setChallengeBond` on N5 source (or full `setAuctionRules` on live N4) and captured when a challenge opens. **`AuctionRulesSet` at `initialize` on N5 source** gives the indexer first-write with constant seven-tuple + init bond; event and `auctionRules()` eight-field ABI shape unchanged.
 
 #### Parameter provenance — what to read, and from where
 
@@ -426,8 +416,8 @@ One table per question a screen can ask. **A screen showing the terms of a speci
 | Minimum increment | captured at open | `auctionRules().minIncrementBps` | `auctionMinIncrementBps(tokenId)` | bid panel → getter |
 | Protection window | **chosen at open**, within bounds (H1) | `auctionRules().min/maxProtectionWindow` | `auctionProtectionWindow(tokenId)`; after `settle` the *deadline* is `holdProtectionEndsAt(tokenId)` | create → bounds · lot → getter · hold → deadline |
 | Abandonment window | captured at open; deadline set when reversal becomes pending | `auctionRules().abandonmentWindow` | `auctionAbandonmentWindow(tokenId)`, then `holdAbandonmentWindow` / `holdAbandonmentDeadline(tokenId)` | reversal panel → deadline |
-| Settlement challenge bond | rotatable; captured into `Challenge` at open | `auctionRules().challengeBond` | `challengeBondAmount(subjectId)` | pre-open → `auctionRules()` · open → getter |
-| **Settlement challenge window** | **one-shot at `initialize`; immutable per instance** | **none — not in `setAuctionRules`** | `challengeWindowDuration(subjectId)`, **zero unless a challenge is open** | pre-open → **no getter exists**, use the deploy record · post-open → getter, or Ponder `challenge.windowDuration` from `ChallengeOpened` |
+| Settlement challenge bond | rotatable; captured into `Challenge` at open | `auctionRules().challengeBond` · live: `setAuctionRules` · N5: **`setChallengeBond`** | `challengeBondAmount(subjectId)` | pre-open → `auctionRules()` · open → getter |
+| **Settlement challenge window** | **one-shot at `initialize`; immutable per instance** | **none — not in `setAuctionRules` / `setChallengeBond`** | `challengeWindowDuration(subjectId)`, **zero unless a challenge is open** | pre-open → **no getter exists**, use the deploy record · post-open → getter, or Ponder `challenge.windowDuration` from `ChallengeOpened` |
 | Verification challenge window | compile-time constant | none | `KarPassport.DISPUTE_WINDOW` (public constant) | anywhere — **chain read only**; never shadow with an app-side seconds constant |
 | Verification challenge bond | rotatable; captured into `Challenge` at open | `KarPassport.disputeDeposit` (public) | `challengeBondAmount(tokenId)` | pre-open → `disputeDeposit` · open → getter |
 | Platform fee bps | snapshotted into the consignment at open | `platformFeeBps` (public, live) | in `ConsignmentOpened`; storage cleared on close | lot → event/indexer |
@@ -721,8 +711,8 @@ After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps i
 | Contract | Authority |
 |----------|-----------|
 | KarPassport | Timelock: `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
-| KarProStaking | Timelock: `setMinStakeNative`, `setStakeToken` |
-| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken(token, feed, stalenessTolerance)`, `setGuardian`, UUPS, `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance` (FixedPrice only), `setAuctionRules` (Ascending) |
+| KarProStaking | Timelock: `setMinStakeNative` (live N4 also: `setStakeToken` — removed N5 source) |
+| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken(token, feed, stalenessTolerance)`, `setGuardian`, UUPS, `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance` (FixedPrice only), `setAuctionRules` (Ascending live) · **`setChallengeBond`** (Ascending N5 source) |
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + library + gateway addresses (`fixedPriceConsignment`, `ascendingHoldLib`, `ascendingOpenLib`, `ascendingConsignment`, `bridgeGateway`).
 
@@ -940,7 +930,7 @@ Three **distinct** accounts. Sinks are **immutable by design** (Accepted risk: *
 
 #### 13.10 Protocol parameter model (three tiers)
 
-Protocol-wide (not SVM-specific). Target after the next full commercial redeploy; live Ascending `setAuctionRules` until then per §I.5.
+Protocol-wide (not SVM-specific). **N5 source (S3.5 prep):** seven Ascending bounds + settlement challenge window are **model constants** in bytecode; bond stays weight-derived via `setChallengeBond`. **Live Nuclear #4:** bounds remain Timelock-mutable via `setAuctionRules` until cutover.
 
 | Tier | Examples | Where / how changed |
 |------|----------|---------------------|
@@ -961,7 +951,7 @@ On ETH-native chains the on-chain wei equals the weight. Elsewhere derive native
 
 #### 13.11 Money vocabulary
 
-On every commercial chain: native gas token carries gas, verifier stake, challenge bonds, and the informational `verificationFee`; price / bid / floor / checkout use that chain’s native token or an admitted stablecoin-class payment token; the verifier credential is a soulbound NFT and not money. Kargain issues **no** fungible token of its own. Wrapping native solely to satisfy a token standard for stake/bonds is forbidden. If a token-join path is ever enabled it may only admit an already-admitted stablecoin-class asset.
+On every commercial chain: native gas token carries gas, verifier stake, challenge bonds, and the informational `verificationFee`; price / bid / floor / checkout use that chain’s native token or an admitted stablecoin-class payment token; the verifier credential is a soulbound NFT and not money. Kargain issues **no** fungible token of its own. Wrapping native solely to satisfy a token standard for stake/bonds is forbidden. **Verifier join is native-only** on N5 source (ERC-20 stake path removed). Live Nuclear #4 bytecode still carries a dormant token path that was never enabled and is deleted at N5 cutover.
 
 #### 13.12 Indexer projection rebuild
 
