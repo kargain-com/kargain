@@ -48,7 +48,6 @@ export const NUCLEAR_TIMELOCK_OWNER_OPS = [
   "KarPassport.setDisputeDeposit",
   "KarPassport.rescueExcessEth",
   "KarProStaking.setMinStakeNative",
-  "KarProStaking.setStakeToken",
 ] as const;
 
 export type NuclearTimelockOwnerOp = (typeof NUCLEAR_TIMELOCK_OWNER_OPS)[number];

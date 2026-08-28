@@ -782,7 +782,7 @@ describeE2e("localhost commerce modes E2E", () => {
  * Record: docs/PENDING-REDEPLOY.md (Nuclear #3 prep); scenarios prove source ahead of old commercial bytecode.
  */
 describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
-  it("scenarios 1–6: combined §1+§5 buy, monotonicity, high commission, ShortDelivery, S30 getters, ZeroMinStake", async () => {
+  it("scenarios 1–6: combined §1+§5 buy, monotonicity, high commission, ShortDelivery, S30 getters, BelowMinStakeFloor", async () => {
     let connection: NetworkConnection | undefined;
     try {
       connection = await hardhat.network.connect({ network: "localhost" });
@@ -1306,31 +1306,15 @@ describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
         );
       }
 
-      // ─── Scenario 6: ZeroMinStake distinct from BelowMinStakeFloor ───────────
+      // ─── Scenario 6: BelowMinStakeFloor on native minimum ────────────────────
       {
-        const stakeTok = await viem.deployContract("MockUSDC", []);
-        await assert.rejects(
-          staking.write.setStakeToken([stakeTok.address, 0n], { account: admin.account }),
-          revertsWith("ZeroMinStake"),
-        );
-        assert.equal(await staking.read.stakeToken(), ZERO);
-
-        const tokenMin = 1_000_000n;
-        await staking.write.setStakeToken([stakeTok.address, tokenMin], {
-          account: admin.account,
-        });
-        assert.equal(getAddress(await staking.read.stakeToken()), getAddress(stakeTok.address));
-        assert.equal(await staking.read.minStakeToken(), tokenMin);
-
         const floor = (await staking.read.MIN_STAKE_FLOOR()) as bigint;
         await assert.rejects(
           staking.write.setMinStakeNative([floor - 1n], { account: admin.account }),
           revertsWith("BelowMinStakeFloor"),
         );
 
-        console.log(
-          `[e2e-p1] S6: ZeroMinStake on setStakeToken(0); BelowMinStakeFloor on native < ${floor}`,
-        );
+        console.log(`[e2e-p1] S6: BelowMinStakeFloor on native < ${floor}`);
       }
 
       console.log(

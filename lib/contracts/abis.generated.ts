@@ -3162,32 +3162,6 @@ export const KarProStakingAbi = [
     "type": "error"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      }
-    ],
-    "name": "SafeERC20FailedOperation",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "TokenHasNoCode",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "TokenNonConforming",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "TokenNotEnabled",
-    "type": "error"
-  },
-  {
     "inputs": [],
     "name": "TransferFailed",
     "type": "error"
@@ -3205,11 +3179,6 @@ export const KarProStakingAbi = [
   {
     "inputs": [],
     "name": "ZeroAddress",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "ZeroMinStake",
     "type": "error"
   },
   {
@@ -3317,25 +3286,6 @@ export const KarProStakingAbi = [
       }
     ],
     "name": "StakeClaimed",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "minAmount",
-        "type": "uint256"
-      }
-    ],
-    "name": "StakeTokenSet",
     "type": "event"
   },
   {
@@ -3495,29 +3445,6 @@ export const KarProStakingAbi = [
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint8",
-        "name": "category",
-        "type": "uint8"
-      },
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "metadataURI",
-        "type": "string"
-      }
-    ],
-    "name": "becomeVerifierToken",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "claimStake",
     "outputs": [],
@@ -3553,19 +3480,6 @@ export const KarProStakingAbi = [
   {
     "inputs": [],
     "name": "minStakeNative",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "minStakeToken",
     "outputs": [
       {
         "internalType": "uint256",
@@ -3649,24 +3563,6 @@ export const KarProStakingAbi = [
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "minAmount",
-        "type": "uint256"
-      }
-    ],
-    "name": "setStakeToken",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "uint256",
         "name": "fee",
         "type": "uint256"
@@ -3675,19 +3571,6 @@ export const KarProStakingAbi = [
     "name": "setVerificationFee",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "stakeToken",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {

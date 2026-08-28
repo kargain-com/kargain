@@ -85,8 +85,6 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   AlreadyVerifier: "This wallet is already an active verifier.",
   BelowMinStake: "Stake amount is below the current minimum.",
   BelowMinStakeFloor: "Minimum stake cannot go below the protocol floor.",
-  ZeroMinStake: "Token stake minimum cannot be zero.",
-  TokenNotEnabled: "This stake token is not enabled.",
   NonexistentToken: "This passport does not exist.",
   NotActiveVerifier: "Only an active KarPro verifier can do this.",
   CannotSelfVerify: "You cannot verify your own passport.",

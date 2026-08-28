@@ -364,18 +364,6 @@ export function buildErrorCoverageReport(): {
       );
       errors = [...new Set([...errors, ...parseErrorNames(claimSource)])].sort();
     }
-    if (entry.contract === "KarProStaking") {
-      const admissionSource = fs.readFileSync(
-        path.join(CONTRACTS_DIR, "lib/Erc20Admission.sol"),
-        "utf8",
-      );
-      // TokenDecimalsUnavailable is reachable only via FixedPriceConsignment / AscendingConsignment
-      // requireDecimals — KarProStaking.setStakeToken only calls requireConforming.
-      const admissionErrors = parseErrorNames(admissionSource).filter(
-        (name) => name !== "TokenDecimalsUnavailable",
-      );
-      errors = [...new Set([...errors, ...admissionErrors])].sort();
-    }
 
     const exercised = new Set<string>();
     for (const suite of entry.suiteFiles) {
