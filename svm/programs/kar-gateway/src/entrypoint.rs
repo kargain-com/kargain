@@ -17,8 +17,12 @@ use solana_program::{
 
 use crate::account::into_program_error;
 use crate::config::{GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR};
+use crate::endpoint_v2::{cpi_clear_production, is_production_endpoint, ClearParams as EndpointClearParams};
 use crate::instruction::GatewayIx;
-use crate::lz_receive_types::{lz_receive_types, LZ_RECEIVE_ACCOUNTS, LZ_RECEIVE_ACCOUNT_COUNT};
+use crate::lz_receive_types::{
+    lz_receive_types, LzReceiveAccountList, MOCK_LZ_RECEIVE_ACCOUNT_COUNT, MOCK_LZ_RECEIVE_ACCOUNTS,
+    PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT, PRODUCTION_LZ_RECEIVE_ACCOUNTS,
+};
 use crate::recover::check_recover_locked_home;
 use crate::seeds::{config_pda, freeze_pda, CONFIG_SEED, FREEZE_SEED};
 use crate::send_receive::{plan_receive, plan_send, ReceiveKind};
@@ -79,12 +83,25 @@ pub fn process_instruction(
             let cfg = load_config(program_id, cfg_ai)?;
             let list = lz_receive_types(program_id, &cfg, &message, 0, [0u8; 32], 0)
                 .map_err(into_program_error)?;
-            msg!(
-                "lz_receive_types asset={} state={} freeze={}",
-                list.asset,
-                list.state,
-                list.freeze_authority
-            );
+            match list {
+                LzReceiveAccountList::Mock(list) => {
+                    msg!(
+                        "lz_receive_types mock asset={} state={} freeze={}",
+                        list.asset,
+                        list.state,
+                        list.freeze_authority
+                    );
+                }
+                LzReceiveAccountList::Production(list) => {
+                    msg!(
+                        "lz_receive_types production asset={} state={} freeze={} clear_payload={}",
+                        list.asset,
+                        list.state,
+                        list.freeze_authority,
+                        list.clear.payload_hash
+                    );
+                }
+            }
             Ok(())
         }
     }
@@ -151,7 +168,7 @@ fn load_config(program_id: &Pubkey, config: &AccountInfo) -> Result<GatewayConfi
 }
 
 /// CPI mock-endpoint Clear — MUST run before any Kargain state mutation.
-fn cpi_clear<'info>(
+fn cpi_clear_mock<'info>(
     endpoint_program: &AccountInfo<'info>,
     endpoint_config: &AccountInfo<'info>,
     oapp: &AccountInfo<'info>,
@@ -237,28 +254,56 @@ fn lz_receive(
     guid: [u8; 32],
     message: Vec<u8>,
 ) -> ProgramResult {
-    if accounts.len() < LZ_RECEIVE_ACCOUNT_COUNT {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    let a = LZ_RECEIVE_ACCOUNTS;
-    let gateway_config = &accounts[a.gateway_config];
-    let payer = &accounts[a.payer];
-    let endpoint_program = &accounts[a.endpoint_program];
-    let endpoint_config = &accounts[a.endpoint_config];
-    let clear_receipt = &accounts[a.clear_receipt];
-    let system = &accounts[a.system_program];
-    let passport_program = &accounts[a.passport_program];
-    let passport_config = &accounts[a.passport_config];
-    let asset = &accounts[a.asset];
-    let state = &accounts[a.state];
-    let freeze = &accounts[a.freeze_authority];
-    let core = &accounts[a.core_program];
-    let to = &accounts[a.to];
+    // Resolve config by PDA identity (layouts differ: mock gateway@0, production gateway@1).
+    let (expected_config, _) = config_pda(program_id);
+    let gateway_config = accounts
+        .iter()
+        .find(|a| a.key == &expected_config)
+        .ok_or(ProgramError::NotEnoughAccountKeys)?;
+    let cfg = load_config(program_id, gateway_config)?;
+    let endpoint_key = Pubkey::new_from_array(cfg.endpoint_program);
+    let production = is_production_endpoint(&endpoint_key);
+
+    let (payer, endpoint_program, system, passport_program, passport_config, asset, state, freeze, core, to) =
+        if production {
+            if accounts.len() < PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            }
+            let a = PRODUCTION_LZ_RECEIVE_ACCOUNTS;
+            (
+                &accounts[a.payer],
+                &accounts[a.clear_endpoint_program],
+                &accounts[a.system_program],
+                &accounts[a.passport_program],
+                &accounts[a.passport_config],
+                &accounts[a.asset],
+                &accounts[a.state],
+                &accounts[a.freeze_authority],
+                &accounts[a.core_program],
+                &accounts[a.to],
+            )
+        } else {
+            if accounts.len() < MOCK_LZ_RECEIVE_ACCOUNT_COUNT {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            }
+            let a = MOCK_LZ_RECEIVE_ACCOUNTS;
+            (
+                &accounts[a.payer],
+                &accounts[a.endpoint_program],
+                &accounts[a.system_program],
+                &accounts[a.passport_program],
+                &accounts[a.passport_config],
+                &accounts[a.asset],
+                &accounts[a.state],
+                &accounts[a.freeze_authority],
+                &accounts[a.core_program],
+                &accounts[a.to],
+            )
+        };
 
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let cfg = load_config(program_id, gateway_config)?;
     if endpoint_program.key.to_bytes() != cfg.endpoint_program {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -269,27 +314,59 @@ fn lz_receive(
     if freeze.key != &freeze_key {
         return Err(ProgramError::InvalidSeeds);
     }
+    if gateway_config.key != &expected_config {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     // 1) Clear FIRST — before decode side-effects / any passport CPI.
-    cpi_clear(
-        endpoint_program,
-        endpoint_config,
-        gateway_config, // oapp signer = gateway config PDA
-        clear_receipt,
-        payer,
-        system,
-        src_eid,
-        sender,
-        nonce,
-        guid,
-        cfg.bump,
-    )?;
+    let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
+    if production {
+        let a = PRODUCTION_LZ_RECEIVE_ACCOUNTS;
+        if accounts[a.gateway_config].key != gateway_config.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+        if accounts[a.clear_receiver].key != gateway_config.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+        cpi_clear_production(
+            endpoint_program,
+            gateway_config,
+            &accounts[a.clear_oapp_registry],
+            &accounts[a.clear_nonce],
+            &accounts[a.clear_payload_hash],
+            &accounts[a.clear_endpoint_settings],
+            &accounts[a.clear_event_authority],
+            &EndpointClearParams {
+                receiver: *gateway_config.key,
+                src_eid,
+                sender,
+                nonce,
+                guid,
+                message: message.clone(),
+            },
+            config_seeds,
+        )?;
+    } else {
+        let a = MOCK_LZ_RECEIVE_ACCOUNTS;
+        cpi_clear_mock(
+            endpoint_program,
+            &accounts[a.endpoint_config],
+            gateway_config,
+            &accounts[a.clear_receipt],
+            payer,
+            system,
+            src_eid,
+            sender,
+            nonce,
+            guid,
+            cfg.bump,
+        )?;
+    }
 
     // 2) Decode fail-closed (D-16).
     let (_decoded, kind) =
         plan_receive(&message, cfg.namespace).map_err(into_program_error)?;
 
-    let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
     let freeze_seeds: &[&[u8]] = &[FREEZE_SEED, &[freeze_bump]];
 
     match kind {
@@ -298,12 +375,11 @@ fn lz_receive(
                 return Err(ProgramError::InvalidArgument);
             }
             let token_id = _decoded.token_id;
-            // gateway(signer via config), freeze elevated for any future lock; mint frozen=false.
             cpi_passport(
                 passport_program,
                 &[
                     passport_config.clone(),
-                    gateway_config.clone(), // gateway signer
+                    gateway_config.clone(),
                     asset.clone(),
                     state.clone(),
                     payer.clone(),
@@ -342,7 +418,6 @@ fn lz_receive(
                 &[config_seeds, freeze_seeds],
                 &[gateway_config.key, freeze.key],
             )?;
-            // Transfer custody from gateway config PDA → recipient.
             transfer_asset(
                 asset,
                 payer,

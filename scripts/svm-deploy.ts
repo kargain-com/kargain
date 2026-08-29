@@ -2,15 +2,15 @@
  * SVM commercial deploy CLI — dry-run only in S4a (no Devnet writes).
  *
  *   pnpm deploy:svm:dry-run
- *   SVM_UPGRADE_AUTHORITY=<base58> pnpm deploy:svm:dry-run
+ *   SOLANA_UPGRADE_AUTHORITY=<base58> pnpm deploy:svm:dry-run
  *
- * Live deploy lands in S4b (deploy → set-upgrade-authority Squads → pathway wire).
+ * Live deploy lands in S4b (deploy → set-upgrade-authority hot pubkey → pathway wire).
  */
 
 import {
   buildSvmDeployPlan,
   formatSvmDeployPlanTable,
-  resolveSvmUpgradeAuthority,
+  resolveSolanaUpgradeAuthority,
   type SvmDeployCluster,
 } from "./lib/svm-deploy-plan.js";
 
@@ -39,7 +39,7 @@ function main(): void {
 
   let upgradeAuthority: string;
   try {
-    upgradeAuthority = resolveSvmUpgradeAuthority();
+    upgradeAuthority = resolveSolanaUpgradeAuthority();
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

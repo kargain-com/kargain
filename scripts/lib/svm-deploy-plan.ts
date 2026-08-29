@@ -54,17 +54,75 @@ export function estimateRentExemptLamports(dataLen: number): number {
   );
 }
 
-/** Fail-closed: SVM live deploy requires upgrade authority (Squads stand-in). */
-export function resolveSvmUpgradeAuthority(
+/**
+ * Fail-closed role resolvers for Solana Devnet deploy.
+ * Env names parallel EVM deploy roles — see .env.example "Solana Devnet deploy".
+ */
+
+/** Who may replace BPF bytecode after deploy (≈ EVM Timelock upgrade owner). */
+export function resolveSolanaUpgradeAuthority(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const raw = env.SVM_UPGRADE_AUTHORITY?.trim();
+  const raw = env.SOLANA_UPGRADE_AUTHORITY?.trim();
   if (!raw) {
     throw new Error(
-      "SVM_UPGRADE_AUTHORITY is required (Squads / upgrade authority base58; no default)",
+      "SOLANA_UPGRADE_AUTHORITY is required (public base58; no default)",
     );
   }
   return raw;
+}
+
+/** Challenge forfeit sink (same role as EVM FORFEIT_RECIPIENT). */
+export function resolveSolanaForfeitRecipient(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const raw = env.SOLANA_FORFEIT_RECIPIENT?.trim();
+  if (!raw) {
+    throw new Error(
+      "SOLANA_FORFEIT_RECIPIENT is required (public base58; no default)",
+    );
+  }
+  return raw;
+}
+
+/**
+ * Deployer secret — same role as EVM `DEPLOYER_PRIVATE_KEY`.
+ * Sole owner: `SOLANA_DEPLOYER_PRIVATE_KEY` (base58 secret key). Never commit.
+ */
+export function resolveSolanaDeployerPrivateKey(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const raw = env.SOLANA_DEPLOYER_PRIVATE_KEY?.trim();
+  if (!raw) {
+    throw new Error(
+      "SOLANA_DEPLOYER_PRIVATE_KEY is required (base58 secret key; same idea as DEPLOYER_PRIVATE_KEY; no default)",
+    );
+  }
+  return raw;
+}
+
+/** LayerZero EndpointV2 program id on the target cluster. */
+export function resolveSolanaLzEndpoint(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const raw = env.SOLANA_LZ_ENDPOINT?.trim();
+  if (!raw) {
+    throw new Error(
+      "SOLANA_LZ_ENDPOINT is required (LayerZero EndpointV2 program id; no default)",
+    );
+  }
+  return raw;
+}
+
+/**
+ * Gateway config authority (setPeer). Empty → null (caller uses deployer pubkey).
+ * Same pattern as optional roles that default to deployer on EVM testnet.
+ */
+export function resolveSolanaGatewayAuthority(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const raw = env.SOLANA_GATEWAY_AUTHORITY?.trim();
+  return raw || null;
 }
 
 export type SvmDeployProgramRow = {
@@ -109,7 +167,7 @@ export function buildSvmDeployPlan(opts: BuildSvmDeployPlanOpts): SvmDeployPlan 
   const authority = opts.upgradeAuthority.trim();
   if (!authority) {
     throw new Error(
-      "SVM_UPGRADE_AUTHORITY is required (Squads / upgrade authority base58; no default)",
+      "SOLANA_UPGRADE_AUTHORITY is required (public base58; no default)",
     );
   }
 

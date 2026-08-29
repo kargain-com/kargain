@@ -5,26 +5,40 @@ import {
   buildSvmDeployPlan,
   estimateRentExemptLamports,
   formatSvmDeployPlanTable,
-  resolveSvmUpgradeAuthority,
+  resolveSolanaDeployerPrivateKey,
+  resolveSolanaUpgradeAuthority,
   SVM_COMMERCIAL_PROGRAMS,
 } from "../scripts/lib/svm-deploy-plan.ts";
 
 describe("svm-deploy-plan", () => {
   it("fail-closed when upgrade authority missing", () => {
     assert.throws(
-      () => resolveSvmUpgradeAuthority({}),
-      /SVM_UPGRADE_AUTHORITY is required/,
+      () => resolveSolanaUpgradeAuthority({}),
+      /SOLANA_UPGRADE_AUTHORITY is required/,
     );
     assert.throws(
       () => buildSvmDeployPlan({ cluster: "solana-devnet", upgradeAuthority: "  " }),
-      /SVM_UPGRADE_AUTHORITY is required/,
+      /SOLANA_UPGRADE_AUTHORITY is required/,
+    );
+  });
+
+  it("fail-closed when deployer private key missing", () => {
+    assert.throws(
+      () => resolveSolanaDeployerPrivateKey({}),
+      /SOLANA_DEPLOYER_PRIVATE_KEY is required/,
+    );
+    assert.equal(
+      resolveSolanaDeployerPrivateKey({
+        SOLANA_DEPLOYER_PRIVATE_KEY: "  abc  ",
+      }),
+      "abc",
     );
   });
 
   it("dry-run plan lists passport + gateway under placeholder authority", () => {
     const plan = buildSvmDeployPlan({
       cluster: "solana-devnet",
-      upgradeAuthority: "SquadsV4Placeholder1111111111111111111111111",
+      upgradeAuthority: "HotUpgradeAuthority1111111111111111111111111",
     });
     assert.equal(plan.eid, 40168);
     assert.equal(plan.namespace, 2_000_040_168);
@@ -41,7 +55,7 @@ describe("svm-deploy-plan", () => {
     const table = formatSvmDeployPlanTable(plan);
     assert.match(table, /kar_passport/);
     assert.match(table, /kar_gateway/);
-    assert.match(table, /SquadsV4Placeholder/);
+    assert.match(table, /HotUpgradeAuthority/);
     assert.match(table, /offline genesis-default/);
   });
 

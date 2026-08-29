@@ -35,9 +35,11 @@ Prove upgradeable locally (no Devnet):
 
 `start-validator.sh` preloads Metaplex Core, SPL noop, `mock_endpoint`, `kar_passport`, `kar_gateway`, `mock_staking` via `--bpf-program` by default.
 
-## LzReceive account list (normative)
+## LzReceive account list
 
-Built by `kar_gateway::lz_receive_types` (indexes in `LZ_RECEIVE_ACCOUNTS`):
+Selected by `GatewayConfig.endpoint_program` in `kar_gateway::lz_receive_types`:
+
+### Mock stand (13) — `--live` / `--live-both`
 
 | # | Account | Notes |
 |---|---------|-------|
@@ -55,7 +57,11 @@ Built by `kar_gateway::lz_receive_types` (indexes in `LZ_RECEIVE_ACCOUNTS`):
 | 11 | Metaplex Core | `CoREENxT6…` |
 | 12 | `to` | recipient / new owner |
 
-Instruction data: `LzReceive { src_eid, sender, nonce, guid, message }`. Entrypoint CPIs mock `Clear` **first**, then passport BridgeMint / BridgeResetOnUnlock (+ transfer on unlock).
+### Production EndpointV2 (18) — Devnet / M2
+
+Payer first; trailing 8 metas = real `get_accounts_for_clear` (RESULTS.md S4a-1 M2). Receiver = gateway config PDA.
+
+Instruction data: `LzReceive { src_eid, sender, nonce, guid, message }`. Entrypoint CPIs Endpoint `clear` **first** (mock or production), then passport BridgeMint / BridgeResetOnUnlock (+ transfer on unlock).
 
 ## Live run
 
