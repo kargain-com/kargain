@@ -1,48 +1,37 @@
 # S4b — Solana Devnet deploy + pathway wire (40245↔40168)
 
-**Status: X2 COMPLETE — mock stand green; awaiting X3 Devnet deploy** (August 29, 2026). Hot `SOLANA_*` roles in `.env.local` (gitignored). No Squads on testnet.
+**Status: X3 DEPLOYED ON DEVNET — not cut over** (August 29, 2026). Hot `SOLANA_*` roles. No Squads. No `COMMERCIAL_ACTIVE` Solana row.
 
-**Hub peer (wiring target):** Nuclear #7 Base Sepolia gateway from manifest only — `0x7324046854342587999984683c4833852FA81827` (EID 40245). Never literal in product code.
+**Hub peer (wiring target):** Nuclear #7 Base Sepolia gateway from manifest only — `0x7324046854342587999984683c4833852FA81827` (EID 40245).
 
-**Pinned DVN pair:** `layerzero-labs` + `p2p` (snapshot pathway `40168-40245`).
+**Pinned DVN pair:** `layerzero-labs` + `p2p`.
 
-**Authority split (testnet hot):**
-- Upgrade authority of `kar-passport` + `kar-gateway` → `SOLANA_UPGRADE_AUTHORITY`
-- Gateway config authority → `SOLANA_GATEWAY_AUTHORITY` or deployer pubkey
-- Passport `forfeit_recipient` → `SOLANA_FORFEIT_RECIPIENT`
+## Devnet programs (EID 40168 / namespace `2000040168`)
 
-**Env (`.env.local`):** `SOLANA_DEPLOYER_PRIVATE_KEY` (like EVM deployer key) + public role pubkeys; see `.env.example`. Never commit secrets.
+| Program | Program id | Upgrade authority |
+|---------|------------|-------------------|
+| kar_passport | `x8wSxkx5tW5yV9j7Lg8To5m34cj6Ji8aZ1GdKjHETrf` | hot `SOLANA_UPGRADE_AUTHORITY` |
+| kar_gateway | `ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre` | same |
+| mock_staking (aux) | `H4S6Gw1taHY5ux4adNavi4Rwi5vn9s7vEKNA4K3d6n89` | same |
 
-**Tooling:** `svm-deploy` · `bridge:wire` hub↔40168 · stand `--live-both`
+Evidence (gitignored): `deployments/svm-40168.json`. Gateway config authority = deployer pubkey. Endpoint = `76y77…En6`. Forfeit = `SOLANA_FORFEIT_RECIPIENT`.
 
----
-
-## X1 — Squads verify (superseded)
-
-| Check | Result |
-|-------|--------|
-| Candidate Squads as Multisig | **AccountNotFound** |
-| Founder decision | **No Squads on testnet** — hot `SOLANA_*` roles |
+**Tooling:** `pnpm deploy:svm` · `bridge:wire` · stand `--live-both`
 
 ---
 
-## X2 — EndpointV2 receive types (2026-08-29)
+## X2 — EndpointV2 receive types
 
-| Item | Result |
-|------|--------|
-| Mock layout | **13** metas — unchanged; stand path |
-| Production layout | **18** metas — M2 indices pinned |
-| Clear CPI | mock → `cpi_clear_mock`; production → `endpoint_v2::cpi_clear_production` |
-| Selector | `GatewayConfig.endpoint_program` == `76y77…En6` → production |
-| Gate | `./svm/stand/run-stand.sh --live-both` **PASS** |
+Mock 13 / production 18 (M2); `--live-both` PASS.
 
----
+## X3 — Devnet deploy
+
+Upgradeable deploy → `--skip-new-upgrade-authority-signer-check` handoff → init passport/gateway + setBridgeGateway. PASS.
 
 ## Remaining
 
 | Step | Work |
 |------|------|
-| X3 | Upgradeable Devnet deploy → hot upgrade authority → init + evidence |
 | X4 | Wire 40245↔40168 only; read-only all `[skip]` |
 | X5 | Live RT + pin non-EVM budget |
-| X6 | SPEC §13.8 (testnet hot allowed) + this record COMPLETE + HANDOFF Next=S5 |
+| X6 | SPEC §13.8 + archive evidence + HANDOFF Next=S5 |

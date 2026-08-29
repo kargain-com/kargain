@@ -60,6 +60,7 @@
     "test:svm": "cargo test --manifest-path svm/Cargo.toml",
     "test:svm-stand": "NODE_PATH=svm/lab/node_modules node --import tsx --test --test-concurrency=1 test/svm-stand.test.ts",
     "deploy:svm:dry-run": "node --import tsx scripts/svm-deploy.ts --dry-run",
+    "deploy:svm": "node --import tsx scripts/svm-deploy.ts --live",
     "verify:bytecode-identity": "node --import tsx scripts/assert-on-chain-bytecode.ts",
     "verify:deploy-evidence": "node --import tsx scripts/assert-deploy-evidence.ts"
   },
