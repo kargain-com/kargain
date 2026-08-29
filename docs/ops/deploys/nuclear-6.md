@@ -146,6 +146,19 @@ N6-8 left open whether the IPFS CID drift was (a) unstable non-source fields in 
 
 ---
 
+## Explorer verify from deploy-time input (N6-9 V2)
+
+**No usable deploy-time `build-info` exists** (V1). Per task rules: do **not** re-verify Passport / Staking / Gateway against today’s artifacts, do **not** modify `hardhat.config.ts`, do **not** redeploy, do **not** invent a reconstruction.
+
+| Chain | Passport / Staking / Gateway | Action |
+|-------|------------------------------|--------|
+| 84532 | — | **Stopped** — no deploy-time input |
+| 11155111 | — | **Stopped** — no deploy-time input |
+
+Explorer source for those three remains red until a future nuclear deploy preserves build-info (V3) and verify reads it.
+
+---
+
 ## What Nuclear #6 source ships
 
 | Contract | VERSION | Change class |
