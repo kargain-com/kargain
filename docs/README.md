@@ -35,7 +35,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 |----------|---------|
 | [ops/deploys/nuclear-4.md](./ops/deploys/nuclear-4.md) | **Current live app** — Nuclear #4 full commercial stack (84532 + 11155111), August 2026 |
 | [ops/deploys/nuclear-6.md](./ops/deploys/nuclear-6.md) | Parallel Nuclear #6 (URI ceiling) — Sourcify Match; explorers unverified |
-| [ops/deploys/nuclear-7.md](./ops/deploys/nuclear-7.md) | Parallel Nuclear #7 — Sourcify Exact Match; Basescan/Etherscan still red for Passport/Staking/Gateway |
+| [ops/deploys/nuclear-7.md](./ops/deploys/nuclear-7.md) | Parallel Nuclear #7 — Basescan/Etherscan + Sourcify Exact Match (explorer-green after N7-1) |
 | [ops/deploys/archive/](./ops/deploys/archive/) | **Historical** — Nuclear #2/#3, June v2, AuctionEscrow, pre-Nuclear bridge pathway |
 | [ops/deploys/multichain-browser-e2e-checklist.md](./ops/deploys/multichain-browser-e2e-checklist.md) | Maintainer dual-chain browser/ops checklist (testnet) |
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |

@@ -91,6 +91,6 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 3. **Do not recompile.**
 4. `pnpm verify:deploy-evidence` (+ `--eth`) — refuses if evidence missing or artifacts rebuilt since deploy.
 5. `pnpm verify:bytecode-identity` (+ `--eth`) — on-chain body ≡ repo.
-6. `pnpm verify:sepolia` / `verify:sepolia:eth` — restores stored build-info; explorer must show verified source to a visitor.
+6. `pnpm verify:sepolia` / `verify:sepolia:eth` — **evidence-backed direct submit** (`verify-from-deploy-evidence` + Etherscan standard-json); explorer must show verified source to a visitor. Hardhat verify is not the nuclear path.
 7. Sourcify publish — record Match/Exact + `repo.sourcify.dev` URLs (first-class, not a fallback).
 8. **Only then** recompile or `bridge:wire` (S4b against this hub only).

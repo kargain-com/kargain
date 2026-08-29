@@ -2,7 +2,7 @@
 
 > **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
 
-**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack beside Nuclear #4 (live app), #5, and #6. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
+**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack beside Nuclear #4 (live app), #5, and #6. Explorers **green** for Passport / Staking / Gateway after N7-1. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
 
 **Local only.** Empty-testnet full redeploy. Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N6 manifests archived: `docs/ops/deploys/archive/nuclear-6-*.manifest.json`.
 
@@ -54,23 +54,13 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 | 4 | **Did not recompile** | Held |
 | 5 | `pnpm verify:deploy-evidence` (+ `--eth`) | **OK** both |
 | 6 | `pnpm verify:bytecode-identity` (+ `--eth`) | **11/11** both |
-| 7 | `pnpm verify:sepolia` / `:eth` | Modes/libs/proxies green; Passport / Staking / Gateway **HHE80009** |
-| 7b | Visitor `getsourcecode` | Passport / Staking / Gateway **NOT verified** on Basescan/Etherscan |
-| 8 | Sourcify | **exact_match** ×6 (runtime + creation) |
-| 9 | `bridge:wire` | **Not run** — stop rule (explorers red for the three) |
+| 7 | `pnpm verify:sepolia` / `:eth` | Modes/libs OK; Passport/Staking/Gateway **HHE80009** (Hardhat-local) |
+| 7b | Visitor `getsourcecode` (at deploy) | Passport / Staking / Gateway **NOT verified** |
+| 8 | Sourcify | **exact_match** ×6 |
+| 9 | `bridge:wire` | **Not run** at deploy (stop rule) |
+| N7-1 | Direct standard-json submit | Explorer **Pass - Verified** ×6 visitors green; Hardhat verify retired from nuclear path |
 
-**Stop rule fired:** Passport / Staking / Gateway remain unverified for a Basescan/Etherscan visitor. **Do not** start S4b. Evidence files remain intact for diagnosis.
-
-### Diagnosis note (evidence intact)
-
-Retaining deploy-time `build-info` was necessary but **not sufficient** for Hardhat→Etherscan verify on these three. Pattern matches N5/N6:
-
-- Timelock (no `immutable`): artifact `deployedBytecode` ≡ on-chain full bytes → explorer verify OK / skip-already-verified.
-- Passport / Staking / Gateway (`immutable` set in ctor): artifact slots are unfilled; on-chain is filled; `verify:bytecode-identity` (immutable-fill then CBOR-strip) **passes**; Hardhat `verify etherscan` still reports **HHE80009** locally and does not leave visitor-green source on Basescan/Etherscan.
-- Sourcify accepts **exact_match** from the same retained input — first-class public audit route is green.
-
-Next investigation (not this runbook): Hardhat verify path for immutable-ctor contracts vs Etherscan full-bytecode gate — without destroying `{chainId}.build-info.json`.
-
+**Stop rule at deploy was correct** (visitors red). **N7-1** proved the explorer accepts the retained evidence when submitted directly; nuclear verify no longer uses Hardhat.
 ---
 
 ## On-chain read-back (RPC August 29, 2026)
@@ -85,7 +75,7 @@ Next investigation (not this runbook): Hardhat verify path for immutable-ctor co
 | KarPassport | `0x3A7742eac882769351dF11112bf2f8bf2D11a7A5` | `VERSION` **1.11.0-rc.1** |
 | FixedPriceConsignment | `0xEc97fC815055CBD51746F7D6966340a1318Ac6F8` | `VERSION` **2.4.0-rc.1** |
 | AscendingConsignment | `0x496351CD0788c7312DEeA4b15dA71B521d534dc5` | `VERSION` **2.5.0-rc.1** |
-| KarPassportBridgeGateway | `0x7324046854342587999984683c4833852FA81827` | `VERSION` **1.4.0-rc.1** — **intended S4b hub peer — blocked until explorers green** |
+| KarPassportBridgeGateway | `0x7324046854342587999984683c4833852FA81827` | `VERSION` **1.4.0-rc.1** — **S4b EVM peer for 40245↔40168** (explorers green after N7-1) |
 | AscendingHoldLib / OpenLib | `0xb9223736…556d` / `0x3A86425F…179e` | linked at Ascending impl |
 
 ### Ethereum Sepolia (11155111) — `indexFromBlock` **11591966**
@@ -102,20 +92,37 @@ Next investigation (not this runbook): Hardhat verify path for immutable-ctor co
 
 ---
 
-## Public verification outcomes
+## Public verification outcomes (N7-1)
 
-### Explorer (visitor) — goal of N7
+### Explorer (visitor) — goal of N7 — **GREEN after N7-1**
 
 | Chain | Contract | Visitor sees |
 |-------|----------|--------------|
-| 84532 | KarPassport | **Not verified** (`getsourcecode` empty) |
-| 84532 | KarProStaking | **Not verified** |
-| 84532 | KarPassportBridgeGateway | **Not verified** |
-| 11155111 | KarPassport | **Not verified** |
-| 11155111 | KarProStaking | **Not verified** |
-| 11155111 | KarPassportBridgeGateway | **Not verified** |
+| 84532 | KarPassport | **Verified** (Basescan) |
+| 84532 | KarProStaking | **Verified** |
+| 84532 | KarPassportBridgeGateway | **Verified** |
+| 11155111 | KarPassport | **Verified** (Etherscan) |
+| 11155111 | KarProStaking | **Verified** |
+| 11155111 | KarPassportBridgeGateway | **Verified** |
 
-Modes / Ascending libs / proxies: verified on both explorers (Hardhat verify succeeded).
+Modes / Ascending libs / proxies: verified earlier via Hardhat path (still green).
+
+### N7-1 diagnosis — Hardhat vs direct submit (August 29, 2026)
+
+**S1:** With restored `{chainId}.build-info.json`, Hardhat `verify etherscan` for hub KarPassport **did** contact Basescan (stdout: two “Submitted source code…” attempts — minimal input failed, full solc input passed). No `HHE80009` in that run. Earlier N7 deploy-time `HHE80009` was therefore a **local Hardhat abort / wrong compare path**, not an explorer refusal of good artifacts. HTTP spy on `http.request` alone is insufficient (Hardhat uses fetch/undici).
+
+**S2:** Direct `verifysourcecode` with `codeformat=solidity-standard-json-input` from stored build-info + ABI-encoded ctor args — explorer verbatim:
+
+| Chain | Contract | Verdict |
+|-------|----------|---------|
+| 84532 | KarProStaking | `Pass - Verified` |
+| 84532 | KarPassport | already verified (from S1) |
+| 84532 | Gateway | `Pass - Verified` |
+| 11155111 | KarProStaking | `Pass - Verified` |
+| 11155111 | KarPassport | `Pass - Verified` |
+| 11155111 | Gateway | `Pass - Verified` |
+
+**S3:** Nuclear `pnpm verify:sepolia` / `:eth` now submits from stored evidence via `scripts/lib/verify-from-deploy-evidence.ts` + `etherscan-api.ts`. Hardhat verify is **retired** from the nuclear runbook path.
 
 ### Sourcify (first-class; Exact Match)
 
@@ -128,6 +135,7 @@ Modes / Ascending libs / proxies: verified on both explorers (Hardhat verify suc
 | 11155111 | KarProStaking | exact_match | https://repo.sourcify.dev/11155111/0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43 |
 | 11155111 | KarPassportBridgeGateway | exact_match | https://repo.sourcify.dev/11155111/0x910631Df5aA4d47Ce20a6D485cd9DdC2E68D8eBc |
 
+
 ---
 
 ## Ops sequencing (do not collapse)
@@ -137,9 +145,9 @@ Modes / Ascending libs / proxies: verified on both explorers (Hardhat verify suc
 | N7-0 runbook + evidence guard | August 29 | **Done** |
 | Deploy N7 both chains | August 29 | **Done** |
 | Evidence + bytecode-identity | August 29 | **Done** — green |
-| Explorer visitor green (Passport/Staking/Gateway) | August 29 | **RED** — stop before S4b |
+| Explorer visitor green (Passport/Staking/Gateway) | August 29 | **Done (N7-1)** — direct standard-json submit |
 | Sourcify Exact Match ×6 | August 29 | **Done** |
-| Wire 40245↔40168 (Solana) | **S4b** against N7 hub only | **Blocked** until explorers green |
+| Wire 40245↔40168 (Solana) | **S4b** against N7 hub `0x73240468…1827` | Ready for S4b (needs Squads + DVN) |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
-**Do not** wire any LayerZero pathway against Nuclear #6 or against this N7 hub until Basescan/Etherscan show verified source for Passport / Staking / Gateway. **Do not** run `bridge:wire` in this runbook.
+**Do not** wire against Nuclear #6. S4b targets **this** hub gateway only. Nuclear verify = evidence-backed direct submit (`verify:sepolia`), not Hardhat.
