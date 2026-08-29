@@ -51,7 +51,82 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 | AscendingConsignment | `0x77C881b9FB3cD425367c99378588b2790669F51F` | **2.5.0-rc.1** |
 | KarPassportBridgeGateway | `0xb9B649e13cA11a87c8842dD593E2008FBd130ECb` | **1.4.0-rc.1** |
 
-**Verify (best-effort):** Ascending + libs + FixedPrice proxy newly verified both explorers. KarPassport / KarProStaking / Gateway reported **bytecode_mismatch** (non-`--strict`; same class as N5 HHE80009) — on-chain deploy valid; confirm via VERSION reads above. Re-run verify with matching artifact / `--force` before treating explorer source as green for cutover.
+**Verify (best-effort):** Ascending + libs + FixedPrice proxy newly verified both explorers. KarPassport / KarProStaking / Gateway reported **bytecode_mismatch** (non-`--strict`; same class as N5 HHE80009). **N6-8 (below):** on-chain runtime ≡ this repo’s executable body after immutable fill; mismatch is CBOR metadata only — not a foreign binary.
+
+---
+
+## Bytecode identity (N6-8) — August 29, 2026
+
+**Question:** is deployed Nuclear #6 Passport / Staking / Gateway the code in this repository at `19f964f`?
+
+**Answer:** **Yes** (executable body). Explorer `bytecode_mismatch` is trailing solc CBOR metadata (IPFS content hash), not a different program.
+
+### Method
+
+- Local: two clean `rm -rf artifacts cache && pnpm compile` on `19f964f`; compare `deployedBytecode` (not creation `bytecode`).
+- Chain: `eth_getCode` via configured Hardhat RPCs (no txs).
+- Raw compare, then fill Solidity `immutable` slots from Hardhat `immutableReferences` + N6 manifest ctor values, then strip solc CBOR trailer (last two bytes = metadata length).
+
+**Compile reproducibility:** identical across both clean runs.
+
+| Artifact | Runtime bytes | SHA-256 of `deployedBytecode` |
+|----------|---------------|-------------------------------|
+| KarPassport | 15077 | `066e212a6394f1630e04a8e506cb7e3b877928161b68df4978d48cc2fc771c8b` |
+| KarProStaking | 3670 | `ed2f463be38840c6372ccc01864938c364d546c2c2ac659c0e9830d648ccaac8` |
+| KarPassportBridgeGateway | 9413 | `2acf52215411cb94a18c791c1bf27107c12022d3ec116cd841899219eedd7d27` |
+
+**RPC:** 84532 → `sepolia.base.org` (`BASE_SEPOLIA_RPC_URL`). 11155111 → `ethereum-sepolia-rpc.publicnode.com` (`ETH_SEPOLIA_RPC_URL`).
+
+**Immutables filled (manifest):** Passport ← staking + forfeit + `tokenIdOffset`; Staking ← `karProPass`; Gateway ← LZ `endpoint` + ONFT `innerToken` (passport).
+
+### B1 — six comparisons
+
+| Chain | Contract | Len local=chain | Raw firstDiff | After immutable fill | CBOR-stripped body |
+|-------|----------|-----------------|---------------|----------------------|--------------------|
+| 84532 | KarPassport | 15077 | 1637 (immutable slot) | firstDiff 15034 (metadata) | **equal** |
+| 84532 | KarProStaking | 3670 | 973 (immutable slot) | firstDiff 3627 (metadata) | **equal** |
+| 84532 | Gateway | 9413 | 804 (immutable slot) | firstDiff 9370 (metadata) | **equal** |
+| 11155111 | KarPassport | 15077 | 1637 | firstDiff 15034 | **equal** |
+| 11155111 | KarProStaking | 3670 | 973 | firstDiff 3627 | **equal** |
+| 11155111 | Gateway | 9413 | 804 | firstDiff 9370 | **equal** |
+
+Raw body inequality is **only** at immutable slots (expected). After fill: lengths match; sole remaining difference is the **51-byte** trailing metadata (both sides `metaLen=51`).
+
+### B2 — metadata-only (applies)
+
+CBOR shape on chain and local (all six): `a2` map → `ipfs` bytes34 + `solc` bytes3. **solc stamp identical:** `0.8.28` (`300081c`). What varies is the **IPFS content hash** of the compiler standard-JSON input, e.g. Passport:
+
+| | IPFS CID payload (hex, 34 bytes incl. multibase prefix) |
+|--|--|
+| On-chain (both networks; same deploy artifact) | `12203faa0dc60a6f85b0273251bca22a31d313e97ea7b314116354bb3f6b23367b8f` |
+| Local recompile at diagnosis | `1220111d21c95beeffb728b100932c4d957581f97ddf6149db17da19f1a3bf6f24a4` |
+
+Explorers / Hardhat verify rebuild **creation** bytecode (`bytecode` + ABI-encoded ctor args) with the **current** compile’s metadata auxdata. That CID ≠ deploy-time CID → HHE80009 `bytecode_mismatch` even when the executable runtime matches.
+
+**Why Ascending / FixedPrice proxy can still show verified:**
+
+- **ERC1967Proxy** (FixedPrice proxy address): local vs chain runtime body **and** metadata are **byte-identical** (OZ npm sources stable under `npmFilesToBuild`). Exact match including auxdata.
+- Ascending + libs / FixedPrice were marked verified in the deploy-session verify pass (artifact metadata then matched what was submitted). Skip-if-verified hides later recompile drift. The three ctor+non-proxy contracts hit mismatch whenever verify rebuilds from a fresh compile whose IPFS CID drifted.
+
+Control note (not a B3 for the three targets): FixedPrice **impl** local vs chain differs at two **20-byte** runs that equal the impl address on chain (zeros locally) — separate from the Passport/Staking/Gateway immutable-32 pattern; proxy verification does not require impl metadata equality.
+
+### B3
+
+Does **not** apply — no unexplained executable-body divergence after immutable fill.
+
+### B4 — missing gate (describe only; not implemented)
+
+[`test/verify-constructor-args.test.ts`](../../../test/verify-constructor-args.test.ts) asserts Passport/Staking/Gateway **arg tuples** from builders, but imports **only** `FixedPriceConsignmentAbi` / `AscendingConsignmentAbi` to decode proxy `initialize`. It never:
+
+1. Checks Passport/Staking/Gateway builder arity/types against the **compiled artifact** `constructor.inputs`.
+2. Asserts the deploy script’s Hardhat artifact `deployedBytecode` is the one just compiled (digest / no-recompile-between-compile-and-deploy).
+3. Post-deploy: immutable-filled local runtime ≡ `eth_getCode` (would catch foreign bytecode; would **not** by itself clear explorer HHE80009).
+
+**Home when implemented:** extend `test:verify` beside constructor-args; optional deploy dry-run / post-deploy identity check in `scripts/deploy.ts` adjacency — not a substitute for explorer green.
+
+### Opinion (labelled)
+
+**Trust for S4b peer wiring:** the Nuclear #6 hub gateway `0xFA4FcEf7…DB29` (and sibling Passport/Staking on both chains) **is** this repository’s executable at the diagnosed commit. Explorer source verification remains red until metadata/CID alignment is fixed; that is a verify-pipeline issue, not evidence of a different on-chain program.
 
 ---
 
