@@ -155,6 +155,48 @@ At URI=731: only the **aggressive** ALT model (payer-only static) fits among pro
 
 **Do not** treat these maxima as a product ceiling change — measurement for a later design decision only.
 
+## S4a-2 — URI ceiling facts (2026-08-29) — no implementation
+
+**No** contract / SPEC / config / ceiling ship. Numbers + census only.
+
+### Q1 — Live URI census (Nuclear #4 indexer)
+
+| Covered | Result | Source |
+|---------|--------|--------|
+| Endpoint | `https://ponder.kargain.com` — `/ready` 200; `/status` tip blocks 84532≈46112670 / 11155111≈11590782 | live HTTP |
+| Query | `GET /passports?limit=100&page=1` (API max 100; one page) | `tokenUri` UTF-8 byte length |
+| Count / max / p99 | **6** passports (all `chainId=84532`); max **49**; p99 **49**; buckets 0–48: **4**, 49–96: **2**, 97–192: **0**, 193+: **0** | computed |
+| URI > 192 | **none** | — |
+| Prefixes | all **6** `ar://` (2 Irys-shaped 44-char ids → 49 B total; 4 smoke/proof short ids) | — |
+| Eth Sepolia rows | **0** in indexer | — |
+| N4 vs N5 | `COMMERCIAL_ACTIVE` `indexFromBlock` still N4 (**44957457** / **11404204**) — **N5 not indexed**. Read-only RPC: N5 passports `0x8542…a70e` / `0x2961…0b2d` `nextTokenId ==` namespace offset → **0 mints** on both N5 stacks | viem `nextTokenId` |
+
+### Q2 — EVM→EVM failure class (same LZ pin as S4a-1)
+
+| Covered | Result | Source |
+|---------|--------|--------|
+| Pin | LayerZero-v2 **`9c741e7f…b9ac`** `EndpointV2.sol` | same as S4a-1 |
+| Verdict | URI-driven destination **OOG is retryable** on EVM: `lzReceive` clears then calls the OApp **in one tx** — revert/OOG rolls back the clear. Failed attempts emit `lzReceiveAlert` **without** clearing. URI length alone does **not** make an EVM→EVM message permanently unexecutable. Explicit OApp/Endpoint `clear` / burn / nilify are **admin discard**, not length-OOG. | quote in session report |
+
+### Q3 — Max URI U (production 18-meta, **no ALT**) + headroom
+
+Model = S4a-1 production foreign-mint legacy assembly (`to≠payer`, CU + Borsh `LzReceive`). Headroom **h** = extra future Endpoint account metas (+1 ix index + +1 static 32-byte key each). Binary search size ≤ **1232**. **Computed only.**
+
+| h (extra accounts) | Max U (UTF-8 B) | Size @ U | Breakdown (sigs / hdr / keys / bh / ixs) | Margin | EVM `requiredLzReceiveGasForByteLength(U)` | Under 1e6 cap? |
+|--------------------|-----------------|----------|------------------------------------------|--------|---------------------------------------------|----------------|
+| 0 | **256** | 1205 | 65 / 3 / 577 / 32 / 528 | +27 | 453 069 | yes |
+| 1 | **224** | 1206 | 65 / 3 / 609 / 32 / 497 | +26 | 416 269 | yes |
+| 2 | **192** | 1207 | 65 / 3 / 641 / 32 / 466 | +25 | 379 469 | yes |
+| 3 | **160** | 1208 | 65 / 3 / 673 / 32 / 435 | +24 | 342 669 | yes |
+
+**Minimum product pointer:** `lib/storage/irys-client.ts` returns `` `ar://${receipt.id}` ``. Observed live Irys id = **44** chars → **49** UTF-8 bytes; common 43-char Arweave id → **48** B. App mint/edit upload path writes **only** that form (not `ipfs://` / raw `https://` as `tokenURI`). Short `ar://nuclear-4-proof*` strings exist on testnet smoke mints only.
+
+**Do not** write U into `lz-receive-gas.ts` from this task.
+
+### Q4 — Enforcement points
+
+Full table with proposed refusal names: **session report** (not duplicated here). Summary: on-chain length gate needed at **passport write** (`mintPassport` / `setPassportURI`) **and** **gateway send** (last gate before leave); receive-side `bridgeMint` / unlock adopt as defense-in-depth; client `exceeds_cap` stays UX-only; SVM mirrors when commercial; `recoverLockedHome` uses empty URI (no length issue).
+
 ## Proofs
 
 | ID | Result | Detail |
