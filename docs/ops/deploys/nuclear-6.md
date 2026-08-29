@@ -36,7 +36,7 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 | KarPassport | `0x8fc3325c2d018812Fcf782e3DE0f0F954B3f1915` | `VERSION` **1.11.0-rc.1**; Timelock; gateway bound |
 | FixedPriceConsignment | `0x6aD4409089FcF8f2513b7E90CB7818d04D80Dedb` | `VERSION` **2.4.0-rc.1**; Timelock; guardian as above; USDC asset-only (feed 0) |
 | AscendingConsignment | `0x6f309EdABCfcd3243E63eAc6EC2c476a9Ef3526e` | `VERSION` **2.5.0-rc.1**; Timelock |
-| KarPassportBridgeGateway | `0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29` | `VERSION` **1.4.0-rc.1** — **S4 EVM peer for 40245↔40168** |
+| KarPassportBridgeGateway | `0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29` | `VERSION` **1.4.0-rc.1** — **not** an S4b peer (explorers unverified; S4b waits for N7) |
 | AscendingHoldLib / OpenLib | `0x28ADFC…2a40` / `0x2dC244…0096` | linked at Ascending impl |
 
 ### Ethereum Sepolia (11155111) — `indexFromBlock` **11591272**
@@ -126,7 +126,7 @@ Does **not** apply — no unexplained executable-body divergence after immutable
 
 ### Opinion (labelled)
 
-**Trust for S4b peer wiring:** the Nuclear #6 hub gateway `0xFA4FcEf7…DB29` (and sibling Passport/Staking on both chains) **is** this repository’s executable at the diagnosed commit. Explorer source verification remains red until metadata/CID alignment is fixed; that is a verify-pipeline issue, not evidence of a different on-chain program.
+**Trust for repository identity:** the Nuclear #6 hub gateway `0xFA4FcEf7…DB29` (and sibling Passport/Staking on both chains) **is** this repository’s executable at the diagnosed commit. Explorer source verification remains red; **do not** wire S4b against this gateway — wait for Nuclear #7.
 
 ---
 
@@ -223,26 +223,33 @@ Cross-check [ethereum.org Verifying](https://ethereum.org/developers/docs/smart-
 
 | Surface | Passport / Staking / Gateway |
 |---------|------------------------------|
-| [repo.sourcify.dev](https://repo.sourcify.dev) `/{chainId}/{address}` | **Match** — source, ABI, metadata readable (e.g. hub gateway [84532/0xFA4FcEf7…](https://repo.sourcify.dev/84532/0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29)) |
+| Sourcify repo (table below) | **Match** — source, ABI, metadata readable |
 | sepolia.basescan.org / sepolia.etherscan.io | **Not verified** — “Verify and Publish your contract source code today!”; no Contract Source Code Verified badge |
+
+**Sourcify repo URLs (Match — first-class audit route):**
+
+| Chain | Contract | URL |
+|-------|----------|-----|
+| 84532 | KarPassport | https://repo.sourcify.dev/84532/0x8fc3325c2d018812Fcf782e3DE0f0F954B3f1915 |
+| 84532 | KarProStaking | https://repo.sourcify.dev/84532/0xB081b8e3c6a5f72e07D5628F60A77Fb018BF0029 |
+| 84532 | KarPassportBridgeGateway | https://repo.sourcify.dev/84532/0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29 |
+| 11155111 | KarPassport | https://repo.sourcify.dev/11155111/0xFCC3FB7e926483778898f8Dd38bDb1Db51412a41 |
+| 11155111 | KarProStaking | https://repo.sourcify.dev/11155111/0x2F1036251227EdaFaC51934AB5157854d2632Dc4 |
+| 11155111 | KarPassportBridgeGateway | https://repo.sourcify.dev/11155111/0xb9B649e13cA11a87c8842dD593E2008FBd130ECb |
 
 ### P3
 
 Does **not** apply to Sourcify (accepted). Applies to **Basescan/Etherscan** as the cutover bar: they do not accept/display this metadata-divergent verification.
 
-### P4 — Cutover consequence
+### P4 — Cutover consequence (amended N7-0)
 
-**Basescan and Etherscan remain red** for the three ctor+non-proxy contracts, so Nuclear #6 **cannot** be the stack that goes live under the public-explorer bar — even though Sourcify Match and `verify:bytecode-identity` both succeed. The cutover stack must be a **fresh** nuclear deploy that retains V3 `build-info` evidence and completes explorer verify **before** any clean recompile. Until that stack exists, any **S4b** wire of **40245↔40168** against hub `0xFA4FcEf7…DB29` is **provisional** and must be **re-peered** to the cutover hub gateway.
+**Basescan and Etherscan remain red** for the three ctor+non-proxy contracts, so Nuclear #6 **cannot** be the stack that goes live under the public-explorer bar — even though Sourcify Match and `verify:bytecode-identity` both succeed.
 
-**Repeat list for the cutover stack:**
+**Do not wire S4b against N6.** No LayerZero pathway (including **40245↔40168**) is wired to hub gateway `0xFA4FcEf7…DB29`. Same rule as not wiring N5. S4b waits for **Nuclear #7** explorer-green hub gateway — see [nuclear-7.md](./nuclear-7.md).
 
-1. Nuclear deploy both chains (roles, VERSIONS, `indexFromBlock`) with clean git tree  
-2. Persist `{chainId}.build-info.json` + `.artifacts/` (V3)  
-3. `pnpm verify:bytecode-identity` (+ `--eth`)  
-4. Explorer verify (+ Sourcify) **while** stored build-info is intact  
-5. Wire **40245↔40161** on the **new** gateways  
-6. Re-wire **40245↔40168** if S4b already pointed at N6 hub  
-7. S9: `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge  
+Sourcify Match remains a **first-class** public audit route for this parallel stack (table below) even while explorers stay red.
+
+**Repeat list:** founder runs nuclear-7.md (identical-source redeploy + evidence guard + explorer + Sourcify) → **then** S4b against **N7** hub → S9 cutover later.
 
 ---
 
@@ -270,9 +277,10 @@ SVM mirrors the same ceiling (write / send); receive never length-rejects.
 | Deploy N6 both chains | August 29 | **Done** |
 | N6-8 bytecode identity (diagnosis) | August 29 | **Done** — executable match |
 | N6-9 V1–V4 (verifiable deploys) | August 29 | **Done** — gates in tree; N6 has no stored build-info (V2) |
-| N6-10 partial match / public verify | August 29 | **Done** — Sourcify Match ×6; Basescan/Etherscan still red → cutover needs fresh V3 deploy; S4b provisional |
-| Wire 40245↔40161 on **new** N6 gateways | optional before S4 | Not run (N4 pathway stays for live app) |
-| Wire 40245↔40168 (Solana) | **S4b+** against hub gateway `0xFA4FcEf7…DB29` | Pending — **provisional** until explorer-green cutover stack |
+| N6-10 partial match / public verify | August 29 | **Done** — Sourcify Match ×6; Basescan/Etherscan still red |
+| N7-0 runbook + evidence guard | August 29 | **Done** — [nuclear-7.md](./nuclear-7.md); **do not** wire S4b against N6 |
+| Wire 40245↔40161 on N6 gateways | — | **Skipped** — N6 is not an S4 peer; N4 pathway stays for live app |
+| Wire 40245↔40168 (Solana) | **S4b** against **Nuclear #7** hub only | Blocked until N7 explorer-green |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
-**Do not** run `bridge:wire:read-only` against N4 pathway as an N6 gate — that pathway stays for the live app until S9.
+**Do not** wire any pathway against N6 hub `0xFA4FcEf7…DB29`. **Do not** run `bridge:wire:read-only` against N4 pathway as an N6 gate — that pathway stays for the live app until S9.

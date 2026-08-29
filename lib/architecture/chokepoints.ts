@@ -197,11 +197,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "deployments-directory",
-    owner: "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts",
-    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; tests must not rename/unlink repo manifests",
+    owner:
+      "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts · scripts/lib/assert-deploy-evidence.ts",
+    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; verify:deploy-evidence refuses missing/drifted digests before explorer verify; tests must not rename/unlink repo manifests",
     guardTests: [
       "deployments-mutation-policy.test.ts",
       "deployment-build-info.test.ts",
+      "assert-deploy-evidence.test.ts",
     ],
   },
   {

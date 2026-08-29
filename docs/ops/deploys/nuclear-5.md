@@ -80,9 +80,15 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 
 **Do not** run `bridge:wire:read-only` against N4 pathway as a N5 gate — that pathway is intentionally left for the live app until S9.
 
-### Post-deploy gates (N6-9 template — apply on next nuclear)
+### Post-deploy gates (N7 template — every nuclear)
 
-1. Working tree must be clean (`git status --porcelain` empty) — live deploy refuses dirty trees.
-2. Deploy writes `deployments/{chainId}.build-info.json` + `.artifacts/` and manifest digests.
-3. `pnpm verify:bytecode-identity` (and `--eth`) — on-chain body ≡ repo (immutable-filled); **required** before treating the stack as identity-proven.
-4. `pnpm verify:sepolia` / `verify:sepolia:eth` — restores stored build-info; explorer green is secondary to step 3.
+**Lesson:** Never clean-recompile between deploy and explorer verify; persist `build-info` in the same deploy write as the manifest — N6 lost the CID trail by wiping artifacts before verify.
+
+1. Working tree clean — live deploy refuses dirty trees.
+2. Deploy writes `deployments/{chainId}.build-info.json` + `.artifacts/` and manifest `buildInfoSha256` / `artifactDigests`.
+3. **Do not recompile.**
+4. `pnpm verify:deploy-evidence` (+ `--eth`) — refuses if evidence missing or artifacts rebuilt since deploy.
+5. `pnpm verify:bytecode-identity` (+ `--eth`) — on-chain body ≡ repo.
+6. `pnpm verify:sepolia` / `verify:sepolia:eth` — restores stored build-info; explorer must show verified source to a visitor.
+7. Sourcify publish — record Match/Exact + `repo.sourcify.dev` URLs (first-class, not a fallback).
+8. **Only then** recompile or `bridge:wire` (S4b against this hub only).
