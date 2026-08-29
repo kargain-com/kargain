@@ -1,5 +1,5 @@
 /** Must match on-chain `VERSION` constants. Semver + `-rc.N` on testnet; drop pre-release on mainnet (spec §11).
- *  Nuclear #4 ship numbers — bump with the full commercial redeploy that makes them real on chain.
+ *  Nuclear #5 ship numbers — bump with the full commercial redeploy that makes them real on chain.
  */
 export const CONTRACT_VERSIONS = {
   KarPassport: "1.10.0-rc.1",

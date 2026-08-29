@@ -1,7 +1,30 @@
-# SVM workspace (S3)
+# SVM workspace (S4a)
 
 Local Solana programs and shared crates for the KarPassport / bridge gateway port.
-**No Devnet writes in S3.** Lab proofs: [`lab/RESULTS.md`](lab/RESULTS.md).
+**No Devnet writes in S4a.** Lab proofs: [`lab/RESULTS.md`](lab/RESULTS.md). Upgradeable deploy proof: [`scripts/prove-upgradeable-deploy.sh`](scripts/prove-upgradeable-deploy.sh).
+
+## Toolchain (pinned)
+
+| Layer | Pin | Notes |
+|-------|-----|-------|
+| Host Rust (`cargo test`) | **1.85.0** via [`rust-toolchain.toml`](rust-toolchain.toml) and repo `.tool-versions` | Workspace host builds only |
+| Solana Devnet `getVersion` | **`4.3.0-beta.2`** (read **2026-08-29** against `https://api.devnet.solana.com`) | Authoritative for S4b |
+| Local Agave / `solana-cli` | **`4.3.0-beta.2`** (`agave-install init 4.3.0-beta.2`) | Must match Devnet for upgradeable proof |
+| `cargo-build-sbf` | **4.2.0** (ships with that Agave) | |
+| platform-tools | **v1.56** | SBF rustc 1.89.0 under `~/.cache/solana/v1.56/` |
+| Upgradeable-loader builds | **`cargo-build-sbf --arch v3`** | Required after SIMD-0500; `v0`/`v1`/`v2` → `sbpf_version … not enabled` |
+| Stand preload path (legacy) | `--arch v0` + `solana-test-validator --bpf-program` | Still used by default stand; bypasses upgradeable loader |
+
+Ensure Agave CLI is on `PATH` (e.g. `~/.local/share/solana/install/active_release/bin`).
+
+**Upgradeable path (S4a T1 — proven locally):**
+
+```bash
+./svm/scripts/prove-upgradeable-deploy.sh
+# deploy with --upgrade-authority A → set-upgrade-authority to B → program show Authority = B
+```
+
+Do **not** treat `--bpf-program` preload as proof of the Devnet deploy path.
 
 ## Workspace members
 
@@ -39,18 +62,16 @@ Cross-VM stand docs: [`stand/README.md`](stand/README.md). S3.5 candidates (scen
 
 ## BPF build
 
-Same toolchain as the lab harness (`mpl-core` **0.11.2** + `solana-program` **2.3**, `--arch v0`).
-Ensure Agave CLI tools are on `PATH` (e.g. `~/.local/share/solana/install/active_release/bin`):
-
 ```bash
-# from each program directory, e.g.
-cd programs/kar-passport && cargo-build-sbf --arch v0
-cd ../kar-gateway && cargo-build-sbf --arch v0
-cd ../mock-staking && cargo-build-sbf --arch v0
-cd ../mock-endpoint && cargo-build-sbf --arch v0
+# Upgradeable / Devnet-shaped (S4a+):
+cd programs/kar-passport && cargo-build-sbf --arch v3
+# … same for kar-gateway, mock-staking, mock-endpoint
+
+# Stand preload (legacy --bpf-program path):
+cargo-build-sbf --arch v0
 ```
 
-Artifacts land in each package’s `target/deploy/*.so`. Load via `solana-test-validator --bpf-program` (upgradeable deploy of platform-tools v1.54 was rejected on Agave 4.2 in lab — see RESULTS).
+Artifacts land in `svm/target/deploy/*.so`.
 
 Host `cargo test` does **not** require `cargo-build-sbf`.
 
@@ -60,4 +81,4 @@ Host `cargo test` does **not** require `cargo-build-sbf`.
 - Permanent freeze authority = **gateway freeze PDA**; custody_locked is a **state field** (`may` ignores it).
 - Asset PDA = `[b"asset", token_id]` under the passport program (32-byte BE tokenId).
 - Gateway has **no** `fund_receive_rent` instruction; the receive fee payer covers rent.
-- Do not invent CU/rent budget pins here — measure in S3 stand / pin in S4.
+- Do not invent CU/rent budget pins here — measure locally in S4a / re-measure on Devnet in S4b before writing `lz-receive-gas.ts`.

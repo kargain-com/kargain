@@ -1,0 +1,5 @@
+# Host Rust for `cargo test` in the svm workspace.
+# SBF builds use Agave platform-tools rustc (see svm/README.md Toolchain).
+[toolchain]
+channel = "1.85.0"
+components = ["rustfmt", "clippy"]

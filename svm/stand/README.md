@@ -16,14 +16,24 @@ Host simulation (`host-sim.ts`) always runs under `test:svm-stand` and proves re
 
 Live path (`live-roundtrip.ts`, `KARGAIN_SVM_STAND_LIVE=1`) **requires** a healthy validator and **fails** (does not soft-skip) if Core CPI mint/unlock fails.
 
-## Toolchain: Agave 4.2 + `--bpf-program`
+## Toolchain: Agave 4.3 + dual load paths
 
-Upgradeable-loader deploy of platform-tools v1.54 fails locally (`sbpf_version … not enabled`). **Resolved path (lab and stand):**
+**Devnet / local Agave (2026-08-29):** `4.3.0-beta.2`. Full pins: [`svm/README.md`](../README.md).
 
-1. `cargo-build-sbf --arch v0`
-2. Load every program with `solana-test-validator --bpf-program <pubkey> <path.so>`
+| Path | Build | Load | Authority |
+|------|-------|------|-----------|
+| **Upgradeable (S4a — Devnet-shaped)** | `cargo-build-sbf --arch v3` | `solana program deploy` + `set-upgrade-authority` | Exists (Squads stand-in) |
+| **Preload (stand default)** | `cargo-build-sbf --arch v0` | `solana-test-validator --bpf-program` | None (bypasses upgradeable loader) |
 
-`start-validator.sh` preloads Metaplex Core, SPL noop, `mock_endpoint`, `kar_passport`, `kar_gateway`, `mock_staking`. This is a loader/toolchain fix, not an architectural deferral.
+Prove upgradeable locally (no Devnet):
+
+```bash
+./svm/scripts/prove-upgradeable-deploy.sh
+```
+
+`v0` artifacts fail upgradeable deploy with `sbpf_version … not enabled` (SIMD-0500). Preload path remains for the default stand until dual-load coverage lands.
+
+`start-validator.sh` preloads Metaplex Core, SPL noop, `mock_endpoint`, `kar_passport`, `kar_gateway`, `mock_staking` via `--bpf-program` by default.
 
 ## LzReceive account list (normative)
 
