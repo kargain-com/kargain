@@ -82,6 +82,8 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 
 ### Post-deploy gates (N7 template — every nuclear)
 
+> **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
+
 **Lesson:** Never clean-recompile between deploy and explorer verify; persist `build-info` in the same deploy write as the manifest — N6 lost the CID trail by wiping artifacts before verify.
 
 1. Working tree clean — live deploy refuses dirty trees.

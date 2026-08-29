@@ -1,5 +1,7 @@
 # Nuclear #7 — explorer-verifiable redeploy (identical source)
 
+> **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
+
 **Status: READY TO DEPLOY — NOT STARTED.** Parallel stack beside Nuclear #4 (live app), #5, and #6. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
 
 **Local only.** Empty-testnet full redeploy. Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N6 manifests must be archived locally before overwrite.
@@ -10,7 +12,7 @@
 **Tooling:** `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:deploy-evidence`, `verify:bytecode-identity`, `verify:sepolia`, `verify:sepolia:eth`, Sourcify v2, `smoke:*`, `bridge:wire*` (**not in this runbook**), `lz:snapshot`, `ponder:config`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 
-**Lesson (N6):** Never clean-recompile between deploy and explorer verify; persist `build-info` in the same deploy write as the manifest — N6 lost the CID trail by wiping artifacts before verify.
+**Operational corollary:** Never clean-recompile between deploy and explorer verify; persist `build-info` in the same deploy write as the manifest — N6 lost the CID trail by wiping artifacts before verify.
 
 ---
 

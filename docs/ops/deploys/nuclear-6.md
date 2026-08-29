@@ -1,5 +1,9 @@
 # Nuclear #6 — on-chain URI ceiling (84532 + 11155111)
 
+> **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
+>
+> N6 treated explorer verify as deferrable: between deploy and verify there was neither a recompile ban nor retained compile input. That is why explorers stay red and Nuclear #7 exists.
+
 **Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack live beside Nuclear #4 (and Nuclear #5). **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
 
 **Local only.** Empty-testnet full redeploy (same class as Nuclear #5). Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N5 manifests preserved under `docs/ops/deploys/archive/nuclear-5-*.manifest.json` (local).
