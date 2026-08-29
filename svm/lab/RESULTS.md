@@ -41,6 +41,20 @@ These are **different operations**. A longer URI cannot be “cheaper” than a 
 
 Neither lab row nor these stand rows may be copied into `lz-receive-gas.ts` until S4. All stay well under **1.4M** CU; lab/stand do **not** invent a pin.
 
+## S4a local figures (2026-08-29) — do not pin
+
+**Host:** local Agave **4.3.0-beta.2** (matches Devnet `getVersion` same day). **Load:** upgradeable (`cargo-build-sbf --arch v3` + `solana program deploy`). **URI in default live path:** `STAND_TYPICAL_URI` (26 B), not the 731 ceiling.
+
+| ID | Script / path | What was measured | CU / rent (example) | Applicable to full `lz_receive`? |
+|----|---------------|-------------------|---------------------|----------------------------------|
+| **S4a upgradeable mint** | `run-stand.sh --live-upgradeable` → foreign `LzReceive` | Same receive-shaped mint as stand row above, under upgradeable loader | ≈ **64553** CU | **Yes — mint-shaped**; local only; S4b re-measures on Devnet |
+| **S4a upgradeable unlock** | same → home unlock `LzReceive` | Same unlock-shaped path under upgradeable loader | ≈ **59249** CU | **Yes — unlock-shaped**; local only |
+| **S4a state PDA rent** | `solana rent 256` on local Agave 4.3 | Passport companion state PDA size from S3 (256 B) | **0.00267264 SOL** rent-exempt min | Rent component only — not CU |
+| **S4a program account rent** | `pnpm deploy:svm:dry-run` / `solana rent 36` | Upgradeable Program account (36 B data) | **0.00114144 SOL** | Deploy cost, not per-receive |
+| **S4a 731 URI single-tx** | `KARGAIN_SVM_STAND_URI_CEILING=1` live | Full foreign `LzReceive` ix with URI = **731** UTF-8 bytes | **FAIL** — `Transaction too large: 1552 > 1232` | **Finding:** ceiling URI does not fit one Solana tx on this account list; S4b must use ALT / split / smaller static list before pinning receive budget |
+
+**Do not** write any of these into [`lib/web3/bridge/lz-receive-gas.ts`](../../lib/web3/bridge/lz-receive-gas.ts). S4b re-measures on Devnet after the 731-URI transport path is fixed.
+
 ## Proofs
 
 | ID | Result | Detail |
@@ -58,7 +72,7 @@ Neither lab row nor these stand rows may be copied into `lz-receive-gas.ts` unti
 1. **Freeze authority shape:** Address(program_id) can be *recorded*; acting requires a **PDA** the program `invoke_signed`s (lab freeze PDA seed `lab_freeze`). Matches plan objection #6 / gateway design.
 2. **TransferDelegate after transfer:** plugin entry may remain with authority reset to Owner — treat as prior delegate revoked (П-2).
 3. **JS Core helpers:** pass explicit `systemProgram: SystemProgram.programId` on transfer/burn/update (umi placeholder fails).
-4. **SBF deploy (resolved path for lab and stand):** Agave 4.2 local validator rejected upgradeable-loader deploy of platform-tools v1.54 artifacts (`sbpf_version … not enabled`). **Fix:** build with `cargo-build-sbf --arch v0` and load via `--bpf-program` (same path for stand). This is a toolchain/loader mismatch, not an architectural deferral.
+4. **SBF deploy:** Agave 4.2 / early 4.3 rejected upgradeable-loader deploy of **`--arch v0`** artifacts (`sbpf_version … not enabled`, SIMD-0500). **S4a proven path (2026-08-29):** Agave **4.3.0-beta.2** (= Devnet) + platform-tools **v1.56** + **`cargo-build-sbf --arch v3`** + `solana program deploy` / `set-upgrade-authority` ([`svm/scripts/prove-upgradeable-deploy.sh`](../scripts/prove-upgradeable-deploy.sh)). Stand default preload still uses `--arch v0` + `--bpf-program`.
 5. **mpl-core Rust:** use **0.11.2** with `solana-program` 2.3 (0.10.x / 0.12.x hit borsh conflicts in this toolchain).
 
 ## Stop rule

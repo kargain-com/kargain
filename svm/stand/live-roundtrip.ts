@@ -25,7 +25,7 @@ import {
   STAND_EVM_NAMESPACE,
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
-  STAND_TYPICAL_URI,
+  standLiveUri,
 } from "./constants.ts";
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
 
@@ -275,7 +275,9 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     "mock_staking",
   ] as const) {
     if (!fs.existsSync(path.join(DEPLOY, `${name}.so`))) {
-      throw new Error(`missing ${name}.so — build with cargo-build-sbf --arch v0`);
+      throw new Error(
+        `missing ${name}.so — build with cargo-build-sbf --arch v0 (preload) or --arch v3 (upgradeable)`,
+      );
     }
   }
 
@@ -385,9 +387,10 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   );
 
   // ========== Direction A: EVM-shaped ONFT → SVM foreign mint ==========
+  const liveUri = standLiveUri();
   const foreignTokenId = tokenIdFromParts(STAND_EVM_NAMESPACE, 42n);
   const sendTo = payer.publicKey.toBytes();
-  const composeInner = abiEncodeString(STAND_TYPICAL_URI);
+  const composeInner = abiEncodeString(liveUri);
   const { message: outboundMessage } = encodeOnftMessage(
     sendTo,
     foreignTokenId,
@@ -476,6 +479,27 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     throw new Error(`foreign mint expected UNVERIFIED(0), got ${foreignSt.status}`);
   }
 
+  if (process.env.KARGAIN_SVM_STAND_URI_CEILING === "1") {
+    const clearInfo = await connection.getAccountInfo(clearForeign);
+    const rows = [
+      ["foreignAsset", foreignAssetInfo],
+      ["foreignState", foreignStateInfo],
+      ["clearReceipt", clearInfo],
+    ] as const;
+    for (const [label, info] of rows) {
+      if (!info) continue;
+      const rentMin = await connection.getMinimumBalanceForRentExemption(
+        info.data.length,
+      );
+      console.log(
+        `[svm-stand measure] uri=${liveUri.length}B ${label} dataLen=${info.data.length} lamports=${info.lamports} rentExemptMin=${rentMin}`,
+      );
+    }
+    console.log(
+      `[svm-stand measure] uri=${liveUri.length}B foreignMintCu=${foreignMint.cu}`,
+    );
+  }
+
   // ========== Direction B: home mint → send (lock) → return unlock ==========
   const homeTokenId = tokenIdFromParts(STAND_SVM_NAMESPACE, 1n);
   const [homeAsset] = pda([ASSET_SEED, Buffer.from(homeTokenId)], passportProgram);
@@ -498,7 +522,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        data: passportMintData(STAND_TYPICAL_URI),
+        data: passportMintData(liveUri),
       }),
     ],
     "passport.MintPassport home",
@@ -537,7 +561,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   const { message: returnMessage } = encodeOnftMessage(
     payer.publicKey.toBytes(), // unlock to original owner
     homeTokenId,
-    abiEncodeString(STAND_TYPICAL_URI),
+    abiEncodeString(liveUri),
   );
   const returnRelayed = relayCopyPayload({
     srcEid: STAND_EVM_EID,

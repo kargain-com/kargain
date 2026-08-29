@@ -1,64 +1,81 @@
-# Nuclear #5 — S3.5 prep (84532 + 11155111)
+# Nuclear #5 — S3.5 (84532 + 11155111)
 
-**Status: PREP ONLY** (August 2026). Source + gates on `feat/solana-svm-port` (commits A1→A2→A3→A5). **Not live** — no `COMMERCIAL_ACTIVE` cutover, no VPS reindex, no manifest addresses until founder runbook.
+**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack live beside Nuclear #4. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
 
-**Local only.** Empty-testnet full redeploy of the commercial stack (same class as Nuclear #4).
+**Local only.** Empty-testnet full redeploy (same class as Nuclear #4). Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored).
 
-**Register:** no PENDING row until cutover planning.  
+**Register:** no PENDING until S9 cutover planning.  
 **Tooling:** `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 
 ---
 
-## Role signers (founder — required before live deploy)
+## Role signers (filled at deploy)
 
 | Role | Env var | Address |
 |------|---------|---------|
-| Fee sink (`platformRecipient`) | `PLATFORM_RECIPIENT` | |
-| Forfeit sink (`forfeitRecipient`) | `FORFEIT_RECIPIENT` | |
-| Commerce guardian | `COMMERCE_GUARDIAN` | |
+| Fee sink (`platformRecipient`) | `PLATFORM_RECIPIENT` | `0x484f2e7bB362bCcE38d41DB7BCE2EAD955890B24` |
+| Forfeit sink (`forfeitRecipient`) | `FORFEIT_RECIPIENT` | `0x8d97a127A3Cf9a94c460BcaA06a429FFE75eF1A1` |
+| Commerce guardian | `COMMERCE_GUARDIAN` | `0xcfe194fea9727bD04dA8F78c2362680986e02dF1` |
 
-Three **distinct** smart-account signers. Dry-run / manifest writers fail closed if any is missing (A1).
+Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer EOA separate.
 
 ---
 
-## What S3.5 source ships (bytecode — not on chain yet)
+## On-chain read-back (RPC August 29, 2026)
 
-| Contract | VERSION (source) | Change class |
-|----------|-------------------|--------------|
+### Base Sepolia (84532) — `indexFromBlock` **46109033**
+
+| Role | Address | On-chain |
+|------|---------|----------|
+| Timelock48h | `0x4e75F7d0D5847e6730da328F92890f1FcE3628F4` | upgrade authority after handoff |
+| KarProPass | `0x3C2E19AdE259453D43a20E94D4Bf979250BC32c3` | |
+| KarProStaking | `0x408c0DB8cDf1bC31aa69aD73bf260e70803a2379` | `VERSION` **2.2.0-rc.1**; owner = Timelock |
+| KarPassport | `0x8542Dd53345d851a320C7d1B2e78E1786743a70e` | `VERSION` **1.10.0-rc.1**; Timelock; gateway bound |
+| FixedPriceConsignment | `0x74a659E081317bB63Bb552ab1C3d886e4728CceE` | `VERSION` **2.4.0-rc.1**; Timelock; guardian as above; USDC asset-only (feed 0) |
+| AscendingConsignment | `0x88821bfb1A2C9dAB404C4a86a88685469b74101a` | `VERSION` **2.5.0-rc.1**; Timelock |
+| KarPassportBridgeGateway | `0x66aF522A26C7650f63Bc82f611a623F3E863888b` | `VERSION` **1.3.0-rc.1** — **S4 EVM peer for 40245↔40168** |
+| AscendingHoldLib / OpenLib | `0x5a7027…f3eB` / `0x48856d…2f5B` | linked at Ascending impl |
+
+### Ethereum Sepolia (11155111) — `indexFromBlock` **11590196**
+
+| Role | Address | On-chain |
+|------|---------|----------|
+| Timelock48h | `0x8A3529d2B4CC482476Bd40f81a1E2F9E335867F7` | |
+| KarProPass | `0xcAa270392eEa2AD4471C12267Ed9Bf7567ECa498` | |
+| KarProStaking | `0xfe9b6477C32dB849E7C5520BF1e055b2e5ABA6C9` | **2.2.0-rc.1**; Timelock |
+| KarPassport | `0x2961A0fDa331E1ecaF4e9F8A3515fe4346f60b2d` | **1.10.0-rc.1**; Timelock; gateway bound |
+| FixedPriceConsignment | `0x6d1169F4b639Ee27442786b160FB3F06fDe6c28E` | **2.4.0-rc.1**; USDC feed measured + tolerance 172992 |
+| AscendingConsignment | `0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f` | **2.5.0-rc.1** |
+| KarPassportBridgeGateway | `0x2f74620F74A9addb441225356Abe79b2691F39B9` | **1.3.0-rc.1** |
+
+**Verify (best-effort):** Ascending + libs + FixedPrice proxy newly verified both explorers. KarPassport / KarProStaking / Gateway reported HHE80009 (non-`--strict`; on-chain deploy valid — confirm via VERSION reads above).
+
+---
+
+## What S3.5 source shipped
+
+| Contract | VERSION | Change class |
+|----------|---------|--------------|
 | KarProPass | `1.1.0-rc.1` | Pair with staking |
 | KarProStaking | `2.2.0-rc.1` | Native-only join; ERC-20 stake path removed |
-| KarPassport | `1.10.0-rc.1` | Unchanged logic; fresh deploy with modes |
+| KarPassport | `1.10.0-rc.1` | Fresh deploy with modes |
 | FixedPriceConsignment | `2.4.0-rc.1` | Unchanged logic |
-| AscendingConsignment | `2.5.0-rc.1` | Seven auction bounds → bytecode constants; `setChallengeBond` replaces `setAuctionRules`; `AuctionRulesSet` at `initialize` |
-| KarPassportBridgeGateway | `1.3.0-rc.1` | Unchanged logic |
-| Timelock48h | reuse or redeploy | Prefer existing Timelock if still trusted |
+| AscendingConsignment | `2.5.0-rc.1` | Seven auction bounds → constants; `setChallengeBond`; `AuctionRulesSet` at init |
+| KarPassportBridgeGateway | `1.3.0-rc.1` | Fresh ctor → new passport |
+| Timelock48h | fresh | New per chain (not reuse N4) |
 
-**Deploy wiring (A1):** `platformRecipient` = fee sink only; `forfeitRecipient` → passport ctor + Ascending forfeit slot (distinct from fee).
-
-**Gates before cutover:**
-
-- A1: role manifest parity + `claimable-payouts-sink-gas` (native push vs claim credit)
-- A2: Ascending constants + `setChallengeBond`; `auctionRules()` ABI shape preserved
-- A3: KarProStaking native-only + retarget-trap test; production `StakeTokenSet` count **0** on both commercial chains (no Ponder handler)
-- A5: `test/KarPassportBridgeGateway.test.ts` captures Solidity `send()` bytes (PacketSent or EndpointV2Mock trace); 731-byte URI case
-
-**Out of scope for this prep:** `svm/**`, `COMMERCIAL_ACTIVE` / deployment JSON, VPS reindex, frontend.
+**Deploy wiring (A1):** `platformRecipient` = fee sink; `forfeitRecipient` → passport ctor + Ascending forfeit (distinct).
 
 ---
 
-## Prerequisites (founder cutover — do not run until roles filled)
+## Ops sequencing (do not collapse)
 
-1. S3.5 branch merged per plan §19 (with SVM port if applicable).  
-2. Full gate matrix green (see HANDOFF / AGENTS S3.5 milestone).  
-3. `.env.local`: `DEPLOYER_PRIVATE_KEY`, `PLATFORM_RECIPIENT`, `FORFEIT_RECIPIENT`, `COMMERCE_GUARDIAN`.  
-4. `pnpm compile`  
-5. `pnpm deploy:nuclear:dry-run` exit 0.
+| Operation | When | Status |
+|-----------|------|--------|
+| Deploy N5 both chains | now | **Done** August 29 |
+| Wire 40245↔40161 on **new** gateways (optional before S4) | after N5 | Not run (old pathway stays on N4 for live app) |
+| Wire 40245↔40168 (Solana) | **S4** against hub gateway `0x66aF522A…888b` | Pending |
+| `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
----
-
-## Steps (stub — flesh at cutover)
-
-Mirror [nuclear-4.md](./nuclear-4.md) ordering with N5 VERSION read-backs and new Ascending init arity. After deploy: full VPS reindex from new `indexFromBlock` rows + app deploy + smoke `/ready` + `/consignments` + §7.6 wire check.
-
-**Do not** edit this stub with placeholder addresses — founder fills manifest after RPC read-back.
+**Do not** run `bridge:wire:read-only` against N4 pathway as a N5 gate — that pathway is intentionally left for the live app until S9.
