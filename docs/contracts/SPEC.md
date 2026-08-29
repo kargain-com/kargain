@@ -879,14 +879,31 @@ Extends §12.5 / §12.8. Three classes:
 
 **`combineOptions` (read `OAppOptionsType3.combineOptions`):** if no enforced options, return caller `_extraOptions` (even empty/legacy); if no caller options, return enforced; if both, require type-3 extras, then **`bytes.concat(enforced, _extraOptions[2:])`** — append extra option bytes after stripping the 2-byte type prefix from extras. NatSpec documents that duplicated lzReceive gas/value options are **combined additively off-chain by verifier/executor**; the Solidity function itself concatenates option payloads, it does not arithmetic-sum gas fields on-chain.
 
-**URI ceiling (EVM receive gas model):** from `lib/web3/bridge/lz-receive-gas.ts`:
+**URI ceiling (normative — Nuclear #6):** **160** UTF-8 bytes.
+
+| Layer | Owner |
+|-------|--------|
+| Canonical constant | `lib/web3/declared-uri-ceiling.ts` → `DECLARED_PASSPORT_URI_CEILING_BYTES` |
+| Solidity mirror | `contracts/lib/PassportUriCeiling.sol` → `BYTES` (sole Solidity literal) |
+| Rust mirror | `svm/crates/kargain-errors` → `PASSPORT_URI_CEILING_BYTES` (sole Rust literal) |
+
+**Enforced at:**
+
+1. **Passport write** — sole `_setTokenURI` wrapper (`_setTokenURIChecked`); refuses with `UriTooLong(length, max)`. Covers `mintPassport`, `setPassportURI`, `bridgeMint`, and non-empty `bridgeResetOnUnlock` adopt. Empty unlock URI skips the setter (no length check).
+2. **Gateway leave / quote** — `_buildMsgAndOptionsWithUri` (covers `send` and `quoteSend`); refuses with `UriExceedsBridgeCeiling(length, max)` **before** debit / fee consumption. Distinct from write `UriTooLong`.
+3. **SVM** — passport mint / `set_passport_uri` → `UriTooLong`; gateway send → `UriExceedsBridgeCeiling`.
+4. **Client** — `lib/web3/bridge/lz-receive-gas.ts` consumes the declared ceiling (refuse quote/send UX when over).
+
+**Coupled rules (restated for 160):** (1) every commercial VM’s local URI-write cap equals this ceiling; (2) receive budgets assume messages that already cleared send-side ceiling; (3) **receive never rejects solely on URI length** — a message that arrived already fitted a destination tx (EVM gas path or Solana packet).
+
+**EVM receive gas model** (documentation of headroom, not a second ceiling): from `lib/web3/bridge/lz-receive-gas.ts`:
 
 `required = max(ENFORCED_GAS_SEND_AND_COMPOSE, ceil((LZ_RECEIVE_GAS_BASE + len × LZ_RECEIVE_GAS_PER_URI_BYTE) × (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS) / 10_000))` with floor **250_000**, base **137_973**, per-byte **1_000**, margin **1_500** bps, cap **1_000_000**.
 
-- `len = 731` → required **999_319** ≤ cap.
-- `len = 732` → required **1_000_469** > cap → refuse.
+- `len = 160` → required **342_669** ≤ cap (and ≤ historical off-chain “731” gas model).
+- Historical measure `len = 731` → required **999_319** ≤ cap; that figure is **not** the product ceiling.
 
-**Enforced URI ceiling: 731 UTF-8 bytes.** Coupled rules: (1) non-EVM local URI-write cap ≥ this ceiling; (2) non-EVM receive budgeted for the full ceiling; (3) receive never rejects solely on URI length once the send cleared the ceiling check.
+**Headroom derivation (S4a-2 h=3, no ALT):** production foreign-mint account list **18** metas → assembled size at URI=160 **1208** ≤ Solana packet **1232** (margin **+24**). Mock stand list (13 metas) measures smaller — do not equate to 1208. See `svm/lab/RESULTS.md` S4a-1/S4a-2/N6-4.
 
 #### 13.5 Star topology with N spokes
 
@@ -988,6 +1005,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-17 | Records/passport **state** survive burn of representation; mint existence = live Core asset account (a one-byte Core burn tombstone still owned by Core is **not** a live asset — remint must not be refused by leftover state PDA) | `bridgeBurn` leaves `records[]`; `_ownerOf` / `_requireExists` | §12.8; TokenExists ≠ state PDA |
 | D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
 | D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
+| D-20 | Over-ceiling URI on **inbound** receive | — | **EVM:** OOG on `EndpointV2.lzReceive` is **retryable** (atomic clear+execute; pin LayerZero-v2 `9c741e7f…`). **SVM:** assembled tx **>1232** is **permanently unexecutable** without ALT/split. Product ceiling **160** (Nuclear #6) keeps production no-ALT path ≤1232 (S4a-1/S4a-2 / N6-4). Receive still never length-rejects. |
 
 #### 13.15 Free testnet dependencies
 

@@ -57,7 +57,9 @@ Neither lab row nor these stand rows may be copied into `lz-receive-gas.ts` unti
 
 ## S4a-1 — LayerZero Solana receive delivery (2026-08-29) — measure only
 
-**No Devnet writes. No gateway / `lz_receive_types` / SPEC edits.** Numbers only — do not conflate with mock CU rows above; do not pin into `lz-receive-gas.ts`.
+> **Superseded for production URI ceiling:** Nuclear #6 product ceiling is **160** UTF-8 bytes, no ALT required (S4a-2 h=3 → computed production 1208/1232). Four-cell / 731 rows below remain **historical measure** only — do not read “731 ceiling” or “ALT required for product” as current law. See N6-4 measure + SPEC §I.13.
+
+**No Devnet writes. No gateway / `lz_receive_types` / SPEC edits (at measure time).** Numbers only — do not conflate with mock CU rows above; do not pin into `lz-receive-gas.ts`.
 
 **Source pin:** [LayerZero-Labs/LayerZero-v2](https://github.com/LayerZero-Labs/LayerZero-v2) commit **`9c741e7f9790639537b1710a203bcdfd73b0b9ac`** (`main` tip that day). Paths:
 
@@ -209,7 +211,7 @@ Full table with proposed refusal names: **session report** (not duplicated here)
 | Production 18-meta @ URI=160 (h=3), no ALT | **1208** | **Computed** only (S4a-2 Q3); margin **+24** vs 1232 |
 | Equate mock↔1208? | **No** | Account lists differ (13 vs 18) |
 
-CU (measure only): foreign mint ≈65001 / ≈64940; home unlock ≈59820 / ≈59749. N6-5 will supersede the S4a-1 “731 ceiling” narrative for production law.
+CU (measure only): foreign mint ≈65001 / ≈64940; home unlock ≈59820 / ≈59749. Production ceiling law: SPEC §I.13 (160) + D-20.
 
 ## Proofs
 
