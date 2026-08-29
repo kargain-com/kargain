@@ -179,6 +179,12 @@ export function isEvmLayerZeroChain(
   return classifyLayerZeroVm(chain) === "evm";
 }
 
+export function isSvmLayerZeroChain(
+  chain: LayerZeroChainSnapshot,
+): chain is LayerZeroSvmChainSnapshot {
+  return classifyLayerZeroVm(chain) === "svm";
+}
+
 export function confirmationDirectionKey(srcEid: number, dstEid: number): string {
   return `${srcEid}→${dstEid}`;
 }

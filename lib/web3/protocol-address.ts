@@ -7,7 +7,7 @@
  * still attempt EVM checksum (local/hardhat denylist paths).
  */
 
-import { getAddress } from "viem";
+import { getAddress, type Hex } from "viem";
 
 import { commercialActive } from "@/lib/web3/commercial-active";
 import { isReservedNonEvmNamespace } from "@/lib/web3/kargain-namespace";
@@ -158,4 +158,35 @@ export function protocolAddressDedupKey(
   if (normalized == null) return null;
   if (vm === "svm") return normalized;
   return normalized.toLowerCase();
+}
+
+/**
+ * Encode a protocol address as LayerZero `bytes32` peer.
+ * EVM: left-pad 20-byte checksum to 32. SVM: 32-byte pubkey as-is (no pad).
+ */
+export function protocolAddressToBytes32(
+  vm: ProtocolVm,
+  address: string,
+): Hex | null {
+  if (vm === "evm") {
+    const normalized = evmNormalize(address);
+    if (normalized == null) return null;
+    return `0x${"00".repeat(12)}${normalized.slice(2).toLowerCase()}` as Hex;
+  }
+  const decoded = base58Decode(address.trim());
+  if (decoded == null || decoded.length !== 32) return null;
+  let hex = "0x";
+  for (let i = 0; i < 32; i++) {
+    hex += decoded[i]!.toString(16).padStart(2, "0");
+  }
+  return hex as Hex;
+}
+
+/** Solana base58 pubkey → bytes32 peer (sole SVM peer encoding). */
+export function svmPubkeyToBytes32(base58Pubkey: string): Hex {
+  const out = protocolAddressToBytes32("svm", base58Pubkey);
+  if (out == null) {
+    throw new Error(`Invalid Solana pubkey for bytes32 peer: ${base58Pubkey}`);
+  }
+  return out;
 }

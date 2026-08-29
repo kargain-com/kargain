@@ -87,4 +87,25 @@ describe("pathwayConfigHash 40245↔40161", () => {
     });
     assert.equal(hashAppliedPathwayConfig(applied), H2);
   });
+
+  it("builds a distinct applied hash for hub↔40168 (N7 gateway + SVM program id)", () => {
+    const snapshot = loadLayerZeroMetadataSnapshot();
+    const hubGateway = "0x7324046854342587999984683c4833852FA81827";
+    const svmGateway = "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre";
+    const applied = buildAppliedPathwayConfig(snapshot, {
+      hubEid: EID_HUB,
+      spokeEid: 40168,
+      hubOApp: hubGateway,
+      spokeOApp: svmGateway,
+    });
+    const hash = hashAppliedPathwayConfig(applied);
+    assert.equal(
+      hash,
+      "0x8b8ba5273130c6625dee0b4bdfc321a00e5b0272807dc9f4c89ffce1b88b4231",
+    );
+    assert.notEqual(hash, H2);
+    assert.equal(applied.spokeOApp, svmGateway);
+    assert.equal((applied.requiredDvns[EID_HUB] as string[]).length, 2);
+    assert.equal((applied.requiredDvns[40168] as string[]).length, 2);
+  });
 });

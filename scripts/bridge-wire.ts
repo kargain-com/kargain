@@ -1,12 +1,14 @@
 /**
- * Bridge pathway wire CLI — hub (84532 / EID 40245) ↔ spoke (11155111 / EID 40161).
+ * Bridge pathway wire CLI — hub (84532 / EID 40245) ↔ spoke.
  *
  * Usage:
- *   pnpm bridge:wire              # write both sides (iteration 5)
- *   pnpm bridge:wire:read-only    # assert + table, zero txs
+ *   pnpm bridge:wire                         # write hub↔40161 (Ethereum Sepolia)
+ *   pnpm bridge:wire:read-only               # assert + table, zero txs
  *   pnpm bridge:wire --hub|--spoke [--read-only]
+ *   pnpm bridge:wire --spoke-eid=40168 [--read-only]   # hub↔Solana Devnet (hub-only)
  *
  * Addresses from manifests + LayerZero metadata snapshot only — no hardcodes.
+ * Secrets: never log private keys (DEPLOYER_PRIVATE_KEY / SOLANA_*).
  */
 import { createRequire } from "node:module";
 import { config as loadEnv } from "dotenv";
@@ -35,13 +37,14 @@ import {
 } from "./lib/deployer-viem.js";
 import {
   EID_HUB,
+  EID_SOLANA_DEVNET,
   EID_SPOKE,
+  KNOWN_TESTNET_SPOKE_EIDS,
   loadLayerZeroMetadataSnapshot,
   type LayerZeroEvmChainSnapshot,
   type LayerZeroMetadataSnapshot,
 } from "./lib/layerzero-metadata.js";
 import {
-  addressToBytes32,
   assertLibrariesPinned,
   assertNoDeadDvnInRequired,
   assertReciprocalPeers,
@@ -57,6 +60,7 @@ import {
   encodeExecutorConfig,
   encodeUlnConfig,
   hashAppliedPathwayConfig,
+  peerToBytes32,
   requireEvmChain,
   requiredDvnsForPathway,
   ulnConfirmationsForDirection,
@@ -68,15 +72,19 @@ import {
   loadCommercialDeployment,
   loadSpokeDeployment,
   requireSepoliaDeployment,
+  requireSvmDevnetEvidence,
   SEPOLIA_CHAIN_ID,
   SEPOLIA_DEPLOYMENT_PATH,
   SPOKE_CHAIN_ID,
   SPOKE_DEPLOYMENT_PATH,
+  svmDevnetEvidencePath,
   type SpokePathwayPeers,
+  type SvmDevnetPathwayPeers,
 } from "./lib/load-deployment.js";
 import {
   writeDeploymentManifest,
   writeSpokeDeploymentManifest,
+  writeSvmDevnetEvidence,
 } from "./lib/write-deployment.js";
 
 loadEnv({ path: ".env.local" });
@@ -107,20 +115,51 @@ type WireFlags = {
   readOnly: boolean;
   hub: boolean;
   spoke: boolean;
+  /** Spoke EID to wire against the hub (40161 default; 40168 = Solana Devnet). */
+  spokeEid: number;
   allowMetadataDrift: boolean;
 };
+
+function parseSpokeEid(argv: string[]): number {
+  const raw = argv.find((a) => a.startsWith("--spoke-eid="));
+  if (!raw) return EID_SPOKE;
+  const eid = Number(raw.slice("--spoke-eid=".length));
+  if (!Number.isInteger(eid) || !KNOWN_TESTNET_SPOKE_EIDS.includes(eid)) {
+    throw new Error(
+      `--spoke-eid must be one of ${KNOWN_TESTNET_SPOKE_EIDS.join(",")} (got ${raw})`,
+    );
+  }
+  return eid;
+}
 
 function parseFlags(argv: string[]): WireFlags {
   const readOnly = argv.includes("--read-only");
   const hubOnly = argv.includes("--hub");
   const spokeOnly = argv.includes("--spoke");
+  const spokeEid = parseSpokeEid(argv);
   if (hubOnly && spokeOnly) {
     throw new Error("Pass at most one of --hub / --spoke (default: both)");
+  }
+  if (spokeEid === EID_SOLANA_DEVNET) {
+    if (spokeOnly) {
+      throw new Error(
+        "SVM spoke (40168) has no EVM wire side — use hub-only: --spoke-eid=40168 (omit --spoke)",
+      );
+    }
+    // Hub ULN/peer only; Solana PeerConfig / register_oapp is X5 program surface.
+    return {
+      readOnly,
+      hub: true,
+      spoke: false,
+      spokeEid,
+      allowMetadataDrift: argv.includes("--allow-metadata-drift"),
+    };
   }
   return {
     readOnly,
     hub: hubOnly || (!hubOnly && !spokeOnly),
     spoke: spokeOnly || (!hubOnly && !spokeOnly),
+    spokeEid,
     allowMetadataDrift: argv.includes("--allow-metadata-drift"),
   };
 }
@@ -150,9 +189,11 @@ type SideContext = {
   remoteEid: number;
   localChainId: 84532 | 11155111;
   oapp: Address;
-  remoteOApp: Address;
+  /** Display / logging identity (EVM address or SVM base58). */
+  remoteOApp: string;
+  /** LayerZero peer bytes32 for `setPeer`. */
+  remotePeerBytes32: Hex;
   chainSnap: LayerZeroEvmChainSnapshot;
-  remoteSnap: LayerZeroEvmChainSnapshot;
   clients: SideClients;
   oappAbi: typeof KarPassportBridgeGatewayAbi;
 };
@@ -202,6 +243,26 @@ async function writeContract(
   return hash;
 }
 
+/** Poll a view until it matches (RPC lag after waitForTransactionReceipt). */
+async function pollUntilEqual<T extends string>(
+  read: () => Promise<T>,
+  expected: T,
+  label: string,
+  attempts = 8,
+  delayMs = 750,
+): Promise<boolean> {
+  const want = expected.toLowerCase();
+  for (let i = 0; i < attempts; i++) {
+    const got = (await read()).toLowerCase();
+    if (got === want) return true;
+    if (i + 1 < attempts) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  process.stderr.write(`${label}: read-back still mismatched after ${attempts} polls\n`);
+  return false;
+}
+
 async function wireSide(
   side: SideContext,
   snapshot: LayerZeroMetadataSnapshot,
@@ -212,7 +273,7 @@ async function wireSide(
   const pc = sidePublic(side.clients);
   const endpoint = getAddress(side.chainSnap.endpointV2);
   const remoteEid = side.remoteEid;
-  const expectedPeer = addressToBytes32(side.remoteOApp);
+  const expectedPeer = side.remotePeerBytes32;
 
   const confirmations = ulnConfirmationsForDirection(
     snapshot,
@@ -235,7 +296,7 @@ async function wireSide(
     functionName: "peers",
     args: [remoteEid],
   })) as Hex;
-  if (side.remoteOApp === zeroAddress) {
+  if (side.remoteOApp === zeroAddress || side.remoteOApp === "") {
     results.push({
       action: "setPeer",
       status: "read",
@@ -260,13 +321,18 @@ async function wireSide(
       functionName: "setPeer",
       args: [remoteEid, expectedPeer],
     });
-    const after = (await pc.readContract({
-      address: side.oapp,
-      abi: side.oappAbi,
-      functionName: "peers",
-      args: [remoteEid],
-    })) as Hex;
-    if (after.toLowerCase() !== expectedPeer.toLowerCase()) {
+    const peerOk = await pollUntilEqual(
+      () =>
+        pc.readContract({
+          address: side.oapp,
+          abi: side.oappAbi,
+          functionName: "peers",
+          args: [remoteEid],
+        }) as Promise<Hex>,
+      expectedPeer,
+      `${side.label}: setPeer`,
+    );
+    if (!peerOk) {
       errors.push(`${side.label}: setPeer read-back failed`);
     }
     results.push({ action: "setPeer", status: "write", detail: `→ ${side.remoteOApp}` });
@@ -538,13 +604,18 @@ async function wireSide(
       args: [enforced],
     });
     for (const param of enforced) {
-      const after = (await pc.readContract({
-        address: side.oapp,
-        abi: side.oappAbi,
-        functionName: "enforcedOptions",
-        args: [param.eid, param.msgType],
-      })) as Hex;
-      if (after.toLowerCase() !== param.options.toLowerCase()) {
+      const ok = await pollUntilEqual(
+        () =>
+          pc.readContract({
+            address: side.oapp,
+            abi: side.oappAbi,
+            functionName: "enforcedOptions",
+            args: [param.eid, param.msgType],
+          }) as Promise<Hex>,
+        param.options,
+        `${side.label}: setEnforcedOptions msgType ${param.msgType}`,
+      );
+      if (!ok) {
         errors.push(
           `${side.label}: setEnforcedOptions msgType ${param.msgType} read-back failed`,
         );
@@ -601,11 +672,13 @@ async function main(): Promise<void> {
   const snapshot = loadLayerZeroMetadataSnapshot({
     allowDrift: flags.allowMetadataDrift,
   });
+  const spokeEid = flags.spokeEid;
+  const svmSpoke = spokeEid === EID_SOLANA_DEVNET;
 
   const allErrors: string[] = [];
 
   let hubOApp: Address | null = null;
-  let spokeOApp: Address | null = null;
+  let spokeOApp: string | null = null;
 
   try {
     const hubManifest = requireSepoliaDeployment();
@@ -621,7 +694,10 @@ async function main(): Promise<void> {
     }
   }
 
-  {
+  if (svmSpoke) {
+    const evidence = requireSvmDevnetEvidence(spokeEid);
+    spokeOApp = evidence.programs.kar_gateway.programId;
+  } else {
     const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
     if (ethCommercial?.bridgeGateway) {
       spokeOApp = getAddress(ethCommercial.bridgeGateway);
@@ -654,14 +730,14 @@ async function main(): Promise<void> {
     );
   }
 
-  const effectiveSpoke = spokeOApp ?? zeroAddress;
+  const effectiveSpoke = spokeOApp ?? "";
   const effectiveHub = hubOApp ?? zeroAddress;
 
   const peers: PathwayPeers = {
     hubEid: EID_HUB,
-    spokeEid: EID_SPOKE,
+    spokeEid,
     hubOApp: effectiveHub,
-    spokeOApp: effectiveSpoke,
+    spokeOApp: effectiveSpoke || zeroAddress,
   };
   if (hubOApp && spokeOApp) {
     allErrors.push(...assertReciprocalPeers(peers));
@@ -670,15 +746,19 @@ async function main(): Promise<void> {
   const sideRuns: { side: SideContext; results: ActionResult[] }[] = [];
 
   if (flags.hub && hubOApp) {
+    const remoteLabel = effectiveSpoke || zeroAddress;
     const side: SideContext = {
-      label: "HUB Base Sepolia",
+      label: svmSpoke ? "HUB Base Sepolia → Solana Devnet" : "HUB Base Sepolia",
       localEid: EID_HUB,
-      remoteEid: EID_SPOKE,
+      remoteEid: spokeEid,
       localChainId: SEPOLIA_CHAIN_ID,
       oapp: hubOApp,
-      remoteOApp: effectiveSpoke,
+      remoteOApp: remoteLabel,
+      remotePeerBytes32:
+        effectiveSpoke.length > 0
+          ? peerToBytes32(spokeEid, effectiveSpoke)
+          : peerToBytes32(EID_SPOKE, zeroAddress),
       chainSnap: requireEvmChain(snapshot, EID_HUB),
-      remoteSnap: requireEvmChain(snapshot, EID_SPOKE),
       clients: makeClients(baseSepolia, hubRpcUrl(), flags.readOnly),
       oappAbi: KarPassportBridgeGatewayAbi,
     };
@@ -686,16 +766,16 @@ async function main(): Promise<void> {
     sideRuns.push({ side, results });
   }
 
-  if (flags.spoke && spokeOApp) {
+  if (flags.spoke && spokeOApp && !svmSpoke) {
     const side: SideContext = {
       label: "SPOKE Ethereum Sepolia",
       localEid: EID_SPOKE,
       remoteEid: EID_HUB,
       localChainId: SPOKE_CHAIN_ID,
-      oapp: spokeOApp,
+      oapp: getAddress(spokeOApp),
       remoteOApp: effectiveHub,
+      remotePeerBytes32: peerToBytes32(EID_HUB, effectiveHub),
       chainSnap: requireEvmChain(snapshot, EID_SPOKE),
-      remoteSnap: requireEvmChain(snapshot, EID_HUB),
       clients: makeClients(sepolia, spokeRpcUrl(), flags.readOnly),
       oappAbi: KarPassportBridgeGatewayAbi,
     };
@@ -705,15 +785,16 @@ async function main(): Promise<void> {
 
   printTable(snapshot, sideRuns, allErrors);
 
-  const fullWireSuccess =
+  const ethFullWireSuccess =
     !flags.readOnly &&
+    !svmSpoke &&
     flags.hub &&
     flags.spoke &&
     hubOApp !== null &&
     spokeOApp !== null &&
     allErrors.length === 0;
 
-  if (fullWireSuccess) {
+  if (ethFullWireSuccess && hubOApp && spokeOApp) {
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
@@ -725,7 +806,7 @@ async function main(): Promise<void> {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
       hubOApp,
-      spokeOApp,
+      spokeOApp: getAddress(spokeOApp),
     };
 
     const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
@@ -751,6 +832,41 @@ async function main(): Promise<void> {
         `Updated ${SPOKE_DEPLOYMENT_PATH()} (legacy thin ONFT) peers + pathwayConfigHash=${pathwayConfigHash}\n`,
       );
     }
+  }
+
+  const svmHubWireSuccess =
+    !flags.readOnly &&
+    svmSpoke &&
+    flags.hub &&
+    hubOApp !== null &&
+    spokeOApp !== null &&
+    allErrors.length === 0;
+
+  if (svmHubWireSuccess && hubOApp && spokeOApp) {
+    const applied = buildAppliedPathwayConfig(snapshot, {
+      hubEid: EID_HUB,
+      spokeEid: EID_SOLANA_DEVNET,
+      hubOApp,
+      spokeOApp,
+    });
+    const pathwayConfigHash = hashAppliedPathwayConfig(applied);
+    const peersBook: SvmDevnetPathwayPeers = {
+      hubEid: EID_HUB,
+      spokeEid: EID_SOLANA_DEVNET,
+      hubOApp,
+      spokeOApp,
+    };
+    const evidence = requireSvmDevnetEvidence(EID_SOLANA_DEVNET);
+    writeSvmDevnetEvidence(svmDevnetEvidencePath(EID_SOLANA_DEVNET), {
+      ...evidence,
+      peers: peersBook,
+      pathwayConfigHash,
+      note:
+        "S4b X4 — hub ULN/peer wired; SVM PeerConfig / Endpoint register_oapp still X5; no COMMERCIAL_ACTIVE Solana row",
+    });
+    process.stdout.write(
+      `Updated ${svmDevnetEvidencePath(EID_SOLANA_DEVNET)} peers + pathwayConfigHash=${pathwayConfigHash}\n`,
+    );
   }
 
   if (allErrors.length > 0) {

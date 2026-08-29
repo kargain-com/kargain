@@ -389,6 +389,53 @@ export {
   sepoliaIndexFromBlock,
 } from "./resolve-sepolia-stack.js";
 
+/** Solana Devnet deploy evidence — `deployments/svm-{eid}.json` (gitignored). */
+export type SvmDevnetProgramEvidence = {
+  programId: string;
+  soSha256?: string;
+  soBytes?: number;
+  upgradeAuthority?: string;
+};
+
+export type SvmDevnetPathwayPeers = {
+  hubEid: 40245;
+  spokeEid: 40168;
+  hubOApp: `0x${string}`;
+  spokeOApp: string;
+};
+
+export type SvmDevnetEvidence = {
+  cluster: string;
+  eid: number;
+  namespace: number;
+  programs: {
+    kar_passport: SvmDevnetProgramEvidence;
+    kar_gateway: SvmDevnetProgramEvidence;
+    mock_staking?: SvmDevnetProgramEvidence;
+  };
+  peers?: SvmDevnetPathwayPeers | null;
+  pathwayConfigHash?: `0x${string}` | null;
+  [key: string]: unknown;
+};
+
+export function svmDevnetEvidencePath(eid: number = 40168): string {
+  return join(deploymentsDirectory(), `svm-${eid}.json`);
+}
+
+export function loadSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence | null {
+  return readJsonFile<SvmDevnetEvidence>(svmDevnetEvidencePath(eid));
+}
+
+export function requireSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence {
+  const evidence = loadSvmDevnetEvidence(eid);
+  if (!evidence?.programs?.kar_gateway?.programId) {
+    throw new Error(
+      `Missing SVM deploy evidence ${svmDevnetEvidencePath(eid)} (run pnpm deploy:svm)`,
+    );
+  }
+  return evidence;
+}
+
 /** Map a commercial deployment manifest to the Ponder address bundle. */
 export function ponderAddressesFromCommercialManifest(
   manifest: DeploymentManifest,

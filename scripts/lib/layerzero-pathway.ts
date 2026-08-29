@@ -20,10 +20,16 @@ import {
   ENFORCED_GAS_SEND_AND_COMPOSE,
 } from "../../lib/web3/bridge/lz-receive-gas.js";
 import {
+  normalizeProtocolAddressForVm,
+  svmPubkeyToBytes32,
+} from "../../lib/web3/protocol-address.js";
+import {
   confirmationDirectionKey,
   EID_HUB,
+  EID_SOLANA_DEVNET,
   EID_SPOKE,
   isEvmLayerZeroChain,
+  isSvmLayerZeroChain,
   KNOWN_TESTNET_SPOKE_EIDS,
   pathwayPairKey,
   pathwayRecord,
@@ -31,6 +37,7 @@ import {
   spokeEidsFromSnapshot,
   type LayerZeroEvmChainSnapshot,
   type LayerZeroMetadataSnapshot,
+  type LayerZeroSvmChainSnapshot,
 } from "./layerzero-metadata.js";
 
 export const CONFIG_TYPE_EXECUTOR = 1;
@@ -76,7 +83,8 @@ export type PathwayPeers = {
   hubEid: number;
   spokeEid: number;
   hubOApp: Address;
-  spokeOApp: Address;
+  /** EVM checksum address or SVM base58 program id. */
+  spokeOApp: string;
 };
 
 export type UlnEnvironment = "testnet" | "mainnet";
@@ -295,6 +303,21 @@ export function addressToBytes32(addr: Address): Hex {
   return padHex(getAddress(addr), { size: 32 });
 }
 
+/** SVM program / pubkey → LayerZero bytes32 peer (owner: protocol-address). */
+export { svmPubkeyToBytes32 };
+
+/**
+ * Peer bytes32 for an OApp identity on `remoteEid`'s VM class.
+ * EVM remotes: left-padded address. SVM remotes: raw 32-byte pubkey.
+ */
+export function peerToBytes32(remoteEid: number, remoteOApp: string): Hex {
+  assertAllowedEid(remoteEid);
+  if (remoteEid === EID_SOLANA_DEVNET) {
+    return svmPubkeyToBytes32(remoteOApp);
+  }
+  return addressToBytes32(getAddress(remoteOApp));
+}
+
 export function requireEvmChain(
   snapshot: LayerZeroMetadataSnapshot,
   eid: number,
@@ -305,6 +328,20 @@ export function requireEvmChain(
   }
   if (!isEvmLayerZeroChain(chain)) {
     throw new Error(`EID ${eid} is not an EVM snapshot chain`);
+  }
+  return chain;
+}
+
+export function requireSvmChain(
+  snapshot: LayerZeroMetadataSnapshot,
+  eid: number,
+): LayerZeroSvmChainSnapshot {
+  const chain = snapshot.chains[eid];
+  if (!chain) {
+    throw new Error(`Snapshot has no chain for eid ${eid}`);
+  }
+  if (!isSvmLayerZeroChain(chain)) {
+    throw new Error(`EID ${eid} is not an SVM snapshot chain`);
   }
   return chain;
 }
@@ -388,11 +425,18 @@ export function assertReciprocalPeers(peers: PathwayPeers): string[] {
   if (getAddress(peers.hubOApp) === zeroAddress) {
     errors.push("hubOApp must not be address(0)");
   }
-  if (getAddress(peers.spokeOApp) === zeroAddress) {
-    errors.push("spokeOApp must not be address(0)");
-  }
-  if (getAddress(peers.hubOApp) === getAddress(peers.spokeOApp)) {
-    errors.push("hubOApp and spokeOApp must differ");
+  if (peers.spokeEid === EID_SOLANA_DEVNET) {
+    const spoke = normalizeProtocolAddressForVm("svm", peers.spokeOApp);
+    if (spoke == null) {
+      errors.push("spokeOApp must be a valid Solana base58 pubkey");
+    }
+  } else {
+    if (getAddress(peers.spokeOApp as Address) === zeroAddress) {
+      errors.push("spokeOApp must not be address(0)");
+    }
+    if (getAddress(peers.hubOApp) === getAddress(peers.spokeOApp as Address)) {
+      errors.push("hubOApp and spokeOApp must differ");
+    }
   }
   return errors;
 }
@@ -444,12 +488,13 @@ export type AppliedPathwayConfig = {
   hubEid: number;
   spokeEid: number;
   hubOApp: Address;
-  spokeOApp: Address;
+  /** EVM checksum address or SVM base58 program id. */
+  spokeOApp: string;
   confirmations: Record<string, number>;
-  requiredDvns: Record<number, Address[]>;
+  requiredDvns: Record<number, Address[] | string[]>;
   libraries: Record<
     number,
-    { sendUln302: Address; receiveUln302: Address; executor: Address }
+    { sendUln302: string; receiveUln302: string; executor: string }
   >;
   enforcedGas: {
     send: typeof ENFORCED_GAS_SEND;
@@ -477,15 +522,63 @@ export function buildAppliedPathwayConfig(
 ): AppliedPathwayConfig {
   const hubEid = peers.hubEid;
   const spokeEid = peers.spokeEid;
+  assertStarPathway(hubEid, spokeEid);
   const hub = requireEvmChain(snapshot, hubEid);
-  const spoke = requireEvmChain(snapshot, spokeEid);
   const hubToSpoke = confirmationDirectionKey(hubEid, spokeEid);
   const spokeToHub = confirmationDirectionKey(spokeEid, hubEid);
+
+  if (spokeEid === EID_SOLANA_DEVNET) {
+    const spoke = requireSvmChain(snapshot, spokeEid);
+    const spokeNorm = normalizeProtocolAddressForVm("svm", peers.spokeOApp);
+    if (spokeNorm == null) {
+      throw new Error(`Invalid SVM spokeOApp: ${peers.spokeOApp}`);
+    }
+    return {
+      hubEid,
+      spokeEid,
+      hubOApp: getAddress(peers.hubOApp),
+      spokeOApp: spokeNorm,
+      confirmations: {
+        [hubToSpoke]: ulnConfirmationsForDirection(snapshot, hubEid, spokeEid),
+        [spokeToHub]: ulnConfirmationsForDirection(snapshot, spokeEid, hubEid),
+      },
+      requiredDvns: {
+        [hubEid]: requiredDvnsForPathway(snapshot, hubEid, spokeEid),
+        // SVM DVN pubkeys from snapshot (not EVM Address[]) — wire is hub-side ULN only.
+        [spokeEid]: pathwayRecord(snapshot, hubEid, spokeEid).requiredDvnIds.map((id) => {
+          const addr = spoke.dvns[id];
+          if (!addr) {
+            throw new Error(`DVN ${id} missing on SVM eid ${spokeEid}`);
+          }
+          return addr;
+        }),
+      },
+      libraries: {
+        [hubEid]: {
+          sendUln302: getAddress(hub.sendUln302),
+          receiveUln302: getAddress(hub.receiveUln302),
+          executor: getAddress(hub.executor),
+        },
+        [spokeEid]: {
+          sendUln302: spoke.sendUln302,
+          receiveUln302: spoke.receiveUln302,
+          executor: spoke.executor,
+        },
+      },
+      enforcedGas: {
+        send: ENFORCED_GAS_SEND,
+        sendAndCompose: ENFORCED_GAS_SEND_AND_COMPOSE,
+      },
+      metadataSha256: pathwayChainsDigest(snapshot, hubEid, spokeEid),
+    };
+  }
+
+  const spoke = requireEvmChain(snapshot, spokeEid);
   return {
     hubEid,
     spokeEid,
     hubOApp: getAddress(peers.hubOApp),
-    spokeOApp: getAddress(peers.spokeOApp),
+    spokeOApp: getAddress(peers.spokeOApp as Address),
     confirmations: {
       [hubToSpoke]: ulnConfirmationsForDirection(snapshot, hubEid, spokeEid),
       [spokeToHub]: ulnConfirmationsForDirection(snapshot, spokeEid, hubEid),
@@ -518,4 +611,4 @@ export function hashAppliedPathwayConfig(applied: AppliedPathwayConfig): Hex {
   return `0x${sha256Canonical(applied)}`;
 }
 
-export { EID_HUB, EID_SPOKE, spokeEidsFromSnapshot };
+export { EID_HUB, EID_SPOKE, EID_SOLANA_DEVNET, spokeEidsFromSnapshot };

@@ -27,6 +27,8 @@
     "lz:snapshot": "node --import tsx scripts/lz-snapshot.ts",
     "bridge:wire": "node --import tsx scripts/bridge-wire.ts",
     "bridge:wire:read-only": "node --import tsx scripts/bridge-wire.ts --read-only",
+    "bridge:wire:solana": "node --import tsx scripts/bridge-wire.ts --spoke-eid=40168",
+    "bridge:wire:solana:read-only": "node --import tsx scripts/bridge-wire.ts --spoke-eid=40168 --read-only",
     "abis:export": "node scripts/export-abis.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "postcompile": "pnpm abis:export",

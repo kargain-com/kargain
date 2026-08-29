@@ -22,6 +22,7 @@ import {
   type LayerZeroMetadataSnapshot,
 } from "../scripts/lib/layerzero-metadata.js";
 import {
+  addressToBytes32,
   assertAllowedEid,
   assertLibrariesPinned,
   assertNoDeadDvnInRequired,
@@ -38,6 +39,7 @@ import {
   isKnownTestnetStarEid,
   MSG_TYPE_SEND,
   MSG_TYPE_SEND_AND_COMPOSE,
+  peerToBytes32,
   remoteEidsFor,
   sortAndDedupeAddresses,
 } from "../scripts/lib/layerzero-pathway.js";
@@ -205,6 +207,14 @@ describe("validators", () => {
         spokeOApp: A,
       }).some((e) => /must differ/.test(e)),
     );
+  });
+
+  it("encodes SVM peer as raw 32-byte pubkey (not EVM left-pad)", () => {
+    const gateway = "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre";
+    const peer = peerToBytes32(EID_SOLANA_DEVNET, gateway);
+    assert.match(peer, /^0x[0-9a-f]{64}$/);
+    assert.notEqual(peer.slice(0, 26), `0x${"00".repeat(12)}`);
+    assert.equal(peerToBytes32(EID_SPOKE, A), addressToBytes32(A));
   });
 });
 
