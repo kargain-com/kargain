@@ -9,13 +9,16 @@
  * | Path | gasUsed (anchor) |
  * |------|------------------|
  * | typical `ar://…` | {@link LZ_RECEIVE_MEASURED_TYPICAL_GAS} |
- * | 500-char URI | {@link LZ_RECEIVE_MEASURED_500_CHAR_GAS} |
+ * | 500-char URI (historical measure) | {@link LZ_RECEIVE_MEASURED_500_CHAR_GAS} |
  * | spoke→hub SEND | ~64249 → type1 floor {@link ENFORCED_GAS_SEND} |
  *
  * Linear model (before margin): `BASE + byteLen * PER_BYTE`, then margin BPS,
- * then `max(floor, …)`. Over {@link LZ_RECEIVE_GAS_CAP}: fail closed (refuse
- * quote/send) — do not clamp and risk OOG lock in the gateway.
+ * then `max(floor, …)`. Length is capped by
+ * {@link DECLARED_PASSPORT_URI_CEILING_BYTES} (protocol invariant) before the
+ * gas model runs; over {@link LZ_RECEIVE_GAS_CAP}: fail closed — do not clamp.
  */
+
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "@/lib/web3/declared-uri-ceiling";
 
 /** Pathway floor — ONFT SEND (return / non-compose). */
 export const ENFORCED_GAS_SEND = 100_000;
@@ -26,7 +29,10 @@ export const ENFORCED_GAS_SEND_AND_COMPOSE = 250_000;
 /** Hardhat dest gas for typical Arweave URI (~48 bytes). */
 export const LZ_RECEIVE_MEASURED_TYPICAL_GAS = 184_973;
 
-/** Hardhat dest gas for 500-char URI. */
+/**
+ * Hardhat dest gas for a 500-char URI (historical slope measure — above the
+ * declared protocol ceiling; not a product path).
+ */
 export const LZ_RECEIVE_MEASURED_500_CHAR_GAS = 621_678;
 
 /**
@@ -41,7 +47,7 @@ export const LZ_RECEIVE_GAS_PER_URI_BYTE = 1_000;
 /** 15% margin on the linear model. */
 export const LZ_RECEIVE_GAS_MARGIN_BPS = 1_500;
 
-/** Fail-closed ceiling (aligned with Hardhat suite lzReceive budget). */
+/** Fail-closed gas budget (Executor lzReceive); not the URI length ceiling. */
 export const LZ_RECEIVE_GAS_CAP = 1_000_000;
 
 export type LzReceiveGasOk = { ok: true; gas: number };
@@ -51,7 +57,16 @@ export type LzReceiveGasCapExceeded = {
   required: number;
   cap: number;
 };
-export type LzReceiveGasResult = LzReceiveGasOk | LzReceiveGasCapExceeded;
+export type LzReceiveUriCeilingExceeded = {
+  ok: false;
+  reason: "exceeds_uri_ceiling";
+  length: number;
+  max: number;
+};
+export type LzReceiveGasResult =
+  | LzReceiveGasOk
+  | LzReceiveGasCapExceeded
+  | LzReceiveUriCeilingExceeded;
 
 function utf8ByteLength(uri: string): number {
   return new TextEncoder().encode(uri).byteLength;
@@ -59,12 +74,21 @@ function utf8ByteLength(uri: string): number {
 
 /**
  * Required Executor lzReceive gas for hub→spoke compose given URI byte length.
- * Fail closed when the margined model exceeds {@link LZ_RECEIVE_GAS_CAP}.
+ * Fail closed when length exceeds the declared URI ceiling, or when the
+ * margined model exceeds {@link LZ_RECEIVE_GAS_CAP}.
  */
 export function requiredLzReceiveGasForByteLength(
   byteLength: number,
 ): LzReceiveGasResult {
   const len = Math.max(0, Math.floor(byteLength));
+  if (len > DECLARED_PASSPORT_URI_CEILING_BYTES) {
+    return {
+      ok: false,
+      reason: "exceeds_uri_ceiling",
+      length: len,
+      max: DECLARED_PASSPORT_URI_CEILING_BYTES,
+    };
+  }
   const modeled = LZ_RECEIVE_GAS_BASE + len * LZ_RECEIVE_GAS_PER_URI_BYTE;
   const margined = Math.ceil(
     (modeled * (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS)) / 10_000,
@@ -118,20 +142,36 @@ export type NonEvmReceiveBudgetCapExceeded = {
   cap: number;
 };
 
+export type NonEvmReceiveBudgetUriCeilingExceeded = {
+  ok: false;
+  reason: "exceeds_uri_ceiling";
+  length: number;
+  max: number;
+};
+
 export type NonEvmReceiveBudgetResult =
   | NonEvmReceiveBudgetOk
-  | NonEvmReceiveBudgetCapExceeded;
+  | NonEvmReceiveBudgetCapExceeded
+  | NonEvmReceiveBudgetUriCeilingExceeded;
 
 /**
  * Required compute + rent for a non-EVM destination given URI byte length.
- * All numeric inputs are injected. Fail closed (do not truncate) when compute
- * or rent exceeds its cap.
+ * All numeric inputs are injected. Fail closed (do not truncate) when length
+ * exceeds the declared URI ceiling or compute/rent exceeds its cap.
  */
 export function requiredNonEvmReceiveBudgetForByteLength(
   byteLength: number,
   params: NonEvmReceiveBudgetParams,
 ): NonEvmReceiveBudgetResult {
   const len = Math.max(0, Math.floor(byteLength));
+  if (len > DECLARED_PASSPORT_URI_CEILING_BYTES) {
+    return {
+      ok: false,
+      reason: "exceeds_uri_ceiling",
+      length: len,
+      max: DECLARED_PASSPORT_URI_CEILING_BYTES,
+    };
+  }
   const computeModeled =
     params.computeBase + len * params.computePerUriByte;
   const computeMargined = Math.ceil(

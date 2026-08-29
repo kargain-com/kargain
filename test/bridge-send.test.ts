@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { getAddress, padHex } from "viem";
 
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling";
 import {
   BridgeUriTooLongError,
   buildSendParam,
@@ -9,8 +10,6 @@ import {
 } from "../lib/web3/bridge/bridge-send";
 import {
   ENFORCED_GAS_SEND_AND_COMPOSE,
-  LZ_RECEIVE_GAS_MARGIN_BPS,
-  LZ_RECEIVE_MEASURED_500_CHAR_GAS,
   requiredLzReceiveGasForUri,
 } from "../lib/web3/bridge/lz-receive-gas";
 
@@ -47,18 +46,12 @@ describe("buildSendParam", () => {
     assert.notEqual(param.extraOptions, "0x");
   });
 
-  it("500-char URI → extraOptions for policy gas ≥ measured+margin", () => {
-    const tokenUri = `ar://${"b".repeat(500 - 5)}`;
+  it("URI at declared ceiling → extraOptions for policy gas", () => {
+    const tokenUri = `ar://${"b".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES - 5)}`;
+    assert.equal(tokenUri.length, DECLARED_PASSPORT_URI_CEILING_BYTES);
     const gasResult = requiredLzReceiveGasForUri(tokenUri);
     assert.equal(gasResult.ok, true);
     if (!gasResult.ok) return;
-
-    const min = Math.ceil(
-      (LZ_RECEIVE_MEASURED_500_CHAR_GAS *
-        (10_000 + LZ_RECEIVE_GAS_MARGIN_BPS)) /
-        10_000,
-    );
-    assert.ok(gasResult.gas >= min);
 
     const param = buildSendParam({
       dstEid: 40161,
@@ -72,8 +65,8 @@ describe("buildSendParam", () => {
     );
   });
 
-  it("over-cap URI throws BridgeUriTooLongError", () => {
-    const tokenUri = "x".repeat(2_000);
+  it("over-ceiling URI throws BridgeUriTooLongError", () => {
+    const tokenUri = "x".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES + 1);
     assert.throws(
       () =>
         buildSendParam({
@@ -84,7 +77,7 @@ describe("buildSendParam", () => {
         }),
       (err: unknown) => {
         assert.ok(err instanceof BridgeUriTooLongError);
-        assert.equal(err.reason, "exceeds_cap");
+        assert.equal(err.reason, "exceeds_uri_ceiling");
         return true;
       },
     );

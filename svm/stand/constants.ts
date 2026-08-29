@@ -4,6 +4,8 @@
  * the Solana Devnet EID expressed in the S2 snapshot (config-only locally).
  */
 
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../../lib/web3/declared-uri-ceiling";
+
 /** Hardhat EndpointV2Mock eid for the EVM stand side (matches gateway suite hub). */
 export const STAND_EVM_EID = 1;
 
@@ -18,18 +20,26 @@ export const STAND_SVM_NAMESPACE = 2_000_040_168n;
 
 export const STAND_TYPICAL_URI = "ar://stand-typical-pointer";
 
-/** SPEC §13.4 / lz-receive-gas URI ceiling — use for S4a rent/CU measure only. */
-export const STAND_URI_CEILING_731 = `ar://${"x".repeat(726)}`;
+/** URI of exactly {@link DECLARED_PASSPORT_URI_CEILING_BYTES} UTF-8 bytes (`ar://` + pad). */
+export const STAND_URI_AT_CEILING = `ar://${"x".repeat(
+  DECLARED_PASSPORT_URI_CEILING_BYTES - "ar://".length,
+)}`;
 
-/** When `KARGAIN_SVM_STAND_URI_CEILING=1`, live path uses the 731-byte URI. */
+/**
+ * Historical S4a measure URI (731 B) — lab/RESULTS only; not the product ceiling.
+ * @deprecated Prefer {@link STAND_URI_AT_CEILING}.
+ */
+export const STAND_URI_HISTORICAL_731 = `ar://${"x".repeat(726)}`;
+
+/** When `KARGAIN_SVM_STAND_URI_CEILING=1`, live path uses the declared ceiling URI. */
 export function standLiveUri(): string {
   if (process.env.KARGAIN_SVM_STAND_URI_CEILING === "1") {
-    if (STAND_URI_CEILING_731.length !== 731) {
+    if (STAND_URI_AT_CEILING.length !== DECLARED_PASSPORT_URI_CEILING_BYTES) {
       throw new Error(
-        `STAND_URI_CEILING_731 length ${STAND_URI_CEILING_731.length} ≠ 731`,
+        `STAND_URI_AT_CEILING length ${STAND_URI_AT_CEILING.length} ≠ ${DECLARED_PASSPORT_URI_CEILING_BYTES}`,
       );
     }
-    return STAND_URI_CEILING_731;
+    return STAND_URI_AT_CEILING;
   }
   return STAND_TYPICAL_URI;
 }

@@ -196,6 +196,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["network-class-policy.test.ts"],
   },
   {
+    id: "declared-uri-ceiling",
+    owner:
+      "lib/web3/declared-uri-ceiling.ts · contracts/lib/PassportUriCeiling.sol · svm/crates/kargain-errors",
+    rule: "SPEC §I.13 passport URI ceiling bytes — one literal, three language mirrors",
+    guardTests: ["declared-uri-ceiling-policy.test.ts"],
+  },
+  {
     id: "protocol-address-compare",
     owner: "lib/web3/protocol-address.ts",
     rule: "Protocol address normalize/compare by namespace; no dual toLowerCase match",

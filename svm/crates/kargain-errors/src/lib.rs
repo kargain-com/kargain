@@ -6,6 +6,11 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use thiserror::Error;
 
+/// Declared passport / bridge URI ceiling (UTF-8 bytes).
+/// Sole Rust owner of this literal — must match
+/// `lib/web3/declared-uri-ceiling.ts` and `PassportUriCeiling.BYTES`.
+pub const PASSPORT_URI_CEILING_BYTES: usize = 160;
+
 /// Stable error codes. Append new variants at the end only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, IntoPrimitive, TryFromPrimitive)]
 #[repr(u32)]

@@ -52,6 +52,8 @@ export {
   requiredReceiveBudgetForDestinationClass,
   type DestinationExecutionClass,
   type LzReceiveGasResult,
+  type LzReceiveUriCeilingExceeded,
   type NonEvmReceiveBudgetParams,
   type NonEvmReceiveBudgetResult,
 } from "./lz-receive-gas";
+export { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../declared-uri-ceiling";

@@ -4,6 +4,7 @@ import { getAddress, padHex, type Address, type Hex } from "viem";
 import {
   requiredLzReceiveGasForUri,
   type LzReceiveGasCapExceeded,
+  type LzReceiveUriCeilingExceeded,
 } from "./lz-receive-gas";
 
 /**
@@ -29,17 +30,29 @@ export type BridgeMessagingFee = {
 };
 
 export class BridgeUriTooLongError extends Error {
-  readonly reason = "exceeds_cap" as const;
-  readonly required: number;
-  readonly cap: number;
+  readonly reason: "exceeds_cap" | "exceeds_uri_ceiling";
+  readonly required?: number;
+  readonly cap?: number;
+  readonly length?: number;
+  readonly max?: number;
 
-  constructor(result: LzReceiveGasCapExceeded) {
-    super(
-      `This passport metadata URI is too long to bridge safely (${result.required} gas needed, cap ${result.cap}). Shorten the token URI and try again.`,
-    );
+  constructor(result: LzReceiveGasCapExceeded | LzReceiveUriCeilingExceeded) {
+    if (result.reason === "exceeds_uri_ceiling") {
+      super(
+        `This passport metadata URI is too long to bridge (${result.length} bytes, max ${result.max}). Shorten the token URI and try again.`,
+      );
+      this.reason = "exceeds_uri_ceiling";
+      this.length = result.length;
+      this.max = result.max;
+    } else {
+      super(
+        `This passport metadata URI is too long to bridge safely (${result.required} gas needed, cap ${result.cap}). Shorten the token URI and try again.`,
+      );
+      this.reason = "exceeds_cap";
+      this.required = result.required;
+      this.cap = result.cap;
+    }
     this.name = "BridgeUriTooLongError";
-    this.required = result.required;
-    this.cap = result.cap;
   }
 }
 
