@@ -130,6 +130,22 @@ Does **not** apply — no unexplained executable-body divergence after immutable
 
 ---
 
+## CID drift cause (N6-9 V1) — August 29, 2026
+
+N6-8 left open whether the IPFS CID drift was (a) unstable non-source fields in standard-JSON, (b) deploy from a different tree than the commit we treat as source, or (c) deploy-time `artifacts/build-info` overwritten by a later clean recompile.
+
+### Distinguishing evidence
+
+| Hypothesis | Verdict | Evidence |
+|------------|---------|----------|
+| **(a)** unstable across runs | **False** | Two consecutive clean compiles (`rm -rf artifacts cache && pnpm compile`) produced **identical** full `deployedBytecode` digests (metadata CID included). An incremental recompile without cleaning kept the same CID (`1220111d21c9…`). Same tree → same CID. |
+| **(c)** deploy-time build-info wiped | **True** | Deploy manifests written **10:28Z / 10:41Z**. N6-8 diagnosis ran `rm -rf artifacts cache` at **~11:07Z** (13:07 +0200). Current `artifacts/build-info/*.json` mtimes are that recompile. **No** copy under `deployments/`, `docs/ops/`, or elsewhere on disk. On-chain CID `12203faa0dc6…` appears only in this runbook / session log — not in any preserved build-info. Public IPFS gateways did not return the metadata JSON for CIDv0 `QmSdAnpyzCGgkXjwtfrjJ6sR35eVDRcH5k9nRQwP7sV3oU` (403 / unavailable). **The deploy-time compiler input is gone.** |
+| **(b)** different compilation input than “this commit” | **Partially open; process finding** | No tracked `.sol` / `hardhat.config.ts` change since N6-6 (`32fb772`); deploy ran after N6-7 (TypeScript-only). Executable bodies still match after immutable fill. Yet on-chain metadata CID ≠ today’s deterministic CID for a clean compile of HEAD — so **deploy-time solc metadata JSON ≠ today’s**. Without the wiped build-info we **cannot** name which metadata field differed (extra source unit, npm package bytes, uncommitted file present only at deploy, Hardhat source set, etc.). That is a process finding: we destroyed the only artifact that would settle (b) precisely. |
+
+**Summary:** (a) out. (c) confirmed — evidence destroyed by clean recompile after deploy (including N6-8). Residual CID inequality implies deploy-time hashed metadata input was not identical to a clean HEAD recompile, but the file that would identify the delta no longer exists.
+
+---
+
 ## What Nuclear #6 source ships
 
 | Contract | VERSION | Change class |
