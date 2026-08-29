@@ -1,12 +1,12 @@
 /** Must match on-chain `VERSION` constants. Semver + `-rc.N` on testnet; drop pre-release on mainnet (spec §11).
- *  Nuclear #5 ship numbers — bump with the full commercial redeploy that makes them real on chain.
+ *  Nuclear #6 ship numbers — bump with the full commercial redeploy that makes them real on chain.
  */
 export const CONTRACT_VERSIONS = {
   KarPassport: "1.11.0-rc.1",
   KarProPass: "1.1.0-rc.1",
   KarProStaking: "2.2.0-rc.1",
   Timelock48h: "1.0.0-rc.1",
-    KarPassportBridgeGateway: "1.4.0-rc.1",
+  KarPassportBridgeGateway: "1.4.0-rc.1",
   /** @deprecated C2 — removed thin ONFT; retained for verify/historical label lookups */
   KarPassportONFT721: "1.0.0-rc.1",
   /** @deprecated C2 — removed adapter; retained for verify/historical label lookups */

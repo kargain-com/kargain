@@ -75,20 +75,44 @@ describe("COMMERCIAL_ACTIVE registry", () => {
 });
 
 describe("resolveCommercialStack committed fallback", () => {
-  it("returns committed Eth stack matching SPEC I.9.2", () => {
+  it("returns committed Eth stack matching SPEC I.9.2", async () => {
     // Prefer registry path: clear env overrides that would force hub "env" source.
+    // Hide local deployments/*.json (e.g. Nuclear #5 parallel stacks) so this asserts
+    // COMMERCIAL_ACTIVE / SPEC I.9.2 — not the founder’s latest on-disk manifest.
+    const { rename, access } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const ethPath = join(process.cwd(), "deployments/11155111.json");
+    const hubPath = join(process.cwd(), "deployments/84532.json");
+    const ethBak = `${ethPath}.bak-commercial-active-test-i92`;
+    const hubBak = `${hubPath}.bak-commercial-active-test-i92`;
+    let ethMoved = false;
+    let hubMoved = false;
     const prev = {
       passport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
       pro: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
       staking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,
     };
     try {
+      try {
+        await access(ethPath);
+        await rename(ethPath, ethBak);
+        ethMoved = true;
+      } catch {
+        /* absent */
+      }
+      try {
+        await access(hubPath);
+        await rename(hubPath, hubBak);
+        hubMoved = true;
+      } catch {
+        /* absent */
+      }
       delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
       delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
       delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
 
       const eth = resolveCommercialStack(ETH);
-      assert.ok(eth.source === "committed" || eth.source === "manifest");
+      assert.equal(eth.source, "committed");
       assert.equal(eth.karPassport, "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC");
       assert.equal(eth.indexFromBlock, 11_404_204);
       assert.equal(eth.bridgeGateway, "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269");
@@ -99,10 +123,12 @@ describe("resolveCommercialStack committed fallback", () => {
       assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
 
       const hub = resolveCommercialStack(HUB);
-      assert.ok(hub.source === "committed" || hub.source === "manifest" || hub.source === "env");
+      assert.ok(hub.source === "committed" || hub.source === "env");
       assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
       assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
     } finally {
+      if (ethMoved) await rename(ethBak, ethPath);
+      if (hubMoved) await rename(hubBak, hubPath);
       if (prev.passport) process.env.PONDER_KAR_PASSPORT_ADDRESS = prev.passport;
       else delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
       if (prev.pro) process.env.PONDER_KAR_PRO_PASS_ADDRESS = prev.pro;
