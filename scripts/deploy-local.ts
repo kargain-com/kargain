@@ -119,10 +119,10 @@ async function main() {
       LOCAL_CHAIN_ID,
     );
 
-    mkdirSync(dirname(DEPLOYMENT_PATH), { recursive: true });
-    writeFileSync(DEPLOYMENT_PATH, `${JSON.stringify(deployment, null, 2)}\n`);
+    mkdirSync(dirname(DEPLOYMENT_PATH()), { recursive: true });
+    writeFileSync(DEPLOYMENT_PATH(), `${JSON.stringify(deployment, null, 2)}\n`);
 
-    console.log("Wrote", DEPLOYMENT_PATH);
+    console.log("Wrote", DEPLOYMENT_PATH());
     console.log(JSON.stringify(deployment, null, 2));
   } finally {
     await connection.close();

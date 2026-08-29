@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -15,6 +18,20 @@ import {
 
 const HUB = 84532;
 const ETH = 11155111;
+
+/** Point the deployment loader at an empty temp dir so repo manifests are invisible. */
+function withEmptyDeploymentsDir<T>(fn: () => T): T {
+  const prev = process.env.KARGAIN_DEPLOYMENTS_DIR;
+  const temp = mkdtempSync(join(tmpdir(), "kargain-deployments-"));
+  process.env.KARGAIN_DEPLOYMENTS_DIR = temp;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env.KARGAIN_DEPLOYMENTS_DIR;
+    else process.env.KARGAIN_DEPLOYMENTS_DIR = prev;
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
 
 describe("COMMERCIAL_ACTIVE registry", () => {
   it("includes Nuclear #4 hub and Eth stacks with modes", () => {
@@ -75,92 +92,55 @@ describe("COMMERCIAL_ACTIVE registry", () => {
 });
 
 describe("resolveCommercialStack committed fallback", () => {
-  it("returns committed Eth stack matching SPEC I.9.2", async () => {
+  it("returns committed Eth stack matching SPEC I.9.2", () => {
     // Prefer registry path: clear env overrides that would force hub "env" source.
-    // Hide local deployments/*.json (e.g. Nuclear #5 parallel stacks) so this asserts
-    // COMMERCIAL_ACTIVE / SPEC I.9.2 — not the founder’s latest on-disk manifest.
-    const { rename, access } = await import("node:fs/promises");
-    const { join } = await import("node:path");
-    const ethPath = join(process.cwd(), "deployments/11155111.json");
-    const hubPath = join(process.cwd(), "deployments/84532.json");
-    const ethBak = `${ethPath}.bak-commercial-active-test-i92`;
-    const hubBak = `${hubPath}.bak-commercial-active-test-i92`;
-    let ethMoved = false;
-    let hubMoved = false;
+    // Empty KARGAIN_DEPLOYMENTS_DIR so local N5/N6 manifests cannot shadow COMMERCIAL_ACTIVE.
     const prev = {
       passport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
       pro: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
       staking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,
     };
-    try {
+    withEmptyDeploymentsDir(() => {
       try {
-        await access(ethPath);
-        await rename(ethPath, ethBak);
-        ethMoved = true;
-      } catch {
-        /* absent */
+        delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
+        delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
+        delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
+
+        const eth = resolveCommercialStack(ETH);
+        assert.equal(eth.source, "committed");
+        assert.equal(eth.karPassport, "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC");
+        assert.equal(eth.indexFromBlock, 11_404_204);
+        assert.equal(eth.bridgeGateway, "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269");
+
+        const bundle = ponderAddressesFromStack(eth);
+        assert.equal(bundle.karPassport, eth.karPassport);
+        assert.equal(bundle.fixedPriceConsignment, eth.fixedPriceConsignment);
+        assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
+
+        const hub = resolveCommercialStack(HUB);
+        assert.ok(hub.source === "committed" || hub.source === "env");
+        assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
+        assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
+      } finally {
+        if (prev.passport) process.env.PONDER_KAR_PASSPORT_ADDRESS = prev.passport;
+        else delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
+        if (prev.pro) process.env.PONDER_KAR_PRO_PASS_ADDRESS = prev.pro;
+        else delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
+        if (prev.staking) process.env.PONDER_KAR_PRO_STAKING_ADDRESS = prev.staking;
+        else delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
       }
-      try {
-        await access(hubPath);
-        await rename(hubPath, hubBak);
-        hubMoved = true;
-      } catch {
-        /* absent */
-      }
-      delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
-      delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
-      delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-
-      const eth = resolveCommercialStack(ETH);
-      assert.equal(eth.source, "committed");
-      assert.equal(eth.karPassport, "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC");
-      assert.equal(eth.indexFromBlock, 11_404_204);
-      assert.equal(eth.bridgeGateway, "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269");
-
-      const bundle = ponderAddressesFromStack(eth);
-      assert.equal(bundle.karPassport, eth.karPassport);
-      assert.equal(bundle.fixedPriceConsignment, eth.fixedPriceConsignment);
-      assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
-
-      const hub = resolveCommercialStack(HUB);
-      assert.ok(hub.source === "committed" || hub.source === "env");
-      assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
-      assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
-    } finally {
-      if (ethMoved) await rename(ethBak, ethPath);
-      if (hubMoved) await rename(hubBak, hubPath);
-      if (prev.passport) process.env.PONDER_KAR_PASSPORT_ADDRESS = prev.passport;
-      else delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
-      if (prev.pro) process.env.PONDER_KAR_PRO_PASS_ADDRESS = prev.pro;
-      else delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
-      if (prev.staking) process.env.PONDER_KAR_PRO_STAKING_ADDRESS = prev.staking;
-      else delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-    }
+    });
   });
 
-  it("falls back to committed when no local manifest", async () => {
-    const { rename, access } = await import("node:fs/promises");
-    const { join } = await import("node:path");
-    const path = join(process.cwd(), "deployments/11155111.json");
-    const bak = `${path}.bak-commercial-active-test`;
-    let moved = false;
-    try {
-      await access(path);
-      await rename(path, bak);
-      moved = true;
-    } catch {
-      // already absent — committed path is the default
-    }
-    try {
+  it("falls back to committed when no local manifest", () => {
+    withEmptyDeploymentsDir(() => {
       delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
       delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
       delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
       const eth = resolveCommercialStack(ETH);
       assert.equal(eth.source, "committed");
       assert.equal(eth.karPassport, requireCommercialActive(ETH).karPassport);
-    } finally {
-      if (moved) await rename(bak, path);
-    }
+    });
   });
 
   it("throws for unknown commercial chainId", () => {

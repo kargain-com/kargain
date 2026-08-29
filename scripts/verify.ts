@@ -140,7 +140,7 @@ async function main() {
       ? requireCommercialDeployment(11155111)
       : requireSepoliaDeployment();
   } catch {
-    const path = eth ? commercialDeploymentPath(11155111) : SEPOLIA_DEPLOYMENT_PATH;
+    const path = eth ? commercialDeploymentPath(11155111) : SEPOLIA_DEPLOYMENT_PATH();
     console.error(`Missing ${path} — run nuclear deploy first`);
     process.exit(1);
   }

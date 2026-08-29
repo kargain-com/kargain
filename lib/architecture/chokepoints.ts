@@ -190,6 +190,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["network-class-policy.test.ts"],
   },
   {
+    id: "deployments-directory",
+    owner: "scripts/lib/load-deployment.ts",
+    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); tests must not rename/unlink repo manifests",
+    guardTests: ["deployments-mutation-policy.test.ts"],
+  },
+  {
     id: "declared-weights",
     owner: "lib/web3/declared-weights.ts",
     rule: "SPEC §13.10 wei literals (stake/bonds) live only in declared-weights",

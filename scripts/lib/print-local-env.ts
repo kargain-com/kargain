@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { DEPLOYMENT_PATH } from "./load-deployment.js";
 
-const deployment = JSON.parse(readFileSync(DEPLOYMENT_PATH, "utf8")) as Record<string, string>;
+const deployment = JSON.parse(readFileSync(DEPLOYMENT_PATH(), "utf8")) as Record<string, string>;
 
 const exports: string[] = [
   `export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1`,

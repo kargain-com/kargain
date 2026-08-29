@@ -21,7 +21,7 @@ async function main() {
   try {
     manifest = requireSepoliaDeployment();
   } catch {
-    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH} — run pnpm deploy:sepolia first`);
+    console.error(`Missing ${SEPOLIA_DEPLOYMENT_PATH()} — run pnpm deploy:sepolia first`);
     process.exit(1);
   }
 

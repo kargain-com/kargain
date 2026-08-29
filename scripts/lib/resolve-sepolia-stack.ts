@@ -310,7 +310,7 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
       lines.push(`Hub using PONDER_* env overrides (${CORE_ENV_KEYS.join(", ")}).`);
     }
     if (stack.source === "manifest") {
-      lines.push(`Hub using ${SEPOLIA_DEPLOYMENT_PATH} on disk.`);
+      lines.push(`Hub using ${SEPOLIA_DEPLOYMENT_PATH()} on disk.`);
     }
     if (eth.source === "manifest") {
       lines.push(`Eth using ${commercialDeploymentPath(SPOKE_CHAIN_ID)} on disk.`);

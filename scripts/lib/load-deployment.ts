@@ -10,13 +10,36 @@ export const LOCAL_CHAIN_ID = 31337;
 export const SEPOLIA_CHAIN_ID = 84532;
 export const SPOKE_CHAIN_ID = 11155111;
 
-export const DEPLOYMENT_PATH = join(process.cwd(), "deployments/31337.json");
-export const SEPOLIA_DEPLOYMENT_PATH = join(process.cwd(), "deployments/84532.json");
-export const SPOKE_DEPLOYMENT_PATH = join(process.cwd(), "deployments/11155111.json");
+/**
+ * Sole deployments directory resolver.
+ * `KARGAIN_DEPLOYMENTS_DIR` — test/tooling override; empty/unset → `<cwd>/deployments`.
+ * No production/VPS role.
+ */
+export function deploymentsDirectory(): string {
+  const override = process.env.KARGAIN_DEPLOYMENTS_DIR?.trim();
+  if (override) return override;
+  return join(process.cwd(), "deployments");
+}
 
-/** Hub commercial manifests — Base Sepolia (84532) and Ethereum Sepolia (11155111). */
-export function commercialDeploymentPath(chainId: number): string {
-  return join(process.cwd(), `deployments/${chainId}.json`);
+/** Manifest path for a chain — sole join of directory + `{chainId}.json`. */
+export function deploymentPathForChain(chainId: number): string {
+  return join(deploymentsDirectory(), `${chainId}.json`);
+}
+
+/** Alias of {@link deploymentPathForChain} (commercial hub/spoke manifests). */
+export const commercialDeploymentPath = deploymentPathForChain;
+
+/** Live path to `31337.json` — re-reads `KARGAIN_DEPLOYMENTS_DIR` / cwd. */
+export function DEPLOYMENT_PATH(): string {
+  return deploymentPathForChain(LOCAL_CHAIN_ID);
+}
+/** Live path to `84532.json`. */
+export function SEPOLIA_DEPLOYMENT_PATH(): string {
+  return deploymentPathForChain(SEPOLIA_CHAIN_ID);
+}
+/** Live path to `11155111.json`. */
+export function SPOKE_DEPLOYMENT_PATH(): string {
+  return deploymentPathForChain(SPOKE_CHAIN_ID);
 }
 
 /** Active Base Sepolia fallbacks when no manifest / env. Re-export from lib/web3/sepolia-addresses.ts */
@@ -258,7 +281,7 @@ function readJsonFile<T>(path: string): T | null {
 }
 
 export function loadLocalDeployment(): LocalStackAddresses | null {
-  const raw = readJsonFile<LocalStackAddresses>(DEPLOYMENT_PATH);
+  const raw = readJsonFile<LocalStackAddresses>(DEPLOYMENT_PATH());
   return raw ? normalizeLocal(raw) : null;
 }
 
@@ -273,7 +296,7 @@ export function requireLocalDeployment(): LocalStackAddresses {
 }
 
 export function loadSepoliaDeployment(): DeploymentManifest | null {
-  const raw = readJsonFile<DeploymentManifest>(SEPOLIA_DEPLOYMENT_PATH);
+  const raw = readJsonFile<DeploymentManifest>(SEPOLIA_DEPLOYMENT_PATH());
   return raw ? normalizeManifest(raw) : null;
 }
 
@@ -304,7 +327,7 @@ export function requireCommercialDeployment(chainId: number): DeploymentManifest
 }
 
 export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
-  const raw = readJsonFile<unknown>(SPOKE_DEPLOYMENT_PATH);
+  const raw = readJsonFile<unknown>(SPOKE_DEPLOYMENT_PATH());
   if (!isThinOnftSpokeManifestShape(raw)) return null;
   return normalizeSpokeManifest(raw);
 }

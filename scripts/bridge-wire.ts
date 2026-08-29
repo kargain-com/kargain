@@ -610,14 +610,14 @@ async function main(): Promise<void> {
   try {
     const hubManifest = requireSepoliaDeployment();
     if (!hubManifest.bridgeGateway) {
-      throw new Error(`bridgeGateway missing in ${SEPOLIA_DEPLOYMENT_PATH}`);
+      throw new Error(`bridgeGateway missing in ${SEPOLIA_DEPLOYMENT_PATH()}`);
     }
     hubOApp = getAddress(hubManifest.bridgeGateway);
   } catch (err) {
     if (flags.hub) {
       throw err instanceof Error
         ? err
-        : new Error(`Missing hub manifest ${SEPOLIA_DEPLOYMENT_PATH}`);
+        : new Error(`Missing hub manifest ${SEPOLIA_DEPLOYMENT_PATH()}`);
     }
   }
 
@@ -635,7 +635,7 @@ async function main(): Promise<void> {
 
   if (!spokeOApp && flags.spoke && flags.readOnly) {
     process.stderr.write(
-      `Note: eth OApp missing in ${SPOKE_DEPLOYMENT_PATH} (nuclear commercial gateway or legacy thin ONFT). Continuing hub-only read-only.\n`,
+      `Note: eth OApp missing in ${SPOKE_DEPLOYMENT_PATH()} (nuclear commercial gateway or legacy thin ONFT). Continuing hub-only read-only.\n`,
     );
     flags.spoke = false;
     if (!flags.hub) {
@@ -645,7 +645,7 @@ async function main(): Promise<void> {
 
   if (flags.hub && !hubOApp) {
     throw new Error(
-      `Hub OApp required — nuclear commercial deploy (or hub gateway) and ensure ${SEPOLIA_DEPLOYMENT_PATH}`,
+      `Hub OApp required — nuclear commercial deploy (or hub gateway) and ensure ${SEPOLIA_DEPLOYMENT_PATH()}`,
     );
   }
   if (flags.spoke && !spokeOApp) {
@@ -742,13 +742,13 @@ async function main(): Promise<void> {
 
     const legacySpoke = loadSpokeDeployment();
     if (legacySpoke) {
-      writeSpokeDeploymentManifest(SPOKE_DEPLOYMENT_PATH, {
+      writeSpokeDeploymentManifest(SPOKE_DEPLOYMENT_PATH(), {
         ...legacySpoke,
         peers: peersBook,
         pathwayConfigHash,
       });
       process.stdout.write(
-        `Updated ${SPOKE_DEPLOYMENT_PATH} (legacy thin ONFT) peers + pathwayConfigHash=${pathwayConfigHash}\n`,
+        `Updated ${SPOKE_DEPLOYMENT_PATH()} (legacy thin ONFT) peers + pathwayConfigHash=${pathwayConfigHash}\n`,
       );
     }
   }
