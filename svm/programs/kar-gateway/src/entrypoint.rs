@@ -17,14 +17,18 @@ use solana_program::{
 
 use crate::account::into_program_error;
 use crate::config::{GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR};
-use crate::endpoint_v2::{cpi_clear_production, is_production_endpoint, ClearParams as EndpointClearParams};
+use crate::endpoint_v2::{
+    cpi_clear_production, cpi_register_oapp, is_production_endpoint, ClearParams as EndpointClearParams,
+    EVENT_SEED, OAPP_SEED,
+};
 use crate::instruction::GatewayIx;
 use crate::lz_receive_types::{
     lz_receive_types, LzReceiveAccountList, MOCK_LZ_RECEIVE_ACCOUNT_COUNT, MOCK_LZ_RECEIVE_ACCOUNTS,
     PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT, PRODUCTION_LZ_RECEIVE_ACCOUNTS,
 };
+use crate::peer::{peer_pda, PeerConfig, HUB_EID, PEER_CONFIG_DISCRIMINATOR};
 use crate::recover::check_recover_locked_home;
-use crate::seeds::{config_pda, freeze_pda, CONFIG_SEED, FREEZE_SEED};
+use crate::seeds::{config_pda, freeze_pda, CONFIG_SEED, FREEZE_SEED, PEER_SEED};
 use crate::send_receive::{plan_receive, plan_send, ReceiveKind};
 use kar_passport::core_asset::{is_live_core_asset, read_owner, read_uri, transfer_asset};
 use kar_passport::instruction::PassportIx;
@@ -103,6 +107,10 @@ pub fn process_instruction(
                 }
             }
             Ok(())
+        }
+        GatewayIx::RegisterOApp { delegate } => register_oapp(program_id, accounts, delegate),
+        GatewayIx::SetPeer { remote_eid, peer } => {
+            set_peer(program_id, accounts, remote_eid, peer)
         }
     }
 }
@@ -316,6 +324,27 @@ fn lz_receive(
     }
     if gateway_config.key != &expected_config {
         return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Production: peer authorisation from Origin.sender (never composeFrom) — SPEC §I.13.3.
+    if production {
+        let a = PRODUCTION_LZ_RECEIVE_ACCOUNTS;
+        let (expected_peer, _) = peer_pda(program_id, gateway_config.key, src_eid);
+        let peer_ai = &accounts[a.peer_config];
+        if peer_ai.key != &expected_peer {
+            return Err(ProgramError::InvalidSeeds);
+        }
+        if peer_ai.owner != program_id {
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        let peer = PeerConfig::try_from_slice(&peer_ai.try_borrow_data()?)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if peer.discriminator != PEER_CONFIG_DISCRIMINATOR {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if peer.peer_address != sender {
+            return Err(ProgramError::InvalidArgument);
+        }
     }
 
     // 1) Clear FIRST — before decode side-effects / any passport CPI.
@@ -621,5 +650,132 @@ fn recover_locked_home(
         Some(config_seeds),
     )?;
     msg!("kar-gateway RecoverLockedHome ok");
+    Ok(())
+}
+
+/// RegisterOApp accounts:
+/// 0 gateway_config, 1 authority(signer), 2 payer(signer), 3 endpoint_program,
+/// 4 oapp_registry (init), 5 system, 6 event_authority
+fn register_oapp(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    delegate: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let gateway_config = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let endpoint_program = next_account_info(iter)?;
+    let oapp_registry = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let event_authority = next_account_info(iter)?;
+
+    if !authority.is_signer || !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let cfg = load_config(program_id, gateway_config)?;
+    if authority.key.to_bytes() != cfg.authority {
+        return Err(ProgramError::IllegalOwner);
+    }
+    if endpoint_program.key.to_bytes() != cfg.endpoint_program {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if !is_production_endpoint(endpoint_program.key) {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let (expected_registry, _) =
+        Pubkey::find_program_address(&[OAPP_SEED, gateway_config.key.as_ref()], endpoint_program.key);
+    if oapp_registry.key != &expected_registry {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let (expected_event, _) =
+        Pubkey::find_program_address(&[EVENT_SEED], endpoint_program.key);
+    if event_authority.key != &expected_event {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
+    cpi_register_oapp(
+        endpoint_program,
+        payer,
+        gateway_config,
+        oapp_registry,
+        system,
+        event_authority,
+        delegate,
+        config_seeds,
+    )?;
+    Ok(())
+}
+
+/// SetPeer accounts: 0 gateway_config, 1 authority(signer), 2 peer_config (init), 3 payer, 4 system
+fn set_peer(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    remote_eid: u32,
+    peer: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let gateway_config = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    let peer_config_ai = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+
+    if !authority.is_signer || !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let cfg = load_config(program_id, gateway_config)?;
+    if authority.key.to_bytes() != cfg.authority {
+        return Err(ProgramError::IllegalOwner);
+    }
+    // Star topology: Solana spoke may only peer with the hub.
+    if remote_eid != HUB_EID {
+        return Err(ProgramError::InvalidArgument);
+    }
+    if peer == [0u8; 32] {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let (expected_peer, bump) = peer_pda(program_id, gateway_config.key, remote_eid);
+    if peer_config_ai.key != &expected_peer {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let record = PeerConfig::new(peer, bump);
+    let encoded = borsh::to_vec(&record).map_err(|_| ProgramError::InvalidInstructionData)?;
+
+    if peer_config_ai.data_is_empty() {
+        let lamports = Rent::get()?.minimum_balance(encoded.len());
+        invoke_signed(
+            &system_instruction::create_account(
+                payer.key,
+                peer_config_ai.key,
+                lamports,
+                encoded.len() as u64,
+                program_id,
+            ),
+            &[payer.clone(), peer_config_ai.clone(), system.clone()],
+            &[&[
+                PEER_SEED,
+                gateway_config.key.as_ref(),
+                &remote_eid.to_be_bytes(),
+                &[bump],
+            ]],
+        )?;
+    } else if peer_config_ai.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    let mut data = peer_config_ai.try_borrow_mut_data()?;
+    if data.len() < encoded.len() {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    data[..encoded.len()].copy_from_slice(&encoded);
+    msg!(
+        "kar-gateway SetPeer ok remote_eid={} peer={}",
+        remote_eid,
+        Pubkey::new_from_array(peer)
+    );
     Ok(())
 }

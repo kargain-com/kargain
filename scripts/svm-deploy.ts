@@ -2,9 +2,10 @@
  * SVM commercial deploy CLI.
  *
  *   pnpm deploy:svm:dry-run
- *   pnpm deploy:svm          # live Devnet (S4b X3)
+ *   pnpm deploy:svm          # live Devnet rebuild (retain deployer upgrade authority)
  *
- * Live: build → upgradeable deploy → set-upgrade-authority (hot) → init → evidence.
+ * Live: build → upgradeable deploy → **keep deployer as upgrade authority** → init → evidence.
+ * Hand-off to SOLANA_UPGRADE_AUTHORITY only after destination proof (Y5) — never at first deploy.
  * Never logs SOLANA_DEPLOYER_PRIVATE_KEY.
  */
 

@@ -7,7 +7,7 @@
 //! - Endpoint program id from config (П-12). **No** `fund_receive_rent` ix.
 //!
 //! LzReceive account order: mock stand [`lz_receive_types::MOCK_LZ_RECEIVE_ACCOUNTS`] (13)
-//! or production EndpointV2 [`lz_receive_types::PRODUCTION_LZ_RECEIVE_ACCOUNTS`] (18 / M2),
+//! or production EndpointV2 [`lz_receive_types::PRODUCTION_LZ_RECEIVE_ACCOUNTS`] (19 = M2 clear + PeerConfig),
 //! selected from `GatewayConfig.endpoint_program`.
 
 pub mod account;
@@ -17,6 +17,7 @@ pub mod endpoint_v2;
 pub mod entrypoint;
 pub mod instruction;
 pub mod lz_receive_types;
+pub mod peer;
 pub mod recover;
 pub mod seeds;
 pub mod send_receive;

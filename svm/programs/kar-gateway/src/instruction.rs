@@ -32,4 +32,14 @@ pub enum GatewayIx {
     LzReceiveTypes {
         message: Vec<u8>,
     },
+    /// Register this gateway_config PDA as an OApp with EndpointV2 (production only).
+    RegisterOApp {
+        /// Endpoint delegate (usually gateway config authority).
+        delegate: [u8; 32],
+    },
+    /// Set PeerConfig.peer_address for `remote_eid` (star: hub 40245 only).
+    SetPeer {
+        remote_eid: u32,
+        peer: [u8; 32],
+    },
 }

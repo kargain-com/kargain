@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# S4b X3 — Solana Devnet upgradeable deploy (passport + gateway + aux mock_staking).
-# Sequence: build → deploy → set-upgrade-authority (hot) → read-back → init → evidence.
+# S4b rebuild — Solana Devnet upgradeable deploy (passport + gateway + aux mock_staking).
+# Sequence: build → deploy → **retain deployer as upgrade authority** → read-back → init → evidence.
+# Do NOT hand authority to SOLANA_UPGRADE_AUTHORITY until the program is proven (Y5).
 # Never logs private keys. Requires SOLANA_* in the environment (.env.local loaded by callers).
 set -euo pipefail
 
@@ -26,7 +27,6 @@ need_cmd cargo-build-sbf
 need_cmd node
 need_cmd pnpm
 
-# Fail-closed public roles (values not echoed beyond fingerprints later)
 : "${SOLANA_RPC_URL:?SOLANA_RPC_URL required}"
 : "${SOLANA_UPGRADE_AUTHORITY:?SOLANA_UPGRADE_AUTHORITY required}"
 : "${SOLANA_FORFEIT_RECIPIENT:?SOLANA_FORFEIT_RECIPIENT required}"
@@ -34,18 +34,17 @@ need_cmd pnpm
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
 
 RPC="$SOLANA_RPC_URL"
-UPGRADE_AUTH="$SOLANA_UPGRADE_AUTHORITY"
+UPGRADE_AUTH_FINAL="$SOLANA_UPGRADE_AUTHORITY"
 FORFEIT="$SOLANA_FORFEIT_RECIPIENT"
 ENDPOINT="$SOLANA_LZ_ENDPOINT"
 GATEWAY_AUTH="${SOLANA_GATEWAY_AUTHORITY:-}"
 
-echo "==> S4b X3 Devnet deploy"
+echo "==> S4b rebuild Devnet deploy (retain deployer upgrade authority)"
 echo "    rpc: $RPC"
-echo "    upgradeAuthority: ${UPGRADE_AUTH:0:4}…${UPGRADE_AUTH: -4}"
+echo "    plannedFinalUpgradeAuthority (Y5 only): ${UPGRADE_AUTH_FINAL:0:4}…${UPGRADE_AUTH_FINAL: -4}"
 echo "    forfeit: ${FORFEIT:0:4}…${FORFEIT: -4}"
 echo "    lzEndpoint: ${ENDPOINT:0:4}…${ENDPOINT: -4}"
 
-# Materialize deployer (stdout: pubkey path workDir)
 MAT="$(pnpm exec tsx scripts/svm-materialize-deployer.ts)"
 DEPLOYER_PUB="$(echo "$MAT" | cut -f1)"
 DEPLOYER_KP="$(echo "$MAT" | cut -f2)"
@@ -60,11 +59,11 @@ trap cleanup EXIT
 echo "    deployer: $DEPLOYER_PUB"
 if [[ -n "$GATEWAY_AUTH" && "$GATEWAY_AUTH" != "$DEPLOYER_PUB" ]]; then
   echo "FAIL: SOLANA_GATEWAY_AUTHORITY must be empty or equal deployer pubkey (init signer)." >&2
-  echo "      gateway config authority is the Initialize signer; only SOLANA_DEPLOYER_PRIVATE_KEY is available." >&2
   exit 1
 fi
 GATEWAY_AUTH="$DEPLOYER_PUB"
 echo "    gatewayAuthority: $GATEWAY_AUTH (deployer)"
+echo "    upgradeAuthority (now): $DEPLOYER_PUB (retained until proven)"
 
 BAL="$(solana balance "$DEPLOYER_PUB" -u "$RPC" 2>/dev/null | awk '{print $1}')"
 echo "    balance: ${BAL:-?} SOL"
@@ -117,19 +116,12 @@ PASSPORT_ID="$(cat "$WORK/kar_passport.program_id")"
 GATEWAY_ID="$(cat "$WORK/kar_gateway.program_id")"
 STAKING_ID="$(cat "$WORK/mock_staking.program_id")"
 
-echo "==> set-upgrade-authority → hot upgrade authority"
+echo "==> assert upgrade authority = deployer (no early handoff)"
 for name in kar_passport kar_gateway mock_staking; do
   pid="$(cat "$WORK/${name}.program_id")"
-  echo "  $name ($pid)"
-  solana program set-upgrade-authority "$pid" \
-    --new-upgrade-authority "$UPGRADE_AUTH" \
-    --skip-new-upgrade-authority-signer-check \
-    --upgrade-authority "$DEPLOYER_KP" \
-    --keypair "$DEPLOYER_KP" \
-    -u "$RPC" 2>&1 | filter_cli
   SHOW="$(solana program show "$pid" -u "$RPC" -k "$DEPLOYER_KP")"
-  if ! echo "$SHOW" | grep -q "Authority: $UPGRADE_AUTH"; then
-    echo "FAIL: $name upgrade authority read-back ≠ SOLANA_UPGRADE_AUTHORITY" >&2
+  if ! echo "$SHOW" | grep -q "Authority: $DEPLOYER_PUB"; then
+    echo "FAIL: $name upgrade authority read-back ≠ deployer" >&2
     echo "$SHOW" >&2
     exit 1
   fi
@@ -138,7 +130,7 @@ for name in kar_passport kar_gateway mock_staking; do
     echo "$SHOW" >&2
     exit 1
   fi
-  echo "    authority OK"
+  echo "  $name ($pid) authority OK (deployer)"
 done
 
 echo "==> init configs (passport + gateway + setBridgeGateway)"
@@ -159,6 +151,7 @@ export SVM_X3_SLOT="$SLOT"
 export SVM_X3_GIT_HEAD="$GIT_HEAD"
 export SVM_X3_TOOLCHAIN="$TOOLCHAIN"
 export SVM_X3_BUILD_SBF="$BUILD_SBF"
+export SVM_X3_PLANNED_FINAL_UA="$UPGRADE_AUTH_FINAL"
 
 EVIDENCE="$EVIDENCE_DIR/svm-40168.json"
 python3 - "$EVIDENCE" <<'PY'
@@ -173,6 +166,7 @@ def sha256_file(p):
             h.update(chunk)
     return h.hexdigest()
 
+deployer = os.environ["SVM_X3_DEPLOYER_PUBKEY"]
 programs = {}
 for name, envk in [
     ("kar_passport", "SVM_X3_PASSPORT_PROGRAM"),
@@ -184,7 +178,7 @@ for name, envk in [
         "programId": os.environ[envk],
         "soSha256": sha256_file(so) if so.exists() else None,
         "soBytes": so.stat().st_size if so.exists() else None,
-        "upgradeAuthority": os.environ["SOLANA_UPGRADE_AUTHORITY"],
+        "upgradeAuthority": deployer,
     }
 
 doc = {
@@ -193,24 +187,33 @@ doc = {
     "namespace": 2000040168,
     "rpcUrl": os.environ["SOLANA_RPC_URL"],
     "layerZeroEndpoint": os.environ["SOLANA_LZ_ENDPOINT"],
-    "deployerPubkey": os.environ["SVM_X3_DEPLOYER_PUBKEY"],
+    "deployerPubkey": deployer,
     "gatewayConfigAuthority": os.environ["SVM_X3_GATEWAY_AUTH"],
     "forfeitRecipient": os.environ["SOLANA_FORFEIT_RECIPIENT"],
-    "upgradeAuthority": os.environ["SOLANA_UPGRADE_AUTHORITY"],
+    "upgradeAuthority": deployer,
+    "plannedFinalUpgradeAuthority": os.environ["SVM_X3_PLANNED_FINAL_UA"],
     "programs": programs,
     "slotAtEvidence": int(os.environ["SVM_X3_SLOT"]),
     "deployGitHead": os.environ["SVM_X3_GIT_HEAD"],
     "solanaCli": os.environ["SVM_X3_TOOLCHAIN"],
     "cargoBuildSbf": os.environ["SVM_X3_BUILD_SBF"],
     "commercialActive": False,
-    "note": "S4b X3 — not cut over; no COMMERCIAL_ACTIVE Solana row",
+    "wired": False,
+    "note": "S4b rebuild — deployer retains upgrade authority until destination proven; no COMMERCIAL_ACTIVE",
+    "abandonedPriorPrograms": {
+        "reason": "Upgrade authority handed to unreachable hot pubkey BSuJ… via --skip-new-upgrade-authority-signer-check (X3). Rebuilt with new program ids.",
+        "kar_passport": "x8wSxkx5tW5yV9j7Lg8To5m34cj6Ji8aZ1GdKjHETrf",
+        "kar_gateway": "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre",
+        "mock_staking": "H4S6Gw1taHY5ux4adNavi4Rwi5vn9s7vEKNA4K3d6n89",
+    },
 }
 pathlib.Path(path).write_text(json.dumps(doc, indent=2) + "\n")
 print(f"evidence → {path}")
 PY
 
-echo "==> X3 deploy PASS"
+echo "==> rebuild deploy PASS"
 echo "    passport: $PASSPORT_ID"
 echo "    gateway:  $GATEWAY_ID"
 echo "    staking:  $STAKING_ID (aux)"
+echo "    upgradeAuthority: $DEPLOYER_PUB"
 echo "    evidence: $EVIDENCE"

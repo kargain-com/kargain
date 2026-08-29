@@ -33,6 +33,8 @@ pub const EVENT_SEED: &[u8] = b"__event_authority";
 
 /// Anchor sighash `global:clear` — sha256[0..8].
 pub const CLEAR_IX_DISCRIMINATOR: [u8; 8] = [250, 39, 28, 213, 123, 163, 133, 5];
+/// Anchor sighash `global:register_oapp`.
+pub const REGISTER_OAPP_IX_DISCRIMINATOR: [u8; 8] = [129, 89, 71, 68, 11, 82, 210, 125];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearParams {
@@ -168,6 +170,54 @@ pub fn cpi_clear_production<'info>(
     Ok(())
 }
 
+/// CPI EndpointV2 `register_oapp` — OApp identity = gateway_config PDA.
+/// Account order matches `oapp::endpoint_cpi::register_oapp` (oapp at index 2).
+pub fn cpi_register_oapp<'info>(
+    endpoint_program: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
+    oapp: &AccountInfo<'info>,
+    oapp_registry: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    event_authority: &AccountInfo<'info>,
+    delegate: [u8; 32],
+    gateway_config_seeds: &[&[u8]],
+) -> ProgramResult {
+    if !is_production_endpoint(endpoint_program.key) {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut data = Vec::with_capacity(8 + 32);
+    data.extend_from_slice(&REGISTER_OAPP_IX_DISCRIMINATOR);
+    data.extend_from_slice(&delegate);
+    let ix = Instruction {
+        program_id: *endpoint_program.key,
+        accounts: vec![
+            AccountMeta::new_readonly(*endpoint_program.key, false),
+            AccountMeta::new(*payer.key, true),
+            AccountMeta::new_readonly(*oapp.key, true),
+            AccountMeta::new(*oapp_registry.key, false),
+            AccountMeta::new_readonly(*system_program.key, false),
+            AccountMeta::new_readonly(*event_authority.key, false),
+            AccountMeta::new_readonly(*endpoint_program.key, false),
+        ],
+        data,
+    };
+    invoke_signed(
+        &ix,
+        &[
+            endpoint_program.clone(),
+            payer.clone(),
+            oapp.clone(),
+            oapp_registry.clone(),
+            system_program.clone(),
+            event_authority.clone(),
+            endpoint_program.clone(),
+        ],
+        &[gateway_config_seeds],
+    )?;
+    msg!("kar-gateway endpointv2 register_oapp ok");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +233,12 @@ mod tests {
     fn clear_discriminator_is_anchor_sighash() {
         let h = solana_program::hash::hash(b"global:clear");
         assert_eq!(&h.to_bytes()[..8], &CLEAR_IX_DISCRIMINATOR);
+    }
+
+    #[test]
+    fn register_oapp_discriminator_is_anchor_sighash() {
+        let h = solana_program::hash::hash(b"global:register_oapp");
+        assert_eq!(&h.to_bytes()[..8], &REGISTER_OAPP_IX_DISCRIMINATOR);
     }
 
     #[test]

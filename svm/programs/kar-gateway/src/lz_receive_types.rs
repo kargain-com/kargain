@@ -1,7 +1,7 @@
-//! Normative LzReceive account indices — mock stand (13) and production EndpointV2 (18).
+//! Normative LzReceive account indices — mock stand (13) and production EndpointV2 (19).
 //!
 //! Layout is selected from [`GatewayConfig::endpoint_program`]:
-//! - production EndpointV2 → M2 list (RESULTS.md S4a-1)
+//! - production EndpointV2 → M2 list + PeerConfig (RESULTS.md S4a-1; rebuild adds peer @18)
 //! - otherwise → mock stand list (preserved for `--live-both`)
 
 use solana_program::pubkey::Pubkey;
@@ -10,6 +10,7 @@ use crate::config::GatewayConfig;
 use crate::endpoint_v2::{
     is_production_endpoint, production_clear_accounts, ProductionClearAccounts,
 };
+use crate::peer::peer_pda;
 use crate::seeds::{config_pda, freeze_pda};
 
 /// Mock stand indices (clear accounts first, then passport CPI).
@@ -70,6 +71,8 @@ pub struct ProductionLzReceiveAccounts {
     pub clear_endpoint_settings: usize,
     pub clear_event_authority: usize,
     pub clear_endpoint_program_event: usize,
+    /// PeerConfig PDA for `src_eid` — trust check before clear.
+    pub peer_config: usize,
 }
 
 pub const PRODUCTION_LZ_RECEIVE_ACCOUNTS: ProductionLzReceiveAccounts =
@@ -92,9 +95,10 @@ pub const PRODUCTION_LZ_RECEIVE_ACCOUNTS: ProductionLzReceiveAccounts =
         clear_endpoint_settings: 15,
         clear_event_authority: 16,
         clear_endpoint_program_event: 17,
+        peer_config: 18,
     };
 
-pub const PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT: usize = 18;
+pub const PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT: usize = 19;
 
 /// Backward-compatible aliases for the mock stand path (docs + existing imports).
 pub type LzReceiveAccounts = MockLzReceiveAccounts;
@@ -132,6 +136,7 @@ pub struct ProductionLzReceiveAccountList {
     pub core_program: Pubkey,
     pub to: Pubkey,
     pub clear: ProductionClearAccounts,
+    pub peer_config: Pubkey,
     pub token_id: [u8; 32],
     pub src_eid: u32,
     pub sender: [u8; 32],
@@ -166,6 +171,7 @@ pub fn lz_receive_types(
 
     if is_production_endpoint(&endpoint) {
         let clear = production_clear_accounts(&endpoint, &gateway_config, src_eid, &sender, nonce);
+        let (peer_config, _) = peer_pda(gateway_program_id, &gateway_config, src_eid);
         Ok(LzReceiveAccountList::Production(ProductionLzReceiveAccountList {
             gateway_config,
             endpoint_program: endpoint,
@@ -177,6 +183,7 @@ pub fn lz_receive_types(
             core_program: mpl_core::ID,
             to,
             clear,
+            peer_config,
             token_id: decoded.token_id,
             src_eid,
             sender,
@@ -248,7 +255,8 @@ mod tests {
         assert_eq!(a.clear_endpoint_settings, 15);
         assert_eq!(a.clear_event_authority, 16);
         assert_eq!(a.clear_endpoint_program_event, 17);
-        assert_eq!(PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT, 18);
+        assert_eq!(a.peer_config, 18);
+        assert_eq!(PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT, 19);
     }
 
     #[test]
