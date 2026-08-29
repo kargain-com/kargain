@@ -50,6 +50,7 @@ import {
 } from "./lib/load-deployment.js";
 import { computeIndexFromBlock, writeDeploymentManifest } from "./lib/write-deployment.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
+import { persistDeploymentCompileEvidence } from "./lib/deployment-build-info.js";
 import {
   ASCENDING_CHALLENGE_BOND,
   ASCENDING_CHALLENGE_WINDOW,
@@ -560,6 +561,8 @@ async function runLiveDeploy() {
 
     const upgradeAuthority = getAddress(timelock.address);
 
+    const evidence = persistDeploymentCompileEvidence(chainId);
+
     const blocks = {
       timelock: Number(timelock.blockNumber),
       karProPass: Number(karProPass.blockNumber),
@@ -614,6 +617,8 @@ async function runLiveDeploy() {
         bridgeGateway: gateway.txHash,
       },
       contractVersions: { ...CONTRACT_VERSIONS },
+      buildInfoId: evidence.buildInfoId,
+      buildInfoSha256: evidence.buildInfoSha256,
     };
 
     writeDeploymentManifest(manifestPath, manifest);
@@ -634,11 +639,15 @@ async function runLiveDeploy() {
     console.log(`  upgradeAuthority:         ${upgradeAuthority}`);
     console.log(`  tokenIdOffset:            ${plan.tokenIdOffset}`);
     console.log(`  Manifest:                 ${manifestPath}`);
+    console.log(
+      `  Build-info:               ${evidence.buildInfoId} sha256=${evidence.buildInfoSha256.slice(0, 16)}… (${evidence.buildInfoBytes} bytes)`,
+    );
     console.log("");
     console.log(
       "Next: update lib/web3/sepolia-addresses.ts (or ethereum twin) in the same PR, then pnpm ponder:config",
     );
     console.log("Next: pnpm bridge:wire after both commercial stacks are live");
+    console.log("Next: pnpm verify:sepolia (restores stored build-info before submit)");
   } finally {
     await connection.close();
   }

@@ -2,6 +2,7 @@ import { config as loadEnv } from "dotenv";
 import { getAddress } from "viem";
 
 import { isContractVerifiedOnEtherscan } from "./lib/etherscan-api.js";
+import { restoreDeploymentCompileEvidence } from "./lib/deployment-build-info.js";
 import {
   commercialDeploymentPath,
   requireCommercialDeployment,
@@ -165,6 +166,26 @@ async function main() {
   }
   if (force) console.log("Force mode: re-submitting even if explorer shows verified source.");
   if (strict) console.log("Strict mode: exit 1 on bytecode mismatch or unexpected failure.");
+
+  if (manifest.buildInfoId && manifest.buildInfoSha256) {
+    try {
+      restoreDeploymentCompileEvidence({
+        chainId: manifest.chainId,
+        buildInfoId: manifest.buildInfoId,
+        buildInfoSha256: manifest.buildInfoSha256,
+      });
+      console.log(
+        `Restored deploy-time build-info ${manifest.buildInfoId} (sha256 ${manifest.buildInfoSha256.slice(0, 16)}…)`,
+      );
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  } else {
+    console.log(
+      "No manifest buildInfoSha256 — verify uses current artifacts/ (may HHE80009 after recompile).",
+    );
+  }
 
   const summary: Record<string, VerifyStatus> = {};
   for (const key of order) {

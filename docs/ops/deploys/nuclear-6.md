@@ -159,6 +159,22 @@ Explorer source for those three remains red until a future nuclear deploy preser
 
 ---
 
+## Preserve compile evidence (N6-9 V3)
+
+**Owner:** [`scripts/lib/deployment-build-info.ts`](../../../scripts/lib/deployment-build-info.ts) under `deploymentsDirectory()` / `KARGAIN_DEPLOYMENTS_DIR`.
+
+| File | Role |
+|------|------|
+| `deployments/{chainId}.json` | Manifest (existing) |
+| `deployments/{chainId}.build-info.json` | Hardhat build-info **input** that produced the deploy (~0.6 MB) |
+| `deployments/{chainId}.artifacts/**` | Copies of nuclear contract artifact JSONs from that compile (~0.6 MB more) |
+
+Manifest fields: `buildInfoId`, `buildInfoSha256` (SHA-256 of the stored build-info file). **Gitignored** like manifests (not for cutover; machine-local evidence). `pnpm verify:sepolia` / `verify:sepolia:eth` restores this into `artifacts/` before Hardhat submit when those fields are present.
+
+**N6 note:** Nuclear #6 manifests predate V3 — no stored build-info; V2 stands.
+
+---
+
 ## What Nuclear #6 source ships
 
 | Contract | VERSION | Change class |

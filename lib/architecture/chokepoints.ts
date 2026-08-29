@@ -191,9 +191,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "deployments-directory",
-    owner: "scripts/lib/load-deployment.ts",
-    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); tests must not rename/unlink repo manifests",
-    guardTests: ["deployments-mutation-policy.test.ts"],
+    owner: "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts",
+    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; tests must not rename/unlink repo manifests",
+    guardTests: [
+      "deployments-mutation-policy.test.ts",
+      "deployment-build-info.test.ts",
+    ],
   },
   {
     id: "declared-weights",

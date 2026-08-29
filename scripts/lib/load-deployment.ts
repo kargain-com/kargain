@@ -118,6 +118,12 @@ export type DeploymentManifest = {
   indexFromBlock: number;
   txHashes?: Record<string, string>;
   contractVersions?: { [K in ContractVersionName]: string };
+  /**
+   * Hardhat build-info id + sha256 of `deployments/{chainId}.build-info.json`
+   * (deploy-time solc input). Bound via {@link deploymentsDirectory}.
+   */
+  buildInfoId?: string;
+  buildInfoSha256?: string;
   /** Hub↔spoke peers written by `pnpm bridge:wire` on successful full wire (nuclear eth stack). */
   peers?: SpokePathwayPeers | null;
   pathwayConfigHash?: `0x${string}` | null;
