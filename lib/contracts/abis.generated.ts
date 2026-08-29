@@ -336,6 +336,22 @@ export const KarPassportAbi = [
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "length",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "max",
+        "type": "uint256"
+      }
+    ],
+    "name": "UriTooLong",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "WrongValue",
     "type": "error"

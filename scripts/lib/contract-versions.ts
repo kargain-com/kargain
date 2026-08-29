@@ -2,7 +2,7 @@
  *  Nuclear #5 ship numbers — bump with the full commercial redeploy that makes them real on chain.
  */
 export const CONTRACT_VERSIONS = {
-  KarPassport: "1.10.0-rc.1",
+  KarPassport: "1.11.0-rc.1",
   KarProPass: "1.1.0-rc.1",
   KarProStaking: "2.2.0-rc.1",
   Timelock48h: "1.0.0-rc.1",

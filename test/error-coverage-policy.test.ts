@@ -134,8 +134,9 @@ export const LIB_ERROR_FOLDED: readonly string[] = [
   /** Linked into Ascending via DELEGATECALL — errors exercised by Ascending Hardhat suite. */
   "AscendingHoldLib",
   "AscendingOpenLib",
-  /** Shared layouts only — no custom errors. */
+/** Shared layouts / constants only — no custom errors. */
   "AscendingTypes",
+  "PassportUriCeiling",
 ] as const;
 
 const ALL_ERROR_COVERAGE_REGISTRY: readonly ErrorCoverageEntry[] = [

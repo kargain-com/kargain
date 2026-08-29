@@ -20,6 +20,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IEncumbranceSource} from "./interfaces/IEncumbranceSource.sol";
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
 import {BondedChallenge} from "./lib/BondedChallenge.sol";
+import {PassportUriCeiling} from "./lib/PassportUriCeiling.sol";
 
 interface IKarProStaking {
     function isActiveVerifier(address a) external view returns (bool);
@@ -31,9 +32,9 @@ interface IKarProStaking {
 /// @dev Verification challenge state machine lives in BondedChallenge. This contract supplies
 ///      eligibility, exclusion, qualification, bond amount, and domain terminals (lapse/stand).
 ///      Spec: commerce-model §7.2, §9, §13a.1, §13a.4. Nuclear #2 redeploy for live cutover.
-/// @custom:version 1.10.0-rc.1
+/// @custom:version 1.11.0-rc.1
 contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassportEncumbrance {
-    string public constant VERSION = "1.10.0-rc.1";
+    string public constant VERSION = "1.11.0-rc.1";
 
     /// @notice Window captured into each verification challenge at open (library immutable).
     uint256 public constant DISPUTE_WINDOW = 14 days;
@@ -117,6 +118,8 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
     error ZeroAddress();
     error ZeroDisputeDeposit();
     error SameURI();
+    /// @notice `bytes(uri).length` exceeds {@link PassportUriCeiling.BYTES}.
+    error UriTooLong(uint256 length, uint256 max);
     error NothingToRescue();
     error TokenIdSpaceExhausted();
     error GatewayAlreadySet();
@@ -258,7 +261,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         if (_ownerOf(tokenId) != address(0)) revert TokenExists();
         passportStatus[tokenId] = Status.UNVERIFIED;
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, uri);
+        _setTokenURIChecked(tokenId, uri);
         emit PassportBridgeMinted(to, tokenId, uri);
     }
 
@@ -288,7 +291,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
 
         if (bytes(uri).length > 0) {
             if (keccak256(bytes(uri)) != keccak256(bytes(tokenURI(tokenId)))) {
-                _setTokenURI(tokenId, uri);
+                _setTokenURIChecked(tokenId, uri);
                 emit PassportURIUpdated(tokenId, uri, bridgeGateway);
             }
         }
@@ -330,7 +333,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         tokenId = _nextTokenId++;
         passportStatus[tokenId] = Status.UNVERIFIED;
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, uri);
+        _setTokenURIChecked(tokenId, uri);
         emit PassportMinted(to, tokenId, uri);
     }
 
@@ -355,7 +358,7 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
             emit VerificationReset(tokenId, msg.sender);
         }
 
-        _setTokenURI(tokenId, newURI);
+        _setTokenURIChecked(tokenId, newURI);
         emit PassportURIUpdated(tokenId, newURI, msg.sender);
     }
 
@@ -535,6 +538,15 @@ contract KarPassport is ERC721URIStorage, Ownable, BondedChallenge, IKarPassport
         passportVerifier[tokenId] = address(0);
         passportVerifiedAt[tokenId] = 0;
         emit VerificationLapsed(tokenId);
+    }
+
+    /// @notice Sole `_setTokenURI` entry — enforces {@link PassportUriCeiling.BYTES}.
+    function _setTokenURIChecked(uint256 tokenId, string memory uri) internal {
+        uint256 len = bytes(uri).length;
+        if (len > PassportUriCeiling.BYTES) {
+            revert UriTooLong(len, PassportUriCeiling.BYTES);
+        }
+        _setTokenURI(tokenId, uri);
     }
 
     function _requireExists(uint256 tokenId) internal view {

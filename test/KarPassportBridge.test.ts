@@ -11,9 +11,18 @@ import {
   receiptLogs,
   ZERO,
 } from "../scripts/lib/local-stack.js";
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling.js";
 
 const TOKEN_ID_BASE = 31337n << 128n;
 const FOREIGN_TOKEN_ID = (84532n << 128n) | 1n;
+
+function ceilingUri(): string {
+  return "a".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES);
+}
+
+function overUri(): string {
+  return "a".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES + 1);
+}
 
 /** Custom-error selectors — used when the call goes through MockBridgeGateway (no passport errors on mock ABI). */
 const ERROR_SELECTORS: Record<string, string> = {
@@ -23,6 +32,7 @@ const ERROR_SELECTORS: Record<string, string> = {
   NotBridgeGateway: "0x17d13862",
   PassportBridgedAway: "0x97953a64",
   GatewayAlreadySet: "0x3c3a86d5",
+  UriTooLong: "0xa99e90bb",
   EmptyField: "0x", // name-only match; EmptyField has a string arg
 };
 
@@ -153,10 +163,10 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     );
   });
 
-  it("VERSION is 1.10.0-rc.1", async () => {
+  it("VERSION is 1.11.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.10.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.11.0-rc.1");
   });
 });
 
@@ -236,6 +246,25 @@ describe("KarPassport v1.3 — G6/G8 bridgeMint and bridgeBurn guards", () => {
     const [status] = await passport.read.getPassportStatus([FOREIGN_TOKEN_ID]);
     assert.equal(status, 0);
     assert.equal(await passport.read.tokenURI([FOREIGN_TOKEN_ID]), "ar://rep");
+  });
+
+  it("URI ceiling: bridgeMint accepts at ceiling and refuses one byte over", async () => {
+    const { viem } = connection;
+    const { owner, passport, gateway } = await deployWithGateway(viem);
+    const at = ceilingUri();
+    assert.equal(at.length, DECLARED_PASSPORT_URI_CEILING_BYTES);
+    await gateway.write.bridgeMint([owner.account.address, FOREIGN_TOKEN_ID, at], {
+      account: owner.account,
+    });
+    assert.equal(await passport.read.tokenURI([FOREIGN_TOKEN_ID]), at);
+
+    const otherForeign = FOREIGN_TOKEN_ID + 1n;
+    await assert.rejects(
+      gateway.write.bridgeMint([owner.account.address, otherForeign, overUri()], {
+        account: owner.account,
+      }),
+      revertsWith("UriTooLong"),
+    );
   });
 
   it("G8: bridgeBurn burns foreign representation and clears trust fields", async () => {
@@ -396,6 +425,24 @@ describe("KarPassport v1.3 — G4/G5 bridgeResetOnUnlock", () => {
     assert.equal(verifier, ZERO);
     assert.equal(verifiedAt, 0n);
     assert.equal(await stack.passport.read.tokenURI([tokenId]), "ar://returned");
+  });
+
+  it("URI ceiling: bridgeResetOnUnlock adopts at ceiling and refuses over", async () => {
+    const { viem } = connection;
+    const stack = await lockedHomeToken(viem, { verified: true });
+    const at = ceilingUri();
+    await stack.gateway.write.bridgeResetOnUnlock([stack.tokenId, at], {
+      account: stack.admin.account,
+    });
+    assert.equal(await stack.passport.read.tokenURI([stack.tokenId]), at);
+
+    const again = await lockedHomeToken(viem, { verified: true });
+    await assert.rejects(
+      again.gateway.write.bridgeResetOnUnlock([again.tokenId, overUri()], {
+        account: again.admin.account,
+      }),
+      revertsWith("UriTooLong"),
+    );
   });
 
   it("G5: bridgeResetOnUnlock with empty uri resets trust without PassportURIUpdated", async () => {

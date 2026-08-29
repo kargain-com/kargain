@@ -108,6 +108,10 @@ pub enum KargainError {
     ComposeRequired = 40,
     #[error("ComposeUndecodable")]
     ComposeUndecodable = 41,
+
+    // ---- URI ceiling (Nuclear #6) — append only ----
+    #[error("UriTooLong")]
+    UriTooLong = 42,
 }
 
 impl KargainError {
@@ -156,6 +160,7 @@ impl KargainError {
             Self::NotLocked => "NotLocked",
             Self::ComposeRequired => "ComposeRequired",
             Self::ComposeUndecodable => "ComposeUndecodable",
+            Self::UriTooLong => "UriTooLong",
         }
     }
 
@@ -204,6 +209,7 @@ impl KargainError {
             NotLocked,
             ComposeRequired,
             ComposeUndecodable,
+            UriTooLong,
         ]
     }
 }

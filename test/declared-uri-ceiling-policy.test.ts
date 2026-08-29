@@ -153,4 +153,17 @@ describe("declared URI ceiling policy", () => {
     }
     assert.deepEqual(violations, []);
   });
+
+  it("KarPassport has no direct _setTokenURI outside the checked wrapper", () => {
+    const src = fs.readFileSync(
+      path.join(ROOT, "contracts/KarPassport.sol"),
+      "utf8",
+    );
+    const direct = [...src.matchAll(/_setTokenURI\s*\(/g)];
+    const checked = [...src.matchAll(/_setTokenURIChecked\s*\(/g)];
+    // One definition of _setTokenURIChecked calls _setTokenURI once; no other call sites.
+    assert.equal(direct.length, 1, `direct _setTokenURI count ${direct.length}`);
+    assert.ok(checked.length >= 5, "wrapper definition + four call sites");
+    assert.match(src, /function _setTokenURIChecked/);
+  });
 });

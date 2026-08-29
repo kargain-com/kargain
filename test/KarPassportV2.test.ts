@@ -11,6 +11,7 @@ import {
   mintPassport,
   ZERO,
 } from "../scripts/lib/local-stack.js";
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling.js";
 
 const TOKEN_ID_BASE = 31337n << 128n;
 const DISPUTE_WINDOW = 14n * 24n * 60n * 60n;
@@ -580,9 +581,59 @@ describe("KarPassport — claim payout coverage", () => {
     );
   });
 
-  it("VERSION is 1.10.0-rc.1", async () => {
+  it("VERSION is 1.11.0-rc.1", async () => {
     const { viem } = connection;
     const { passport } = await deployPassportStack(viem);
-    assert.equal(await passport.read.VERSION(), "1.10.0-rc.1");
+    assert.equal(await passport.read.VERSION(), "1.11.0-rc.1");
+  });
+});
+
+describe("KarPassport URI ceiling", () => {
+  let connection: Awaited<ReturnType<typeof hardhat.network.connect>>;
+
+  beforeEach(async () => {
+    connection = await hardhat.network.connect();
+  });
+
+  afterEach(async () => {
+    await connection.close();
+  });
+
+  const ceilingUri = () =>
+    `ar://${"c".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES - 5)}`;
+  const overUri = () =>
+    `ar://${"c".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES - 5 + 1)}`;
+
+  it("mintPassport accepts URI at ceiling and refuses one byte over", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    const at = ceilingUri();
+    assert.equal(at.length, DECLARED_PASSPORT_URI_CEILING_BYTES);
+    const tokenId = await mintPassport(passport, owner, owner.account.address, at);
+    assert.equal(await passport.read.tokenURI([tokenId]), at);
+
+    await assert.rejects(
+      passport.write.mintPassport([owner.account.address, overUri()], {
+        account: owner.account,
+      }),
+      revertsWith("UriTooLong"),
+    );
+  });
+
+  it("setPassportURI accepts ceiling and refuses over", async () => {
+    const { viem } = connection;
+    const { owner, passport } = await deployPassportStack(viem);
+    const tokenId = await mintPassport(passport, owner, owner.account.address, "ar://short");
+    const at = ceilingUri();
+    await passport.write.setPassportURI([tokenId, at], {
+      account: owner.account,
+    });
+    assert.equal(await passport.read.tokenURI([tokenId]), at);
+    await assert.rejects(
+      passport.write.setPassportURI([tokenId, overUri()], {
+        account: owner.account,
+      }),
+      revertsWith("UriTooLong"),
+    );
   });
 });

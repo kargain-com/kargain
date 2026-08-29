@@ -91,6 +91,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   InvalidStatus: "Not allowed in the current passport status.",
   EmptyField: "A required field is empty.",
   SameURI: "The new metadata URI is the same as the current one.",
+  UriTooLong: "This passport metadata URI is too long.",
   NothingToRescue: "There is no excess ETH available to rescue.",
   TokenIdSpaceExhausted: "This chain’s passport id space is exhausted.",
   GatewayAlreadySet: "The bridge gateway is already set.",
@@ -220,6 +221,20 @@ export function formatDecodedRevert(
     const field = decoded.args?.[0];
     if (typeof field !== "string" || field.trim() === "") return null;
     return `A required field is empty (${field.trim()}).`;
+  }
+  if (decoded.name === "UriTooLong") {
+    const length = decoded.args?.[0];
+    const max = decoded.args?.[1];
+    const lenN =
+      typeof length === "bigint"
+        ? Number(length)
+        : typeof length === "number"
+          ? length
+          : NaN;
+    const maxN =
+      typeof max === "bigint" ? Number(max) : typeof max === "number" ? max : NaN;
+    if (!Number.isFinite(lenN) || !Number.isFinite(maxN)) return null;
+    return `This passport metadata URI is too long (${lenN} bytes, max ${maxN}).`;
   }
   if (decoded.name === "InvalidStatus") {
     const raw = decoded.args?.[0];
