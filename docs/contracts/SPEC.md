@@ -820,6 +820,7 @@ Extends §12.1 identity. Supersedes the assumption that the high 128 bits of `to
 - High 128 bits of `tokenId` are a **Kargain chain namespace**. EVM commercial chains use their EIP-155 id (84532, 11155111, …).
 - Non-EVM commercial chains use the reserved band **`2_000_000_000 … 2_147_483_647`**, allocated as **`2_000_000_000 + LayerZero EID`**.
 - First allocation: Solana Devnet LayerZero EID **40168** → namespace **`2_000_040_168`**.
+- **Commercial stack registry** (`COMMERCIAL_ACTIVE` in app code): keyed by **namespace**. An EVM row’s key equals its EIP-155 id; a non-EVM row’s key is its reserved-band namespace (never a fabricated EIP-155). A reserved namespace **without** a registry row is not a commercial network — tooling and UI must fail closed (no selectable chain, no silent hub fallback).
 - **Why the upper bound:** every Ponder `chainId` / `custodyChain` column in `ponder.schema.ts` is `t.integer()` → Postgres `integer` (int4) max **2_147_483_647**. The band must stay inside that type so indexer keys remain exact.
 - **Why below 2^53:** JavaScript `Number` is IEEE-754 float with a 53-bit integer mantissa; namespaces must remain exactly representable in client and Node tooling without BigInt-only paths for every filter.
 - **Disjointness:** no EVM commercial EIP-155 id may fall in the reserved band; no two commercial chains may share a namespace. Enforced as a `test:verify` obligation on the commercial stack registry.

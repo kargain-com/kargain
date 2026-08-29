@@ -8,10 +8,15 @@
  *
  * Sole owner of the commercial-network set / `isCommercialChainId` predicate.
  * Tooling (feeds, nuclear) imports from here — do not redefine the allowlist.
+ *
+ * Registry key = namespace (SPEC §13.1). EVM rows use EIP-155 as namespace;
+ * SVM rows (when live) use the reserved-band namespace — never invent a fake EIP-155.
+ * No Solana row until programs are deployed and cut over (S4b / S9).
  */
 
 import {
   asKargainNamespace,
+  isReservedNonEvmNamespace,
   mintKargainNamespace,
   type KargainNamespace,
 } from "@/lib/web3/kargain-namespace";
@@ -35,7 +40,11 @@ export type CommercialNativeUnit = {
   decimals: number;
 };
 
-type CommercialActiveStackShared = {
+/**
+ * EVM address slots — checksum hex. Shared only by `vm: "evm"` rows.
+ * Do not widen these fields to accept base58; SVM uses {@link SvmCommercialActiveStack}.
+ */
+type EvmCommercialActiveStackShared = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
@@ -51,7 +60,7 @@ type CommercialActiveStackShared = {
   fixedPriceConsignmentImpl?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
-  /** LayerZero EndpointV2 — EVM hex form today; value shape follows VM. */
+  /** LayerZero EndpointV2 — EVM hex form. */
   layerZeroEndpoint: `0x${string}`;
   platformRecipient: `0x${string}`;
   deployer: `0x${string}`;
@@ -65,15 +74,49 @@ type CommercialActiveStackShared = {
  * EVM commercial stack. `chainId` is the EIP-155 id and equals `namespace`
  * for every current entry (SPEC §13.1 non-collision).
  */
-export type EvmCommercialActiveStack = CommercialActiveStackShared & {
+export type EvmCommercialActiveStack = EvmCommercialActiveStackShared & {
   vm: "evm";
   namespace: KargainNamespace;
   /** EIP-155 chain id — equals Number(namespace) for EVM stacks. */
   chainId: number;
 };
 
-/** Discriminated commercial stack — only `evm` until an SVM row lands. */
-export type CommercialActiveStack = EvmCommercialActiveStack;
+/**
+ * SVM commercial stack shape (SPEC §13.1 reserved-band namespace).
+ * Addresses are canonical base58 program / account ids (normalize via
+ * `protocol-address`). No EIP-155 `chainId` — registry key is `namespace` alone.
+ * Not present in {@link COMMERCIAL_ACTIVE} until programs are live (S4b+) and cut over (S9).
+ */
+export type SvmCommercialActiveStack = {
+  vm: "svm";
+  namespace: KargainNamespace;
+  nativeUnit: CommercialNativeUnit;
+  karPassport: string;
+  karProPass: string;
+  karProStaking: string;
+  /** SPL mint or native sentinel — product path decides in S8. */
+  usdc: string;
+  /** Unused on SVM until an oracle path exists; empty string refuse at admit. */
+  nativeFeed: string;
+  eurFeed?: string;
+  /** Squads / timelock-equivalent upgrade authority (base58). */
+  timelock: string;
+  bridgeGateway: string;
+  fixedPriceConsignment?: string;
+  fixedPriceConsignmentImpl?: string;
+  ascendingConsignment?: string;
+  ascendingConsignmentImpl?: string;
+  /** LayerZero EndpointV2 program id (base58). */
+  layerZeroEndpoint: string;
+  platformRecipient: string;
+  deployer: string;
+  upgradeAuthority: string;
+  indexFromBlock: number;
+  blocks: CommercialActiveBlocks;
+};
+
+/** Discriminated commercial stack — live registry is EVM-only; SVM shape is typed for S4b+. */
+export type CommercialActiveStack = EvmCommercialActiveStack | SvmCommercialActiveStack;
 
 const ETH_NATIVE_UNIT = { symbol: "ETH", decimals: 18 } as const satisfies CommercialNativeUnit;
 
@@ -156,9 +199,10 @@ export type CommercialChainId =
  * Active commercial protocol stacks. Add a new entry when bringing up another chain;
  * do not reuse addresses across namespaces (SPEC §I.12.12).
  * Registry key = namespace (equals EIP-155 for current EVM rows).
+ * Live registry is EVM-only — no Solana row until S4b deploy + S9 cutover.
  */
 export const COMMERCIAL_ACTIVE: Readonly<
-  Record<CommercialChainId, CommercialActiveStack>
+  Record<CommercialChainId, EvmCommercialActiveStack>
 > = {
   [BASE_SEPOLIA_84532.chainId]: BASE_SEPOLIA_84532,
   [ETHEREUM_SEPOLIA_11155111.chainId]: ETHEREUM_SEPOLIA_11155111,
@@ -186,12 +230,23 @@ export function isCommercialChainId(
   return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId);
 }
 
+function commercialActiveMissingMessage(chainId: number): string {
+  if (isReservedNonEvmNamespace(chainId)) {
+    return (
+      `COMMERCIAL_ACTIVE has no SVM row for reserved namespace ${chainId} — ` +
+      `programs not deployed / not cut over (fail closed; do not offer as a network)`
+    );
+  }
+  return (
+    `No COMMERCIAL_ACTIVE entry for chain ${chainId} — add the stack to ` +
+    `lib/web3/commercial-active.ts after deploy`
+  );
+}
+
 export function requireCommercialActive(chainId: number): CommercialActiveStack {
   const stack = commercialActive(chainId);
   if (!stack) {
-    throw new Error(
-      `No COMMERCIAL_ACTIVE entry for chain ${chainId} — add the stack to lib/web3/commercial-active.ts after deploy`,
-    );
+    throw new Error(commercialActiveMissingMessage(chainId));
   }
   return stack;
 }
@@ -203,11 +258,11 @@ export function requireCommercialActive(chainId: number): CommercialActiveStack 
 export function eip155Of(namespace: KargainNamespace | number): number {
   const stack = commercialActive(Number(namespace));
   if (!stack) {
-    throw new Error(`eip155Of: no COMMERCIAL_ACTIVE entry for namespace ${namespace}`);
+    throw new Error(commercialActiveMissingMessage(Number(namespace)));
   }
   if (stack.vm !== "evm") {
     throw new Error(
-      `eip155Of: namespace ${namespace} is not an EVM commercial stack (vm=${String((stack as { vm: string }).vm)})`,
+      `eip155Of: namespace ${namespace} is not an EVM commercial stack (vm=${stack.vm})`,
     );
   }
   return stack.chainId;

@@ -4,9 +4,18 @@ import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
 /**
  * Explicit chain-role resolvers for multichain UI/commerce.
  * Missing or non-commercial → null — never invent a hub default.
+ *
+ * Role map when an SVM commercial row eventually exists (`vm: "svm"`):
+ * - **commercial union / wallet commercial / custody commerce** — keyed by
+ *   namespace (`2_000_040_168`), not EIP-155; `commercialChainIds()` stays
+ *   EVM-only (`commercialEip155Ids`) until a dedicated SVM list exists.
+ * - **storage / FX env pins** — remain EVM env-class (`STORAGE_ENV_CHAIN_ID` /
+ *   `FX_RATE_CHAIN_ID`); Solana does not inherit those pins by namespace.
+ * - Until then, reserved-band namespaces without a registry row fail closed
+ *   via `requireCommercialActive` (not selectable).
  */
 
-/** Sorted commercial chain ids from COMMERCIAL_ACTIVE (UI lists, OR loops). */
+/** Sorted commercial EIP-155 ids from COMMERCIAL_ACTIVE (UI lists, OR loops). */
 export function commercialChainIds(): readonly number[] {
   return commercialEip155Ids();
 }

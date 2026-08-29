@@ -75,7 +75,8 @@ function resolveAddress(key: AddressKey, chainId: number): `0x${string}` | undef
   if (single && chainId === LOCALHOST_CHAIN_ID) return getAddress(single as `0x${string}`);
 
   const active = commercialActive(chainId);
-  if (active) return active[key];
+  // Hex accessors stay EVM-only; SVM rows need a separate owner in S8.
+  if (active?.vm === "evm") return active[key];
 
   return undefined;
 }
@@ -120,7 +121,7 @@ function resolveOptionalAddress(
   if (single && chainId === LOCALHOST_CHAIN_ID) return getAddress(single as `0x${string}`);
 
   const active = commercialActive(chainId);
-  if (active) return active[key];
+  if (active?.vm === "evm") return active[key];
 
   return undefined;
 }
