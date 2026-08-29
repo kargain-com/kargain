@@ -189,6 +189,63 @@ Manifest fields: `buildInfoId`, `buildInfoSha256` (SHA-256 of the stored build-i
 
 ---
 
+## Partial match / public verifiability (N6-10) — August 29, 2026
+
+**Question:** can body-equal / metadata-CID-different N6 Passport / Staking / Gateway be made **publicly** verifiable (explorer visitor), or must cutover use a fresh V3-retained deploy?
+
+### P1 — What each route accepts (docs retrieved 2026-08-29)
+
+**Sourcify** — [Exact Match vs Match](https://docs.sourcify.dev/docs/exact-match-vs-match/):
+
+> Matches (prev. called "partial match") refer to cases when the deployed bytecode of the onchain contract match the bytecode resulting from the recompilation with the metadata and the source files **except the metadata hash**. … renamed … as "partial" often causes confusion leading users to think their contract is not verified.
+
+**Classification:** **accepted and shown as verified** with caveat **Match** (not Exact Match). Exact Match additionally requires the metadata fingerprint to match.
+
+**Etherscan / Basescan** (same Etherscan API v2) — [Common verification errors](https://docs.etherscan.io/contract-verification/common-verification-errors):
+
+> "Compiled contract deployment bytecode does NOT match the transaction deployment bytecode" — submitted source does not match on-chain.  
+> "Source code already verified" — "An **Exact Match** has been obtained".  
+> "Similar Match Found" — contract already **Similar Matches** another address’s bytecode.
+
+Cross-check [ethereum.org Verifying](https://ethereum.org/developers/docs/smart-contracts/verifying/) (retrieved same day) claims Etherscan “fails to compare the metadata hash” (partial). Hardhat issue [#7730](https://github.com/NomicFoundation/hardhat/issues/7730) (Dec 2025) claims the opposite — Etherscan compares **full** bytecode including metadata. **Resolved by P2 experiment**, not by picking a narrative.
+
+**Classification (after P2):** explorer path **rejects** today’s recompile for these three (Hardhat HHE80009 local gate; `getsourcecode` empty; visitor still “Verify and Publish”). They do **not** display verified source for N6 Passport/Staking/Gateway.
+
+### P2 — Attempts (source publish only; no txs; no `hardhat.config.ts` change)
+
+| Route | Method | Outcome (3 contracts × 2 chains) |
+|-------|--------|----------------------------------|
+| Sourcify | POST `https://sourcify.dev/server/v2/verify/{chainId}/{address}` with current Hardhat `stdJsonInput` + `0.8.28+commit.7893614a` | All **six** → API `match` / `runtimeMatch`=`match` / `creationMatch`=`match` (not `exact_match`) |
+| Hardhat `verify sourcify` / `verify etherscan` | Existing CLI | All attempted → **HHE80009** locally (“bytecode does not match”) — never reaches a successful explorer submit |
+| Etherscan API `getsourcecode` after Sourcify | Read | All six: **no** `SourceCode` (explorer still unverified) |
+
+**Visitor sees:**
+
+| Surface | Passport / Staking / Gateway |
+|---------|------------------------------|
+| [repo.sourcify.dev](https://repo.sourcify.dev) `/{chainId}/{address}` | **Match** — source, ABI, metadata readable (e.g. hub gateway [84532/0xFA4FcEf7…](https://repo.sourcify.dev/84532/0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29)) |
+| sepolia.basescan.org / sepolia.etherscan.io | **Not verified** — “Verify and Publish your contract source code today!”; no Contract Source Code Verified badge |
+
+### P3
+
+Does **not** apply to Sourcify (accepted). Applies to **Basescan/Etherscan** as the cutover bar: they do not accept/display this metadata-divergent verification.
+
+### P4 — Cutover consequence
+
+**Basescan and Etherscan remain red** for the three ctor+non-proxy contracts, so Nuclear #6 **cannot** be the stack that goes live under the public-explorer bar — even though Sourcify Match and `verify:bytecode-identity` both succeed. The cutover stack must be a **fresh** nuclear deploy that retains V3 `build-info` evidence and completes explorer verify **before** any clean recompile. Until that stack exists, any **S4b** wire of **40245↔40168** against hub `0xFA4FcEf7…DB29` is **provisional** and must be **re-peered** to the cutover hub gateway.
+
+**Repeat list for the cutover stack:**
+
+1. Nuclear deploy both chains (roles, VERSIONS, `indexFromBlock`) with clean git tree  
+2. Persist `{chainId}.build-info.json` + `.artifacts/` (V3)  
+3. `pnpm verify:bytecode-identity` (+ `--eth`)  
+4. Explorer verify (+ Sourcify) **while** stored build-info is intact  
+5. Wire **40245↔40161** on the **new** gateways  
+6. Re-wire **40245↔40168** if S4b already pointed at N6 hub  
+7. S9: `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge  
+
+---
+
 ## What Nuclear #6 source ships
 
 | Contract | VERSION | Change class |
@@ -213,8 +270,9 @@ SVM mirrors the same ceiling (write / send); receive never length-rejects.
 | Deploy N6 both chains | August 29 | **Done** |
 | N6-8 bytecode identity (diagnosis) | August 29 | **Done** — executable match |
 | N6-9 V1–V4 (verifiable deploys) | August 29 | **Done** — gates in tree; N6 has no stored build-info (V2) |
+| N6-10 partial match / public verify | August 29 | **Done** — Sourcify Match ×6; Basescan/Etherscan still red → cutover needs fresh V3 deploy; S4b provisional |
 | Wire 40245↔40161 on **new** N6 gateways | optional before S4 | Not run (N4 pathway stays for live app) |
-| Wire 40245↔40168 (Solana) | **S4b+** against hub gateway `0xFA4FcEf7…DB29` | Pending |
+| Wire 40245↔40168 (Solana) | **S4b+** against hub gateway `0xFA4FcEf7…DB29` | Pending — **provisional** until explorer-green cutover stack |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
 **Do not** run `bridge:wire:read-only` against N4 pathway as an N6 gate — that pathway stays for the live app until S9.
