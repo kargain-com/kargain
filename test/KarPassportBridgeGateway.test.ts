@@ -56,6 +56,7 @@ import {
   ASCENDING_MIN_INCREMENT_BPS,
   ASCENDING_MIN_PROTECTION_WINDOW,
 } from "../scripts/lib/verify-constructor-args.js";
+import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EID_HUB = 1;
@@ -85,7 +86,10 @@ const MAX_STALENESS = 3600n;
 const PACKET_NONCE_OFFSET = 1;
 const PACKET_GUID_OFFSET = 81;
 const PACKET_MESSAGE_OFFSET = 113;
-const URI_731 = `ar://${"x".repeat(731 - 5)}`;
+/** Historical ONFT measure (S4a); product ceiling is DECLARED_PASSPORT_URI_CEILING_BYTES. */
+const URI_731_HISTORICAL = `ar://${"x".repeat(731 - 5)}`;
+const URI_AT_CEILING = `ar://${"c".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES - 5)}`;
+const URI_OVER_CEILING = `ar://${"c".repeat(DECLARED_PASSPORT_URI_CEILING_BYTES - 5 + 1)}`;
 
 const require = createRequire(import.meta.url);
 const endpointArtifactPath = require
@@ -101,6 +105,9 @@ const ERROR_SELECTORS: Record<string, string> = {
   LeaveChainRefused: keccak256(toBytes("LeaveChainRefused()")).slice(0, 10),
   NotRepresentationOwner: keccak256(toBytes("NotRepresentationOwner()")).slice(0, 10),
   ZeroAddress: keccak256(toBytes("ZeroAddress()")).slice(0, 10),
+  UriExceedsBridgeCeiling: keccak256(
+    toBytes("UriExceedsBridgeCeiling(uint256,uint256)"),
+  ).slice(0, 10),
 };
 
 function revertsWith(errorName: string) {
@@ -544,25 +551,26 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     await spokeConn.close();
   });
 
-  it("wire anchor: 731-byte URI round-trip uses Solidity send() bytes", async () => {
-    assert.equal(URI_731.length, 731);
+  it("wire anchor: ceiling-byte URI round-trip uses Solidity send() bytes", async () => {
+    assert.equal(URI_AT_CEILING.length, DECLARED_PASSPORT_URI_CEILING_BYTES);
+    assert.equal(URI_731_HISTORICAL.length, 731);
     const { hub, spoke } = pair;
     const seller = hub.stack.seller;
     const tokenId = await mintPassport(
       hub.stack.passport,
       seller,
       seller.account.address,
-      URI_731,
+      URI_AT_CEILING,
     );
     await relaySend({
       src: hub,
       dst: spoke,
       to: seller.account.address,
       tokenId,
-      uri: URI_731,
+      uri: URI_AT_CEILING,
       senderAccount: seller.account,
     });
-    assert.equal(await spoke.stack.passport.read.tokenURI([tokenId]), URI_731);
+    assert.equal(await spoke.stack.passport.read.tokenURI([tokenId]), URI_AT_CEILING);
   });
 
   it("#1 master invariant: home lock + spoke mint UNVERIFIED; return unlocks", async () => {
@@ -1266,8 +1274,95 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
   });
 
-  it("VERSION is 1.3.0-rc.1", async () => {
-    assert.equal(await pair.hub.gateway.read.VERSION(), "1.3.0-rc.1");
+  it("URI ceiling: quoteSend accepts at ceiling", async () => {
+    const { hub, spoke } = pair;
+    const seller = hub.stack.seller;
+    assert.equal(URI_AT_CEILING.length, DECLARED_PASSPORT_URI_CEILING_BYTES);
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      URI_AT_CEILING,
+    );
+    const param = sendParam(EID_SPOKE, seller.account.address, tokenId);
+    const fee = (await hub.gateway.read.quoteSend([param, false])) as {
+      nativeFee: bigint;
+      lzTokenFee: bigint;
+    };
+    assert.ok(fee.nativeFee > 0n);
+    void spoke;
+  });
+
+  it("URI ceiling: quoteSend refuses over-ceiling before taking value", async () => {
+    const { hub } = pair;
+    const seller = hub.stack.seller;
+    assert.equal(URI_OVER_CEILING.length, DECLARED_PASSPORT_URI_CEILING_BYTES + 1);
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://short",
+    );
+    const harness = await hub.viem.deployContract("GatewayBuildMsgHarness", [
+      hub.stack.passport.address,
+      hub.endpoint.address,
+      hub.stack.admin.account.address,
+    ]);
+    await harness.write.setForcedUri([URI_OVER_CEILING], {
+      account: hub.stack.admin.account,
+    });
+    await harness.write.setPeer([EID_SPOKE, addressToBytes32(pair.spoke.gateway.address)], {
+      account: hub.stack.admin.account,
+    });
+    const param = sendParam(EID_SPOKE, seller.account.address, tokenId);
+    const balBefore = await hub.publicClient.getBalance({
+      address: seller.account.address,
+    });
+    await assert.rejects(
+      harness.read.quoteSend([param, false]),
+      revertsWith("UriExceedsBridgeCeiling"),
+    );
+    const balAfter = await hub.publicClient.getBalance({
+      address: seller.account.address,
+    });
+    assert.equal(balAfter, balBefore);
+  });
+
+  it("URI ceiling: send build refuses over-ceiling before debit", async () => {
+    const { hub } = pair;
+    const seller = hub.stack.seller;
+    const tokenId = await mintPassport(
+      hub.stack.passport,
+      seller,
+      seller.account.address,
+      "ar://keep",
+    );
+    const harness = await hub.viem.deployContract("GatewayBuildMsgHarness", [
+      hub.stack.passport.address,
+      hub.endpoint.address,
+      hub.stack.admin.account.address,
+    ]);
+    await harness.write.setPeer([EID_SPOKE, addressToBytes32(pair.spoke.gateway.address)], {
+      account: hub.stack.admin.account,
+    });
+    const param = sendParam(EID_SPOKE, seller.account.address, tokenId);
+    const fee = { nativeFee: 0n, lzTokenFee: 0n };
+    await assert.rejects(
+      harness.write.exposeSendBuildThenDebit(
+        [param, fee, seller.account.address, URI_OVER_CEILING],
+        { account: seller.account, value: 0n },
+      ),
+      revertsWith("UriExceedsBridgeCeiling"),
+    );
+    assert.equal(
+      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(seller.account.address),
+    );
+    assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
+  });
+
+  it("VERSION is 1.4.0-rc.1", async () => {
+    assert.equal(await pair.hub.gateway.read.VERSION(), "1.4.0-rc.1");
   });
 
   it("gateway leave path is may-only (no status / listing leave probes)", () => {

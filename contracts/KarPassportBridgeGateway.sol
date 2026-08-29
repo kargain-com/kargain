@@ -26,6 +26,7 @@ import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 
 import {IKarPassportBridge} from "./interfaces/IKarPassportBridge.sol";
 import {IKarPassportEncumbrance} from "./interfaces/IKarPassportEncumbrance.sol";
+import {PassportUriCeiling} from "./lib/PassportUriCeiling.sol";
 
 interface IERC721MetadataURI {
     function tokenURI(uint256 tokenId) external view returns (string memory);
@@ -36,9 +37,9 @@ interface IERC721MetadataURI {
 /// @dev Leave permission is a single passport question (`may(LeaveChain)`). The gateway holds no
 ///      commerce references and does not read trust status (E2/E5). LayerZero imports are confined
 ///      here (§7.6 provider isolation).
-/// @custom:version 1.3.0-rc.1
+/// @custom:version 1.4.0-rc.1
 contract KarPassportBridgeGateway is ONFT721Adapter {
-    string public constant VERSION = "1.3.0-rc.1";
+    string public constant VERSION = "1.4.0-rc.1";
 
     using ONFT721MsgCodec for bytes;
     using ONFT721MsgCodec for bytes32;
@@ -50,6 +51,8 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     error NotHomeToken();
     error NotLocked();
     error ZeroAddress();
+    /// @notice Leave / quote refuses URIs above the declared passport URI ceiling (distinct from write `UriTooLong`).
+    error UriExceedsBridgeCeiling(uint256 length, uint256 max);
 
     /// @notice Timelock restored a stranded locked home token after Endpoint kill (SPEC §I.12.11).
     event RecoveredLockedHome(uint256 indexed tokenId, address indexed to);
@@ -84,15 +87,16 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     }
 
     /// @notice Send caches URI before debit so foreign `bridgeBurn` does not clear metadata mid-send.
+    /// @dev Build (incl. URI ceiling) before debit so over-ceiling leave reverts with no custody change.
     function send(
         SendParam calldata sendParam,
         MessagingFee calldata fee,
         address refundAddress
     ) external payable virtual override returns (MessagingReceipt memory msgReceipt) {
         string memory uri = IERC721MetadataURI(address(innerToken)).tokenURI(sendParam.tokenId);
+        (bytes memory message, bytes memory options) = _buildMsgAndOptionsWithUri(sendParam, uri);
         _debit(msg.sender, sendParam.tokenId, sendParam.dstEid);
 
-        (bytes memory message, bytes memory options) = _buildMsgAndOptionsWithUri(sendParam, uri);
         msgReceipt = _lzSend(sendParam.dstEid, message, options, fee, refundAddress);
         emit ONFTSent(msgReceipt.guid, sendParam.dstEid, msg.sender, sendParam.tokenId);
     }
@@ -153,6 +157,7 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
     function _buildMsgAndOptions(SendParam calldata sendParam)
         internal
         view
+        virtual
         override
         returns (bytes memory message, bytes memory options)
     {
@@ -165,6 +170,10 @@ contract KarPassportBridgeGateway is ONFT721Adapter {
         view
         returns (bytes memory message, bytes memory options)
     {
+        uint256 len = bytes(uri).length;
+        if (len > PassportUriCeiling.BYTES) {
+            revert UriExceedsBridgeCeiling(len, PassportUriCeiling.BYTES);
+        }
         if (sendParam.to == bytes32(0)) revert InvalidReceiver();
 
         bytes memory composeMsg = abi.encode(uri);
