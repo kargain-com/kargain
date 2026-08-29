@@ -26,7 +26,7 @@ use crate::seeds::{asset_pda, config_pda, state_pda, CONFIG_SEED, STATE_SEED};
 use crate::state::{
     PassportConfig, PassportState, Status, PASSPORT_CONFIG_DISCRIMINATOR,
 };
-use crate::uri::{check_set_uri, mint_uri_ok};
+use crate::uri::{check_mint_uri, check_set_uri};
 
 /// Fixed state PDA space (never closed; tombstone after foreign burn).
 pub const PASSPORT_STATE_SPACE: usize = 256;
@@ -265,7 +265,7 @@ fn create_state_account<'info>(
 }
 
 fn mint_passport(program_id: &Pubkey, accounts: &[AccountInfo], uri: String) -> ProgramResult {
-    let _ = mint_uri_ok(&uri);
+    check_mint_uri(&uri).map_err(into_program_error)?;
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
     let authority = next_account_info(iter)?;

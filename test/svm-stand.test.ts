@@ -131,8 +131,16 @@ describe("svm-stand live Core CPI round trip", () => {
         result.foreignMintCu == null || result.foreignMintCu > 0,
         "receive-shaped CU should be measured when available",
       );
+      assert.ok(
+        result.foreignMintTxSize != null && result.foreignMintTxSize > 0,
+        "foreign-mint tx size should be measured",
+      );
+      assert.ok(
+        result.foreignMintTxSize! <= 1232,
+        `mock foreign-mint tx ${result.foreignMintTxSize} must fit Solana packet 1232`,
+      );
       console.warn(
-        `\n[svm-stand] live PASS foreignMintCu=${result.foreignMintCu} homeUnlockCu=${result.homeUnlockCu}\n`,
+        `\n[svm-stand] live PASS uri=${result.liveUriLen}B foreignMintCu=${result.foreignMintCu} foreignMintTxSize=${result.foreignMintTxSize} (mock 13-meta) homeUnlockCu=${result.homeUnlockCu}\n`,
       );
 
       if (LIVE_EVM) {

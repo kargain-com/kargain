@@ -1,6 +1,8 @@
 //! Send / receive pure gates — URI before debit; compose fail-closed (D-16).
+//! Send enforces `PASSPORT_URI_CEILING_BYTES` with `UriExceedsBridgeCeiling`.
+//! Receive never length-rejects (message that arrived already fitted a tx).
 
-use kargain_errors::KargainError;
+use kargain_errors::{KargainError, PASSPORT_URI_CEILING_BYTES};
 use kargain_onft_codec::{decode, CodecError, OnftMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,7 +12,9 @@ pub struct SendPlan {
     pub is_home: bool,
 }
 
-/// Send check order: URI already read by caller → may(LeaveChain) → debit branch.
+/// Send check order: URI ceiling → may(LeaveChain) → debit branch.
+/// Ceiling before may/debit so over-ceiling leave reverts with no custody change
+/// (matches EVM `_buildMsgAndOptionsWithUri` before `_debit`).
 pub fn plan_send(
     uri: String,
     token_id: [u8; 32],
@@ -18,6 +22,9 @@ pub fn plan_send(
     may_leave: Result<bool, KargainError>,
     representation_owner_ok: bool,
 ) -> Result<SendPlan, KargainError> {
+    if uri.len() > PASSPORT_URI_CEILING_BYTES {
+        return Err(KargainError::UriExceedsBridgeCeiling);
+    }
     match may_leave {
         Ok(true) => {}
         Ok(false) => return Err(KargainError::LeaveChainRefused),
@@ -77,6 +84,13 @@ mod tests {
     use kargain_onft_codec::{abi_encode_string, encode};
     use kar_passport::state::token_id_from_parts;
 
+    fn uri_of_len(n: usize) -> String {
+        if n <= 5 {
+            return "x".repeat(n);
+        }
+        format!("ar://{}", "x".repeat(n - 5))
+    }
+
     #[test]
     fn uri_captured_before_may_refusal() {
         // Caller supplies URI already; may refusal still returns LeaveChainRefused
@@ -90,6 +104,21 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, KargainError::LeaveChainRefused);
+    }
+
+    #[test]
+    fn send_at_ceiling_ok() {
+        let u = uri_of_len(PASSPORT_URI_CEILING_BYTES);
+        assert_eq!(u.len(), PASSPORT_URI_CEILING_BYTES);
+        assert!(plan_send(u, [1u8; 32], true, Ok(true), true).is_ok());
+    }
+
+    #[test]
+    fn send_over_ceiling_before_may() {
+        let u = uri_of_len(PASSPORT_URI_CEILING_BYTES + 1);
+        // Over-ceiling refuses even when may would refuse — ceiling is first.
+        let err = plan_send(u, [1u8; 32], false, Ok(false), true).unwrap_err();
+        assert_eq!(err, KargainError::UriExceedsBridgeCeiling);
     }
 
     #[test]
@@ -132,6 +161,20 @@ mod tests {
         let (_m, kind) = plan_receive(&msg, 2_000_040_168).unwrap();
         match kind {
             ReceiveKind::MintForeign { uri, .. } => assert_eq!(uri, "ar://x"),
+            other => panic!("expected mint, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn receive_over_ceiling_uri_still_ok() {
+        // SPEC: inbound never length-rejects — message that arrived already fitted a tx.
+        let u = uri_of_len(PASSPORT_URI_CEILING_BYTES + 1);
+        let composed = abi_encode_string(&u);
+        let tid = token_id_from_parts(84532, 1);
+        let (msg, _) = encode([0xCD; 32], tid, Some(&composed));
+        let (_m, kind) = plan_receive(&msg, 2_000_040_168).unwrap();
+        match kind {
+            ReceiveKind::MintForeign { uri, .. } => assert_eq!(uri, u),
             other => panic!("expected mint, got {other:?}"),
         }
     }

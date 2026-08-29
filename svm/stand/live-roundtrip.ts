@@ -58,11 +58,14 @@ const EP_CLEAR_SEED = Buffer.from("ep_clear");
 export type LiveRoundTripResult = {
   foreignMintCu: number | null;
   homeUnlockCu: number | null;
+  /** Serialized foreign-mint tx byte length (mock 13-meta list + CU ix). */
+  foreignMintTxSize: number | null;
   foreignAssetLive: boolean;
   homeUnlocked: boolean;
   homeStatusAfterUnlock: number;
   uriTravelled: boolean;
   relayIdentityOk: boolean;
+  liveUriLen: number;
 };
 
 function loadKeypair(p: string): Keypair {
@@ -220,11 +223,16 @@ async function sendIx(
   payer: Keypair,
   ixs: TransactionInstruction[],
   label: string,
-): Promise<{ signature: string; cu: number | null }> {
+): Promise<{ signature: string; cu: number | null; serializedLen: number }> {
   const tx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
     ...ixs,
   );
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer.publicKey;
+  tx.sign(payer);
+  const serializedLen = tx.serialize().length;
   const sig = await sendAndConfirmTransaction(connection, tx, [payer], {
     commitment: "confirmed",
   });
@@ -239,8 +247,10 @@ async function sendIx(
   if (parsed?.meta?.err) {
     throw new Error(`${label} failed: ${JSON.stringify(parsed.meta.err)}`);
   }
-  console.warn(`[svm-stand live] ${label} ok sig=${sig.slice(0, 12)}… cu=${cu ?? "?"}`);
-  return { signature: sig, cu };
+  console.warn(
+    `[svm-stand live] ${label} ok sig=${sig.slice(0, 12)}… cu=${cu ?? "?"} txSize=${serializedLen}`,
+  );
+  return { signature: sig, cu, serializedLen };
 }
 
 export async function probeValidator(rpc = RPC): Promise<boolean> {
@@ -479,7 +489,9 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     throw new Error(`foreign mint expected UNVERIFIED(0), got ${foreignSt.status}`);
   }
 
-  if (process.env.KARGAIN_SVM_STAND_URI_CEILING === "1") {
+  // N6-4: always log foreign-mint size at declared ceiling (mock 13-meta list).
+  // Do not equate this to production 18-meta computed 1208 — account lists differ.
+  {
     const clearInfo = await connection.getAccountInfo(clearForeign);
     const rows = [
       ["foreignAsset", foreignAssetInfo],
@@ -496,7 +508,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
       );
     }
     console.log(
-      `[svm-stand measure] uri=${liveUri.length}B foreignMintCu=${foreignMint.cu}`,
+      `[svm-stand measure] uri=${liveUri.length}B foreignMintCu=${foreignMint.cu} foreignMintTxSize=${foreignMint.serializedLen} (mock 13-meta; production 18-meta @160 computed 1208 margin +24)`,
     );
   }
 
@@ -657,10 +669,12 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   return {
     foreignMintCu: foreignMint.cu,
     homeUnlockCu: unlock.cu,
+    foreignMintTxSize: foreignMint.serializedLen,
     foreignAssetLive,
     homeUnlocked,
     homeStatusAfterUnlock: unlocked.status,
     uriTravelled: true,
     relayIdentityOk,
+    liveUriLen: liveUri.length,
   };
 }

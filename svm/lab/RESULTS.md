@@ -197,6 +197,20 @@ Model = S4a-1 production foreign-mint legacy assembly (`to≠payer`, CU + Borsh 
 
 Full table with proposed refusal names: **session report** (not duplicated here). Summary: on-chain length gate needed at **passport write** (`mintPassport` / `setPassportURI`) **and** **gateway send** (last gate before leave); receive-side `bridgeMint` / unlock adopt as defense-in-depth; client `exceeds_cap` stays UX-only; SVM mirrors when commercial; `recoverLockedHome` uses empty URI (no length issue).
 
+## N6-4 — SVM mirror measure (2026-08-29)
+
+**Enforcement (source):** passport mint / `set_passport_uri` → `UriTooLong`; gateway `plan_send` → `UriExceedsBridgeCeiling`; receive / `bridge_mint` / unlock **no** length reject.
+
+**Live stand** (`./svm/stand/run-stand.sh --live-both`, URI = declared **160**):
+
+| | Value | Notes |
+|--|-------|-------|
+| Mock 13-meta foreign-mint tx size @ URI=160 | **976** | **Measured** (preload + upgradeable identical); CU ix + Borsh `LzReceive`; `to==payer` |
+| Production 18-meta @ URI=160 (h=3), no ALT | **1208** | **Computed** only (S4a-2 Q3); margin **+24** vs 1232 |
+| Equate mock↔1208? | **No** | Account lists differ (13 vs 18) |
+
+CU (measure only): foreign mint ≈65001 / ≈64940; home unlock ≈59820 / ≈59749. N6-5 will supersede the S4a-1 “731 ceiling” narrative for production law.
+
 ## Proofs
 
 | ID | Result | Detail |

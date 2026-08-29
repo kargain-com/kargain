@@ -89,7 +89,7 @@ Live scenario (same assertions both load paths):
 2. **EVM→SVM:** encode ONFT via `encodeOnftMessage` (EVM wire), dumb-relay copy, `LzReceive` → Core asset + UNVERIFIED state.
 3. **SVM home:** `MintPassport` → `Send` (lock+freeze) → return `LzReceive` unlock → UNVERIFIED, unlocked.
 
-Receive-shaped CU is logged for RESULTS (measure only; **do not** pin in `lz-receive-gas.ts` until S4b Devnet re-measure).
+Receive-shaped CU and **foreign-mint tx size** are logged for RESULTS (measure only; **do not** pin in `lz-receive-gas.ts` until S4b Devnet re-measure). Live URI defaults to the declared ceiling (**160** UTF-8 bytes); set `KARGAIN_SVM_STAND_URI_TYPICAL=1` for the short pointer.
 
 Optional `KARGAIN_SVM_STAND_EVM=1`: asserts Hardhat at `:8545` is up (dual-mock suite stays in Hardhat tests).
 

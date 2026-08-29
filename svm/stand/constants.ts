@@ -31,15 +31,18 @@ export const STAND_URI_AT_CEILING = `ar://${"x".repeat(
  */
 export const STAND_URI_HISTORICAL_731 = `ar://${"x".repeat(726)}`;
 
-/** When `KARGAIN_SVM_STAND_URI_CEILING=1`, live path uses the declared ceiling URI. */
+/**
+ * Live stand URI — declared ceiling (N6-4 product path).
+ * Set `KARGAIN_SVM_STAND_URI_TYPICAL=1` to use the short typical pointer instead.
+ */
 export function standLiveUri(): string {
-  if (process.env.KARGAIN_SVM_STAND_URI_CEILING === "1") {
-    if (STAND_URI_AT_CEILING.length !== DECLARED_PASSPORT_URI_CEILING_BYTES) {
-      throw new Error(
-        `STAND_URI_AT_CEILING length ${STAND_URI_AT_CEILING.length} ≠ ${DECLARED_PASSPORT_URI_CEILING_BYTES}`,
-      );
-    }
-    return STAND_URI_AT_CEILING;
+  if (process.env.KARGAIN_SVM_STAND_URI_TYPICAL === "1") {
+    return STAND_TYPICAL_URI;
   }
-  return STAND_TYPICAL_URI;
+  if (STAND_URI_AT_CEILING.length !== DECLARED_PASSPORT_URI_CEILING_BYTES) {
+    throw new Error(
+      `STAND_URI_AT_CEILING length ${STAND_URI_AT_CEILING.length} ≠ ${DECLARED_PASSPORT_URI_CEILING_BYTES}`,
+    );
+  }
+  return STAND_URI_AT_CEILING;
 }

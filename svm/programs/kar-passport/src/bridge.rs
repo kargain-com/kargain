@@ -173,4 +173,14 @@ mod tests {
             Err(KargainError::NotActiveVerifier)
         );
     }
+
+    #[test]
+    fn bridge_mint_over_ceiling_uri_still_ok() {
+        // Receive path: no length reject on bridge_mint (gateway receive already fitted a tx).
+        use kargain_errors::PASSPORT_URI_CEILING_BYTES;
+        let tid = token_id_from_parts(84532, 1);
+        let long = format!("ar://{}", "x".repeat(PASSPORT_URI_CEILING_BYTES));
+        assert!(long.len() > PASSPORT_URI_CEILING_BYTES);
+        assert!(check_bridge_mint(true, &tid, NS, false, &long).is_ok());
+    }
 }
