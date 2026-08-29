@@ -15,6 +15,7 @@
 
 import { encodeFunctionData, getAddress, type Hash, type PublicClient } from "viem";
 import { baseSepolia, sepolia } from "viem/chains";
+import { execFileSync } from "node:child_process";
 
 import {
   AscendingConsignmentAbi,
@@ -50,7 +51,12 @@ import {
 } from "./lib/load-deployment.js";
 import { computeIndexFromBlock, writeDeploymentManifest } from "./lib/write-deployment.js";
 import { CONTRACT_VERSIONS } from "./lib/contract-versions.js";
-import { persistDeploymentCompileEvidence } from "./lib/deployment-build-info.js";
+import {
+  artifactDeployedBytecodeDigest,
+  NUCLEAR_ARTIFACT_RELPATHS,
+  persistDeploymentCompileEvidence,
+} from "./lib/deployment-build-info.js";
+import { assertCleanGitTreeForDeploy } from "./lib/deploy-git-clean.js";
 import {
   ASCENDING_CHALLENGE_BOND,
   ASCENDING_CHALLENGE_WINDOW,
@@ -297,6 +303,14 @@ async function runLiveDeploy() {
     process.exit(1);
   }
 
+  let deployGitHead: string;
+  try {
+    deployGitHead = assertCleanGitTreeForDeploy();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+
   let roles: ReturnType<typeof resolveNuclearRoles>;
   try {
     roles = resolveNuclearRoles();
@@ -305,6 +319,23 @@ async function runLiveDeploy() {
     process.exit(1);
   }
   const commerceGuardian = roles.commerceGuardian;
+
+  execFileSync("npx", ["hardhat", "compile"], { stdio: "inherit" });
+  const pinnedDigests: Record<string, string> = {};
+  for (const rel of NUCLEAR_ARTIFACT_RELPATHS) {
+    pinnedDigests[rel] = artifactDeployedBytecodeDigest(rel);
+  }
+  const assertPinnedArtifacts = () => {
+    for (const rel of NUCLEAR_ARTIFACT_RELPATHS) {
+      const now = artifactDeployedBytecodeDigest(rel);
+      if (now !== pinnedDigests[rel]) {
+        throw new Error(
+          `Artifact ${rel} deployedBytecode digest changed mid-deploy (${pinnedDigests[rel]} → ${now})`,
+        );
+      }
+    }
+  };
+  assertPinnedArtifacts();
 
   const hardhat = (await import("hardhat")).default;
   const connection = await hardhat.network.connect();
@@ -561,6 +592,7 @@ async function runLiveDeploy() {
 
     const upgradeAuthority = getAddress(timelock.address);
 
+    assertPinnedArtifacts();
     const evidence = persistDeploymentCompileEvidence(chainId);
 
     const blocks = {
@@ -619,6 +651,8 @@ async function runLiveDeploy() {
       contractVersions: { ...CONTRACT_VERSIONS },
       buildInfoId: evidence.buildInfoId,
       buildInfoSha256: evidence.buildInfoSha256,
+      artifactDigests: { ...pinnedDigests },
+      deployGitHead,
     };
 
     writeDeploymentManifest(manifestPath, manifest);
@@ -642,12 +676,15 @@ async function runLiveDeploy() {
     console.log(
       `  Build-info:               ${evidence.buildInfoId} sha256=${evidence.buildInfoSha256.slice(0, 16)}… (${evidence.buildInfoBytes} bytes)`,
     );
+    console.log(`  deployGitHead:            ${deployGitHead}`);
     console.log("");
     console.log(
       "Next: update lib/web3/sepolia-addresses.ts (or ethereum twin) in the same PR, then pnpm ponder:config",
     );
     console.log("Next: pnpm bridge:wire after both commercial stacks are live");
-    console.log("Next: pnpm verify:sepolia (restores stored build-info before submit)");
+    console.log(
+      "Next: pnpm verify:bytecode-identity — then pnpm verify:sepolia (restores stored build-info)",
+    );
   } finally {
     await connection.close();
   }

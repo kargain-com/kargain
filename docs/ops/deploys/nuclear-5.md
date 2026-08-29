@@ -79,3 +79,10 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
 **Do not** run `bridge:wire:read-only` against N4 pathway as a N5 gate — that pathway is intentionally left for the live app until S9.
+
+### Post-deploy gates (N6-9 template — apply on next nuclear)
+
+1. Working tree must be clean (`git status --porcelain` empty) — live deploy refuses dirty trees.
+2. Deploy writes `deployments/{chainId}.build-info.json` + `.artifacts/` and manifest digests.
+3. `pnpm verify:bytecode-identity` (and `--eth`) — on-chain body ≡ repo (immutable-filled); **required** before treating the stack as identity-proven.
+4. `pnpm verify:sepolia` / `verify:sepolia:eth` — restores stored build-info; explorer green is secondary to step 3.

@@ -190,6 +190,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["network-class-policy.test.ts"],
   },
   {
+    id: "on-chain-bytecode-identity",
+    owner: "scripts/lib/on-chain-bytecode-identity.ts",
+    rule: "Sole eth_getCode vs immutable-filled artifact body compare; verify:bytecode-identity",
+    guardTests: ["on-chain-bytecode-identity.test.ts"],
+  },
+  {
     id: "deployments-directory",
     owner: "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts",
     rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; tests must not rename/unlink repo manifests",

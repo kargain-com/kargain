@@ -175,6 +175,20 @@ Manifest fields: `buildInfoId`, `buildInfoSha256` (SHA-256 of the stored build-i
 
 ---
 
+## B4 gates (N6-9 V4)
+
+| Gate | Command / test | Refuses |
+|------|----------------|---------|
+| **V4.1** Argument shape | `test/verify-constructor-abi-shape.test.ts` (`test:verify`) | Builder arity/types ≠ artifact `constructor.inputs` (every `VERIFY_TARGETS` entry) |
+| **V4.2** Build identity | `scripts/deploy.ts` live path | Dirty git tree; `deployedBytecode` digest drift mid-deploy; records `artifactDigests` + `deployGitHead` on manifest |
+| **V4.3** On-chain identity | `pnpm verify:bytecode-identity` ([`scripts/assert-on-chain-bytecode.ts`](../../../scripts/assert-on-chain-bytecode.ts)) | Any CBOR-stripped body ≠ immutable-filled (+ library-linked) local artifact. Read-only; safe any time. |
+
+**Runbook order after every future nuclear deploy:** clean tree → deploy → `pnpm verify:bytecode-identity` (+ `--eth`) → `pnpm verify:sepolia` (uses stored build-info).
+
+**N6:** V4.3 run against N6 manifests (August 29): **11/11 OK** both chains (Passport/Staking/Gateway included) — repository executable confirmed without explorer.
+
+---
+
 ## What Nuclear #6 source ships
 
 | Contract | VERSION | Change class |
@@ -197,6 +211,8 @@ SVM mirrors the same ceiling (write / send); receive never length-rejects.
 |-----------|------|--------|
 | N6 source | August 29 | **Done** |
 | Deploy N6 both chains | August 29 | **Done** |
+| N6-8 bytecode identity (diagnosis) | August 29 | **Done** — executable match |
+| N6-9 V1–V4 (verifiable deploys) | August 29 | **Done** — gates in tree; N6 has no stored build-info (V2) |
 | Wire 40245↔40161 on **new** N6 gateways | optional before S4 | Not run (N4 pathway stays for live app) |
 | Wire 40245↔40168 (Solana) | **S4b+** against hub gateway `0xFA4FcEf7…DB29` | Pending |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |

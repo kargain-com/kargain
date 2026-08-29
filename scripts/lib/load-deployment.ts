@@ -124,6 +124,10 @@ export type DeploymentManifest = {
    */
   buildInfoId?: string;
   buildInfoSha256?: string;
+  /** SHA-256 of each nuclear artifact `deployedBytecode` at deploy (hex of 0x…). */
+  artifactDigests?: Record<string, string>;
+  /** Git HEAD at live deploy (refuse dirty tree). */
+  deployGitHead?: string;
   /** Hub↔spoke peers written by `pnpm bridge:wire` on successful full wire (nuclear eth stack). */
   peers?: SpokePathwayPeers | null;
   pathwayConfigHash?: `0x${string}` | null;
