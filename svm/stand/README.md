@@ -60,19 +60,36 @@ Instruction data: `LzReceive { src_eid, sender, nonce, guid, message }`. Entrypo
 ## Live run
 
 ```bash
+# Preload path (--bpf-program; default live)
 ./svm/stand/run-stand.sh --live
-# or manually:
-#   Terminal A: ./svm/stand/start-validator.sh
-#   Terminal B: KARGAIN_SVM_STAND_LIVE=1 pnpm test:svm-stand
+
+# Upgradeable-loader path (S4a Devnet-shaped; --arch v3 + solana program deploy)
+./svm/stand/run-stand.sh --live-upgradeable
+
+# Both sequentially (gate)
+./svm/stand/run-stand.sh --live-both
 ```
 
-Live scenario:
+Or manually:
+
+```bash
+# Preload:
+./svm/stand/start-validator.sh
+KARGAIN_SVM_STAND_LIVE=1 pnpm test:svm-stand
+
+# Upgradeable:
+KARGAIN_SVM_STAND_LOAD=upgradeable ./svm/stand/start-validator.sh
+./svm/stand/deploy-stand-programs.sh
+KARGAIN_SVM_STAND_LIVE=1 pnpm test:svm-stand
+```
+
+Live scenario (same assertions both load paths):
 
 1. Init endpoint / passport / gateway; bind gateway config PDA as `bridge_gateway`.
 2. **EVM→SVM:** encode ONFT via `encodeOnftMessage` (EVM wire), dumb-relay copy, `LzReceive` → Core asset + UNVERIFIED state.
 3. **SVM home:** `MintPassport` → `Send` (lock+freeze) → return `LzReceive` unlock → UNVERIFIED, unlocked.
 
-Receive-shaped CU is logged for RESULTS (measure only; **do not** pin in `lz-receive-gas.ts` until S4).
+Receive-shaped CU is logged for RESULTS (measure only; **do not** pin in `lz-receive-gas.ts` until S4b Devnet re-measure).
 
 Optional `KARGAIN_SVM_STAND_EVM=1`: asserts Hardhat at `:8545` is up (dual-mock suite stays in Hardhat tests).
 
@@ -80,8 +97,13 @@ Optional `KARGAIN_SVM_STAND_EVM=1`: asserts Hardhat at `:8545` is up (dual-mock 
 
 ```bash
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+# Preload:
 for p in mock-endpoint kar-passport kar-gateway mock-staking; do
   (cd svm/programs/$p && cargo-build-sbf --arch v0)
+done
+# Upgradeable:
+for p in mock-endpoint kar-passport kar-gateway mock-staking; do
+  (cd svm/programs/$p && cargo-build-sbf --arch v3)
 done
 # artifacts → svm/target/deploy/*.so
 ```

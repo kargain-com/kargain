@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Start local validator with cloned Metaplex Core (+ noop) and S3 stand programs.
-# No Devnet writes. Load via --bpf-program (Agave 4.2 rejects upgradeable deploy of v1.54).
+# Start local validator with Metaplex Core + SPL noop.
+# Default: also preload the four Kargain stand programs via --bpf-program.
+# Upgradeable mode (KARGAIN_SVM_STAND_LOAD=upgradeable): Core+noop only —
+#   deploy the four programs afterward with deploy-stand-programs.sh.
+#
+# No Devnet writes.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REPO="$(cd "$ROOT/.." && pwd)"
 FIXTURES="$ROOT/lab/fixtures"
 DEPLOY="$ROOT/target/deploy"
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+
+LOAD="${KARGAIN_SVM_STAND_LOAD:-preload}"
 
 CORE=CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
 NOOP=noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV
@@ -21,36 +26,44 @@ need_so() {
   local so="$DEPLOY/${name}.so"
   local kp="$DEPLOY/${name}-keypair.json"
   if [[ ! -f "$so" || ! -f "$kp" ]]; then
-    echo "missing $so or $kp — build with cargo-build-sbf --arch v0 from svm/programs/${name//_/-}" >&2
+    echo "missing $so or $kp — build with cargo-build-sbf (see svm/README.md)" >&2
     exit 1
   fi
   echo "$(solana-keygen pubkey "$kp")"
 }
 
-MOCK_ENDPOINT_ID="$(need_so mock_endpoint)"
-KAR_PASSPORT_ID="$(need_so kar_passport)"
-KAR_GATEWAY_ID="$(need_so kar_gateway)"
-MOCK_STAKING_ID="$(need_so mock_staking)"
-
 LEDGER="${SVM_STAND_LEDGER:-/tmp/kargain-svm-stand-ledger}"
 rm -rf "$LEDGER"
 mkdir -p "$LEDGER"
 
-echo "stand programs:" >&2
-echo "  mock_endpoint  $MOCK_ENDPOINT_ID" >&2
-echo "  kar_passport   $KAR_PASSPORT_ID" >&2
-echo "  kar_gateway    $KAR_GATEWAY_ID" >&2
-echo "  mock_staking   $MOCK_STAKING_ID" >&2
-echo "  mpl-core       $CORE" >&2
+ARGS=(
+  --ledger "$LEDGER"
+  --reset
+  --quiet
+  --bpf-program "$CORE" "$CORE_SO"
+  --bpf-program "$NOOP" "$FIXTURES/spl_noop.so"
+)
 
-exec solana-test-validator \
-  --ledger "$LEDGER" \
-  --reset \
-  --quiet \
-  --bpf-program "$CORE" "$CORE_SO" \
-  --bpf-program "$NOOP" "$FIXTURES/spl_noop.so" \
-  --bpf-program "$MOCK_ENDPOINT_ID" "$DEPLOY/mock_endpoint.so" \
-  --bpf-program "$KAR_PASSPORT_ID" "$DEPLOY/kar_passport.so" \
-  --bpf-program "$KAR_GATEWAY_ID" "$DEPLOY/kar_gateway.so" \
-  --bpf-program "$MOCK_STAKING_ID" "$DEPLOY/mock_staking.so" \
-  "$@"
+if [[ "$LOAD" == "upgradeable" ]]; then
+  echo "stand load=upgradeable — Core+noop only; deploy programs after start" >&2
+  echo "  mpl-core       $CORE" >&2
+else
+  MOCK_ENDPOINT_ID="$(need_so mock_endpoint)"
+  KAR_PASSPORT_ID="$(need_so kar_passport)"
+  KAR_GATEWAY_ID="$(need_so kar_gateway)"
+  MOCK_STAKING_ID="$(need_so mock_staking)"
+  echo "stand load=preload (--bpf-program):" >&2
+  echo "  mock_endpoint  $MOCK_ENDPOINT_ID" >&2
+  echo "  kar_passport   $KAR_PASSPORT_ID" >&2
+  echo "  kar_gateway    $KAR_GATEWAY_ID" >&2
+  echo "  mock_staking   $MOCK_STAKING_ID" >&2
+  echo "  mpl-core       $CORE" >&2
+  ARGS+=(
+    --bpf-program "$MOCK_ENDPOINT_ID" "$DEPLOY/mock_endpoint.so"
+    --bpf-program "$KAR_PASSPORT_ID" "$DEPLOY/kar_passport.so"
+    --bpf-program "$KAR_GATEWAY_ID" "$DEPLOY/kar_gateway.so"
+    --bpf-program "$MOCK_STAKING_ID" "$DEPLOY/mock_staking.so"
+  )
+fi
+
+exec solana-test-validator "${ARGS[@]}" "$@"
