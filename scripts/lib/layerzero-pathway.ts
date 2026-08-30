@@ -18,6 +18,8 @@ import {
 import {
   ENFORCED_GAS_SEND,
   ENFORCED_GAS_SEND_AND_COMPOSE,
+  SOLANA_DEVNET_ENFORCED_COMPUTE,
+  SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
 } from "../../lib/web3/bridge/lz-receive-gas.js";
 import {
   normalizeProtocolAddressForVm,
@@ -54,7 +56,12 @@ export const MSG_TYPE_SEND_AND_COMPOSE = 2;
  * sender `extraOptions` from URI-length policy — do not bump these floors lightly
  * (changes `pathwayConfigHash` / requires re-wire).
  */
-export { ENFORCED_GAS_SEND, ENFORCED_GAS_SEND_AND_COMPOSE };
+export {
+  ENFORCED_GAS_SEND,
+  ENFORCED_GAS_SEND_AND_COMPOSE,
+  SOLANA_DEVNET_ENFORCED_COMPUTE,
+  SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
+};
 
 /** Pinned max message size for ExecutorConfig (fits compose + long URI). */
 export const EXECUTOR_MAX_MESSAGE_SIZE = 10_000;
@@ -279,12 +286,23 @@ export function buildReceiveLibSetConfigParams(
   ];
 }
 
-function lzReceiveOptions(gas: number): Hex {
-  return Options.newOptions().addExecutorLzReceiveOption(gas, 0).toHex() as Hex;
+function lzReceiveOptions(gas: number, value: number = 0): Hex {
+  return Options.newOptions().addExecutorLzReceiveOption(gas, value).toHex() as Hex;
 }
 
 export function buildEnforcedOptions(remoteEid: number): EnforcedOptionParam[] {
   assertAllowedEid(remoteEid);
+  if (remoteEid === EID_SOLANA_DEVNET) {
+    // Solana: option gas = compute units; value = rent lamports.
+    const opts = lzReceiveOptions(
+      SOLANA_DEVNET_ENFORCED_COMPUTE,
+      SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
+    );
+    return [
+      { eid: remoteEid, msgType: MSG_TYPE_SEND, options: opts },
+      { eid: remoteEid, msgType: MSG_TYPE_SEND_AND_COMPOSE, options: opts },
+    ];
+  }
   return [
     {
       eid: remoteEid,

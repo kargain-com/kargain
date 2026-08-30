@@ -81,6 +81,7 @@ import {
   type SpokePathwayPeers,
   type SvmDevnetPathwayPeers,
 } from "./lib/load-deployment.js";
+import { svmGatewayOAppPeer } from "./lib/svm-oapp-peer.js";
 import {
   writeDeploymentManifest,
   writeSpokeDeploymentManifest,
@@ -696,7 +697,8 @@ async function main(): Promise<void> {
 
   if (svmSpoke) {
     const evidence = requireSvmDevnetEvidence(spokeEid);
-    spokeOApp = evidence.programs.kar_gateway.programId;
+    // LZ OApp identity on Solana is the gateway_config PDA, not the program id.
+    spokeOApp = svmGatewayOAppPeer(evidence.programs.kar_gateway.programId);
   } else {
     const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
     if (ethCommercial?.bridgeGateway) {
@@ -859,10 +861,11 @@ async function main(): Promise<void> {
     const evidence = requireSvmDevnetEvidence(EID_SOLANA_DEVNET);
     writeSvmDevnetEvidence(svmDevnetEvidencePath(EID_SOLANA_DEVNET), {
       ...evidence,
+      oapp: spokeOApp,
       peers: peersBook,
       pathwayConfigHash,
       note:
-        "S4b X4 — hub ULN/peer wired; SVM PeerConfig / Endpoint register_oapp still X5; no COMMERCIAL_ACTIVE Solana row",
+        "S4b Y5 — hub peer = gateway_config PDA (OApp); ULN wired; no COMMERCIAL_ACTIVE Solana row",
     });
     process.stdout.write(
       `Updated ${svmDevnetEvidencePath(EID_SOLANA_DEVNET)} peers + pathwayConfigHash=${pathwayConfigHash}\n`,

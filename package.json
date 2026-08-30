@@ -64,7 +64,10 @@
     "deploy:svm:dry-run": "node --import tsx scripts/svm-deploy.ts --dry-run",
     "deploy:svm": "node --import tsx scripts/svm-deploy.ts --live",
     "verify:bytecode-identity": "node --import tsx scripts/assert-on-chain-bytecode.ts",
-    "verify:deploy-evidence": "node --import tsx scripts/assert-deploy-evidence.ts"
+    "verify:deploy-evidence": "node --import tsx scripts/assert-deploy-evidence.ts",
+    "svm:y4-prove": "node --import tsx scripts/svm-devnet-y4-prove.ts",
+    "svm:pathway-init": "node --import tsx scripts/svm-devnet-pathway-init.ts",
+    "svm:y5-rt": "node --import tsx scripts/svm-devnet-y5-rt.ts"
   },
   "dependencies": {
     "@irys/web-upload": "^0.0.15",
@@ -110,6 +113,7 @@
   "devDependencies": {
     "@kargain/vincent-compiler": "0.1.0",
     "@layerzerolabs/lz-evm-protocol-v2": "3.0.148",
+    "@layerzerolabs/lz-solana-sdk-v2": "^3.0.168",
     "@layerzerolabs/lz-v2-utilities": "3.0.75",
     "@layerzerolabs/oapp-evm": "0.4.1",
     "@layerzerolabs/onft-evm": "0.2.4",
