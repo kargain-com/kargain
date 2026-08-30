@@ -488,14 +488,16 @@ Used as **owner / UUPS authority** on commerce mode proxies (`FixedPriceConsignm
 |---------|-------------------|-----|
 | Base Sepolia | 84532 | 40245 |
 | Ethereum Sepolia | 11155111 | 40161 |
-| Solana Devnet | `2_000_040_168` (planned; [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)) | 40168 |
+| Solana Devnet | `2_000_040_168` (S4b Devnet stack; [§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)) | 40168 |
 | Polygon Amoy | 80002 | 40267 |
 
 EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib/chainlink-feeds.ts`).
 
-**Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`.
+**Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`. H2 pathway hash `0x7e8c7fd4…983b8` (must stay unchanged when adding 40168).
 
-**Planned pathway (40245 ↔ 40168)** — Solana Devnet spoke ([§I.13](#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)). Library / executor / DVN addresses: **from snapshot** only (not listed here until the pathway is wired).
+**Devnet pathway (40245 ↔ 40168)** — S4b COMPLETE (August 30, 2026). Hub OApp = N7 gateway `0x73240468…1827`; spoke OApp = Solana gateway_config PDA (not program id). DVNs **LayerZero Labs + P2P** both directions; confirmations **5**. Solana **receive** budget (not send CU) pinned in `lib/web3/bridge/lz-receive-gas.ts` (`SOLANA_DEVNET_*`; provenance in `svm/lab/RESULTS.md`). Runbook: [ops/deploys/s4b-devnet.md](../ops/deploys/s4b-devnet.md). **No** Solana `COMMERCIAL_ACTIVE` until S9. Library / executor / DVN addresses: **from snapshot** only.
+
+**Planned (historical note):** pre-S4b prose called 40168 “planned”; treat the Devnet pathway row above as current for testnet star spokes.
 
 | Side | sendUln302 | receiveUln302 | executor |
 |------|------------|---------------|----------|
@@ -905,11 +907,22 @@ Extends §12.5 / §12.8. Three classes:
 
 **Headroom derivation (S4a-2 h=3, no ALT):** production foreign-mint account list **18** metas → assembled size at URI=160 **1208** ≤ Solana packet **1232** (margin **+24**). Mock stand list (13 metas) measures smaller — do not equate to 1208. See `svm/lab/RESULTS.md` S4a-1/S4a-2/N6-4.
 
+**ALT asymmetry (normative — Solana):**
+
+| Direction | ALT | Oversize consequence |
+|-----------|-----|----------------------|
+| **Receive** (hub→Solana `lzReceive`) | **Forbidden** for the product path | Assembled tx >1232 is permanently unexecutable without ALT/split → custody stranded on home; exit only via admin `recoverLockedHome` (D-20) |
+| **Send** (Solana→hub) | **Permitted** | Oversize fails **locally before debit** → user retries; no stranded foreign custody from tx-size alone |
+
+**Durable ALT authority:** any **shared long-lived** Address Lookup Table that a product send path depends on MUST NOT be closeable by a single hot key. Authority = multisig/timelock (or recreate-per-tx with **no** shared dependency). Test tooling MAY create ephemeral per-send ALTs under the deployer; that pattern MUST NOT be promoted to a durable product dependency. Closing/deactivating a required durable ALT breaks every v0 send that references it.
+
+**Executor / committer stall (product condition — UI owner = S8):** a message MAY be DVN-verified and still not executed (testnet committer lag or executor skip). The product UI MUST surface that state and offer an action (commit / execute or equivalent). Tooling nudges in `pnpm svm:y5-rt` are **not** the product path.
+
 #### 13.5 Star topology with N spokes
 
 Extends §12.1 routing; amends §7.6 allowlist wording.
 
-- Hub: EID **40245** (Base Sepolia). Spokes: **40161** (Ethereum Sepolia), **40168** (Solana Devnet, planned).
+- Hub: EID **40245** (Base Sepolia). Spokes: **40161** (Ethereum Sepolia), **40168** (Solana Devnet — S4b COMPLETE; no commercial registry row until S9).
 - Spoke↔spoke peers **forbidden**.
 - Spoke↔spoke transfer = **two user transactions**: spoke A → hub, then hub → spoke B. UI MUST present two hops. §12.2 holds at every step: after hop 1 usable instance is on the hub; after hop 2 on spoke B; never two usable instances.
 - Required-DVN sets and confirmations are **per pathway** (minimum 2 independent operators on testnet; 3–5 on mainnet per §7.6). A new pathway’s operator set is chosen from the pinned snapshot for **both** ends — never copied from an existing pathway. A pathway whose snapshot does not expose two independent DVNs present at both ends is refused; the 1-of-1 prohibition admits **no** non-EVM exception (§7.6 + §13.13).
@@ -933,7 +946,9 @@ Extends §12.6 / encumbrance E1–E6.
 #### 13.8 Governance and upgradeability
 
 - EVM today: KarPassport, KarProPass, KarProStaking **immutable**; FixedPrice / Ascending **UUPS**.
-- On BPF: equivalent of immutability is **revoking upgrade authority**, which also removes defect-fix without redeploy. Testnet: config owner and upgrade authority for commerce programs and staking = 48h-timelocked multisig (mirrors EVM Timelock split); gateway and pro-pass MAY remain on deployer key as EVM testnet already allows. Commercial mainnet revocation decision: §7.6 Phase 2 **(f)**.
+- On BPF: equivalent of immutability is **revoking upgrade authority**, which also removes defect-fix without redeploy.
+- **Testnet hot-role split (refinement):** **upgrade authority** = bytecode replace for both `kar_passport` and `kar_gateway` → `SOLANA_UPGRADE_AUTHORITY` after destination proof (S4b). **Gateway config authority** = peers / `recoverLockedHome` / bind — deployer hot key on testnet, same class as EVM §7.6 Phase 2 **(b)** hot gateway owner. Do not conflate the two keys: handing upgrade authority early without a held secret locks programs (X3 abandon); config authority stays operable for pathway ops.
+- **Commercial mainnet:** §7.6 Phase 2 **(b)** cold/multisig obligation applies to **both** upgrade authority and gateway config authority — gateway config MUST NOT remain forever on a single hot key. Revocation / cold cutover: §7.6 Phase 2 **(f)**.
 
 #### 13.9 Key roles and the treasury
 
