@@ -13,9 +13,9 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import {
-  standMinStakeFloorLamports,
-  standMinStakeLamports,
-  standMinStakePinRecord,
+  testnetMinStakeFloorLamports,
+  testnetMinStakeLamports,
+  testnetMinStakePinRecord,
 } from "../lib/web3/min-stake-sol.ts";
 import { loadSvmDevnetEvidence, type SvmDevnetEvidence } from "./lib/load-deployment.ts";
 import { writeSvmDevnetEvidence } from "./lib/write-deployment.ts";
@@ -84,8 +84,8 @@ async function main() {
   const [passConfig] = pda([CONFIG], passId);
   const [passFreeze] = pda([FREEZE], passId);
 
-  const minLamports = standMinStakeLamports();
-  const floorLamports = standMinStakeFloorLamports();
+  const minLamports = testnetMinStakeLamports();
+  const floorLamports = testnetMinStakeFloorLamports();
   /** Devnet proof uses short unbond (same as stand). */
   const unbondSecs = 2n;
 
@@ -332,7 +332,7 @@ async function main() {
     console.log(`  ${name} UA → ${finalUa.slice(0, 4)}…`);
   }
 
-  const pin = standMinStakePinRecord();
+  const pin = testnetMinStakePinRecord();
   const evidence: SvmDevnetEvidence = {
     ...prior,
     programs: {

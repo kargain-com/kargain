@@ -415,15 +415,15 @@ export type SvmDevnetEvidence = {
     kar_pro_staking?: SvmDevnetProgramEvidence;
     kar_pro_pass?: SvmDevnetProgramEvidence;
   };
-  /** S5 — ETH weight → lamports pin at deploy (join never quotes FX). */
+  /** S5 — stated testnet constant or mainnet observed-rate pin (join never quotes FX). */
   minStakePin?: {
-    ethWeightWei: string;
-    ethFloorWei: string;
+    kind: "stated_testnet_constant" | "observed_mainnet_rate";
+    declaredEthWeightWei: string;
+    declaredEthFloorWei: string;
     solLamports: string;
     floorLamports: string;
-    solPerEth: string;
-    rateDate: string;
     source: string;
+    declaredAt: string;
   } | null;
   peers?: SvmDevnetPathwayPeers | null;
   pathwayConfigHash?: `0x${string}` | null;

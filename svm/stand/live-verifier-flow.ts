@@ -9,9 +9,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  standMinStakeFloorLamports,
-  standMinStakeLamports,
-  standMinStakePinRecord,
+  testnetMinStakeFloorLamports,
+  testnetMinStakeLamports,
+  testnetMinStakePinRecord,
 } from "../../lib/web3/min-stake-sol.ts";
 import {
   STAND_SVM_EID,
@@ -52,7 +52,7 @@ export type LiveVerifierFlowResult = {
   left: boolean;
   passClosed: boolean;
   claimed: boolean;
-  minStakePin: ReturnType<typeof standMinStakePinRecord>;
+  minStakePin: ReturnType<typeof testnetMinStakePinRecord>;
   joinCu: number | null;
   verifyCu: number | null;
 };
@@ -163,9 +163,9 @@ export async function runLiveVerifierFlow(opts?: {
   const [passFreeze] = pda([FREEZE_SEED], passProgram);
   const [endpointConfig] = pda([Buffer.from("ep_config")], endpointProgram);
 
-  const minLamports = standMinStakeLamports();
-  const floorLamports = standMinStakeFloorLamports();
-  const pin = standMinStakePinRecord();
+  const minLamports = testnetMinStakeLamports();
+  const floorLamports = testnetMinStakeFloorLamports();
+  const pin = testnetMinStakePinRecord();
 
   const passportInfo = await connection.getAccountInfo(passportConfig);
 

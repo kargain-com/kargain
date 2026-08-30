@@ -102,7 +102,7 @@ for name in kar_pro_staking kar_pro_pass; do
   fi
 done
 
-echo "==> pair init + pin min stake (stand fixture rate recorded in evidence)"
+echo "==> pair init + pin min stake (stated testnet constant recorded in evidence)"
 pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --staking "$STAKING_ID" \
   --pass "$PASS_ID" \

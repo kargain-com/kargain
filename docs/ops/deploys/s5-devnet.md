@@ -14,17 +14,17 @@ Pair-init on Devnet succeeded. `SetStakingProgram` failed: live passport lacks S
 
 ## Min stake pin
 
-Declared ETH weight `0.05 ETH` (`DECLARED_MIN_STAKE_NATIVE_WEI`) converted once at deploy:
+Stated testnet constant of the same order as declared `0.05 ETH` (`DECLARED_MIN_STAKE_NATIVE_WEI`) — **not** an FX observation:
 
-| Field | Stand / Devnet fixture |
-|-------|------------------------|
-| Rate | 1 ETH = 10 SOL |
-| Date | 2026-08-30 |
-| Source | `stand-fixture` (`lib/web3/min-stake-sol.ts`) |
+| Field | Value |
+|-------|--------|
+| Kind | `stated_testnet_constant` |
+| Declared at | 2026-08-30 |
+| Source | `lib/web3/min-stake-sol.ts` (stated constant; not a rate) |
 | Lamports | `500_000_000` (0.5 SOL) |
-| Floor | `10_000_000` (from 0.001 ETH) |
+| Floor | `10_000_000` (same order as 0.001 ETH) |
 
-Join never quotes FX. Mainnet must re-pin on every redeploy (SOL↔ETH drift).
+Join never quotes FX. Mainnet must derive from an observed on-chain rate and re-pin on every redeploy (SPEC §13.10).
 
 ## Local stand
 

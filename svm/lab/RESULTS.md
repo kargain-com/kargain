@@ -238,7 +238,7 @@ Local stand (`live-verifier-flow.ts` after bridge RT; short unbond 2s):
 | staking.ClosePass (thaw+burn) | ≈ **50035** |
 | staking.ClaimStake | ≈ **8498** |
 
-Min stake pin (stand fixture): 0.05 ETH × 10 SOL/ETH = **500_000_000** lamports (`lib/web3/min-stake-sol.ts`).
+Min stake pin (stated testnet constant): **500_000_000** lamports — same order as declared 0.05 ETH; not an FX observation (`lib/web3/min-stake-sol.ts`).
 
 ## Proofs
 
