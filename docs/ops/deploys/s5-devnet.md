@@ -1,6 +1,16 @@
 # S5 — Solana Devnet verifiers (staking + pass + verify)
 
-**Status:** code + local stand proven; Devnet deploy follows S4b order (deployer UA → prove → handoff).
+**Status:** local stand COMPLETE; Devnet programs DEPLOYED (deployer UA); **prove blocked** pending passport BPF upgrade under `SOLANA_UPGRADE_AUTHORITY`.
+
+### Devnet program ids (2026-08-30)
+
+| Program | Program id | Upgrade authority |
+|---------|------------|-------------------|
+| kar_pro_staking | `8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY` | deployer `65Qmw…` (retain until prove) |
+| kar_pro_pass | `4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr` | deployer `65Qmw…` |
+| kar_passport (live) | `FsDmjkrStitUPbh46y8JocGozNotF3EcT9rpDM1RDx1i` | `BSuJ…` — **must upgrade BPF** before SetStakingProgram/VerifyPassport |
+
+Pair-init on Devnet succeeded. `SetStakingProgram` failed: live passport lacks S5 instruction discriminants (`invalid instruction data`).
 
 ## Min stake pin
 

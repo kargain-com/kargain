@@ -226,6 +226,20 @@ Full table with proposed refusal names: **session report** (not duplicated here)
 
 CU (measure only): foreign mint ≈65001 / ≈64940; home unlock ≈59820 / ≈59749. Production ceiling law: SPEC §I.13 (160) + D-20.
 
+## S5 — verifier flow (2026-08-30)
+
+Local stand (`live-verifier-flow.ts` after bridge RT; short unbond 2s):
+
+| Step | CU (example) |
+|------|----------------|
+| staking.Join (+ Core pass mint CPI) | ≈ **59719** |
+| passport.VerifyPassport | ≈ **15470** |
+| staking.Leave | ≈ **8276** |
+| staking.ClosePass (thaw+burn) | ≈ **50035** |
+| staking.ClaimStake | ≈ **8498** |
+
+Min stake pin (stand fixture): 0.05 ETH × 10 SOL/ETH = **500_000_000** lamports (`lib/web3/min-stake-sol.ts`).
+
 ## Proofs
 
 | ID | Result | Detail |

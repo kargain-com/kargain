@@ -943,6 +943,21 @@ Extends §12.6 / encumbrance E1–E6.
 - **`may` does not consult `custodyLocked`** (`KarPassport.may`: exists → active challenge → staticcall sources). A locked home token is prevented from leaving by **custody** (gateway owns the NFT after lock) plus `_requireNotBridgedAway` on owner trust-mutating paths — not by `may`.
 - Encumbrance is the **secondary** guard; custody is **primary**. `AscendingConsignment.may` answers on **unresolved settlement**, not on “live lot exists.”
 
+#### 13.7a Active-verifier proof without read-only CPI (S5)
+
+Same answer-account pattern as §13.7, applied to verifier status:
+
+- Sole owner of “is active verifier” is the **staking** program’s stake account at PDA `["stake", verifier]`.
+- `verify_passport` accepts that account only when: (1) owner program == passport config’s `staking_program`; (2) discriminator and length match the stake layout; (3) account key equals the PDA re-derived from that seed **and the signing verifier**; (4) `active == true`. Failures (1)–(3) → `SourceUnanswerable`; (4) → `NotActiveVerifier`. Never treat a substitution as silent inactive.
+- Self-verify compares the signer to the Metaplex Core asset **owner** field (not a copied owner in passport state).
+- **No** active-verifier registry on the passport.
+
+**Pass as projection (leave divergence):** On EVM, `KarProStaking.leave` wraps pass burn in try/catch so unbonding always starts. Solana has no equivalent — a failing CPI would abort leave and trap stake. Therefore the soulbound pass is minted on join and closed by a **separate** instruction; `leave` writes stake state only (`active = false`, unbond clock, clear `verificationFee`). Every reader of verifier status reads the stake account and never the pass.
+
+**Pair init:** staking and pass initialise together and bind each other (Nuclear A3 retarget trap shape: a pass bound to a replaced staking program leaves holders unable to leave or re-join).
+
+**SVM `SetStakingProgram`:** EVM passport binds staking immutably in the constructor. On SVM, config authority may set `staking_program` (testnet migration mock→commercial and A3 pair swap). Refuse zero.
+
 #### 13.8 Governance and upgradeability
 
 - EVM today: KarPassport, KarProPass, KarProStaking **immutable**; FixedPrice / Ascending **UUPS**.
@@ -981,7 +996,7 @@ Protocol-wide (not SVM-specific). **N5 source (S3.5 prep):** seven Ascending bou
 | Verification `disputeDeposit` | **0.01** |
 | Ascending settlement `challengeBond` | **0.01** |
 
-On ETH-native chains the on-chain wei equals the weight. Elsewhere derive native amounts via a script that reads **only on-chain** FX sources and records result, source, address, and block/slot in the manifest. `test:verify` checks every commercial manifest against this table within a stated tolerance band. **No quotation appears in any stake/bond instruction** — the bond requires an exact amount, the buyer’s protection window is finite, and a challenge that cannot open is a remedy lost irreversibly. Bids, prices, floors, bps shares, and second-denominated windows are never FX-converted. **Unit-change rule:** switching the declared unit (e.g. ETH→BTC) costs one sentence in this section and one derive-script branch — **zero** contract change, because no contract stores a unit tag. **No chain is a parameter anchor or remote writer.** Cross-chain parameter push is outside this section and requires its own security review if ever proposed.
+On ETH-native chains the on-chain wei equals the weight. Elsewhere derive native amounts via a script that reads **only on-chain** FX sources and records result, source, address, and block/slot in the manifest. **Solana (S5):** convert the ETH weight to lamports **once at deploy**, pin in staking config (`min_stake_lamports` / floor), record rate + date + source in deploy evidence (`minStakePin`). Join never quotes an exchange rate. **SOL weight drifts from ETH over time** — mainnet MUST re-pin at every redeploy (record, do not imply). `test:verify` checks every commercial manifest against this table within a stated tolerance band. **No quotation appears in any stake/bond instruction** — the bond requires an exact amount, the buyer’s protection window is finite, and a challenge that cannot open is a remedy lost irreversibly. Bids, prices, floors, bps shares, and second-denominated windows are never FX-converted. **Unit-change rule:** switching the declared unit (e.g. ETH→BTC) costs one sentence in this section and one derive-script branch — **zero** contract change, because no contract stores a unit tag. **No chain is a parameter anchor or remote writer.** Cross-chain parameter push is outside this section and requires its own security review if ever proposed.
 
 #### 13.11 Money vocabulary
 
@@ -1021,6 +1036,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
 | D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
 | D-20 | Over-ceiling URI on **inbound** receive | — | **EVM:** OOG on `EndpointV2.lzReceive` is **retryable** (atomic clear+execute; pin LayerZero-v2 `9c741e7f…`). **SVM:** assembled tx **>1232** is **permanently unexecutable** without ALT/split. Product ceiling **160** (Nuclear #6) keeps production no-ALT path ≤1232 (S4a-1/S4a-2 / N6-4). Receive still never length-rejects. |
+| D-21 | Pass close separate from leave (no try/catch) | `leave` try/catch burn | Unbonding always starts; `active` sole status owner; pass is projection (§13.7a) |
 
 #### 13.15 Free testnet dependencies
 
