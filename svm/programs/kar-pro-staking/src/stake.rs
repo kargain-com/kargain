@@ -140,4 +140,29 @@ mod tests {
         let (key, _) = stake_pda(&pid, &w);
         assert!(prove_active_verifier(Some(&encoded), &w, true, Some(&key), &pid).is_ok());
     }
+
+    #[test]
+    fn leave_clears_fee_and_deactivates_without_pass() {
+        let mut s = sample_active([9u8; 32]);
+        s.verification_fee = 42;
+        assert!(s.active);
+        s.active = false;
+        s.unlock_at = 1_209_600;
+        s.verification_fee = 0;
+        assert!(!s.active);
+        assert_eq!(s.verification_fee, 0);
+        assert_eq!(s.unlock_at, 1_209_600);
+        assert!(!is_active_verifier_record(Some(&s)));
+    }
+
+    #[test]
+    fn missing_data_unanswerable_not_silent_inactive() {
+        let w = [5u8; 32];
+        let pid = Pubkey::new_unique();
+        let (key, _) = stake_pda(&pid, &w);
+        assert_eq!(
+            prove_active_verifier(Some(&[]), &w, true, Some(&key), &pid),
+            Err(KargainError::SourceUnanswerable)
+        );
+    }
 }

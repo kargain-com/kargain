@@ -217,4 +217,53 @@ mod tests {
             Err(KargainError::InvalidStatus)
         );
     }
+
+    #[test]
+    fn left_then_rejoined_verify_ok() {
+        let staking = Pubkey::new_unique();
+        let verifier = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let w = verifier.to_bytes();
+        let inactive = borsh::to_vec(&StakeAccount {
+            discriminator: STAKE_DISCRIMINATOR,
+            wallet: w,
+            amount: 1,
+            staked_at: 1,
+            active: false,
+            unlock_at: 99,
+            verification_fee: 0,
+            bump: 255,
+        })
+        .unwrap();
+        let (key, _) = stake_pda(&staking, &w);
+        assert_eq!(
+            check_verify_passport(
+                true,
+                false,
+                false,
+                Status::Unverified,
+                &owner,
+                &verifier,
+                Some(&inactive),
+                true,
+                Some(&key),
+                &staking,
+            ),
+            Err(KargainError::NotActiveVerifier)
+        );
+        let active = active_stake(w);
+        assert!(check_verify_passport(
+            true,
+            false,
+            false,
+            Status::Unverified,
+            &owner,
+            &verifier,
+            Some(&active),
+            true,
+            Some(&key),
+            &staking,
+        )
+        .is_ok());
+    }
 }
