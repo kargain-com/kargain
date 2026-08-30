@@ -35,7 +35,7 @@ describe("svm-deploy-plan", () => {
     );
   });
 
-  it("dry-run plan lists passport + gateway under placeholder authority", () => {
+  it("dry-run plan lists passport + gateway + staking + pass under placeholder authority", () => {
     const plan = buildSvmDeployPlan({
       cluster: "solana-devnet",
       upgradeAuthority: "HotUpgradeAuthority1111111111111111111111111",
@@ -46,7 +46,7 @@ describe("svm-deploy-plan", () => {
     assert.equal(plan.programs.length, SVM_COMMERCIAL_PROGRAMS.length);
     assert.deepEqual(
       plan.programs.map((p) => p.name),
-      ["kar_passport", "kar_gateway"],
+      ["kar_passport", "kar_gateway", "kar_pro_staking", "kar_pro_pass"],
     );
     for (const p of plan.programs) {
       assert.equal(p.finalUpgradeAuthority, plan.upgradeAuthority);

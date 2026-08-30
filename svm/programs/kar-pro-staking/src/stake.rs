@@ -8,6 +8,7 @@ use solana_program::pubkey::Pubkey;
 
 use crate::seeds::stake_pda;
 use crate::state::{StakeAccount, STAKE_DISCRIMINATOR};
+use borsh::BorshDeserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StakeAnswerView {
@@ -30,7 +31,10 @@ pub fn classify_stake_answer(
     let Some(raw) = data else {
         return StakeAnswerView::Unanswerable;
     };
-    let Ok(stake) = borsh::BorshDeserialize::try_from_slice(raw) as Result<StakeAccount, _> else {
+    let Some(stake) = (|| {
+        let mut cursor: &[u8] = raw;
+        StakeAccount::deserialize(&mut cursor).ok()
+    })() else {
         return StakeAnswerView::Unanswerable;
     };
     if stake.discriminator != STAKE_DISCRIMINATOR {

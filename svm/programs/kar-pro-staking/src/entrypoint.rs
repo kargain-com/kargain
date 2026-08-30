@@ -165,7 +165,9 @@ fn load_stake(
         return Err(ProgramError::IncorrectProgramId);
     }
     let data = stake.try_borrow_data()?;
-    let s = StakeAccount::try_from_slice(&data).map_err(|_| ProgramError::InvalidAccountData)?;
+    // Fixed STAKE_SPACE may exceed borsh payload — do not use try_from_slice.
+    let mut cursor: &[u8] = &data;
+    let s = StakeAccount::deserialize(&mut cursor).map_err(|_| ProgramError::InvalidAccountData)?;
     if s.discriminator != STAKE_DISCRIMINATOR {
         return Err(ProgramError::InvalidAccountData);
     }

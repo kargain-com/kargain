@@ -52,17 +52,23 @@ else
   KAR_PASSPORT_ID="$(need_so kar_passport)"
   KAR_GATEWAY_ID="$(need_so kar_gateway)"
   MOCK_STAKING_ID="$(need_so mock_staking)"
+  KAR_PRO_STAKING_ID="$(need_so kar_pro_staking)"
+  KAR_PRO_PASS_ID="$(need_so kar_pro_pass)"
   echo "stand load=preload (--bpf-program):" >&2
   echo "  mock_endpoint  $MOCK_ENDPOINT_ID" >&2
   echo "  kar_passport   $KAR_PASSPORT_ID" >&2
   echo "  kar_gateway    $KAR_GATEWAY_ID" >&2
   echo "  mock_staking   $MOCK_STAKING_ID" >&2
+  echo "  kar_pro_staking $KAR_PRO_STAKING_ID" >&2
+  echo "  kar_pro_pass   $KAR_PRO_PASS_ID" >&2
   echo "  mpl-core       $CORE" >&2
   ARGS+=(
     --bpf-program "$MOCK_ENDPOINT_ID" "$DEPLOY/mock_endpoint.so"
     --bpf-program "$KAR_PASSPORT_ID" "$DEPLOY/kar_passport.so"
     --bpf-program "$KAR_GATEWAY_ID" "$DEPLOY/kar_gateway.so"
     --bpf-program "$MOCK_STAKING_ID" "$DEPLOY/mock_staking.so"
+    --bpf-program "$KAR_PRO_STAKING_ID" "$DEPLOY/kar_pro_staking.so"
+    --bpf-program "$KAR_PRO_PASS_ID" "$DEPLOY/kar_pro_pass.so"
   )
 fi
 

@@ -25,6 +25,8 @@ import {
   probeValidator,
   runLiveSvmRoundTrip,
 } from "../svm/stand/live-roundtrip.ts";
+import { runLiveVerifierFlow } from "../svm/stand/live-verifier-flow.ts";
+import { standMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
 const LIVE_EVM = process.env.KARGAIN_SVM_STAND_EVM === "1";
@@ -141,6 +143,20 @@ describe("svm-stand live Core CPI round trip", () => {
       );
       console.warn(
         `\n[svm-stand] live PASS uri=${result.liveUriLen}B foreignMintCu=${result.foreignMintCu} foreignMintTxSize=${result.foreignMintTxSize} (mock 13-meta) homeUnlockCu=${result.homeUnlockCu}\n`,
+      );
+
+      const verifier = await runLiveVerifierFlow({ reuseInited: true });
+      assert.equal(verifier.joined, true);
+      assert.equal(verifier.verified, true);
+      assert.equal(verifier.left, true);
+      assert.equal(verifier.passClosed, true);
+      assert.equal(verifier.claimed, true);
+      assert.equal(
+        verifier.minStakePin.solLamports,
+        standMinStakeLamports().toString(),
+      );
+      console.warn(
+        `\n[svm-stand] verifier PASS joinCu=${verifier.joinCu} verifyCu=${verifier.verifyCu} minStake=${verifier.minStakePin.solLamports} lamports\n`,
       );
 
       if (LIVE_EVM) {

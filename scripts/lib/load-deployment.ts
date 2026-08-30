@@ -412,7 +412,19 @@ export type SvmDevnetEvidence = {
     kar_passport: SvmDevnetProgramEvidence;
     kar_gateway: SvmDevnetProgramEvidence;
     mock_staking?: SvmDevnetProgramEvidence;
+    kar_pro_staking?: SvmDevnetProgramEvidence;
+    kar_pro_pass?: SvmDevnetProgramEvidence;
   };
+  /** S5 — ETH weight → lamports pin at deploy (join never quotes FX). */
+  minStakePin?: {
+    ethWeightWei: string;
+    ethFloorWei: string;
+    solLamports: string;
+    floorLamports: string;
+    solPerEth: string;
+    rateDate: string;
+    source: string;
+  } | null;
   peers?: SvmDevnetPathwayPeers | null;
   pathwayConfigHash?: `0x${string}` | null;
   [key: string]: unknown;

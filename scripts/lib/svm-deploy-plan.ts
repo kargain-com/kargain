@@ -26,6 +26,16 @@ export const SVM_COMMERCIAL_PROGRAMS = [
     dir: "kar-gateway",
     role: "Send / LzReceive / recover / lz_receive_types",
   },
+  {
+    name: "kar_pro_staking",
+    dir: "kar-pro-staking",
+    role: "native SOL stake + active-verifier answer account",
+  },
+  {
+    name: "kar_pro_pass",
+    dir: "kar-pro-pass",
+    role: "soulbound Core pass (projection of stake)",
+  },
 ] as const;
 
 export type SvmCommercialProgramName = (typeof SVM_COMMERCIAL_PROGRAMS)[number]["name"];

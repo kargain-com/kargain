@@ -43,7 +43,7 @@ esac
 build_arch() {
   local arch="$1"
   echo "==> build SBF programs (--arch $arch)"
-  for prog in mock-endpoint kar-passport kar-gateway mock-staking; do
+  for prog in mock-endpoint kar-passport kar-gateway mock-staking kar-pro-staking kar-pro-pass; do
     echo "    cargo-build-sbf --arch $arch ($prog)"
     (cd "svm/programs/$prog" && cargo-build-sbf --arch "$arch")
   done

@@ -1,4 +1,6 @@
 //! Instruction enum — borsh-encoded program data.
+//!
+//! Variant order is append-only (gateway + stand encode by discriminant index).
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
@@ -16,20 +18,12 @@ pub enum PassportIx {
     SetBridgeGateway {
         gateway: [u8; 32],
     },
-    /// Authority rebinds staking program (mock → commercial; A3 pair swap).
-    SetStakingProgram {
-        staking_program: [u8; 32],
-    },
     MintPassport {
         uri: String,
     },
     SetPassportUri {
         token_id: [u8; 32],
         uri: String,
-    },
-    /// Active verifier marks passport VERIFIED (answer-account stake proof).
-    VerifyPassport {
-        token_id: [u8; 32],
     },
     /// View-style: returns via program logs / account; host tests use `may` module.
     May {
@@ -58,5 +52,14 @@ pub enum PassportIx {
     BridgeResetOnUnlock {
         token_id: [u8; 32],
         uri: String,
+    },
+    // ---- S5 append-only ----
+    /// Authority rebinds staking program (mock → commercial; A3 pair swap).
+    SetStakingProgram {
+        staking_program: [u8; 32],
+    },
+    /// Active verifier marks passport VERIFIED (answer-account stake proof).
+    VerifyPassport {
+        token_id: [u8; 32],
     },
 }
