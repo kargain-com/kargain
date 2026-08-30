@@ -131,7 +131,8 @@ pub fn is_bridge_gateway_signer(bound: &[u8; 32], signer: &[u8; 32]) -> bool {
     pda.to_bytes() == *signer
 }
 
-/// Staking stub: missing/false → NotActiveVerifier (not SourceUnanswerable).
+/// Staking stub retained for host tests that inject a boolean.
+/// On-chain verify uses answer-account proof (`verify::check_verify_passport`).
 pub fn check_active_verifier(is_active: Option<bool>) -> Result<(), KargainError> {
     match is_active {
         Some(true) => Ok(()),

@@ -18,6 +18,7 @@ pub mod may;
 pub mod seeds;
 pub mod state;
 pub mod uri;
+pub mod verify;
 
 pub use entrypoint::process_instruction;
 

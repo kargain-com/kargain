@@ -27,6 +27,7 @@ use crate::state::{
     PassportConfig, PassportState, Status, PASSPORT_CONFIG_DISCRIMINATOR,
 };
 use crate::uri::{check_mint_uri, check_set_uri};
+use crate::verify::check_verify_passport;
 
 /// Fixed state PDA space (never closed; tombstone after foreign burn).
 pub const PASSPORT_STATE_SPACE: usize = 256;
@@ -56,10 +57,14 @@ pub fn process_instruction(
             forfeit_recipient,
         ),
         PassportIx::SetBridgeGateway { gateway } => set_bridge_gateway(program_id, accounts, gateway),
+        PassportIx::SetStakingProgram { staking_program } => {
+            set_staking_program(program_id, accounts, staking_program)
+        }
         PassportIx::MintPassport { uri } => mint_passport(program_id, accounts, uri),
         PassportIx::SetPassportUri { token_id, uri } => {
             set_passport_uri(program_id, accounts, token_id, uri)
         }
+        PassportIx::VerifyPassport { token_id } => verify_passport(program_id, accounts, token_id),
         PassportIx::May { token_id, intent } => {
             msg!(
                 "kar-passport May token={:02x}{:02x} intent={} (host may module)",
@@ -228,6 +233,89 @@ fn set_bridge_gateway(
     cfg.bridge_gateway = gateway;
     save_config(config, &cfg)?;
     msg!("kar-passport SetBridgeGateway ok");
+    Ok(())
+}
+
+fn set_staking_program(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    staking_program: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let config = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if staking_program == [0u8; 32] {
+        return Err(into_program_error(kargain_errors::KargainError::ZeroAddress));
+    }
+    let mut cfg = load_config(program_id, config)?;
+    if authority.key.to_bytes() != cfg.authority {
+        return Err(ProgramError::IllegalOwner);
+    }
+    cfg.staking_program = staking_program;
+    save_config(config, &cfg)?;
+    msg!("kar-passport SetStakingProgram ok");
+    Ok(())
+}
+
+/// Accounts: config, asset, state, stake, verifier(signer)
+fn verify_passport(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+) -> ProgramResult {
+    use solana_program::clock::Clock;
+    use solana_program::sysvar::Sysvar;
+
+    let iter = &mut accounts.iter();
+    let config = next_account_info(iter)?;
+    let asset = next_account_info(iter)?;
+    let state = next_account_info(iter)?;
+    let stake = next_account_info(iter)?;
+    let verifier = next_account_info(iter)?;
+
+    if !verifier.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let cfg = load_config(program_id, config)?;
+    let mut st = load_state(program_id, state, &token_id)?;
+    let live = is_live_core_asset(asset);
+    let asset_owner = if live {
+        read_owner(asset)?
+    } else {
+        Pubkey::default()
+    };
+
+    let staking_program = Pubkey::new_from_array(cfg.staking_program);
+    let owned_by_staking = stake.owner == &staking_program;
+    let stake_data = if stake.data_is_empty() {
+        None
+    } else {
+        Some(stake.try_borrow_data()?.to_vec())
+    };
+
+    check_verify_passport(
+        live,
+        st.custody_locked,
+        st.burned,
+        st.status,
+        &asset_owner,
+        verifier.key,
+        stake_data.as_deref(),
+        owned_by_staking,
+        Some(stake.key),
+        &staking_program,
+    )
+    .map_err(into_program_error)?;
+
+    let now = Clock::get()?.unix_timestamp as u64;
+    st.status = Status::Verified;
+    st.verifier = verifier.key.to_bytes();
+    st.verified_at = now;
+    save_state(state, &st)?;
+    msg!("kar-passport VerifyPassport ok");
     Ok(())
 }
 

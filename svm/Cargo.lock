@@ -566,8 +566,19 @@ name = "kar-passport"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "kar-pro-staking",
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
+ "kargain-errors",
+ "mpl-core",
+ "solana-program",
+]
+
+[[package]]
+name = "kar-pro-pass"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
  "kargain-errors",
  "mpl-core",
  "solana-program",
