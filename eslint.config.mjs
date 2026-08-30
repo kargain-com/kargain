@@ -201,6 +201,8 @@ const eslintConfig = [
       "test/layerzero-pathway.test.ts",
       "scripts/lib/layerzero-pathway.ts",
       "scripts/bridge-wire.ts",
+      "scripts/svm-devnet-pathway-init.ts",
+      "scripts/svm-devnet-y5-rt.ts",
     ],
     rules: {
       "no-restricted-imports": [
