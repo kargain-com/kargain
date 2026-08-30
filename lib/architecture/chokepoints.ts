@@ -208,6 +208,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "svm-upgrade-authority-evidence",
+    owner: "scripts/lib/assert-svm-upgrade-authority.ts",
+    rule: "Sole live svm-{eid} programs.*.upgradeAuthority ↔ on-chain ProgramData Authority; verify:svm-authority; no plannedFinalUpgradeAuthority knob",
+    guardTests: ["assert-svm-upgrade-authority.test.ts"],
+  },
+  {
     id: "declared-weights",
     owner: "lib/web3/declared-weights.ts",
     rule: "SPEC §13.10 wei literals (stake/bonds) live only in declared-weights",

@@ -46,6 +46,10 @@ solana program show <PROGRAM_ID> -u "$SOLANA_RPC_URL"
 
 Repeat end-phase handoff for every program the phase modified (e.g. passport + staking + pass).
 
+## Evidence honesty
+
+`pnpm verify:svm-authority` — every live `programs.*.upgradeAuthority` in `deployments/svm-{eid}.json` must equal on-chain ProgramData Authority (sole owner: `scripts/lib/assert-svm-upgrade-authority.ts`). Do not keep a live `plannedFinalUpgradeAuthority` field.
+
 ## Related
 
 - First deploy (retain deployer until proof): [`svm/scripts/deploy-devnet.sh`](../../svm/scripts/deploy-devnet.sh)
