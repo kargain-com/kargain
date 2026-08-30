@@ -495,7 +495,7 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 
 **Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`. H2 pathway hash `0x7e8c7fd4…983b8` (must stay unchanged when adding 40168).
 
-**Devnet pathway (40245 ↔ 40168)** — S4b COMPLETE (August 30, 2026). Hub OApp = N7 gateway `0x73240468…1827`; spoke OApp = Solana gateway_config PDA (not program id). DVNs **LayerZero Labs + P2P** both directions; confirmations **5**. Solana **receive** budget (not send CU) pinned in `lib/web3/bridge/lz-receive-gas.ts` (`SOLANA_DEVNET_*`; provenance in `svm/lab/RESULTS.md`). Runbook: [ops/deploys/s4b-devnet.md](../ops/deploys/s4b-devnet.md). **No** Solana `COMMERCIAL_ACTIVE` until S9. Library / executor / DVN addresses: **from snapshot** only.
+**Devnet pathway (40245 ↔ 40168)** — S4b COMPLETE; **S5-recover-R5** re-closed (August 30, 2026) after Y5-frozen UA lock. Hub OApp = N7 gateway `0x73240468…1827`; spoke OApp = Solana gateway_config PDA (not program id; live PDA in [ops/deploys/s4b-devnet.md](../ops/deploys/s4b-devnet.md)). DVNs **LayerZero Labs + P2P** both directions; confirmations **5**. Solana **receive** budget (not send CU) pinned in `lib/web3/bridge/lz-receive-gas.ts` (`SOLANA_DEVNET_*`; provenance in `svm/lab/RESULTS.md`). Deployer retains upgrade authority on S4–S8 ([§13.8](#138-governance-and-upgradeability)). **No** Solana `COMMERCIAL_ACTIVE` until S9. Library / executor / DVN addresses: **from snapshot** only.
 
 **Planned (historical note):** pre-S4b prose called 40168 “planned”; treat the Devnet pathway row above as current for testnet star spokes.
 
