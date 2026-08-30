@@ -8,6 +8,8 @@
 
 **Live 40161↔40245 hash H2 unchanged:** `0x7e8c7fd4c6fbc0687a14335bfaae5d6fd4ecac1ea067ec955a6444e5893983b8`.
 
+**40168↔40245 `pathwayConfigHash`:** `0x5d4b11319bdf996b2c09b17ada09abfd2c2c2b8c413a133368338b3f5f0c9c82` (was `0x3e56db95276da719f689e451f479939829a7f723e980330e699d03c670d2ecbe`). Changed because hub enforced receive budget was rewired to the derived pin (139_638 CU / 10_784_520 lamports) and the applied-config hash now includes those pins (not EVM 100k/250k floors).
+
 **Spoke OApp peer (hub setPeer):** gateway_config PDA `J8h6ErcR6b2xqTNQ8GLJwEKfy9aodys8SC11EuBPkC1b` (not program id).
 
 ---
@@ -34,6 +36,7 @@
 | 2026-08-29 (rebuild) | **New program ids**; **deployer retains** upgrade authority | Controllable iteration; abandon X3 ids |
 | 2026-08-30 (Y4) | RegisterOApp + SetPeer(40245) + production `lz_receive_types`; gateway upgrade (CPI layout) | Destination ready; hub still peer-zero |
 | 2026-08-30 (Y5) | Production send CPI; hub wire; live RT both ways; pin `lz-receive-gas`; UA → `BSuJ…` (after RT) | S4b COMPLETE |
+| 2026-08-30 (S4b-pin) | Hub `setEnforcedOptions` → 139_638 / 10_784_520; applied hash includes Solana pins | Close code↔chain dual floor |
 
 ---
 
@@ -55,7 +58,7 @@ Evidence: `deployments/svm-40168.json` (gitignored).
 - Pathway init: send/receive library + nonce + ULN OApp config (labs+p2p); EXECUTOR = **ExecutorConfig PDA**
 - Hub wire 40245→40168 (all `[skip]` on read-only); H2 for 40161 unchanged
 - Live RT: mint N7 with `ar://s4b-y5-rt-2026-08-30-n7-devnet` → Solana foreign mint → Solana→hub unlock to deployer; URI carried; status UNVERIFIED
-- Receive budget pin (provenance): compute **69_819 → ×2.0 → 139_638** CU; rent-exempt **7_189_680 → ×1.5 → 10_784_520** lamports — [`lz-receive-gas.ts`](../../../lib/web3/bridge/lz-receive-gas.ts); row in [`svm/lab/RESULTS.md`](../../../svm/lab/RESULTS.md). Send ≈280_078 CU is **not** the receive pin.
+- Receive budget pin (provenance): compute **69_819 → ×2.0 → 139_638** CU; rent-exempt **7_189_680 → ×1.5 → 10_784_520** lamports — [`lz-receive-gas.ts`](../../../lib/web3/bridge/lz-receive-gas.ts); row in [`svm/lab/RESULTS.md`](../../../svm/lab/RESULTS.md). Send ≈280_078 CU is **not** the receive pin. **On-chain hub enforcedOptions match the pin** (S4b-pin rewire; was 200_000 / 12_000_000).
 - ALT: Y5 tooling uses ephemeral per-send tables (authority = deployer). Product must not depend on a durable hot-key ALT (SPEC §13.4).
 
 **Tooling:** `pnpm deploy:svm` · `pnpm svm:pathway-init` · `pnpm svm:y5-rt` · `bridge:wire:solana*` · stand `--live-both`

@@ -88,23 +88,26 @@ describe("pathwayConfigHash 40245↔40161", () => {
     assert.equal(hashAppliedPathwayConfig(applied), H2);
   });
 
-  it("builds a distinct applied hash for hub↔40168 (N7 gateway + SVM program id)", () => {
+  it("builds a distinct applied hash for hub↔40168 (N7 gateway + gateway_config PDA)", () => {
     const snapshot = loadLayerZeroMetadataSnapshot();
     const hubGateway = "0x7324046854342587999984683c4833852FA81827";
-    const svmGateway = "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre";
+    const svmOApp = "J8h6ErcR6b2xqTNQ8GLJwEKfy9aodys8SC11EuBPkC1b";
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: 40168,
       hubOApp: hubGateway,
-      spokeOApp: svmGateway,
+      spokeOApp: svmOApp,
     });
     const hash = hashAppliedPathwayConfig(applied);
     assert.equal(
       hash,
-      "0x8b8ba5273130c6625dee0b4bdfc321a00e5b0272807dc9f4c89ffce1b88b4231",
+      "0x5d4b11319bdf996b2c09b17ada09abfd2c2c2b8c413a133368338b3f5f0c9c82",
     );
     assert.notEqual(hash, H2);
-    assert.equal(applied.spokeOApp, svmGateway);
+    assert.equal(applied.spokeOApp, svmOApp);
+    assert.equal(applied.enforcedGas.send, 139_638);
+    assert.equal(applied.enforcedGas.sendAndCompose, 139_638);
+    assert.equal(applied.enforcedGas.rentLamports, 10_784_520);
     assert.equal((applied.requiredDvns[EID_HUB] as string[]).length, 2);
     assert.equal((applied.requiredDvns[40168] as string[]).length, 2);
   });

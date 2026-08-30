@@ -515,8 +515,11 @@ export type AppliedPathwayConfig = {
     { sendUln302: string; receiveUln302: string; executor: string }
   >;
   enforcedGas: {
-    send: typeof ENFORCED_GAS_SEND;
-    sendAndCompose: typeof ENFORCED_GAS_SEND_AND_COMPOSE;
+    /** EVM: gas; SVM destination: CU (same values as buildEnforcedOptions). */
+    send: number;
+    sendAndCompose: number;
+    /** SVM destination only — lzReceive option value (rent lamports). */
+    rentLamports?: number;
   };
   metadataSha256: string;
 };
@@ -584,8 +587,9 @@ export function buildAppliedPathwayConfig(
         },
       },
       enforcedGas: {
-        send: ENFORCED_GAS_SEND,
-        sendAndCompose: ENFORCED_GAS_SEND_AND_COMPOSE,
+        send: SOLANA_DEVNET_ENFORCED_COMPUTE,
+        sendAndCompose: SOLANA_DEVNET_ENFORCED_COMPUTE,
+        rentLamports: SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
       },
       metadataSha256: pathwayChainsDigest(snapshot, hubEid, spokeEid),
     };
