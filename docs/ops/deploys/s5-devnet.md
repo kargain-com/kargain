@@ -1,16 +1,19 @@
 # S5 — Solana Devnet verifiers (staking + pass + verify)
 
-**Status:** local stand COMPLETE; staking/pass DEPLOYED (deployer UA `8tts6h…` / `4TE2kf…`). Passport/gateway Y5-frozen ids abandoned ([s4b-devnet.md](./s4b-devnet.md)); **S5-recover R5** redeploys passport+gateway under deployer UA, then R6 proves on the new passport.
+**Status:** local stand COMPLETE; S5-recover-R5 pathway re-closed (new passport/gateway, deployer UA, live RT). Staking/pass `8tts6h…` / `4TE2kf…` retained. **Next:** R6 prove on new passport.
 
 **Standing UA policy:** [svm-devnet.md](./svm-devnet.md) — S4–S8 deployer retains upgrade authority; `SOLANA_UPGRADE_AUTHORITY` ≡ deployer pubkey; no handoff; `pnpm verify:svm-authority`.
 
-### Devnet program ids (pre-R5)
+### Devnet program ids (live after R5)
 
 | Program | Program id | Upgrade authority |
 |---------|------------|-------------------|
+| kar_passport | `ArvcryxBL1mP44Vo4MoK1FE3YCnNG8JdVa3iTKxgWnTQ` | deployer `65Qmw…` |
+| kar_gateway | `9ugwozoJteH4D5XQmwvprevsZ6uWLoHEcWZWeVbDn693` | deployer `65Qmw…` |
 | kar_pro_staking | `8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY` | deployer `65Qmw…` |
 | kar_pro_pass | `4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr` | deployer `65Qmw…` |
-| kar_passport (Y5-frozen — do not use) | `FsDmjkrStitUPbh46y8JocGozNotF3EcT9rpDM1RDx1i` | `BSuJ…` FROZEN |
+
+Y5-frozen passport/gateway: see [s4b-devnet.md](./s4b-devnet.md) abandon section.
 
 ## Min stake pin
 

@@ -169,7 +169,19 @@ def sha256_file(p):
     return h.hexdigest()
 
 deployer = os.environ["SVM_X3_DEPLOYER_PUBKEY"]
+prior = {}
+if pathlib.Path(path).exists():
+    try:
+        prior = json.loads(pathlib.Path(path).read_text())
+    except Exception:
+        prior = {}
 programs = {}
+# Preserve S5 staking/pass live rows across passport/gateway redeploy
+for keep in ("kar_pro_staking", "kar_pro_pass"):
+    row = (prior.get("programs") or {}).get(keep)
+    if isinstance(row, dict) and row.get("programId"):
+        programs[keep] = dict(row)
+        programs[keep]["upgradeAuthority"] = row.get("upgradeAuthority") or deployer
 for name, envk in [
     ("kar_passport", "SVM_X3_PASSPORT_PROGRAM"),
     ("kar_gateway", "SVM_X3_GATEWAY_PROGRAM"),
@@ -200,7 +212,8 @@ doc = {
     "cargoBuildSbf": os.environ["SVM_X3_BUILD_SBF"],
     "commercialActive": False,
     "wired": False,
-    "note": "S5-recover: deployer retains upgrade authority for S4–S8; no COMMERCIAL_ACTIVE",
+    "minStakePin": prior.get("minStakePin"),
+    "note": "S5-recover-R5: new passport/gateway under deployer UA; prior Y5-frozen abandoned; no COMMERCIAL_ACTIVE",
     "abandonedPriorPrograms": {
         "reason": "Y5-frozen + X3: upgrade authority handed to unreachable BSuJ… via skip-signer (new-upgrade-authority without co-sign). Redeployed with new program ids under deployer UA.",
         "x3": {

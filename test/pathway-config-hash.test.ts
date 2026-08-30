@@ -28,10 +28,10 @@ const H2 =
 
 /** Live 40245↔40168 applied hash (N7 hub + gateway_config PDA; Solana pins in digest). */
 const H_40168 =
-  "0x5d4b11319bdf996b2c09b17ada09abfd2c2c2b8c413a133368338b3f5f0c9c82";
+  "0xc43a641bc5a50afc987fdc278f9bb1df64e5a1dfc5150b5d66233c1a376a7c98";
 
 const N7_HUB_GATEWAY = "0x7324046854342587999984683c4833852FA81827";
-const SVM_OAPP = "J8h6ErcR6b2xqTNQ8GLJwEKfy9aodys8SC11EuBPkC1b";
+const SVM_OAPP = "GmLEN2Tff1DfqW3rHTs97jqj5QNPhamRbsouDArmQ4Uj";
 
 /**
  * July snapshot file-body sha256 (pre-S2 committed file at 33c3056).
