@@ -2,10 +2,11 @@
  * S5 Devnet: pair-init staking+pass, SetStakingProgram on live passport,
  * prove join→verify→leave→claim, hand UA to SOLANA_UPGRADE_AUTHORITY, write evidence.
  *
- * Usage (from deploy-s5-staking.sh):
+ * Usage (from deploy-s5-staking.sh / s5-close-devnet.sh):
  *   pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
  *     --staking <id> --pass <id> --deployer-keypair <path> --rpc <url> \
- *     --evidence deployments/svm-40168.json --work <tmpdir>
+ *     --evidence deployments/svm-40168.json --work <tmpdir> \
+ *     [--hand-passport-ua]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +39,10 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
+}
+
 function loadKp(p: string): InstanceType<typeof Keypair> {
   const raw = JSON.parse(fs.readFileSync(p, "utf8")) as number[];
   return Keypair.fromSecretKey(Uint8Array.from(raw));
@@ -59,6 +64,38 @@ function encodeString(s: string): Buffer {
   out.writeUInt32LE(b.length, 0);
   b.copy(out, 4);
   return out;
+}
+
+/** StakeAccount: disc8 + wallet32 + amount8 + staked_at8 + active1 … */
+function assertStakeActive(data: Buffer, expectActive: boolean, label: string) {
+  if (data.length < 8 + 32 + 8 + 8 + 1) {
+    throw new Error(`${label}: stake account too short (${data.length})`);
+  }
+  const active = data[8 + 32 + 8 + 8] !== 0;
+  if (active !== expectActive) {
+    throw new Error(`${label}: stake.active=${active} expected ${expectActive}`);
+  }
+  console.log(`  assert ${label} active=${active} OK`);
+}
+
+/** PassportState: disc8 + token_id32 + status1 + verifier32 … */
+function assertPassportVerified(
+  data: Buffer,
+  verifier: InstanceType<typeof PublicKey>,
+  label: string,
+) {
+  if (data.length < 8 + 32 + 1 + 32) {
+    throw new Error(`${label}: passport state too short (${data.length})`);
+  }
+  const status = data[8 + 32];
+  const verifierBytes = data.subarray(8 + 32 + 1, 8 + 32 + 1 + 32);
+  if (status !== 1) {
+    throw new Error(`${label}: status=${status} expected Verified(1)`);
+  }
+  if (!Buffer.from(verifier.toBytes()).equals(Buffer.from(verifierBytes))) {
+    throw new Error(`${label}: verifier mismatch`);
+  }
+  console.log(`  assert ${label} status=Verified verifier OK`);
 }
 
 async function main() {
@@ -230,6 +267,12 @@ async function main() {
     "staking.Join",
   );
 
+  {
+    const stakeInfo = await connection.getAccountInfo(stakePda);
+    if (!stakeInfo) throw new Error("stake PDA missing after Join");
+    assertStakeActive(Buffer.from(stakeInfo.data), true, "post-Join");
+  }
+
   await send(
     [
       new TransactionInstruction({
@@ -247,6 +290,12 @@ async function main() {
     "passport.VerifyPassport",
   );
 
+  {
+    const stInfo = await connection.getAccountInfo(state);
+    if (!stInfo) throw new Error("passport state missing after Verify");
+    assertPassportVerified(Buffer.from(stInfo.data), deployer.publicKey, "post-Verify");
+  }
+
   await send(
     [
       new TransactionInstruction({
@@ -261,6 +310,12 @@ async function main() {
     ],
     "staking.Leave",
   );
+
+  {
+    const stakeInfo = await connection.getAccountInfo(stakePda);
+    if (!stakeInfo) throw new Error("stake PDA missing after Leave");
+    assertStakeActive(Buffer.from(stakeInfo.data), false, "post-Leave");
+  }
 
   await send(
     [
@@ -304,10 +359,21 @@ async function main() {
 
   console.log("==> hand upgrade authority → SOLANA_UPGRADE_AUTHORITY");
   const { execFileSync } = await import("node:child_process");
-  for (const [name, pid] of [
+  const handList: [string, string][] = [
     ["kar_pro_staking", stakingId.toBase58()],
     ["kar_pro_pass", passId.toBase58()],
-  ] as const) {
+  ];
+  if (hasFlag("--hand-passport-ua")) {
+    handList.push(["kar_passport", passportId.toBase58()]);
+  }
+  for (const [name, pid] of handList) {
+    const showBefore = execFileSync("solana", ["program", "show", pid, "-u", rpc], {
+      encoding: "utf8",
+    });
+    if (showBefore.includes(`Authority: ${finalUa}`)) {
+      console.log(`  ${name} UA already final — skip`);
+      continue;
+    }
     execFileSync(
       "solana",
       [
@@ -337,6 +403,10 @@ async function main() {
     ...prior,
     programs: {
       ...prior.programs,
+      kar_passport: {
+        ...prior.programs.kar_passport,
+        upgradeAuthority: finalUa,
+      },
       kar_pro_staking: {
         programId: stakingId.toBase58(),
         upgradeAuthority: finalUa,
@@ -347,6 +417,11 @@ async function main() {
       },
     },
     minStakePin: pin,
+    s5Close: {
+      at: new Date().toISOString(),
+      prove: "join→verify→leave→close→claim",
+      authorityCycle: "begin return passport UA → upgrade → prove → end hand x3",
+    },
   };
   writeSvmDevnetEvidence(evidencePath, evidence);
   console.log(`==> evidence written ${evidencePath}`);

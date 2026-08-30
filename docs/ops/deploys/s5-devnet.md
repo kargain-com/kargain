@@ -36,15 +36,26 @@ Join never quotes FX. Mainnet must derive from an observed on-chain rate and re-
 
 Flow after bridge RT: `SetStakingProgram` → join → mint/verify passport → leave → close_pass → claim (2s unbond).
 
-## Devnet sequence (S4b order)
+## Devnet sequence (authority cycle)
 
-1. Build + deploy `kar_pro_staking` + `kar_pro_pass` with **deployer** upgrade authority:
-   ```bash
-   # load .env.local SOLANA_*
-   ./svm/scripts/deploy-s5-staking.sh
-   ```
-2. Upgrade live `kar_passport` BPF to include `VerifyPassport` + `SetStakingProgram` using current UA (`SOLANA_UPGRADE_AUTHORITY`). If that key is not available, **stop** — do not `--skip-new-upgrade-authority-signer-check`.
-3. `scripts/svm-s5-init-and-prove.ts` (invoked by deploy script): pair-init → `SetStakingProgram` → join → verify → leave → close → claim → hand staking/pass UA → write `deployments/svm-40168.json` (`kar_pro_staking`, `kar_pro_pass`, `minStakePin`).
+Standing rule: [svm-devnet.md](./svm-devnet.md).
+
+```bash
+# load .env.local SOLANA_* ; session keypair for BSuJ… (not a permanent env secret)
+./svm/scripts/s5-close-devnet.sh --upgrade-authority-keypair /path/to/ua.json
+```
+
+Steps (scripted):
+
+1. Begin cycle — return passport `FsDmjkr…` UA from `SOLANA_UPGRADE_AUTHORITY` → deployer; `program show`.
+2. Upgrade live `kar_passport` BPF (VerifyPassport + SetStakingProgram).
+3. Prove: `SetStakingProgram` → mint → join (`active`) → verify (VERIFIED) → leave (`active=false`) → close_pass → claim; assert state at each step.
+4. End cycle — hand UA for passport + staking + pass → `SOLANA_UPGRADE_AUTHORITY`; three read-backs.
+5. Write `deployments/svm-40168.json` (`minStakePin` stated constant + timeline).
+
+If the upgrade-authority keypair is unavailable: **stop** — do not `--skip-new-upgrade-authority-signer-check`.
+
+Staking/pass were already deployed (deployer UA) via `./svm/scripts/deploy-s5-staking.sh`; close reuses those ids from evidence.
 
 ## Pass as projection
 
