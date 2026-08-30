@@ -1,10 +1,10 @@
 # S5 — Solana Devnet verifiers (staking + pass + verify)
 
-**Status:** local stand COMPLETE; S5-recover-R5 pathway re-closed (new passport/gateway, deployer UA, live RT). Staking/pass `8tts6h…` / `4TE2kf…` retained. **Next:** R6 prove on new passport.
+**Status: COMPLETE** (August 30, 2026 — S5-recover-R6). Local stand + Devnet prove PASS. Passport/gateway from R5 under deployer UA; staking/pass retained; no UA handoff.
 
-**Standing UA policy:** [svm-devnet.md](./svm-devnet.md) — S4–S8 deployer retains upgrade authority; `SOLANA_UPGRADE_AUTHORITY` ≡ deployer pubkey; no handoff; `pnpm verify:svm-authority`.
+**Standing UA policy:** [svm-devnet.md](./svm-devnet.md) — S4–S8 deployer retains upgrade authority; `SOLANA_UPGRADE_AUTHORITY` ≡ deployer pubkey; `pnpm verify:svm-authority`.
 
-### Devnet program ids (live after R5)
+### Devnet program ids (live)
 
 | Program | Program id | Upgrade authority |
 |---------|------------|-------------------|
@@ -13,7 +13,7 @@
 | kar_pro_staking | `8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY` | deployer `65Qmw…` |
 | kar_pro_pass | `4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr` | deployer `65Qmw…` |
 
-Y5-frozen passport/gateway: see [s4b-devnet.md](./s4b-devnet.md) abandon section.
+Pathway / RT: [s4b-devnet.md](./s4b-devnet.md). Y5-frozen ids abandoned there.
 
 ## Min stake pin
 
@@ -37,16 +37,18 @@ Join never quotes FX. Mainnet must derive from an observed on-chain rate and re-
 
 Flow after bridge RT: `SetStakingProgram` → join → mint/verify passport → leave → close_pass → claim (2s unbond).
 
-## Devnet sequence (after R5 new passport)
+## Devnet prove (R6)
 
-Standing rule: [svm-devnet.md](./svm-devnet.md).
+```bash
+# .env.local: SOLANA_UPGRADE_AUTHORITY = deployer pubkey
+pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
+  --staking 8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY \
+  --pass 4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr \
+  --deployer-keypair <deployer.json> --rpc "$SOLANA_RPC_URL" \
+  --evidence deployments/svm-40168.json --work <tmpdir>
+```
 
-1. Ensure `.env.local`: `SOLANA_UPGRADE_AUTHORITY` = deployer pubkey.
-2. Redeploy passport + gateway (R5); rewire; live RT.
-3. Prove (R6): `SetStakingProgram` → mint → join (`active`) → verify (VERIFIED) → leave (`active=false`) → close_pass → claim; assert state at each step. **No** UA handoff.
-4. Write `deployments/svm-40168.json` (`minStakePin` stated constant + prove timeline).
-
-Staking/pass ids above stay; new passport binds them via `SetStakingProgram`.
+Proven: `SetStakingProgram` → mint (distinct owner) → join (ephemeral verifier; Core tombstone D-17) → verify → leave → close_pass → claim. **No** UA handoff.
 
 ## Pass as projection
 

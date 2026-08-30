@@ -204,9 +204,8 @@ async function main() {
     "passport.SetStakingProgram",
   );
 
-  // Mint passport to a distinct owner, join as deployer, verify, leave, close, claim
+  // Mint passport to a distinct owner; deployer joins as verifier (CannotSelfVerify).
   const owner = Keypair.generate();
-  // Fund owner for rent if needed — mint payer is deployer
   const gatewayId = new PublicKey(prior.programs.kar_gateway.programId);
   const [gatewayFreeze] = pda([FREEZE], gatewayId);
 
@@ -237,18 +236,47 @@ async function main() {
     "passport.MintPassport",
   );
 
-  const [stakePda] = pda([STAKE, Buffer.from(deployer.publicKey.toBytes())], stakingId);
-  const [passAsset] = pda([PASS, Buffer.from(deployer.publicKey.toBytes())], passId);
-  const [passMeta] = pda([PASS_META, Buffer.from(deployer.publicKey.toBytes())], passId);
+  // Fresh verifier wallet — Core pass PDA is tombstoned after close (D-17); cannot re-join same wallet.
+  const verifier = Keypair.generate();
+  const fundLamports = minLamports + 50_000_000n; // stake + fees/rent headroom
+  {
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: deployer.publicKey,
+        toPubkey: verifier.publicKey,
+        lamports: Number(fundLamports),
+      }),
+    );
+    const sig = await sendAndConfirmTransaction(connection, tx, [deployer], {
+      commitment: "confirmed",
+    });
+    console.log(`  fund verifier ${verifier.publicKey.toBase58().slice(0, 8)}… ${sig.slice(0, 12)}…`);
+  }
 
-  await send(
+  const sendAs = async (
+    ixs: InstanceType<typeof TransactionInstruction>[],
+    signers: InstanceType<typeof Keypair>[],
+    label: string,
+  ) => {
+    const tx = new Transaction().add(...ixs);
+    const sig = await sendAndConfirmTransaction(connection, tx, signers, {
+      commitment: "confirmed",
+    });
+    console.log(`  ${label} ${sig.slice(0, 12)}…`);
+  };
+
+  const [stakePda] = pda([STAKE, Buffer.from(verifier.publicKey.toBytes())], stakingId);
+  const [passAsset] = pda([PASS, Buffer.from(verifier.publicKey.toBytes())], passId);
+  const [passMeta] = pda([PASS_META, Buffer.from(verifier.publicKey.toBytes())], passId);
+
+  await sendAs(
     [
       new TransactionInstruction({
         programId: stakingId,
         keys: [
           { pubkey: stakingConfig, isSigner: false, isWritable: false },
           { pubkey: stakePda, isSigner: false, isWritable: true },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
           { pubkey: passId, isSigner: false, isWritable: false },
           { pubkey: passConfig, isSigner: false, isWritable: true },
           { pubkey: passAsset, isSigner: false, isWritable: true },
@@ -266,6 +294,7 @@ async function main() {
         ]),
       }),
     ],
+    [verifier],
     "staking.Join",
   );
 
@@ -275,7 +304,7 @@ async function main() {
     assertStakeActive(Buffer.from(stakeInfo.data), true, "post-Join");
   }
 
-  await send(
+  await sendAs(
     [
       new TransactionInstruction({
         programId: passportId,
@@ -284,32 +313,34 @@ async function main() {
           { pubkey: asset, isSigner: false, isWritable: false },
           { pubkey: state, isSigner: false, isWritable: true },
           { pubkey: stakePda, isSigner: false, isWritable: false },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: false },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: false },
         ],
         data: Buffer.concat([Buffer.from([11]), tokenIdBuf]),
       }),
     ],
+    [verifier],
     "passport.VerifyPassport",
   );
 
   {
     const stInfo = await connection.getAccountInfo(state);
     if (!stInfo) throw new Error("passport state missing after Verify");
-    assertPassportVerified(Buffer.from(stInfo.data), deployer.publicKey, "post-Verify");
+    assertPassportVerified(Buffer.from(stInfo.data), verifier.publicKey, "post-Verify");
   }
 
-  await send(
+  await sendAs(
     [
       new TransactionInstruction({
         programId: stakingId,
         keys: [
           { pubkey: stakingConfig, isSigner: false, isWritable: false },
           { pubkey: stakePda, isSigner: false, isWritable: true },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: false },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: false },
         ],
         data: Buffer.from([2]),
       }),
     ],
+    [verifier],
     "staking.Leave",
   );
 
@@ -319,43 +350,45 @@ async function main() {
     assertStakeActive(Buffer.from(stakeInfo.data), false, "post-Leave");
   }
 
-  await send(
+  await sendAs(
     [
       new TransactionInstruction({
         programId: stakingId,
         keys: [
           { pubkey: stakingConfig, isSigner: false, isWritable: false },
           { pubkey: stakePda, isSigner: false, isWritable: false },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
           { pubkey: passId, isSigner: false, isWritable: false },
           { pubkey: passConfig, isSigner: false, isWritable: false },
           { pubkey: passAsset, isSigner: false, isWritable: true },
           { pubkey: passMeta, isSigner: false, isWritable: true },
           { pubkey: passFreeze, isSigner: false, isWritable: false },
-          { pubkey: deployer.publicKey, isSigner: false, isWritable: true },
+          { pubkey: verifier.publicKey, isSigner: false, isWritable: true },
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data: Buffer.from([6]),
       }),
     ],
+    [verifier],
     "staking.ClosePass",
   );
 
   await new Promise((r) => setTimeout(r, 3000));
 
-  await send(
+  await sendAs(
     [
       new TransactionInstruction({
         programId: stakingId,
         keys: [
           { pubkey: stakingConfig, isSigner: false, isWritable: false },
           { pubkey: stakePda, isSigner: false, isWritable: true },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
         ],
         data: Buffer.from([3]),
       }),
     ],
+    [verifier],
     "staking.ClaimStake",
   );
 
