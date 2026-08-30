@@ -41,6 +41,19 @@ These are **different operations**. A longer URI cannot be “cheaper” than a 
 
 Neither lab row nor these stand rows may be copied into `lz-receive-gas.ts` until S4. All stay well under **1.4M** CU; lab/stand do **not** invent a pin.
 
+## S4b Y5 Devnet live RT (2026-08-30) — **PINNED**
+
+**Live:** N7 hub `0x73240468…1827` ↔ Solana Devnet gateway `EZNVaX7…Gbgr` (OApp = gateway_config `J8h6Erc…`). URI `ar://s4b-y5-rt-2026-08-30-n7-devnet` (35 B). Both directions delivered; final hub owner = deployer; status UNVERIFIED (never verified).
+
+| Leg | What | Measure → headroom → pin |
+|-----|------|--------------------------|
+| Hub→Solana **receive** (destination budget) | Stand `--live-both` foreign mint (mock clear + Core create + state) after Y5 bind | CU **69_819** → ×**2.0** → **139_638**; rent-exempt mins **7_189_680** → ×**1.5** → **10_784_520** lamports. Owner: `SOLANA_DEVNET_ENFORCED_*` in [`lz-receive-gas.ts`](../../lib/web3/bridge/lz-receive-gas.ts) |
+| Solana→hub **send** (not receive pin) | Production EndpointV2 send CPI (ALT + v0 tx) on Devnet Y5 RT | ≈ **280_078** CU — **outbound send measure only**; do not copy into destination enforcedOptions |
+
+**Reconciliation:** receive pin governs hub→Solana Executor lzReceive options. Send CU is local Solana compute before debit completes; oversize send fails locally (user retries). Do not conflate the two.
+
+**Ops notes:** OApp EXECUTOR config must store **ExecutorConfig PDA** (not program id) or `SendHelper` cannot deserialize. Hub testnet committer may stall after DVN quorum — product UI ownership is **S8** (SPEC §13.4 / §13.16); `pnpm svm:y5-rt` nudges only as test tooling. Passport `bridge_gateway` bind accepts gateway_config PDA (and legacy program-id→PDA). Y5 tooling creates **ephemeral** ALTs (authority = deployer hot); product must not pin a durable deployer-owned ALT (SPEC §13.4).
+
 ## S4a local figures (2026-08-29) — do not pin
 
 **Host:** local Agave **4.3.0-beta.2** (matches Devnet `getVersion` same day). **Load:** upgradeable (`cargo-build-sbf --arch v3` + `solana program deploy`). **URI in default live path:** `STAND_TYPICAL_URI` (26 B), not the 731 ceiling.

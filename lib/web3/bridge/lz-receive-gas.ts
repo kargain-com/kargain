@@ -128,6 +128,40 @@ export type NonEvmReceiveBudgetParams = {
   rentCap: number;
 };
 
+/**
+ * S4b Devnet receive budget (2026-08-30) — **hub→Solana lzReceive only**.
+ *
+ * Compute provenance (stand `--live-both` after Y5 passport bind):
+ *   measured foreignMintCu **69_819** → ×**2.0** headroom (Executor margin + URI@160
+ *   + LzReceiveTypes V2 / production-meta overhead vs mock 13-meta) → pin **139_638**.
+ * Source: `./svm/stand/run-stand.sh --live-both` (2026-08-30).
+ *
+ * Rent provenance (same stand measure, rent-exempt mins):
+ *   asset 3_034_560 + state 2_672_640 + clear 1_482_480 = **7_189_680**
+ *   → ×**1.5** (URI growth / extra PDA headroom) → pin **10_784_520** (under Executor
+ *   native-drop cap 20e6).
+ *
+ * **Not this pin:** Solana→hub production send ≈ **280_078** CU (ALT+v0) — outbound
+ * send measure only; see `svm/lab/RESULTS.md` S4b Y5. Do not feed send CU into
+ * destination enforcedOptions.
+ */
+export const SOLANA_DEVNET_RECEIVE_BUDGET_PARAMS: NonEvmReceiveBudgetParams = {
+  computeBase: 55_000,
+  computePerUriByte: 100,
+  computeMarginBps: 2_000,
+  computeFloor: 139_638,
+  computeCap: 1_400_000,
+  rentBase: 7_189_680,
+  rentPerUriByte: 22_468,
+  rentCap: 50_000_000,
+};
+
+/** Pathway floor compute (Executor lzReceive option gas field = CU on Solana). */
+export const SOLANA_DEVNET_ENFORCED_COMPUTE = 139_638;
+
+/** Pathway floor rent lamports (Executor lzReceive option value field). */
+export const SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS = 10_784_520;
+
 export type NonEvmReceiveBudgetOk = {
   ok: true;
   compute: number;
