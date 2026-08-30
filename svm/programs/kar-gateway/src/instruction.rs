@@ -9,10 +9,14 @@ pub enum GatewayIx {
         namespace: u128,
     },
     /// Send: read URI before debit; always compose `abi.encode(uri)`.
+    /// Production EndpointV2 path consumes `native_fee` + `options` and CPI-sends;
+    /// mock path ignores fee/options and returns message via `set_return_data`.
     Send {
         dst_eid: u32,
         to: [u8; 32],
         token_id: [u8; 32],
+        native_fee: u64,
+        options: Vec<u8>,
     },
     /// Receive after Endpoint clear. Fail-closed on absent/undecodable compose.
     LzReceive {
@@ -42,4 +46,6 @@ pub enum GatewayIx {
         remote_eid: u32,
         peer: [u8; 32],
     },
+    /// Create `[LzReceiveTypes, gateway_config]` PDA for Executor V2 discovery.
+    InitLzReceiveTypes,
 }

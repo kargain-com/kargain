@@ -18,13 +18,16 @@ use solana_program::{
 use crate::account::into_program_error;
 use crate::config::{GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR};
 use crate::endpoint_v2::{
-    cpi_clear_production, cpi_register_oapp, is_production_endpoint, ClearParams as EndpointClearParams,
-    EVENT_SEED, OAPP_SEED,
+    cpi_clear_production, cpi_register_oapp, cpi_send_production, is_production_endpoint,
+    ClearParams as EndpointClearParams, SendParams as EndpointSendParams, EVENT_SEED, OAPP_SEED,
 };
 use crate::instruction::GatewayIx;
 use crate::lz_receive_types::{
     lz_receive_types, LzReceiveAccountList, MOCK_LZ_RECEIVE_ACCOUNT_COUNT, MOCK_LZ_RECEIVE_ACCOUNTS,
     PRODUCTION_LZ_RECEIVE_ACCOUNT_COUNT, PRODUCTION_LZ_RECEIVE_ACCOUNTS,
+};
+use crate::lz_receive_v2::{
+    init_lz_receive_types_accounts, try_dispatch_anchor_ix,
 };
 use crate::peer::{peer_pda, PeerConfig, HUB_EID, PEER_CONFIG_DISCRIMINATOR};
 use crate::recover::check_recover_locked_home;
@@ -41,6 +44,11 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     data: &[u8],
 ) -> ProgramResult {
+    if let Some(result) =
+        try_dispatch_anchor_ix(program_id, accounts, data, lz_receive)
+    {
+        return result;
+    }
     let ix = GatewayIx::try_from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)?;
     match ix {
         GatewayIx::Initialize {
@@ -60,7 +68,17 @@ pub fn process_instruction(
             dst_eid,
             to,
             token_id,
-        } => send(program_id, accounts, dst_eid, to, token_id),
+            native_fee,
+            options,
+        } => send(
+            program_id,
+            accounts,
+            dst_eid,
+            to,
+            token_id,
+            native_fee,
+            options,
+        ),
         GatewayIx::LzReceive {
             src_eid,
             sender,
@@ -112,6 +130,7 @@ pub fn process_instruction(
         GatewayIx::SetPeer { remote_eid, peer } => {
             set_peer(program_id, accounts, remote_eid, peer)
         }
+        GatewayIx::InitLzReceiveTypes => init_lz_receive_types_accounts(program_id, accounts),
     }
 }
 
@@ -462,15 +481,20 @@ fn lz_receive(
     Ok(())
 }
 
-/// Send accounts:
+/// Send accounts (mock):
 /// 0 gateway_config, 1 owner(signer), 2 payer(signer), 3 passport_program,
 /// 4 passport_config, 5 asset, 6 state, 7 freeze, 8 core, 9 system
+///
+/// Production adds:
+/// 10 peer_config, 11.. Endpoint send metas after sender (SendHelper.slice(2))
 fn send(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     dst_eid: u32,
     to: [u8; 32],
     token_id: [u8; 32],
+    native_fee: u64,
+    options: Vec<u8>,
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let gateway_config = next_account_info(iter)?;
@@ -495,6 +519,9 @@ fn send(
     if freeze.key != &freeze_key {
         return Err(ProgramError::InvalidSeeds);
     }
+
+    let endpoint_key = Pubkey::new_from_array(cfg.endpoint_program);
+    let production = is_production_endpoint(&endpoint_key);
 
     // URI **before** debit (SPEC §13.3a).
     let uri = read_uri(asset).map_err(|_| {
@@ -564,12 +591,54 @@ fn send(
     // Always compose abi.encode(uri).
     let composed = abi_encode_string(&plan.uri);
     let (message, _) = encode(to, token_id, Some(&composed));
-    solana_program::program::set_return_data(&message);
+    let msg_len = message.len();
+    let uri_len = plan.uri.len();
+
+    if production {
+        if dst_eid != HUB_EID {
+            return Err(ProgramError::InvalidArgument);
+        }
+        let peer_ai = next_account_info(iter)?;
+        let (expected_peer, _) = peer_pda(program_id, gateway_config.key, dst_eid);
+        if peer_ai.key != &expected_peer {
+            return Err(ProgramError::InvalidSeeds);
+        }
+        if peer_ai.owner != program_id {
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        let peer = PeerConfig::try_from_slice(&peer_ai.try_borrow_data()?)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if peer.discriminator != PEER_CONFIG_DISCRIMINATOR {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        // Remaining = Endpoint send metas after sender (no leading program, no sender).
+        let endpoint_accounts: Vec<AccountInfo> = accounts[11..].to_vec();
+        let endpoint_program_ai = endpoint_accounts
+            .iter()
+            .find(|a| a.key == &endpoint_key)
+            .ok_or(ProgramError::NotEnoughAccountKeys)?;
+        cpi_send_production(
+            endpoint_program_ai,
+            gateway_config,
+            &endpoint_accounts,
+            &EndpointSendParams {
+                dst_eid,
+                receiver: peer.peer_address,
+                message,
+                options,
+                native_fee,
+            },
+            config_seeds,
+        )?;
+    } else {
+        let _ = (native_fee, options); // mock ignores fee/options
+        solana_program::program::set_return_data(&message);
+    }
     msg!(
         "kar-gateway Send ok dst_eid={} uri_len={} msg_len={}",
         dst_eid,
-        plan.uri.len(),
-        message.len()
+        uri_len,
+        msg_len
     );
     Ok(())
 }
@@ -654,8 +723,11 @@ fn recover_locked_home(
 }
 
 /// RegisterOApp accounts:
-/// 0 gateway_config, 1 authority(signer), 2 payer(signer), 3 endpoint_program,
-/// 4 oapp_registry (init), 5 system, 6 event_authority
+/// 0 gateway_config, 1 authority_payer(signer mut), 2 endpoint_program,
+/// 3 oapp_registry (init), 4 system, 5 event_authority
+///
+/// Single signer account (authority ≡ payer) — avoids duplicate-key CPI quirks
+/// and matches OFT init (one payer signs register_oapp).
 fn register_oapp(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -663,18 +735,17 @@ fn register_oapp(
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let gateway_config = next_account_info(iter)?;
-    let authority = next_account_info(iter)?;
-    let payer = next_account_info(iter)?;
+    let authority_payer = next_account_info(iter)?;
     let endpoint_program = next_account_info(iter)?;
     let oapp_registry = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let event_authority = next_account_info(iter)?;
 
-    if !authority.is_signer || !payer.is_signer {
+    if !authority_payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let cfg = load_config(program_id, gateway_config)?;
-    if authority.key.to_bytes() != cfg.authority {
+    if authority_payer.key.to_bytes() != cfg.authority {
         return Err(ProgramError::IllegalOwner);
     }
     if endpoint_program.key.to_bytes() != cfg.endpoint_program {
@@ -697,7 +768,7 @@ fn register_oapp(
     let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
     cpi_register_oapp(
         endpoint_program,
-        payer,
+        authority_payer,
         gateway_config,
         oapp_registry,
         system,

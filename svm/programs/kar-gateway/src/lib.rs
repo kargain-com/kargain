@@ -17,6 +17,7 @@ pub mod endpoint_v2;
 pub mod entrypoint;
 pub mod instruction;
 pub mod lz_receive_types;
+pub mod lz_receive_v2;
 pub mod peer;
 pub mod recover;
 pub mod seeds;

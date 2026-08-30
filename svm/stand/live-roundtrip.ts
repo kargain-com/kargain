@@ -165,11 +165,17 @@ function gatewayInitializeData(args: {
 function gatewaySendData(dstEid: number, to: Uint8Array, tokenId: Uint8Array): Buffer {
   const eid = Buffer.alloc(4);
   eid.writeUInt32LE(dstEid, 0);
+  const fee = Buffer.alloc(8);
+  fee.writeBigUInt64LE(0n, 0);
+  const emptyOptions = Buffer.alloc(4); // vec len 0
+  emptyOptions.writeUInt32LE(0, 0);
   return Buffer.concat([
     Buffer.from([1]),
     eid,
     Buffer.from(to),
     Buffer.from(tokenId),
+    fee,
+    emptyOptions,
   ]);
 }
 

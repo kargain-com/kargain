@@ -30,11 +30,15 @@ pub const OAPP_SEED: &[u8] = b"OApp";
 pub const NONCE_SEED: &[u8] = b"Nonce";
 pub const PAYLOAD_HASH_SEED: &[u8] = b"PayloadHash";
 pub const EVENT_SEED: &[u8] = b"__event_authority";
+pub const SEND_LIBRARY_CONFIG_SEED: &[u8] = b"SendLibraryConfig";
+pub const MESSAGE_LIB_SEED: &[u8] = b"MessageLib";
 
 /// Anchor sighash `global:clear` — sha256[0..8].
 pub const CLEAR_IX_DISCRIMINATOR: [u8; 8] = [250, 39, 28, 213, 123, 163, 133, 5];
 /// Anchor sighash `global:register_oapp`.
 pub const REGISTER_OAPP_IX_DISCRIMINATOR: [u8; 8] = [129, 89, 71, 68, 11, 82, 210, 125];
+/// Anchor sighash `global:send`.
+pub const SEND_IX_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearParams {
@@ -133,11 +137,13 @@ pub fn cpi_clear_production<'info>(
     if receiver.key != &params.receiver {
         return Err(ProgramError::InvalidArgument);
     }
+    // Instruction accounts = Clear fields + event_cpi (event_authority, program).
+    // Do NOT prepend the endpoint program — that index-0 slot is only for
+    // Anchor `construct_context` remaining_accounts, not the on-wire ix.
     let data = params.encode_ix_data();
     let ix = Instruction {
         program_id: *endpoint_program.key,
         accounts: vec![
-            AccountMeta::new_readonly(*endpoint_program.key, false),
             AccountMeta::new_readonly(*receiver.key, true),
             AccountMeta::new_readonly(*oapp_registry.key, false),
             AccountMeta::new(*nonce.key, false),
@@ -151,7 +157,6 @@ pub fn cpi_clear_production<'info>(
     invoke_signed(
         &ix,
         &[
-            endpoint_program.clone(),
             receiver.clone(),
             oapp_registry.clone(),
             nonce.clone(),
@@ -185,13 +190,14 @@ pub fn cpi_register_oapp<'info>(
     if !is_production_endpoint(endpoint_program.key) {
         return Err(ProgramError::IncorrectProgramId);
     }
+    // Instruction accounts = RegisterOApp fields + event_cpi trailing program.
+    // Leading endpoint is construct_context-only (see clear CPI note above).
     let mut data = Vec::with_capacity(8 + 32);
     data.extend_from_slice(&REGISTER_OAPP_IX_DISCRIMINATOR);
     data.extend_from_slice(&delegate);
     let ix = Instruction {
         program_id: *endpoint_program.key,
         accounts: vec![
-            AccountMeta::new_readonly(*endpoint_program.key, false),
             AccountMeta::new(*payer.key, true),
             AccountMeta::new_readonly(*oapp.key, true),
             AccountMeta::new(*oapp_registry.key, false),
@@ -204,7 +210,6 @@ pub fn cpi_register_oapp<'info>(
     invoke_signed(
         &ix,
         &[
-            endpoint_program.clone(),
             payer.clone(),
             oapp.clone(),
             oapp_registry.clone(),
@@ -215,6 +220,83 @@ pub fn cpi_register_oapp<'info>(
         &[gateway_config_seeds],
     )?;
     msg!("kar-gateway endpointv2 register_oapp ok");
+    Ok(())
+}
+
+/// EndpointV2 `SendParams` (native fee path; `lz_token_fee` fixed 0).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SendParams {
+    pub dst_eid: u32,
+    pub receiver: [u8; 32],
+    pub message: Vec<u8>,
+    pub options: Vec<u8>,
+    pub native_fee: u64,
+}
+
+impl SendParams {
+    pub fn encode_ix_data(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(
+            8 + 4 + 32 + 4 + self.message.len() + 4 + self.options.len() + 8 + 8,
+        );
+        data.extend_from_slice(&SEND_IX_DISCRIMINATOR);
+        data.extend_from_slice(&self.dst_eid.to_le_bytes());
+        data.extend_from_slice(&self.receiver);
+        data.extend_from_slice(&(self.message.len() as u32).to_le_bytes());
+        data.extend_from_slice(&self.message);
+        data.extend_from_slice(&(self.options.len() as u32).to_le_bytes());
+        data.extend_from_slice(&self.options);
+        data.extend_from_slice(&self.native_fee.to_le_bytes());
+        data.extend_from_slice(&0u64.to_le_bytes()); // lz_token_fee
+        data
+    }
+}
+
+/// CPI EndpointV2 `send` — sender = gateway_config PDA (must appear once).
+///
+/// `endpoint_accounts` = wire AccountInfos after sender:
+/// send_library_program … nonce … event_authority … endpoint_program … ULN remaining.
+/// Do **not** prepend endpoint program or re-include sender (Y4 + LZ duplicate-sender ban).
+pub fn cpi_send_production<'info>(
+    endpoint_program: &AccountInfo<'info>,
+    sender: &AccountInfo<'info>,
+    endpoint_accounts: &[AccountInfo<'info>],
+    params: &SendParams,
+    gateway_config_seeds: &[&[u8]],
+) -> ProgramResult {
+    if !is_production_endpoint(endpoint_program.key) {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // Minimum: send_lib, oapp_cfg, default_cfg, msg_lib_info, endpoint, nonce, event, program
+    if endpoint_accounts.len() < 8 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    if endpoint_accounts.iter().any(|a| a.key == sender.key) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let data = params.encode_ix_data();
+    let mut metas = Vec::with_capacity(1 + endpoint_accounts.len());
+    metas.push(AccountMeta::new_readonly(*sender.key, true));
+    for a in endpoint_accounts {
+        metas.push(if a.is_writable {
+            AccountMeta::new(*a.key, a.is_signer)
+        } else {
+            AccountMeta::new_readonly(*a.key, a.is_signer)
+        });
+    }
+    let ix = Instruction {
+        program_id: *endpoint_program.key,
+        accounts: metas,
+        data,
+    };
+    let mut infos = Vec::with_capacity(1 + endpoint_accounts.len());
+    infos.push(sender.clone());
+    infos.extend_from_slice(endpoint_accounts);
+    invoke_signed(&ix, &infos, &[gateway_config_seeds])?;
+    msg!(
+        "kar-gateway endpointv2 send ok dst_eid={} msg_len={}",
+        params.dst_eid,
+        params.message.len()
+    );
     Ok(())
 }
 
@@ -239,6 +321,12 @@ mod tests {
     fn register_oapp_discriminator_is_anchor_sighash() {
         let h = solana_program::hash::hash(b"global:register_oapp");
         assert_eq!(&h.to_bytes()[..8], &REGISTER_OAPP_IX_DISCRIMINATOR);
+    }
+
+    #[test]
+    fn send_discriminator_is_anchor_sighash() {
+        let h = solana_program::hash::hash(b"global:send");
+        assert_eq!(&h.to_bytes()[..8], &SEND_IX_DISCRIMINATOR);
     }
 
     #[test]
