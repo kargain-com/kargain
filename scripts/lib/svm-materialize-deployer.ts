@@ -52,6 +52,36 @@ export type MaterializedDeployer = {
   workDir: string;
 };
 
+/**
+ * Derive deployer pubkey from SOLANA_DEPLOYER_PRIVATE_KEY without writing a file.
+ */
+export function solanaDeployerPubkeyFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const secret = resolveSolanaDeployerPrivateKey(env);
+  const bs58 = loadBs58();
+  const { Keypair } = loadKeypair();
+  let raw: Uint8Array;
+  try {
+    const decoded = bs58.decode(secret);
+    raw = decoded instanceof Uint8Array ? decoded : Uint8Array.from(decoded);
+  } catch {
+    throw new Error("SOLANA_DEPLOYER_PRIVATE_KEY is not valid base58");
+  }
+  const kp =
+    raw.length === 64
+      ? Keypair.fromSecretKey(raw)
+      : raw.length === 32
+        ? Keypair.fromSeed(raw)
+        : null;
+  if (!kp) {
+    throw new Error(
+      `SOLANA_DEPLOYER_PRIVATE_KEY length ${raw.length} (want 64-byte secret or 32-byte seed)`,
+    );
+  }
+  return kp.publicKey.toBase58();
+}
+
 /** Write deployer keypair under a fresh 0700 work dir. Caller must shred workDir. */
 export function materializeSolanaDeployer(
   env: NodeJS.ProcessEnv = process.env,

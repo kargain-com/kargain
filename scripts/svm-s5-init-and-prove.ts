@@ -1,12 +1,11 @@
 /**
  * S5 Devnet: pair-init staking+pass, SetStakingProgram on live passport,
- * prove join→verify→leave→claim, hand UA to SOLANA_UPGRADE_AUTHORITY, write evidence.
+ * prove join→verify→leave→claim, write evidence. Retains deployer UA (no handoff).
  *
- * Usage (from deploy-s5-staking.sh / s5-close-devnet.sh):
+ * Usage (from deploy-s5-staking.sh):
  *   pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
  *     --staking <id> --pass <id> --deployer-keypair <path> --rpc <url> \
- *     --evidence deployments/svm-40168.json --work <tmpdir> \
- *     [--hand-passport-ua]
+ *     --evidence deployments/svm-40168.json --work <tmpdir>
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -39,9 +38,6 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
-function hasFlag(name: string): boolean {
-  return process.argv.includes(name);
-}
 
 function loadKp(p: string): InstanceType<typeof Keypair> {
   const raw = JSON.parse(fs.readFileSync(p, "utf8")) as number[];
@@ -104,8 +100,14 @@ async function main() {
   const deployer = loadKp(arg("--deployer-keypair"));
   const rpc = arg("--rpc");
   const evidencePath = arg("--evidence");
-  const finalUa = process.env.SOLANA_UPGRADE_AUTHORITY?.trim();
-  if (!finalUa) throw new Error("SOLANA_UPGRADE_AUTHORITY required");
+  const deployerPub = deployer.publicKey.toBase58();
+  const envUa = process.env.SOLANA_UPGRADE_AUTHORITY?.trim();
+  if (!envUa) throw new Error("SOLANA_UPGRADE_AUTHORITY required");
+  if (envUa !== deployerPub) {
+    throw new Error(
+      `SOLANA_UPGRADE_AUTHORITY (${envUa}) ≠ deployer pubkey (${deployerPub}) — S4–S8 requires UA ≡ deployer`,
+    );
+  }
 
   const connection = new Connection(rpc, "confirmed");
   const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
@@ -357,46 +359,7 @@ async function main() {
     "staking.ClaimStake",
   );
 
-  console.log("==> hand upgrade authority → SOLANA_UPGRADE_AUTHORITY");
-  const { execFileSync } = await import("node:child_process");
-  const handList: [string, string][] = [
-    ["kar_pro_staking", stakingId.toBase58()],
-    ["kar_pro_pass", passId.toBase58()],
-  ];
-  if (hasFlag("--hand-passport-ua")) {
-    handList.push(["kar_passport", passportId.toBase58()]);
-  }
-  for (const [name, pid] of handList) {
-    const showBefore = execFileSync("solana", ["program", "show", pid, "-u", rpc], {
-      encoding: "utf8",
-    });
-    if (showBefore.includes(`Authority: ${finalUa}`)) {
-      console.log(`  ${name} UA already final — skip`);
-      continue;
-    }
-    execFileSync(
-      "solana",
-      [
-        "program",
-        "set-upgrade-authority",
-        pid,
-        "--new-upgrade-authority",
-        finalUa,
-        "--keypair",
-        arg("--deployer-keypair"),
-        "-u",
-        rpc,
-      ],
-      { stdio: "inherit" },
-    );
-    const show = execFileSync("solana", ["program", "show", pid, "-u", rpc], {
-      encoding: "utf8",
-    });
-    if (!show.includes(`Authority: ${finalUa}`)) {
-      throw new Error(`FAIL: ${name} UA handoff read-back`);
-    }
-    console.log(`  ${name} UA → ${finalUa.slice(0, 4)}…`);
-  }
+  console.log("==> retain deployer upgrade authority (no handoff)");
 
   const pin = testnetMinStakePinRecord();
   const evidence: SvmDevnetEvidence = {
@@ -405,22 +368,22 @@ async function main() {
       ...prior.programs,
       kar_passport: {
         ...prior.programs.kar_passport,
-        upgradeAuthority: finalUa,
+        upgradeAuthority: deployerPub,
       },
       kar_pro_staking: {
         programId: stakingId.toBase58(),
-        upgradeAuthority: finalUa,
+        upgradeAuthority: deployerPub,
       },
       kar_pro_pass: {
         programId: passId.toBase58(),
-        upgradeAuthority: finalUa,
+        upgradeAuthority: deployerPub,
       },
     },
     minStakePin: pin,
-    s5Close: {
+    s5Prove: {
       at: new Date().toISOString(),
       prove: "join→verify→leave→close→claim",
-      authorityCycle: "begin return passport UA → upgrade → prove → end hand x3",
+      upgradeAuthority: "deployer retained (S4–S8)",
     },
   };
   writeSvmDevnetEvidence(evidencePath, evidence);

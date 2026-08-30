@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # S5 — Deploy kar_pro_staking + kar_pro_pass to Solana Devnet.
-# Retain deployer upgrade authority until join→verify→leave→claim is proven,
-# then hand to SOLANA_UPGRADE_AUTHORITY (S4b order). Does not redeploy passport/gateway.
+# Retain deployer upgrade authority (S4–S8). Does not redeploy passport/gateway.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -30,8 +29,6 @@ need_cmd pnpm
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
 
 RPC="$SOLANA_RPC_URL"
-UPGRADE_AUTH_FINAL="$SOLANA_UPGRADE_AUTHORITY"
-
 echo "==> S5 Devnet staking + pass deploy (retain deployer UA until proven)"
 MAT="$(pnpm exec tsx scripts/svm-materialize-deployer.ts)"
 DEPLOYER_PUB="$(echo "$MAT" | cut -f1)"
@@ -45,7 +42,12 @@ cleanup() {
 trap cleanup EXIT
 
 echo "    deployer: $DEPLOYER_PUB"
-echo "    plannedFinalUA: ${UPGRADE_AUTH_FINAL:0:4}…${UPGRADE_AUTH_FINAL: -4}"
+if [[ "$SOLANA_UPGRADE_AUTHORITY" != "$DEPLOYER_PUB" ]]; then
+  echo "FAIL: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey (S4–S8)." >&2
+  echo "  set SOLANA_UPGRADE_AUTHORITY=$DEPLOYER_PUB" >&2
+  exit 1
+fi
+echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S8)"
 
 echo "==> build kar_pro_staking + kar_pro_pass (--arch v3)"
 (cd svm/programs/kar-pro-staking && cargo-build-sbf --arch v3)
@@ -111,7 +113,7 @@ pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --evidence "$EVIDENCE" \
   --work "$WORK"
 
-echo "==> S5 deploy scripts wrote evidence; prove + UA handoff via svm-s5-init-and-prove.ts"
+echo "==> S5 deploy + prove via svm-s5-init-and-prove.ts (no UA handoff)"
 echo "    staking=$STAKING_ID"
 echo "    pass=$PASS_ID"
-echo "DONE (deployer still holds UA on staking+pass until prove script hands off)"
+echo "DONE (deployer retains UA)"

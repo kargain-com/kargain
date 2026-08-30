@@ -2,20 +2,21 @@
  * SVM commercial deploy CLI.
  *
  *   pnpm deploy:svm:dry-run
- *   pnpm deploy:svm          # live Devnet rebuild (retain deployer upgrade authority)
+ *   pnpm deploy:svm          # live Devnet deploy (retain deployer upgrade authority)
  *
  * Live: build → upgradeable deploy → **keep deployer as upgrade authority** → init → evidence.
- * Hand-off to SOLANA_UPGRADE_AUTHORITY only after destination proof (Y5) — never at first deploy.
+ * S4–S8: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey — no post-proof handoff.
  * Never logs SOLANA_DEPLOYER_PRIVATE_KEY.
  */
 
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
+import { solanaDeployerPubkeyFromEnv } from "./lib/svm-materialize-deployer.js";
 import {
+  assertSolanaUpgradeAuthorityMatchesDeployer,
   buildSvmDeployPlan,
   formatSvmDeployPlanTable,
-  resolveSolanaUpgradeAuthority,
   type SvmDeployCluster,
 } from "./lib/svm-deploy-plan.js";
 
@@ -67,7 +68,9 @@ function main(): void {
 
   let upgradeAuthority: string;
   try {
-    upgradeAuthority = resolveSolanaUpgradeAuthority();
+    const deployerPubkey = solanaDeployerPubkeyFromEnv();
+    upgradeAuthority =
+      assertSolanaUpgradeAuthorityMatchesDeployer(deployerPubkey);
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

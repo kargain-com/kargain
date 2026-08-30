@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# S4b rebuild — Solana Devnet upgradeable deploy (passport + gateway + aux mock_staking).
+# Solana Devnet upgradeable deploy (passport + gateway + aux mock_staking).
 # Sequence: build → deploy → **retain deployer as upgrade authority** → read-back → init → evidence.
-# Do NOT hand authority to SOLANA_UPGRADE_AUTHORITY until the program is proven (Y5).
+# S4–S8: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey (no handoff).
 # Never logs private keys. Requires SOLANA_* in the environment (.env.local loaded by callers).
 set -euo pipefail
 
@@ -34,14 +34,12 @@ need_cmd pnpm
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
 
 RPC="$SOLANA_RPC_URL"
-UPGRADE_AUTH_FINAL="$SOLANA_UPGRADE_AUTHORITY"
 FORFEIT="$SOLANA_FORFEIT_RECIPIENT"
 ENDPOINT="$SOLANA_LZ_ENDPOINT"
 GATEWAY_AUTH="${SOLANA_GATEWAY_AUTHORITY:-}"
 
-echo "==> S4b rebuild Devnet deploy (retain deployer upgrade authority)"
+echo "==> Devnet deploy (retain deployer upgrade authority)"
 echo "    rpc: $RPC"
-echo "    plannedFinalUpgradeAuthority (Y5 only): ${UPGRADE_AUTH_FINAL:0:4}…${UPGRADE_AUTH_FINAL: -4}"
 echo "    forfeit: ${FORFEIT:0:4}…${FORFEIT: -4}"
 echo "    lzEndpoint: ${ENDPOINT:0:4}…${ENDPOINT: -4}"
 
@@ -57,13 +55,18 @@ cleanup() {
 trap cleanup EXIT
 
 echo "    deployer: $DEPLOYER_PUB"
+if [[ "$SOLANA_UPGRADE_AUTHORITY" != "$DEPLOYER_PUB" ]]; then
+  echo "FAIL: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey (S4–S8)." >&2
+  echo "  set SOLANA_UPGRADE_AUTHORITY=$DEPLOYER_PUB" >&2
+  exit 1
+fi
 if [[ -n "$GATEWAY_AUTH" && "$GATEWAY_AUTH" != "$DEPLOYER_PUB" ]]; then
   echo "FAIL: SOLANA_GATEWAY_AUTHORITY must be empty or equal deployer pubkey (init signer)." >&2
   exit 1
 fi
 GATEWAY_AUTH="$DEPLOYER_PUB"
 echo "    gatewayAuthority: $GATEWAY_AUTH (deployer)"
-echo "    upgradeAuthority (now): $DEPLOYER_PUB (retained until proven)"
+echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S8)"
 
 BAL="$(solana balance "$DEPLOYER_PUB" -u "$RPC" 2>/dev/null | awk '{print $1}')"
 echo "    balance: ${BAL:-?} SOL"
@@ -116,7 +119,7 @@ PASSPORT_ID="$(cat "$WORK/kar_passport.program_id")"
 GATEWAY_ID="$(cat "$WORK/kar_gateway.program_id")"
 STAKING_ID="$(cat "$WORK/mock_staking.program_id")"
 
-echo "==> assert upgrade authority = deployer (no early handoff)"
+echo "==> assert upgrade authority = deployer (no handoff)"
 for name in kar_passport kar_gateway mock_staking; do
   pid="$(cat "$WORK/${name}.program_id")"
   SHOW="$(solana program show "$pid" -u "$RPC" -k "$DEPLOYER_KP")"
@@ -151,7 +154,6 @@ export SVM_X3_SLOT="$SLOT"
 export SVM_X3_GIT_HEAD="$GIT_HEAD"
 export SVM_X3_TOOLCHAIN="$TOOLCHAIN"
 export SVM_X3_BUILD_SBF="$BUILD_SBF"
-export SVM_X3_PLANNED_FINAL_UA="$UPGRADE_AUTH_FINAL"
 
 EVIDENCE="$EVIDENCE_DIR/svm-40168.json"
 python3 - "$EVIDENCE" <<'PY'
@@ -191,7 +193,6 @@ doc = {
     "gatewayConfigAuthority": os.environ["SVM_X3_GATEWAY_AUTH"],
     "forfeitRecipient": os.environ["SOLANA_FORFEIT_RECIPIENT"],
     "upgradeAuthority": deployer,
-    "plannedFinalUpgradeAuthority": os.environ["SVM_X3_PLANNED_FINAL_UA"],
     "programs": programs,
     "slotAtEvidence": int(os.environ["SVM_X3_SLOT"]),
     "deployGitHead": os.environ["SVM_X3_GIT_HEAD"],
@@ -199,19 +200,25 @@ doc = {
     "cargoBuildSbf": os.environ["SVM_X3_BUILD_SBF"],
     "commercialActive": False,
     "wired": False,
-    "note": "S4b rebuild — deployer retains upgrade authority until destination proven; no COMMERCIAL_ACTIVE",
+    "note": "S5-recover: deployer retains upgrade authority for S4–S8; no COMMERCIAL_ACTIVE",
     "abandonedPriorPrograms": {
-        "reason": "Upgrade authority handed to unreachable hot pubkey BSuJ… via --skip-new-upgrade-authority-signer-check (X3). Rebuilt with new program ids.",
-        "kar_passport": "x8wSxkx5tW5yV9j7Lg8To5m34cj6Ji8aZ1GdKjHETrf",
-        "kar_gateway": "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre",
-        "mock_staking": "H4S6Gw1taHY5ux4adNavi4Rwi5vn9s7vEKNA4K3d6n89",
+        "reason": "Y5-frozen + X3: upgrade authority handed to unreachable BSuJ… via skip-signer (new-upgrade-authority without co-sign). Redeployed with new program ids under deployer UA.",
+        "x3": {
+            "kar_passport": "x8wSxkx5tW5yV9j7Lg8To5m34cj6Ji8aZ1GdKjHETrf",
+            "kar_gateway": "ELNhPxSsCh2fdfndMNAjCtdmKDhcCsSezXzdgARNwWre",
+            "mock_staking": "H4S6Gw1taHY5ux4adNavi4Rwi5vn9s7vEKNA4K3d6n89",
+        },
+        "y5_frozen": {
+            "kar_passport": "FsDmjkrStitUPbh46y8JocGozNotF3EcT9rpDM1RDx1i",
+            "kar_gateway": "EZNVaX7Xn4TER4uVxZpx8Xj87pdfTsXucMHtPJPEGbgr",
+        },
     },
 }
 pathlib.Path(path).write_text(json.dumps(doc, indent=2) + "\n")
 print(f"evidence → {path}")
 PY
 
-echo "==> rebuild deploy PASS"
+echo "==> deploy PASS"
 echo "    passport: $PASSPORT_ID"
 echo "    gateway:  $GATEWAY_ID"
 echo "    staking:  $STAKING_ID (aux)"

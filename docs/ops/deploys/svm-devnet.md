@@ -1,29 +1,27 @@
 # Solana Devnet — standing deploy runbook
 
-Standing operating rules for upgradeable programs on Solana Devnet (S4+). Phase runbooks ([s4b-devnet.md](./s4b-devnet.md), [s5-devnet.md](./s5-devnet.md)) record timelines and program ids; **this file owns the authority cycle**.
+Standing operating rules for upgradeable programs on Solana Devnet (S4–S8). Phase runbooks ([s4b-devnet.md](./s4b-devnet.md), [s5-devnet.md](./s5-devnet.md)) record timelines and program ids; **this file owns upgrade-authority policy**.
 
 Normative hot-role split: SPEC §I.13.8 (`upgrade authority` ≠ gateway config authority).
 
-## Upgrade-authority cycle
+## Upgrade authority (S4–S8)
 
-A phase that will modify a deployed program **begins** by returning upgrade authority to the deployer and **ends** by returning it to `SOLANA_UPGRADE_AUTHORITY` after the phase’s proof. The S4b rule “authority goes to long-term control after proof” is the **second half** of this cycle, not the whole of it.
+**On-chain upgrade authority = deployer** for the whole testnet port (S4–S8). Same pattern as EVM `.env` roles:
 
-Never use `--skip-new-upgrade-authority-signer-check`. Never leave upgrade authority on the deployer after a completed phase proof. If the `SOLANA_UPGRADE_AUTHORITY` secret is unavailable when a begin-cycle return is required, **stop**.
+| Env | Role |
+|-----|------|
+| `SOLANA_DEPLOYER_PRIVATE_KEY` | Secret that pays SOL and signs deploy/init (≈ `DEPLOYER_PRIVATE_KEY`) |
+| `SOLANA_UPGRADE_AUTHORITY` | **Must equal** the pubkey of that secret |
+| `SOLANA_FORFEIT_RECIPIENT` | Public forfeit sink (≈ `FORFEIT_RECIPIENT`) |
+| `SOLANA_GATEWAY_AUTHORITY` | Empty → deployer pubkey (gateway config) |
 
-Session-local keypair for the long-term authority: pass a keypair file path for the session (e.g. `--upgrade-authority-keypair`). Do **not** add a permanent secret env var to `.env.example`. Public pubkey remains `SOLANA_UPGRADE_AUTHORITY`.
+Deploy / dry-run / prove scripts **refuse** when `SOLANA_UPGRADE_AUTHORITY` ≠ deployer pubkey. Do not invent a session-only UA keypair outside `.env`. Do not hand off to an unreachable pubkey.
 
-### Begin phase (UA currently `SOLANA_UPGRADE_AUTHORITY`)
+**Forbidden:** `--skip-new-upgrade-authority-signer-check` (locks programs when the new authority cannot co-sign — X3 and Y5-frozen abandon).
 
-```bash
-solana program set-upgrade-authority <PROGRAM_ID> \
-  --new-upgrade-authority <DEPLOYER_PUBKEY> \
-  --upgrade-authority <UA_KEYPAIR.json> \
-  -u "$SOLANA_RPC_URL"
-solana program show <PROGRAM_ID> -u "$SOLANA_RPC_URL"
-# Authority must equal deployer
-```
+**Mainnet §7.6 Phase 2:** co-signed handoff / revocation of upgrade authority (and cold gateway config) — not a testnet default. Until then, retain deployer UA.
 
-### Iterate / upgrade under deployer
+## Deploy under deployer UA
 
 ```bash
 solana program deploy <path/to/program.so> \
@@ -31,20 +29,9 @@ solana program deploy <path/to/program.so> \
   --upgrade-authority <DEPLOYER_KEYPAIR.json> \
   --keypair <DEPLOYER_KEYPAIR.json> \
   -u "$SOLANA_RPC_URL"
-```
-
-### End phase (after proof)
-
-```bash
-solana program set-upgrade-authority <PROGRAM_ID> \
-  --new-upgrade-authority "$SOLANA_UPGRADE_AUTHORITY" \
-  --keypair <DEPLOYER_KEYPAIR.json> \
-  -u "$SOLANA_RPC_URL"
 solana program show <PROGRAM_ID> -u "$SOLANA_RPC_URL"
-# Authority must equal SOLANA_UPGRADE_AUTHORITY
+# Authority must equal deployer pubkey (= SOLANA_UPGRADE_AUTHORITY)
 ```
-
-Repeat end-phase handoff for every program the phase modified (e.g. passport + staking + pass).
 
 ## Evidence honesty
 
@@ -52,6 +39,6 @@ Repeat end-phase handoff for every program the phase modified (e.g. passport + s
 
 ## Related
 
-- First deploy (retain deployer until proof): [`svm/scripts/deploy-devnet.sh`](../../svm/scripts/deploy-devnet.sh)
-- Local A→B transfer proof: [`svm/scripts/prove-upgradeable-deploy.sh`](../../svm/scripts/prove-upgradeable-deploy.sh)
+- First deploy (retain deployer UA): [`svm/scripts/deploy-devnet.sh`](../../svm/scripts/deploy-devnet.sh)
+- Local A→B transfer lab only: [`svm/scripts/prove-upgradeable-deploy.sh`](../../svm/scripts/prove-upgradeable-deploy.sh)
 - Evidence: `deployments/svm-40168.json` (gitignored)
