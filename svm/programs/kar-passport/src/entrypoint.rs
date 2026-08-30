@@ -15,7 +15,7 @@ use solana_program::{
 use crate::account::into_program_error;
 use crate::bridge::{
     check_bridge_burn, check_bridge_mint, check_bridge_reset_on_unlock, check_set_bridge_gateway,
-    check_set_custody_lock,
+    check_set_custody_lock, is_bridge_gateway_signer,
 };
 use crate::core_asset::{
     create_asset_with_freeze, is_live_core_asset, read_owner, read_uri, set_frozen, thaw_and_burn,
@@ -200,7 +200,7 @@ fn require_gateway(cfg: &PassportConfig, gateway: &AccountInfo) -> ProgramResult
     if !gateway.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if gateway.key.to_bytes() != cfg.bridge_gateway {
+    if !is_bridge_gateway_signer(&cfg.bridge_gateway, &gateway.key.to_bytes()) {
         return Err(into_program_error(
             kargain_errors::KargainError::NotBridgeGateway,
         ));

@@ -114,6 +114,23 @@ pub fn check_set_bridge_gateway(
     Ok(())
 }
 
+/// True when `signer` is the bound bridge gateway.
+///
+/// Canonical bind is the gateway_config PDA (stand / CPI signer). Legacy Devnet init
+/// stored the gateway **program id**; accept that program's `["config"]` PDA as well.
+pub fn is_bridge_gateway_signer(bound: &[u8; 32], signer: &[u8; 32]) -> bool {
+    if bound == signer {
+        return true;
+    }
+    if *bound == [0u8; 32] {
+        return false;
+    }
+    let program = solana_program::pubkey::Pubkey::new_from_array(*bound);
+    let (pda, _) =
+        solana_program::pubkey::Pubkey::find_program_address(&[b"config"], &program);
+    pda.to_bytes() == *signer
+}
+
 /// Staking stub: missing/false → NotActiveVerifier (not SourceUnanswerable).
 pub fn check_active_verifier(is_active: Option<bool>) -> Result<(), KargainError> {
     match is_active {
@@ -164,6 +181,23 @@ mod tests {
             Err(KargainError::GatewayAlreadySet)
         );
         assert!(check_set_bridge_gateway(false, false).is_ok());
+    }
+
+    #[test]
+    fn bridge_gateway_signer_accepts_config_pda_of_bound_program() {
+        let program = solana_program::pubkey::Pubkey::new_unique();
+        let (pda, _) =
+            solana_program::pubkey::Pubkey::find_program_address(&[b"config"], &program);
+        assert!(is_bridge_gateway_signer(
+            &program.to_bytes(),
+            &pda.to_bytes()
+        ));
+        assert!(is_bridge_gateway_signer(&pda.to_bytes(), &pda.to_bytes()));
+        let stranger = solana_program::pubkey::Pubkey::new_unique();
+        assert!(!is_bridge_gateway_signer(
+            &program.to_bytes(),
+            &stranger.to_bytes()
+        ));
     }
 
     #[test]

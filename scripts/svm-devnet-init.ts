@@ -174,7 +174,7 @@ async function main(): Promise<void> {
         { pubkey: passportConfig, isSigner: false, isWritable: true },
         { pubkey: payer.publicKey, isSigner: true, isWritable: false },
       ],
-      data: passportSetGatewayData(gatewayId),
+      data: passportSetGatewayData(gatewayConfig),
     }),
   );
 
