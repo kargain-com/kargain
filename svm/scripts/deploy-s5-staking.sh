@@ -25,8 +25,8 @@ need_cmd cargo-build-sbf
 need_cmd pnpm
 
 : "${SOLANA_RPC_URL:?SOLANA_RPC_URL required}"
-: "${SOLANA_UPGRADE_AUTHORITY:?SOLANA_UPGRADE_AUTHORITY required}"
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
+# SOLANA_UPGRADE_AUTHORITY: sole check via assert-solana-ua-matches-deployer.ts (do not read here)
 
 RPC="$SOLANA_RPC_URL"
 echo "==> S5 Devnet staking + pass deploy (retain deployer UA until proven)"
@@ -42,11 +42,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "    deployer: $DEPLOYER_PUB"
-if [[ "$SOLANA_UPGRADE_AUTHORITY" != "$DEPLOYER_PUB" ]]; then
-  echo "FAIL: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey (S4–S8)." >&2
-  echo "  set SOLANA_UPGRADE_AUTHORITY=$DEPLOYER_PUB" >&2
-  exit 1
-fi
+pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
 echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S8)"
 
 echo "==> build kar_pro_staking + kar_pro_pass (--arch v3)"

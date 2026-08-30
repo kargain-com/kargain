@@ -14,6 +14,16 @@ import {
   testnetMinStakePinRecord,
 } from "../../lib/web3/min-stake-sol.ts";
 import {
+  STAKE_ACCOUNT_SPACE,
+  assertClaimSettled,
+  assertPassClosed,
+  assertPassportVerified,
+  assertStakeActive,
+  assertStakeClearedAfterClaim,
+  assertUnbondNotReady,
+  isLiveCoreAsset,
+} from "../../scripts/lib/svm-verifier-lifecycle-asserts.ts";
+import {
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
@@ -47,11 +57,18 @@ const FREEZE_SEED = Buffer.from("freeze");
 export const STAND_UNBONDING_SECS = 2;
 
 export type LiveVerifierFlowResult = {
+  /** Derived from stake.active after Join. */
   joined: boolean;
+  /** Derived from passport status+verifier after Verify. */
   verified: boolean;
+  /** Derived from stake.active after Leave. */
   left: boolean;
+  /** Derived from Core asset not live + stake inactive after ClosePass. */
   passClosed: boolean;
+  /** Derived from claim amount settlement + cleared stake record. */
   claimed: boolean;
+  /** Principal claimed (from stake record before claim). */
+  claimedAmount: bigint;
   minStakePin: ReturnType<typeof testnetMinStakePinRecord>;
   joinCu: number | null;
   verifyCu: number | null;
@@ -99,7 +116,7 @@ async function sendIx(
   payer: Keypair,
   ixs: InstanceType<typeof TransactionInstruction>[],
   label: string,
-): Promise<{ cu: number | null }> {
+): Promise<{ cu: number | null; signature: string }> {
   const tx = new Transaction().add(...ixs);
   const sig = await sendAndConfirmTransaction(connection, tx, [payer], {
     commitment: "confirmed",
@@ -116,7 +133,7 @@ async function sendIx(
     throw new Error(`${label} failed: ${JSON.stringify(parsed.meta.err)}`);
   }
   console.warn(`[svm-stand verifier] ${label} ok cu=${cu ?? "?"}`);
-  return { cu };
+  return { cu, signature: sig };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -428,6 +445,14 @@ export async function runLiveVerifierFlow(opts?: {
     "staking.Join",
   );
 
+  const stakeAfterJoin = await connection.getAccountInfo(stakePda);
+  if (!stakeAfterJoin) throw new Error("stake PDA missing after Join");
+  const joined = assertStakeActive(
+    Buffer.from(stakeAfterJoin.data),
+    true,
+    "post-Join",
+  ).active;
+
   const verifyResult = await sendIx(
     connection,
     payer,
@@ -447,6 +472,15 @@ export async function runLiveVerifierFlow(opts?: {
     "passport.VerifyPassport",
   );
 
+  const stInfo = await connection.getAccountInfo(state);
+  if (!stInfo) throw new Error("passport state missing after Verify");
+  assertPassportVerified(
+    Buffer.from(stInfo.data),
+    Buffer.from(payer.publicKey.toBytes()),
+    "post-Verify",
+  );
+  const verified = Buffer.from(stInfo.data)[8 + 32] === 1;
+
   await sendIx(
     connection,
     payer,
@@ -463,6 +497,14 @@ export async function runLiveVerifierFlow(opts?: {
     ],
     "staking.Leave",
   );
+
+  const stakeAfterLeave = await connection.getAccountInfo(stakePda);
+  if (!stakeAfterLeave) throw new Error("stake PDA missing after Leave");
+  const left = !assertStakeActive(
+    Buffer.from(stakeAfterLeave.data),
+    false,
+    "post-Leave",
+  ).active;
 
   await sendIx(
     connection,
@@ -489,31 +531,97 @@ export async function runLiveVerifierFlow(opts?: {
     "staking.ClosePass",
   );
 
+  const passInfoAfterClose = await connection.getAccountInfo(passAsset);
+  const stakeAfterClose = await connection.getAccountInfo(stakePda);
+  if (!stakeAfterClose) throw new Error("stake PDA missing after ClosePass");
+  const passAccount = passInfoAfterClose
+    ? {
+        owner: passInfoAfterClose.owner,
+        data: Buffer.from(passInfoAfterClose.data),
+      }
+    : null;
+  assertPassClosed(passAccount, Buffer.from(stakeAfterClose.data), "post-ClosePass");
+  const passClosed = !isLiveCoreAsset(passAccount);
+
+  const claimIx = new TransactionInstruction({
+    programId: stakingProgram,
+    keys: [
+      { pubkey: stakingConfig, isSigner: false, isWritable: false },
+      { pubkey: stakePda, isSigner: false, isWritable: true },
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+    ],
+    data: Buffer.from([3]), // ClaimStake
+  });
+
+  try {
+    await sendIx(connection, payer, [claimIx], "staking.ClaimStake-early");
+    throw new Error("early ClaimStake: expected UnbondNotReady, tx succeeded");
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("expected UnbondNotReady, tx succeeded")
+    ) {
+      throw err;
+    }
+    assertUnbondNotReady(err, "stand early ClaimStake");
+  }
+
   await sleep((STAND_UNBONDING_SECS + 1) * 1000);
 
-  await sendIx(
+  const rentExemptMin = await connection.getMinimumBalanceForRentExemption(
+    STAKE_ACCOUNT_SPACE,
+  );
+  const stakeBefore = await connection.getAccountInfo(stakePda);
+  if (!stakeBefore) throw new Error("stake PDA missing before ClaimStake");
+  const decodedBefore = assertStakeActive(
+    Buffer.from(stakeBefore.data),
+    false,
+    "pre-Claim",
+  );
+  const verifierLamportsBefore = await connection.getBalance(payer.publicKey);
+
+  const claimResult = await sendIx(
     connection,
     payer,
-    [
-      new TransactionInstruction({
-        programId: stakingProgram,
-        keys: [
-          { pubkey: stakingConfig, isSigner: false, isWritable: false },
-          { pubkey: stakePda, isSigner: false, isWritable: true },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        data: Buffer.from([3]), // ClaimStake
-      }),
-    ],
+    [claimIx],
     "staking.ClaimStake",
   );
 
+  const claimParsed = await connection.getTransaction(claimResult.signature, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  const txFeeLamports = Number(claimParsed?.meta?.fee ?? 0);
+
+  const stakeAfter = await connection.getAccountInfo(stakePda);
+  if (!stakeAfter) throw new Error("stake PDA missing after ClaimStake");
+  const verifierLamportsAfter = await connection.getBalance(payer.publicKey);
+
+  assertClaimSettled(
+    {
+      amountFromStake: decodedBefore.amount,
+      stakeLamportsBefore: stakeBefore.lamports,
+      stakeLamportsAfter: stakeAfter.lamports,
+      verifierLamportsBefore,
+      verifierLamportsAfter,
+      txFeeLamports,
+      rentExemptMin,
+    },
+    "post-ClaimStake",
+  );
+  const cleared = assertStakeClearedAfterClaim(
+    Buffer.from(stakeAfter.data),
+    "post-ClaimStake",
+  );
+  const claimed = decodedBefore.amount > 0n && cleared.amount === 0n;
+
   return {
-    joined: true,
-    verified: true,
-    left: true,
-    passClosed: true,
-    claimed: true,
+    joined,
+    verified,
+    left,
+    passClosed,
+    claimed,
+    claimedAmount: decodedBefore.amount,
     minStakePin: pin,
     joinCu: joinResult.cu,
     verifyCu: verifyResult.cu,

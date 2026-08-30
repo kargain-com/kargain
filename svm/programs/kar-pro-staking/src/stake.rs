@@ -83,7 +83,7 @@ pub fn is_active_verifier_record(stake: Option<&StakeAccount>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::StakeAccount;
+    use crate::state::{StakeAccount, STAKE_ACCOUNT_SPACE};
 
     fn sample_active(wallet: [u8; 32]) -> StakeAccount {
         StakeAccount {
@@ -96,6 +96,16 @@ mod tests {
             verification_fee: 0,
             bump: 255,
         }
+    }
+
+    #[test]
+    fn stake_account_space_sole_allocation() {
+        assert_eq!(STAKE_ACCOUNT_SPACE, 128);
+        let packed = borsh::to_vec(&sample_active([0u8; 32])).unwrap().len();
+        assert!(
+            packed <= STAKE_ACCOUNT_SPACE,
+            "borsh payload {packed} must fit fixed allocation {STAKE_ACCOUNT_SPACE}"
+        );
     }
 
     #[test]

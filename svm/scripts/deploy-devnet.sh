@@ -28,10 +28,10 @@ need_cmd node
 need_cmd pnpm
 
 : "${SOLANA_RPC_URL:?SOLANA_RPC_URL required}"
-: "${SOLANA_UPGRADE_AUTHORITY:?SOLANA_UPGRADE_AUTHORITY required}"
 : "${SOLANA_FORFEIT_RECIPIENT:?SOLANA_FORFEIT_RECIPIENT required}"
 : "${SOLANA_LZ_ENDPOINT:?SOLANA_LZ_ENDPOINT required}"
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
+# SOLANA_UPGRADE_AUTHORITY: sole check via assert-solana-ua-matches-deployer.ts (do not read here)
 
 RPC="$SOLANA_RPC_URL"
 FORFEIT="$SOLANA_FORFEIT_RECIPIENT"
@@ -55,11 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "    deployer: $DEPLOYER_PUB"
-if [[ "$SOLANA_UPGRADE_AUTHORITY" != "$DEPLOYER_PUB" ]]; then
-  echo "FAIL: SOLANA_UPGRADE_AUTHORITY must equal deployer pubkey (S4–S8)." >&2
-  echo "  set SOLANA_UPGRADE_AUTHORITY=$DEPLOYER_PUB" >&2
-  exit 1
-fi
+pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
 if [[ -n "$GATEWAY_AUTH" && "$GATEWAY_AUTH" != "$DEPLOYER_PUB" ]]; then
   echo "FAIL: SOLANA_GATEWAY_AUTHORITY must be empty or equal deployer pubkey (init signer)." >&2
   exit 1

@@ -18,6 +18,16 @@ import {
   testnetMinStakePinRecord,
 } from "../lib/web3/min-stake-sol.ts";
 import { loadSvmDevnetEvidence, type SvmDevnetEvidence } from "./lib/load-deployment.ts";
+import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.ts";
+import {
+  STAKE_ACCOUNT_SPACE,
+  assertClaimSettled,
+  assertPassClosed,
+  assertPassportVerified,
+  assertStakeActive,
+  assertStakeClearedAfterClaim,
+  assertUnbondNotReady,
+} from "./lib/svm-verifier-lifecycle-asserts.ts";
 import { writeSvmDevnetEvidence } from "./lib/write-deployment.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -62,38 +72,6 @@ function encodeString(s: string): Buffer {
   return out;
 }
 
-/** StakeAccount: disc8 + wallet32 + amount8 + staked_at8 + active1 … */
-function assertStakeActive(data: Buffer, expectActive: boolean, label: string) {
-  if (data.length < 8 + 32 + 8 + 8 + 1) {
-    throw new Error(`${label}: stake account too short (${data.length})`);
-  }
-  const active = data[8 + 32 + 8 + 8] !== 0;
-  if (active !== expectActive) {
-    throw new Error(`${label}: stake.active=${active} expected ${expectActive}`);
-  }
-  console.log(`  assert ${label} active=${active} OK`);
-}
-
-/** PassportState: disc8 + token_id32 + status1 + verifier32 … */
-function assertPassportVerified(
-  data: Buffer,
-  verifier: InstanceType<typeof PublicKey>,
-  label: string,
-) {
-  if (data.length < 8 + 32 + 1 + 32) {
-    throw new Error(`${label}: passport state too short (${data.length})`);
-  }
-  const status = data[8 + 32];
-  const verifierBytes = data.subarray(8 + 32 + 1, 8 + 32 + 1 + 32);
-  if (status !== 1) {
-    throw new Error(`${label}: status=${status} expected Verified(1)`);
-  }
-  if (!Buffer.from(verifier.toBytes()).equals(Buffer.from(verifierBytes))) {
-    throw new Error(`${label}: verifier mismatch`);
-  }
-  console.log(`  assert ${label} status=Verified verifier OK`);
-}
-
 async function main() {
   const stakingId = new PublicKey(arg("--staking"));
   const passId = new PublicKey(arg("--pass"));
@@ -101,13 +79,7 @@ async function main() {
   const rpc = arg("--rpc");
   const evidencePath = arg("--evidence");
   const deployerPub = deployer.publicKey.toBase58();
-  const envUa = process.env.SOLANA_UPGRADE_AUTHORITY?.trim();
-  if (!envUa) throw new Error("SOLANA_UPGRADE_AUTHORITY required");
-  if (envUa !== deployerPub) {
-    throw new Error(
-      `SOLANA_UPGRADE_AUTHORITY (${envUa}) ≠ deployer pubkey (${deployerPub}) — S4–S8 requires UA ≡ deployer`,
-    );
-  }
+  assertSolanaUpgradeAuthorityMatchesDeployer(deployerPub);
 
   const connection = new Connection(rpc, "confirmed");
   const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
@@ -302,6 +274,7 @@ async function main() {
     const stakeInfo = await connection.getAccountInfo(stakePda);
     if (!stakeInfo) throw new Error("stake PDA missing after Join");
     assertStakeActive(Buffer.from(stakeInfo.data), true, "post-Join");
+    console.log("  assert post-Join active=true OK");
   }
 
   await sendAs(
@@ -325,7 +298,12 @@ async function main() {
   {
     const stInfo = await connection.getAccountInfo(state);
     if (!stInfo) throw new Error("passport state missing after Verify");
-    assertPassportVerified(Buffer.from(stInfo.data), verifier.publicKey, "post-Verify");
+    assertPassportVerified(
+      Buffer.from(stInfo.data),
+      Buffer.from(verifier.publicKey.toBytes()),
+      "post-Verify",
+    );
+    console.log("  assert post-Verify status=Verified verifier OK");
   }
 
   await sendAs(
@@ -348,6 +326,7 @@ async function main() {
     const stakeInfo = await connection.getAccountInfo(stakePda);
     if (!stakeInfo) throw new Error("stake PDA missing after Leave");
     assertStakeActive(Buffer.from(stakeInfo.data), false, "post-Leave");
+    console.log("  assert post-Leave active=false OK");
   }
 
   await sendAs(
@@ -374,22 +353,94 @@ async function main() {
     "staking.ClosePass",
   );
 
+  {
+    const passInfo = await connection.getAccountInfo(passAsset);
+    const stakeInfo = await connection.getAccountInfo(stakePda);
+    if (!stakeInfo) throw new Error("stake PDA missing after ClosePass");
+    assertPassClosed(
+      passInfo
+        ? { owner: passInfo.owner, data: Buffer.from(passInfo.data) }
+        : null,
+      Buffer.from(stakeInfo.data),
+      "post-ClosePass",
+    );
+    console.log("  assert post-ClosePass pass not live + stake.active=false OK");
+  }
+
+  const claimIx = new TransactionInstruction({
+    programId: stakingId,
+    keys: [
+      { pubkey: stakingConfig, isSigner: false, isWritable: false },
+      { pubkey: stakePda, isSigner: false, isWritable: true },
+      { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
+    ],
+    data: Buffer.from([3]),
+  });
+
+  try {
+    await sendAs([claimIx], [verifier], "staking.ClaimStake-early");
+    throw new Error("post-Leave early ClaimStake: expected UnbondNotReady, tx succeeded");
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("expected UnbondNotReady, tx succeeded")
+    ) {
+      throw err;
+    }
+    assertUnbondNotReady(err, "post-Leave early ClaimStake");
+    console.log("  assert early ClaimStake → UnbondNotReady OK");
+  }
+
   await new Promise((r) => setTimeout(r, 3000));
 
-  await sendAs(
-    [
-      new TransactionInstruction({
-        programId: stakingId,
-        keys: [
-          { pubkey: stakingConfig, isSigner: false, isWritable: false },
-          { pubkey: stakePda, isSigner: false, isWritable: true },
-          { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
-        ],
-        data: Buffer.from([3]),
-      }),
-    ],
+  const rentExemptMin = await connection.getMinimumBalanceForRentExemption(
+    STAKE_ACCOUNT_SPACE,
+  );
+  const stakeBefore = await connection.getAccountInfo(stakePda);
+  if (!stakeBefore) throw new Error("stake PDA missing before ClaimStake");
+  const decodedBefore = assertStakeActive(
+    Buffer.from(stakeBefore.data),
+    false,
+    "pre-Claim",
+  );
+  const verifierLamportsBefore = await connection.getBalance(verifier.publicKey);
+
+  const claimTx = new Transaction().add(claimIx);
+  const claimSig = await sendAndConfirmTransaction(
+    connection,
+    claimTx,
     [verifier],
-    "staking.ClaimStake",
+    { commitment: "confirmed" },
+  );
+  console.log(`  staking.ClaimStake ${claimSig.slice(0, 12)}…`);
+
+  const claimParsed = await connection.getTransaction(claimSig, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  const txFeeLamports = Number(claimParsed?.meta?.fee ?? 0);
+  const stakeAfter = await connection.getAccountInfo(stakePda);
+  if (!stakeAfter) throw new Error("stake PDA missing after ClaimStake");
+  const verifierLamportsAfter = await connection.getBalance(verifier.publicKey);
+
+  assertClaimSettled(
+    {
+      amountFromStake: decodedBefore.amount,
+      stakeLamportsBefore: stakeBefore.lamports,
+      stakeLamportsAfter: stakeAfter.lamports,
+      verifierLamportsBefore,
+      verifierLamportsAfter,
+      txFeeLamports,
+      rentExemptMin,
+    },
+    "post-ClaimStake",
+  );
+  assertStakeClearedAfterClaim(Buffer.from(stakeAfter.data), "post-ClaimStake");
+  console.log(
+    `  assert post-ClaimStake amount=${decodedBefore.amount} ` +
+      `stakeΔ=${stakeBefore.lamports - stakeAfter.lamports} ` +
+      `verifierΔ=${verifierLamportsAfter - verifierLamportsBefore} ` +
+      `fee=${txFeeLamports} rentMin=${rentExemptMin} OK`,
   );
 
   console.log("==> retain deployer upgrade authority (no handoff)");
@@ -415,7 +466,8 @@ async function main() {
     minStakePin: pin,
     s5Prove: {
       at: new Date().toISOString(),
-      prove: "join→verify→leave→close→claim",
+      prove:
+        "join(active)→verify(status)→leave(inactive)→close(tombstone)→claim-early(UnbondNotReady)→claim(amount+rent)",
       upgradeAuthority: "deployer retained (S4–S8)",
     },
   };

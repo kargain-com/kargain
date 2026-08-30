@@ -19,12 +19,10 @@ use crate::account::into_program_error;
 use crate::instruction::StakingIx;
 use crate::seeds::{config_pda, stake_pda, CONFIG_SEED, STAKE_SEED};
 use crate::state::{
-    StakeAccount, StakingConfig, STAKE_DISCRIMINATOR, STAKING_CONFIG_DISCRIMINATOR,
+    StakeAccount, StakingConfig, STAKE_ACCOUNT_SPACE, STAKE_DISCRIMINATOR,
+    STAKING_CONFIG_DISCRIMINATOR,
 };
 use kargain_errors::KargainError;
-
-/// Fixed stake PDA data space (never resized).
-pub const STAKE_SPACE: usize = 128;
 
 /// Wire-compatible with `kar_pro_pass::PassIx` (borsh enum order).
 #[derive(BorshSerialize)]
@@ -165,7 +163,7 @@ fn load_stake(
         return Err(ProgramError::IncorrectProgramId);
     }
     let data = stake.try_borrow_data()?;
-    // Fixed STAKE_SPACE may exceed borsh payload — do not use try_from_slice.
+    // Fixed STAKE_ACCOUNT_SPACE may exceed borsh payload — do not use try_from_slice.
     let mut cursor: &[u8] = &data;
     let s = StakeAccount::deserialize(&mut cursor).map_err(|_| ProgramError::InvalidAccountData)?;
     if s.discriminator != STAKE_DISCRIMINATOR {
@@ -238,14 +236,14 @@ fn join(
     };
     require_can_join(existing.as_ref())?;
 
-    let rent = Rent::get()?.minimum_balance(STAKE_SPACE);
+    let rent = Rent::get()?.minimum_balance(STAKE_ACCOUNT_SPACE);
     if stake.data_is_empty() || stake.lamports() == 0 {
         solana_program::program::invoke_signed(
             &system_instruction::create_account(
                 verifier.key,
                 stake.key,
                 rent.saturating_add(amount),
-                STAKE_SPACE as u64,
+                STAKE_ACCOUNT_SPACE as u64,
                 program_id,
             ),
             &[verifier.clone(), stake.clone(), system.clone()],
@@ -362,7 +360,7 @@ fn claim_stake(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
         return Err(into_program_error(KargainError::UnbondNotReady));
     }
     let amount = s.amount;
-    let rent = Rent::get()?.minimum_balance(STAKE_SPACE);
+    let rent = Rent::get()?.minimum_balance(STAKE_ACCOUNT_SPACE);
     if stake.lamports() < rent.saturating_add(amount) {
         return Err(into_program_error(KargainError::TransferFailed));
     }

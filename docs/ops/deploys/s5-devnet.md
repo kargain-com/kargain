@@ -35,9 +35,20 @@ Join never quotes FX. Mainnet must derive from an observed on-chain rate and re-
 ./svm/stand/run-stand.sh --live-both
 ```
 
-Flow after bridge RT: `SetStakingProgram` → join → mint/verify passport → leave → close_pass → claim (2s unbond).
+Flow after bridge RT: `SetStakingProgram` → join → mint/verify passport → leave → close_pass → early claim refused → wait unbond → claim.
 
-## Devnet prove (R6)
+Asserted at each step (shared owner `scripts/lib/svm-verifier-lifecycle-asserts.ts`):
+
+| Step | Predicate |
+|------|-----------|
+| Join | stake PDA `active == true` |
+| Verify | passport `status == Verified` + verifier pubkey |
+| Leave | stake `active == false` |
+| ClosePass | Core pass asset not live (D-17 tombstone/closed); stake still inactive (D-21) |
+| Claim early | `UnbondNotReady` (`Custom(48)`) before unbond elapses |
+| Claim | principal from stake record arrives at verifier (fee-adjusted); stake lamports fall by that amount; rent-exempt remainder stays on open stake PDA; `amount`/`unlock_at`/`staked_at` cleared |
+
+## Devnet prove (R6; W4 predicates wired)
 
 ```bash
 # .env.local: SOLANA_UPGRADE_AUTHORITY = deployer pubkey
@@ -48,7 +59,9 @@ pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --evidence deployments/svm-40168.json --work <tmpdir>
 ```
 
-Proven: `SetStakingProgram` → mint (distinct owner) → join (ephemeral verifier; Core tombstone D-17) → verify → leave → close_pass → claim. **No** UA handoff.
+**Last live Devnet prove (R6, 2026-08-30):** `SetStakingProgram` → mint (distinct owner) → join (ephemeral verifier) → verify → leave → close_pass → claim. Asserted Join/Verify/Leave only; ClosePass/ClaimStake were tx-success only. **No** UA handoff.
+
+**W4 (same day):** the predicate table above is wired into this script and the local stand. Local stand proved the full table against live validator programs. **Devnet was not re-run with W4 predicates** — re-run the command above as an ops step before treating Devnet evidence as predicate-green. Env UA ≡ deployer via sole owner `assertSolanaUpgradeAuthorityMatchesDeployer` (CLI for bash deploys).
 
 ## Pass as projection
 

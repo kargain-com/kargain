@@ -31,9 +31,6 @@ pub struct StakeAccount {
     pub bump: u8,
 }
 
-impl StakeAccount {
-    pub fn space() -> usize {
-        // disc8 + wallet32 + amount8 + staked_at8 + active1 + unlock_at8 + fee8 + bump1 + padding
-        8 + 32 + 8 + 8 + 1 + 8 + 8 + 1 + 7
-    }
-}
+/// Fixed stake PDA allocation (never resized). Borsh payload is shorter; padding reserved.
+/// Sole size owner — do not invent a second packed-size helper.
+pub const STAKE_ACCOUNT_SPACE: usize = 128;

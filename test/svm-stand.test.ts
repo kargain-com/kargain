@@ -152,11 +152,17 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(verifier.passClosed, true);
       assert.equal(verifier.claimed, true);
       assert.equal(
+        verifier.claimedAmount,
+        testnetMinStakeLamports(),
+        "claimed principal must equal stated min stake (from stake record)",
+      );
+      assert.equal(
         verifier.minStakePin.solLamports,
         testnetMinStakeLamports().toString(),
       );
       console.warn(
-        `\n[svm-stand] verifier PASS joinCu=${verifier.joinCu} verifyCu=${verifier.verifyCu} minStake=${verifier.minStakePin.solLamports} lamports\n`,
+        `\n[svm-stand] verifier PASS joinCu=${verifier.joinCu} verifyCu=${verifier.verifyCu} ` +
+          `claimed=${verifier.claimedAmount} minStake=${verifier.minStakePin.solLamports} lamports\n`,
       );
 
       if (LIVE_EVM) {
