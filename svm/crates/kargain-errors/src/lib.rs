@@ -114,6 +114,34 @@ pub enum KargainError {
     UriTooLong = 42,
     #[error("UriExceedsBridgeCeiling")]
     UriExceedsBridgeCeiling = 43,
+
+    // ---- KarProStaking / KarProPass (S5) — append only ----
+    #[error("BelowMinStake")]
+    BelowMinStake = 44,
+    #[error("AlreadyVerifier")]
+    AlreadyVerifier = 45,
+    #[error("UnbondPending")]
+    UnbondPending = 46,
+    #[error("NotVerifier")]
+    NotVerifier = 47,
+    #[error("UnbondNotReady")]
+    UnbondNotReady = 48,
+    #[error("NoUnbond")]
+    NoUnbond = 49,
+    #[error("BelowMinStakeFloor")]
+    BelowMinStakeFloor = 50,
+    #[error("OnlyStaking")]
+    OnlyStaking = 51,
+    #[error("AlreadyHoldsPass")]
+    AlreadyHoldsPass = 52,
+    #[error("DoesNotHoldPass")]
+    DoesNotHoldPass = 53,
+    #[error("Soulbound")]
+    Soulbound = 54,
+    #[error("NotHolder")]
+    NotHolder = 55,
+    #[error("InvalidCategory")]
+    InvalidCategory = 56,
 }
 
 impl KargainError {
@@ -164,6 +192,19 @@ impl KargainError {
             Self::ComposeUndecodable => "ComposeUndecodable",
             Self::UriTooLong => "UriTooLong",
             Self::UriExceedsBridgeCeiling => "UriExceedsBridgeCeiling",
+            Self::BelowMinStake => "BelowMinStake",
+            Self::AlreadyVerifier => "AlreadyVerifier",
+            Self::UnbondPending => "UnbondPending",
+            Self::NotVerifier => "NotVerifier",
+            Self::UnbondNotReady => "UnbondNotReady",
+            Self::NoUnbond => "NoUnbond",
+            Self::BelowMinStakeFloor => "BelowMinStakeFloor",
+            Self::OnlyStaking => "OnlyStaking",
+            Self::AlreadyHoldsPass => "AlreadyHoldsPass",
+            Self::DoesNotHoldPass => "DoesNotHoldPass",
+            Self::Soulbound => "Soulbound",
+            Self::NotHolder => "NotHolder",
+            Self::InvalidCategory => "InvalidCategory",
         }
     }
 
@@ -214,6 +255,19 @@ impl KargainError {
             ComposeUndecodable,
             UriTooLong,
             UriExceedsBridgeCeiling,
+            BelowMinStake,
+            AlreadyVerifier,
+            UnbondPending,
+            NotVerifier,
+            UnbondNotReady,
+            NoUnbond,
+            BelowMinStakeFloor,
+            OnlyStaking,
+            AlreadyHoldsPass,
+            DoesNotHoldPass,
+            Soulbound,
+            NotHolder,
+            InvalidCategory,
         ]
     }
 }

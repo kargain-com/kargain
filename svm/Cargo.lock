@@ -574,6 +574,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "kar-pro-pass"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kargain-errors",
+ "mpl-core",
+ "solana-program",
+]
+
+[[package]]
+name = "kar-pro-staking"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kargain-errors",
+ "solana-program",
+]
+
+[[package]]
 name = "kargain-bonded-challenge"
 version = "0.1.0"
 dependencies = [

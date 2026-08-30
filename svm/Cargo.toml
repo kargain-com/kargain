@@ -9,6 +9,7 @@ members = [
   "programs/kar-gateway",
   "programs/mock-staking",
   "programs/mock-endpoint",
+  "programs/kar-pro-staking",
 ]
 exclude = [
   "lab/programs/lab_harness",

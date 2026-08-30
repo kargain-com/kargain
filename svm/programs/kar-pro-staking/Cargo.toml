@@ -1,0 +1,19 @@
+[package]
+name = "kar-pro-staking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "KarProStaking SVM — native SOL stake, active flag, unbond, claim"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_pro_staking"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+kargain-errors = { workspace = true }
