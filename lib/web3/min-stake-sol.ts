@@ -7,7 +7,7 @@
  * Sole owner of the stand/Devnet conversion helper; consumers import.
  */
 
-import { DECLARED_MIN_STAKE_FLOOR_WEI, DECLARED_MIN_STAKE_NATIVE_WEI } from "./declared-weights.ts";
+import { DECLARED_MIN_STAKE_FLOOR_WEI, DECLARED_MIN_STAKE_NATIVE_WEI } from "./declared-weights";
 
 /** Stand fixture rate — not a live oracle. 1 ETH = 10 SOL. */
 export const STAND_MIN_STAKE_ETH_PER_SOL_NUMERATOR = 10n;
