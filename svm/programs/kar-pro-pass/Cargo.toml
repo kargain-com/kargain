@@ -1,0 +1,20 @@
+[package]
+name = "kar-pro-pass"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "KarProPass SVM — soulbound Metaplex Core credential (projection of stake)"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_pro_pass"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+mpl-core = { workspace = true }
+kargain-errors = { workspace = true }
