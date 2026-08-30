@@ -290,14 +290,37 @@ function lzReceiveOptions(gas: number, value: number = 0): Hex {
   return Options.newOptions().addExecutorLzReceiveOption(gas, value).toHex() as Hex;
 }
 
+/**
+ * Sole mapping: destination spoke VM class → enforced lzReceive budget fields
+ * digested into pathwayConfigHash and encoded by buildEnforcedOptions.
+ */
+export type EnforcedBudgetForSpoke = {
+  send: number;
+  sendAndCompose: number;
+  rentLamports?: number;
+};
+
+export function expectedEnforcedBudgetForSpokeEid(
+  spokeEid: number,
+): EnforcedBudgetForSpoke {
+  assertAllowedEid(spokeEid);
+  if (spokeEid === EID_SOLANA_DEVNET) {
+    return {
+      send: SOLANA_DEVNET_ENFORCED_COMPUTE,
+      sendAndCompose: SOLANA_DEVNET_ENFORCED_COMPUTE,
+      rentLamports: SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
+    };
+  }
+  return {
+    send: ENFORCED_GAS_SEND,
+    sendAndCompose: ENFORCED_GAS_SEND_AND_COMPOSE,
+  };
+}
+
 export function buildEnforcedOptions(remoteEid: number): EnforcedOptionParam[] {
-  assertAllowedEid(remoteEid);
-  if (remoteEid === EID_SOLANA_DEVNET) {
-    // Solana: option gas = compute units; value = rent lamports.
-    const opts = lzReceiveOptions(
-      SOLANA_DEVNET_ENFORCED_COMPUTE,
-      SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
-    );
+  const budget = expectedEnforcedBudgetForSpokeEid(remoteEid);
+  if (budget.rentLamports != null) {
+    const opts = lzReceiveOptions(budget.send, budget.rentLamports);
     return [
       { eid: remoteEid, msgType: MSG_TYPE_SEND, options: opts },
       { eid: remoteEid, msgType: MSG_TYPE_SEND_AND_COMPOSE, options: opts },
@@ -307,12 +330,12 @@ export function buildEnforcedOptions(remoteEid: number): EnforcedOptionParam[] {
     {
       eid: remoteEid,
       msgType: MSG_TYPE_SEND,
-      options: lzReceiveOptions(ENFORCED_GAS_SEND),
+      options: lzReceiveOptions(budget.send),
     },
     {
       eid: remoteEid,
       msgType: MSG_TYPE_SEND_AND_COMPOSE,
-      options: lzReceiveOptions(ENFORCED_GAS_SEND_AND_COMPOSE),
+      options: lzReceiveOptions(budget.sendAndCompose),
     },
   ];
 }
@@ -514,13 +537,7 @@ export type AppliedPathwayConfig = {
     number,
     { sendUln302: string; receiveUln302: string; executor: string }
   >;
-  enforcedGas: {
-    /** EVM: gas; SVM destination: CU (same values as buildEnforcedOptions). */
-    send: number;
-    sendAndCompose: number;
-    /** SVM destination only — lzReceive option value (rent lamports). */
-    rentLamports?: number;
-  };
+  enforcedGas: EnforcedBudgetForSpoke;
   metadataSha256: string;
 };
 
@@ -586,11 +603,7 @@ export function buildAppliedPathwayConfig(
           executor: spoke.executor,
         },
       },
-      enforcedGas: {
-        send: SOLANA_DEVNET_ENFORCED_COMPUTE,
-        sendAndCompose: SOLANA_DEVNET_ENFORCED_COMPUTE,
-        rentLamports: SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
-      },
+      enforcedGas: expectedEnforcedBudgetForSpokeEid(spokeEid),
       metadataSha256: pathwayChainsDigest(snapshot, hubEid, spokeEid),
     };
   }
@@ -621,15 +634,28 @@ export function buildAppliedPathwayConfig(
         executor: getAddress(spoke.executor),
       },
     },
-    enforcedGas: {
-      send: ENFORCED_GAS_SEND,
-      sendAndCompose: ENFORCED_GAS_SEND_AND_COMPOSE,
-    },
+    enforcedGas: expectedEnforcedBudgetForSpokeEid(spokeEid),
     metadataSha256: pathwayChainsDigest(snapshot, hubEid, spokeEid),
   };
 }
 
+export function assertAppliedEnforcedBudgetMatchesSpokeVm(
+  applied: AppliedPathwayConfig,
+): void {
+  const expected = expectedEnforcedBudgetForSpokeEid(applied.spokeEid);
+  const actual = applied.enforcedGas;
+  const expectedSvm = expected.rentLamports != null;
+  const actualSvm = actual.rentLamports != null;
+  if (expectedSvm !== actualSvm) {
+    throw new Error(
+      `enforced_options_wrong_destination_class: spokeEid=${applied.spokeEid} ` +
+        `expected=${JSON.stringify(expected)} got=${JSON.stringify(actual)}`,
+    );
+  }
+}
+
 export function hashAppliedPathwayConfig(applied: AppliedPathwayConfig): Hex {
+  assertAppliedEnforcedBudgetMatchesSpokeVm(applied);
   return `0x${sha256Canonical(applied)}`;
 }
 
