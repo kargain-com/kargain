@@ -26,6 +26,8 @@ Ensure Agave CLI is on `PATH` (e.g. `~/.local/share/solana/install/active_releas
 
 Do **not** treat `--bpf-program` preload as proof of the Devnet deploy path.
 
+**Devnet ops:** standing upgrade-authority cycle — [`docs/ops/deploys/svm-devnet.md`](../docs/ops/deploys/svm-devnet.md). Phase records: [`s4b-devnet.md`](../docs/ops/deploys/s4b-devnet.md), [`s5-devnet.md`](../docs/ops/deploys/s5-devnet.md).
+
 ## Workspace members
 
 | Path | Role |

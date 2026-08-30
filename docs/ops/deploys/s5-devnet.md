@@ -2,6 +2,8 @@
 
 **Status:** local stand COMPLETE; Devnet programs DEPLOYED (deployer UA); **prove blocked** pending passport BPF upgrade under `SOLANA_UPGRADE_AUTHORITY`.
 
+**Authority cycle (standing):** [svm-devnet.md](./svm-devnet.md) — S5 begin = return passport UA to deployer; end = hand passport + staking + pass after prove.
+
 ### Devnet program ids (2026-08-30)
 
 | Program | Program id | Upgrade authority |

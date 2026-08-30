@@ -2,6 +2,8 @@
 
 **Status: COMPLETE** (August 30, 2026 — delivered when commits + full gate pass land). Live bidirectional RT proven; receive CU/rent pinned with provenance; upgrade authority handed to `SOLANA_UPGRADE_AUTHORITY` (`BSuJ…`). No Solana `COMMERCIAL_ACTIVE` row. App still serves Nuclear #4.
 
+**Authority cycle (standing):** [svm-devnet.md](./svm-devnet.md) — begin phase = return UA to deployer; end phase = hand back after proof. S4b recorded the end half after Y5 RT.
+
 **Hub gateway (N7, not commercial):** `0x7324046854342587999984683c4833852FA81827` (EID 40245).
 
 **Pinned DVN pair:** `layerzero-labs` + `p2p`.
