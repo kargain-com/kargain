@@ -30,6 +30,10 @@ import {
   probeValidator as probeMoneyValidator,
   runLiveMoneyPayoutProof,
 } from "../svm/stand/live-money-payout.ts";
+import {
+  probeValidator as probeConsignmentValidator,
+  runLiveConsignmentAutomaton,
+} from "../svm/stand/live-consignment-automaton.ts";
 import { testnetMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
@@ -182,6 +186,32 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(money.frozenCase.withdrawn, 500n);
       console.warn(
         `\n[svm-stand] money-payout PASS absent→claim→withdraw; frozen→claim→withdraw (inbound 0x11)\n`,
+      );
+
+      const consignReady = await probeConsignmentValidator("http://127.0.0.1:8899");
+      if (!consignReady) {
+        throw new Error("validator lost health before consignment automaton proof");
+      }
+      const consign = await runLiveConsignmentAutomaton();
+      assert.equal(consign.mandateOpen.phase, 1, "Offered");
+      assert.equal(consign.mandateOpen.floor, 700n);
+      assert.equal(consign.mandateOpen.feeBps, 250);
+      assert.equal(consign.setPriceOk, 1200n);
+      assert.equal(consign.refusals.belowFloor, 57);
+      assert.equal(consign.refusals.cannotRaiseFloor, 86);
+      assert.equal(consign.refusals.cooldown, 94);
+      assert.equal(consign.recallForce.phase, 3, "Returned");
+      assert.equal(consign.settle.phase, 2, "Closed");
+      assert.equal(consign.settle.platformDelta, 25n);
+      assert.equal(consign.settle.sellerDelta, 700n);
+      assert.equal(consign.settle.agentDelta, 275n);
+      assert.equal(
+        consign.settle.platformDelta + consign.settle.sellerDelta + consign.settle.agentDelta,
+        consign.settle.settled,
+      );
+      console.warn(
+        `\n[svm-stand] consignment-automaton PASS open/mandate/amend/concessions/recall/settle ` +
+          `P=${consign.settle.platformDelta} O=${consign.settle.sellerDelta} A=${consign.settle.agentDelta}\n`,
       );
 
       if (LIVE_EVM) {

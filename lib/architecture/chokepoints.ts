@@ -248,6 +248,18 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "SPL claim PDAs + per-subject bond PDAs; no push_ok/transfer_ok; no global pending maps; S32 split one Rust owner",
     guardTests: ["svm-money-model-policy.test.ts"],
   },
+  {
+    id: "svm-consignment-automaton",
+    owner: "svm/crates/kargain-consignment-base",
+    rule: "Shared Mandate+Recall+ConsignmentBase transitions; require_can_open order; custody=owner move; split via agented-split; payout via claimable-payouts; harness-only validator surface",
+    guardTests: ["svm-consignment-automaton-policy.test.ts"],
+  },
+  {
+    id: "svm-stand-live-proof",
+    owner: "svm/stand/live-*.ts (proof runners imported by test/svm-stand.test.ts)",
+    rule: "LIVE proof return values for the outer suite must be chain observations — not PHASE/ERR catalogs, literals, or Keypair/PDA toBase58 in the return object",
+    guardTests: ["svm-stand-live-proof-return-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

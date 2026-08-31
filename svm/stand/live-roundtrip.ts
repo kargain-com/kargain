@@ -669,6 +669,8 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     throw new Error("home asset not live after unlock");
   }
 
+  const uriTravelled = foreignAssetLive && foreignSt.status === 0;
+
   void sendResult;
   void ROOT;
 
@@ -679,7 +681,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     foreignAssetLive,
     homeUnlocked,
     homeStatusAfterUnlock: unlocked.status,
-    uriTravelled: true,
+    uriTravelled,
     relayIdentityOk,
     liveUriLen: liveUri.length,
   };

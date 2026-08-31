@@ -170,6 +170,64 @@ pub enum KargainError {
     MissingAgentRecipient = 68,
     #[error("TransferFeeExtensionForbidden")]
     TransferFeeExtensionForbidden = 69,
+
+    // ---- S6 #2 consignment automaton (Mandate / Recall / ConsignmentBase) — append only ----
+    #[error("OpenConsignmentRefused")]
+    OpenConsignmentRefused = 70,
+    #[error("ModeNotEncumbranceSource")]
+    ModeNotEncumbranceSource = 71,
+    #[error("NotOffered")]
+    NotOffered = 72,
+    #[error("NotDirectConsignment")]
+    NotDirectConsignment = 73,
+    #[error("FeeTooHigh")]
+    FeeTooHigh = 74,
+    #[error("NotConsignmentRunner")]
+    NotConsignmentRunner = 75,
+    #[error("ContractPaused")]
+    ContractPaused = 76,
+    #[error("NotGuardian")]
+    NotGuardian = 77,
+    #[error("NotGuardianOrOwner")]
+    NotGuardianOrOwner = 78,
+    #[error("NotPassportOwner")]
+    NotPassportOwner = 79,
+    #[error("LiveConsignment")]
+    LiveConsignment = 80,
+    #[error("NoLiveConsignment")]
+    NoLiveConsignment = 81,
+    #[error("EscrowNotApproved")]
+    EscrowNotApproved = 82,
+    #[error("MandateExpired")]
+    MandateExpired = 83,
+    #[error("NoMandate")]
+    NoMandate = 84,
+    #[error("DenominationMismatch")]
+    DenominationMismatch = 85,
+    #[error("CannotRaiseFloor")]
+    CannotRaiseFloor = 86,
+    #[error("CannotRaiseCommission")]
+    CannotRaiseCommission = 87,
+    #[error("NotCommissionForm")]
+    NotCommissionForm = 88,
+    #[error("NotConsignmentAgent")]
+    NotConsignmentAgent = 89,
+    #[error("NotConsignmentSeller")]
+    NotConsignmentSeller = 90,
+    #[error("NotOfferedAgented")]
+    NotOfferedAgented = 91,
+    #[error("ReturnAlreadyRequested")]
+    ReturnAlreadyRequested = 92,
+    #[error("ReturnNotRequested")]
+    ReturnNotRequested = 93,
+    #[error("ReturnCooldownPending")]
+    ReturnCooldownPending = 94,
+    /// Mode refuses the shared open signature (Ascending).
+    #[error("AscendingOpenPath")]
+    AscendingOpenPath = 95,
+    /// Mode refuses setPrice (Ascending C4).
+    #[error("TermsFixed")]
+    TermsFixed = 96,
 }
 
 impl KargainError {
@@ -246,6 +304,33 @@ impl KargainError {
             Self::WrongAgentRecipient => "WrongAgentRecipient",
             Self::MissingAgentRecipient => "MissingAgentRecipient",
             Self::TransferFeeExtensionForbidden => "TransferFeeExtensionForbidden",
+            Self::OpenConsignmentRefused => "OpenConsignmentRefused",
+            Self::ModeNotEncumbranceSource => "ModeNotEncumbranceSource",
+            Self::NotOffered => "NotOffered",
+            Self::NotDirectConsignment => "NotDirectConsignment",
+            Self::FeeTooHigh => "FeeTooHigh",
+            Self::NotConsignmentRunner => "NotConsignmentRunner",
+            Self::ContractPaused => "ContractPaused",
+            Self::NotGuardian => "NotGuardian",
+            Self::NotGuardianOrOwner => "NotGuardianOrOwner",
+            Self::NotPassportOwner => "NotPassportOwner",
+            Self::LiveConsignment => "LiveConsignment",
+            Self::NoLiveConsignment => "NoLiveConsignment",
+            Self::EscrowNotApproved => "EscrowNotApproved",
+            Self::MandateExpired => "MandateExpired",
+            Self::NoMandate => "NoMandate",
+            Self::DenominationMismatch => "DenominationMismatch",
+            Self::CannotRaiseFloor => "CannotRaiseFloor",
+            Self::CannotRaiseCommission => "CannotRaiseCommission",
+            Self::NotCommissionForm => "NotCommissionForm",
+            Self::NotConsignmentAgent => "NotConsignmentAgent",
+            Self::NotConsignmentSeller => "NotConsignmentSeller",
+            Self::NotOfferedAgented => "NotOfferedAgented",
+            Self::ReturnAlreadyRequested => "ReturnAlreadyRequested",
+            Self::ReturnNotRequested => "ReturnNotRequested",
+            Self::ReturnCooldownPending => "ReturnCooldownPending",
+            Self::AscendingOpenPath => "AscendingOpenPath",
+            Self::TermsFixed => "TermsFixed",
         }
     }
 
@@ -322,6 +407,33 @@ impl KargainError {
             WrongAgentRecipient,
             MissingAgentRecipient,
             TransferFeeExtensionForbidden,
+            OpenConsignmentRefused,
+            ModeNotEncumbranceSource,
+            NotOffered,
+            NotDirectConsignment,
+            FeeTooHigh,
+            NotConsignmentRunner,
+            ContractPaused,
+            NotGuardian,
+            NotGuardianOrOwner,
+            NotPassportOwner,
+            LiveConsignment,
+            NoLiveConsignment,
+            EscrowNotApproved,
+            MandateExpired,
+            NoMandate,
+            DenominationMismatch,
+            CannotRaiseFloor,
+            CannotRaiseCommission,
+            NotCommissionForm,
+            NotConsignmentAgent,
+            NotConsignmentSeller,
+            NotOfferedAgented,
+            ReturnAlreadyRequested,
+            ReturnNotRequested,
+            ReturnCooldownPending,
+            AscendingOpenPath,
+            TermsFixed,
         ]
     }
 }

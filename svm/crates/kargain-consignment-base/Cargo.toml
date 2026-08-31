@@ -1,0 +1,15 @@
+[package]
+name = "kargain-consignment-base"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Shared consignment automaton — Mandate + Recall + ConsignmentBase (S6 #2)"
+
+[dependencies]
+borsh = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-agented-split = { workspace = true }
+solana-program = { workspace = true }
+
+[dev-dependencies]

@@ -1024,7 +1024,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-06 | Upgrade authority vs immutability | Immutable passport / UUPS modes | §13.8 + §7.6 (f) |
 | D-07 | Oracle + confidence bound | Chainlink + staleness | P4-class freshness; new named confidence rule on SVM |
 | D-08 | `SourceUnanswerable` mechanism | staticcall gas + returndata | E6 — silence ≠ permission |
-| D-09 | Escrow approval carrier | ERC-721 approve / setApprovalForAll | Custody before open |
+| D-09 | Escrow approval carrier — see **D-25** (approval = TransferDelegate / `approved_for`; custody = ownership transfer) | ERC-721 approve / setApprovalForAll | Custody before open |
 | D-10 | Record storage | `records[]` | §12.8 chain-sharded history |
 | D-11 | Credential non-transferability | soulbound `_update` | One pass per address; freeze ≠ full substitute |
 | D-12 | No ERC-165 / receiver callbacks as on EVM | IERC721Receiver | Safe mint/transfer semantics named |
@@ -1039,6 +1039,11 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-21 | Pass close separate from leave (no try/catch) — same substrate reason as D-01: a failing CPI aborts the instruction (§13.7a) | `leave` try/catch burn | Unbonding always starts; `active` sole status owner; pass is projection (§13.7a) |
 | D-22 | Caller must supply payout recipient accounts; program verifies each **non-zero** leg (platform ← mode config; seller/agent ← consignment snapshot; fee bps ← **lot snapshot**). Wrong account → `Wrong{Platform,Seller,Agent}Recipient`; required absent → `Missing{Platform,Seller,Agent}Recipient`. Zero leg needs no account. | Recipients read from storage in `_paySplit` | No silent skip of a non-zero leg (theft of that leg) |
 | D-23 | When an SPL leg is unreachable, the settling instruction creates the **claim record PDA and the claim-owned token account** in the same transaction. Rent for **both** is funded by the settlement **fee-payer**; on `withdrawClaim` close of the claim ATA and claim PDA, the **recipient** reclaims that rent. Token legs are never reduced to fund rent. | EVM storage has no per-claim rent | No shortened participant payout; no unattributable lamports |
+| D-24 | Mode refuses the shared open signature without Solidity virtual override: mode program exposes `openDirect`/`openFromMandate` discriminators only as immediate `AscendingOpenPath` (same error name), and provides mode-specific opens that call shared `_write_open` internals. | `AscendingConsignment` `pure override` → `AscendingOpenPath` | Wrong entry refuses by name; real open check order unchanged |
+| D-25 | Escrow **approval** carrier = Core `TransferDelegate` (or harness `approved_for`) toward the mode custody authority. Escrow **custody** = real ownership transfer (`TransferV1` / harness `owner` field move) to a program-owned custody PDA — never leaving the asset under seller+delegate as “in escrow.” Frozen Core assets refuse transfer (lab); open fails closed. | ERC-721 `approve` / `setApprovalForAll` then `transferFrom` | D-09 — custody before open; approval ≠ custody |
+| D-26 | Encumbrance answers are **cross-program PDAs** (`EncumbranceAnswer`); passport `may` reads them. Shared hooks `_may` / `_isSelfEncumbranceSource` are supplied by the mode/harness call site. | Same-contract `isEncumbranceSource` + `may` staticcall | E6 / D-08 — silence ≠ permission |
+| D-27 | Lot snapshot mutation at settle (e.g. FixedPrice fiat floor rewrite to asset units) is a **mode** call through shared snapshot setters before `_paySplit`. Shared layer never invents a second floor path. | FixedPrice `buy` mutates floor then `_paySplit` | One floor owner; settle uses lot snapshot fee bps + mode config `platformRecipient` |
+| D-28 | Commerce events: no EVM log bloom — programs emit fixed-name payloads (borsh/event logs) with **same field order** for S7. | Solidity `event` ABI | Indexer reconstructability |
 
 **SVM money account seeds** (mode / instance program id owns the PDA):
 

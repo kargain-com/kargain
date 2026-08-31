@@ -5,14 +5,16 @@ members = [
   "crates/kargain-onft-codec",
   "crates/kargain-agented-split",
   "crates/kargain-claimable-payouts",
-  "crates/kargain-bonded-challenge",
-  "programs/kar-passport",
+    "crates/kargain-bonded-challenge",
+    "crates/kargain-consignment-base",
+    "programs/kar-passport",
   "programs/kar-gateway",
   "programs/mock-staking",
   "programs/mock-endpoint",
   "programs/kar-pro-staking",
   "programs/kar-pro-pass",
-  "programs/money-harness",
+    "programs/money-harness",
+    "programs/consignment-harness",
 ]
 exclude = [
   "lab/programs/lab_harness",
@@ -35,3 +37,4 @@ kargain-onft-codec = { path = "crates/kargain-onft-codec" }
 kargain-agented-split = { path = "crates/kargain-agented-split" }
 kargain-claimable-payouts = { path = "crates/kargain-claimable-payouts" }
 kargain-bonded-challenge = { path = "crates/kargain-bonded-challenge" }
+kargain-consignment-base = { path = "crates/kargain-consignment-base" }

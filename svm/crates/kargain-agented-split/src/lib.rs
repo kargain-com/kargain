@@ -126,6 +126,20 @@ pub fn compute_agented_split(
     }
 }
 
+/// Direct (unagented) split — platform floored share, owner remainder. No floor.
+pub fn compute_direct_split(settled: u64, platform_fee_bps: u64) -> Result<AgentedSplit, KargainError> {
+    let platform = ((u128::from(settled) * u128::from(platform_fee_bps)) / u128::from(BPS_DENOM)) as u64;
+    let owner_amount = settled
+        .checked_sub(platform)
+        .ok_or(KargainError::ArithmeticOverflow)?;
+    Ok(AgentedSplit {
+        platform,
+        owner_amount,
+        agent_amount: 0,
+        ok: true,
+    })
+}
+
 /// Same maths; reverts with [`KargainError::BelowFloor`] when `ok` is false.
 pub fn compute_agented_split_or_revert(
     settled: u64,

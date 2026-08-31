@@ -1,0 +1,22 @@
+[package]
+name = "consignment-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Local-validator harness for shared consignment automaton (S6 #2) — not production"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "consignment_harness"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-consignment-base = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
+kargain-agented-split = { workspace = true }
