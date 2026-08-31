@@ -59,6 +59,7 @@ test-results
 # SVM / Solana (source under svm/ is tracked; build deps are not)
 svm/**/target/
 svm/lab/node_modules/
+svm/lab/test-ledger/
 
 # internal docs (local only — not in git)
 /AGENTS.md

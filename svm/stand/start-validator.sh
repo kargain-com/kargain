@@ -56,6 +56,7 @@ else
   KAR_PRO_PASS_ID="$(need_so kar_pro_pass)"
   MONEY_HARNESS_ID="$(need_so money_harness)"
   CONSIGNMENT_HARNESS_ID="$(need_so consignment_harness)"
+  KAR_FIXED_PRICE_ID="$(need_so kar_fixed_price)"
   echo "stand load=preload (--bpf-program):" >&2
   echo "  mock_endpoint  $MOCK_ENDPOINT_ID" >&2
   echo "  kar_passport   $KAR_PASSPORT_ID" >&2
@@ -65,6 +66,7 @@ else
   echo "  kar_pro_pass   $KAR_PRO_PASS_ID" >&2
   echo "  money_harness  $MONEY_HARNESS_ID" >&2
   echo "  consignment_harness $CONSIGNMENT_HARNESS_ID" >&2
+  echo "  kar_fixed_price $KAR_FIXED_PRICE_ID" >&2
   echo "  mpl-core       $CORE" >&2
   ARGS+=(
     --bpf-program "$MOCK_ENDPOINT_ID" "$DEPLOY/mock_endpoint.so"
@@ -75,6 +77,7 @@ else
     --bpf-program "$KAR_PRO_PASS_ID" "$DEPLOY/kar_pro_pass.so"
     --bpf-program "$MONEY_HARNESS_ID" "$DEPLOY/money_harness.so"
     --bpf-program "$CONSIGNMENT_HARNESS_ID" "$DEPLOY/consignment_harness.so"
+    --bpf-program "$KAR_FIXED_PRICE_ID" "$DEPLOY/kar_fixed_price.so"
   )
 fi
 

@@ -251,8 +251,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-consignment-automaton",
     owner: "svm/crates/kargain-consignment-base",
-    rule: "Shared Mandate+Recall+ConsignmentBase transitions; require_can_open order; custody=owner move; split via agented-split; payout via claimable-payouts; harness-only validator surface",
+    rule: "Shared Mandate+Recall+ConsignmentBase transitions; require_can_open order; custody=owner move; split via agented-split; payout via claimable-payouts; validator surfaces: consignment-harness (automaton) + kar-fixed-price (mode)",
     guardTests: ["svm-consignment-automaton-policy.test.ts"],
+  },
+  {
+    id: "svm-fixed-price-asset-only",
+    owner: "svm/programs/kar-fixed-price",
+    rule: "Asset-denomination FixedPrice only — FiatDenominationRefused; no oracle/Pyth/Hermes/price-account surface; soft-revoke keeps in-flight buy; external confirm moves no money",
+    guardTests: ["svm-fixed-price-asset-only-policy.test.ts"],
   },
   {
     id: "svm-stand-live-proof",

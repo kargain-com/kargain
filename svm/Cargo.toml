@@ -15,6 +15,7 @@ members = [
   "programs/kar-pro-pass",
     "programs/money-harness",
     "programs/consignment-harness",
+    "programs/kar-fixed-price",
 ]
 exclude = [
   "lab/programs/lab_harness",

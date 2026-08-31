@@ -35,6 +35,8 @@ export const SVM_ONLY_ERROR_NAMES = [
   "WrongAgentRecipient",
   "MissingAgentRecipient",
   "TransferFeeExtensionForbidden",
+  /** S6 #3b — asset-only FixedPrice; EVM allows Fiat + feed. */
+  "FiatDenominationRefused",
 ] as const;
 
 /**

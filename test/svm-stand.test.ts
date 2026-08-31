@@ -34,6 +34,10 @@ import {
   probeValidator as probeConsignmentValidator,
   runLiveConsignmentAutomaton,
 } from "../svm/stand/live-consignment-automaton.ts";
+import {
+  probeValidator as probeFixedPriceValidator,
+  runLiveFixedPrice,
+} from "../svm/stand/live-fixed-price.ts";
 import { testnetMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
@@ -212,6 +216,31 @@ describe("svm-stand live Core CPI round trip", () => {
       console.warn(
         `\n[svm-stand] consignment-automaton PASS open/mandate/amend/concessions/recall/settle ` +
           `P=${consign.settle.platformDelta} O=${consign.settle.sellerDelta} A=${consign.settle.agentDelta}\n`,
+      );
+
+      const fpReady = await probeFixedPriceValidator("http://127.0.0.1:8899");
+      if (!fpReady) {
+        throw new Error("validator lost health before FixedPrice proof");
+      }
+      const fp = await runLiveFixedPrice();
+      assert.equal(fp.nativeBuy.phase, 2, "Closed");
+      assert.equal(fp.nativeBuy.platformDelta, 25n);
+      assert.equal(fp.nativeBuy.sellerDelta, 975n);
+      assert.equal(
+        fp.nativeBuy.platformDelta + fp.nativeBuy.sellerDelta + fp.nativeBuy.agentDelta,
+        fp.nativeBuy.price,
+      );
+      assert.equal(fp.fiatRefuseCode, 101);
+      assert.equal(fp.external.platformDelta, 0n);
+      assert.equal(fp.external.sellerDelta, 0n);
+      assert.equal(fp.external.escrowDelta, 0n);
+      assert.equal(fp.pauseOpenCode, 76);
+      assert.equal(fp.pauseBuyCode, 76);
+      assert.equal(fp.pauseExternalPhase, 2);
+      assert.equal(fp.softRevokeBuyPhase, 2);
+      assert.equal(fp.shortDeliveryCode, 58);
+      console.warn(
+        `\n[svm-stand] fixed-price PASS native buy / fiat refuse / external / pause / soft-revoke / ShortDelivery\n`,
       );
 
       if (LIVE_EVM) {

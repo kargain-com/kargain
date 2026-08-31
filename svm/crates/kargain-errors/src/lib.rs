@@ -228,6 +228,19 @@ pub enum KargainError {
     /// Mode refuses setPrice (Ascending C4).
     #[error("TermsFixed")]
     TermsFixed = 96,
+
+    // ---- S6 #3b FixedPrice asset-only (append only) ----
+    #[error("PaymentTokenNotSupported")]
+    PaymentTokenNotSupported = 97,
+    #[error("EmptySettlementNote")]
+    EmptySettlementNote = 98,
+    #[error("NotSellerOrAgent")]
+    NotSellerOrAgent = 99,
+    #[error("DirectEthNotAccepted")]
+    DirectEthNotAccepted = 100,
+    /// SVM asset-only FixedPrice: Fiat denomination refused (no feed/quote surface).
+    #[error("FiatDenominationRefused")]
+    FiatDenominationRefused = 101,
 }
 
 impl KargainError {
@@ -331,6 +344,11 @@ impl KargainError {
             Self::ReturnCooldownPending => "ReturnCooldownPending",
             Self::AscendingOpenPath => "AscendingOpenPath",
             Self::TermsFixed => "TermsFixed",
+            Self::PaymentTokenNotSupported => "PaymentTokenNotSupported",
+            Self::EmptySettlementNote => "EmptySettlementNote",
+            Self::NotSellerOrAgent => "NotSellerOrAgent",
+            Self::DirectEthNotAccepted => "DirectEthNotAccepted",
+            Self::FiatDenominationRefused => "FiatDenominationRefused",
         }
     }
 
@@ -434,6 +452,11 @@ impl KargainError {
             ReturnCooldownPending,
             AscendingOpenPath,
             TermsFixed,
+            PaymentTokenNotSupported,
+            EmptySettlementNote,
+            NotSellerOrAgent,
+            DirectEthNotAccepted,
+            FiatDenominationRefused,
         ]
     }
 }

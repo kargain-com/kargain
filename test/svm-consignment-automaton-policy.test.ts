@@ -62,21 +62,27 @@ describe("svm-consignment-automaton-policy", () => {
     assert.equal(hit.trim(), "", `second split arithmetic in consignment-base:\n${hit}`);
   });
 
-  it("bidirectional: harness imports consignment-base; no second automaton under programs/", () => {
+  it("bidirectional: harness + FixedPrice consume consignment-base; no third automaton owner", () => {
     const harnessLib = fs.readFileSync(path.join(HARNESS, "ix.rs"), "utf8");
     assert.ok(harnessLib.includes("kargain_consignment_base"), "harness consumes owner");
+    const fp = path.join(SVM, "programs/kar-fixed-price/src/ix.rs");
+    assert.ok(
+      fs.readFileSync(fp, "utf8").includes("kargain_consignment_base"),
+      "FixedPrice consumes shared automaton",
+    );
     const other = rg(
       String.raw`require_can_open|RECALL_COOLDOWN_SECS|write_open\s*\(`,
       path.join(SVM, "programs"),
       ["*.rs"],
     );
+    const allowed = ["consignment-harness", "kar-fixed-price"];
     const lines = other
       .split("\n")
-      .filter((l) => l.trim() && !l.includes("consignment-harness"));
+      .filter((l) => l.trim() && !allowed.some((a) => l.includes(a)));
     assert.equal(
       lines.join("\n").trim(),
       "",
-      `automaton symbols outside consignment-harness:\n${lines.join("\n")}`,
+      `automaton symbols outside allowlisted mode programs:\n${lines.join("\n")}`,
     );
   });
 

@@ -1044,6 +1044,10 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-26 | Encumbrance answers are **cross-program PDAs** (`EncumbranceAnswer`); passport `may` reads them. Shared hooks `_may` / `_isSelfEncumbranceSource` are supplied by the mode/harness call site. | Same-contract `isEncumbranceSource` + `may` staticcall | E6 / D-08 — silence ≠ permission |
 | D-27 | Lot snapshot mutation at settle (e.g. FixedPrice fiat floor rewrite to asset units) is a **mode** call through shared snapshot setters before `_paySplit`. Shared layer never invents a second floor path. | FixedPrice `buy` mutates floor then `_paySplit` | One floor owner; settle uses lot snapshot fee bps + mode config `platformRecipient` |
 | D-28 | Commerce events: no EVM log bloom — programs emit fixed-name payloads (borsh/event logs) with **same field order** for S7. | Solidity `event` ABI | Indexer reconstructability |
+| D-29 | Asset-only FixedPrice (`kar-fixed-price`): Fiat open → `FiatDenominationRefused` (first mode-open check after pause). No feed / quote / price-account surface in this program. Fiat+oracle → S6 #5. | Fiat + Chainlink quote at buy | P4 asymmetry — no silent peg / no mock feed |
+| D-30 | Buyer SPL pull into mode escrow PDA/ATA; delivery = balance delta → `ShortDelivery` (`require_full_delivery`). Soft-revoke does not re-check `enabled` on buy. | ERC-20 `balanceOf` delta | Measured delivery; no FoT silent short |
+| D-31 | Soft revoke clears `enabled` only; mint/decimals retained; in-flight buy settles after revoke. | Same | In-flight settle survives revoke |
+| D-32 | `confirmExternalPayment` issues no pay CPI; money accounts unchanged (asserted by balance reads). Closes `ExternalConfirmed`. | No `_paySplit` on external path | R4 / C7 — external moves asset + closes only |
 
 **SVM money account seeds** (mode / instance program id owns the PDA):
 

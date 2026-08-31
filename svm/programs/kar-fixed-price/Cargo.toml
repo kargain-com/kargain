@@ -1,0 +1,22 @@
+[package]
+name = "kar-fixed-price"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "FixedPrice consignment mode (S6 #3b) — asset denomination only"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_fixed_price"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-consignment-base = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
+kargain-agented-split = { workspace = true }
