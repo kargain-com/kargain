@@ -75,7 +75,7 @@ describe("svm-consignment-automaton-policy", () => {
       path.join(SVM, "programs"),
       ["*.rs"],
     );
-    const allowed = ["consignment-harness", "kar-fixed-price"];
+    const allowed = ["consignment-harness", "kar-fixed-price", "kar-ascending"];
     const lines = other
       .split("\n")
       .filter((l) => l.trim() && !allowed.some((a) => l.includes(a)));

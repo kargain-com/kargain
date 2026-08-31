@@ -261,6 +261,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-fixed-price-asset-only-policy.test.ts"],
   },
   {
+    id: "svm-ascending-asset-only",
+    owner: "svm/programs/kar-ascending",
+    rule: "Ascending asset-only — no oracle/quote; OpenDirect→AscendingOpenPath; Bid+FixedPrice Buy share require_full_delivery owner; VERIFIED+active-verifier at open; settle moves no money",
+    guardTests: ["svm-ascending-asset-only-policy.test.ts"],
+  },
+  {
     id: "svm-stand-live-proof",
     owner: "svm/stand/live-*.ts (proof runners imported by test/svm-stand.test.ts)",
     rule: "LIVE proof return values for the outer suite must be chain observations — not PHASE/ERR catalogs, literals, or Keypair/PDA toBase58 in the return object",

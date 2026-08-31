@@ -1,0 +1,24 @@
+[package]
+name = "kar-ascending"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Ascending consignment mode (S6 #4) — asset denomination only"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kar_ascending"
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+borsh = { workspace = true }
+solana-program = { workspace = true }
+kargain-errors = { workspace = true }
+kargain-consignment-base = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
+kargain-bonded-challenge = { workspace = true }
+kargain-agented-split = { workspace = true }
+kar-pro-staking = { path = "../kar-pro-staking", default-features = false, features = ["no-entrypoint"] }

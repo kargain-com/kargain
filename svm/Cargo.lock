@@ -561,6 +561,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kar-ascending"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kar-pro-staking",
+ "kargain-agented-split",
+ "kargain-bonded-challenge",
+ "kargain-claimable-payouts",
+ "kargain-consignment-base",
+ "kargain-errors",
+ "solana-program",
+]
+
+[[package]]
 name = "kar-fixed-price"
 version = "0.1.0"
 dependencies = [

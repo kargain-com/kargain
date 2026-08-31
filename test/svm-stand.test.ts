@@ -38,6 +38,10 @@ import {
   probeValidator as probeFixedPriceValidator,
   runLiveFixedPrice,
 } from "../svm/stand/live-fixed-price.ts";
+import {
+  probeValidator as probeAscendingValidator,
+  runLiveAscending,
+} from "../svm/stand/live-ascending.ts";
 import { testnetMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
@@ -243,6 +247,52 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.transferFeeRefuseCode, 69);
       console.warn(
         `\n[svm-stand] fixed-price PASS native buy / fiat refuse / external / pause / soft-revoke / admit-prove / delivery / TransferFee refuse\n`,
+      );
+
+      const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");
+      if (!ascReady) {
+        throw new Error("validator lost health before Ascending proof");
+      }
+      const asc = await runLiveAscending();
+      assert.equal(asc.openRefuse.passportNotVerified, 121);
+      assert.equal(asc.openRefuse.badDuration, 102);
+      assert.equal(asc.openRefuse.protectionOutOfBounds, 103);
+      assert.equal(asc.openRefuse.badReserve, 105);
+      assert.equal(asc.stubRefuse.openDirect, 95);
+      assert.equal(asc.stubRefuse.setPrice, 96);
+      assert.ok(asc.firstBidEndsAt > 0n);
+      assert.equal(asc.bidRefuse.fromSeller, 106);
+      assert.equal(asc.bidRefuse.tooLow, 108);
+      assert.equal(asc.refundDelta, 1000n);
+      assert.equal(asc.settle.auctionClosed, true);
+      assert.equal(asc.settle.holdActive, true);
+      assert.equal(asc.settle.escrowDelta, 0n);
+      assert.equal(asc.settle.gross, 1030n);
+      assert.ok(asc.challengeClock.frozenBefore === 0n);
+      assert.ok(asc.challengeClock.frozenAfterOpen > 0n);
+      assert.equal(asc.challengeClock.frozenAfterWithdraw, 0n);
+      assert.ok(asc.challengeClock.protectionAfterWithdraw > 0n);
+      assert.equal(asc.confirmSplit.phase, 2, "Closed");
+      assert.equal(asc.confirmSplit.platformDelta, 25n);
+      assert.equal(asc.confirmSplit.sellerDelta, 1005n);
+      assert.equal(
+        asc.confirmSplit.platformDelta +
+          asc.confirmSplit.sellerDelta +
+          asc.confirmSplit.agentDelta,
+        asc.confirmSplit.gross,
+      );
+      assert.equal(asc.challengePath.notEligible, 28);
+      assert.equal(asc.challengePath.buyerAsJudge, 26);
+      assert.equal(asc.challengePath.noReversalBeforeUphold, 116);
+      assert.equal(asc.challengePath.reversalPending, true);
+      assert.equal(asc.challengePath.protectionAfterUphold, 0n);
+      assert.ok(asc.challengePath.abandonmentAfterUphold > 0n);
+      assert.equal(asc.challengePath.completePhase, 3, "Returned");
+      assert.equal(asc.challengePath.buyerGrossDelta, 1000n);
+      assert.equal(asc.pause.openCode, 76);
+      assert.equal(asc.pause.bidCode, 76);
+      console.warn(
+        `\n[svm-stand] ascending PASS open/bid/settle/challenge-clock/confirm/uphold-reversal/pause\n`,
       );
 
       if (LIVE_EVM) {

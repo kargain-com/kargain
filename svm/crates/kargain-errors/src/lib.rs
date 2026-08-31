@@ -241,6 +241,48 @@ pub enum KargainError {
     /// SVM asset-only FixedPrice: Fiat denomination refused (no feed/quote surface).
     #[error("FiatDenominationRefused")]
     FiatDenominationRefused = 101,
+
+    // ---- S6 #4 Ascending mode (append only) ----
+    #[error("BadDuration")]
+    BadDuration = 102,
+    #[error("ProtectionOutOfBounds")]
+    ProtectionOutOfBounds = 103,
+    #[error("BadConfig")]
+    BadConfig = 104,
+    #[error("BadReserve")]
+    BadReserve = 105,
+    #[error("BidFromSeller")]
+    BidFromSeller = 106,
+    #[error("BidFromAgent")]
+    BidFromAgent = 107,
+    #[error("BidTooLow")]
+    BidTooLow = 108,
+    #[error("NotBinding")]
+    NotBinding = 109,
+    #[error("AuctionEnded")]
+    AuctionEnded = 110,
+    #[error("AuctionNotEnded")]
+    AuctionNotEnded = 111,
+    #[error("NoHold")]
+    NoHold = 112,
+    #[error("HoldNotReady")]
+    HoldNotReady = 113,
+    #[error("NotHoldBuyer")]
+    NotHoldBuyer = 114,
+    #[error("ReversalPending")]
+    ReversalPending = 115,
+    #[error("NoReversalPending")]
+    NoReversalPending = 116,
+    #[error("AbandonmentNotReady")]
+    AbandonmentNotReady = 117,
+    #[error("ProtectionElapsed")]
+    ProtectionElapsed = 118,
+    #[error("SettlementPending")]
+    SettlementPending = 119,
+    #[error("NotPassportHolder")]
+    NotPassportHolder = 120,
+    #[error("PassportNotVerified")]
+    PassportNotVerified = 121,
 }
 
 impl KargainError {
@@ -349,6 +391,26 @@ impl KargainError {
             Self::NotSellerOrAgent => "NotSellerOrAgent",
             Self::DirectEthNotAccepted => "DirectEthNotAccepted",
             Self::FiatDenominationRefused => "FiatDenominationRefused",
+            Self::BadDuration => "BadDuration",
+            Self::ProtectionOutOfBounds => "ProtectionOutOfBounds",
+            Self::BadConfig => "BadConfig",
+            Self::BadReserve => "BadReserve",
+            Self::BidFromSeller => "BidFromSeller",
+            Self::BidFromAgent => "BidFromAgent",
+            Self::BidTooLow => "BidTooLow",
+            Self::NotBinding => "NotBinding",
+            Self::AuctionEnded => "AuctionEnded",
+            Self::AuctionNotEnded => "AuctionNotEnded",
+            Self::NoHold => "NoHold",
+            Self::HoldNotReady => "HoldNotReady",
+            Self::NotHoldBuyer => "NotHoldBuyer",
+            Self::ReversalPending => "ReversalPending",
+            Self::NoReversalPending => "NoReversalPending",
+            Self::AbandonmentNotReady => "AbandonmentNotReady",
+            Self::ProtectionElapsed => "ProtectionElapsed",
+            Self::SettlementPending => "SettlementPending",
+            Self::NotPassportHolder => "NotPassportHolder",
+            Self::PassportNotVerified => "PassportNotVerified",
         }
     }
 
@@ -457,6 +519,26 @@ impl KargainError {
             NotSellerOrAgent,
             DirectEthNotAccepted,
             FiatDenominationRefused,
+            BadDuration,
+            ProtectionOutOfBounds,
+            BadConfig,
+            BadReserve,
+            BidFromSeller,
+            BidFromAgent,
+            BidTooLow,
+            NotBinding,
+            AuctionEnded,
+            AuctionNotEnded,
+            NoHold,
+            HoldNotReady,
+            NotHoldBuyer,
+            ReversalPending,
+            NoReversalPending,
+            AbandonmentNotReady,
+            ProtectionElapsed,
+            SettlementPending,
+            NotPassportHolder,
+            PassportNotVerified,
         ]
     }
 }
