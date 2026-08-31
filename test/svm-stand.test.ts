@@ -242,6 +242,26 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.fiatFresh.phase, 2);
       assert.equal(fp.fiatFresh.buyerOwns, true);
       assert.equal(fp.fiatFresh.expectedAssetAmt, 1_000_000);
+      // D-27: agented Margin fiat floor rewrite — outer recomputes expectedFloorAsset
+      {
+        const P = 150_0000_0000n;
+        const F = 100_0000_0000n;
+        const A = 1_000_000n;
+        const fee = 250n;
+        const baseFiat = P - (P * fee) / 10_000n;
+        const baseAsset = A - (A * fee) / 10_000n;
+        const expectedFloorAsset = (baseAsset * F) / baseFiat;
+        assert.equal(fp.fiatAgented.floorBefore, F);
+        assert.equal(fp.fiatAgented.amount, A);
+        assert.equal(fp.fiatAgented.expectedFloorAsset, expectedFloorAsset);
+        assert.equal(fp.fiatAgented.floorAfter, expectedFloorAsset);
+        assert.equal(fp.fiatAgented.ownerDelta, expectedFloorAsset);
+        assert.equal(fp.fiatAgented.platformDelta, (A * fee) / 10_000n);
+        assert.equal(
+          fp.fiatAgented.platformDelta + fp.fiatAgented.ownerDelta + fp.fiatAgented.agentDelta,
+          A,
+        );
+      }
       assert.equal(fp.external.platformDelta, 0n);
       assert.equal(fp.external.sellerDelta, 0n);
       assert.equal(fp.external.escrowDelta, 0n);
@@ -253,7 +273,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.admittedDecimals, fp.chainMintDecimals);
       assert.equal(fp.transferFeeRefuseCode, 69);
       console.warn(
-        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / external / pause / soft-revoke / admit / delivery / TransferFee\n`,
+        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee\n`,
       );
 
       const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");

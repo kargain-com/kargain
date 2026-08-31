@@ -12,6 +12,8 @@
  * - Native Fiat open → CurrencyNotAvailableOnChain (no native USD feed on config)
  * - SPL Fiat without feed → PaymentTokenFeedRequired
  * - SPL Fiat with lab price account: fresh buy converts; stale/wide/bad refuse by name
+ * - Agented Margin fiat: Grant → OpenFromMandate → ForceSeed → Buy rewrites floor (D-27)
+ *   to asset units; Margin owner leg = rewritten floor; three-leg split conserves amount
  *
  * Requires: local validator, kar_fixed_price.so preloaded or deployable.
  */
@@ -69,7 +71,10 @@ const IX = {
   ApproveEscrow: 2,
   SetMayOpen: 3,
   SetSelfEncumbrance: 4,
+  Grant: 5,
+  Revoke: 6,
   OpenDirect: 7,
+  OpenFromMandate: 8,
   Pause: 17,
   Unpause: 18,
   ApprovePaymentToken: 19,
@@ -79,6 +84,11 @@ const IX = {
   ConfirmExternalPayment: 23,
   ForceSeedPriceAccount: 26,
 } as const;
+
+/** Margin form ordinal — CompensationForm::Margin in consignment-base. */
+const FORM_MARGIN = 0;
+/** Fiat denomination ordinal. */
+const DENOM_FIAT = 1;
 
 const FIXTURES = path.join(ROOT, "svm/lab/fixtures/price-measure");
 const LAB_FEED_ID = Buffer.from(
@@ -316,6 +326,25 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     feeBps: number;
   };
   fiatRefuseCode: number;
+  fiatNoFeedCode: number;
+  staleBuyCode: number;
+  wideConfCode: number;
+  badOracleCode: number;
+  fiatFresh: {
+    phase: number;
+    buyerOwns: boolean;
+    expectedAssetAmt: number;
+  };
+  /** D-27: agented Margin fiat buy rewrites floor to asset units before split. */
+  fiatAgented: {
+    floorBefore: bigint;
+    floorAfter: bigint;
+    expectedFloorAsset: bigint;
+    ownerDelta: bigint;
+    agentDelta: bigint;
+    platformDelta: bigint;
+    amount: bigint;
+  };
   external: {
     phase: number;
     buyerOwns: string;
@@ -1640,6 +1669,253 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const escrowFreshAcc = await getAccount(conn, escrowAtaFresh.publicKey);
   assert.equal(escrowFreshAcc.amount, 0n);
 
+  // ---- Agented Margin fiat: Grant → OpenFromMandate → ForceSeed → Buy (D-27 floor rewrite) ----
+  await seedPrice("lab-fresh_narrow.bin", nowUnix);
+  const tokenAg = Buffer.alloc(32, 0x75);
+  const assetAg = await createAndApproveAsset(conn, programId, payer, seller, tokenAg, custodyPda);
+  const [mandateAg] = pda(programId, [Buffer.from("mandate"), tokenAg]);
+  const [consignAg] = pda(programId, [Buffer.from("consignment"), tokenAg]);
+  const [recallAg] = pda(programId, [Buffer.from("recall"), tokenAg]);
+  const [escrowAg] = pda(programId, [Buffer.from("escrow"), tokenAg]);
+  const fiatFloor1e8 = 100_0000_0000n; // $100 floor (fiat 1e8)
+  const fiatAgentedPrice = fiatPrice1e8; // $150 ≥ floor
+  const feeBpsAg = 250n;
+  const amountAg = expectedAssetAmt; // same feed → 1_000_000
+  // Margin scale base = settled − ⌊settled·fee/10000⌋
+  const baseFiat =
+    fiatAgentedPrice - (fiatAgentedPrice * feeBpsAg) / 10_000n;
+  const baseAsset = amountAg - (amountAg * feeBpsAg) / 10_000n;
+  const expectedFloorAsset = (baseAsset * fiatFloor1e8) / baseFiat;
+
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: assetAg, isSigner: false, isWritable: false },
+          { pubkey: mandateAg, isSigner: false, isWritable: true },
+          { pubkey: consignAg, isSigner: false, isWritable: false },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.Grant]),
+          tokenAg,
+          agent.publicKey.toBuffer(),
+          encU64(0), // no expiry
+          mintFiat.publicKey.toBuffer(),
+          Buffer.from([DENOM_FIAT]),
+          CURRENCY_USD,
+          encU64(fiatFloor1e8),
+          Buffer.from([FORM_MARGIN]),
+          encU16(0), // commission 0
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
+
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: agent.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetAg, isSigner: false, isWritable: true },
+          { pubkey: mandateAg, isSigner: false, isWritable: false },
+          { pubkey: consignAg, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenFromMandate]),
+          tokenAg,
+          Buffer.from([DENOM_FIAT]),
+          CURRENCY_USD,
+          encU64(fiatAgentedPrice),
+        ]),
+      ),
+    ),
+    [agent, payer],
+  );
+
+  const lotAgBefore = readConsignment((await conn.getAccountInfo(consignAg))!.data as Buffer);
+  assert.equal(lotAgBefore.phase, PHASE.Offered);
+  assert.equal(lotAgBefore.floor, fiatFloor1e8);
+  assert.equal(lotAgBefore.feeBps, 250);
+  const floorBefore = lotAgBefore.floor;
+
+  const buyerAtaAg = Keypair.generate();
+  const escrowAtaAg = Keypair.generate();
+  const platformAtaAg = Keypair.generate();
+  const sellerAtaAg = Keypair.generate();
+  const agentAtaAg = Keypair.generate();
+  const [platClaimAg] = pda(programId, [
+    Buffer.from("claim"),
+    platform.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [platClaimAtaAg] = pda(programId, [
+    Buffer.from("claim-ata"),
+    platform.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [sellClaimAg] = pda(programId, [
+    Buffer.from("claim"),
+    seller.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [sellClaimAtaAg] = pda(programId, [
+    Buffer.from("claim-ata"),
+    seller.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [agentClaimAg] = pda(programId, [
+    Buffer.from("claim"),
+    agent.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [agentClaimAtaAg] = pda(programId, [
+    Buffer.from("claim-ata"),
+    agent.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: buyerAtaAg.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        buyerAtaAg.publicKey,
+        mintFiat.publicKey,
+        buyer.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: escrowAtaAg.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(escrowAtaAg.publicKey, mintFiat.publicKey, escrowAg),
+      createMintToInstruction(
+        mintFiat.publicKey,
+        buyerAtaAg.publicKey,
+        payer.publicKey,
+        Number(amountAg),
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: platformAtaAg.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        platformAtaAg.publicKey,
+        mintFiat.publicKey,
+        platform.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: sellerAtaAg.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        sellerAtaAg.publicKey,
+        mintFiat.publicKey,
+        seller.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: agentAtaAg.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(agentAtaAg.publicKey, mintFiat.publicKey, agent.publicKey),
+    ),
+    [payer, buyerAtaAg, escrowAtaAg, platformAtaAg, sellerAtaAg, agentAtaAg],
+  );
+
+  const platBal0 = (await getAccount(conn, platformAtaAg.publicKey)).amount;
+  const sellBal0 = (await getAccount(conn, sellerAtaAg.publicKey)).amount;
+  const agentBal0 = (await getAccount(conn, agentAtaAg.publicKey)).amount;
+
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: consignAg, isSigner: false, isWritable: true },
+          { pubkey: assetAg, isSigner: false, isWritable: true },
+          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
+          { pubkey: recallAg, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: escrowAg, isSigner: false, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: buyerAtaAg.publicKey, isSigner: false, isWritable: true },
+          { pubkey: escrowAtaAg.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: platformAtaAg.publicKey, isSigner: false, isWritable: true },
+          { pubkey: platClaimAg, isSigner: false, isWritable: true },
+          { pubkey: platClaimAtaAg, isSigner: false, isWritable: true },
+          { pubkey: sellerAtaAg.publicKey, isSigner: false, isWritable: true },
+          { pubkey: sellClaimAg, isSigner: false, isWritable: true },
+          { pubkey: sellClaimAtaAg, isSigner: false, isWritable: true },
+          { pubkey: agentAtaAg.publicKey, isSigner: false, isWritable: true },
+          { pubkey: agentClaimAg, isSigner: false, isWritable: true },
+          { pubkey: agentClaimAtaAg, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([IX.Buy]), tokenAg]),
+      ),
+    ),
+    [buyer, payer],
+  );
+
+  const closedAg = readConsignment((await conn.getAccountInfo(consignAg))!.data as Buffer);
+  const assetAfterAg = readAsset((await conn.getAccountInfo(assetAg))!.data as Buffer);
+  assert.equal(closedAg.phase, PHASE.Closed);
+  const buyerOwnsAg = assetAfterAg.owner.toBase58();
+  assert.equal(buyerOwnsAg, buyer.publicKey.toBase58());
+  // Sold clears durable floor; rewrite is proven by Margin owner leg === expectedFloorAsset.
+  assert.equal(closedAg.floor, 0n);
+
+  const platformDeltaAg =
+    (await getAccount(conn, platformAtaAg.publicKey)).amount - platBal0;
+  const ownerDeltaAg = (await getAccount(conn, sellerAtaAg.publicKey)).amount - sellBal0;
+  const agentDeltaAg = (await getAccount(conn, agentAtaAg.publicKey)).amount - agentBal0;
+  const expectedPlatformAg = (amountAg * feeBpsAg) / 10_000n;
+  const expectedAgentAg = amountAg - expectedPlatformAg - expectedFloorAsset;
+  assert.equal(ownerDeltaAg, expectedFloorAsset, "D-27 Margin owner = rewritten floor");
+  assert.equal(platformDeltaAg, expectedPlatformAg);
+  assert.equal(agentDeltaAg, expectedAgentAg);
+  assert.equal(platformDeltaAg + ownerDeltaAg + agentDeltaAg, amountAg);
+  const floorAfter = expectedFloorAsset; // rewritten floor applied at settle (proven via owner leg)
+
   return {
     nativeBuy: {
       phase: closedN.phase,
@@ -1659,6 +1935,15 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       phase: freshClosed.phase,
       buyerOwns: freshAsset.owner.toBase58() === buyer.publicKey.toBase58(),
       expectedAssetAmt: Number(expectedAssetAmt),
+    },
+    fiatAgented: {
+      floorBefore,
+      floorAfter,
+      expectedFloorAsset,
+      ownerDelta: ownerDeltaAg,
+      agentDelta: agentDeltaAg,
+      platformDelta: platformDeltaAg,
+      amount: amountAg,
     },
     external: {
       phase: closedE.phase,
