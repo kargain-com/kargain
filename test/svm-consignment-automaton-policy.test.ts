@@ -82,7 +82,7 @@ describe("svm-consignment-automaton-policy", () => {
     assert.equal(
       lines.join("\n").trim(),
       "",
-      `automaton symbols outside allowlisted mode programs:\n${lines.join("\n")}`,
+      `automaton symbols outside declared consumer / instantiator programs:\n${lines.join("\n")}`,
     );
   });
 

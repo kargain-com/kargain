@@ -1,10 +1,11 @@
 /**
- * Local-validator proof: FixedPrice asset-denomination mode (S6 #3b).
+ * Local-validator proof: FixedPrice asset-denomination mode (S6 #3b-fix).
  *
  * Asserts chain state (never success-only / invented return constants):
  * - Native buy: pull → buyer owns asset → three-leg deltas = fee snapshot split
  * - SPL buy + soft-revoke then buy still settles (D-31)
- * - ShortDelivery by name (Token-2022 transfer-fee mint)
+ * - Transfer-fee mint refused at admission (TransferFeeExtensionForbidden)
+ * - Conforming mint: PaymentTokenRecord.decimals == mint decimals from chain
  * - External confirm: custody to buyer; platform/seller/agent/escrow unchanged (D-32)
  * - Pause: open+buy refuse (ContractPaused); external confirm still works
  * - Fiat open → FiatDenominationRefused (D-29)
@@ -36,7 +37,6 @@ const {
   createMintToInstruction,
   createInitializeTransferFeeConfigInstruction,
   getMintLen,
-  getAccountLen,
   ExtensionType,
   getMinimumBalanceForRentExemptMint,
   getMinimumBalanceForRentExemptAccount,
@@ -48,7 +48,7 @@ const DEPLOY = path.join(ROOT, "svm/target/deploy");
 
 const ERR = {
   ContractPaused: 76,
-  ShortDelivery: 58,
+  TransferFeeExtensionForbidden: 69,
   FiatDenominationRefused: 101,
 } as const;
 
@@ -273,7 +273,9 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   pauseBuyCode: number;
   pauseExternalPhase: number;
   softRevokeBuyPhase: number;
-  shortDeliveryCode: number;
+  admittedDecimals: number;
+  chainMintDecimals: number;
+  transferFeeRefuseCode: number;
 }> {
   const conn = new Connection(opts?.rpc ?? RPC, "confirmed");
   const programId = loadProgramId();
@@ -356,7 +358,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           { pubkey: escrowN, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenN, encU64(0)]),
+        Buffer.concat([Buffer.from([IX.Buy]), tokenN]),
       ),
     ),
     [buyer, payer],
@@ -634,7 +636,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           { pubkey: escrowPb, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenPb, encU64(0)]),
+        Buffer.concat([Buffer.from([IX.Buy]), tokenPb]),
       ),
     ),
     [buyer, payer],
@@ -732,19 +734,25 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: authority.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: mint.publicKey, isSigner: false, isWritable: false },
           { pubkey: payTok, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
-        Buffer.concat([
-          Buffer.from([IX.ApprovePaymentToken]),
-          mint.publicKey.toBuffer(),
-          Buffer.from([6]),
-        ]),
+        Buffer.from([IX.ApprovePaymentToken]),
       ),
     ),
     [authority, payer],
   );
+
+  const payTokInfo = await conn.getAccountInfo(payTok);
+  assert.ok(payTokInfo);
+  const admittedDecimals = payTokInfo.data[8 + 32 + 1]!; // disc + mint + enabled
+  const mintInfo = await conn.getAccountInfo(mint.publicKey);
+  assert.ok(mintInfo);
+  const chainMintDecimals = mintInfo.data[44]!;
+  assert.equal(admittedDecimals, chainMintDecimals);
+  assert.equal(admittedDecimals, 6);
 
   const tokenS = Buffer.alloc(32, 0x55);
   const assetS = await createAndApproveAsset(conn, programId, payer, seller, tokenS, custodyPda);
@@ -901,7 +909,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: sellClaim, isSigner: false, isWritable: true },
           { pubkey: sellClaimAta, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenS, encU64(0)]),
+        Buffer.concat([Buffer.from([IX.Buy]), tokenS]),
       ),
     ),
     [buyer, payer],
@@ -911,12 +919,12 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     .phase;
   assert.equal(softRevokeBuyPhase, PHASE.Closed);
 
-  // ---- ShortDelivery via Token-2022 transfer fee ----
+  // ---- Transfer-fee mint refused at admission (not at buy) ----
   const extensions = [ExtensionType.TransferFeeConfig];
   const mintLen = getMintLen(extensions);
   const feeMint = Keypair.generate();
   const feeMintRent = await conn.getMinimumBalanceForRentExemption(mintLen);
-  const transferFeeBasisPoints = 100; // 1%
+  const transferFeeBasisPoints = 100;
   const maxFee = BigInt(1e12);
   await sendAndConfirmTransaction(
     conn,
@@ -951,7 +959,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     Buffer.from("payment-token"),
     feeMint.publicKey.toBuffer(),
   ]);
-  await sendAndConfirmTransaction(
+  const transferFeeRefuseCode = await expectCustom(
     conn,
     new Transaction().add(
       ix(
@@ -959,133 +967,16 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: authority.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: feeMint.publicKey, isSigner: false, isWritable: false },
           { pubkey: payTokFee, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
-        Buffer.concat([
-          Buffer.from([IX.ApprovePaymentToken]),
-          feeMint.publicKey.toBuffer(),
-          Buffer.from([6]),
-        ]),
+        Buffer.from([IX.ApprovePaymentToken]),
       ),
     ),
     [authority, payer],
-  );
-
-  const tokenSd = Buffer.alloc(32, 0x66);
-  const assetSd = await createAndApproveAsset(conn, programId, payer, seller, tokenSd, custodyPda);
-  const [consignSd] = pda(programId, [Buffer.from("consignment"), tokenSd]);
-  const [recallSd] = pda(programId, [Buffer.from("recall"), tokenSd]);
-  const [escrowSd] = pda(programId, [Buffer.from("escrow"), tokenSd]);
-  const priceSd = 1000n;
-
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetSd, isSigner: false, isWritable: true },
-          { pubkey: consignSd, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFee, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenSd,
-          feeMint.publicKey.toBuffer(),
-          Buffer.from([0]),
-          Buffer.alloc(32, 0),
-          encU64(priceSd),
-        ]),
-      ),
-    ),
-    [seller, payer],
-  );
-
-  const acctLen = getAccountLen([ExtensionType.TransferFeeAmount]);
-  const acctRent = await conn.getMinimumBalanceForRentExemption(acctLen);
-  const buyerAtaFee = Keypair.generate();
-  const escrowAtaFee = Keypair.generate();
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: buyerAtaFee.publicKey,
-        space: acctLen,
-        lamports: acctRent,
-        programId: TOKEN_2022_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(
-        buyerAtaFee.publicKey,
-        feeMint.publicKey,
-        buyer.publicKey,
-        TOKEN_2022_PROGRAM_ID,
-      ),
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: escrowAtaFee.publicKey,
-        space: acctLen,
-        lamports: acctRent,
-        programId: TOKEN_2022_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(
-        escrowAtaFee.publicKey,
-        feeMint.publicKey,
-        escrowSd,
-        TOKEN_2022_PROGRAM_ID,
-      ),
-      createMintToInstruction(
-        feeMint.publicKey,
-        buyerAtaFee.publicKey,
-        payer.publicKey,
-        Number(priceSd),
-        [],
-        TOKEN_2022_PROGRAM_ID,
-      ),
-    ),
-    [payer, buyerAtaFee, escrowAtaFee],
-  );
-
-  const shortDeliveryCode = await expectCustom(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignSd, isSigner: false, isWritable: true },
-          { pubkey: assetSd, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallSd, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowSd, isSigner: false, isWritable: true },
-          { pubkey: buyerAtaFee.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAtaFee.publicKey, isSigner: false, isWritable: true },
-          { pubkey: feeMint.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: platformAta.publicKey, isSigner: false, isWritable: true },
-          { pubkey: platClaim, isSigner: false, isWritable: true },
-          { pubkey: platClaimAta, isSigner: false, isWritable: true },
-          { pubkey: sellerAta.publicKey, isSigner: false, isWritable: true },
-          { pubkey: sellClaim, isSigner: false, isWritable: true },
-          { pubkey: sellClaimAta, isSigner: false, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenSd, encU64(10)]),
-      ),
-    ),
-    [buyer, payer],
-    ERR.ShortDelivery,
+    ERR.TransferFeeExtensionForbidden,
   );
 
   return {
@@ -1110,6 +1001,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     pauseBuyCode,
     pauseExternalPhase,
     softRevokeBuyPhase,
-    shortDeliveryCode,
+    admittedDecimals,
+    chainMintDecimals,
+    transferFeeRefuseCode,
   };
 }

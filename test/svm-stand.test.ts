@@ -238,9 +238,10 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.pauseBuyCode, 76);
       assert.equal(fp.pauseExternalPhase, 2);
       assert.equal(fp.softRevokeBuyPhase, 2);
-      assert.equal(fp.shortDeliveryCode, 58);
+      assert.equal(fp.admittedDecimals, fp.chainMintDecimals);
+      assert.equal(fp.transferFeeRefuseCode, 69);
       console.warn(
-        `\n[svm-stand] fixed-price PASS native buy / fiat refuse / external / pause / soft-revoke / ShortDelivery\n`,
+        `\n[svm-stand] fixed-price PASS native buy / fiat refuse / external / pause / soft-revoke / admit-prove / TransferFee refuse\n`,
       );
 
       if (LIVE_EVM) {

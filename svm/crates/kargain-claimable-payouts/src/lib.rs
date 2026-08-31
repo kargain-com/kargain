@@ -238,8 +238,36 @@ pub fn classify_spl_receive_from_parts(
 }
 
 const EXT_TRANSFER_FEE_CONFIG: u16 = 1;
+const EXT_UNINITIALIZED: u16 = 0;
 const MINT_SIZE_CLASSIC: usize = 82;
+/// Token-2022 pads mint base to token-account length so AccountType sits at a fixed offset.
+const TOKEN_2022_ACCOUNT_TYPE_OFFSET: usize = 165;
+const TOKEN_2022_TLV_START: usize = 166;
+const ACCOUNT_TYPE_MINT: u8 = 1;
+/// Classic / Token-2022 mint layout: decimals at offset 44, `is_initialized` at 45.
+const MINT_DECIMALS_OFFSET: usize = 44;
+const MINT_INITIALIZED_OFFSET: usize = 45;
 
+/// SPL Token program id (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`).
+pub fn spl_token_program_id() -> Pubkey {
+    Pubkey::new_from_array([
+        6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133,
+        237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
+    ])
+}
+
+/// Token-2022 program id (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`).
+pub fn spl_token_2022_program_id() -> Pubkey {
+    Pubkey::new_from_array([
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+    ])
+}
+
+/// Layout-only mint admission (no owner check). Prefer [`require_admitted_spl_mint_account`].
+///
+/// Classic Tokenkeg mint = exactly 82 bytes. Token-2022 with extensions:
+/// `[0..82] mint · [82..165] zero pad · [165] AccountType=Mint · [166..] TLV`.
 pub fn require_admitted_spl_mint(mint_data: &[u8]) -> Result<(), KargainError> {
     if mint_data.is_empty() {
         return Err(KargainError::TokenHasNoCode);
@@ -250,13 +278,19 @@ pub fn require_admitted_spl_mint(mint_data: &[u8]) -> Result<(), KargainError> {
     if mint_data.len() == MINT_SIZE_CLASSIC {
         return Ok(());
     }
-    let mut i = MINT_SIZE_CLASSIC;
-    if i < mint_data.len() {
-        i += 1;
+    if mint_data.len() < TOKEN_2022_TLV_START {
+        return Err(KargainError::TokenNonConforming);
     }
+    if mint_data[TOKEN_2022_ACCOUNT_TYPE_OFFSET] != ACCOUNT_TYPE_MINT {
+        return Err(KargainError::TokenNonConforming);
+    }
+    let mut i = TOKEN_2022_TLV_START;
     while i + 4 <= mint_data.len() {
         let type_id = u16::from_le_bytes([mint_data[i], mint_data[i + 1]]);
         let length = u16::from_le_bytes([mint_data[i + 2], mint_data[i + 3]]) as usize;
+        if type_id == EXT_UNINITIALIZED {
+            break;
+        }
         if type_id == EXT_TRANSFER_FEE_CONFIG {
             return Err(KargainError::TransferFeeExtensionForbidden);
         }
@@ -266,6 +300,25 @@ pub fn require_admitted_spl_mint(mint_data: &[u8]) -> Result<(), KargainError> {
             .ok_or(KargainError::TokenNonConforming)?;
     }
     Ok(())
+}
+
+/// Prove a mint account for payment admission: owning program, layout, no transfer-fee
+/// extension, initialized, and return **decimals read from the mint** (never caller-supplied).
+pub fn require_admitted_spl_mint_account(
+    mint_owner: &Pubkey,
+    mint_data: &[u8],
+) -> Result<u8, KargainError> {
+    if mint_owner != &spl_token_program_id() && mint_owner != &spl_token_2022_program_id() {
+        return Err(KargainError::TokenNonConforming);
+    }
+    require_admitted_spl_mint(mint_data)?;
+    if mint_data.len() <= MINT_INITIALIZED_OFFSET {
+        return Err(KargainError::TokenDecimalsUnavailable);
+    }
+    if mint_data[MINT_INITIALIZED_OFFSET] != 1 {
+        return Err(KargainError::TokenDecimalsUnavailable);
+    }
+    Ok(mint_data[MINT_DECIMALS_OFFSET])
 }
 
 pub fn require_full_delivery(before: u64, after: u64, expected: u64) -> Result<(), KargainError> {
@@ -523,15 +576,74 @@ mod tests {
         );
     }
 
+    /// Realistic Token-2022 mint: pad to 165, AccountType=Mint, then TLV.
+    fn token_2022_mint_with_tlv(decimals: u8, tlv: &[(u16, &[u8])]) -> Vec<u8> {
+        let mut data = classic_mint(decimals);
+        data.resize(TOKEN_2022_ACCOUNT_TYPE_OFFSET, 0);
+        data.push(ACCOUNT_TYPE_MINT);
+        for &(type_id, payload) in tlv {
+            data.extend_from_slice(&type_id.to_le_bytes());
+            data.extend_from_slice(&(payload.len() as u16).to_le_bytes());
+            data.extend_from_slice(payload);
+        }
+        data
+    }
+
     #[test]
     fn transfer_fee_extension_forbidden() {
-        let mut data = vec![0u8; MINT_SIZE_CLASSIC];
-        data.push(1);
-        data.extend_from_slice(&EXT_TRANSFER_FEE_CONFIG.to_le_bytes());
-        data.extend_from_slice(&0u16.to_le_bytes());
+        let data = token_2022_mint_with_tlv(6, &[(EXT_TRANSFER_FEE_CONFIG, &[])]);
         assert_eq!(
             require_admitted_spl_mint(&data),
             Err(KargainError::TransferFeeExtensionForbidden)
+        );
+    }
+
+    fn classic_mint(decimals: u8) -> Vec<u8> {
+        let mut data = vec![0u8; MINT_SIZE_CLASSIC];
+        data[MINT_DECIMALS_OFFSET] = decimals;
+        data[MINT_INITIALIZED_OFFSET] = 1;
+        data
+    }
+
+    #[test]
+    fn admitted_mint_account_returns_decimals_from_bytes() {
+        let data = classic_mint(6);
+        assert_eq!(
+            require_admitted_spl_mint_account(&spl_token_program_id(), &data),
+            Ok(6)
+        );
+    }
+
+    #[test]
+    fn admitted_mint_account_refuses_wrong_owner() {
+        assert_eq!(
+            require_admitted_spl_mint_account(&Pubkey::new_from_array([9u8; 32]), &classic_mint(6)),
+            Err(KargainError::TokenNonConforming)
+        );
+    }
+
+    #[test]
+    fn admitted_mint_account_refuses_transfer_fee_and_uninit() {
+        let fee = token_2022_mint_with_tlv(6, &[(EXT_TRANSFER_FEE_CONFIG, &[0u8; 108])]);
+        assert_eq!(
+            require_admitted_spl_mint_account(&spl_token_2022_program_id(), &fee),
+            Err(KargainError::TransferFeeExtensionForbidden)
+        );
+        let mut uninit = classic_mint(6);
+        uninit[MINT_INITIALIZED_OFFSET] = 0;
+        assert_eq!(
+            require_admitted_spl_mint_account(&spl_token_program_id(), &uninit),
+            Err(KargainError::TokenDecimalsUnavailable)
+        );
+    }
+
+    #[test]
+    fn short_extended_mint_without_tlv_region_refused() {
+        let mut data = classic_mint(6);
+        data.push(ACCOUNT_TYPE_MINT); // len 83 — not a valid Token-2022 extended mint
+        assert_eq!(
+            require_admitted_spl_mint(&data),
+            Err(KargainError::TokenNonConforming)
         );
     }
 }

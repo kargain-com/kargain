@@ -4,8 +4,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, escrow_pda, pay_spl,
-    require_full_delivery, verify_payout_recipient, withdraw_claim, ClaimAccount, CLAIM_ATA_SEED,
-    CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg,
+    require_admitted_spl_mint_account, verify_payout_recipient, withdraw_claim, ClaimAccount,
+    CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg,
     SplReceiveReachability,
 };
 use kargain_consignment_base::{
@@ -88,16 +88,12 @@ pub enum FixedPriceIx {
     EnterCommitted { token_id: [u8; 32] },
     Pause,
     Unpause,
-    /// Approve SPL payment mint (asset-only — no feed).
-    ApprovePaymentToken { mint: [u8; 32], decimals: u8 },
+    /// Approve SPL payment mint (asset-only — no feed). Mint account required; decimals proven.
+    ApprovePaymentToken,
     /// Soft-revoke: enabled=false; config retained for in-flight buy.
     RevokePaymentToken { mint: [u8; 32] },
     /// Buy: pull payment → custody to buyer → pay_split → Sold. Soft-revoke does **not** re-check enabled.
-    /// `transfer_fee` is for Token-2022 TransferCheckedWithFee (0 = classic SPL Transfer).
-    Buy {
-        token_id: [u8; 32],
-        transfer_fee: u64,
-    },
+    Buy { token_id: [u8; 32] },
     SetSettlementNote { token_id: [u8; 32], note: [u8; 256], note_len: u32 },
     ConfirmExternalPayment { token_id: [u8; 32], buyer: [u8; 32] },
     /// Withdraw credited SPL claim (money owner under this program id).
@@ -225,14 +221,9 @@ pub fn process_instruction(
         FixedPriceIx::EnterCommitted { token_id } => enter_committed_ix(program_id, accounts, token_id),
         FixedPriceIx::Pause => pause_ix(program_id, accounts),
         FixedPriceIx::Unpause => unpause_ix(program_id, accounts),
-        FixedPriceIx::ApprovePaymentToken { mint, decimals } => {
-            approve_payment_token(program_id, accounts, mint, decimals)
-        }
+        FixedPriceIx::ApprovePaymentToken => approve_payment_token(program_id, accounts),
         FixedPriceIx::RevokePaymentToken { mint } => revoke_payment_token(program_id, accounts, mint),
-        FixedPriceIx::Buy {
-            token_id,
-            transfer_fee,
-        } => buy(program_id, accounts, token_id, transfer_fee),
+        FixedPriceIx::Buy { token_id } => buy(program_id, accounts, token_id),
         FixedPriceIx::SetSettlementNote {
             token_id,
             note,
@@ -281,16 +272,6 @@ fn require_mode_open(
         return Err(into_pe(KargainError::PaymentTokenNotSupported));
     }
     Ok(())
-}
-
-fn spl_token_amount(ata: &AccountInfo) -> Result<u64, ProgramError> {
-    let data = ata.try_borrow_data()?;
-    if data.len() < SPL_TOKEN_ACCOUNT_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&data[64..72]);
-    Ok(u64::from_le_bytes(buf))
 }
 
 fn load_config(info: &AccountInfo) -> Result<CommerceConfig, ProgramError> {
@@ -1116,12 +1097,7 @@ fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
 /// SPL append: buyer_ata · escrow_ata · mint · token_program ·
 ///   then per leg (platform/seller[/agent]): ata · claim · claim_ata
 /// Soft-revoke: does **not** re-check payment-token enabled (D-31).
-fn buy(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    token_id: [u8; 32],
-    transfer_fee: u64,
-) -> ProgramResult {
+fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let buyer = next_account_info(iter)?;
     let config = next_account_info(iter)?;
@@ -1177,47 +1153,16 @@ fn buy(
             return Err(ProgramError::InvalidAccountData);
         }
         // Soft-revoke: no enabled re-check (admission was at open).
-        let before = spl_token_amount(escrow_ata)?;
-        if transfer_fee > 0 {
-            // Token-2022 fee path — destination receives amount − fee → ShortDelivery when fee>0.
-            let mint_data = mint.try_borrow_data()?;
-            if mint_data.len() < 45 {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            let decimals = mint_data[44];
-            drop(mint_data);
-            invoke(
-                &spl_transfer_checked_with_fee(
-                    token_program.key,
-                    buyer_ata.key,
-                    mint.key,
-                    escrow_ata.key,
-                    buyer.key,
-                    amount,
-                    decimals,
-                    transfer_fee,
-                ),
-                &[
-                    buyer_ata.clone(),
-                    mint.clone(),
-                    escrow_ata.clone(),
-                    buyer.clone(),
-                    token_program.clone(),
-                ],
-            )?;
-        } else {
-            invoke(
-                &spl_transfer(token_program.key, buyer_ata.key, escrow_ata.key, buyer.key, amount),
-                &[
-                    buyer_ata.clone(),
-                    escrow_ata.clone(),
-                    buyer.clone(),
-                    token_program.clone(),
-                ],
-            )?;
-        }
-        let after = spl_token_amount(escrow_ata)?;
-        require_full_delivery(before, after, amount).map_err(into_pe)?;
+        // FoT / TransferFee refused at admit — no buy-time ShortDelivery (unreachable).
+        invoke(
+            &spl_transfer(token_program.key, buyer_ata.key, escrow_ata.key, buyer.key, amount),
+            &[
+                buyer_ata.clone(),
+                escrow_ata.clone(),
+                buyer.clone(),
+                token_program.clone(),
+            ],
+        )?;
         spl_accounts = Some((escrow_ata, mint, token_program));
     }
 
@@ -1551,57 +1496,29 @@ fn spl_transfer(
     }
 }
 
-/// Token-2022 TransferCheckedWithFee (extension ix 26 / TransferFeeInstruction::TransferCheckedWithFee).
-fn spl_transfer_checked_with_fee(
-    token_program: &Pubkey,
-    source: &Pubkey,
-    mint: &Pubkey,
-    dest: &Pubkey,
-    authority: &Pubkey,
-    amount: u64,
-    decimals: u8,
-    fee: u64,
-) -> solana_program::instruction::Instruction {
-    let mut data = vec![26u8, 1u8]; // TransferFeeExtension, TransferCheckedWithFee
-    data.extend_from_slice(&amount.to_le_bytes());
-    data.push(decimals);
-    data.extend_from_slice(&fee.to_le_bytes());
-    solana_program::instruction::Instruction {
-        program_id: *token_program,
-        accounts: vec![
-            solana_program::instruction::AccountMeta::new(*source, false),
-            solana_program::instruction::AccountMeta::new_readonly(*mint, false),
-            solana_program::instruction::AccountMeta::new(*dest, false),
-            solana_program::instruction::AccountMeta::new_readonly(*authority, true),
-        ],
-        data,
-    }
-}
-
-/// Accounts: authority(s) · config · payment_token · system · payer
-fn approve_payment_token(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    mint: [u8; 32],
-    decimals: u8,
-) -> ProgramResult {
+/// Accounts: authority(s) · config · mint · payment_token · system · payer
+fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
+    let mint = next_account_info(iter)?;
     let payment_token = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     if !authority.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if mint == [0u8; 32] {
+    let mint_key = mint.key.to_bytes();
+    if mint_key == [0u8; 32] {
         return Err(into_pe(KargainError::ZeroAddress));
     }
     let cfg = load_config(config)?;
     if cfg.authority != authority.key.to_bytes() {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let (key, bump) = payment_token_pda(program_id, &mint);
+    let decimals = require_admitted_spl_mint_account(mint.owner, &mint.try_borrow_data()?)
+        .map_err(into_pe)?;
+    let (key, bump) = payment_token_pda(program_id, &mint_key);
     if payment_token.key != &key {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -1612,12 +1529,12 @@ fn approve_payment_token(
             payment_token,
             system,
             PaymentTokenRecord::SPACE,
-            &[PAYMENT_TOKEN_SEED, &mint, &[bump]],
+            &[PAYMENT_TOKEN_SEED, &mint_key, &[bump]],
         )?;
     }
     let rec = PaymentTokenRecord {
         discriminator: PAYMENT_TOKEN_DISC,
-        mint,
+        mint: mint_key,
         enabled: true,
         decimals,
         bump,
