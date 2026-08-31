@@ -523,6 +523,15 @@ pub fn lower_floor(
     Ok(())
 }
 
+/// Mode settle rewrite (e.g. FixedPrice fiat floor → asset units). Live only; no lower-only.
+pub fn set_snapshot_floor(c: &mut ConsignmentRecord, floor: u64) -> Result<(), KargainError> {
+    if !c.is_live() {
+        return Err(KargainError::NoLiveConsignment);
+    }
+    c.floor = floor;
+    Ok(())
+}
+
 pub fn lower_commission(
     c: &mut ConsignmentRecord,
     caller: &[u8; 32],
@@ -810,6 +819,15 @@ mod tests {
         assert_eq!(
             lower_commission(&mut c, &pk(2), 50),
             Ok(())
+        );
+
+        // D-27 settle rewrite — may raise or rewrite freely while live
+        assert!(set_snapshot_floor(&mut c, 900).is_ok());
+        assert_eq!(c.floor, 900);
+        close_lot(&mut c, CloseReason::Sold);
+        assert_eq!(
+            set_snapshot_floor(&mut c, 1),
+            Err(KargainError::NoLiveConsignment)
         );
 
         let mut margin_lot = write_open(

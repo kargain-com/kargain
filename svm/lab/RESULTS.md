@@ -263,3 +263,120 @@ Min stake pin (stated testnet constant): **500_000_000** lamports — same order
 ## Stop rule
 
 П-1 and П-2 **passed** → continue to shared crates and programs. Phase S3 readiness still requires the **live** cross-VM stand (not host byte simulation alone).
+
+---
+
+## S6 #3a — price-source measurement (2026-08-31)
+
+**Lab only.** No product crate, no FixedPrice/Ascending program, no quote module, no normative SPEC edit, no Devnet state-changing transaction. Instrumentation: [`scripts/measure-price-sources.ts`](scripts/measure-price-sources.ts). Raw dumps: [`fixtures/price-measure/`](fixtures/price-measure/).
+
+**RPC:** `https://api.devnet.solana.com` (public). **Local:** `solana-test-validator` for wrong-owner account only.
+
+### Candidates found
+
+| Candidate | What was measured |
+|-----------|-------------------|
+| **P1 — Pyth PriceUpdateV2 (SOL/USD sponsored)** | Account `7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE`, owner `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`, **134 B**, lamports **5_249_481_291**. Read slot **490936288**. Feed id in bytes matches docs constant Crypto.SOL/USD. |
+| **P2 — Pyth PriceUpdateV2 (USDC/USD freshest-by-publish_time)** | Among **1723** receiver accounts with USDC feed id at offset 41, freshest was `Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX`, owner same receiver, **134 B**, lamports **1_823_520** (= rent-exempt min measured **1_823_520**). Slot **490936351**. |
+| **S1 — Switchboard V2 aggregator shell** | Program `SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f` executable. GPA `dataSize=3851` → **1784** accounts. Sample `127dUwbXSj4uJReajDDr5MTaSA2NXRJjbggR6J8o4PGA` (slot **490937061**): disc `d9e64165c9a21b7d`, name UTF-8 `@8` = `Aggregator-1`, lamports **27_693_840**. **Result / std_deviation not byte-verified** on this sample. |
+
+### Searched for and not found
+
+| Search | Result |
+|--------|--------|
+| PDA `[b"price_feed", shard_u16_le, feed_id]` under `pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT` for SOL/USDC shards 0/1 | **AccountNotFound** (empty). Contradicts naive docs “derive under price-feed program → sponsored account” for this Devnet read. |
+| `pythWSnsw…` GPA `dataSize=134` | **count 0** |
+| Legacy oracle id `FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH` | Present but **non-executable** (system-owned) |
+| FX.EUR/USD feed id on receiver `dataSize=134` memcmp@41 | **count 0** |
+| Chainlink AggregatorV3-shaped account (answer + `updatedAt`, **no** conf) | **Not located** as a readable price account this lab (`HEvSKofv…` is an executable program only; no feed account decoded) |
+| Switchboard On-Demand Devnet PID `Aio4gaXj…` | Executable; GPA sizes probed sparsely (429 rate limits); **no SOL/USD price decoded** |
+
+**Receiver inventory (measured):** `rec5EKM…` owns **738_697** accounts of size **134** (pull residue + sponsored). SOL feed id → **63_865** accounts; USDC → **1723**; many have stale `publish_time` (years/months old). Freshness is **per-account**, not “program is live.”
+
+### P1 / P2 field layout (from account bytes)
+
+Layout name used in lab decoder: **`PriceUpdateV2_msg@41`**. Discriminator measured `22f123639d7ef4cd`. Total size **134**.
+
+| Field | Offset | Size | SOL sponsored (slot 490936288) | Notes |
+|-------|--------|------|--------------------------------|-------|
+| discriminator | 0 | 8 | `22f123639d7ef4cd` | |
+| write_authority | 8 | 32 | `7UVimff…` (self) | |
+| verification_level | 40 | 1 | `1` | |
+| feed_id | 41 | 32 | `ef0d8b6f…80b56d` | SOL/USD docs constant |
+| price_i64 | 73 | 8 | `10295858026` | signed |
+| conf_u64 | 81 | 8 | `1141976` | **confidence present**; same scale as price |
+| exponent_i32 | 89 | 4 | `-8` | price and conf share expo |
+| publish_time_i64 | 93 | 8 | `1788179547` | unix seconds |
+| prev_publish_time_i64 | 101 | 8 | `1788179546` | |
+| ema_price_i64 | 109 | 8 | `10344936170` | |
+| ema_conf_u64 | 117 | 8 | `1096466` | |
+| posted_slot_u64 | 125 | 8 | `490936100` | Solana slot |
+
+USDC freshest (slot 490936351): price `99994994`, conf `9501`, expo `-8`, publish_time `1788179547`, posted_slot `490936100`.
+
+**Sign / scale:** `price` is signed i64; `conf` is unsigned u64; human units ≈ `price × 10^exponent` (expo −8 → 1e-8). **Confidence units = same integer scale as price** (not a separate exponent).
+
+**Clock relation:** `publish_time` is unix seconds; compared to `getBlockTime(slot)` on the same read. Example: blockTime `1788179578` − publish `1788179547` = **31 s** age at discover. `posted_slot` tracks Solana slot of the post, not unix.
+
+### Cadence (SOL sponsored only)
+
+Window **1200 s**, poll every **20 s**, RPC Devnet. File: `fixtures/price-measure/cadence-sample.json`.
+
+| Metric | Value (measured) |
+|--------|------------------|
+| Samples | 58 |
+| Distinct `publish_time` values | **23** |
+| Inter-update gaps (sec) | min **15**, median **60**, max **60** |
+| First → last publish | `1788179547` → `1788180739` |
+| Observed `conf/\|price\|` on distinct updates | min ≈ **5.9e-5**, median ≈ **9.5e-5**, max ≈ **2.2e-4** |
+
+Silence under observation never exceeded **60 s** on this sponsored account. **Not** a mainnet constant.
+
+### Push vs pull
+
+| Candidate | Model | Who must act for a fresh buy read |
+|-----------|-------|-----------------------------------|
+| P1 sponsored SOL | **Pull substrate, sponsored crank** | Account is updated without the buyer posting in the same tx (observed continuous updates). Consumer ix **reads** the 134 B account. Freshness still depends on an external poster (Pyth-sponsored path). If sponsorship stops, account goes stale like P2 residue. |
+| P2 USDC freshest | **Pull** | Buyer or crank must **post** a PriceUpdate into a receiver-owned account before/with the commerce ix, **or** pin a continuously refreshed account address. Rent-min accounts are ephemeral update slots, not a durable “feed config” alone. |
+| S1 Switchboard V2 | Historically crank/push aggregators | Not fully decoded; operator dependence not scored from bytes. |
+
+**Hermes / HTTP:** not used as a report number (forbidden). Feed **ids** used for memcmp are docs constants, not prices.
+
+### Local testability (five conditions)
+
+Fixtures: `lab-*.bin` + `local-five.json`. Decoder = same offsets as chain.
+
+| Condition | Producible? | Method |
+|-----------|-------------|--------|
+| Fresh + narrow conf | **Yes** | `lab-fresh_narrow.bin` |
+| Older than any reasonable tolerance | **Yes** | `lab-stale.bin` (`publish_time = now − 1e6`) |
+| Confidence wide vs price | **Yes** | `lab-wide_conf.bin` (`conf == \|price\|`) |
+| Non-positive / malformed price | **Yes** | `lab-non_positive.bin`, `lab-negative_price.bin` |
+| Wrong program owner | **Yes** | Local validator account `ALvFMzECee8cNcv8HbMbMc14jDZHwgaAVjee5XRfuZky` owned by System Program (measured `localReachable: true`) |
+
+**Not producible on vendor account bytes:** rewriting fields of a cloned `rec5EKM…`-owned account without that program’s post ix. **Finding:** fiat-branch unit/harness tests must use a **lab-owned mirror** of the 134-byte layout (or invoke the real post path), not mutate a Devnet clone.
+
+### Criteria scores (0–2). No winner.
+
+| Criterion | P1 SOL sponsored | P2 USDC update acct | S1 Switchboard V2 sample |
+|-----------|------------------|---------------------|---------------------------|
+| Freshness measurability | **2** — unix `publish_time` + measured ~60 s cadence | **2** — same fields; many siblings stale | **0** — result timestamp not byte-verified |
+| Confidence bound present / interpretable | **2** — `conf_u64` @81, same expo | **2** — same | **0** — `std_deviation` not verified in sample bytes |
+| Local testability of five conditions | **2** — layout mirrored in lab bins | **2** — same layout | **0** — layout incomplete |
+| Independence from a party who must act for purchase | **1** — buyer need not post if sponsorship keeps account fresh; still depends on external poster | **0** — pull post required for durable freshness | **N/A** |
+
+### Mainnet re-derive (not portable from this lab)
+
+- Cadence distribution (gaps, silence tails)
+- `conf/|price|` distribution under stress / thin liquidity
+- Whether a **sponsored** durable account exists per feed on commercial mainnet, or every buy must pull-post
+- Switchboard (or other) byte layout + confidence field if that path is ever reconsidered
+- EUR / other FX feeds if product requires them
+- P4-class `stalenessTolerance` and D-07 max confidence bound must be **pinned from mainnet observation**, not copied from Devnet medians
+
+### Scope confirmation
+
+- **No** product code under `svm/crates/` or `svm/programs/` for this task
+- **No** SPEC / D-07 normative edit
+- **No** Devnet transaction that changed state (reads + local validator only)
+- Next product work (founder sequencing): **#3b** asset-only FixedPrice; **#5** fiat blocked until this measurement informs the form

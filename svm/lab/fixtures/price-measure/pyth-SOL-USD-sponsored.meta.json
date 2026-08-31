@@ -1,0 +1,101 @@
+{
+  "slot": 490936288,
+  "missing": false,
+  "address": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+  "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+  "lamports": 5249481291,
+  "dataLen": 134,
+  "executable": false,
+  "rentEpoch": 18446744073709552000,
+  "dataBase64": "IvEjY51+9M1gMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwHvDYtv2izrpB2hXUCV0do5Kg0vjtDGx7wPTPrIwoC1bWpTrmUCAAAA2GwRAAAAAAD4////W3SVagAAAABadJVqAAAAAOoym2gCAAAAErsQAAAAAAAkF0MdAAAAAAA=",
+  "decoded": {
+    "layout": "PriceUpdateV2_msg@41",
+    "discriminatorHex": "22f123639d7ef4cd",
+    "verificationLevel": 1,
+    "writeAuthority": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+    "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+    "price": "10295858026",
+    "conf": "1141976",
+    "exponent": -8,
+    "publishTime": 1788179547,
+    "prevPublishTime": 1788179546,
+    "emaPrice": "10344936170",
+    "emaConf": "1096466",
+    "postedSlot": "490936100",
+    "fields": [
+      {
+        "name": "discriminator",
+        "offset": 0,
+        "size": 8,
+        "value": "22f123639d7ef4cd"
+      },
+      {
+        "name": "write_authority",
+        "offset": 8,
+        "size": 32,
+        "value": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+      },
+      {
+        "name": "verification_level_u8",
+        "offset": 40,
+        "size": 1,
+        "value": "1"
+      },
+      {
+        "name": "feed_id",
+        "offset": 41,
+        "size": 32,
+        "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+      },
+      {
+        "name": "price_i64",
+        "offset": 73,
+        "size": 8,
+        "value": "10295858026"
+      },
+      {
+        "name": "conf_u64",
+        "offset": 81,
+        "size": 8,
+        "value": "1141976"
+      },
+      {
+        "name": "exponent_i32",
+        "offset": 89,
+        "size": 4,
+        "value": "-8"
+      },
+      {
+        "name": "publish_time_i64_unix",
+        "offset": 93,
+        "size": 8,
+        "value": "1788179547"
+      },
+      {
+        "name": "prev_publish_time_i64",
+        "offset": 101,
+        "size": 8,
+        "value": "1788179546"
+      },
+      {
+        "name": "ema_price_i64",
+        "offset": 109,
+        "size": 8,
+        "value": "10344936170"
+      },
+      {
+        "name": "ema_conf_u64",
+        "offset": 117,
+        "size": 8,
+        "value": "1096466"
+      },
+      {
+        "name": "posted_slot_u64",
+        "offset": 125,
+        "size": 8,
+        "value": "490936100"
+      }
+    ]
+  },
+  "feedIdHex_docs": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+}

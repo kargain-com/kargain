@@ -234,7 +234,14 @@ describe("svm-stand live Core CPI round trip", () => {
         fp.nativeBuy.platformDelta + fp.nativeBuy.sellerDelta + fp.nativeBuy.agentDelta,
         fp.nativeBuy.price,
       );
-      assert.equal(fp.fiatRefuseCode, 101);
+      assert.equal(fp.fiatRefuseCode, 133); // CurrencyNotAvailableOnChain
+      assert.equal(fp.fiatNoFeedCode, 124); // PaymentTokenFeedRequired
+      assert.equal(fp.staleBuyCode, 122);
+      assert.equal(fp.wideConfCode, 131);
+      assert.equal(fp.badOracleCode, 123);
+      assert.equal(fp.fiatFresh.phase, 2);
+      assert.equal(fp.fiatFresh.buyerOwns, true);
+      assert.equal(fp.fiatFresh.expectedAssetAmt, 1_000_000);
       assert.equal(fp.external.platformDelta, 0n);
       assert.equal(fp.external.sellerDelta, 0n);
       assert.equal(fp.external.escrowDelta, 0n);
@@ -246,7 +253,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.admittedDecimals, fp.chainMintDecimals);
       assert.equal(fp.transferFeeRefuseCode, 69);
       console.warn(
-        `\n[svm-stand] fixed-price PASS native buy / fiat refuse / external / pause / soft-revoke / admit-prove / delivery / TransferFee refuse\n`,
+        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / external / pause / soft-revoke / admit / delivery / TransferFee\n`,
       );
 
       const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");

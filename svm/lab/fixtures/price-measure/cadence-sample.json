@@ -1,0 +1,625 @@
+{
+  "measuredAt": "2026-08-31T12:53:01.100Z",
+  "rpc": "https://api.devnet.solana.com",
+  "seconds": 1200,
+  "intervalSec": 20,
+  "points": [
+    {
+      "t": 1788179579495,
+      "label": "SOL_sponsored",
+      "slot": 490936277,
+      "publishTime": 1788179547,
+      "price": "10295858026",
+      "conf": "1141976",
+      "postedSlot": "490936100",
+      "blockTime": 1788179578
+    },
+    {
+      "t": 1788179600247,
+      "label": "SOL_sponsored",
+      "slot": 490936401,
+      "publishTime": 1788179547,
+      "price": "10295858026",
+      "conf": "1141976",
+      "postedSlot": "490936100",
+      "blockTime": 1788179599
+    },
+    {
+      "t": 1788179620939,
+      "label": "SOL_sponsored",
+      "slot": 490936530,
+      "publishTime": 1788179599,
+      "price": "10311491823",
+      "conf": "756616",
+      "postedSlot": "490936408",
+      "blockTime": 1788179619
+    },
+    {
+      "t": 1788179641768,
+      "label": "SOL_sponsored",
+      "slot": 490936654,
+      "publishTime": 1788179599,
+      "price": "10311491823",
+      "conf": "756616",
+      "postedSlot": "490936408",
+      "blockTime": 1788179640
+    },
+    {
+      "t": 1788179662742,
+      "label": "SOL_sponsored",
+      "slot": 490936779,
+      "publishTime": 1788179659,
+      "price": "10314734254",
+      "conf": "1265746",
+      "postedSlot": "490936772",
+      "blockTime": 1788179661
+    },
+    {
+      "t": 1788179683460,
+      "label": "SOL_sponsored",
+      "slot": 490936905,
+      "publishTime": 1788179659,
+      "price": "10314734254",
+      "conf": "1265746",
+      "postedSlot": "490936772",
+      "blockTime": 1788179682
+    },
+    {
+      "t": 1788179704147,
+      "label": "SOL_sponsored",
+      "slot": 490937032,
+      "publishTime": 1788179659,
+      "price": "10314734254",
+      "conf": "1265746",
+      "postedSlot": "490936772",
+      "blockTime": 1788179703
+    },
+    {
+      "t": 1788179724907,
+      "label": "SOL_sponsored",
+      "slot": 490937156,
+      "publishTime": 1788179719,
+      "price": "10312735096",
+      "conf": "967551",
+      "postedSlot": "490937137",
+      "blockTime": 1788179723
+    },
+    {
+      "t": 1788179745814,
+      "label": "SOL_sponsored",
+      "slot": 490937281,
+      "publishTime": 1788179719,
+      "price": "10312735096",
+      "conf": "967551",
+      "postedSlot": "490937137",
+      "blockTime": 1788179744
+    },
+    {
+      "t": 1788179766666,
+      "label": "SOL_sponsored",
+      "slot": 490937409,
+      "publishTime": 1788179719,
+      "price": "10312735096",
+      "conf": "967551",
+      "postedSlot": "490937137",
+      "blockTime": 1788179765
+    },
+    {
+      "t": 1788179787389,
+      "label": "SOL_sponsored",
+      "slot": 490937537,
+      "publishTime": 1788179779,
+      "price": "10318963250",
+      "conf": "627560",
+      "postedSlot": "490937499",
+      "blockTime": 1788179786
+    },
+    {
+      "t": 1788179808046,
+      "label": "SOL_sponsored",
+      "slot": 490937662,
+      "publishTime": 1788179779,
+      "price": "10318963250",
+      "conf": "627560",
+      "postedSlot": "490937499",
+      "blockTime": 1788179807
+    },
+    {
+      "t": 1788179828744,
+      "label": "SOL_sponsored",
+      "slot": 490937788,
+      "publishTime": 1788179779,
+      "price": "10318963250",
+      "conf": "627560",
+      "postedSlot": "490937499",
+      "blockTime": 1788179827
+    },
+    {
+      "t": 1788179849434,
+      "label": "SOL_sponsored",
+      "slot": 490937913,
+      "publishTime": 1788179839,
+      "price": "10304036770",
+      "conf": "1157554",
+      "postedSlot": "490937863",
+      "blockTime": 1788179848
+    },
+    {
+      "t": 1788179870256,
+      "label": "SOL_sponsored",
+      "slot": 490938039,
+      "publishTime": 1788179854,
+      "price": "10305313166",
+      "conf": "730396",
+      "postedSlot": "490937978",
+      "blockTime": 1788179869
+    },
+    {
+      "t": 1788179890946,
+      "label": "SOL_sponsored",
+      "slot": 490938167,
+      "publishTime": 1788179854,
+      "price": "10305313166",
+      "conf": "730396",
+      "postedSlot": "490937978",
+      "blockTime": 1788179889
+    },
+    {
+      "t": 1788179911723,
+      "label": "SOL_sponsored",
+      "slot": 490938291,
+      "publishTime": 1788179899,
+      "price": "10298585050",
+      "conf": "791410",
+      "postedSlot": "490938230",
+      "blockTime": 1788179910
+    },
+    {
+      "t": 1788179932518,
+      "label": "SOL_sponsored",
+      "slot": 490938416,
+      "publishTime": 1788179899,
+      "price": "10298585050",
+      "conf": "791410",
+      "postedSlot": "490938230",
+      "blockTime": 1788179931
+    },
+    {
+      "t": 1788179953349,
+      "label": "SOL_sponsored",
+      "slot": 490938542,
+      "publishTime": 1788179899,
+      "price": "10298585050",
+      "conf": "791410",
+      "postedSlot": "490938230",
+      "blockTime": 1788179952
+    },
+    {
+      "t": 1788179974096,
+      "label": "SOL_sponsored",
+      "slot": 490938669,
+      "publishTime": 1788179959,
+      "price": "10289615747",
+      "conf": "884255",
+      "postedSlot": "490938593",
+      "blockTime": 1788179973
+    },
+    {
+      "t": 1788179994869,
+      "label": "SOL_sponsored",
+      "slot": 490938794,
+      "publishTime": 1788179959,
+      "price": "10289615747",
+      "conf": "884255",
+      "postedSlot": "490938593",
+      "blockTime": 1788179993
+    },
+    {
+      "t": 1788180015648,
+      "label": "SOL_sponsored",
+      "slot": 490938920,
+      "publishTime": 1788179959,
+      "price": "10289615747",
+      "conf": "884255",
+      "postedSlot": "490938593",
+      "blockTime": 1788180014
+    },
+    {
+      "t": 1788180036317,
+      "label": "SOL_sponsored",
+      "slot": 490939046,
+      "publishTime": 1788180019,
+      "price": "10283200001",
+      "conf": "2262576",
+      "postedSlot": "490938954",
+      "blockTime": 1788180035
+    },
+    {
+      "t": 1788180057114,
+      "label": "SOL_sponsored",
+      "slot": 490939172,
+      "publishTime": 1788180019,
+      "price": "10283200001",
+      "conf": "2262576",
+      "postedSlot": "490938954",
+      "blockTime": 1788180056
+    },
+    {
+      "t": 1788180077857,
+      "label": "SOL_sponsored",
+      "slot": 490939299,
+      "publishTime": 1788180019,
+      "price": "10283200001",
+      "conf": "2262576",
+      "postedSlot": "490938954",
+      "blockTime": 1788180076
+    },
+    {
+      "t": 1788180098675,
+      "label": "SOL_sponsored",
+      "slot": 490939426,
+      "publishTime": 1788180079,
+      "price": "10265000100",
+      "conf": "1499825",
+      "postedSlot": "490939321",
+      "blockTime": 1788180097
+    },
+    {
+      "t": 1788180119366,
+      "label": "SOL_sponsored",
+      "slot": 490939553,
+      "publishTime": 1788180079,
+      "price": "10265000100",
+      "conf": "1499825",
+      "postedSlot": "490939321",
+      "blockTime": 1788180118
+    },
+    {
+      "t": 1788180140056,
+      "label": "SOL_sponsored",
+      "slot": 490939678,
+      "publishTime": 1788180079,
+      "price": "10265000100",
+      "conf": "1499825",
+      "postedSlot": "490939321",
+      "blockTime": 1788180139
+    },
+    {
+      "t": 1788180160744,
+      "label": "SOL_sponsored",
+      "slot": 490939805,
+      "publishTime": 1788180139,
+      "price": "10272193729",
+      "conf": "1306346",
+      "postedSlot": "490939689",
+      "blockTime": 1788180159
+    },
+    {
+      "t": 1788180181417,
+      "label": "SOL_sponsored",
+      "slot": 490939927,
+      "publishTime": 1788180167,
+      "price": "10276536060",
+      "conf": "1198751",
+      "postedSlot": "490939906",
+      "blockTime": 1788180180
+    },
+    {
+      "t": 1788180202087,
+      "label": "SOL_sponsored",
+      "slot": 490940053,
+      "publishTime": 1788180199,
+      "price": "10279920836",
+      "conf": "1085451",
+      "postedSlot": "490940048",
+      "blockTime": 1788180201
+    },
+    {
+      "t": 1788180222737,
+      "label": "SOL_sponsored",
+      "slot": 490940179,
+      "publishTime": 1788180199,
+      "price": "10279920836",
+      "conf": "1085451",
+      "postedSlot": "490940048",
+      "blockTime": 1788180221
+    },
+    {
+      "t": 1788180243386,
+      "label": "SOL_sponsored",
+      "slot": 490940303,
+      "publishTime": 1788180199,
+      "price": "10279920836",
+      "conf": "1085451",
+      "postedSlot": "490940048",
+      "blockTime": 1788180242
+    },
+    {
+      "t": 1788180264065,
+      "label": "SOL_sponsored",
+      "slot": 490940428,
+      "publishTime": 1788180259,
+      "price": "10272500075",
+      "conf": "971690",
+      "postedSlot": "490940413",
+      "blockTime": 1788180263
+    },
+    {
+      "t": 1788180284727,
+      "label": "SOL_sponsored",
+      "slot": 490940552,
+      "publishTime": 1788180259,
+      "price": "10272500075",
+      "conf": "971690",
+      "postedSlot": "490940413",
+      "blockTime": 1788180283
+    },
+    {
+      "t": 1788180305405,
+      "label": "SOL_sponsored",
+      "slot": 490940677,
+      "publishTime": 1788180259,
+      "price": "10272500075",
+      "conf": "971690",
+      "postedSlot": "490940413",
+      "blockTime": 1788180304
+    },
+    {
+      "t": 1788180326095,
+      "label": "SOL_sponsored",
+      "slot": 490940803,
+      "publishTime": 1788180319,
+      "price": "10273211520",
+      "conf": "711520",
+      "postedSlot": "490940780",
+      "blockTime": 1788180325
+    },
+    {
+      "t": 1788180346834,
+      "label": "SOL_sponsored",
+      "slot": 490940930,
+      "publishTime": 1788180319,
+      "price": "10273211520",
+      "conf": "711520",
+      "postedSlot": "490940780",
+      "blockTime": 1788180345
+    },
+    {
+      "t": 1788180367667,
+      "label": "SOL_sponsored",
+      "slot": 490941058,
+      "publishTime": 1788180319,
+      "price": "10273211520",
+      "conf": "711520",
+      "postedSlot": "490940780",
+      "blockTime": 1788180366
+    },
+    {
+      "t": 1788180388365,
+      "label": "SOL_sponsored",
+      "slot": 490941184,
+      "publishTime": 1788180379,
+      "price": "10261033986",
+      "conf": "603262",
+      "postedSlot": "490941143",
+      "blockTime": 1788180387
+    },
+    {
+      "t": 1788180409066,
+      "label": "SOL_sponsored",
+      "slot": 490941309,
+      "publishTime": 1788180379,
+      "price": "10261033986",
+      "conf": "603262",
+      "postedSlot": "490941143",
+      "blockTime": 1788180408
+    },
+    {
+      "t": 1788180429805,
+      "label": "SOL_sponsored",
+      "slot": 490941436,
+      "publishTime": 1788180379,
+      "price": "10261033986",
+      "conf": "603262",
+      "postedSlot": "490941143",
+      "blockTime": 1788180428
+    },
+    {
+      "t": 1788180450517,
+      "label": "SOL_sponsored",
+      "slot": 490941563,
+      "publishTime": 1788180439,
+      "price": "10268096948",
+      "conf": "1383348",
+      "postedSlot": "490941505",
+      "blockTime": 1788180449
+    },
+    {
+      "t": 1788180471247,
+      "label": "SOL_sponsored",
+      "slot": 490941685,
+      "publishTime": 1788180439,
+      "price": "10268096948",
+      "conf": "1383348",
+      "postedSlot": "490941505",
+      "blockTime": 1788180470
+    },
+    {
+      "t": 1788180492056,
+      "label": "SOL_sponsored",
+      "slot": 490941811,
+      "publishTime": 1788180439,
+      "price": "10268096948",
+      "conf": "1383348",
+      "postedSlot": "490941505",
+      "blockTime": 1788180491
+    },
+    {
+      "t": 1788180512746,
+      "label": "SOL_sponsored",
+      "slot": 490941937,
+      "publishTime": 1788180499,
+      "price": "10257114035",
+      "conf": "885965",
+      "postedSlot": "490941872",
+      "blockTime": 1788180511
+    },
+    {
+      "t": 1788180533497,
+      "label": "SOL_sponsored",
+      "slot": 490942057,
+      "publishTime": 1788180499,
+      "price": "10257114035",
+      "conf": "885965",
+      "postedSlot": "490941872",
+      "blockTime": 1788180532
+    },
+    {
+      "t": 1788180554166,
+      "label": "SOL_sponsored",
+      "slot": 490942183,
+      "publishTime": 1788180499,
+      "price": "10257114035",
+      "conf": "885965",
+      "postedSlot": "490941872",
+      "blockTime": 1788180553
+    },
+    {
+      "t": 1788180574858,
+      "label": "SOL_sponsored",
+      "slot": 490942307,
+      "publishTime": 1788180559,
+      "price": "10261729344",
+      "conf": "975381",
+      "postedSlot": "490942229",
+      "blockTime": 1788180573
+    },
+    {
+      "t": 1788180595517,
+      "label": "SOL_sponsored",
+      "slot": 490942432,
+      "publishTime": 1788180559,
+      "price": "10261729344",
+      "conf": "975381",
+      "postedSlot": "490942229",
+      "blockTime": 1788180594
+    },
+    {
+      "t": 1788180616232,
+      "label": "SOL_sponsored",
+      "slot": 490942560,
+      "publishTime": 1788180559,
+      "price": "10261729344",
+      "conf": "975381",
+      "postedSlot": "490942229",
+      "blockTime": 1788180615
+    },
+    {
+      "t": 1788180636940,
+      "label": "SOL_sponsored",
+      "slot": 490942683,
+      "publishTime": 1788180619,
+      "price": "10260500000",
+      "conf": "1000075",
+      "postedSlot": "490942591",
+      "blockTime": 1788180635
+    },
+    {
+      "t": 1788180657590,
+      "label": "SOL_sponsored",
+      "slot": 490942806,
+      "publishTime": 1788180619,
+      "price": "10260500000",
+      "conf": "1000075",
+      "postedSlot": "490942591",
+      "blockTime": 1788180656
+    },
+    {
+      "t": 1788180678262,
+      "label": "SOL_sponsored",
+      "slot": 490942929,
+      "publishTime": 1788180619,
+      "price": "10260500000",
+      "conf": "1000075",
+      "postedSlot": "490942591",
+      "blockTime": 1788180677
+    },
+    {
+      "t": 1788180698920,
+      "label": "SOL_sponsored",
+      "slot": 490943054,
+      "publishTime": 1788180679,
+      "price": "10264019008",
+      "conf": "1340267",
+      "postedSlot": "490942948",
+      "blockTime": 1788180698
+    },
+    {
+      "t": 1788180719715,
+      "label": "SOL_sponsored",
+      "slot": 490943181,
+      "publishTime": 1788180679,
+      "price": "10264019008",
+      "conf": "1340267",
+      "postedSlot": "490942948",
+      "blockTime": 1788180718
+    },
+    {
+      "t": 1788180740390,
+      "label": "SOL_sponsored",
+      "slot": 490943306,
+      "publishTime": 1788180679,
+      "price": "10264019008",
+      "conf": "1340267",
+      "postedSlot": "490942948",
+      "blockTime": 1788180739
+    },
+    {
+      "t": 1788180761099,
+      "label": "SOL_sponsored",
+      "slot": 490943436,
+      "publishTime": 1788180739,
+      "price": "10259261501",
+      "conf": "738499",
+      "postedSlot": "490943317",
+      "blockTime": 1788180760
+    }
+  ],
+  "cadence": {
+    "SOL_sponsored": {
+      "samples": 58,
+      "distinctPublishTimes": 23,
+      "gapsSec": [
+        52,
+        60,
+        60,
+        60,
+        60,
+        15,
+        45,
+        60,
+        60,
+        60,
+        60,
+        28,
+        32,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ],
+      "minGap": 15,
+      "medianGap": 60,
+      "maxGap": 60,
+      "windowSec": 1200,
+      "intervalSec": 20,
+      "firstPublish": 1788179547,
+      "lastPublish": 1788180739
+    }
+  }
+}

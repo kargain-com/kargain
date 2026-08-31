@@ -1,0 +1,494 @@
+{
+  "measuredAt": "2026-08-31T12:35:42.073Z",
+  "localRpc": "http://127.0.0.1:8899",
+  "localReachable": true,
+  "wrongOwnerAddress": "ALvFMzECee8cNcv8HbMbMc14jDZHwgaAVjee5XRfuZky",
+  "decodedCases": [
+    {
+      "name": "fresh_narrow",
+      "decoded": {
+        "layout": "PriceUpdateV2_msg@41",
+        "discriminatorHex": "22f123639d7ef4cd",
+        "verificationLevel": 1,
+        "writeAuthority": "11111111111111111111111111111111",
+        "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "price": "15000000000",
+        "conf": "50000",
+        "exponent": -8,
+        "publishTime": 1788179741,
+        "prevPublishTime": 1788179740,
+        "emaPrice": "15000000000",
+        "emaConf": "50000",
+        "postedSlot": "1",
+        "fields": [
+          {
+            "name": "discriminator",
+            "offset": 0,
+            "size": 8,
+            "value": "22f123639d7ef4cd"
+          },
+          {
+            "name": "write_authority",
+            "offset": 8,
+            "size": 32,
+            "value": "11111111111111111111111111111111"
+          },
+          {
+            "name": "verification_level_u8",
+            "offset": 40,
+            "size": 1,
+            "value": "1"
+          },
+          {
+            "name": "feed_id",
+            "offset": 41,
+            "size": 32,
+            "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+          },
+          {
+            "name": "price_i64",
+            "offset": 73,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "conf_u64",
+            "offset": 81,
+            "size": 8,
+            "value": "50000"
+          },
+          {
+            "name": "exponent_i32",
+            "offset": 89,
+            "size": 4,
+            "value": "-8"
+          },
+          {
+            "name": "publish_time_i64_unix",
+            "offset": 93,
+            "size": 8,
+            "value": "1788179741"
+          },
+          {
+            "name": "prev_publish_time_i64",
+            "offset": 101,
+            "size": 8,
+            "value": "1788179740"
+          },
+          {
+            "name": "ema_price_i64",
+            "offset": 109,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "ema_conf_u64",
+            "offset": 117,
+            "size": 8,
+            "value": "50000"
+          },
+          {
+            "name": "posted_slot_u64",
+            "offset": 125,
+            "size": 8,
+            "value": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "stale",
+      "decoded": {
+        "layout": "PriceUpdateV2_msg@41",
+        "discriminatorHex": "22f123639d7ef4cd",
+        "verificationLevel": 1,
+        "writeAuthority": "11111111111111111111111111111111",
+        "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "price": "15000000000",
+        "conf": "50000",
+        "exponent": -8,
+        "publishTime": 1787179741,
+        "prevPublishTime": 1787179740,
+        "emaPrice": "15000000000",
+        "emaConf": "50000",
+        "postedSlot": "1",
+        "fields": [
+          {
+            "name": "discriminator",
+            "offset": 0,
+            "size": 8,
+            "value": "22f123639d7ef4cd"
+          },
+          {
+            "name": "write_authority",
+            "offset": 8,
+            "size": 32,
+            "value": "11111111111111111111111111111111"
+          },
+          {
+            "name": "verification_level_u8",
+            "offset": 40,
+            "size": 1,
+            "value": "1"
+          },
+          {
+            "name": "feed_id",
+            "offset": 41,
+            "size": 32,
+            "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+          },
+          {
+            "name": "price_i64",
+            "offset": 73,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "conf_u64",
+            "offset": 81,
+            "size": 8,
+            "value": "50000"
+          },
+          {
+            "name": "exponent_i32",
+            "offset": 89,
+            "size": 4,
+            "value": "-8"
+          },
+          {
+            "name": "publish_time_i64_unix",
+            "offset": 93,
+            "size": 8,
+            "value": "1787179741"
+          },
+          {
+            "name": "prev_publish_time_i64",
+            "offset": 101,
+            "size": 8,
+            "value": "1787179740"
+          },
+          {
+            "name": "ema_price_i64",
+            "offset": 109,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "ema_conf_u64",
+            "offset": 117,
+            "size": 8,
+            "value": "50000"
+          },
+          {
+            "name": "posted_slot_u64",
+            "offset": 125,
+            "size": 8,
+            "value": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wide_conf",
+      "decoded": {
+        "layout": "PriceUpdateV2_msg@41",
+        "discriminatorHex": "22f123639d7ef4cd",
+        "verificationLevel": 1,
+        "writeAuthority": "11111111111111111111111111111111",
+        "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "price": "15000000000",
+        "conf": "15000000000",
+        "exponent": -8,
+        "publishTime": 1788179741,
+        "prevPublishTime": 1788179740,
+        "emaPrice": "15000000000",
+        "emaConf": "15000000000",
+        "postedSlot": "1",
+        "fields": [
+          {
+            "name": "discriminator",
+            "offset": 0,
+            "size": 8,
+            "value": "22f123639d7ef4cd"
+          },
+          {
+            "name": "write_authority",
+            "offset": 8,
+            "size": 32,
+            "value": "11111111111111111111111111111111"
+          },
+          {
+            "name": "verification_level_u8",
+            "offset": 40,
+            "size": 1,
+            "value": "1"
+          },
+          {
+            "name": "feed_id",
+            "offset": 41,
+            "size": 32,
+            "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+          },
+          {
+            "name": "price_i64",
+            "offset": 73,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "conf_u64",
+            "offset": 81,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "exponent_i32",
+            "offset": 89,
+            "size": 4,
+            "value": "-8"
+          },
+          {
+            "name": "publish_time_i64_unix",
+            "offset": 93,
+            "size": 8,
+            "value": "1788179741"
+          },
+          {
+            "name": "prev_publish_time_i64",
+            "offset": 101,
+            "size": 8,
+            "value": "1788179740"
+          },
+          {
+            "name": "ema_price_i64",
+            "offset": 109,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "ema_conf_u64",
+            "offset": 117,
+            "size": 8,
+            "value": "15000000000"
+          },
+          {
+            "name": "posted_slot_u64",
+            "offset": 125,
+            "size": 8,
+            "value": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "non_positive",
+      "decoded": {
+        "layout": "PriceUpdateV2_msg@41",
+        "discriminatorHex": "22f123639d7ef4cd",
+        "verificationLevel": 1,
+        "writeAuthority": "11111111111111111111111111111111",
+        "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "price": "0",
+        "conf": "1",
+        "exponent": -8,
+        "publishTime": 1788179741,
+        "prevPublishTime": 1788179740,
+        "emaPrice": "0",
+        "emaConf": "1",
+        "postedSlot": "1",
+        "fields": [
+          {
+            "name": "discriminator",
+            "offset": 0,
+            "size": 8,
+            "value": "22f123639d7ef4cd"
+          },
+          {
+            "name": "write_authority",
+            "offset": 8,
+            "size": 32,
+            "value": "11111111111111111111111111111111"
+          },
+          {
+            "name": "verification_level_u8",
+            "offset": 40,
+            "size": 1,
+            "value": "1"
+          },
+          {
+            "name": "feed_id",
+            "offset": 41,
+            "size": 32,
+            "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+          },
+          {
+            "name": "price_i64",
+            "offset": 73,
+            "size": 8,
+            "value": "0"
+          },
+          {
+            "name": "conf_u64",
+            "offset": 81,
+            "size": 8,
+            "value": "1"
+          },
+          {
+            "name": "exponent_i32",
+            "offset": 89,
+            "size": 4,
+            "value": "-8"
+          },
+          {
+            "name": "publish_time_i64_unix",
+            "offset": 93,
+            "size": 8,
+            "value": "1788179741"
+          },
+          {
+            "name": "prev_publish_time_i64",
+            "offset": 101,
+            "size": 8,
+            "value": "1788179740"
+          },
+          {
+            "name": "ema_price_i64",
+            "offset": 109,
+            "size": 8,
+            "value": "0"
+          },
+          {
+            "name": "ema_conf_u64",
+            "offset": 117,
+            "size": 8,
+            "value": "1"
+          },
+          {
+            "name": "posted_slot_u64",
+            "offset": 125,
+            "size": 8,
+            "value": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative_price",
+      "decoded": {
+        "layout": "PriceUpdateV2_msg@41",
+        "discriminatorHex": "22f123639d7ef4cd",
+        "verificationLevel": 1,
+        "writeAuthority": "11111111111111111111111111111111",
+        "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "price": "-1",
+        "conf": "1",
+        "exponent": -8,
+        "publishTime": 1788179741,
+        "prevPublishTime": 1788179740,
+        "emaPrice": "-1",
+        "emaConf": "1",
+        "postedSlot": "1",
+        "fields": [
+          {
+            "name": "discriminator",
+            "offset": 0,
+            "size": 8,
+            "value": "22f123639d7ef4cd"
+          },
+          {
+            "name": "write_authority",
+            "offset": 8,
+            "size": 32,
+            "value": "11111111111111111111111111111111"
+          },
+          {
+            "name": "verification_level_u8",
+            "offset": 40,
+            "size": 1,
+            "value": "1"
+          },
+          {
+            "name": "feed_id",
+            "offset": 41,
+            "size": 32,
+            "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+          },
+          {
+            "name": "price_i64",
+            "offset": 73,
+            "size": 8,
+            "value": "-1"
+          },
+          {
+            "name": "conf_u64",
+            "offset": 81,
+            "size": 8,
+            "value": "1"
+          },
+          {
+            "name": "exponent_i32",
+            "offset": 89,
+            "size": 4,
+            "value": "-8"
+          },
+          {
+            "name": "publish_time_i64_unix",
+            "offset": 93,
+            "size": 8,
+            "value": "1788179741"
+          },
+          {
+            "name": "prev_publish_time_i64",
+            "offset": 101,
+            "size": 8,
+            "value": "1788179740"
+          },
+          {
+            "name": "ema_price_i64",
+            "offset": 109,
+            "size": 8,
+            "value": "-1"
+          },
+          {
+            "name": "ema_conf_u64",
+            "offset": 117,
+            "size": 8,
+            "value": "1"
+          },
+          {
+            "name": "posted_slot_u64",
+            "offset": 125,
+            "size": 8,
+            "value": "1"
+          }
+        ]
+      }
+    }
+  ],
+  "conditions": {
+    "freshNarrow": {
+      "producible": true,
+      "method": "lab-fresh_narrow.bin — PriceUpdateV2_msg@41 with fresh publish_time and conf << |price|; decode in-process (same offsets as chain)."
+    },
+    "stale": {
+      "producible": true,
+      "method": "lab-stale.bin — publish_time = now-1e6. Cloned Devnet Pyth account cannot be field-rewritten (owner=receiver program)."
+    },
+    "wideConf": {
+      "producible": true,
+      "method": "lab-wide_conf.bin — conf == |price|."
+    },
+    "nonPositiveOrMalformed": {
+      "producible": true,
+      "method": "lab-non_positive.bin (price=0) and lab-negative_price.bin."
+    },
+    "wrongOwner": {
+      "producible": true,
+      "method": "SystemProgram-owned account ALvFMzECee8cNcv8HbMbMc14jDZHwgaAVjee5XRfuZky on local validator; consumer requires owner==rec5EKM…"
+    },
+    "vendorAccountMutation": {
+      "producible": false,
+      "reason": "Accounts owned by rec5EKM… require that program’s instructions to mutate price fields. Lab cannot drive stale/wide on the live sponsored account without posting a forged update (not attempted; would be a Devnet write / pull post). Finding: fiat-branch unit tests must use a lab-owned mirror of the 134-byte layout, not mutation of cloned vendor accounts."
+    }
+  }
+}

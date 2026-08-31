@@ -255,10 +255,10 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-consignment-automaton-policy.test.ts"],
   },
   {
-    id: "svm-fixed-price-asset-only",
-    owner: "svm/programs/kar-fixed-price",
-    rule: "Asset-denomination FixedPrice only — FiatDenominationRefused; no oracle/Pyth/Hermes/price-account surface; ApprovePaymentToken proves mint via require_admitted_spl_mint_account (no caller decimals); SPL buy measures delivery via require_full_delivery; soft-revoke keeps in-flight buy; external confirm moves no money",
-    guardTests: ["svm-fixed-price-asset-only-policy.test.ts"],
+    id: "svm-fixed-price-price-owner",
+    owner: "svm/crates/kargain-price + svm/programs/kar-fixed-price",
+    rule: "FixedPrice fiat/oracle only via kargain-price (PriceUpdateV2_msg@41); admit pins feed; buy refuses stale/wide/bad by name; Ascending stays oracle-banned; ApprovePaymentToken proves mint; SPL buy measures delivery; ForceSeedPriceAccount authority-gated for LIVE",
+    guardTests: ["svm-fixed-price-price-owner-policy.test.ts"],
   },
   {
     id: "svm-ascending-asset-only",

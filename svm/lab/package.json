@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "lab": "tsx scripts/run-lab.ts",
-    "lab:p2": "tsx scripts/run-lab-client.ts"
+    "lab:p2": "tsx scripts/run-lab-client.ts",
+    "measure:price": "tsx scripts/measure-price-sources.ts",
+    "measure:price:discover": "tsx scripts/measure-price-sources.ts discover",
+    "measure:price:sample": "tsx scripts/measure-price-sources.ts sample --seconds 1200 --interval 20",
+    "measure:price:local-five": "tsx scripts/measure-price-sources.ts local-five"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-core": "^1.4.0",

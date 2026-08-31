@@ -583,6 +583,7 @@ dependencies = [
  "kargain-claimable-payouts",
  "kargain-consignment-base",
  "kargain-errors",
+ "kargain-price",
  "solana-program",
 ]
 
@@ -679,6 +680,13 @@ name = "kargain-onft-codec"
 version = "0.1.0"
 dependencies = [
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kargain-price"
+version = "0.1.0"
+dependencies = [
+ "kargain-errors",
 ]
 
 [[package]]

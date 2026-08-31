@@ -710,6 +710,7 @@ describe("error-name-truth-policy", () => {
         "ArithmeticOverflow",
         "ComposeRequired",
         "ComposeUndecodable",
+        "ConfidenceTooWide",
         "FiatDenominationRefused",
         "MissingAgentRecipient",
         "MissingPlatformRecipient",

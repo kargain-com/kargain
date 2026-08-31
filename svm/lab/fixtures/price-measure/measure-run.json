@@ -1,0 +1,395 @@
+{
+  "measuredAt": "2026-08-31T12:34:19.991Z",
+  "rpc": "https://api.devnet.solana.com",
+  "clusterVersion": {
+    "feature-set": 2409014235,
+    "solana-core": "4.3.0-beta.2"
+  },
+  "slot0": 490936276,
+  "blockTime": 1788179578,
+  "programs": [
+    {
+      "label": "pyth_receiver",
+      "id": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+      "note": "owns PriceUpdateV2 accounts (measured)",
+      "exists": true,
+      "slot": 490936279,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 1141440,
+      "dataLen": 36
+    },
+    {
+      "label": "pyth_price_feed_program",
+      "id": "pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT",
+      "note": "docs PDA program; GPA size134 count 0 on Devnet",
+      "exists": true,
+      "slot": 490936279,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 1141440,
+      "dataLen": 36
+    },
+    {
+      "label": "legacy_pyth_oracle",
+      "id": "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH",
+      "note": "non-executable on Devnet",
+      "exists": true,
+      "slot": 490936280,
+      "executable": false,
+      "owner": "11111111111111111111111111111111",
+      "lamports": 50001017,
+      "dataLen": 0
+    },
+    {
+      "label": "switchboard_v2",
+      "id": "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
+      "note": "executable on Devnet",
+      "exists": true,
+      "slot": 490936281,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 5001141440,
+      "dataLen": 36
+    },
+    {
+      "label": "switchboard_ondemand_devnet",
+      "id": "Aio4gaXjXzJNVLtzwtNVmSqGKpANtXhybbkhtAC94ji2",
+      "note": "executable on Devnet",
+      "exists": true,
+      "slot": 490936282,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 1141440,
+      "dataLen": 36
+    },
+    {
+      "label": "switchboard_ondemand_mainnet_pid",
+      "id": "SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv",
+      "note": "executable account present on Devnet",
+      "exists": true,
+      "slot": 490936283,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 1141440,
+      "dataLen": 36
+    },
+    {
+      "label": "chainlink_store_suspect",
+      "id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
+      "note": "executable; no price account found in this lab",
+      "exists": true,
+      "slot": 490936285,
+      "executable": true,
+      "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "lamports": 1141442,
+      "dataLen": 36
+    }
+  ],
+  "gpa": {
+    "pythReceiverDataSize134": 738697,
+    "pythPriceFeedProgramDataSize134": "error: fetch failed",
+    "switchboardNote": "Switchboard V2 GPA dataSize=3240 count=0 sample=none"
+  },
+  "docsPdaProbesEmpty": [
+    {
+      "pair": "Crypto.SOL/USD",
+      "shard": 0,
+      "address": "3YQJ2HZUi44NF5sAieMuxsCGX7J1dhmZFYStKeDP64uf",
+      "found": false,
+      "note": "PDA seeds [price_feed, shard_u16_le, feed_id] under pythWSnsw…"
+    },
+    {
+      "pair": "Crypto.SOL/USD",
+      "shard": 1,
+      "address": "GeAqdDnaS7NRaLGSmxbonF9i1GwUAZgWVvCbN7TwKkWT",
+      "found": false,
+      "note": "PDA seeds [price_feed, shard_u16_le, feed_id] under pythWSnsw…"
+    },
+    {
+      "pair": "Crypto.USDC/USD",
+      "shard": 0,
+      "address": "EtLAo8H3aFzNhDsYsTvfjU3LQYyMXu7eFCqYKPmNnvrd",
+      "found": false,
+      "note": "PDA seeds [price_feed, shard_u16_le, feed_id] under pythWSnsw…"
+    },
+    {
+      "pair": "Crypto.USDC/USD",
+      "shard": 1,
+      "address": "FHy9gbfpRUi6Y2VDXjxV6vq341epekGL8Xn6CiR1Hq6b",
+      "found": false,
+      "note": "PDA seeds [price_feed, shard_u16_le, feed_id] under pythWSnsw…"
+    }
+  ],
+  "solSponsored": {
+    "slot": 490936288,
+    "missing": false,
+    "address": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+    "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+    "lamports": 5249481291,
+    "dataLen": 134,
+    "executable": false,
+    "rentEpoch": 18446744073709552000,
+    "dataBase64": "IvEjY51+9M1gMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwHvDYtv2izrpB2hXUCV0do5Kg0vjtDGx7wPTPrIwoC1bWpTrmUCAAAA2GwRAAAAAAD4////W3SVagAAAABadJVqAAAAAOoym2gCAAAAErsQAAAAAAAkF0MdAAAAAAA=",
+    "decoded": {
+      "layout": "PriceUpdateV2_msg@41",
+      "discriminatorHex": "22f123639d7ef4cd",
+      "verificationLevel": 1,
+      "writeAuthority": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+      "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+      "price": "10295858026",
+      "conf": "1141976",
+      "exponent": -8,
+      "publishTime": 1788179547,
+      "prevPublishTime": 1788179546,
+      "emaPrice": "10344936170",
+      "emaConf": "1096466",
+      "postedSlot": "490936100",
+      "fields": [
+        {
+          "name": "discriminator",
+          "offset": 0,
+          "size": 8,
+          "value": "22f123639d7ef4cd"
+        },
+        {
+          "name": "write_authority",
+          "offset": 8,
+          "size": 32,
+          "value": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+        },
+        {
+          "name": "verification_level_u8",
+          "offset": 40,
+          "size": 1,
+          "value": "1"
+        },
+        {
+          "name": "feed_id",
+          "offset": 41,
+          "size": 32,
+          "value": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+        },
+        {
+          "name": "price_i64",
+          "offset": 73,
+          "size": 8,
+          "value": "10295858026"
+        },
+        {
+          "name": "conf_u64",
+          "offset": 81,
+          "size": 8,
+          "value": "1141976"
+        },
+        {
+          "name": "exponent_i32",
+          "offset": 89,
+          "size": 4,
+          "value": "-8"
+        },
+        {
+          "name": "publish_time_i64_unix",
+          "offset": 93,
+          "size": 8,
+          "value": "1788179547"
+        },
+        {
+          "name": "prev_publish_time_i64",
+          "offset": 101,
+          "size": 8,
+          "value": "1788179546"
+        },
+        {
+          "name": "ema_price_i64",
+          "offset": 109,
+          "size": 8,
+          "value": "10344936170"
+        },
+        {
+          "name": "ema_conf_u64",
+          "offset": 117,
+          "size": 8,
+          "value": "1096466"
+        },
+        {
+          "name": "posted_slot_u64",
+          "offset": 125,
+          "size": 8,
+          "value": "490936100"
+        }
+      ]
+    }
+  },
+  "feedIdSearch": {
+    "SOL": {
+      "total": 63865,
+      "topPublishTimes": [
+        {
+          "pk": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+          "publishTime": 1788179547,
+          "lamports": 5249481291
+        },
+        {
+          "pk": "AB4zLv8jDFoucYWLhLYTdY1DrjSaY4TiXtHgTDcp1Qi7",
+          "publishTime": 1788135354,
+          "lamports": 1823520
+        },
+        {
+          "pk": "98Xo7Hw4Bd5JEdpG2M2X1gesHFiWAkGxkqrwXS6oHjqv",
+          "publishTime": 1788116604,
+          "lamports": 1823520
+        },
+        {
+          "pk": "B6PMZoheHXY2gkf8FhPXfMqkuTAkadyFzNnKnYzFpVbH",
+          "publishTime": 1788116525,
+          "lamports": 1823520
+        },
+        {
+          "pk": "AysaJxL2h9xYbz9HDs3tgDVJzYatqzKUYxZ9rrXE5NAB",
+          "publishTime": 1788116474,
+          "lamports": 1823520
+        }
+      ]
+    },
+    "USDC": {
+      "total": 1723,
+      "topPublishTimes": [
+        {
+          "pk": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+          "publishTime": 1788179547,
+          "lamports": 1823520
+        },
+        {
+          "pk": "3A72LfuApWrtFLcjeTkpRGBqVydXmhv7g3Xj9HUMU6LT",
+          "publishTime": 1787718487,
+          "lamports": 1823520
+        },
+        {
+          "pk": "6rrDNGg3CqSujNWdoBx5mtNvtpvbk1sdYmsmH9Qexewh",
+          "publishTime": 1787397242,
+          "lamports": 1823520
+        },
+        {
+          "pk": "99J4egrU7K8w5fixidm32rWR6fTxod1Bg1UWVR7B68xb",
+          "publishTime": 1787390783,
+          "lamports": 1823520
+        },
+        {
+          "pk": "EmbHNDqL2ALzSwxPjReeCMcfxtXnxXnVTktpYjzjtwbY",
+          "publishTime": 1787390702,
+          "lamports": 1823520
+        }
+      ]
+    },
+    "EUR": {
+      "total": 0,
+      "topPublishTimes": []
+    }
+  },
+  "usdcFreshest": {
+    "slot": 490936351,
+    "missing": false,
+    "address": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+    "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+    "lamports": 1823520,
+    "dataLen": 134,
+    "executable": false,
+    "rentEpoch": 18446744073709552000,
+    "dataBase64": "IvEjY51+9M2+k5qDCfVkBxh//zCsVLFpSYvpn22OG/1CRGgM1PfR4gHqoCDGHMR5cSgTRhzhU4lKlqbACyHtDPwnmNH5qenJSnLN9QUAAAAAHSUAAAAAAAD4////W3SVagAAAABadJVqAAAAABrE9QUAAAAA1ykAAAAAAAAkF0MdAAAAAAA=",
+    "decoded": {
+      "layout": "PriceUpdateV2_msg@41",
+      "discriminatorHex": "22f123639d7ef4cd",
+      "verificationLevel": 1,
+      "writeAuthority": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+      "feedIdHex": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "price": "99994994",
+      "conf": "9501",
+      "exponent": -8,
+      "publishTime": 1788179547,
+      "prevPublishTime": 1788179546,
+      "emaPrice": "99992602",
+      "emaConf": "10711",
+      "postedSlot": "490936100",
+      "fields": [
+        {
+          "name": "discriminator",
+          "offset": 0,
+          "size": 8,
+          "value": "22f123639d7ef4cd"
+        },
+        {
+          "name": "write_authority",
+          "offset": 8,
+          "size": 32,
+          "value": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX"
+        },
+        {
+          "name": "verification_level_u8",
+          "offset": 40,
+          "size": 1,
+          "value": "1"
+        },
+        {
+          "name": "feed_id",
+          "offset": 41,
+          "size": 32,
+          "value": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+        },
+        {
+          "name": "price_i64",
+          "offset": 73,
+          "size": 8,
+          "value": "99994994"
+        },
+        {
+          "name": "conf_u64",
+          "offset": 81,
+          "size": 8,
+          "value": "9501"
+        },
+        {
+          "name": "exponent_i32",
+          "offset": 89,
+          "size": 4,
+          "value": "-8"
+        },
+        {
+          "name": "publish_time_i64_unix",
+          "offset": 93,
+          "size": 8,
+          "value": "1788179547"
+        },
+        {
+          "name": "prev_publish_time_i64",
+          "offset": 101,
+          "size": 8,
+          "value": "1788179546"
+        },
+        {
+          "name": "ema_price_i64",
+          "offset": 109,
+          "size": 8,
+          "value": "99992602"
+        },
+        {
+          "name": "ema_conf_u64",
+          "offset": 117,
+          "size": 8,
+          "value": "10711"
+        },
+        {
+          "name": "posted_slot_u64",
+          "offset": 125,
+          "size": 8,
+          "value": "490936100"
+        }
+      ]
+    }
+  },
+  "rentExemptMin134": 1823520,
+  "searchedAbsent": [
+    "FX.EUR/USD feed id: zero receiver accounts dataSize=134 with memcmp@41",
+    "Chainlink AggregatorV3-shaped account (answer+updatedAt, no conf): not located on Devnet in this lab"
+  ]
+}

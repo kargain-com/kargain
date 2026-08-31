@@ -1,0 +1,12 @@
+[package]
+name = "kargain-price"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Sole PriceUpdateV2_msg@41 decode + freshness/confidence decisions (S6 #5 / D-07)"
+
+[dependencies]
+kargain-errors = { workspace = true }
+
+[dev-dependencies]

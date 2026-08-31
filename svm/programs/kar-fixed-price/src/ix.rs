@@ -1,7 +1,8 @@
-//! FixedPrice mode — asset denomination only (S6 #3b).
+//! FixedPrice mode — asset + fiat (P4 two-layer; S6 #5).
 //! Custody via HarnessAsset ownership-move (D-25 harness path); Core TransferV1 when passport-wired.
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use kargain_agented_split::{agented_floor_scale_base, CompensationForm as SplitForm};
 use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, escrow_pda, pay_spl,
     require_admitted_spl_mint_account, require_full_delivery, spl_close_account_ix,
@@ -15,12 +16,16 @@ use kargain_consignment_base::{
     is_escrow_approved, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause,
     recall_pda, release_custody, request_recall, require_agented_price_meets_floor,
     require_can_open, require_mandate_allows_open, require_not_paused, revoke_mandate,
-    set_price, take_custody, terminate_to_owner, unpause, write_open, CloseReason,
-    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
+    set_price, set_snapshot_floor, take_custody, terminate_to_owner, unpause, write_open,
+    CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
     CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
 };
 use kargain_errors::KargainError;
+use kargain_price::{
+    fiat_usd_1e8_to_token_amount, read_price_update, MAX_FEED_STALENESS, MIN_FEED_STALENESS,
+    PRICE_UPDATE_V2_LEN,
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -89,8 +94,13 @@ pub enum FixedPriceIx {
     EnterCommitted { token_id: [u8; 32] },
     Pause,
     Unpause,
-    /// Approve SPL payment mint (asset-only — no feed). Mint account required; decimals proven.
-    ApprovePaymentToken,
+    /// Admit SPL payment mint. Zeros feed_id ⇒ asset-only; else pin price_program + bounds.
+    ApprovePaymentToken {
+        price_program: [u8; 32],
+        feed_id: [u8; 32],
+        staleness_tolerance: u32,
+        max_confidence_bps: u32,
+    },
     /// Soft-revoke: enabled=false; config retained for in-flight buy.
     RevokePaymentToken { mint: [u8; 32] },
     /// Buy: pull payment → custody to buyer → pay_split → Sold. Soft-revoke does **not** re-check enabled.
@@ -104,12 +114,27 @@ pub enum FixedPriceIx {
         token_id: [u8; 32],
         requested_at: u64,
     },
+    /// Test: seed lab PriceUpdateV2 bytes under PDA `["price-lab", feed_id]` (authority-gated).
+    ForceSeedPriceAccount {
+        feed_id: [u8; 32],
+        data: [u8; PRICE_UPDATE_V2_LEN],
+    },
 }
 
 pub const PAYMENT_TOKEN_SEED: &[u8] = b"payment-token";
 pub const NOTE_SEED: &[u8] = b"settlement-note";
+pub const PRICE_LAB_SEED: &[u8] = b"price-lab";
 pub const PAYMENT_TOKEN_DISC: [u8; 8] = *b"kp_fptk\0";
 pub const NOTE_DISC: [u8; 8] = *b"kp_fpnt\0";
+
+/// Solidity `bytes32("USD")` — right-padded.
+pub const CURRENCY_USD: [u8; 32] = {
+    let mut a = [0u8; 32];
+    a[0] = b'U';
+    a[1] = b'S';
+    a[2] = b'D';
+    a
+};
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct PaymentTokenRecord {
@@ -118,10 +143,19 @@ pub struct PaymentTokenRecord {
     pub enabled: bool,
     pub decimals: u8,
     pub bump: u8,
+    /// Zero program + zero feed_id ⇒ asset-only admission.
+    pub price_program: [u8; 32],
+    pub feed_id: [u8; 32],
+    pub staleness_tolerance: u32,
+    pub max_confidence_bps: u32,
 }
 
 impl PaymentTokenRecord {
-    pub const SPACE: usize = 8 + 32 + 1 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 1 + 1 + 32 + 32 + 4 + 4;
+
+    pub fn has_feed(&self) -> bool {
+        self.feed_id != [0u8; 32]
+    }
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -143,6 +177,10 @@ pub fn payment_token_pda(program_id: &Pubkey, mint: &[u8; 32]) -> (Pubkey, u8) {
 
 pub fn note_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[NOTE_SEED, token_id], program_id)
+}
+
+pub fn price_lab_pda(program_id: &Pubkey, feed_id: &[u8; 32]) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[PRICE_LAB_SEED, feed_id], program_id)
 }
 
 /// Per-asset may_open flag stored beside asset (harness stub for passport may).
@@ -222,7 +260,19 @@ pub fn process_instruction(
         FixedPriceIx::EnterCommitted { token_id } => enter_committed_ix(program_id, accounts, token_id),
         FixedPriceIx::Pause => pause_ix(program_id, accounts),
         FixedPriceIx::Unpause => unpause_ix(program_id, accounts),
-        FixedPriceIx::ApprovePaymentToken => approve_payment_token(program_id, accounts),
+        FixedPriceIx::ApprovePaymentToken {
+            price_program,
+            feed_id,
+            staleness_tolerance,
+            max_confidence_bps,
+        } => approve_payment_token(
+            program_id,
+            accounts,
+            price_program,
+            feed_id,
+            staleness_tolerance,
+            max_confidence_bps,
+        ),
         FixedPriceIx::RevokePaymentToken { mint } => revoke_payment_token(program_id, accounts, mint),
         FixedPriceIx::Buy { token_id } => buy(program_id, accounts, token_id),
         FixedPriceIx::SetSettlementNote {
@@ -238,6 +288,9 @@ pub fn process_instruction(
             token_id,
             requested_at,
         } => force_recall_at(program_id, accounts, token_id, requested_at),
+        FixedPriceIx::ForceSeedPriceAccount { feed_id, data } => {
+            force_seed_price_account(program_id, accounts, feed_id, data)
+        }
     }
 }
 
@@ -245,16 +298,23 @@ fn into_pe(e: KargainError) -> ProgramError {
     ProgramError::Custom(u32::from(e))
 }
 
-/// Mode open gate: Fiat refused first (D-29), then SPL must be admitted+enabled.
-/// Call after pause check; before require_can_open / custody / write_open.
+/// Mode open gate (after pause): Fiat requires pinned feed; SPL must be admitted+enabled.
 fn require_mode_open(
     program_id: &Pubkey,
     denom: &Denomination,
     asset_mint: &[u8; 32],
     payment_token_info: Option<&AccountInfo>,
 ) -> Result<(), ProgramError> {
-    if denom.kind == DenominationKind::Fiat as u8 {
-        return Err(into_pe(KargainError::FiatDenominationRefused));
+    let fiat = denom.kind == DenominationKind::Fiat as u8;
+    if fiat {
+        if denom.currency_code != CURRENCY_USD {
+            // Non-USD currency feeds not configured on this MVP config.
+            return Err(into_pe(KargainError::CurrencyNotAvailableOnChain));
+        }
+        if *asset_mint == [0u8; 32] {
+            // Native USD feed not on CommerceConfig yet — refuse by name.
+            return Err(into_pe(KargainError::CurrencyNotAvailableOnChain));
+        }
     }
     if *asset_mint == [0u8; 32] {
         return Ok(());
@@ -271,6 +331,9 @@ fn require_mode_open(
         .map_err(|_| ProgramError::InvalidAccountData)?;
     if !rec.enabled || rec.mint != *asset_mint {
         return Err(into_pe(KargainError::PaymentTokenNotSupported));
+    }
+    if fiat && !rec.has_feed() {
+        return Err(into_pe(KargainError::PaymentTokenFeedRequired));
     }
     Ok(())
 }
@@ -1124,7 +1187,66 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
     if !c.is_offered_actionable() {
         return Err(into_pe(KargainError::NotOffered));
     }
-    let amount = c.price;
+
+    let fiat = c.denomination.kind == DenominationKind::Fiat as u8;
+    let native = c.asset == [0u8; 32];
+    let amount = if fiat {
+        if c.denomination.currency_code != CURRENCY_USD {
+            return Err(into_pe(KargainError::CurrencyNotAvailableOnChain));
+        }
+        if native {
+            return Err(into_pe(KargainError::CurrencyNotAvailableOnChain));
+        }
+        let payment_tok = next_account_info(iter)?;
+        let price_acc = next_account_info(iter)?;
+        let (pt_key, _) = payment_token_pda(program_id, &c.asset);
+        if payment_tok.key != &pt_key {
+            return Err(ProgramError::InvalidSeeds);
+        }
+        let rec = PaymentTokenRecord::try_from_slice(&payment_tok.try_borrow_data()?)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if rec.mint != c.asset || !rec.has_feed() {
+            return Err(into_pe(KargainError::PaymentTokenFeedRequired));
+        }
+        let now = Clock::get()?.unix_timestamp;
+        let reading = read_price_update(
+            &price_acc.try_borrow_data()?,
+            &price_acc.owner.to_bytes(),
+            &rec.price_program,
+            &rec.feed_id,
+            now,
+            rec.staleness_tolerance,
+            rec.max_confidence_bps,
+        )
+        .map_err(into_pe)?;
+        fiat_usd_1e8_to_token_amount(c.price, &reading, rec.decimals).map_err(into_pe)?
+    } else {
+        c.price
+    };
+
+    // D-27: rewrite fiat agented floor to asset units before split.
+    if fiat && c.agent != [0u8; 32] && c.floor != 0 {
+        let form = match c.compensation.form_enum() {
+            Some(CompensationForm::Margin) => SplitForm::Margin,
+            Some(CompensationForm::Commission) => SplitForm::Commission,
+            None => return Err(ProgramError::InvalidAccountData),
+        };
+        let fee = u64::from(c.platform_fee_bps);
+        let base_fiat =
+            agented_floor_scale_base(c.price, form, c.compensation.commission_bps, fee)
+                .map_err(into_pe)?;
+        let base_asset =
+            agented_floor_scale_base(amount, form, c.compensation.commission_bps, fee)
+                .map_err(into_pe)?;
+        if base_fiat == 0 {
+            return Err(into_pe(KargainError::BadOracleAnswer));
+        }
+        let floor_asset = ((u128::from(base_asset) * u128::from(c.floor)) / u128::from(base_fiat))
+            as u64;
+        set_snapshot_floor(&mut c, floor_asset).map_err(into_pe)?;
+        save_consignment(consignment, &c)?;
+    }
+
     let (escrow_key, escrow_bump) = escrow_pda(program_id, &token_id);
     if escrow.key != &escrow_key {
         return Err(ProgramError::InvalidSeeds);
@@ -1141,7 +1263,6 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
         )?;
     }
 
-    let native = c.asset == [0u8; 32];
     let mut spl_accounts: Option<(&AccountInfo, &AccountInfo, &AccountInfo)> = None;
     if native {
         pay_native(buyer, escrow, amount, system)?;
@@ -1502,7 +1623,14 @@ fn spl_transfer(
 }
 
 /// Accounts: authority(s) · config · mint · payment_token · system · payer
-fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn approve_payment_token(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    price_program: [u8; 32],
+    feed_id: [u8; 32],
+    staleness_tolerance: u32,
+    max_confidence_bps: u32,
+) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
@@ -1527,6 +1655,30 @@ fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     if payment_token.key != &key {
         return Err(ProgramError::InvalidSeeds);
     }
+
+    let feed_zero = feed_id == [0u8; 32];
+    if feed_zero {
+        if staleness_tolerance != 0 {
+            return Err(into_pe(KargainError::StalenessWithoutFeed));
+        }
+        if max_confidence_bps != 0 {
+            return Err(into_pe(KargainError::StalenessWithoutFeed));
+        }
+        if price_program != [0u8; 32] {
+            return Err(into_pe(KargainError::InvalidFeed));
+        }
+    } else {
+        if price_program == [0u8; 32] {
+            return Err(into_pe(KargainError::InvalidFeed));
+        }
+        if staleness_tolerance == 0 {
+            return Err(into_pe(KargainError::ZeroFeedStaleness));
+        }
+        if staleness_tolerance < MIN_FEED_STALENESS || staleness_tolerance > MAX_FEED_STALENESS {
+            return Err(into_pe(KargainError::FeedStalenessOutOfBounds));
+        }
+    }
+
     if payment_token.data_is_empty() {
         create_pda(
             program_id,
@@ -1536,13 +1688,24 @@ fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
             PaymentTokenRecord::SPACE,
             &[PAYMENT_TOKEN_SEED, &mint_key, &[bump]],
         )?;
+    } else {
+        let existing = PaymentTokenRecord::try_from_slice(&payment_token.try_borrow_data()?)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if existing.has_feed() && feed_zero {
+            return Err(into_pe(KargainError::CannotClearPaymentTokenFeed));
+        }
     }
+
     let rec = PaymentTokenRecord {
         discriminator: PAYMENT_TOKEN_DISC,
         mint: mint_key,
         enabled: true,
         decimals,
         bump,
+        price_program: if feed_zero { [0u8; 32] } else { price_program },
+        feed_id,
+        staleness_tolerance: if feed_zero { 0 } else { staleness_tolerance },
+        max_confidence_bps: if feed_zero { 0 } else { max_confidence_bps },
     };
     let mut data = payment_token.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
@@ -1769,5 +1932,55 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
         claim_info.try_borrow_mut_data()?.fill(0);
         claim_info.assign(&system_program::ID);
     }
+    Ok(())
+}
+
+/// Authority-gated lab seed: write 134-byte PriceUpdateV2 layout to PDA owned by this program.
+/// LIVE admits with `price_program = FixedPrice program id`. Production pins the real receiver.
+fn force_seed_price_account(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    feed_id: [u8; 32],
+    data: [u8; PRICE_UPDATE_V2_LEN],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
+    let price_info = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    if !authority.is_signer || !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let (cfg_key, _) = config_pda(program_id);
+    if config.key != &cfg_key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let cfg = load_config(config)?;
+    if cfg.authority != authority.key.to_bytes() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if feed_id == [0u8; 32] {
+        return Err(into_pe(KargainError::InvalidFeed));
+    }
+    let (key, bump) = price_lab_pda(program_id, &feed_id);
+    if price_info.key != &key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if price_info.data_is_empty() {
+        create_pda(
+            program_id,
+            payer,
+            price_info,
+            system,
+            PRICE_UPDATE_V2_LEN,
+            &[PRICE_LAB_SEED, &feed_id, &[bump]],
+        )?;
+    }
+    if price_info.data_len() < PRICE_UPDATE_V2_LEN {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    let mut dst = price_info.try_borrow_mut_data()?;
+    dst[..PRICE_UPDATE_V2_LEN].copy_from_slice(&data);
     Ok(())
 }

@@ -238,7 +238,7 @@ pub enum KargainError {
     NotSellerOrAgent = 99,
     #[error("DirectEthNotAccepted")]
     DirectEthNotAccepted = 100,
-    /// SVM asset-only FixedPrice: Fiat denomination refused (no feed/quote surface).
+    /// Ascending (and oracle-banned modes): Fiat denomination refused.
     #[error("FiatDenominationRefused")]
     FiatDenominationRefused = 101,
 
@@ -283,6 +283,33 @@ pub enum KargainError {
     NotPassportHolder = 120,
     #[error("PassportNotVerified")]
     PassportNotVerified = 121,
+
+    // ---- S6 #5 FixedPrice fiat / oracle (append only) ----
+    #[error("StalePrice")]
+    StalePrice = 122,
+    #[error("BadOracleAnswer")]
+    BadOracleAnswer = 123,
+    #[error("PaymentTokenFeedRequired")]
+    PaymentTokenFeedRequired = 124,
+    #[error("CannotClearPaymentTokenFeed")]
+    CannotClearPaymentTokenFeed = 125,
+    #[error("ZeroFeedStaleness")]
+    ZeroFeedStaleness = 126,
+    #[error("StalenessWithoutFeed")]
+    StalenessWithoutFeed = 127,
+    #[error("FeedStalenessOutOfBounds")]
+    FeedStalenessOutOfBounds = 128,
+    #[error("InvalidFeed")]
+    InvalidFeed = 129,
+    #[error("InvalidFeedDecimals")]
+    InvalidFeedDecimals = 130,
+    /// D-07 — SVM-only named confidence bound (not folded into StalePrice).
+    #[error("ConfidenceTooWide")]
+    ConfidenceTooWide = 131,
+    #[error("InvalidCurrencyCode")]
+    InvalidCurrencyCode = 132,
+    #[error("CurrencyNotAvailableOnChain")]
+    CurrencyNotAvailableOnChain = 133,
 }
 
 impl KargainError {
@@ -411,6 +438,18 @@ impl KargainError {
             Self::SettlementPending => "SettlementPending",
             Self::NotPassportHolder => "NotPassportHolder",
             Self::PassportNotVerified => "PassportNotVerified",
+            Self::StalePrice => "StalePrice",
+            Self::BadOracleAnswer => "BadOracleAnswer",
+            Self::PaymentTokenFeedRequired => "PaymentTokenFeedRequired",
+            Self::CannotClearPaymentTokenFeed => "CannotClearPaymentTokenFeed",
+            Self::ZeroFeedStaleness => "ZeroFeedStaleness",
+            Self::StalenessWithoutFeed => "StalenessWithoutFeed",
+            Self::FeedStalenessOutOfBounds => "FeedStalenessOutOfBounds",
+            Self::InvalidFeed => "InvalidFeed",
+            Self::InvalidFeedDecimals => "InvalidFeedDecimals",
+            Self::ConfidenceTooWide => "ConfidenceTooWide",
+            Self::InvalidCurrencyCode => "InvalidCurrencyCode",
+            Self::CurrencyNotAvailableOnChain => "CurrencyNotAvailableOnChain",
         }
     }
 
@@ -539,6 +578,18 @@ impl KargainError {
             SettlementPending,
             NotPassportHolder,
             PassportNotVerified,
+            StalePrice,
+            BadOracleAnswer,
+            PaymentTokenFeedRequired,
+            CannotClearPaymentTokenFeed,
+            ZeroFeedStaleness,
+            StalenessWithoutFeed,
+            FeedStalenessOutOfBounds,
+            InvalidFeed,
+            InvalidFeedDecimals,
+            ConfidenceTooWide,
+            InvalidCurrencyCode,
+            CurrencyNotAvailableOnChain,
         ]
     }
 }

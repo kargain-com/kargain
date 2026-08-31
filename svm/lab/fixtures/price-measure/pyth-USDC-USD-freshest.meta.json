@@ -1,0 +1,102 @@
+{
+  "slot": 490936351,
+  "missing": false,
+  "address": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+  "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+  "lamports": 1823520,
+  "dataLen": 134,
+  "executable": false,
+  "rentEpoch": 18446744073709552000,
+  "dataBase64": "IvEjY51+9M2+k5qDCfVkBxh//zCsVLFpSYvpn22OG/1CRGgM1PfR4gHqoCDGHMR5cSgTRhzhU4lKlqbACyHtDPwnmNH5qenJSnLN9QUAAAAAHSUAAAAAAAD4////W3SVagAAAABadJVqAAAAABrE9QUAAAAA1ykAAAAAAAAkF0MdAAAAAAA=",
+  "decoded": {
+    "layout": "PriceUpdateV2_msg@41",
+    "discriminatorHex": "22f123639d7ef4cd",
+    "verificationLevel": 1,
+    "writeAuthority": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX",
+    "feedIdHex": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+    "price": "99994994",
+    "conf": "9501",
+    "exponent": -8,
+    "publishTime": 1788179547,
+    "prevPublishTime": 1788179546,
+    "emaPrice": "99992602",
+    "emaConf": "10711",
+    "postedSlot": "490936100",
+    "fields": [
+      {
+        "name": "discriminator",
+        "offset": 0,
+        "size": 8,
+        "value": "22f123639d7ef4cd"
+      },
+      {
+        "name": "write_authority",
+        "offset": 8,
+        "size": 32,
+        "value": "Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX"
+      },
+      {
+        "name": "verification_level_u8",
+        "offset": 40,
+        "size": 1,
+        "value": "1"
+      },
+      {
+        "name": "feed_id",
+        "offset": 41,
+        "size": 32,
+        "value": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+      },
+      {
+        "name": "price_i64",
+        "offset": 73,
+        "size": 8,
+        "value": "99994994"
+      },
+      {
+        "name": "conf_u64",
+        "offset": 81,
+        "size": 8,
+        "value": "9501"
+      },
+      {
+        "name": "exponent_i32",
+        "offset": 89,
+        "size": 4,
+        "value": "-8"
+      },
+      {
+        "name": "publish_time_i64_unix",
+        "offset": 93,
+        "size": 8,
+        "value": "1788179547"
+      },
+      {
+        "name": "prev_publish_time_i64",
+        "offset": 101,
+        "size": 8,
+        "value": "1788179546"
+      },
+      {
+        "name": "ema_price_i64",
+        "offset": 109,
+        "size": 8,
+        "value": "99992602"
+      },
+      {
+        "name": "ema_conf_u64",
+        "offset": 117,
+        "size": 8,
+        "value": "10711"
+      },
+      {
+        "name": "posted_slot_u64",
+        "offset": 125,
+        "size": 8,
+        "value": "490936100"
+      }
+    ]
+  },
+  "feedIdHex_docs": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+  "rankNote": "max publish_time among receiver GPA memcmp"
+}

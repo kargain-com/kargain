@@ -1,7 +1,8 @@
-//! Kar FixedPrice (SVM) — asset-denominated selling mode.
+//! Kar FixedPrice (SVM) — asset + fiat (P4 two-layer) selling mode.
 //!
-//! Fiat denomination is refused by name (`FiatDenominationRefused`). No price-account
-//! / oracle / feed surface (S6 #3b). Shared automaton + money crates own phase/split/payout.
+//! Fiat offered iff payment-token (or native) feed path is pinned at admit.
+//! Purchase reads a price account via `kargain-price` (sole decode owner). Ascending
+//! stays oracle-banned. Shared automaton + money crates own phase/split/payout.
 //! Custody via ownership-move (D-25 harness path).
 
 use solana_program::entrypoint;

@@ -25,7 +25,8 @@ pub struct AgentedSplit {
     pub ok: bool,
 }
 
-fn agented_floor_scale_base(
+/// Margin/Commission scale base used at open and for FixedPrice fiat floor rewrite (D-27).
+pub fn agented_floor_scale_base(
     settled: u64,
     form: CompensationForm,
     commission_bps: u16,

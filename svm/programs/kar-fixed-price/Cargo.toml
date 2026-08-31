@@ -20,3 +20,4 @@ kargain-errors = { workspace = true }
 kargain-consignment-base = { workspace = true }
 kargain-claimable-payouts = { workspace = true }
 kargain-agented-split = { workspace = true }
+kargain-price = { workspace = true }

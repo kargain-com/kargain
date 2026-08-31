@@ -1,0 +1,11 @@
+{
+  "address": "127dUwbXSj4uJReajDDr5MTaSA2NXRJjbggR6J8o4PGA",
+  "slot": 490937061,
+  "owner": "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
+  "lamports": 27693840,
+  "dataLen": 3851,
+  "discriminatorHex": "d9e64165c9a21b7d",
+  "nameUtf8AtOffset8": "Aggregator-1",
+  "gpaNote": "Devnet GPA owner=SW1TCH… dataSize=3851 count=1784 (measured)",
+  "resultDecode": "NOT VERIFIED from bytes this lab — decimal/scale scan did not yield a unique SOL/USD-shaped (mantissa,scale) pair; do not treat docs AggregatorAccountData offsets as measured"
+}

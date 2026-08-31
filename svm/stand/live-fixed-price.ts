@@ -1,5 +1,5 @@
 /**
- * Local-validator proof: FixedPrice asset-denomination mode (S6 #3b-fix).
+ * Local-validator proof: FixedPrice asset + fiat (S6 #5).
  *
  * Asserts chain state (never success-only / invented return constants):
  * - Native buy: pull → buyer owns asset → three-leg deltas = fee snapshot split
@@ -9,7 +9,9 @@
  * - SPL buy: escrow ATA receives full price (delivery measure on program path)
  * - External confirm: custody to buyer; platform/seller/agent/escrow unchanged (D-32)
  * - Pause: open+buy refuse (ContractPaused); external confirm still works
- * - Fiat open → FiatDenominationRefused (D-29)
+ * - Native Fiat open → CurrencyNotAvailableOnChain (no native USD feed on config)
+ * - SPL Fiat without feed → PaymentTokenFeedRequired
+ * - SPL Fiat with lab price account: fresh buy converts; stale/wide/bad refuse by name
  *
  * Requires: local validator, kar_fixed_price.so preloaded or deployable.
  */
@@ -51,7 +53,11 @@ const DEPLOY = path.join(ROOT, "svm/target/deploy");
 const ERR = {
   ContractPaused: 76,
   TransferFeeExtensionForbidden: 69,
-  FiatDenominationRefused: 101,
+  CurrencyNotAvailableOnChain: 133,
+  PaymentTokenFeedRequired: 124,
+  StalePrice: 122,
+  BadOracleAnswer: 123,
+  ConfidenceTooWide: 131,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2 } as const;
@@ -71,7 +77,15 @@ const IX = {
   Buy: 21,
   SetSettlementNote: 22,
   ConfirmExternalPayment: 23,
+  ForceSeedPriceAccount: 26,
 } as const;
+
+const FIXTURES = path.join(ROOT, "svm/lab/fixtures/price-measure");
+const LAB_FEED_ID = Buffer.from(
+  "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+  "hex",
+);
+const CURRENCY_USD = Buffer.concat([Buffer.from("USD"), Buffer.alloc(29)]);
 
 function loadProgramId(): InstanceType<typeof PublicKey> {
   const kpPath = path.join(DEPLOY, "kar_fixed_price-keypair.json");
@@ -113,6 +127,44 @@ function encU64(n: bigint | number): Buffer {
   const b = Buffer.alloc(8);
   b.writeBigUInt64LE(BigInt(n), 0);
   return b;
+}
+function encI64(n: bigint | number): Buffer {
+  const b = Buffer.alloc(8);
+  b.writeBigInt64LE(BigInt(n), 0);
+  return b;
+}
+
+/** Asset-only admit (zeros feed). */
+function encApproveAssetOnly(): Buffer {
+  return Buffer.concat([
+    Buffer.from([IX.ApprovePaymentToken]),
+    Buffer.alloc(32, 0),
+    Buffer.alloc(32, 0),
+    encU32(0),
+    encU32(0),
+  ]);
+}
+
+/** Fiat-capable admit — pin FP program as price_program for lab ForceSeed. */
+function encApproveWithFeed(
+  priceProgram: InstanceType<typeof PublicKey>,
+  feedId: Buffer,
+  staleness: number,
+  maxConfBps: number,
+): Buffer {
+  return Buffer.concat([
+    Buffer.from([IX.ApprovePaymentToken]),
+    priceProgram.toBuffer(),
+    feedId,
+    encU32(staleness),
+    encU32(maxConfBps),
+  ]);
+}
+
+function patchPublishTime(bin: Buffer, unix: number): Buffer {
+  const out = Buffer.from(bin);
+  encI64(unix).copy(out, 93);
+  return out;
 }
 
 function customErrCode(e: unknown): number | null {
@@ -380,7 +432,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(balS1 - balS0, sellerAmt);
   assert.equal(balA1 - balA0, agentAmt);
 
-  // ---- Fiat refuse ----
+  // ---- Fiat native refuse (no native USD feed on config) ----
   const tokenF = Buffer.alloc(32, 0x22);
   const assetF = await createAndApproveAsset(conn, programId, payer, seller, tokenF, custodyPda);
   const [consignF] = pda(programId, [Buffer.from("consignment"), tokenF]);
@@ -403,13 +455,13 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           tokenF,
           Buffer.alloc(32, 0),
           Buffer.from([1]), // Fiat
-          Buffer.alloc(32, 0),
+          CURRENCY_USD,
           encU64(500),
         ]),
       ),
     ),
     [seller, payer],
-    ERR.FiatDenominationRefused,
+    ERR.CurrencyNotAvailableOnChain,
   );
 
   // ---- External confirm (no money movement) ----
@@ -743,7 +795,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
-        Buffer.from([IX.ApprovePaymentToken]),
+        encApproveAssetOnly(),
       ),
     ),
     [authority, payer],
@@ -980,12 +1032,613 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
-        Buffer.from([IX.ApprovePaymentToken]),
+        encApproveAssetOnly(),
       ),
     ),
     [authority, payer],
     ERR.TransferFeeExtensionForbidden,
   );
+
+  // ---- Fiat SPL: no feed → PaymentTokenFeedRequired (fresh enabled asset-only mint) ----
+  const mintNoFeed = Keypair.generate();
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: mintNoFeed.publicKey,
+        space: 82,
+        lamports: await getMinimumBalanceForRentExemptMint(conn),
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeMint2Instruction(mintNoFeed.publicKey, 6, payer.publicKey, null),
+    ),
+    [payer, mintNoFeed],
+  );
+  const [payTokNoFeed] = pda(programId, [
+    Buffer.from("payment-token"),
+    mintNoFeed.publicKey.toBuffer(),
+  ]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: mintNoFeed.publicKey, isSigner: false, isWritable: false },
+          { pubkey: payTokNoFeed, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+        ],
+        encApproveAssetOnly(),
+      ),
+    ),
+    [authority, payer],
+  );
+  const tokenNoFeed = Buffer.alloc(32, 0x66);
+  const assetNoFeed = await createAndApproveAsset(
+    conn,
+    programId,
+    payer,
+    seller,
+    tokenNoFeed,
+    custodyPda,
+  );
+  const [consignNoFeed] = pda(programId, [Buffer.from("consignment"), tokenNoFeed]);
+  const fiatNoFeedCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetNoFeed, isSigner: false, isWritable: true },
+          { pubkey: consignNoFeed, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokNoFeed, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenDirect]),
+          tokenNoFeed,
+          mintNoFeed.publicKey.toBuffer(),
+          Buffer.from([1]),
+          CURRENCY_USD,
+          encU64(100_000_000n),
+        ]),
+      ),
+    ),
+    [seller, payer],
+    ERR.PaymentTokenFeedRequired,
+  );
+
+  // ---- Fiat SPL with lab price account ----
+  const mintFiat = Keypair.generate();
+  const mintFiatLamports = await getMinimumBalanceForRentExemptMint(conn);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: mintFiat.publicKey,
+        space: 82,
+        lamports: mintFiatLamports,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeMint2Instruction(mintFiat.publicKey, 6, payer.publicKey, null),
+    ),
+    [payer, mintFiat],
+  );
+  const [payTokFiat] = pda(programId, [
+    Buffer.from("payment-token"),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: payTokFiat, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+        ],
+        encApproveWithFeed(programId, LAB_FEED_ID, 3600, 200),
+      ),
+    ),
+    [authority, payer],
+  );
+
+  const [priceLabPda] = pda(programId, [Buffer.from("price-lab"), LAB_FEED_ID]);
+  const slot = await conn.getSlot("confirmed");
+  let nowUnix = await conn.getBlockTime(slot);
+  if (nowUnix == null) nowUnix = Math.floor(Date.now() / 1000);
+
+  async function seedPrice(fixtureName: string, publishUnix: number) {
+    const raw = readFileSync(path.join(FIXTURES, fixtureName));
+    const data = patchPublishTime(raw, publishUnix);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          [
+            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+            { pubkey: configPda, isSigner: false, isWritable: false },
+            { pubkey: priceLabPda, isSigner: false, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          ],
+          Buffer.concat([
+            Buffer.from([IX.ForceSeedPriceAccount]),
+            LAB_FEED_ID,
+            data,
+          ]),
+        ),
+      ),
+      [authority, payer],
+    );
+  }
+
+  // Stale → StalePrice
+  await seedPrice("lab-stale.bin", nowUnix - 1_000_000);
+  const tokenStale = Buffer.alloc(32, 0x71);
+  const assetStale = await createAndApproveAsset(
+    conn,
+    programId,
+    payer,
+    seller,
+    tokenStale,
+    custodyPda,
+  );
+  const [consignStale] = pda(programId, [Buffer.from("consignment"), tokenStale]);
+  const [recallStale] = pda(programId, [Buffer.from("recall"), tokenStale]);
+  const [escrowStale] = pda(programId, [Buffer.from("escrow"), tokenStale]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetStale, isSigner: false, isWritable: true },
+          { pubkey: consignStale, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenDirect]),
+          tokenStale,
+          mintFiat.publicKey.toBuffer(),
+          Buffer.from([1]),
+          CURRENCY_USD,
+          encU64(150_0000_0000n),
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
+  const buyerAtaStale = Keypair.generate();
+  const escrowAtaStale = Keypair.generate();
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: buyerAtaStale.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        buyerAtaStale.publicKey,
+        mintFiat.publicKey,
+        buyer.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: escrowAtaStale.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(escrowAtaStale.publicKey, mintFiat.publicKey, escrowStale),
+      createMintToInstruction(mintFiat.publicKey, buyerAtaStale.publicKey, payer.publicKey, 2_000_000),
+    ),
+    [payer, buyerAtaStale, escrowAtaStale],
+  );
+  const staleBuyCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: consignStale, isSigner: false, isWritable: true },
+          { pubkey: assetStale, isSigner: false, isWritable: true },
+          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: recallStale, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: escrowStale, isSigner: false, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: buyerAtaStale.publicKey, isSigner: false, isWritable: true },
+          { pubkey: escrowAtaStale.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([IX.Buy]), tokenStale]),
+      ),
+    ),
+    [buyer, payer],
+    ERR.StalePrice,
+  );
+
+  // Wide conf → ConfidenceTooWide
+  await seedPrice("lab-wide_conf.bin", nowUnix);
+  const tokenWide = Buffer.alloc(32, 0x72);
+  const assetWide = await createAndApproveAsset(
+    conn,
+    programId,
+    payer,
+    seller,
+    tokenWide,
+    custodyPda,
+  );
+  const [consignWide] = pda(programId, [Buffer.from("consignment"), tokenWide]);
+  const [recallWide] = pda(programId, [Buffer.from("recall"), tokenWide]);
+  const [escrowWide] = pda(programId, [Buffer.from("escrow"), tokenWide]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetWide, isSigner: false, isWritable: true },
+          { pubkey: consignWide, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenDirect]),
+          tokenWide,
+          mintFiat.publicKey.toBuffer(),
+          Buffer.from([1]),
+          CURRENCY_USD,
+          encU64(150_0000_0000n),
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
+  const buyerAtaWide = Keypair.generate();
+  const escrowAtaWide = Keypair.generate();
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: buyerAtaWide.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        buyerAtaWide.publicKey,
+        mintFiat.publicKey,
+        buyer.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: escrowAtaWide.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(escrowAtaWide.publicKey, mintFiat.publicKey, escrowWide),
+      createMintToInstruction(mintFiat.publicKey, buyerAtaWide.publicKey, payer.publicKey, 2_000_000),
+    ),
+    [payer, buyerAtaWide, escrowAtaWide],
+  );
+  const wideConfCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: consignWide, isSigner: false, isWritable: true },
+          { pubkey: assetWide, isSigner: false, isWritable: true },
+          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: recallWide, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: escrowWide, isSigner: false, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: buyerAtaWide.publicKey, isSigner: false, isWritable: true },
+          { pubkey: escrowAtaWide.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([IX.Buy]), tokenWide]),
+      ),
+    ),
+    [buyer, payer],
+    ERR.ConfidenceTooWide,
+  );
+
+  // Non-positive → BadOracleAnswer
+  await seedPrice("lab-non_positive.bin", nowUnix);
+  const tokenBad = Buffer.alloc(32, 0x73);
+  const assetBad = await createAndApproveAsset(conn, programId, payer, seller, tokenBad, custodyPda);
+  const [consignBad] = pda(programId, [Buffer.from("consignment"), tokenBad]);
+  const [recallBad] = pda(programId, [Buffer.from("recall"), tokenBad]);
+  const [escrowBad] = pda(programId, [Buffer.from("escrow"), tokenBad]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetBad, isSigner: false, isWritable: true },
+          { pubkey: consignBad, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenDirect]),
+          tokenBad,
+          mintFiat.publicKey.toBuffer(),
+          Buffer.from([1]),
+          CURRENCY_USD,
+          encU64(150_0000_0000n),
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
+  const buyerAtaBad = Keypair.generate();
+  const escrowAtaBad = Keypair.generate();
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: buyerAtaBad.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(buyerAtaBad.publicKey, mintFiat.publicKey, buyer.publicKey),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: escrowAtaBad.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(escrowAtaBad.publicKey, mintFiat.publicKey, escrowBad),
+      createMintToInstruction(mintFiat.publicKey, buyerAtaBad.publicKey, payer.publicKey, 2_000_000),
+    ),
+    [payer, buyerAtaBad, escrowAtaBad],
+  );
+  const badOracleCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: consignBad, isSigner: false, isWritable: true },
+          { pubkey: assetBad, isSigner: false, isWritable: true },
+          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: recallBad, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: escrowBad, isSigner: false, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: buyerAtaBad.publicKey, isSigner: false, isWritable: true },
+          { pubkey: escrowAtaBad.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([IX.Buy]), tokenBad]),
+      ),
+    ),
+    [buyer, payer],
+    ERR.BadOracleAnswer,
+  );
+
+  // Fresh narrow → settle (fiat $150 → 1_000_000 token units at feed $150)
+  await seedPrice("lab-fresh_narrow.bin", nowUnix);
+  const tokenFresh = Buffer.alloc(32, 0x74);
+  const assetFresh = await createAndApproveAsset(
+    conn,
+    programId,
+    payer,
+    seller,
+    tokenFresh,
+    custodyPda,
+  );
+  const [consignFresh] = pda(programId, [Buffer.from("consignment"), tokenFresh]);
+  const [recallFresh] = pda(programId, [Buffer.from("recall"), tokenFresh]);
+  const [escrowFresh] = pda(programId, [Buffer.from("escrow"), tokenFresh]);
+  const fiatPrice1e8 = 150_0000_0000n;
+  const expectedAssetAmt = 1_000_000n; // 150e8 * 1e6 / 150e8
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: assetFresh, isSigner: false, isWritable: true },
+          { pubkey: consignFresh, isSigner: false, isWritable: true },
+          { pubkey: custodyPda, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.OpenDirect]),
+          tokenFresh,
+          mintFiat.publicKey.toBuffer(),
+          Buffer.from([1]),
+          CURRENCY_USD,
+          encU64(fiatPrice1e8),
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
+  const buyerAtaFresh = Keypair.generate();
+  const escrowAtaFresh = Keypair.generate();
+  const platformAtaF = Keypair.generate();
+  const sellerAtaF = Keypair.generate();
+  const [platClaimF] = pda(programId, [
+    Buffer.from("claim"),
+    platform.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [platClaimAtaF] = pda(programId, [
+    Buffer.from("claim-ata"),
+    platform.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [sellClaimF] = pda(programId, [
+    Buffer.from("claim"),
+    seller.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  const [sellClaimAtaF] = pda(programId, [
+    Buffer.from("claim-ata"),
+    seller.publicKey.toBuffer(),
+    mintFiat.publicKey.toBuffer(),
+  ]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: buyerAtaFresh.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        buyerAtaFresh.publicKey,
+        mintFiat.publicKey,
+        buyer.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: escrowAtaFresh.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(escrowAtaFresh.publicKey, mintFiat.publicKey, escrowFresh),
+      createMintToInstruction(
+        mintFiat.publicKey,
+        buyerAtaFresh.publicKey,
+        payer.publicKey,
+        Number(expectedAssetAmt),
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: platformAtaF.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(
+        platformAtaF.publicKey,
+        mintFiat.publicKey,
+        platform.publicKey,
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: sellerAtaF.publicKey,
+        space: 165,
+        lamports: ataRent,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(sellerAtaF.publicKey, mintFiat.publicKey, seller.publicKey),
+    ),
+    [payer, buyerAtaFresh, escrowAtaFresh, platformAtaF, sellerAtaF],
+  );
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: consignFresh, isSigner: false, isWritable: true },
+          { pubkey: assetFresh, isSigner: false, isWritable: true },
+          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
+          { pubkey: recallFresh, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: escrowFresh, isSigner: false, isWritable: true },
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: buyerAtaFresh.publicKey, isSigner: false, isWritable: true },
+          { pubkey: escrowAtaFresh.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: platformAtaF.publicKey, isSigner: false, isWritable: true },
+          { pubkey: platClaimF, isSigner: false, isWritable: true },
+          { pubkey: platClaimAtaF, isSigner: false, isWritable: true },
+          { pubkey: sellerAtaF.publicKey, isSigner: false, isWritable: true },
+          { pubkey: sellClaimF, isSigner: false, isWritable: true },
+          { pubkey: sellClaimAtaF, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([IX.Buy]), tokenFresh]),
+      ),
+    ),
+    [buyer, payer],
+  );
+  const freshClosed = readConsignment((await conn.getAccountInfo(consignFresh))!.data);
+  const freshAsset = readAsset((await conn.getAccountInfo(assetFresh))!.data);
+  assert.equal(freshClosed.phase, PHASE.Closed);
+  assert.equal(freshAsset.owner.toBase58(), buyer.publicKey.toBase58());
+  const escrowFreshAcc = await getAccount(conn, escrowAtaFresh.publicKey);
+  assert.equal(escrowFreshAcc.amount, 0n);
 
   return {
     nativeBuy: {
@@ -998,6 +1651,15 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       feeBps: lotN.feeBps,
     },
     fiatRefuseCode,
+    fiatNoFeedCode,
+    staleBuyCode,
+    wideConfCode,
+    badOracleCode,
+    fiatFresh: {
+      phase: freshClosed.phase,
+      buyerOwns: freshAsset.owner.toBase58() === buyer.publicKey.toBase58(),
+      expectedAssetAmt: Number(expectedAssetAmt),
+    },
     external: {
       phase: closedE.phase,
       buyerOwns: extBuyerOwns,
