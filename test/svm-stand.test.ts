@@ -269,7 +269,18 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(asc.settle.escrowDelta, 0n);
       assert.equal(asc.settle.gross, 1030n);
       assert.equal(asc.settleRent.holdAfter, asc.settleRent.holdRentExempt);
-      assert.ok(asc.settleRent.auctionBefore > 0n);
+      assert.equal(asc.settleRent.escrowDelta, 0n);
+      assert.equal(
+        asc.settleRent.payerDelta +
+          asc.settleRent.holdAfter +
+          asc.settleRent.settleTxFee,
+        asc.settleRent.auctionBefore,
+        `payerΔ + hold + fee === auctionBefore (fee=${asc.settleRent.settleTxFee})`,
+      );
+      assert.equal(asc.platformRecipientFamily.missingUnreachable, true);
+      assert.equal(asc.platformRecipientFamily.wrongCode, 63);
+      assert.equal(asc.platformRecipientFamily.moneyCrateMissingUnit, true);
+      assert.equal(asc.negatives.WrongPlatformRecipient, 63);
       assert.equal(asc.challengeClock.frozenBefore, 0n);
       assert.equal(
         asc.challengeClock.protectionAfterOpen,

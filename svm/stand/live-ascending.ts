@@ -784,6 +784,13 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     holdAfter: bigint;
     payerDelta: bigint;
     holdRentExempt: bigint;
+    settleTxFee: bigint;
+    escrowDelta: bigint;
+  };
+  platformRecipientFamily: {
+    missingUnreachable: boolean;
+    wrongCode: number;
+    moneyCrateMissingUnit: boolean;
   };
   challengeClock: {
     frozenBefore: bigint;
@@ -1239,12 +1246,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(refundDelta, RESERVE);
 
   const escrowBeforeSettle = BigInt(await conn.getBalance(pdasA.escrow));
-  const auctionBeforeSettleInfo = await conn.getAccountInfo(pdasA.auction);
-  const auctionLamportsBefore = BigInt(auctionBeforeSettleInfo?.lamports ?? 0);
   const holdAbsentBefore = (await conn.getAccountInfo(pdasA.hold)) == null;
   assert.ok(holdAbsentBefore);
   const holdRentExempt = BigInt(await conn.getMinimumBalanceForRentExemption(HOLD_SPACE));
-  const payerLamportsBeforeSettle = BigInt(await conn.getBalance(payer.publicKey));
 
   await sendAndConfirmTransaction(
     conn,
@@ -1261,7 +1265,14 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     [authority],
   );
 
-  await sendAndConfirmTransaction(
+  // Snapshot immediately before Settle (after ForceAuctionEndsAt) — fee isolation needs Settle-only Δ.
+  const auctionLamportsBefore = BigInt(
+    (await conn.getAccountInfo(pdasA.auction))?.lamports ?? 0,
+  );
+  const payerLamportsBeforeSettle = BigInt(await conn.getBalance(payer.publicKey));
+  assert.ok(auctionLamportsBefore > 0n);
+
+  const settleSig = await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -1281,6 +1292,11 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ),
     [payer],
   );
+  const settleParsed = await conn.getTransaction(settleSig, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  const settleTxFee = BigInt(settleParsed?.meta?.fee ?? 0);
 
   const auctionInfoAfter = await conn.getAccountInfo(pdasA.auction);
   const auctionClosed =
@@ -1299,16 +1315,33 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const phaseAfterSettle = readConsignment(
     (await conn.getAccountInfo(pdasA.consignment))!.data as Buffer,
   ).phase;
+  const payerDelta = payerLamportsAfterSettle - payerLamportsBeforeSettle;
+  const escrowDeltaSettle = escrowAfterSettle - escrowBeforeSettle;
   assert.ok(auctionClosed);
   assert.ok(holdAfterSettle.active);
   assert.equal(assetAfterSettle.owner.toBase58(), bidder2.publicKey.toBase58());
-  assert.equal(escrowAfterSettle - escrowBeforeSettle, 0n);
+  assert.equal(escrowDeltaSettle, 0n);
   assert.equal(holdAfterSettle.gross, bid2Amt);
+  // payerDelta + holdAfter + settleTxFee === auctionBefore
+  assert.equal(
+    payerDelta + holdLamportsAfter + settleTxFee,
+    auctionLamportsBefore,
+    `settle rent: payerΔ(${payerDelta}) + hold(${holdLamportsAfter}) + fee(${settleTxFee}) !== auctionBefore(${auctionLamportsBefore})`,
+  );
   const settleRent = {
     auctionBefore: auctionLamportsBefore,
     holdAfter: holdLamportsAfter,
-    payerDelta: payerLamportsAfterSettle - payerLamportsBeforeSettle,
+    payerDelta,
     holdRentExempt,
+    settleTxFee,
+    escrowDelta: escrowDeltaSettle,
+  };
+  // Modes always pass Some(platform.key) — MissingPlatformRecipient (64) unreachable on-chain;
+  // WrongPlatformRecipient (63) is the mode-level sibling (LIVE below). Missing is money-crate unit-only.
+  const platformRecipientFamily = {
+    missingUnreachable: true,
+    wrongCode: ERR.WrongPlatformRecipient,
+    moneyCrateMissingUnit: true,
   };
 
   // Challenge freeze / thaw
@@ -3018,11 +3051,12 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       auctionClosed,
       holdActive: holdAfterSettle.active,
       buyerOwns,
-      escrowDelta: escrowAfterSettle - escrowBeforeSettle,
+      escrowDelta: escrowDeltaSettle,
       phase: phaseAfterSettle,
       gross: holdAfterSettle.gross,
     },
     settleRent,
+    platformRecipientFamily,
     challengeClock,
     confirmSplit: {
       phase: closedA.phase,
