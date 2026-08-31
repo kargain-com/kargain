@@ -245,7 +245,7 @@ export async function runLiveMoneyPayoutProof(opts?: {
   const withdrawIx = new TransactionInstruction({
     programId,
     keys: [
-      { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+      { pubkey: seller.publicKey, isSigner: true, isWritable: true },
       { pubkey: sellerClaim, isSigner: false, isWritable: true },
       { pubkey: sellerClaimAta, isSigner: false, isWritable: true },
       { pubkey: sellerAta, isSigner: false, isWritable: true },
@@ -298,7 +298,7 @@ export async function runLiveMoneyPayoutProof(opts?: {
   const frozenWithdrawIx = new TransactionInstruction({
     programId,
     keys: [
-      { pubkey: frozenOwner.publicKey, isSigner: true, isWritable: false },
+      { pubkey: frozenOwner.publicKey, isSigner: true, isWritable: true },
       { pubkey: frozenClaim, isSigner: false, isWritable: true },
       { pubkey: frozenClaimAta, isSigner: false, isWritable: true },
       { pubkey: thawedAta, isSigner: false, isWritable: true },

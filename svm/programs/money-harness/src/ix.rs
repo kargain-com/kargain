@@ -2,8 +2,9 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_claimable_payouts::{
-    claim_ata_pda, claim_pda, classify_spl_receive_reachability, pay_spl, withdraw_claim,
-    ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, SPL_TOKEN_ACCOUNT_LEN, SplReceiveReachability,
+    claim_ata_pda, claim_pda, classify_spl_receive_reachability, pay_spl, spl_close_account_ix,
+    withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, SPL_TOKEN_ACCOUNT_LEN,
+    SplReceiveReachability,
 };
 use kargain_errors::KargainError;
 use solana_program::{
@@ -13,7 +14,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
+    system_instruction, system_program,
     sysvar::Sysvar,
 };
 
@@ -285,10 +286,32 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
         )
     })?;
 
-    let mut data = claim_info.try_borrow_mut_data()?;
-    claim
-        .serialize(&mut &mut data[..])
-        .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    // D-23: close claim ATA then claim PDA — recipient reclaims rent.
+    invoke_signed(
+        &spl_close_account_ix(
+            token_program.key,
+            &claim_ata_key,
+            recipient.key,
+            &claim_key_copy,
+        ),
+        &[
+            claim_ata.clone(),
+            recipient.clone(),
+            claim_info.clone(),
+            token_program.clone(),
+        ],
+        &[seeds],
+    )?;
+    {
+        let lamports = claim_info.lamports();
+        **claim_info.try_borrow_mut_lamports()? = 0;
+        **recipient.try_borrow_mut_lamports()? = recipient
+            .lamports()
+            .checked_add(lamports)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        claim_info.try_borrow_mut_data()?.fill(0);
+        claim_info.assign(&system_program::ID);
+    }
     Ok(())
 }
 

@@ -14,6 +14,7 @@ use kargain_errors::KargainError;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
+    instruction::{AccountMeta, Instruction},
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -419,6 +420,25 @@ pub fn withdraw_claim(
     let amount = withdraw_claim_prepare(claim).map_err(into_program_error)?;
     transfer(amount)?;
     Ok(withdraw_claim_clear(claim))
+}
+
+/// SPL Token `CloseAccount` (discriminator 9). Authority must sign (or PDA sign).
+/// Destination receives the token-account rent. Account must have zero token balance.
+pub fn spl_close_account_ix(
+    token_program: &Pubkey,
+    account: &Pubkey,
+    destination: &Pubkey,
+    authority: &Pubkey,
+) -> Instruction {
+    Instruction {
+        program_id: *token_program,
+        accounts: vec![
+            AccountMeta::new(*account, false),
+            AccountMeta::new(*destination, false),
+            AccountMeta::new_readonly(*authority, true),
+        ],
+        data: vec![9u8],
+    }
 }
 
 fn into_program_error(e: KargainError) -> ProgramError {

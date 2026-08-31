@@ -10,9 +10,10 @@ use kargain_bonded_challenge::{
 };
 use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, escrow_pda, pay_spl,
-    require_admitted_spl_mint_account, require_full_delivery, spl_token_account_amount,
-    withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN,
-    PayoutAuthorities, PayoutLeg, SplReceiveReachability, verify_payout_recipient,
+    require_admitted_spl_mint_account, require_full_delivery, spl_close_account_ix,
+    spl_token_account_amount, withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED,
+    SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg, SplReceiveReachability,
+    verify_payout_recipient,
 };
 use kargain_consignment_base::{
     asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda, custody_authority_pda,
@@ -139,6 +140,8 @@ pub enum AscendingIx {
         frozen_remaining: u64,
         abandonment_deadline: u64,
     },
+    /// Stand warp: set HarnessAsset.owner (authority-gated) for NotPassportHolder LIVE.
+    ForceAssetOwner { token_id: [u8; 32], owner: [u8; 32] },
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
@@ -394,6 +397,9 @@ pub fn process_instruction(
             frozen_remaining,
             abandonment_deadline,
         ),
+        AscendingIx::ForceAssetOwner { token_id, owner } => {
+            force_asset_owner(program_id, accounts, token_id, owner)
+        },
     }
 }
 
@@ -2131,9 +2137,10 @@ fn judge_challenge_ix(
     if staking_program.key.to_bytes() != cfg.staking_program {
         return Err(ProgramError::InvalidAccountData);
     }
-    let judge_qualified =
-        require_active_verifier_account(stake_answer, &judge.key.to_bytes(), staking_program.key)
-            .is_ok();
+    let judge_qualified = {
+        require_active_verifier_account(stake_answer, &judge.key.to_bytes(), staking_program.key)?;
+        true
+    };
     let c = load_consignment(consignment)?;
     let mut hold = load_hold(hold_info)?;
     let mut account = ChallengeAccount::try_from_slice(&challenge_info.try_borrow_data()?)
@@ -2473,10 +2480,42 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
             &[seeds],
         )
     })?;
-    let mut data = claim_info.try_borrow_mut_data()?;
-    claim
-        .serialize(&mut &mut data[..])
-        .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    // D-23: close claim ATA then claim PDA — recipient reclaims rent.
+    invoke_signed(
+        &spl_close_account_ix(
+            token_program.key,
+            &claim_ata_key,
+            recipient.key,
+            &claim_key_copy,
+        ),
+        &[
+            claim_ata.clone(),
+            recipient.clone(),
+            claim_info.clone(),
+            token_program.clone(),
+        ],
+        &[seeds],
+    )?;
+    close_pda(claim_info, recipient)?;
+    Ok(())
+}
+
+fn require_config_authority(
+    authority: &AccountInfo,
+    config: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<(), ProgramError> {
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let (key, _) = config_pda(program_id);
+    if config.key != &key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let cfg = load_asc_config(config)?;
+    if cfg.authority != authority.key.to_bytes() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
     Ok(())
 }
 
@@ -2488,10 +2527,9 @@ fn force_auction_ends_at(
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
     let auction_info = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require_config_authority(authority, config, program_id)?;
     let (akey, _) = auction_pda(program_id, &token_id);
     if auction_info.key != &akey {
         return Err(ProgramError::InvalidSeeds);
@@ -2511,10 +2549,9 @@ fn force_hold_clock(
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
     let hold_info = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require_config_authority(authority, config, program_id)?;
     let (hkey, _) = hold_pda(program_id, &token_id);
     if hold_info.key != &hkey {
         return Err(ProgramError::InvalidSeeds);
@@ -2524,6 +2561,26 @@ fn force_hold_clock(
     h.frozen_remaining = frozen_remaining;
     h.abandonment_deadline = abandonment_deadline;
     save_hold(hold_info, &h)
+}
+
+fn force_asset_owner(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+    owner: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
+    let asset_info = next_account_info(iter)?;
+    require_config_authority(authority, config, program_id)?;
+    let (key, _) = asset_pda(program_id, &token_id);
+    if asset_info.key != &key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let mut a = load_asset(asset_info)?;
+    a.owner = owner;
+    save_asset_preserving_flags(asset_info, &a)
 }
 
 // ---- Money helpers ----
@@ -2735,16 +2792,20 @@ fn ensure_claim<'a>(
                 &[ata_bump],
             ]],
         )?;
-        // Minimal token-account init (same shape as FixedPrice).
+        // InitializeAccount3 — owner = claim PDA (same as FixedPrice / money-harness).
         let mut data = vec![18u8];
         data.extend_from_slice(claim_info.key.as_ref());
-        data.extend_from_slice(mint.key.as_ref());
-        data.extend_from_slice(&0u64.to_le_bytes());
-        while data.len() < SPL_TOKEN_ACCOUNT_LEN {
-            data.push(0);
-        }
-        let mut dest = claim_ata.try_borrow_mut_data()?;
-        dest[..SPL_TOKEN_ACCOUNT_LEN].copy_from_slice(&data[..SPL_TOKEN_ACCOUNT_LEN]);
+        invoke(
+            &solana_program::instruction::Instruction {
+                program_id: *token_program.key,
+                accounts: vec![
+                    solana_program::instruction::AccountMeta::new(*claim_ata.key, false),
+                    solana_program::instruction::AccountMeta::new_readonly(*mint.key, false),
+                ],
+                data,
+            },
+            &[claim_ata.clone(), mint.clone(), token_program.clone()],
+        )?;
     }
     Ok(())
 }

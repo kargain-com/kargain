@@ -268,10 +268,24 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(asc.settle.holdActive, true);
       assert.equal(asc.settle.escrowDelta, 0n);
       assert.equal(asc.settle.gross, 1030n);
-      assert.ok(asc.challengeClock.frozenBefore === 0n);
-      assert.ok(asc.challengeClock.frozenAfterOpen > 0n);
+      assert.equal(asc.settleRent.holdAfter, asc.settleRent.holdRentExempt);
+      assert.ok(asc.settleRent.auctionBefore > 0n);
+      assert.equal(asc.challengeClock.frozenBefore, 0n);
+      assert.equal(
+        asc.challengeClock.protectionAfterOpen,
+        asc.challengeClock.protectionBefore,
+      );
+      assertWithinSec(
+        asc.challengeClock.frozenAfterOpen,
+        asc.challengeClock.protectionBefore - asc.challengeClock.tOpen,
+        2n,
+      );
       assert.equal(asc.challengeClock.frozenAfterWithdraw, 0n);
-      assert.ok(asc.challengeClock.protectionAfterWithdraw > 0n);
+      assertWithinSec(
+        asc.challengeClock.protectionAfterWithdraw,
+        asc.challengeClock.tWithdraw + asc.challengeClock.frozenAfterOpen,
+        2n,
+      );
       assert.equal(asc.confirmSplit.phase, 2, "Closed");
       assert.equal(asc.confirmSplit.platformDelta, 25n);
       assert.equal(asc.confirmSplit.sellerDelta, 1005n);
@@ -286,13 +300,53 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(asc.challengePath.noReversalBeforeUphold, 116);
       assert.equal(asc.challengePath.reversalPending, true);
       assert.equal(asc.challengePath.protectionAfterUphold, 0n);
-      assert.ok(asc.challengePath.abandonmentAfterUphold > 0n);
+      assert.equal(asc.challengePath.frozenAfterUphold, 0n);
+      assertWithinSec(
+        asc.challengePath.abandonmentAfterUphold,
+        asc.challengePath.tUphold + asc.challengePath.abandonmentWindow,
+        2n,
+      );
+      assert.equal(asc.challengePath.abandonmentWindow, 30n * 24n * 60n * 60n);
       assert.equal(asc.challengePath.completePhase, 3, "Returned");
       assert.equal(asc.challengePath.buyerGrossDelta, 1000n);
+      assert.equal(asc.negatives.NotHoldBuyer, 114);
+      assert.equal(asc.negatives.NotPassportHolder, 120);
+      assert.equal(asc.negatives.AbandonmentNotReady, 117);
+      assert.equal(asc.negatives.HoldNotReady, 113);
+      assert.equal(asc.negatives.DisputeActive, 21);
+      assert.equal(asc.negatives.NotActiveVerifier, 2);
+      assert.equal(asc.negatives.SourceUnanswerable, 20);
+      assert.equal(asc.negatives.CannotRouteBondToJudge, 30);
+      assert.equal(asc.negatives.BidFromAgent, 107);
+      assert.equal(asc.negatives.AuctionNotEnded, 111);
+      assert.equal(asc.negatives.AuctionEnded, 110);
+      assert.equal(asc.negatives.SettlementPending, 119);
+      assert.equal(asc.negatives.WrongPlatformRecipient, 63);
+      assert.equal(asc.negatives.ProtectionElapsed, 118);
+      assert.equal(asc.negatives.ReversalPending, 115);
+      assert.equal(asc.negatives.NoHold, 112);
+      assert.equal(asc.negatives.NotDisputeOpener, 23);
+      assert.equal(asc.negatives.SellerCannotResolveOwnDispute, 26);
+      assert.equal(asc.negatives.NotActiveVerifierOpen, 2);
+      assert.equal(asc.negatives.SourceUnanswerableOpen, 20);
+      assert.equal(asc.splOutbidClaim.claimAmount, 1000n);
+      assert.equal(asc.splOutbidClaim.withdrawnAmount, 1000n);
+      assert.equal(asc.splOutbidClaim.claimClosed, true);
+      assert.equal(asc.splOutbidClaim.claimAtaClosed, true);
+      assert.ok(
+        asc.splOutbidClaim.payerRentDelta >=
+          asc.splOutbidClaim.claimRentExempt + asc.splOutbidClaim.claimAtaRentExempt,
+        "payer funded claim PDA + claim ATA rent (plus fees)",
+      );
+      assert.ok(asc.splOutbidClaim.priorLamportsGain > 0n);
+      assert.equal(asc.splReversal.escrowSplBeforeUphold, 1030n);
+      assert.equal(asc.splReversal.bondNative, 100_000n);
+      assert.equal(asc.splReversal.buyerSplAfterComplete, 1030n);
+      assert.equal(asc.splReversal.escrowSplAfterComplete, 0n);
       assert.equal(asc.pause.openCode, 76);
       assert.equal(asc.pause.bidCode, 76);
       console.warn(
-        `\n[svm-stand] ascending PASS open/bid/settle/challenge-clock/confirm/uphold-reversal/pause\n`,
+        `\n[svm-stand] ascending PASS open/bid/settle-rent/challenge-clock±2/confirm/uphold-reversal/negatives/spl-claim/pause\n`,
       );
 
       if (LIVE_EVM) {
@@ -326,4 +380,12 @@ async function probeHardhat(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function assertWithinSec(got: bigint, expected: bigint, tol = 2n) {
+  const d = got > expected ? got - expected : expected - got;
+  assert.ok(
+    d <= tol,
+    `expected ${expected} ±${tol}, got ${got} (delta ${d})`,
+  );
 }
