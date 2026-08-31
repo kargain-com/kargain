@@ -101,16 +101,24 @@ describe("svm-fixed-price-asset-only-policy", () => {
     assert.equal(impl.join("\n").trim(), "", `dual TransferFee check:\n${impl.join("\n")}`);
   });
 
-  it("buy does not call require_full_delivery (FoT closed at admit)", () => {
+  it("buy measures SPL delivery via money-crate require_full_delivery (not a fee re-parse)", () => {
     const src = fs.readFileSync(FP_IX, "utf8");
     const buy = src.slice(src.indexOf("fn buy("));
     const buyBody = buy.slice(0, buy.indexOf("\nfn "));
-    assert.ok(!buyBody.includes("require_full_delivery"));
+    assert.ok(buyBody.includes("require_full_delivery"), "buy must call delivery measure");
+    assert.ok(buyBody.includes("spl_token_account_amount"), "buy must read ATA amount via money owner");
     assert.ok(!buyBody.includes("transfer_fee"));
     assert.ok(!buyBody.includes("spl_transfer_checked_with_fee"));
-    // Primitive retained in money crate
+    assert.ok(!buyBody.includes("EXT_TRANSFER_FEE"));
     const money = fs.readFileSync(MONEY, "utf8");
     assert.ok(money.includes("fn require_full_delivery"));
+    assert.ok(money.includes("fn spl_token_account_amount"));
+    // No second amount-offset / delivery arithmetic under programs/
+    const dual = rg(
+      String.raw`fn require_full_delivery|SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET`,
+      [PROGRAMS],
+    );
+    assert.equal(dual.trim(), "", `dual delivery owner under programs:\n${dual}`);
   });
 
   it("soft-revoke does not re-check enabled on buy; external closes without pay_spl", () => {

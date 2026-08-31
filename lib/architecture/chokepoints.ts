@@ -257,7 +257,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-fixed-price-asset-only",
     owner: "svm/programs/kar-fixed-price",
-    rule: "Asset-denomination FixedPrice only — FiatDenominationRefused; no oracle/Pyth/Hermes/price-account surface; ApprovePaymentToken proves mint via require_admitted_spl_mint_account (no caller decimals); soft-revoke keeps in-flight buy; external confirm moves no money",
+    rule: "Asset-denomination FixedPrice only — FiatDenominationRefused; no oracle/Pyth/Hermes/price-account surface; ApprovePaymentToken proves mint via require_admitted_spl_mint_account (no caller decimals); SPL buy measures delivery via require_full_delivery; soft-revoke keeps in-flight buy; external confirm moves no money",
     guardTests: ["svm-fixed-price-asset-only-policy.test.ts"],
   },
   {

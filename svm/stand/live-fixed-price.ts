@@ -6,6 +6,7 @@
  * - SPL buy + soft-revoke then buy still settles (D-31)
  * - Transfer-fee mint refused at admission (TransferFeeExtensionForbidden)
  * - Conforming mint: PaymentTokenRecord.decimals == mint decimals from chain
+ * - SPL buy: escrow ATA receives full price (delivery measure on program path)
  * - External confirm: custody to buyer; platform/seller/agent/escrow unchanged (D-32)
  * - Pause: open+buy refuse (ContractPaused); external confirm still works
  * - Fiat open → FiatDenominationRefused (D-29)
@@ -38,6 +39,7 @@ const {
   createInitializeTransferFeeConfigInstruction,
   getMintLen,
   ExtensionType,
+  getAccount,
   getMinimumBalanceForRentExemptMint,
   getMinimumBalanceForRentExemptAccount,
 } = require("@solana/spl-token") as typeof import("@solana/spl-token");
@@ -273,6 +275,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   pauseBuyCode: number;
   pauseExternalPhase: number;
   softRevokeBuyPhase: number;
+  /** SPL buy: platform+seller ATA amounts after settle (= price; delivery held through pull). */
+  splBuySettledTotal: bigint;
   admittedDecimals: number;
   chainMintDecimals: number;
   transferFeeRefuseCode: number;
@@ -918,6 +922,10 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const softRevokeBuyPhase = readConsignment((await conn.getAccountInfo(consignS))!.data as Buffer)
     .phase;
   assert.equal(softRevokeBuyPhase, PHASE.Closed);
+  const platTok = await getAccount(conn, platformAta.publicKey);
+  const sellTok = await getAccount(conn, sellerAta.publicKey);
+  const splBuySettledTotal = platTok.amount + sellTok.amount;
+  assert.equal(splBuySettledTotal, priceS, "SPL pull+split must conserve full price (delivery)");
 
   // ---- Transfer-fee mint refused at admission (not at buy) ----
   const extensions = [ExtensionType.TransferFeeConfig];
@@ -1001,6 +1009,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     pauseBuyCode,
     pauseExternalPhase,
     softRevokeBuyPhase,
+    splBuySettledTotal,
     admittedDecimals,
     chainMintDecimals,
     transferFeeRefuseCode,

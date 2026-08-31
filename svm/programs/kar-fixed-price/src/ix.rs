@@ -4,9 +4,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, escrow_pda, pay_spl,
-    require_admitted_spl_mint_account, verify_payout_recipient, withdraw_claim, ClaimAccount,
-    CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg,
-    SplReceiveReachability,
+    require_admitted_spl_mint_account, require_full_delivery, spl_token_account_amount,
+    verify_payout_recipient, withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED,
+    SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg, SplReceiveReachability,
 };
 use kargain_consignment_base::{
     agent_withdraw_ok, asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda,
@@ -1153,7 +1153,9 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
             return Err(ProgramError::InvalidAccountData);
         }
         // Soft-revoke: no enabled re-check (admission was at open).
-        // FoT / TransferFee refused at admit — no buy-time ShortDelivery (unreachable).
+        // Admit bans TransferFee; measured delivery is a separate rule (D-30) — fails closed
+        // if a pull under-delivers (incl. admit regression).
+        let before = spl_token_account_amount(&escrow_ata.try_borrow_data()?).map_err(into_pe)?;
         invoke(
             &spl_transfer(token_program.key, buyer_ata.key, escrow_ata.key, buyer.key, amount),
             &[
@@ -1163,6 +1165,8 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
                 token_program.clone(),
             ],
         )?;
+        let after = spl_token_account_amount(&escrow_ata.try_borrow_data()?).map_err(into_pe)?;
+        require_full_delivery(before, after, amount).map_err(into_pe)?;
         spl_accounts = Some((escrow_ata, mint, token_program));
     }
 

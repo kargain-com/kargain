@@ -27,6 +27,8 @@ pub const CLAIM_ACCOUNT_DISCRIMINATOR: [u8; 8] = *b"kp_clm\0\0";
 /// Classic SPL Token account size (Token-2022 base is the same first 165 bytes).
 pub const SPL_TOKEN_ACCOUNT_LEN: usize = 165;
 const SPL_TOKEN_ACCOUNT_MINT_OFFSET: usize = 0;
+/// Classic SPL Token account: `amount: u64` after mint(32) + owner(32).
+pub const SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET: usize = 64;
 const SPL_TOKEN_ACCOUNT_STATE_OFFSET: usize = 108;
 
 /// `AccountState` ordinals (spl-token).
@@ -321,6 +323,23 @@ pub fn require_admitted_spl_mint_account(
     Ok(mint_data[MINT_DECIMALS_OFFSET])
 }
 
+/// Read `amount` from an SPL / Token-2022 token-account layout (base offsets).
+pub fn spl_token_account_amount(data: &[u8]) -> Result<u64, KargainError> {
+    if data.len() < SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET + 8 {
+        return Err(KargainError::TokenNonConforming);
+    }
+    let bytes: [u8; 8] = data
+        [SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET..SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET + 8]
+        .try_into()
+        .map_err(|_| KargainError::TokenNonConforming)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
+/// Measured pull delivery: escrow (or mode) balance delta must equal requested amount.
+///
+/// Distinct from mint admission: admit refuses known FoT classes; this check fails closed
+/// if a pull under-delivers for any reason (including an admit regression that let a fee
+/// mint through). Sole arithmetic owner — modes call this after the transfer CPI.
 pub fn require_full_delivery(before: u64, after: u64, expected: u64) -> Result<(), KargainError> {
     let got = after
         .checked_sub(before)
@@ -573,6 +592,18 @@ mod tests {
         assert_eq!(
             require_full_delivery(10, 15, 6),
             Err(KargainError::ShortDelivery)
+        );
+        assert!(require_full_delivery(10, 16, 6).is_ok());
+    }
+
+    #[test]
+    fn spl_token_account_amount_reads_offset_64() {
+        let mut data = vec![0u8; SPL_TOKEN_ACCOUNT_LEN];
+        data[64..72].copy_from_slice(&42u64.to_le_bytes());
+        assert_eq!(spl_token_account_amount(&data), Ok(42));
+        assert_eq!(
+            spl_token_account_amount(&[0u8; 10]),
+            Err(KargainError::TokenNonConforming)
         );
     }
 
