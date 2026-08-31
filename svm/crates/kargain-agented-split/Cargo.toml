@@ -1,0 +1,20 @@
+[package]
+name = "kargain-agented-split"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Sole S32 agented-split arithmetic — bit-exact with ConsignmentBase / agented-split.ts"
+
+[dependencies]
+kargain-errors = { workspace = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+default = []
+parity-fixtures = ["dep:serde", "dep:serde_json"]
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }

@@ -77,6 +77,17 @@ contract ConsignmentBaseHarness is ConsignmentBase {
         return (s.platform, s.ownerAmount, s.agentAmount);
     }
 
+    /// @dev Pure S32 legs for shared SVM/TS/Solidity vector corpus (no live lot required).
+    function computeAgentedSplitPublic(
+        uint256 settled,
+        uint128 floor,
+        Compensation calldata comp,
+        uint16 feeBps
+    ) external pure returns (uint256 platform, uint256 ownerAmount, uint256 agentAmount) {
+        SplitResult memory s = _computeAgentedSplitAmounts(settled, floor, comp, feeBps);
+        return (s.platform, s.ownerAmount, s.agentAmount);
+    }
+
     function paySplitPublic(uint256 tokenId, uint256 settledAmount) external payable nonReentrant {
         _paySplit(tokenId, settledAmount, CloseReason.Sold);
     }

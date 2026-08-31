@@ -142,6 +142,34 @@ pub enum KargainError {
     NotHolder = 55,
     #[error("InvalidCategory")]
     InvalidCategory = 56,
+
+    // ---- S6 money / commerce mirrors + SVM-only recipient supply (append only) ----
+    #[error("BelowFloor")]
+    BelowFloor = 57,
+    #[error("ShortDelivery")]
+    ShortDelivery = 58,
+    #[error("TokenHasNoCode")]
+    TokenHasNoCode = 59,
+    #[error("TokenNonConforming")]
+    TokenNonConforming = 60,
+    #[error("TokenDecimalsUnavailable")]
+    TokenDecimalsUnavailable = 61,
+    #[error("ArithmeticOverflow")]
+    ArithmeticOverflow = 62,
+    #[error("WrongPlatformRecipient")]
+    WrongPlatformRecipient = 63,
+    #[error("MissingPlatformRecipient")]
+    MissingPlatformRecipient = 64,
+    #[error("WrongSellerRecipient")]
+    WrongSellerRecipient = 65,
+    #[error("MissingSellerRecipient")]
+    MissingSellerRecipient = 66,
+    #[error("WrongAgentRecipient")]
+    WrongAgentRecipient = 67,
+    #[error("MissingAgentRecipient")]
+    MissingAgentRecipient = 68,
+    #[error("TransferFeeExtensionForbidden")]
+    TransferFeeExtensionForbidden = 69,
 }
 
 impl KargainError {
@@ -205,6 +233,19 @@ impl KargainError {
             Self::Soulbound => "Soulbound",
             Self::NotHolder => "NotHolder",
             Self::InvalidCategory => "InvalidCategory",
+            Self::BelowFloor => "BelowFloor",
+            Self::ShortDelivery => "ShortDelivery",
+            Self::TokenHasNoCode => "TokenHasNoCode",
+            Self::TokenNonConforming => "TokenNonConforming",
+            Self::TokenDecimalsUnavailable => "TokenDecimalsUnavailable",
+            Self::ArithmeticOverflow => "ArithmeticOverflow",
+            Self::WrongPlatformRecipient => "WrongPlatformRecipient",
+            Self::MissingPlatformRecipient => "MissingPlatformRecipient",
+            Self::WrongSellerRecipient => "WrongSellerRecipient",
+            Self::MissingSellerRecipient => "MissingSellerRecipient",
+            Self::WrongAgentRecipient => "WrongAgentRecipient",
+            Self::MissingAgentRecipient => "MissingAgentRecipient",
+            Self::TransferFeeExtensionForbidden => "TransferFeeExtensionForbidden",
         }
     }
 
@@ -268,6 +309,19 @@ impl KargainError {
             Soulbound,
             NotHolder,
             InvalidCategory,
+            BelowFloor,
+            ShortDelivery,
+            TokenHasNoCode,
+            TokenNonConforming,
+            TokenDecimalsUnavailable,
+            ArithmeticOverflow,
+            WrongPlatformRecipient,
+            MissingPlatformRecipient,
+            WrongSellerRecipient,
+            MissingSellerRecipient,
+            WrongAgentRecipient,
+            MissingAgentRecipient,
+            TransferFeeExtensionForbidden,
         ]
     }
 }

@@ -6,7 +6,6 @@ pub const CONFIG_SEED: &[u8] = b"config";
 pub const ASSET_SEED: &[u8] = b"asset";
 pub const STATE_SEED: &[u8] = b"state";
 pub const RECORD_SEED: &[u8] = b"record";
-pub const VAULT_SEED: &[u8] = b"vault";
 
 pub fn config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[CONFIG_SEED], program_id)
@@ -26,8 +25,4 @@ pub fn record_pda(program_id: &Pubkey, token_id: &[u8; 32], index: u32) -> (Pubk
         &[RECORD_SEED, token_id, &index.to_le_bytes()],
         program_id,
     )
-}
-
-pub fn vault_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[VAULT_SEED], program_id)
 }

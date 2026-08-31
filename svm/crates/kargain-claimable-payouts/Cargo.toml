@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "ClaimablePayouts primitive — amounts from stored state (D-04)"
+description = "ClaimablePayouts — SPL attempt+claim; one PDA per (recipient, mint) (D-01/D-04)"
 
 [dependencies]
 kargain-errors = { workspace = true }
-thiserror = { workspace = true }
 borsh = { workspace = true }
+solana-program = { workspace = true }
 
 [dev-dependencies]

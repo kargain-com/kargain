@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/kargain-errors",
   "crates/kargain-onft-codec",
+  "crates/kargain-agented-split",
   "crates/kargain-claimable-payouts",
   "crates/kargain-bonded-challenge",
   "programs/kar-passport",
@@ -11,6 +12,7 @@ members = [
   "programs/mock-endpoint",
   "programs/kar-pro-staking",
   "programs/kar-pro-pass",
+  "programs/money-harness",
 ]
 exclude = [
   "lab/programs/lab_harness",
@@ -30,5 +32,6 @@ solana-program = "2.3"
 mpl-core = { version = "=0.11.2", default-features = false }
 kargain-errors = { path = "crates/kargain-errors" }
 kargain-onft-codec = { path = "crates/kargain-onft-codec" }
+kargain-agented-split = { path = "crates/kargain-agented-split" }
 kargain-claimable-payouts = { path = "crates/kargain-claimable-payouts" }
 kargain-bonded-challenge = { path = "crates/kargain-bonded-challenge" }

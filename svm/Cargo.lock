@@ -567,8 +567,6 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kar-pro-staking",
- "kargain-bonded-challenge",
- "kargain-claimable-payouts",
  "kargain-errors",
  "mpl-core",
  "solana-program",
@@ -594,13 +592,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "kargain-agented-split"
+version = "0.1.0"
+dependencies = [
+ "kargain-errors",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kargain-bonded-challenge"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
- "kargain-claimable-payouts",
  "kargain-errors",
- "thiserror 2.0.20",
+ "solana-program",
 ]
 
 [[package]]
@@ -609,7 +615,7 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-errors",
- "thiserror 2.0.20",
+ "solana-program",
 ]
 
 [[package]]
@@ -759,6 +765,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "money-harness"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kargain-claimable-payouts",
+ "kargain-errors",
+ "solana-program",
 ]
 
 [[package]]

@@ -704,6 +704,20 @@ describe("error-name-truth-policy", () => {
     }
 
     // Allowlist stays exact — no silent growth without D-16 justification.
-    assert.deepEqual([...SVM_ONLY_ERROR_NAMES].sort(), ["ComposeRequired", "ComposeUndecodable"]);
+    assert.deepEqual(
+      [...SVM_ONLY_ERROR_NAMES].sort(),
+      [
+        "ArithmeticOverflow",
+        "ComposeRequired",
+        "ComposeUndecodable",
+        "MissingAgentRecipient",
+        "MissingPlatformRecipient",
+        "MissingSellerRecipient",
+        "TransferFeeExtensionForbidden",
+        "WrongAgentRecipient",
+        "WrongPlatformRecipient",
+        "WrongSellerRecipient",
+      ],
+    );
   });
 });

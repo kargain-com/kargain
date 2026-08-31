@@ -1,8 +1,6 @@
 //! On-chain account layouts (borsh). Model constants may live here; П-12 fields do not.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use kargain_bonded_challenge::BondedChallengeState;
-use kargain_claimable_payouts::ClaimablePayoutsState;
 
 /// SPEC §13.10 model constant — identical on every chain; not a Timelock knob.
 pub const DISPUTE_WINDOW_SECONDS: u64 = 1_209_600; // 14d
@@ -111,13 +109,6 @@ pub struct PassportRecord {
 }
 
 pub const PASSPORT_RECORD_DISCRIMINATOR: [u8; 8] = *b"kp_rec\0\0";
-
-/// Program-global challenge + payout bookkeeping (mirrors Solidity storage).
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
-pub struct PassportChallengeBook {
-    pub challenge: BondedChallengeState,
-    pub payouts: ClaimablePayoutsState,
-}
 
 /// Answer record layout for encumbrance sources (SPEC §13.7).
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]

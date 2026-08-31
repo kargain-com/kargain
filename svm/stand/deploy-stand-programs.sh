@@ -75,8 +75,8 @@ deploy_one() {
   fi
 }
 
-for name in mock_endpoint kar_passport kar_gateway mock_staking kar_pro_staking kar_pro_pass; do
+for name in mock_endpoint kar_passport kar_gateway mock_staking kar_pro_staking kar_pro_pass money_harness; do
   deploy_one "$name"
 done
 
-echo "stand upgradeable deploy PASS (6 programs)"
+echo "stand upgradeable deploy PASS (7 programs)"

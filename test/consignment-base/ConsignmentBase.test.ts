@@ -834,4 +834,54 @@ describe("ConsignmentBase (N0–N4, O1, C1–C7, M1–M3, RC1)", () => {
       }
     });
   });
+
+  describe("S6 shared agented-split vectors (pure)", () => {
+    type Vector = {
+      id: string;
+      settled: string;
+      floor: string;
+      form: "margin" | "commission";
+      commissionBps: number;
+      platformFeeBps: string;
+      ok: boolean;
+      platform: string;
+      ownerAmount: string;
+      agentAmount: string;
+    };
+
+    const vectors: Vector[] = JSON.parse(
+      readFileSync(
+        path.join(repoRoot, "svm/crates/kargain-agented-split/fixtures/vectors.json"),
+        "utf8",
+      ),
+    );
+
+    for (const v of vectors) {
+      it(`Solidity bit-exact: ${v.id}`, async () => {
+        const comp = {
+          form: v.form === "margin" ? 0 : 1,
+          commissionBps: v.commissionBps,
+        } as const;
+        const args = [
+          BigInt(v.settled),
+          BigInt(v.floor),
+          comp,
+          Number(v.platformFeeBps),
+        ] as const;
+        if (!v.ok) {
+          await assert.rejects(
+            harness.read.computeAgentedSplitPublic(args),
+            revertsWith("BelowFloor"),
+          );
+          return;
+        }
+        const [platformAmt, ownerAmt, agentAmt] = (await harness.read.computeAgentedSplitPublic(
+          args,
+        )) as [bigint, bigint, bigint];
+        assert.equal(platformAmt, BigInt(v.platform), `${v.id} platform`);
+        assert.equal(ownerAmt, BigInt(v.ownerAmount), `${v.id} owner`);
+        assert.equal(agentAmt, BigInt(v.agentAmount), `${v.id} agent`);
+      });
+    }
+  });
 });

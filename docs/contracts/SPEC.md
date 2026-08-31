@@ -1016,10 +1016,10 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 
 | # | Non-EVM / port note | EVM counterpart | Preserved invariant |
 |---|---------------------|-----------------|---------------------|
-| D-01 | Payout reachability checked before attempt where substrate requires | ClaimablePayouts after failed push | I5 — settlement completes; unpaid → claim |
+| D-01 | Claims exist for the **admitted SPL asset** only. A native lamport credit from a program-owned account cannot fail on this substrate, so there is **no** native-push→claim branch (including stake `ClaimStake`). For SPL settlement legs, **payout reachability is decided before any transfer CPI** — from the recipient token-account state (existence, owning token program, layout, mint, initialisation, **freeze**). **Frozen** accounts are unreachable: the Token program refuses inbound transfer (`0x11` — measured on local validator). Unreachable → credit claim and move tokens to the claim ATA **without attempting** a transfer to the recipient. Reachable → transfer. **Attempt-then-catch is impossible here:** a failing CPI aborts the whole transaction (same substrate fact as §13.7a / D-21 — “Solana has no equivalent — a failing CPI would abort leave and trap stake”). | ClaimablePayouts after failed native or ERC-20 push | **I5** — settlement completes; unpaid SPL → claim; native always lands |
 | D-02 | No reentrancy-guard construct | OZ `ReentrancyGuard` | Single-entry critical sections by program design |
 | D-03 | Libraries merged (no EIP-170 split) | Ascending Open/Hold libs | Same external behavior / event order |
-| D-04 | Cannot refuse direct native transfer; amounts never from balance | `msg.value` / pull | I5 / exact-bond accounting |
+| D-04 | Account layout: each money-bearing PDA holds value for one party/purpose (claim `(recipient, mint)` amount field; challenge-subject bond lamports; consignment escrow). Amounts are never inferred from an unrelated account’s lamports. No program-global pending/locked totals; no `rescueExcess` — nothing is unattributable. | `msg.value` / pull + mapping claims + rescue over free balance | Exact-bond / exact-credit accounting; I5 |
 | D-05 | Clock source (slot/time) | `block.timestamp` | Window maths in seconds as specified |
 | D-06 | Upgrade authority vs immutability | Immutable passport / UUPS modes | §13.8 + §7.6 (f) |
 | D-07 | Oracle + confidence bound | Chainlink + staleness | P4-class freshness; new named confidence rule on SVM |
@@ -1036,7 +1036,20 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
 | D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
 | D-20 | Over-ceiling URI on **inbound** receive | — | **EVM:** OOG on `EndpointV2.lzReceive` is **retryable** (atomic clear+execute; pin LayerZero-v2 `9c741e7f…`). **SVM:** assembled tx **>1232** is **permanently unexecutable** without ALT/split. Product ceiling **160** (Nuclear #6) keeps production no-ALT path ≤1232 (S4a-1/S4a-2 / N6-4). Receive still never length-rejects. |
-| D-21 | Pass close separate from leave (no try/catch) | `leave` try/catch burn | Unbonding always starts; `active` sole status owner; pass is projection (§13.7a) |
+| D-21 | Pass close separate from leave (no try/catch) — same substrate reason as D-01: a failing CPI aborts the instruction (§13.7a) | `leave` try/catch burn | Unbonding always starts; `active` sole status owner; pass is projection (§13.7a) |
+| D-22 | Caller must supply payout recipient accounts; program verifies each **non-zero** leg (platform ← mode config; seller/agent ← consignment snapshot; fee bps ← **lot snapshot**). Wrong account → `Wrong{Platform,Seller,Agent}Recipient`; required absent → `Missing{Platform,Seller,Agent}Recipient`. Zero leg needs no account. | Recipients read from storage in `_paySplit` | No silent skip of a non-zero leg (theft of that leg) |
+| D-23 | When an SPL leg is unreachable, the settling instruction creates the **claim record PDA and the claim-owned token account** in the same transaction. Rent for **both** is funded by the settlement **fee-payer**; on `withdrawClaim` close of the claim ATA and claim PDA, the **recipient** reclaims that rent. Token legs are never reduced to fund rent. | EVM storage has no per-claim rent | No shortened participant payout; no unattributable lamports |
+
+**SVM money account seeds** (mode / instance program id owns the PDA):
+
+| Account | Seeds | Rent funded by | Rent reclaimed by |
+|---------|-------|----------------|-------------------|
+| Claim record `(recipient, mint)` | `b"claim" \|\| recipient \|\| mint` | Settlement fee-payer | Recipient on close |
+| Claim token account (holds credited SPL) | ATA (or program ATA) owned for the claim | Settlement fee-payer (same ix) | Recipient on withdraw/close |
+| Challenge subject (bond) | `b"challenge" \|\| subject_id` | Challenger on open | Challenger on close (bond amount transferred separately to bond recipient) |
+| Consignment escrow | `b"escrow" \|\| consignment_id` | Opener (commerce port) | Settle / close path (commerce port) |
+
+**Three-leg rent arithmetic (D-23 worked example).** Margin `S=1000`, `p=250` bps → `P=25`, floor `700` → `O=700`, `A=275`. Seller token account unreachable; platform and agent reachable. Token moves: escrow `1000` → platform ATA `25` + **claim ATA** `700` + agent ATA `275` (sum = `S`). Extra lamports in the same ix: fee-payer pays rent `R_rec` for the claim record PDA and `R_ata` for the claim token account. Both sit on accounts attributable to the seller’s claim; on withdraw the seller receives `700` tokens and reclaimable `R_rec + R_ata`. No participant’s token leg is shortened; the program holds no orphan lamports after the instruction.
 
 #### 13.15 Free testnet dependencies
 

@@ -26,6 +26,10 @@ import {
   runLiveSvmRoundTrip,
 } from "../svm/stand/live-roundtrip.ts";
 import { runLiveVerifierFlow } from "../svm/stand/live-verifier-flow.ts";
+import {
+  probeValidator as probeMoneyValidator,
+  runLiveMoneyPayoutProof,
+} from "../svm/stand/live-money-payout.ts";
 import { testnetMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
@@ -163,6 +167,21 @@ describe("svm-stand live Core CPI round trip", () => {
       console.warn(
         `\n[svm-stand] verifier PASS joinCu=${verifier.joinCu} verifyCu=${verifier.verifyCu} ` +
           `claimed=${verifier.claimedAmount} minStake=${verifier.minStakePin.solLamports} lamports\n`,
+      );
+
+      const moneyReady = await probeMoneyValidator("http://127.0.0.1:8899");
+      if (!moneyReady) {
+        throw new Error("validator lost health before money payout proof");
+      }
+      const money = await runLiveMoneyPayoutProof();
+      assert.equal(money.absentCase.settled, true);
+      assert.equal(money.absentCase.claimAmount, 700n);
+      assert.equal(money.absentCase.withdrawn, 700n);
+      assert.equal(money.frozenCase.inboundBlocked, true);
+      assert.equal(money.frozenCase.claimAmount, 500n);
+      assert.equal(money.frozenCase.withdrawn, 500n);
+      console.warn(
+        `\n[svm-stand] money-payout PASS absent→claim→withdraw; frozen→claim→withdraw (inbound 0x11)\n`,
       );
 
       if (LIVE_EVM) {

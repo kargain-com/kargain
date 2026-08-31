@@ -34,8 +34,9 @@ Do **not** treat `--bpf-program` preload as proof of the Devnet deploy path.
 |------|------|
 | `crates/kargain-errors` | Stable error names/codes (EVM parity) |
 | `crates/kargain-onft-codec` | ONFT721 wire codec (byte-identical) |
-| `crates/kargain-claimable-payouts` | Claimable payouts automaton |
-| `crates/kargain-bonded-challenge` | BondedChallenge automaton |
+| `crates/kargain-agented-split` | S32 agented-split arithmetic (bit-exact corpus) |
+| `crates/kargain-claimable-payouts` | SPL claim PDA + pay/withdraw (D-01/D-04) |
+| `crates/kargain-bonded-challenge` | Per-subject challenge PDA; native bond |
 | `programs/kar-passport` | Passport + state PDAs + gateway-only bridge ix |
 | `programs/kar-gateway` | Send / receive / recover / `lz_receive_types` |
 | `programs/mock-staking` | `MockKarProActive` spirit (tests) |

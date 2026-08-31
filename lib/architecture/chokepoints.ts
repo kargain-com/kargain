@@ -241,6 +241,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "resolveBridgeRoute owns hub/spoke hops; no second counterpart map under lib/hooks/components",
     guardTests: ["bridge-route-policy.test.ts"],
   },
+  {
+    id: "svm-money-model",
+    owner:
+      "svm/crates/kargain-claimable-payouts · svm/crates/kargain-bonded-challenge · svm/crates/kargain-agented-split",
+    rule: "SPL claim PDAs + per-subject bond PDAs; no push_ok/transfer_ok; no global pending maps; S32 split one Rust owner",
+    guardTests: ["svm-money-model-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

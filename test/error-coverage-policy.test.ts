@@ -27,6 +27,14 @@ const SVM_KARGAIN_ERRORS_RS = path.join(
 export const SVM_ONLY_ERROR_NAMES = [
   "ComposeRequired",
   "ComposeUndecodable",
+  "ArithmeticOverflow",
+  "WrongPlatformRecipient",
+  "MissingPlatformRecipient",
+  "WrongSellerRecipient",
+  "MissingSellerRecipient",
+  "WrongAgentRecipient",
+  "MissingAgentRecipient",
+  "TransferFeeExtensionForbidden",
 ] as const;
 
 /**
@@ -38,6 +46,12 @@ export const SVM_ERROR_UNIT_COVERAGE_REQUIRED = [
   "ComposeRequired",
   "ComposeUndecodable",
   "NoClaim",
+  "BelowFloor",
+  "ShortDelivery",
+  "WrongPlatformRecipient",
+  "MissingAgentRecipient",
+  "TransferFeeExtensionForbidden",
+  "ArithmeticOverflow",
 ] as const;
 
 /** Sole crate sources allowed to assert protocol error names in unit tests. */
@@ -46,6 +60,7 @@ export const SVM_ERROR_ASSERT_OWNERS: readonly string[] = [
   "svm/crates/kargain-onft-codec/src/lib.rs",
   "svm/crates/kargain-claimable-payouts/src/lib.rs",
   "svm/crates/kargain-bonded-challenge/src/lib.rs",
+  "svm/crates/kargain-agented-split/src/lib.rs",
 ] as const;
 
 export type ErrorCoverageEntry = {
