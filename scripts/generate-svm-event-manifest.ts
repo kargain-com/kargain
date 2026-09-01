@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -452,6 +453,13 @@ function main(): void {
   console.log(`Wrote ${manifest.entries.length} entries to ${path.relative(REPO_ROOT, manifestPath)}`);
   console.log(`Wrote generated Rust to ${path.relative(REPO_ROOT, generatedPath)}`);
   console.log(`Wrote emit requirements to ${path.relative(REPO_ROOT, requirementsPath)}`);
+
+  const disc = spawnSync(
+    "node",
+    ["--import", "tsx", "scripts/generate-svm-event-discriminators.ts"],
+    { cwd: REPO_ROOT, stdio: "inherit" },
+  );
+  if (disc.status !== 0) process.exit(disc.status ?? 1);
 }
 
 main();

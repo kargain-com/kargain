@@ -301,6 +301,16 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "Structured SVM program logs (D-28) encode + sol_log_data only via kargain-events; parity with handler census",
     guardTests: ["svm-event-parity-policy.test.ts"],
   },
+  {
+    id: "svm-raw-ingest",
+    owner: "src/lib/svm-raw-writer.ts · src/svm-ingest/",
+    rule: "Append-only kargain_svm_raw writes only via svm-raw-writer; no product HTTP consumer in S7c-1",
+    guardTests: [
+      "svm-raw-ingest-writer-policy.test.ts",
+      "svm-raw-ingest-surface-policy.test.ts",
+      "ponder-reindex-svm-isolation-policy.test.ts",
+    ],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

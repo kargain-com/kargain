@@ -416,6 +416,8 @@ export type SvmDevnetEvidence = {
   cluster: string;
   eid: number;
   namespace: number;
+  /** First slot svm-ingest follows (deploy boundary — no historical backfill). */
+  indexFromSlot?: number;
   programs: {
     kar_passport: SvmDevnetProgramEvidence;
     kar_gateway: SvmDevnetProgramEvidence;

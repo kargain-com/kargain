@@ -16,7 +16,7 @@ const GOLDEN_LINE = `Program data: ${Buffer.from([0, 0, 0, 0]).toString("base64"
 
 describe("measure-tx-logs", () => {
   it("decodes base64 Program data line to byte length", () => {
-    assert.equal(decodeProgramDataBase64(GOLDEN_LINE.slice("Program data: ".length)), 4);
+    assert.equal(decodeProgramDataBase64(GOLDEN_LINE.slice("Program data: ".length)).length, 4);
   });
 
   it("malformed payload throws (not silent zero)", () => {

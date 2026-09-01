@@ -69,6 +69,31 @@ services:
     networks:
       - kargain
 
+  svm-ingest:
+    <<: *default-logging
+    build:
+      context: .
+      dockerfile: Dockerfile.svm-ingest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+      SVM_INGEST_DATABASE_URL: ${SVM_INGEST_DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      SVM_INGEST_EID: ${SVM_INGEST_EID:-40168}
+      SVM_INGEST_START_SLOT: ${SVM_INGEST_START_SLOT:-}
+      SVM_INGEST_NAMESPACE: ${SVM_INGEST_NAMESPACE:-}
+      SVM_INGEST_CATCHUP_MAX_LAG_SLOTS: ${SVM_INGEST_CATCHUP_MAX_LAG_SLOTS:-216000}
+      SVM_INGEST_PORT: "42100"
+    ports:
+      - "127.0.0.1:42100:42100"
+    networks:
+      - kargain
+
 volumes:
   postgres_data:
   strfry_data:

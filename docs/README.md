@@ -17,7 +17,7 @@ Start here. Each area has **one canonical document**; other files link in — th
 
 | Document | Purpose |
 |----------|---------|
-| [indexer/README.md](./indexer/README.md) | Which indexer doc to read when |
+| [indexer/README.md](./indexer/README.md) | Ponder HTTP API + **SVM raw ingest** (`svm-ingest`, schema `kargain_svm_raw`) |
 | [indexer/MIGRATION-V2.md](./indexer/MIGRATION-V2.md) | v2 handler reference; Nuclear dual-chain / C3; FX display layer (§6) |
 | [indexer/OPERATIONS.md](./indexer/OPERATIONS.md) | **Permanent** — VPS reindex runbook (hub **44957457** + Eth **11404204**) |
 

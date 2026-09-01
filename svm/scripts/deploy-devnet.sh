@@ -203,6 +203,7 @@ doc = {
     "upgradeAuthority": deployer,
     "programs": programs,
     "slotAtEvidence": int(os.environ["SVM_X3_SLOT"]),
+    "indexFromSlot": int(os.environ["SVM_X3_SLOT"]),
     "deployGitHead": os.environ["SVM_X3_GIT_HEAD"],
     "solanaCli": os.environ["SVM_X3_TOOLCHAIN"],
     "cargoBuildSbf": os.environ["SVM_X3_BUILD_SBF"],

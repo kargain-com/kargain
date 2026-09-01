@@ -7,7 +7,21 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)). **S7c-1 (September 2026):** append-only **`kargain_svm_raw`** via separate **`svm-ingest`** compose service — **no product HTTP reads** until S7c-2 ([SVM ingest](#svm-raw-ingest-s7c-1) below).
+
+## SVM raw ingest (S7c-1)
+
+Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`src/lib/svm-raw-writer.ts`](../../src/lib/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops only `kargain` + `ponder_sync` — raw survives (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
+
+| Item | Value |
+|------|--------|
+| Health | `GET /live` (liveness) · `GET /ready` (readiness; 503 on catch-up incident) on **:42100** |
+| Programs | Six production BPF slugs from S7a manifest (`kar-passport`, `kar-pro-staking`, `kar-pro-pass`, `kar-fixed-price`, `kar-ascending`, `kar-gateway`) — IDs from `deployments/svm-{eid}.json` |
+| Start slot | `indexFromSlot` in deploy evidence or `SVM_INGEST_START_SLOT` override |
+| Ordering key | `(slot, tx_index_in_block, log_index)` — writer-local total order |
+| Refusal kinds | `log_truncated` · `unknown_discriminator` · `payload_malformed` · `sequence_gap` |
+
+**S7c-1 non-goals:** no `kargain_svm_projection` tables; no reads from `src/api/`, `app/`, or `lib/web3/ponder-*`; `passport.custodyChain` unchanged. Replay proof: `pnpm svm-raw:replay-digest` (requires `SVM_INGEST_RPC_URL` unset). Ops: [OPERATIONS.md §SVM ingest](./OPERATIONS.md#svm-ingest-s7c-1). Env: [`.env.example`](../../.env.example) `SVM_INGEST_*` block.
 
 ## Contract addresses for indexer
 

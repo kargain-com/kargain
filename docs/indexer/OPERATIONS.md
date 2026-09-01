@@ -39,9 +39,48 @@ Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **113198
 
 When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (hub **44957539** / Eth **11404235** on N4) in the same dual-chain reindex as other schema changes. Until then, stored `passport.custodyChain` remains the HTTP read surface (unchanged by S7b).
 
+**S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Raw schema is **not** dropped by `ponder-reindex.sql`.
+
 ---
 
-## Production RPC and start block (VPS — dual-chain)
+## SVM ingest (S7c-1)
+
+**September 2026:** standalone **`svm-ingest`** Docker service append-only writes structured Solana `Program data:` payloads into Postgres schema **`kargain_svm_raw`**. **No VPS action until S9 cutover** — same gate as bridge crossing backfill; local/dev via `docker compose up svm-ingest`.
+
+### Health (port 42100)
+
+| Route | Meaning |
+|-------|---------|
+| `GET /live` | Process up |
+| `GET /ready` | Caught up and cursor contiguous; **503** when lag exceeds catch-up window or sequence gap |
+
+Smoke (local): `curl -sf http://127.0.0.1:42100/live` · `curl -sf http://127.0.0.1:42100/ready`
+
+### Catch-up window exceeded (incident)
+
+Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). On startup, if `chain_head - last_contiguous_slot > window`:
+
+1. Service **stops advancing** the cursor.
+2. `/ready` returns **503** with JSON `{"incident":"catchup_window_exceeded","lagSlots":…,"maxLagSlots":…}`.
+3. Append `sequence_gap` refusal row(s) as applicable.
+
+**Operator recovery (do not silent deep-fetch):**
+
+1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and evidence `indexFromSlot`.
+2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from evidence start), set `SVM_INGEST_START_SLOT` if needed, restart service.
+3. If RPC was transient: restore RPC, restart; service catches up within window.
+4. Verify `/ready` 200 and run `pnpm svm-raw:replay-digest` on a snapshot if validating rebuild integrity.
+
+**Never** add `DROP SCHEMA kargain_svm_raw` to `ponder-reindex.sql` — EVM reindex must not touch SVM raw (policy test enforces).
+
+### Schema bootstrap
+
+On first start, `svm-ingest` applies [`src/svm-ingest/db/schema.sql`](../../src/svm-ingest/db/schema.sql) if tables are missing. Same Postgres instance as Ponder; separate schema name.
+
+### S9 obligation
+
+When Solana joins `COMMERCIAL_ACTIVE`: enable `svm-ingest` in VPS compose, set `SOLANA_RPC_URL` + evidence paths, smoke `/live` + `/ready`, and run bridge + EVM reindex obligations in the same cutover window.
+
 
 ### Recommended VPS `.env` (Nuclear steady state)
 

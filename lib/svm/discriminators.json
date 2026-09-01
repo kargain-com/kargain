@@ -1,0 +1,605 @@
+{
+  "entries": [
+    {
+      "discriminatorHex": "019a0282931a46ef",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "VerificationStood"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "07e7e56ee7afc884",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentClosed"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentClosed"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "0bf7f7b881efaf24",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentSplitPaid"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentSplitPaid"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "19121707ac74821c",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "Transfer"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "1b05b28510a384b3",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ClaimWithdrawn"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ClaimWithdrawn"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ClaimWithdrawn"
+        },
+        {
+          "contract": "KarProStaking",
+          "event": "ClaimWithdrawn"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "1ec72ad432519064",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ReceiptConfirmed"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "2826d05ecd017239",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentPriceSet"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentPriceSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "2a53a53e50113fb5",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ChallengeOpened"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ChallengeOpened"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "2eb720503bab8ae0",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ClaimRecorded"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ClaimRecorded"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ClaimRecorded"
+        },
+        {
+          "contract": "KarProStaking",
+          "event": "ClaimRecorded"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "308cb1c99be72fc9",
+      "contracts": [
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ExternalPaymentConfirmed"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "3781e1df1fbc3e25",
+      "contracts": [
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "CurrencyFeedSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "3819bb573e230845",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentOpened"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentOpened"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "39a4cda84049da30",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "CustodyLockSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "3cb9c2af61505725",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ChallengeWithdrawn"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ChallengeWithdrawn"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "3f3d74ded784bc79",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportBridgeMinted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "414586645cb541ec",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ChallengeJudged"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ChallengeJudged"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "42e954d90b80c360",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportDisputed"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "45c24ec2a551c99b",
+      "contracts": [
+        {
+          "contract": "KarProPass",
+          "event": "ProPassBurned"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "4740793a55e61a60",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ChallengeConcluded"
+        },
+        {
+          "contract": "KarPassport",
+          "event": "ChallengeConcluded"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "51eaab4a9af303ff",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportURIUpdated"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "53371fe3760db91e",
+      "contracts": [
+        {
+          "contract": "KarProPass",
+          "event": "ProPassMinted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "55b128b002edd477",
+      "contracts": [
+        {
+          "contract": "KarProStaking",
+          "event": "VerificationFeeUpdated"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "5893f5a90cae6091",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ReversalCompleted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "597d3cbe1e89ca97",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentCommissionLowered"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentCommissionLowered"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "604839614c37e558",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ReversalAbandoned"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "68c90e827852cab0",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "MandateGranted"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "MandateGranted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "6fc91a5934f58b78",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "DisputeDepositUpdated"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "740775cf530266eb",
+      "contracts": [
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "NativeUsdStalenessToleranceSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "8735b053c1456c3d",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "BidPlaced"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "92e42337d671fb6b",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "AscendingTermsSnapshotted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "9848cd128bbd2262",
+      "contracts": [
+        {
+          "contract": "KarProStaking",
+          "event": "VerifierLeft"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "9c962fae78d85d75",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "Unpaused"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "Unpaused"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "9e0a3143a0291cf7",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "VerificationLapsed"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "9f319b9cb0581dbe",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "GuardianSet"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "GuardianSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "9f9f32981e5b424f",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportVerified"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "a211e98fc8d5c608",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "PaymentTokenRevoked"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "PaymentTokenRevoked"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "a263c42192e18bbd",
+      "contracts": [
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "SettlementNoteSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "a4a50441bfe85272",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "RecordAppended"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "ac3cbeca86a7ac45",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ReversalStarted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "acf805fd31ffffe8",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "Paused"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "Paused"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "b277fce68368d2d2",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "FundsReleased"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "b6f8fb5cdad3ab62",
+      "contracts": [
+        {
+          "contract": "KarPassportBridgeGateway",
+          "event": "ONFTSent"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "b8d25d81aa931f46",
+      "contracts": [
+        {
+          "contract": "KarProStaking",
+          "event": "VerifierJoined"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "baf83e627062a1fc",
+      "contracts": [
+        {
+          "contract": "KarProPass",
+          "event": "ProfileUpdated"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "c138d7189c4c2a68",
+      "contracts": [
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "Bought"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "c234bb01753f9ce6",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "RecallRequested"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "RecallRequested"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "c432456ccb330992",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportMinted"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "c5641fba431c2e67",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "BidRefunded"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "cc6acfb9a58a788d",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "PassportBridgeBurned"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "dd851f44be535b39",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "PaymentTokenApproved"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "PaymentTokenApproved"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "e44e1273c64b0447",
+      "contracts": [
+        {
+          "contract": "KarPassport",
+          "event": "VerificationReset"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "e46fb53ccc3a831c",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "MandateRevoked"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "MandateRevoked"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "e8801a567bfc0ae7",
+      "contracts": [
+        {
+          "contract": "KarPassportBridgeGateway",
+          "event": "ONFTReceived"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "e8d228118e7c91ee",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "Settled"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "f899b7e70a8dd39b",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "AuctionRulesSet"
+        }
+      ]
+    },
+    {
+      "discriminatorHex": "fb4287e5d7fd9e2b",
+      "contracts": [
+        {
+          "contract": "AscendingConsignment",
+          "event": "ConsignmentFloorLowered"
+        },
+        {
+          "contract": "FixedPriceConsignment",
+          "event": "ConsignmentFloorLowered"
+        }
+      ]
+    }
+  ],
+  "generatedAt": "2026-09-01T11:37:07.787Z"
+}
