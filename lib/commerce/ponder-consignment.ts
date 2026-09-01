@@ -12,6 +12,7 @@ import {
   parseDenominationKind,
 } from "@/lib/commerce/denomination";
 import type { CommerceMode } from "@/lib/commerce/mode";
+import type { CustodyUnresolvedCause } from "@/lib/types/ponder";
 
 /** Indexed consignment phase — richer than the on-chain enum. */
 export type IndexedConsignmentPhase =
@@ -114,6 +115,7 @@ export type PonderConsignmentRow = {
   status?: string | null;
   verifier?: string | null;
   custodyChain?: number | null;
+  custodyUnresolved?: string | null;
   /** Immutable passport origin when denormed by API. */
   originChainId?: number | null;
   mileageKm?: number | null;
@@ -162,8 +164,9 @@ export type ConsignmentRecord = {
   readonly verifier: string | null;
   readonly duplicateVin: boolean;
   readonly mileageKm: number | null;
-  /** Where the NFT lives now (passport denorm; falls back to commerce chain). */
-  readonly custodyChain: number;
+  /** Where the NFT lives now (passport denorm; null when fold unresolved). */
+  readonly custodyChain: number | null;
+  readonly custodyUnresolved?: CustodyUnresolvedCause | null;
   /** Passport origin chain (denorm; falls back to commerce chain). */
   readonly originChainId: number;
 };
@@ -185,6 +188,23 @@ function toAddress(value: string | null | undefined): `0x${string}` | null {
   if (!value || !value.startsWith("0x")) return null;
   if (value.toLowerCase() === ZERO_ADDRESS) return null;
   return value as `0x${string}`;
+}
+
+const CUSTODY_UNRESOLVED_CAUSES = [
+  "empty_history",
+  "departure_without_arrival",
+  "incomplete_crossing_link",
+  "unknown_namespace",
+  "conflicting_determination",
+] as const satisfies readonly CustodyUnresolvedCause[];
+
+function parseCustodyUnresolvedCause(
+  value: unknown,
+): CustodyUnresolvedCause | null {
+  if (typeof value !== "string") return null;
+  return (CUSTODY_UNRESOLVED_CAUSES as readonly string[]).includes(value)
+    ? (value as CustodyUnresolvedCause)
+    : null;
 }
 
 /** Fail-closed row mapper: unknown mode or phase drops the row. */
@@ -236,7 +256,8 @@ export function mapConsignmentRow(
     custodyChain:
       typeof row.custodyChain === "number" && Number.isFinite(row.custodyChain)
         ? row.custodyChain
-        : row.chainId,
+        : null,
+    custodyUnresolved: parseCustodyUnresolvedCause(row.custodyUnresolved),
     originChainId:
       typeof row.originChainId === "number" && Number.isFinite(row.originChainId)
         ? row.originChainId

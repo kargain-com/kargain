@@ -103,7 +103,7 @@ export function isBridgeTransitIndexerCatchupPhase(
  * Fail-closed: unread / non-ok detail does not complete.
  */
 export function isBridgeDestinationCustodyIndexed(
-  detail: { ok: boolean; passport?: { custodyChain: number } },
+  detail: { ok: boolean; passport?: { custodyChain: number | null } },
   dstChainId: number,
 ): boolean {
   return detail.ok === true && detail.passport?.custodyChain === dstChainId;
@@ -338,15 +338,16 @@ export function deriveBridgeTransitUi(
 export function mergeProfilePassportWithTransit(input: {
   tokenId: string;
   originChainId: number;
-  custodyChain: number;
+  custodyChain: number | null;
   transit: BridgeTransitRecord | null;
   dstName: string;
 }): ProfileTransitOverlay {
-  const { transit, dstName, custodyChain } = input;
+  const { transit, dstName, custodyChain, originChainId } = input;
+  const resolvedCustody = custodyChain ?? originChainId;
   if (transit == null || !isBridgeTransitActivePhase(transit.phase)) {
     return {
       inTransit: false,
-      hrefChainId: custodyChain,
+      hrefChainId: resolvedCustody,
       badge: null,
     };
   }

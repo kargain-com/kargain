@@ -5,6 +5,7 @@
 import type pg from "pg";
 
 import type {
+  CustodyDeterminingProjectionDraft,
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
 } from "../../lib/svm/project-raw-to-projection.js";
@@ -14,9 +15,15 @@ export type SvmProjectionWriter = {
   insertPassportUriHistory: (
     row: PassportUriHistoryProjectionDraft,
   ) => Promise<boolean>;
+  insertCustodyDeterminingEvent: (
+    row: CustodyDeterminingProjectionDraft,
+  ) => Promise<boolean>;
   insertPassportRecords: (rows: PassportRecordProjectionDraft[]) => Promise<number>;
   insertPassportUriHistoryRows: (
     rows: PassportUriHistoryProjectionDraft[],
+  ) => Promise<number>;
+  insertCustodyDeterminingEvents: (
+    rows: CustodyDeterminingProjectionDraft[],
   ) => Promise<number>;
 };
 
@@ -62,6 +69,24 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
       return (res.rowCount ?? 0) > 0;
     },
 
+    async insertCustodyDeterminingEvent(row) {
+      const res = await pool.query(
+        `INSERT INTO kargain_svm_projection.custody_determining_event (
+          id, token_id, chain_id, kind, block_number, log_index
+        ) VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (id) DO NOTHING`,
+        [
+          row.id,
+          row.tokenId,
+          row.chainId,
+          row.kind,
+          row.blockNumber,
+          row.logIndex,
+        ],
+      );
+      return (res.rowCount ?? 0) > 0;
+    },
+
     async insertPassportRecords(rows) {
       let inserted = 0;
       for (const row of rows) {
@@ -74,6 +99,13 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
       let inserted = 0;
       for (const row of rows) {
         if (await this.insertPassportUriHistory(row)) inserted += 1;
+      }
+      return inserted;
+    },
+    async insertCustodyDeterminingEvents(rows) {
+      let inserted = 0;
+      for (const row of rows) {
+        if (await this.insertCustodyDeterminingEvent(row)) inserted += 1;
       }
       return inserted;
     },

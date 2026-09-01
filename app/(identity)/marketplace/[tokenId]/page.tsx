@@ -147,6 +147,10 @@ async function MarketplaceListingInner({
     notFound();
   }
 
+  if (result.passport.custodyUnresolved || result.passport.custodyChain == null) {
+    notFound();
+  }
+
   const commerceChainId = result.passport.custodyChain;
   const originChainId = result.passport.chainId;
   const auctionResult = await getAuctionDetail(raw);

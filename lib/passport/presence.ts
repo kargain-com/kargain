@@ -23,7 +23,9 @@ export type DerivePassportPresenceInput = {
    * Ponder `custodyChain` when known — usable-copy location.
    * `undefined` does not invent location; lock alone still yields away.
    */
-  readonly ponderCustodyChain?: number | undefined;
+  readonly ponderCustodyChain?: number | null | undefined;
+  /** Fold incomplete — treat presence as unresolved. */
+  readonly custodyUnresolved?: string | null;
   /**
    * Optional location hint when away (counterpart / transit destination).
    * Used when ponder custody is unread or still equals the view chain during transit.
@@ -34,6 +36,10 @@ export type DerivePassportPresenceInput = {
 export function derivePassportPresence(
   input: DerivePassportPresenceInput,
 ): PassportPresence {
+  if (input.custodyUnresolved) {
+    return { status: "unresolved" };
+  }
+
   if (input.custodyLocked === undefined) {
     return { status: "unresolved" };
   }

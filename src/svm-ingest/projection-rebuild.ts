@@ -36,9 +36,11 @@ export async function rebuildProjectionFromRaw(
   const writer = createSvmProjectionWriter(pool);
   await writer.insertPassportRecords(batch.passportRecords);
   await writer.insertPassportUriHistoryRows(batch.uriHistory);
+  await writer.insertCustodyDeterminingEvents(batch.custodyEvents);
 
   return {
     recordCount: batch.passportRecords.length,
     uriCount: batch.uriHistory.length,
+    custodyCount: batch.custodyEvents.length,
   };
 }

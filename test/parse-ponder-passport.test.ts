@@ -49,9 +49,20 @@ describe("parsePonderPassport custody", () => {
     assert.equal(parsed.custodyChain, 11155111);
   });
 
-  it("fail-closes when custodyChain missing", () => {
+  it("fail-closes when custody answer missing", () => {
     const { custodyChain: _, ...rest } = BASE;
     assert.equal(parsePonderPassport(rest), null);
+  });
+
+  it("parses unresolved custody envelope", () => {
+    const parsed = parsePonderPassport({
+      ...BASE,
+      custodyChain: null,
+      custodyUnresolved: "departure_without_arrival",
+    });
+    assert.ok(parsed);
+    assert.equal(parsed.custodyChain, null);
+    assert.equal(parsed.custodyUnresolved, "departure_without_arrival");
   });
 
   it("fail-closes when chainId missing", () => {

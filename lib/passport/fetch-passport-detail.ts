@@ -15,6 +15,7 @@ import {
 } from "@/lib/passport/fetch-arweave-metadata";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import type {
+  CustodyUnresolvedCause,
   PassportStatus,
   PonderPassportDetail,
   PonderUriHistoryEntry,
@@ -78,7 +79,22 @@ function parseChainIdField(value: unknown): number | null {
   return n;
 }
 
-/** Exported for unit tests — fail-closed without custodyChain. */
+function parseCustodyUnresolved(value: unknown): CustodyUnresolvedCause | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const causes: CustodyUnresolvedCause[] = [
+    "empty_history",
+    "departure_without_arrival",
+    "incomplete_crossing_link",
+    "unknown_namespace",
+    "conflicting_determination",
+  ];
+  return causes.includes(value as CustodyUnresolvedCause)
+    ? (value as CustodyUnresolvedCause)
+    : undefined;
+}
+
+/** Exported for unit tests — fail-closed without custody answer. */
 export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -87,7 +103,10 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const owner = typeof obj.owner === "string" ? obj.owner : "";
   const statusRaw = typeof obj.status === "string" ? obj.status : "";
   const chainId = parseChainIdField(obj.chainId);
-  const custodyChain = parseChainIdField(obj.custodyChain);
+  const custodyChainRaw = obj.custodyChain;
+  const custodyChain =
+    custodyChainRaw == null ? null : parseChainIdField(custodyChainRaw);
+  const custodyUnresolved = parseCustodyUnresolved(obj.custodyUnresolved);
   const verifier = typeof obj.verifier === "string" ? obj.verifier : "";
   const verifiedAt = obj.verifiedAt != null ? String(obj.verifiedAt) : "0";
   const tokenUri = typeof obj.tokenUri === "string" ? obj.tokenUri : "";
@@ -123,12 +142,16 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const createdAt = obj.createdAt != null ? String(obj.createdAt) : "0";
   const updatedAt = obj.updatedAt != null ? String(obj.updatedAt) : "0";
 
+  const hasResolvedCustody = custodyChain != null && custodyUnresolved == null;
+  const hasUnresolvedCustody =
+    custodyChain == null && custodyUnresolved != null && custodyUnresolved !== undefined;
+
   if (
     !id ||
     !owner ||
     !isPassportStatus(statusRaw) ||
     chainId == null ||
-    custodyChain == null
+    (!hasResolvedCustody && !hasUnresolvedCustody)
   ) {
     return null;
   }
@@ -161,7 +184,8 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   return {
     id,
     chainId,
-    custodyChain,
+    custodyChain: hasResolvedCustody ? custodyChain : null,
+    custodyUnresolved: hasUnresolvedCustody ? custodyUnresolved : null,
     owner,
     status: statusRaw,
     verifier,
@@ -288,7 +312,7 @@ export async function fetchPassportDetail(
   if (!parsed) return { ok: false, error: "PONDER_UNAVAILABLE" };
 
   // Commerce / drift confirms target custody, not origin or ?chain= hint.
-  const rpcChainId = parsed.custodyChain;
+  const rpcChainId = parsed.custodyChain ?? chainId ?? parsed.chainId;
   const ponderTokenUri = parsed.tokenUri.trim();
   const chainTokenUri = await readTokenUriOnChain(tokenId, rpcChainId);
   const uriDrift = hasTokenUriDrift(ponderTokenUri, chainTokenUri);

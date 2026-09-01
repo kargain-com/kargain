@@ -562,12 +562,13 @@ export function ProfilePage({
                   {passports.map((p, index) => {
                     const transit = passportTransitOverlays.get(p.tokenId);
                     return (
-                      <li key={`${p.tokenId}-${p.custodyChain}`} className="min-h-0">
+                      <li key={`${p.tokenId}-${p.custodyChain ?? p.chainId}`} className="min-h-0">
                         <ProfilePassportCard
                           tokenId={p.tokenId}
                           status={p.status}
                           chainId={p.chainId}
                           custodyChain={p.custodyChain}
+                          custodyUnresolved={p.custodyUnresolved}
                           make={p.make}
                           model={p.model}
                           year={p.year}
@@ -603,12 +604,13 @@ export function ProfilePage({
               ) : (
                 <ul className={LISTING_CARD_GRID_NARROW}>
                   {listings.map((l, index) => (
-                    <li key={`${l.tokenId}-${l.custodyChain}`} className="min-h-0">
+                    <li key={`${l.tokenId}-${l.custodyChain ?? l.originChainId}`} className="min-h-0">
                       <ProfilePassportCard
                         tokenId={l.tokenId}
                         status={l.passportStatus}
-                        chainId={l.originChainId ?? l.custodyChain}
+                        chainId={l.originChainId ?? l.custodyChain ?? 0}
                         custodyChain={l.custodyChain}
+                        custodyUnresolved={l.custodyUnresolved}
                         make={l.make}
                         model={l.model}
                         year={l.year}

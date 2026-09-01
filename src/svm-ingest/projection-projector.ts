@@ -23,6 +23,7 @@ export async function projectPayloadsIntoWriter(
     if (!batch) continue;
     await writer.insertPassportRecords(batch.passportRecords);
     await writer.insertPassportUriHistoryRows(batch.uriHistory);
+    await writer.insertCustodyDeterminingEvents(batch.custodyEvents);
   }
   return replay;
 }

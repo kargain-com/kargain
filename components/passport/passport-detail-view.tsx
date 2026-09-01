@@ -154,7 +154,7 @@ export function PassportDetailView({
     <PassportActionsPanel
       tokenId={tokenId}
       chainId={chainId}
-      ponderCustodyChain={passport.custodyChain}
+      ponderCustodyChain={chainId}
       passportOwner={passport.owner as `0x${string}`}
       status={passport.status}
       lastDisputer={passport.lastDisputer}
@@ -193,7 +193,7 @@ export function PassportDetailView({
               <PassportPresenceStatusBadge
                 tokenId={tokenId}
                 chainId={chainId}
-                ponderCustodyChain={passport.custodyChain}
+                ponderCustodyChain={chainId}
                 recordedStatus={passport.status}
                 sublabel={statusSublabel}
                 className="shrink-0"
@@ -262,7 +262,7 @@ export function PassportDetailView({
               <PassportPresenceGallery
                 tokenId={tokenId}
                 chainId={chainId}
-                ponderCustodyChain={passport.custodyChain}
+                ponderCustodyChain={chainId}
                 recordedStatus={passport.status}
                 photos={metadata?.photos ?? []}
               />

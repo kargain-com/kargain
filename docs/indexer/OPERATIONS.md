@@ -1,6 +1,6 @@
 # Ponder indexer operations (VPS reindex runbook)
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; passport denorm columns; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` / `custodyChain` columns + chain-scoped verifier keys).
+Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; passport denorm columns; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` + chain-scoped verifier keys; **September 2026 S7c-3:** drop stored `passport.custodyChain` / add `custody_determining_event`).
 
 Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), **listing card cover photos**, **notifications feed**, or **dual-chain custody / verifier identity** will be wrong until new on-chain events occur. Browse filter SQL that only changes the query expression (Asking USD CASE) needs an indexer **image redeploy**, not this wipe.
 
@@ -33,13 +33,13 @@ Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **113198
 
 ---
 
-## S9 reindex obligation — bridge guid crossings (S7b)
+## S9 reindex obligation — bridge crossings + custody fold + SVM (S7b–c)
 
-**September 2026:** `bridge_crossing` table + `KarPassportBridgeGateway` registration landed on the SVM port branch. **No VPS action until S9 cutover** — production stays on Nuclear #4 without historical `ONFTSent` / `ONFTReceived` backfill until the planned full `ponder-reindex.sql` at Solana commercial activation.
+**September 2026:** `bridge_crossing`, **`custody_determining_event`** (drops stored `passport.custodyChain` / `custodyUpdatedAt`), and SVM ingest/projection schemas landed on the SVM port branch. **No VPS action until S9 cutover** — production stays on Nuclear #4 without historical `ONFTSent` / `ONFTReceived` backfill or custody stream B replay until the planned full `ponder-reindex.sql` at Solana commercial activation.
 
-When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (hub **44957539** / Eth **11404235** on N4) in the same dual-chain reindex as other schema changes. Until then, stored `passport.custodyChain` remains the HTTP read surface (unchanged by S7b).
+When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (hub **44957539** / Eth **11404235** on N4) in the same dual-chain reindex as other schema changes. HTTP custody is **fold-at-read** via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts) — smoke `GET /passports/:tokenId` for `custodyChain` or `custodyUnresolved` on a known bridged token.
 
-**S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Apply **`kargain_svm_raw`** + **`kargain_svm_projection`** schemas, smoke ingest `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill, and run bridge + EVM reindex obligations in the same cutover window. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`.
+**S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Apply **`kargain_svm_raw`** + **`kargain_svm_projection`** (incl. `custody_determining_event`) schemas, smoke ingest `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill, and run bridge + EVM reindex obligations in the same cutover window. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`.
 
 ---
 

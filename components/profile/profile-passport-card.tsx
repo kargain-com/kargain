@@ -26,8 +26,9 @@ export type ProfilePassportCardProps = {
   status: PassportStatus;
   /** Origin chain for id label. */
   chainId: number;
-  /** Custody chain for detail link + bridged-away badge. */
-  custodyChain: number;
+  /** Custody chain for detail link + bridged-away badge; null when unresolved. */
+  custodyChain: number | null;
+  custodyUnresolved?: string | null;
   make?: string | null;
   model?: string | null;
   year?: number | null;
@@ -52,6 +53,7 @@ export function ProfilePassportCard({
   status,
   chainId,
   custodyChain,
+  custodyUnresolved,
   make,
   model,
   year,
@@ -64,17 +66,20 @@ export function ProfilePassportCard({
   const priority =
     index !== undefined ? isListingCardFirstViewport(index) : false;
   const bridgedAway =
-    !transitBadge && isProfilePassportBridgedAway(chainId, custodyChain);
+    custodyChain != null &&
+    !transitBadge &&
+    isProfilePassportBridgedAway(chainId, custodyChain);
   // Inventory presence from indexer location — not escrow custody.
   const presence = derivePassportPresence({
     viewChainId: chainId,
     // Profile tiles have no RPC lock read; custody mismatch means away.
     custodyLocked: bridgedAway || Boolean(transitBadge) ? true : false,
     ponderCustodyChain: custodyChain,
+    custodyUnresolved: custodyUnresolved ?? null,
     locationChainId: custodyChain,
   });
   const trustDisplay = derivePassportTrustDisplay(presence, status);
-  const linkChain = hrefChainId ?? custodyChain;
+  const linkChain = hrefChainId ?? custodyChain ?? chainId;
   const title = buildProfilePassportTitle({
     year,
     make,
@@ -84,9 +89,11 @@ export function ProfilePassportCard({
   });
   const stateText = transitBadge
     ? transitBadge
-    : bridgedAway
-      ? `on ${shortChainName(custodyChain)}`
-      : "";
+    : custodyUnresolved
+      ? "location unread"
+      : bridgedAway && custodyChain != null
+        ? `on ${shortChainName(custodyChain)}`
+        : "";
   const vinText = vin?.trim() ?? "";
 
   return (

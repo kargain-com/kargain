@@ -111,6 +111,11 @@ export default async function EditPassportPage({
   }
 
   const { passport, metadata } = result;
+
+  if (passport.custodyUnresolved || passport.custodyChain == null) {
+    notFound();
+  }
+
   const chainId = passport.custodyChain;
 
   if (passport.status === "DISPUTED") {
@@ -168,6 +173,7 @@ export default async function EditPassportPage({
       viewChainId: chainId,
       custodyLocked: Boolean(custodyLocked),
       ponderCustodyChain: passport.custodyChain,
+      custodyUnresolved: passport.custodyUnresolved,
     });
     listingActive =
       modeCustodians.length > 0 &&

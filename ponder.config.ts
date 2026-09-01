@@ -67,7 +67,7 @@ const gatewayAddress =
 export default createConfig({
   // Cross-chain consistency for owner/status/uri via global timestamp order.
   // Omnichain waits on both networks (consistency > liveness).
-  // custodyChain is additionally protected by the monotonic custodyUpdatedAt gate.
+  // Stream B custody fold replaces stored passport.custodyChain (S7c-3).
   ordering: "omnichain",
   database,
   chains,

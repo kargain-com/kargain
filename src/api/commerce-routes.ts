@@ -27,6 +27,11 @@ import { getAddress, isAddress } from "viem";
 import { replaceBigInts } from "ponder";
 
 import {
+  attachPassportCustodyAnswer,
+  resolvePassportCustodyAnswersBatch,
+  type PassportCustodyAnswer,
+} from "../lib/ponder-passport-custody";
+import {
   ALL_COMMERCE_PHASES,
   LIVE_PHASES,
   OPEN_PHASES,
@@ -82,7 +87,11 @@ const OPEN_PHASE_LIST = [...OPEN_PHASES];
 type ConsignmentRow = typeof consignment.$inferSelect;
 type PassportRow = typeof passport.$inferSelect;
 
-function flattenPassportDenorm(row: ConsignmentRow, p: PassportRow | undefined) {
+function flattenPassportDenorm(
+  row: ConsignmentRow,
+  p: PassportRow | undefined,
+  custody: PassportCustodyAnswer,
+) {
   return {
     ...row,
     status: p?.status ?? null,
@@ -101,7 +110,8 @@ function flattenPassportDenorm(row: ConsignmentRow, p: PassportRow | undefined) 
     vehicleType: p?.vehicleType ?? null,
     colour: p?.colour ?? null,
     locationPlaceId: p?.locationPlaceId ?? null,
-    custodyChain: p?.custodyChain ?? row.chainId,
+    custodyChain: custody.custodyChain,
+    custodyUnresolved: custody.custodyUnresolved,
     /** Immutable passport origin (`tokenId >> 128`). */
     originChainId: p?.chainId ?? row.chainId,
   };
@@ -118,7 +128,7 @@ async function enrichConsignmentsBatch(rows: ConsignmentRow[]) {
   const tokenIds = [...new Set(rows.map((r) => r.tokenId))];
   const ascendingIds = rows.filter((r) => r.mode === "ascending").map((r) => r.id);
 
-  const [passports, settlements, terms, holds] = await Promise.all([
+  const [passports, settlements, terms, holds, custodyByToken] = await Promise.all([
     tokenIds.length > 0
       ? db.select().from(passport).where(inArray(passport.id, tokenIds))
       : Promise.resolve([] as PassportRow[]),
@@ -140,6 +150,7 @@ async function enrichConsignmentsBatch(rows: ConsignmentRow[]) {
           .from(consignmentHold)
           .where(inArray(consignmentHold.id, ascendingIds))
       : Promise.resolve([] as (typeof consignmentHold.$inferSelect)[]),
+    resolvePassportCustodyAnswersBatch(tokenIds),
   ]);
 
   const passportById = new Map(passports.map((p) => [p.id, p]));
@@ -148,7 +159,12 @@ async function enrichConsignmentsBatch(rows: ConsignmentRow[]) {
   const holdById = new Map(holds.map((h) => [h.id, h]));
 
   return rows.map((row) => {
-    const flat = flattenPassportDenorm(row, passportById.get(row.tokenId));
+    const custody =
+      custodyByToken.get(row.tokenId) ?? {
+        custodyChain: null,
+        custodyUnresolved: "empty_history" as const,
+      };
+    const flat = flattenPassportDenorm(row, passportById.get(row.tokenId), custody);
     return {
       ...flat,
       ascendingTerms: termsById.get(row.id) ?? null,
@@ -627,31 +643,42 @@ export function registerCommerceRoutes(app: Hono): void {
 
     const challenges =
       instance === "passport"
-        ? await Promise.all(
-            rows.map(async (row) => {
-              const pass = (
-                await db
-                  .select()
-                  .from(passport)
-                  .where(eq(passport.id, row.subjectId))
-                  .limit(1)
-              )[0];
-              return {
-                ...row,
-                passport: pass
-                  ? {
-                      status: pass.status,
-                      coverPhotoUri: pass.coverPhotoUri,
-                      make: pass.make,
-                      model: pass.model,
-                      year: pass.year,
-                      vin: pass.vin,
-                      custodyChain: pass.custodyChain,
-                    }
-                  : null,
-              };
-            }),
-          )
+        ? await (async () => {
+            const subjectIds = [...new Set(rows.map((r) => r.subjectId))];
+            const custodyByToken = await resolvePassportCustodyAnswersBatch(subjectIds);
+            return Promise.all(
+              rows.map(async (row) => {
+                const pass = (
+                  await db
+                    .select()
+                    .from(passport)
+                    .where(eq(passport.id, row.subjectId))
+                    .limit(1)
+                )[0];
+                const custody =
+                  custodyByToken.get(row.subjectId) ?? {
+                    custodyChain: null,
+                    custodyUnresolved: "empty_history" as const,
+                  };
+                return {
+                  ...row,
+                  passport: pass
+                    ? attachPassportCustodyAnswer(
+                        {
+                          status: pass.status,
+                          coverPhotoUri: pass.coverPhotoUri,
+                          make: pass.make,
+                          model: pass.model,
+                          year: pass.year,
+                          vin: pass.vin,
+                        },
+                        custody,
+                      )
+                    : null,
+                };
+              }),
+            );
+          })()
         : rows;
 
     return c.json(

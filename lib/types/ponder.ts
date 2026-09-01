@@ -131,12 +131,21 @@ export type PonderUriHistoryEntry = {
   timestamp: string;
 };
 
+export type CustodyUnresolvedCause =
+  | "empty_history"
+  | "departure_without_arrival"
+  | "incomplete_crossing_link"
+  | "unknown_namespace"
+  | "conflicting_determination";
+
 export type PonderPassportDetail = {
   id: string;
   /** Origin / mint home chain (SPEC §I.12.8). */
   chainId: number;
-  /** Where the token lives now — commerce RPCs use this. */
-  custodyChain: number;
+  /** Where the token lives now — commerce RPCs use this when resolved. */
+  custodyChain: number | null;
+  /** Present when custody fold is incomplete — never invent a chain id. */
+  custodyUnresolved?: CustodyUnresolvedCause | null;
   owner: string;
   status: PassportStatus;
   verifier: string;

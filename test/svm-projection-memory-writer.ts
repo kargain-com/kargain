@@ -2,6 +2,7 @@
  * In-memory projection writer for ingest/projection tests.
  */
 import type {
+  CustodyDeterminingProjectionDraft,
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
 } from "../lib/svm/project-raw-to-projection.js";
@@ -10,13 +11,16 @@ import type { SvmProjectionWriter } from "../src/lib/svm-projection-writer.js";
 export function createMemorySvmProjectionWriter(): SvmProjectionWriter & {
   passportRecords: PassportRecordProjectionDraft[];
   uriHistory: PassportUriHistoryProjectionDraft[];
+  custodyEvents: CustodyDeterminingProjectionDraft[];
 } {
   const passportRecords: PassportRecordProjectionDraft[] = [];
   const uriHistory: PassportUriHistoryProjectionDraft[] = [];
+  const custodyEvents: CustodyDeterminingProjectionDraft[] = [];
 
   return {
     passportRecords,
     uriHistory,
+    custodyEvents,
     async insertPassportRecord(row) {
       if (passportRecords.some((r) => r.id === row.id)) return false;
       passportRecords.push(row);
@@ -38,6 +42,18 @@ export function createMemorySvmProjectionWriter(): SvmProjectionWriter & {
       let n = 0;
       for (const row of rows) {
         if (await this.insertPassportUriHistory(row)) n += 1;
+      }
+      return n;
+    },
+    async insertCustodyDeterminingEvent(row) {
+      if (custodyEvents.some((r) => r.id === row.id)) return false;
+      custodyEvents.push(row);
+      return true;
+    },
+    async insertCustodyDeterminingEvents(rows) {
+      let n = 0;
+      for (const row of rows) {
+        if (await this.insertCustodyDeterminingEvent(row)) n += 1;
       }
       return n;
     },

@@ -1,8 +1,9 @@
 /**
- * Pure raw structured_payload → SVM provenance projection rows (S7c-2).
- * KarPassport RecordAppended + PassportURIUpdated only; D-38/D-39 skipped.
+ * Pure raw structured_payload → SVM provenance + custody projection rows (S7c-2 / S7c-3).
  */
 
+import { originNamespaceOf } from "@/lib/custody/origin.js";
+import type { CustodyDeterminationKind } from "@/lib/custody/normalized-event.js";
 import { encodeSvmPubkeyBytes } from "@/lib/web3/protocol-address";
 
 import {
@@ -37,9 +38,19 @@ export type PassportUriHistoryProjectionDraft = {
   timestamp: bigint;
 };
 
+export type CustodyDeterminingProjectionDraft = {
+  id: string;
+  tokenId: string;
+  chainId: number;
+  kind: CustodyDeterminationKind;
+  blockNumber: number;
+  logIndex: number;
+};
+
 export type ProjectionBatch = {
   passportRecords: PassportRecordProjectionDraft[];
   uriHistory: PassportUriHistoryProjectionDraft[];
+  custodyEvents: CustodyDeterminingProjectionDraft[];
 };
 
 export type RawPayloadForProjection = Pick<
@@ -113,14 +124,63 @@ function projectPassportUriUpdated(
   };
 }
 
-const PROJECTABLE_EVENTS = new Set(["RecordAppended", "PassportURIUpdated"]);
+const PROVENANCE_EVENTS = new Set(["RecordAppended", "PassportURIUpdated"]);
+const CUSTODY_EVENTS = new Set([
+  "PassportMinted",
+  "PassportBridgeMinted",
+  "CustodyLockSet",
+  "VerificationReset",
+]);
+
+function fieldU8(fields: DecodedEventPayload["fields"], name: string): number {
+  const f = fields.find((x) => x.name === name);
+  return typeof f?.value === "number" ? f.value : 0;
+}
+
+function projectCustodyEvent(
+  raw: RawPayloadForProjection,
+  decoded: DecodedEventPayload,
+): CustodyDeterminingProjectionDraft | null {
+  const tokenId = tokenIdFromBytes32(fieldBytes32(decoded.fields, "tokenId"));
+  let kind: CustodyDeterminationKind | null = null;
+
+  switch (raw.eventName) {
+    case "PassportMinted":
+      kind = "native_mint";
+      break;
+    case "PassportBridgeMinted":
+      kind = "bridge_arrival";
+      break;
+    case "CustodyLockSet":
+      if (fieldU8(decoded.fields, "locked") !== 0) return null;
+      kind = "custody_unlock";
+      break;
+    case "VerificationReset":
+      if (raw.namespace !== originNamespaceOf(tokenId)) return null;
+      kind = "home_unlock";
+      break;
+    default:
+      return null;
+  }
+
+  return {
+    id: raw.id,
+    tokenId,
+    chainId: raw.namespace,
+    kind,
+    blockNumber: raw.slot,
+    logIndex: raw.logIndex,
+  };
+}
 
 export function projectStructuredPayload(
   raw: RawPayloadForProjection,
   state: ProjectionReplayState,
 ): ProjectionBatch | null {
   if (raw.contractName !== "KarPassport") return null;
-  if (!PROJECTABLE_EVENTS.has(raw.eventName)) return null;
+  if (!PROVENANCE_EVENTS.has(raw.eventName) && !CUSTODY_EVENTS.has(raw.eventName)) {
+    return null;
+  }
 
   let decoded: DecodedEventPayload;
   try {
@@ -133,19 +193,28 @@ export function projectStructuredPayload(
     return null;
   }
 
+  const emptyBatch = (): ProjectionBatch => ({
+    passportRecords: [],
+    uriHistory: [],
+    custodyEvents: [],
+  });
+
   if (raw.eventName === "RecordAppended") {
     return {
+      ...emptyBatch(),
       passportRecords: [projectRecordAppended(raw, decoded)],
-      uriHistory: [],
     };
   }
   if (raw.eventName === "PassportURIUpdated") {
     return {
-      passportRecords: [],
+      ...emptyBatch(),
       uriHistory: [projectPassportUriUpdated(raw, decoded, state)],
     };
   }
-  return null;
+
+  const custody = projectCustodyEvent(raw, decoded);
+  if (!custody) return null;
+  return { ...emptyBatch(), custodyEvents: [custody] };
 }
 
 export function projectStructuredPayloadsOrdered(
@@ -154,6 +223,7 @@ export function projectStructuredPayloadsOrdered(
   const state = emptyProjectionReplayState();
   const passportRecords: PassportRecordProjectionDraft[] = [];
   const uriHistory: PassportUriHistoryProjectionDraft[] = [];
+  const custodyEvents: CustodyDeterminingProjectionDraft[] = [];
 
   const sorted = [...rows].sort((a, b) => {
     if (a.namespace !== b.namespace) return a.namespace - b.namespace;
@@ -169,7 +239,8 @@ export function projectStructuredPayloadsOrdered(
     if (!batch) continue;
     passportRecords.push(...batch.passportRecords);
     uriHistory.push(...batch.uriHistory);
+    custodyEvents.push(...batch.custodyEvents);
   }
 
-  return { passportRecords, uriHistory };
+  return { passportRecords, uriHistory, custodyEvents };
 }

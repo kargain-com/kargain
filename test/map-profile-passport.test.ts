@@ -116,7 +116,7 @@ describe("mapProfilePassport", () => {
     assert.equal(isProfilePassportBridgedAway(84532, 11155111), true);
   });
 
-  it("fail-closes without custodyChain", () => {
+  it("fail-closes without custody answer", () => {
     assert.equal(
       mapProfilePassport({
         id: "1",
@@ -125,6 +125,19 @@ describe("mapProfilePassport", () => {
       }),
       null,
     );
+  });
+
+  it("parses unresolved custody", () => {
+    const row = mapProfilePassport({
+      id: "1",
+      status: "VERIFIED",
+      chainId: 84532,
+      custodyChain: null,
+      custodyUnresolved: "empty_history",
+    });
+    assert.ok(row);
+    assert.equal(row.custodyChain, null);
+    assert.equal(row.custodyUnresolved, "empty_history");
   });
 
   it("fail-closes without chainId", () => {

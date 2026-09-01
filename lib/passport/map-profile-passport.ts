@@ -2,7 +2,7 @@ import {
   isIndexedPhaseLive,
   type ConsignmentRecord,
 } from "@/lib/commerce/ponder-consignment";
-import type { PassportStatus } from "@/lib/types/ponder";
+import type { CustodyUnresolvedCause, PassportStatus } from "@/lib/types/ponder";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 
 export type ProfilePassportRow = {
@@ -16,8 +16,9 @@ export type ProfilePassportRow = {
   imageUrl: string | null;
   /** Origin / mint home. */
   chainId: number;
-  /** Where the token lives now — detail links use this. */
-  custodyChain: number;
+  /** Where the token lives now — detail links use this when resolved. */
+  custodyChain: number | null;
+  custodyUnresolved?: CustodyUnresolvedCause | null;
 };
 
 export type ProfileListingRow = {
@@ -28,8 +29,9 @@ export type ProfileListingRow = {
   year: number;
   vin: string | null;
   imageUrl: string | null;
-  /** Commerce chain for detail links (custody preferred). */
-  custodyChain: number;
+  /** Commerce chain for detail links when custody resolved. */
+  custodyChain: number | null;
+  custodyUnresolved?: CustodyUnresolvedCause | null;
   originChainId?: number;
 };
 
@@ -65,13 +67,29 @@ function coverImageUrl(coverPhotoUri: unknown): string | null {
 /** True when the passport lives off its origin chain. */
 export function isProfilePassportBridgedAway(
   chainId: number,
-  custodyChain: number,
+  custodyChain: number | null,
 ): boolean {
+  if (custodyChain == null) return false;
   return custodyChain !== chainId;
 }
 
+function parseCustodyUnresolved(value: unknown): CustodyUnresolvedCause | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const causes: CustodyUnresolvedCause[] = [
+    "empty_history",
+    "departure_without_arrival",
+    "incomplete_crossing_link",
+    "unknown_namespace",
+    "conflicting_determination",
+  ];
+  return causes.includes(value as CustodyUnresolvedCause)
+    ? (value as CustodyUnresolvedCause)
+    : undefined;
+}
+
 /**
- * Map a Ponder profile passport row. Fail-closed without origin + custody.
+ * Map a Ponder profile passport row. Fail-closed without origin + custody answer.
  */
 export function mapProfilePassport(raw: unknown): ProfilePassportRow | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -80,9 +98,21 @@ export function mapProfilePassport(raw: unknown): ProfilePassportRow | null {
   const tokenId = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
   const statusRaw = typeof obj.status === "string" ? obj.status : "";
   const chainId = parseChainIdField(obj.chainId);
-  const custodyChain = parseChainIdField(obj.custodyChain);
+  const custodyChainRaw = obj.custodyChain;
+  const custodyChain =
+    custodyChainRaw == null ? null : parseChainIdField(custodyChainRaw);
+  const custodyUnresolved = parseCustodyUnresolved(obj.custodyUnresolved);
 
-  if (!tokenId || !isPassportStatus(statusRaw) || chainId == null || custodyChain == null) {
+  const hasResolved = custodyChain != null && custodyUnresolved == null;
+  const hasUnresolved =
+    custodyChain == null && custodyUnresolved != null && custodyUnresolved !== undefined;
+
+  if (
+    !tokenId ||
+    !isPassportStatus(statusRaw) ||
+    chainId == null ||
+    (!hasResolved && !hasUnresolved)
+  ) {
     return null;
   }
 
@@ -95,7 +125,8 @@ export function mapProfilePassport(raw: unknown): ProfilePassportRow | null {
     year: parseYear(obj.year),
     imageUrl: coverImageUrl(obj.coverPhotoUri),
     chainId,
-    custodyChain,
+    custodyChain: hasResolved ? custodyChain : null,
+    custodyUnresolved: hasUnresolved ? custodyUnresolved : null,
   };
 }
 
@@ -121,6 +152,7 @@ export function mapProfileListingFromConsignment(
     vin: parseVin(row.vin),
     imageUrl: coverImageUrl(row.coverPhotoUri),
     custodyChain: row.custodyChain,
+    custodyUnresolved: row.custodyUnresolved ?? null,
     originChainId: row.originChainId,
   };
 }

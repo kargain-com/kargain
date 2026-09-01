@@ -320,6 +320,25 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ponder-passport-provenance-policy.test.ts"],
   },
   {
+    id: "passport-custody-fold",
+    owner: "lib/custody/fold.ts",
+    rule: "Two-stream custody fold is VM-agnostic; adapters outside fold; no cross-writer timestamp order",
+    guardTests: [
+      "custody-fold-policy.test.ts",
+      "custody-fold.test.ts",
+      "custody-fold-route-matrix.test.ts",
+    ],
+  },
+  {
+    id: "ponder-passport-custody",
+    owner: "src/lib/ponder-passport-custody.ts",
+    rule: "HTTP custody load + fold only via ponder-passport-custody owner",
+    guardTests: [
+      "custody-fold-consumer-policy.test.ts",
+      "custody-fold-policy.test.ts",
+    ],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",

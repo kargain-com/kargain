@@ -25,6 +25,11 @@ import {
   loadPassportRecordsByTokenId,
   loadPassportUriHistoryByTokenId,
 } from "../lib/ponder-passport-provenance";
+import {
+  attachPassportCustodyAnswer,
+  resolvePassportCustodyAnswer,
+  resolvePassportCustodyAnswersBatch,
+} from "../lib/ponder-passport-custody";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
 const app = new Hono();
@@ -303,12 +308,15 @@ app.get("/passports/:tokenId", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  const [records, uriHistory] = await Promise.all([
+  const [records, uriHistory, custody] = await Promise.all([
     loadPassportRecordsByTokenId(tokenId),
     loadPassportUriHistoryByTokenId(tokenId),
+    resolvePassportCustodyAnswer(tokenId),
   ]);
 
-  return c.json(jsonBody({ ...row[0], records, uriHistory }));
+  return c.json(
+    jsonBody(attachPassportCustodyAnswer({ ...row[0], records, uriHistory }, custody)),
+  );
 });
 
 app.get("/profile/:address/passports", async (c) => {
@@ -321,7 +329,18 @@ app.get("/profile/:address/passports", async (c) => {
     .where(eq(passport.owner, address))
     .orderBy(desc(passport.createdAt));
 
-  return c.json(jsonBody({ passports }));
+  const custodyByToken = await resolvePassportCustodyAnswersBatch(
+    passports.map((p) => p.id),
+  );
+
+  const enriched = passports.map((p) =>
+    attachPassportCustodyAnswer(p, custodyByToken.get(p.id) ?? {
+      custodyChain: null,
+      custodyUnresolved: "empty_history",
+    }),
+  );
+
+  return c.json(jsonBody({ passports: enriched }));
 });
 
 app.get("/verifiers", async (c) => {

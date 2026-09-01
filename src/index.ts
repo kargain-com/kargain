@@ -9,6 +9,7 @@ import {
 
 import { getAddress } from "viem";
 
+import { originNamespaceOf } from "../lib/custody/origin.js";
 import { isDisputeWithdrawnRecord } from "../lib/passport/index-passport-metadata";
 // Additive KarPassport `challenge` table writes — registers FixedPriceConsignment /
 // AscendingConsignment handlers as a side effect. Passport trust-field writes
@@ -30,14 +31,10 @@ import {
   verificationResetTrustFields,
 } from "./lib/ponder-g1-fields";
 import {
-  nextCustodyChain,
-  originChainIdOf,
-  resolveCustody,
-} from "./lib/ponder-custody";
-import {
   notePassportCounterpartForTx,
   type BridgeCrossingContext,
 } from "./lib/ponder-bridge-crossings";
+import { insertCustodyDeterminingEvent } from "./lib/ponder-custody-events";
 import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
@@ -96,32 +93,30 @@ async function appendUriHistory(
 ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const uri = event.args.uri;
-  const origin = originChainIdOf(event.args.tokenId);
+  const origin = originNamespaceOf(event.args.tokenId);
   const chainId = indexingChainId(context);
   const ts = event.block.timestamp;
-  const custodyChain =
-    nextCustodyChain(undefined, {
-      kind: "native-mint",
-      eventChainId: chainId,
-      tokenId: event.args.tokenId,
-    }) ?? origin;
-  const custody =
-    resolveCustody(undefined, custodyChain, ts) ?? {
-      custodyChain,
-      custodyUpdatedAt: ts,
-    };
 
   await context.db.insert(passport).values({
     id: tokenId,
     chainId: origin,
-    custodyChain: custody.custodyChain,
-    custodyUpdatedAt: custody.custodyUpdatedAt,
     owner: getAddress(event.args.to),
     status: "UNVERIFIED",
     verifier: "",
     verifiedAt: 0n,
     tokenUri: uri,
     ...passportMintTrustFields(ts),
+  });
+
+  await insertCustodyDeterminingEvent(context, {
+    id: `${event.transaction.hash}-${event.log.logIndex}`,
+    tokenId,
+    chainId,
+    kind: "native_mint",
+    blockNumber: Number(event.block.number),
+    logIndex: event.log.logIndex,
+    txHash: event.transaction.hash,
+    timestamp: ts,
   });
 
   await appendUriHistory(context, {
@@ -141,49 +136,23 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
 ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const uri = event.args.uri;
-  const origin = originChainIdOf(event.args.tokenId);
+  const origin = originNamespaceOf(event.args.tokenId);
   const chainId = indexingChainId(context);
-  const candidate =
-    nextCustodyChain(undefined, {
-      kind: "bridge-mint",
-      eventChainId: chainId,
-    }) ?? chainId;
   const ts = event.block.timestamp;
   const trust = passportMintTrustFields(ts);
 
   const existing = await context.db.find(passport, { id: tokenId });
-  const custody = resolveCustody(
-    existing
-      ? {
-          custodyChain: existing.custodyChain,
-          custodyUpdatedAt: existing.custodyUpdatedAt,
-        }
-      : undefined,
-    candidate,
-    ts,
-  );
 
   if (existing) {
     await context.db.update(passport, { id: tokenId }).set({
-      ...(custody
-        ? {
-            custodyChain: custody.custodyChain,
-            custodyUpdatedAt: custody.custodyUpdatedAt,
-          }
-        : {}),
       owner: getAddress(event.args.to),
       tokenUri: uri,
       ...bridgeMintArrivalTrustFields(ts),
     });
   } else {
-    const initial =
-      custody ??
-      ({ custodyChain: candidate, custodyUpdatedAt: ts } as const);
     await context.db.insert(passport).values({
       id: tokenId,
       chainId: origin,
-      custodyChain: initial.custodyChain,
-      custodyUpdatedAt: initial.custodyUpdatedAt,
       owner: getAddress(event.args.to),
       status: "UNVERIFIED",
       verifier: "",
@@ -192,6 +161,17 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
       ...trust,
     });
   }
+
+  await insertCustodyDeterminingEvent(context, {
+    id: `${event.transaction.hash}-${event.log.logIndex}`,
+    tokenId,
+    chainId,
+    kind: "bridge_arrival",
+    blockNumber: Number(event.block.number),
+    logIndex: event.log.logIndex,
+    txHash: event.transaction.hash,
+    timestamp: ts,
+  });
 
   await appendUriHistory(context, {
     tokenId,
@@ -223,31 +203,25 @@ ponder.on("KarPassport:CustodyLockSet", async ({ event, context }) => {
   if (event.args.locked) return;
   const tokenId = event.args.tokenId.toString();
   const chainId = indexingChainId(context);
-  const candidate = nextCustodyChain(undefined, {
-    kind: "custody-unlock",
-    eventChainId: chainId,
+  const ts = event.block.timestamp;
+
+  await insertCustodyDeterminingEvent(context, {
+    id: `${event.transaction.hash}-${event.log.logIndex}`,
+    tokenId,
+    chainId,
+    kind: "custody_unlock",
+    blockNumber: Number(event.block.number),
+    logIndex: event.log.logIndex,
+    txHash: event.transaction.hash,
+    timestamp: ts,
   });
-  if (candidate === undefined) return;
 
   const existing = await context.db.find(passport, { id: tokenId });
-  const ts = event.block.timestamp;
-  const custody = resolveCustody(
-    existing
-      ? {
-          custodyChain: existing.custodyChain,
-          custodyUpdatedAt: existing.custodyUpdatedAt,
-        }
-      : undefined,
-    candidate,
-    ts,
-  );
-  if (custody === null) return;
-
-  await context.db.update(passport, { id: tokenId }).set({
-    custodyChain: custody.custodyChain,
-    custodyUpdatedAt: custody.custodyUpdatedAt,
-    updatedAt: ts,
-  });
+  if (existing) {
+    await context.db.update(passport, { id: tokenId }).set({
+      updatedAt: ts,
+    });
+  }
 
   await notePassportCounterpartForTx(context as BridgeCrossingContext, {
     txHash: event.transaction.hash,
@@ -324,28 +298,30 @@ ponder.on("KarPassport:ChallengeWithdrawn", async ({ event, context }) => {
 ponder.on("KarPassport:VerificationReset", async ({ event, context }) => {
   const tokenId = event.args.tokenId.toString();
   const existing = await context.db.find(passport, { id: tokenId });
-  const origin = existing?.chainId ?? originChainIdOf(event.args.tokenId);
+  const origin = existing?.chainId ?? originNamespaceOf(event.args.tokenId);
   const chainId = indexingChainId(context);
-  // Unlock-on-home emits VerificationReset; set custody to home when event is on origin.
-  const custodyPatch =
-    chainId === origin
-      ? {
-          custodyChain:
-            nextCustodyChain(existing?.custodyChain, {
-              kind: "verification-reset-home",
-              eventChainId: chainId,
-              originChainId: origin,
-            }) ?? origin,
-        }
-      : {};
+  const ts = event.block.timestamp;
+
+  if (chainId === origin) {
+    await insertCustodyDeterminingEvent(context, {
+      id: `${event.transaction.hash}-${event.log.logIndex}`,
+      tokenId,
+      chainId,
+      kind: "home_unlock",
+      blockNumber: Number(event.block.number),
+      logIndex: event.log.logIndex,
+      txHash: event.transaction.hash,
+      timestamp: ts,
+    });
+  }
+
   await context.db
     .update(passport, { id: tokenId })
     .set({
       ...verificationResetTrustFields(
         existing?.verificationResetCount ?? 0,
-        event.block.timestamp,
+        ts,
       ),
-      ...custodyPatch,
     });
 });
 

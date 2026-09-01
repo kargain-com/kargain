@@ -7,7 +7,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c-3 custody fold; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)). **S7c-1/2 (September 2026):** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on [`GET /passports/:tokenId`](../../src/api/index.ts) `records[]` / `uriHistory[]`, attestations, notifications record loop ([SVM ingest](#svm-raw-ingest-s7c-1) below). **`passport.custodyChain` unchanged.** VPS enable deferred to **S9**.
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c (September 2026):** `bridge_crossing` + **`custody_determining_event`** indexed on branch; HTTP custody via read-time fold ([`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts)) on `GET /passports/:tokenId`, profile passports, commerce denorm — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on `records[]` / `uriHistory[]`. **VPS full reindex + svm-ingest enable deferred to S9** ([OPERATIONS.md §S9](./OPERATIONS.md)).
 
 ## SVM raw ingest (S7c-1)
 
@@ -21,7 +21,7 @@ Separate Node service — **not** inside the Ponder image. Append-only Postgres 
 | Ordering key | `(slot, tx_index_in_block, log_index)` — writer-local total order |
 | Refusal kinds | `log_truncated` · `unknown_discriminator` · `payload_malformed` · `sequence_gap` |
 
-**S7c-1 non-goals (historical):** projection lived in S7c-2. **`passport.custodyChain` unchanged** through S7c-2.
+**S7c-1 non-goals (historical):** projection lived in S7c-2; custody fold lived in S7c-3.
 
 ## SVM provenance projection (S7c-2)
 
@@ -54,7 +54,7 @@ Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12
 | Field | Meaning |
 |-------|---------|
 | `passport.chainId` | Immutable origin (`tokenId >> 128`) |
-| `passport.custodyChain` | Network where the usable instance lives |
+| `custodyChain` / `custodyUnresolved` | **Read-time fold** (S7c-3) over `custody_determining_event` + `bridge_crossing`; resolved usable-copy namespace or named unresolved cause |
 | `consignment` / `challenge` / `passport_record` / `passport_uri_history` `chainId` | Network of the emitting event |
 | `verifier.id` | `` `${chainId}-${address.toLowerCase()}` `` |
 

@@ -1,4 +1,4 @@
--- SVM provenance projection (S7c-2) — dropped/rebuilt by svm-ingest; never by ponder-reindex.sql
+-- SVM provenance + custody projection (S7c-2 / S7c-3) — dropped/rebuilt by svm-ingest; never by ponder-reindex.sql
 CREATE SCHEMA IF NOT EXISTS kargain_svm_projection;
 
 CREATE TABLE IF NOT EXISTS kargain_svm_projection.passport_record (
@@ -31,3 +31,15 @@ CREATE TABLE IF NOT EXISTS kargain_svm_projection.passport_uri_history (
 
 CREATE INDEX IF NOT EXISTS passport_uri_history_token_idx
   ON kargain_svm_projection.passport_uri_history (token_id, timestamp DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS kargain_svm_projection.custody_determining_event (
+  id TEXT PRIMARY KEY,
+  token_id TEXT NOT NULL,
+  chain_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  block_number INTEGER NOT NULL,
+  log_index INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS custody_determining_event_token_idx
+  ON kargain_svm_projection.custody_determining_event (token_id, chain_id, block_number, log_index);

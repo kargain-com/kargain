@@ -19,13 +19,14 @@ import {
   passportUriUpdatedTrustFields,
   verificationResetTrustFields,
 } from "../src/lib/ponder-g1-fields.ts";
-import {
-  applyCustodyEvent,
-  nextCustodyChain,
-  originChainIdOf,
-  resolveCustody,
-  unionRecordsByTokenId,
-} from "../src/lib/ponder-custody.ts";
+import { foldPassportCustody } from "../lib/custody/fold.ts";
+import { originNamespaceOf } from "../lib/custody/origin.ts";
+import type {
+  NormalizedCrossingLeg,
+  NormalizedCustodyEvent,
+} from "../lib/custody/normalized-event.ts";
+import { evmWriterOrderKey } from "../lib/custody/writer-order.ts";
+import { unionRecordsByTokenId } from "../lib/passport/provenance-union.ts";
 import { passportMetadataDenorm } from "../src/lib/ponder-passport-metadata.ts";
 import { normalizeVerifierId } from "../src/lib/ponder-verifier-lifecycle.ts";
 
@@ -280,105 +281,154 @@ describe("#12 records UNION by global tokenId (hub+spoke)", () => {
   });
 });
 
-describe("#13 custodyChain attribution", () => {
+describe("#13 custody fold attribution", () => {
   const HUB = 84532;
   const SPOKE = 11155111;
-  const tokenId = (BigInt(HUB) << 128n) | 7n;
+  const tokenId = `${(BigInt(HUB) << 128n) | 7n}`;
+  const guid = "0x" + "aa".repeat(32);
+
+  function ev(
+    chainId: number,
+    kind: NormalizedCustodyEvent["kind"],
+    block: number,
+    log: number,
+  ): NormalizedCustodyEvent {
+    return {
+      tokenId,
+      namespace: chainId,
+      kind,
+      writerOrderKey: evmWriterOrderKey(chainId, block, log),
+    };
+  }
+
+  function leg(
+    direction: "sent" | "received",
+    chainId: number,
+    block: number,
+    log: number,
+    peer: number,
+  ): NormalizedCrossingLeg {
+    return {
+      guid,
+      direction,
+      tokenId,
+      observerNamespace: chainId,
+      peerNamespace: peer,
+      writerOrderKey: evmWriterOrderKey(chainId, block, log),
+    };
+  }
 
   it("native mint sets custody to origin/home", () => {
-    assert.equal(originChainIdOf(tokenId), HUB);
-    const custody = nextCustodyChain(undefined, {
-      kind: "native-mint",
-      eventChainId: HUB,
+    assert.equal(originNamespaceOf(tokenId), HUB);
+    const result = foldPassportCustody({
       tokenId,
+      streamB: [ev(HUB, "native_mint", 1, 0)],
+      crossings: [],
     });
-    assert.equal(custody, HUB);
-    const gated = resolveCustody(undefined, custody!, 100n);
-    assert.deepEqual(gated, { custodyChain: HUB, custodyUpdatedAt: 100n });
+    assert.deepEqual(result, { status: "resolved", custodyNamespace: HUB });
   });
 
-  it("lock leave + spoke bridge-mint → custodyChain=spoke; return unlock → home", () => {
-    let state = {
-      chainId: HUB,
-      custodyChain: HUB,
-      custodyUpdatedAt: 1n,
-    };
-
-    // Outbound: destination mint sets custody to spoke (burn does not).
-    const afterBurn = applyCustodyEvent(state, { kind: "bridge-burn" }, 2n);
-    assert.equal(afterBurn.custodyChain, HUB);
-
-    state = applyCustodyEvent(
-      afterBurn,
-      { kind: "bridge-mint", eventChainId: SPOKE },
-      3n,
-    );
-    assert.equal(state.custodyChain, SPOKE);
-    assert.equal(state.chainId, HUB);
-    assert.equal(state.custodyUpdatedAt, 3n);
-
-    // Return: unlock on home restores custody.
-    state = applyCustodyEvent(
-      state,
-      { kind: "custody-unlock", eventChainId: HUB },
-      4n,
-    );
-    assert.equal(state.custodyChain, HUB);
-    assert.equal(state.custodyUpdatedAt, 4n);
-
-    // VerificationReset-on-unlock is idempotent with unlock.
-    state = applyCustodyEvent(
-      state,
-      {
-        kind: "verification-reset-home",
-        eventChainId: HUB,
-        originChainId: HUB,
-      },
-      4n,
-    );
-    assert.equal(state.custodyChain, HUB);
+  it("lock leave + spoke bridge-mint → custody=spoke; return unlock → home", () => {
+    const guidBack = "0x" + "dd".repeat(32);
+    const result = foldPassportCustody({
+      tokenId,
+      streamB: [
+        ev(HUB, "native_mint", 1, 0),
+        ev(SPOKE, "bridge_arrival", 3, 1),
+        ev(HUB, "custody_unlock", 4, 0),
+        ev(HUB, "home_unlock", 4, 1),
+      ],
+      crossings: [
+        leg("sent", HUB, 2, 0, SPOKE),
+        leg("received", SPOKE, 3, 1, HUB),
+        {
+          guid: guidBack,
+          direction: "sent",
+          tokenId,
+          observerNamespace: SPOKE,
+          peerNamespace: HUB,
+          writerOrderKey: evmWriterOrderKey(SPOKE, 3, 0),
+        },
+        {
+          guid: guidBack,
+          direction: "received",
+          tokenId,
+          observerNamespace: HUB,
+          peerNamespace: SPOKE,
+          writerOrderKey: evmWriterOrderKey(HUB, 3, 2),
+        },
+      ],
+    });
+    assert.deepEqual(result, { status: "resolved", custodyNamespace: HUB });
   });
 });
 
-describe("#14 out-of-order custody (monotonic gate)", () => {
+describe("#14 cross-writer ordering via guid (not timestamps)", () => {
   const HUB = 84532;
   const SPOKE = 11155111;
-  const t2 = 200n;
-  const t4 = 400n;
+  const tokenId = `${(BigInt(HUB) << 128n) | 7n}`;
+  const guidOut = "0x" + "bb".repeat(32);
+  const guidBack = "0x" + "cc".repeat(32);
 
-  it("rejects stale bridge-mint after fresher home unlock", () => {
-    let state = {
-      chainId: HUB,
-      custodyChain: HUB,
-      custodyUpdatedAt: 0n,
-    };
-
-    state = applyCustodyEvent(
-      state,
-      { kind: "bridge-mint", eventChainId: SPOKE },
-      t2,
-    );
-    assert.equal(state.custodyChain, SPOKE);
-    assert.equal(state.custodyUpdatedAt, t2);
-
-    state = applyCustodyEvent(
-      state,
-      { kind: "custody-unlock", eventChainId: HUB },
-      t4,
-    );
-    assert.equal(state.custodyChain, HUB);
-    assert.equal(state.custodyUpdatedAt, t4);
-
-    const stale = resolveCustody(state, SPOKE, t2);
-    assert.equal(stale, null);
-
-    const afterStale = applyCustodyEvent(
-      state,
-      { kind: "bridge-mint", eventChainId: SPOKE },
-      t2,
-    );
-    assert.equal(afterStale.custodyChain, HUB);
-    assert.equal(afterStale.custodyUpdatedAt, t4);
+  it("return unlock on home follows guid-linked spoke arrival", () => {
+    const result = foldPassportCustody({
+      tokenId,
+      streamB: [
+        {
+          tokenId,
+          namespace: HUB,
+          kind: "native_mint",
+          writerOrderKey: evmWriterOrderKey(HUB, 1, 0),
+        },
+        {
+          tokenId,
+          namespace: SPOKE,
+          kind: "bridge_arrival",
+          writerOrderKey: evmWriterOrderKey(SPOKE, 2, 1),
+        },
+        {
+          tokenId,
+          namespace: HUB,
+          kind: "custody_unlock",
+          writerOrderKey: evmWriterOrderKey(HUB, 4, 0),
+        },
+      ],
+      crossings: [
+        {
+          guid: guidOut,
+          direction: "sent",
+          tokenId,
+          observerNamespace: HUB,
+          peerNamespace: SPOKE,
+          writerOrderKey: evmWriterOrderKey(HUB, 2, 0),
+        },
+        {
+          guid: guidOut,
+          direction: "received",
+          tokenId,
+          observerNamespace: SPOKE,
+          peerNamespace: HUB,
+          writerOrderKey: evmWriterOrderKey(SPOKE, 2, 1),
+        },
+        {
+          guid: guidBack,
+          direction: "sent",
+          tokenId,
+          observerNamespace: SPOKE,
+          peerNamespace: HUB,
+          writerOrderKey: evmWriterOrderKey(SPOKE, 3, 0),
+        },
+        {
+          guid: guidBack,
+          direction: "received",
+          tokenId,
+          observerNamespace: HUB,
+          peerNamespace: SPOKE,
+          writerOrderKey: evmWriterOrderKey(HUB, 3, 1),
+        },
+      ],
+    });
+    assert.deepEqual(result, { status: "resolved", custodyNamespace: HUB });
   });
 });
 

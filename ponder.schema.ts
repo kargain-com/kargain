@@ -6,10 +6,6 @@ export const passport = onchainTable(
     id: t.text().primaryKey(),
     /** Immutable origin — `chainIdOf(tokenId)` (= `tokenId >> 128`). */
     chainId: t.integer().notNull(),
-    /** Network where the usable instance currently lives (SPEC §I.12.8). */
-    custodyChain: t.integer().notNull(),
-    /** Timestamp of last accepted custody-changing event (monotonic gate). */
-    custodyUpdatedAt: t.bigint().notNull().default(0n),
     owner: t.text().notNull(),
     status: t.text().notNull(),
     verifier: t.text().notNull().default(""),
@@ -467,6 +463,29 @@ export const commerceCurrencyFeed = onchainTable("commerce_currency_feed", (t) =
   stalenessTolerance: t.integer().notNull().default(0),
   updatedAt: t.bigint().notNull(),
 }));
+
+/**
+ * Append-only custody-determining events (S7c-3 stream B).
+ * Fold at read — never mutate passport custody columns.
+ */
+export const custodyDeterminingEvent = onchainTable(
+  "custody_determining_event",
+  (t) => ({
+    id: t.text().primaryKey(),
+    tokenId: t.text().notNull(),
+    chainId: t.integer().notNull(),
+    kind: t.text().notNull(),
+    blockNumber: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    txHash: t.text().notNull(),
+    /** EVM-local debugging only — fold must not use for cross-writer order. */
+    timestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    tokenIdx: index().on(table.tokenId),
+    chainOrderIdx: index().on(table.chainId, table.blockNumber, table.logIndex),
+  }),
+);
 
 /**
  * Append-only guid-linked bridge crossings (S7b). One row per observed
