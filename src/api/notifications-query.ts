@@ -7,7 +7,6 @@ import {
   consignment,
   consignmentHold,
   mandate,
-  passport,
 } from "ponder:schema";
 import { and, desc, eq, gt, inArray } from "ponder";
 import { getAddress } from "viem";
@@ -24,6 +23,10 @@ import { claimRecordedNotificationItems } from "../lib/ponder-claims";
 import { LIVE_PHASES } from "../lib/ponder-commerce";
 import { loadObligationFacts } from "./load-obligation-facts";
 import { loadPassportRecordsByTokenId } from "../lib/ponder-passport-provenance";
+import {
+  loadPassportEntitiesByOwner,
+  loadPassportEntitiesFiltered,
+} from "../lib/ponder-passport-entity";
 
 export type PonderDb = typeof db;
 
@@ -48,10 +51,7 @@ export async function buildNotificationFeed(
   const normalizedAddress = address.toLowerCase();
   const items: PonderFeedItem[] = [];
 
-  const owned = await ponderDb
-    .select()
-    .from(passport)
-    .where(eq(passport.owner, normalizedAddress));
+  const owned = await loadPassportEntitiesByOwner(normalizedAddress);
 
   for (const p of owned) {
     if (p.verifiedAt > since && p.verifiedAt > 0n) {
@@ -220,10 +220,9 @@ export async function buildNotificationFeed(
     }
   }
 
-  const verifiedByMe = await ponderDb
-    .select()
-    .from(passport)
-    .where(eq(passport.verifier, checksumAddress));
+  const verifiedByMe = await loadPassportEntitiesFiltered({
+    verifierExact: checksumAddress,
+  });
 
   for (const p of verifiedByMe) {
     if (

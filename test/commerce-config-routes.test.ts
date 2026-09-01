@@ -34,8 +34,8 @@ describe("commerce config HTTP readers", () => {
     assert.ok(src.includes("OPEN_PHASES"));
     assert.ok(src.includes("LIVE_PHASES"));
     assert.ok(
-      src.includes("inArray(consignment.phase, OPEN_PHASE_LIST)"),
-      "GET /consignments?active=true must filter OPEN_PHASES only",
+      src.includes("openPhases: OPEN_PHASE_LIST"),
+      "GET /consignments?active=true must filter OPEN_PHASES via entity browse SQL",
     );
     assert.ok(
       src.includes("inArray(consignment.phase, LIVE_PHASE_LIST)"),

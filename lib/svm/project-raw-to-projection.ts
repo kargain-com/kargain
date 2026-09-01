@@ -1,5 +1,5 @@
 /**
- * Pure raw structured_payload → SVM provenance + custody projection rows (S7c-2 / S7c-3).
+ * Pure raw structured_payload → SVM provenance + custody + entity projection (S7c-2 / S7c-3 / S7c-4).
  */
 
 import { originNamespaceOf } from "@/lib/custody/origin.js";
@@ -14,7 +14,23 @@ import {
   tokenIdFromBytes32,
   type DecodedEventPayload,
 } from "./event-payload-decode.js";
-import type { StructuredPayloadDraft } from "./parse-transaction-ingest.js";
+import {
+  emptyEntityProjectionReplayState,
+  finalizeEntityProjectionState,
+  loadMetadataSnapshotsIntoState,
+  projectEntityFromPayload,
+  type PassportEntityProjectionDraft,
+} from "./passport-entity-projection.js";
+import {
+  type RawPayloadForProjection,
+  provenanceTimestampFromSlot,
+  sortRawPayloadsOrdered,
+} from "./projection-common.js";
+import type { MetadataSnapshotRow } from "./raw-replay-digest.js";
+
+export type { PassportEntityProjectionDraft } from "./passport-entity-projection.js";
+export type { RawPayloadForProjection } from "./projection-common.js";
+export { provenanceTimestampFromSlot } from "./projection-common.js";
 
 export type PassportRecordProjectionDraft = {
   id: string;
@@ -51,19 +67,8 @@ export type ProjectionBatch = {
   passportRecords: PassportRecordProjectionDraft[];
   uriHistory: PassportUriHistoryProjectionDraft[];
   custodyEvents: CustodyDeterminingProjectionDraft[];
+  passports: PassportEntityProjectionDraft[];
 };
-
-export type RawPayloadForProjection = Pick<
-  StructuredPayloadDraft,
-  | "id"
-  | "namespace"
-  | "slot"
-  | "txIndexInBlock"
-  | "logIndex"
-  | "contractName"
-  | "eventName"
-  | "payloadBytes"
->;
 
 export type ProjectionReplayState = {
   /** Last projected URI per (namespace, tokenId) for previousUri derivation. */
@@ -76,11 +81,6 @@ export function emptyProjectionReplayState(): ProjectionReplayState {
 
 function uriStateKey(namespace: number, tokenId: string): string {
   return `${namespace}:${tokenId}`;
-}
-
-/** Slot-ordered monotonic bigint used as provenance timestamp (D-05 clocks incomparable cross-VM). */
-export function provenanceTimestampFromSlot(slot: number): bigint {
-  return BigInt(slot);
 }
 
 function projectRecordAppended(
@@ -173,74 +173,89 @@ function projectCustodyEvent(
   };
 }
 
-export function projectStructuredPayload(
-  raw: RawPayloadForProjection,
-  state: ProjectionReplayState,
-): ProjectionBatch | null {
-  if (raw.contractName !== "KarPassport") return null;
-  if (!PROVENANCE_EVENTS.has(raw.eventName) && !CUSTODY_EVENTS.has(raw.eventName)) {
-    return null;
-  }
-
-  let decoded: DecodedEventPayload;
-  try {
-    decoded = decodeEventPayloadBody({
-      contractName: raw.contractName,
-      eventName: raw.eventName,
-      payloadBytes: raw.payloadBytes,
-    });
-  } catch {
-    return null;
-  }
-
-  const emptyBatch = (): ProjectionBatch => ({
+function emptyBatch(): ProjectionBatch {
+  return {
     passportRecords: [],
     uriHistory: [],
     custodyEvents: [],
-  });
+    passports: [],
+  };
+}
 
-  if (raw.eventName === "RecordAppended") {
-    return {
-      ...emptyBatch(),
-      passportRecords: [projectRecordAppended(raw, decoded)],
-    };
-  }
-  if (raw.eventName === "PassportURIUpdated") {
-    return {
-      ...emptyBatch(),
-      uriHistory: [projectPassportUriUpdated(raw, decoded, state)],
-    };
+export function projectStructuredPayload(
+  raw: RawPayloadForProjection,
+  state: ProjectionReplayState,
+  entityState?: ReturnType<typeof emptyEntityProjectionReplayState>,
+): ProjectionBatch | null {
+  let decoded: DecodedEventPayload | null = null;
+  const needsDecode =
+    raw.contractName === "KarPassport" &&
+    (PROVENANCE_EVENTS.has(raw.eventName) ||
+      CUSTODY_EVENTS.has(raw.eventName) ||
+      entityState != null);
+
+  if (needsDecode) {
+    try {
+      decoded = decodeEventPayloadBody({
+        contractName: raw.contractName,
+        eventName: raw.eventName,
+        payloadBytes: raw.payloadBytes,
+      });
+    } catch {
+      decoded = null;
+    }
   }
 
-  const custody = projectCustodyEvent(raw, decoded);
-  if (!custody) return null;
-  return { ...emptyBatch(), custodyEvents: [custody] };
+  const batch = emptyBatch();
+
+  if (decoded && raw.contractName === "KarPassport") {
+    if (raw.eventName === "RecordAppended") {
+      batch.passportRecords.push(projectRecordAppended(raw, decoded));
+    } else if (raw.eventName === "PassportURIUpdated") {
+      batch.uriHistory.push(projectPassportUriUpdated(raw, decoded, state));
+    } else if (CUSTODY_EVENTS.has(raw.eventName)) {
+      const custody = projectCustodyEvent(raw, decoded);
+      if (custody) batch.custodyEvents.push(custody);
+    }
+
+    if (entityState) {
+      const entity = projectEntityFromPayload(raw, decoded, entityState);
+      if (entity) batch.passports.push(entity);
+    }
+  }
+
+  if (
+    batch.passportRecords.length === 0 &&
+    batch.uriHistory.length === 0 &&
+    batch.custodyEvents.length === 0 &&
+    batch.passports.length === 0
+  ) {
+    return null;
+  }
+  return batch;
 }
 
 export function projectStructuredPayloadsOrdered(
   rows: readonly RawPayloadForProjection[],
+  metadataSnapshots: readonly MetadataSnapshotRow[] = [],
 ): ProjectionBatch {
   const state = emptyProjectionReplayState();
+  const entityState = emptyEntityProjectionReplayState();
+  loadMetadataSnapshotsIntoState(metadataSnapshots, entityState);
+
   const passportRecords: PassportRecordProjectionDraft[] = [];
   const uriHistory: PassportUriHistoryProjectionDraft[] = [];
   const custodyEvents: CustodyDeterminingProjectionDraft[] = [];
 
-  const sorted = [...rows].sort((a, b) => {
-    if (a.namespace !== b.namespace) return a.namespace - b.namespace;
-    if (a.slot !== b.slot) return a.slot - b.slot;
-    if (a.txIndexInBlock !== b.txIndexInBlock) {
-      return a.txIndexInBlock - b.txIndexInBlock;
-    }
-    return a.logIndex - b.logIndex;
-  });
-
-  for (const raw of sorted) {
-    const batch = projectStructuredPayload(raw, state);
+  for (const raw of sortRawPayloadsOrdered(rows)) {
+    const batch = projectStructuredPayload(raw, state, entityState);
     if (!batch) continue;
     passportRecords.push(...batch.passportRecords);
     uriHistory.push(...batch.uriHistory);
     custodyEvents.push(...batch.custodyEvents);
   }
 
-  return { passportRecords, uriHistory, custodyEvents };
+  const passports = finalizeEntityProjectionState(entityState);
+
+  return { passportRecords, uriHistory, custodyEvents, passports };
 }

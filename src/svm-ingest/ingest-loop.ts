@@ -2,7 +2,8 @@
  * Slot follower — bounded catch-up, four named refusals, sole writer via svm-raw-writer.
  */
 
-import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
+import { metadataSnapshotsForPayloads } from "../../lib/svm/ingest-metadata-capture.js";
+import type { MetadataFetcher } from "../../lib/svm/capture-metadata-at-ingest.js";
 import { ingestRefusalRowId } from "../../lib/svm/ingest-refusal.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
 import type { SvmRawWriter } from "../lib/svm-raw-writer.js";
@@ -24,6 +25,8 @@ export type IngestLoopOptions = {
   writer: SvmRawWriter;
   rpc: SvmRpcClient;
   projector?: ProjectionProjector;
+  /** Test-only injectable metadata fetcher for inline capture. */
+  metadataFetcher?: MetadataFetcher;
 };
 
 export function createIngestLoop(opts: IngestLoopOptions) {
@@ -135,9 +138,14 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         followedPrograms: opts.followedPrograms,
       });
       await opts.writer.insertStructuredPayloads(parsed.payloads);
+      const snapshots = await metadataSnapshotsForPayloads({
+        payloads: parsed.payloads,
+        fetcher: opts.metadataFetcher,
+      });
+      await opts.writer.insertMetadataSnapshots(snapshots);
       await opts.writer.insertIngestRefusals(parsed.refusals);
       if (opts.projector && parsed.payloads.length > 0) {
-        await opts.projector.projectPayloads(parsed.payloads);
+        await opts.projector.projectPayloads(parsed.payloads, snapshots);
       }
     }
 
@@ -194,6 +202,7 @@ export async function ingestBlockFromFixture(args: {
   writer: SvmRawWriter;
   projector?: ProjectionProjector;
   lastContiguousSlot: number;
+  metadataFetcher?: MetadataFetcher;
 }): Promise<number> {
   const { block, writer, namespace, followedPrograms } = args;
   for (let txIndex = 0; txIndex < block.transactions.length; txIndex++) {
@@ -208,9 +217,14 @@ export async function ingestBlockFromFixture(args: {
       followedPrograms,
     });
     await writer.insertStructuredPayloads(parsed.payloads);
+    const snapshots = await metadataSnapshotsForPayloads({
+      payloads: parsed.payloads,
+      fetcher: args.metadataFetcher,
+    });
+    await writer.insertMetadataSnapshots(snapshots);
     await writer.insertIngestRefusals(parsed.refusals);
     if (args.projector && parsed.payloads.length > 0) {
-      await args.projector.projectPayloads(parsed.payloads);
+      await args.projector.projectPayloads(parsed.payloads, snapshots);
     }
   }
   await writer.upsertCursor({

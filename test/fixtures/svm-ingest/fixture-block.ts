@@ -1,8 +1,10 @@
 import {
+  buildPassportMintedBody,
   buildPassportUriUpdatedBody,
   buildProgramDataLine,
   buildRecordAppendedBody,
   globalTokenId,
+  PASSPORT_MINTED_DISC,
   PASSPORT_URI_UPDATED_DISC,
   RECORD_APPENDED_DISC,
 } from "./borsh-fixtures.js";
@@ -22,12 +24,15 @@ export const FIXTURE_FOLLOWED_PROGRAMS = [
 
 export const FIXTURE_TOKEN_ID = globalTokenId(FIXTURE_NAMESPACE, 42);
 
-/** PassportMinted discriminator + 32-byte tokenId body (all zero). */
-export function passportMintedProgramDataLine(): string {
-  const disc = Buffer.from("c432456ccb330992", "hex");
-  const body = Buffer.alloc(32, 0);
-  const payload = Buffer.concat([disc, body]);
-  return `Program data: ${payload.toString("base64")}`;
+/** PassportMinted with to, tokenId, uri (manifest field order). */
+export function passportMintedProgramDataLine(
+  tokenId: bigint = FIXTURE_TOKEN_ID,
+  uri = "ar://svm-mint-uri",
+): string {
+  return buildProgramDataLine({
+    discriminatorHex: PASSPORT_MINTED_DISC,
+    body: buildPassportMintedBody({ tokenId, uri }),
+  });
 }
 
 export function recordAppendedProgramDataLine(
@@ -54,6 +59,61 @@ export function passportUriUpdatedProgramDataLine(
       tokenId,
       newUri,
     }),
+  });
+}
+
+export const FIXTURE_BLOCK_ENTITY_MINT = {
+  slot: 500_001,
+  transactions: [
+    {
+      signature: "fixtureSigMint111111111111111111111111111111111111111111111",
+      metaErr: null,
+      logMessages: [
+        `Program ${FIXTURE_PASSPORT_PROGRAM} invoke [1]`,
+        passportMintedProgramDataLine(),
+        `Program ${FIXTURE_PASSPORT_PROGRAM} success`,
+      ],
+    },
+  ],
+};
+
+export const FIXTURE_METADATA_JSON = {
+  vin: "SVMFIXTUREVIN001",
+  make: "Fixture",
+  model: "SVM",
+  year: 2024,
+  mileageKm: 12000,
+  fuelType: "electric",
+  bodyType: "sedan",
+  transmission: "automatic",
+  condition: "used",
+  vehicleType: "car",
+  colour: "blue",
+  coverPhotoUri: "ar://fixture-cover",
+  locationPlaceId: "place-fixture-1",
+};
+
+export function fixtureMetadataFetcher() {
+  return async (uri: string) => ({
+    status: "captured" as const,
+    rawJson: { ...FIXTURE_METADATA_JSON, uri },
+    denorm: {
+      vin: FIXTURE_METADATA_JSON.vin,
+      make: FIXTURE_METADATA_JSON.make,
+      model: FIXTURE_METADATA_JSON.model,
+      year: FIXTURE_METADATA_JSON.year,
+      mileageKm: FIXTURE_METADATA_JSON.mileageKm,
+      fuelType: FIXTURE_METADATA_JSON.fuelType,
+      bodyType: FIXTURE_METADATA_JSON.bodyType,
+      transmission: FIXTURE_METADATA_JSON.transmission,
+      condition: FIXTURE_METADATA_JSON.condition,
+      vehicleType: FIXTURE_METADATA_JSON.vehicleType,
+      colour: FIXTURE_METADATA_JSON.colour,
+      coverPhotoUri: FIXTURE_METADATA_JSON.coverPhotoUri,
+      locationLabel: "",
+      locationPlaceId: FIXTURE_METADATA_JSON.locationPlaceId,
+      locationCountryCode: "",
+    },
   });
 }
 

@@ -6,6 +6,7 @@ import type pg from "pg";
 
 import type {
   CustodyDeterminingProjectionDraft,
+  PassportEntityProjectionDraft,
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
 } from "../../lib/svm/project-raw-to-projection.js";
@@ -18,6 +19,7 @@ export type SvmProjectionWriter = {
   insertCustodyDeterminingEvent: (
     row: CustodyDeterminingProjectionDraft,
   ) => Promise<boolean>;
+  upsertPassportEntity: (row: PassportEntityProjectionDraft) => Promise<boolean>;
   insertPassportRecords: (rows: PassportRecordProjectionDraft[]) => Promise<number>;
   insertPassportUriHistoryRows: (
     rows: PassportUriHistoryProjectionDraft[],
@@ -25,6 +27,7 @@ export type SvmProjectionWriter = {
   insertCustodyDeterminingEvents: (
     rows: CustodyDeterminingProjectionDraft[],
   ) => Promise<number>;
+  upsertPassportEntities: (rows: PassportEntityProjectionDraft[]) => Promise<number>;
 };
 
 export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
@@ -87,6 +90,99 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
       return (res.rowCount ?? 0) > 0;
     },
 
+    async upsertPassportEntity(row) {
+      const res = await pool.query(
+        `INSERT INTO kargain_svm_projection.passport (
+          id, chain_id, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
+          vin, make, model, year, mileage_km, last_disputer, dispute_reason,
+          dispute_withdrawn_at, last_verification_reset_at, duplicate_vin,
+          last_metadata_change_at, verification_reset_count, had_dispute,
+          last_dispute_resolved_at, last_dispute_terminal, dispute_opened_at,
+          fuel_type, body_type, transmission, condition, vehicle_type, colour,
+          location_label, location_place_id, location_country_code, dispute_deposit,
+          created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
+          $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          chain_id = EXCLUDED.chain_id,
+          owner = EXCLUDED.owner,
+          status = EXCLUDED.status,
+          verifier = EXCLUDED.verifier,
+          verified_at = EXCLUDED.verified_at,
+          token_uri = EXCLUDED.token_uri,
+          cover_photo_uri = EXCLUDED.cover_photo_uri,
+          vin = EXCLUDED.vin,
+          make = EXCLUDED.make,
+          model = EXCLUDED.model,
+          year = EXCLUDED.year,
+          mileage_km = EXCLUDED.mileage_km,
+          last_disputer = EXCLUDED.last_disputer,
+          dispute_reason = EXCLUDED.dispute_reason,
+          dispute_withdrawn_at = EXCLUDED.dispute_withdrawn_at,
+          last_verification_reset_at = EXCLUDED.last_verification_reset_at,
+          duplicate_vin = EXCLUDED.duplicate_vin,
+          last_metadata_change_at = EXCLUDED.last_metadata_change_at,
+          verification_reset_count = EXCLUDED.verification_reset_count,
+          had_dispute = EXCLUDED.had_dispute,
+          last_dispute_resolved_at = EXCLUDED.last_dispute_resolved_at,
+          last_dispute_terminal = EXCLUDED.last_dispute_terminal,
+          dispute_opened_at = EXCLUDED.dispute_opened_at,
+          fuel_type = EXCLUDED.fuel_type,
+          body_type = EXCLUDED.body_type,
+          transmission = EXCLUDED.transmission,
+          condition = EXCLUDED.condition,
+          vehicle_type = EXCLUDED.vehicle_type,
+          colour = EXCLUDED.colour,
+          location_label = EXCLUDED.location_label,
+          location_place_id = EXCLUDED.location_place_id,
+          location_country_code = EXCLUDED.location_country_code,
+          dispute_deposit = EXCLUDED.dispute_deposit,
+          created_at = EXCLUDED.created_at,
+          updated_at = EXCLUDED.updated_at`,
+        [
+          row.id,
+          row.chainId,
+          row.owner,
+          row.status,
+          row.verifier,
+          row.verifiedAt.toString(),
+          row.tokenUri,
+          row.coverPhotoUri,
+          row.vin,
+          row.make,
+          row.model,
+          row.year,
+          row.mileageKm,
+          row.lastDisputer,
+          row.disputeReason,
+          row.disputeWithdrawnAt.toString(),
+          row.lastVerificationResetAt.toString(),
+          row.duplicateVin,
+          row.lastMetadataChangeAt.toString(),
+          row.verificationResetCount,
+          row.hadDispute,
+          row.lastDisputeResolvedAt.toString(),
+          row.lastDisputeTerminal,
+          row.disputeOpenedAt.toString(),
+          row.fuelType,
+          row.bodyType,
+          row.transmission,
+          row.condition,
+          row.vehicleType,
+          row.colour,
+          row.locationLabel,
+          row.locationPlaceId,
+          row.locationCountryCode,
+          row.disputeDeposit?.toString() ?? null,
+          row.createdAt.toString(),
+          row.updatedAt.toString(),
+        ],
+      );
+      return (res.rowCount ?? 0) > 0;
+    },
+
     async insertPassportRecords(rows) {
       let inserted = 0;
       for (const row of rows) {
@@ -108,6 +204,13 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
         if (await this.insertCustodyDeterminingEvent(row)) inserted += 1;
       }
       return inserted;
+    },
+    async upsertPassportEntities(rows) {
+      let upserted = 0;
+      for (const row of rows) {
+        if (await this.upsertPassportEntity(row)) upserted += 1;
+      }
+      return upserted;
     },
   };
 }

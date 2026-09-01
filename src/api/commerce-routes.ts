@@ -19,7 +19,6 @@ import {
   consignmentHold,
   consignmentSettlement,
   mandate,
-  passport,
 } from "ponder:schema";
 import { and, asc, count, desc, eq, gt, inArray, sql } from "ponder";
 import type { Hono } from "hono";
@@ -31,20 +30,19 @@ import {
   resolvePassportCustodyAnswersBatch,
   type PassportCustodyAnswer,
 } from "../lib/ponder-passport-custody";
+import { loadPassportEntitiesByIds, type PassportEntityRow } from "../lib/ponder-passport-entity";
+import {
+  buildConsignmentBaseConditionsRaw,
+  queryConsignmentBrowseWithEntityUnion,
+} from "../lib/passport-entity-browse-sql";
+import { getEntityPool } from "../lib/ponder-passport-entity";
 import {
   ALL_COMMERCE_PHASES,
   LIVE_PHASES,
   OPEN_PHASES,
 } from "../lib/ponder-commerce";
 import { parseChallengeStatusFilter } from "../../lib/challenge/browse-filters";
-import {
-  buildBrowseFilterConditions,
-  buildBrowseOrderBy,
-  emptyStatusCounts,
-  foldStatusCounts,
-  mergeBrowseWhere,
-  parseConsignmentBrowseFilters,
-} from "../lib/ponder-consignment-browse";
+import { parseConsignmentBrowseFilters } from "../lib/ponder-consignment-browse";
 import { loadObligationFacts } from "./load-obligation-facts";
 
 function parsePage(raw: string | undefined): number {
@@ -85,11 +83,10 @@ const LIVE_PHASE_LIST = [...LIVE_PHASES];
 const OPEN_PHASE_LIST = [...OPEN_PHASES];
 
 type ConsignmentRow = typeof consignment.$inferSelect;
-type PassportRow = typeof passport.$inferSelect;
 
 function flattenPassportDenorm(
   row: ConsignmentRow,
-  p: PassportRow | undefined,
+  p: PassportEntityRow | undefined,
   custody: PassportCustodyAnswer,
 ) {
   return {
@@ -130,8 +127,8 @@ async function enrichConsignmentsBatch(rows: ConsignmentRow[]) {
 
   const [passports, settlements, terms, holds, custodyByToken] = await Promise.all([
     tokenIds.length > 0
-      ? db.select().from(passport).where(inArray(passport.id, tokenIds))
-      : Promise.resolve([] as PassportRow[]),
+      ? loadPassportEntitiesByIds(tokenIds)
+      : Promise.resolve([] as PassportEntityRow[]),
     ids.length > 0
       ? db
           .select()
@@ -240,83 +237,46 @@ export function registerCommerceRoutes(app: Hono): void {
       verifiedFirst: c.req.query("verifiedFirst"),
     });
 
-    const baseConditions = [];
-    if (mode === "fixedPrice" || mode === "ascending") {
-      baseConditions.push(eq(consignment.mode, mode));
-    }
-    // `active` = open for buy/bid (offered|binding). Held stays out of browse.
-    if (active === true) {
-      baseConditions.push(inArray(consignment.phase, OPEN_PHASE_LIST));
-    } else if (active === false) {
-      baseConditions.push(
-        sql`${consignment.phase} NOT IN (${sql.join(
-          OPEN_PHASE_LIST.map((p) => sql`${p}`),
-          sql`, `,
-        )})`,
-      );
-    }
     if (phase) {
       if (!ALL_COMMERCE_PHASES.has(phase)) {
         return c.json({ error: "Invalid phase" }, 400);
       }
-      baseConditions.push(eq(consignment.phase, phase));
-    }
-    if (chainId !== undefined) {
-      baseConditions.push(eq(consignment.chainId, chainId));
-    }
-    if (sellerParam) {
-      const seller = parseAddressParam(sellerParam);
-      if (!seller) return c.json({ error: "Invalid seller" }, 400);
-      baseConditions.push(eq(consignment.seller, seller));
-    }
-    if (agentParam) {
-      const agent = parseAddressParam(agentParam);
-      if (!agent) return c.json({ error: "Invalid agent" }, 400);
-      baseConditions.push(eq(consignment.agent, agent));
     }
 
-    const filterResult = buildBrowseFilterConditions(browseFilters);
-    const where = mergeBrowseWhere(baseConditions, filterResult);
-    const orderBy = buildBrowseOrderBy(browseFilters, filterResult.rates);
+    const seller = sellerParam ? parseAddressParam(sellerParam) : null;
+    if (sellerParam && !seller) return c.json({ error: "Invalid seller" }, 400);
+    const agent = agentParam ? parseAddressParam(agentParam) : null;
+    if (agentParam && !agent) return c.json({ error: "Invalid agent" }, 400);
 
-    const [joinedRows, totalRow, statusRows] = await Promise.all([
-      db
-        .select({ consignment })
-        .from(consignment)
-        .leftJoin(passport, eq(consignment.tokenId, passport.id))
-        .where(where)
-        .orderBy(...orderBy)
-        .limit(limit)
-        .offset(offset),
-      db
-        .select({ value: count() })
-        .from(consignment)
-        .leftJoin(passport, eq(consignment.tokenId, passport.id))
-        .where(where),
-      db
-        .select({
-          status: passport.status,
-          total: count(),
-        })
-        .from(consignment)
-        .leftJoin(passport, eq(consignment.tokenId, passport.id))
-        .where(where)
-        .groupBy(passport.status),
-    ]);
+    const baseRaw = buildConsignmentBaseConditionsRaw({
+      mode: mode === "fixedPrice" || mode === "ascending" ? mode : undefined,
+      active,
+      phase,
+      chainId,
+      seller: seller ?? undefined,
+      agent: agent ?? undefined,
+      openPhases: OPEN_PHASE_LIST,
+      allPhases: ALL_COMMERCE_PHASES,
+    });
 
-    const rows = joinedRows.map((r) => r.consignment);
-    const consignments = await enrichConsignmentsBatch(rows);
-    const statusCounts = filterResult.empty
-      ? emptyStatusCounts()
-      : foldStatusCounts(statusRows);
+    const browse = await queryConsignmentBrowseWithEntityUnion(
+      getEntityPool(),
+      browseFilters,
+      baseRaw,
+      { limit, offset },
+    );
+
+    const consignments = await enrichConsignmentsBatch(
+      browse.rows as unknown as ConsignmentRow[],
+    );
 
     return c.json(
       jsonBody({
         consignments,
-        total: totalRow[0]?.value ?? 0,
+        total: browse.total,
         page,
         limit,
-        statusCounts,
+        statusCounts: browse.statusCounts,
       }),
     );
   });
@@ -645,39 +605,35 @@ export function registerCommerceRoutes(app: Hono): void {
       instance === "passport"
         ? await (async () => {
             const subjectIds = [...new Set(rows.map((r) => r.subjectId))];
-            const custodyByToken = await resolvePassportCustodyAnswersBatch(subjectIds);
-            return Promise.all(
-              rows.map(async (row) => {
-                const pass = (
-                  await db
-                    .select()
-                    .from(passport)
-                    .where(eq(passport.id, row.subjectId))
-                    .limit(1)
-                )[0];
-                const custody =
-                  custodyByToken.get(row.subjectId) ?? {
-                    custodyChain: null,
-                    custodyUnresolved: "empty_history" as const,
-                  };
-                return {
-                  ...row,
-                  passport: pass
-                    ? attachPassportCustodyAnswer(
-                        {
-                          status: pass.status,
-                          coverPhotoUri: pass.coverPhotoUri,
-                          make: pass.make,
-                          model: pass.model,
-                          year: pass.year,
-                          vin: pass.vin,
-                        },
-                        custody,
-                      )
-                    : null,
+            const [passports, custodyByToken] = await Promise.all([
+              loadPassportEntitiesByIds(subjectIds),
+              resolvePassportCustodyAnswersBatch(subjectIds),
+            ]);
+            const passportById = new Map(passports.map((p) => [p.id, p]));
+            return rows.map((row) => {
+              const pass = passportById.get(row.subjectId);
+              const custody =
+                custodyByToken.get(row.subjectId) ?? {
+                  custodyChain: null,
+                  custodyUnresolved: "empty_history" as const,
                 };
-              }),
-            );
+              return {
+                ...row,
+                passport: pass
+                  ? attachPassportCustodyAnswer(
+                      {
+                        status: pass.status,
+                        coverPhotoUri: pass.coverPhotoUri,
+                        make: pass.make,
+                        model: pass.model,
+                        year: pass.year,
+                        vin: pass.vin,
+                      },
+                      custody,
+                    )
+                  : null,
+              };
+            });
           })()
         : rows;
 

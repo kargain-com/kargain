@@ -4,6 +4,7 @@
 
 import type pg from "pg";
 
+import type { MetadataSnapshotDraft } from "../../lib/svm/metadata-snapshot.js";
 import type {
   IngestRefusalDraft,
   StructuredPayloadDraft,
@@ -11,8 +12,10 @@ import type {
 
 export type SvmRawWriter = {
   insertStructuredPayload: (row: StructuredPayloadDraft) => Promise<boolean>;
+  insertMetadataSnapshot: (row: MetadataSnapshotDraft) => Promise<boolean>;
   insertIngestRefusal: (row: IngestRefusalDraft) => Promise<boolean>;
   insertStructuredPayloads: (rows: StructuredPayloadDraft[]) => Promise<number>;
+  insertMetadataSnapshots: (rows: MetadataSnapshotDraft[]) => Promise<number>;
   insertIngestRefusals: (rows: IngestRefusalDraft[]) => Promise<number>;
   getCursor: (namespace: number) => Promise<{
     lastContiguousSlot: number;
@@ -51,6 +54,26 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
       return (res.rowCount ?? 0) > 0;
     },
 
+    async insertMetadataSnapshot(row) {
+      const res = await pool.query(
+        `INSERT INTO kargain_svm_raw.metadata_snapshot (
+          id, namespace, uri, content_sha256, parsed_json, source_payload_id, slot, status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (id) DO NOTHING`,
+        [
+          row.id,
+          row.namespace,
+          row.uri,
+          row.contentSha256,
+          row.parsedJson != null ? JSON.stringify(row.parsedJson) : null,
+          row.sourcePayloadId,
+          row.slot,
+          row.status,
+        ],
+      );
+      return (res.rowCount ?? 0) > 0;
+    },
+
     async insertIngestRefusal(row) {
       const res = await pool.query(
         `INSERT INTO kargain_svm_raw.ingest_refusal (
@@ -78,6 +101,14 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
       let inserted = 0;
       for (const row of rows) {
         if (await this.insertStructuredPayload(row)) inserted += 1;
+      }
+      return inserted;
+    },
+
+    async insertMetadataSnapshots(rows) {
+      let inserted = 0;
+      for (const row of rows) {
+        if (await this.insertMetadataSnapshot(row)) inserted += 1;
       }
       return inserted;
     },

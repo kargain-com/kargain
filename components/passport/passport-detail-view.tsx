@@ -251,7 +251,8 @@ export function PassportDetailView({
               )}
               {passport.duplicateVin && (
                 <p className={cn(elevatedAdvisoryPanel, elevatedAdvisoryText)} role="status">
-                  Duplicate VIN warning — another passport shares this VIN in the index.
+                  Duplicate VIN warning — another passport on this network shares this VIN in the
+                  index.
                 </p>
               )}
             </div>

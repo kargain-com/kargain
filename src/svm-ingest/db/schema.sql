@@ -73,3 +73,24 @@ DROP TRIGGER IF EXISTS ingest_cursor_no_delete ON kargain_svm_raw.ingest_cursor;
 CREATE TRIGGER ingest_cursor_no_delete
   BEFORE DELETE ON kargain_svm_raw.ingest_cursor
   FOR EACH ROW EXECUTE FUNCTION kargain_svm_raw.deny_mutation();
+
+CREATE TABLE IF NOT EXISTS kargain_svm_raw.metadata_snapshot (
+  id TEXT PRIMARY KEY,
+  namespace INTEGER NOT NULL,
+  uri TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL,
+  parsed_json JSONB,
+  source_payload_id TEXT NOT NULL,
+  slot BIGINT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('captured', 'unavailable')),
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT metadata_snapshot_uri_order UNIQUE (namespace, uri, content_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS metadata_snapshot_uri_idx
+  ON kargain_svm_raw.metadata_snapshot (namespace, uri, slot DESC);
+
+DROP TRIGGER IF EXISTS metadata_snapshot_no_mutation ON kargain_svm_raw.metadata_snapshot;
+CREATE TRIGGER metadata_snapshot_no_mutation
+  BEFORE UPDATE OR DELETE ON kargain_svm_raw.metadata_snapshot
+  FOR EACH ROW EXECUTE FUNCTION kargain_svm_raw.deny_mutation();

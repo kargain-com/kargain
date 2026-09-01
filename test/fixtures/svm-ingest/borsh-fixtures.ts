@@ -64,8 +64,21 @@ export function buildPassportUriUpdatedBody(args: {
   ]);
 }
 
+export function buildPassportMintedBody(args: {
+  tokenId: bigint;
+  toSeed?: number;
+  uri?: string;
+}): Buffer {
+  return Buffer.concat([
+    pubkey32FromSeed(args.toSeed ?? 3),
+    tokenIdBytes32(args.tokenId),
+    borshString(args.uri ?? "ar://svm-mint-uri"),
+  ]);
+}
+
 export const RECORD_APPENDED_DISC = "a4a50441bfe85272";
 export const PASSPORT_URI_UPDATED_DISC = "51eaab4a9af303ff";
+export const PASSPORT_MINTED_DISC = "c432456ccb330992";
 
 export function globalTokenId(namespace: number, localSeq: number): bigint {
   return (BigInt(namespace) << 128n) | BigInt(localSeq);

@@ -35,6 +35,37 @@ export function canonicalPayloadLine(row: StructuredPayloadRow): string {
   });
 }
 
+export type MetadataSnapshotRow = {
+  id: string;
+  namespace: number;
+  uri: string;
+  content_sha256: string;
+  parsed_json: Record<string, unknown> | null;
+  source_payload_id: string;
+  slot: number;
+  status: string;
+};
+
+export async function fetchMetadataSnapshotsOrdered(
+  pool: pg.Pool,
+  namespace?: number,
+): Promise<MetadataSnapshotRow[]> {
+  const res = namespace
+    ? await pool.query<MetadataSnapshotRow>(
+        `SELECT id, namespace, uri, content_sha256, parsed_json, source_payload_id, slot, status
+         FROM kargain_svm_raw.metadata_snapshot
+         WHERE namespace = $1
+         ORDER BY slot, id`,
+        [namespace],
+      )
+    : await pool.query<MetadataSnapshotRow>(
+        `SELECT id, namespace, uri, content_sha256, parsed_json, source_payload_id, slot, status
+         FROM kargain_svm_raw.metadata_snapshot
+         ORDER BY namespace, slot, id`,
+      );
+  return res.rows;
+}
+
 export async function fetchStructuredPayloadsOrdered(
   pool: pg.Pool,
   namespace?: number,

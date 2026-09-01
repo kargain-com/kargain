@@ -3,7 +3,6 @@ import {
   claimCredit,
   commerceClaim,
   commerceClaimCredit,
-  passport,
   pendingClaim,
   verifier,
 } from "ponder:schema";
@@ -26,10 +25,19 @@ import {
   loadPassportUriHistoryByTokenId,
 } from "../lib/ponder-passport-provenance";
 import {
+  countVerifiedPassportsByVerifier,
+  loadPassportEntitiesBrowse,
+  loadPassportEntitiesByIds,
+  loadPassportEntitiesByOwner,
+  loadPassportEntityById,
+  loadVerifiedPassportsByVerifier,
+} from "../lib/ponder-passport-entity";
+import {
   attachPassportCustodyAnswer,
   resolvePassportCustodyAnswer,
   resolvePassportCustodyAnswersBatch,
 } from "../lib/ponder-passport-custody";
+import { normalizeProtocolAddressForVm } from "@/lib/web3/protocol-address";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
 const app = new Hono();
@@ -38,11 +46,6 @@ const app = new Hono();
 app.use("*", ponderHttpCacheMiddleware);
 
 registerCommerceRoutes(app);
-const STATUS_ORDER = sql`CASE ${passport.status}
-  WHEN 'VERIFIED' THEN 0
-  WHEN 'UNVERIFIED' THEN 1
-  WHEN 'DISPUTED' THEN 2
-  ELSE 3 END`;
 
 function parsePage(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : 1;
@@ -83,6 +86,13 @@ function jsonBody<T>(value: T): T {
   return replaceBigInts(value, (v) => String(v)) as T;
 }
 
+function parseProfileOwnerParam(raw: string): string | null {
+  const trimmed = raw.trim();
+  const evm = parseAddressParam(trimmed);
+  if (evm) return evm;
+  return normalizeProtocolAddressForVm("svm", trimmed);
+}
+
 app.get("/passports", async (c) => {
   const page = parsePage(c.req.query("page"));
   const limit = parseLimit(c.req.query("limit"));
@@ -94,39 +104,28 @@ app.get("/passports", async (c) => {
   const verifiedFirst = c.req.query("verifiedFirst") !== "false";
   const offset = (page - 1) * limit;
 
-  const conditions = [];
   if (owner) {
     const ownerAddress = parseAddressParam(owner);
     if (!ownerAddress) return c.json({ error: "Invalid owner" }, 400);
-    conditions.push(eq(passport.owner, ownerAddress));
-  }
-  if (status) {
-    conditions.push(eq(passport.status, status));
-  }
-  if (vin) {
-    conditions.push(eq(passport.vin, vin));
   }
   if (verifierParam) {
-    conditions.push(eq(passport.verifier, getAddress(verifierParam)));
+    try {
+      getAddress(verifierParam);
+    } catch {
+      return c.json({ error: "Invalid verifier" }, 400);
+    }
   }
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const orderBy = verifiedFirst
-    ? [STATUS_ORDER, desc(passport.createdAt)]
-    : [desc(passport.createdAt)];
+  const { rows: passports, total } = await loadPassportEntitiesBrowse({
+    owner: owner ? getAddress(owner) : undefined,
+    status,
+    vin,
+    verifier: verifierParam ? getAddress(verifierParam) : undefined,
+    verifiedFirst,
+    limit,
+    offset,
+  });
 
-  const [passports, totalRow] = await Promise.all([
-    db
-      .select()
-      .from(passport)
-      .where(where)
-      .orderBy(...orderBy)
-      .limit(limit)
-      .offset(offset),
-    db.select({ total: count() }).from(passport).where(where),
-  ]);
-
-  const total = totalRow[0]?.total ?? 0;
   return c.json(
     jsonBody({
       passports,
@@ -143,10 +142,7 @@ app.get("/passports/batch", async (c) => {
     return c.json(jsonBody({ passports: [] }));
   }
 
-  const passports = await db
-    .select()
-    .from(passport)
-    .where(inArray(passport.id, ids));
+  const passports = await loadPassportEntitiesByIds(ids);
 
   return c.json(jsonBody({ passports }));
 });
@@ -298,13 +294,9 @@ app.get("/accounts/:address/claims", async (c) => {
 
 app.get("/passports/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");
-  const row = await db
-    .select()
-    .from(passport)
-    .where(eq(passport.id, tokenId))
-    .limit(1);
+  const row = await loadPassportEntityById(tokenId);
 
-  if (!row[0]) {
+  if (!row) {
     return c.json({ error: "Not found" }, 404);
   }
 
@@ -315,19 +307,14 @@ app.get("/passports/:tokenId", async (c) => {
   ]);
 
   return c.json(
-    jsonBody(attachPassportCustodyAnswer({ ...row[0], records, uriHistory }, custody)),
+    jsonBody(attachPassportCustodyAnswer({ ...row, records, uriHistory }, custody)),
   );
 });
 
 app.get("/profile/:address/passports", async (c) => {
-  // Checksum match — owners are written via event `to` (viem getAddress shape).
-  const address = parseAddressParam(c.req.param("address"));
+  const address = parseProfileOwnerParam(c.req.param("address"));
   if (!address) return c.json({ error: "Invalid address" }, 400);
-  const passports = await db
-    .select()
-    .from(passport)
-    .where(eq(passport.owner, address))
-    .orderBy(desc(passport.createdAt));
+  const passports = await loadPassportEntitiesByOwner(address);
 
   const custodyByToken = await resolvePassportCustodyAnswersBatch(
     passports.map((p) => p.id),
@@ -350,17 +337,17 @@ app.get("/verifiers", async (c) => {
       .from(verifier)
       .where(eq(verifier.active, true))
       .orderBy(desc(verifier.joinedAt)),
-    db
-      .select({ verifier: passport.verifier, total: count() })
-      .from(passport)
-      .where(eq(passport.status, "VERIFIED"))
-      .groupBy(passport.verifier),
+    countVerifiedPassportsByVerifier(),
   ]);
 
   const verificationCountByVerifier = new Map<string, number>();
   for (const row of verificationRows) {
     if (!row.verifier) continue;
-    verificationCountByVerifier.set(getAddress(row.verifier), Number(row.total));
+    try {
+      verificationCountByVerifier.set(getAddress(row.verifier), row.total);
+    } catch {
+      verificationCountByVerifier.set(row.verifier, row.total);
+    }
   }
 
   const verifiers = rows.map((v) => ({
@@ -391,23 +378,16 @@ async function buildVerifierDetailResponse(id: string) {
 
   const v = row[0];
   const checksumVerifier = getAddress(v.address);
-  const verificationRow = await db
-    .select({ total: count() })
-    .from(passport)
-    .where(
-      and(eq(passport.verifier, checksumVerifier), eq(passport.status, "VERIFIED")),
-    );
+  const verificationRows = await countVerifiedPassportsByVerifier();
+  const verificationCount =
+    verificationRows.find(
+      (r) => r.verifier.toLowerCase() === checksumVerifier.toLowerCase(),
+    )?.total ?? 0;
 
-  const verificationCount = verificationRow[0]?.total ?? 0;
-
-  const verifiedPassports = await db
-    .select()
-    .from(passport)
-    .where(
-      and(eq(passport.verifier, checksumVerifier), eq(passport.status, "VERIFIED")),
-    )
-    .orderBy(desc(passport.verifiedAt))
-    .limit(20);
+  const verifiedPassports = await loadVerifiedPassportsByVerifier(checksumVerifier, {
+    limit: 20,
+    offset: 0,
+  });
 
   return jsonBody({
     address: v.address,

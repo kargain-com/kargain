@@ -3,6 +3,7 @@
  */
 import type {
   CustodyDeterminingProjectionDraft,
+  PassportEntityProjectionDraft,
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
 } from "../lib/svm/project-raw-to-projection.js";
@@ -12,15 +13,18 @@ export function createMemorySvmProjectionWriter(): SvmProjectionWriter & {
   passportRecords: PassportRecordProjectionDraft[];
   uriHistory: PassportUriHistoryProjectionDraft[];
   custodyEvents: CustodyDeterminingProjectionDraft[];
+  passports: PassportEntityProjectionDraft[];
 } {
   const passportRecords: PassportRecordProjectionDraft[] = [];
   const uriHistory: PassportUriHistoryProjectionDraft[] = [];
   const custodyEvents: CustodyDeterminingProjectionDraft[] = [];
+  const passports: PassportEntityProjectionDraft[] = [];
 
   return {
     passportRecords,
     uriHistory,
     custodyEvents,
+    passports,
     async insertPassportRecord(row) {
       if (passportRecords.some((r) => r.id === row.id)) return false;
       passportRecords.push(row);
@@ -54,6 +58,22 @@ export function createMemorySvmProjectionWriter(): SvmProjectionWriter & {
       let n = 0;
       for (const row of rows) {
         if (await this.insertCustodyDeterminingEvent(row)) n += 1;
+      }
+      return n;
+    },
+    async upsertPassportEntity(row) {
+      const idx = passports.findIndex((p) => p.id === row.id);
+      if (idx >= 0) {
+        passports[idx] = row;
+        return true;
+      }
+      passports.push(row);
+      return true;
+    },
+    async upsertPassportEntities(rows) {
+      let n = 0;
+      for (const row of rows) {
+        if (await this.upsertPassportEntity(row)) n += 1;
       }
       return n;
     },

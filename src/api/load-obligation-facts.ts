@@ -10,7 +10,6 @@ import {
   consignment,
   consignmentBid,
   consignmentHold,
-  passport,
 } from "ponder:schema";
 import { and, eq, inArray } from "ponder";
 import { getAddress } from "viem";
@@ -18,6 +17,10 @@ import { getAddress } from "viem";
 import type { ObligationFacts } from "../../lib/obligation/types";
 import { LIVE_PHASES } from "../lib/ponder-commerce";
 import { buildObligationFacts } from "../lib/ponder-obligations";
+import {
+  loadPassportEntitiesByIds,
+  loadPassportEntitiesFiltered,
+} from "../lib/ponder-passport-entity";
 
 const LIVE_PHASE_LIST = [...LIVE_PHASES];
 const ACTIVE_HOLD_STATES = ["active", "reversalStarted"] as const;
@@ -42,6 +45,11 @@ export async function loadObligationFacts(
   const lower = checksum.toLowerCase();
 
   try {
+    const passportFilter = {
+      statusExact: "DISPUTED" as const,
+      ...(chainId !== undefined ? { chainId } : {}),
+    };
+
     const [
       asSeller,
       asAgent,
@@ -144,32 +152,14 @@ export async function loadObligationFacts(
               : undefined,
           ),
         ),
-      db
-        .select()
-        .from(passport)
-        .where(
-          withOptionalChain(
-            chainId,
-            eq(passport.owner, lower),
-            eq(passport.status, "DISPUTED"),
-            chainId !== undefined
-              ? eq(passport.chainId, chainId)
-              : undefined,
-          ),
-        ),
-      db
-        .select()
-        .from(passport)
-        .where(
-          withOptionalChain(
-            chainId,
-            eq(passport.verifier, checksum),
-            eq(passport.status, "DISPUTED"),
-            chainId !== undefined
-              ? eq(passport.chainId, chainId)
-              : undefined,
-          ),
-        ),
+      loadPassportEntitiesFiltered({
+        owner: lower,
+        ...passportFilter,
+      }),
+      loadPassportEntitiesFiltered({
+        verifierExact: checksum,
+        ...passportFilter,
+      }),
       chainId !== undefined
         ? db
             .select()
@@ -252,10 +242,7 @@ export async function loadObligationFacts(
       .map((ch) => ch.subjectId);
     const challengePassports =
       passportSubjects.length > 0
-        ? await db
-            .select()
-            .from(passport)
-            .where(inArray(passport.id, passportSubjects))
+        ? await loadPassportEntitiesByIds(passportSubjects)
         : [];
 
     const holdMap = new Map<string, (typeof holdsAsBuyer)[number]>();

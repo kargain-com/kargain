@@ -200,3 +200,19 @@ export function fieldPubkey32(fields: DecodedEventField[], name: string): Uint8A
   }
   return f.value;
 }
+
+export function fieldU64(fields: DecodedEventField[], name: string): bigint {
+  const f = fields.find((x) => x.name === name);
+  if (!f || typeof f.value !== "bigint") {
+    throw new EventPayloadDecodeError(`missing u64 field ${name}`);
+  }
+  return f.value;
+}
+
+export function fieldU8(fields: DecodedEventField[], name: string): number {
+  const f = fields.find((x) => x.name === name);
+  if (!f || typeof f.value !== "number") {
+    throw new EventPayloadDecodeError(`missing u8 field ${name}`);
+  }
+  return f.value;
+}

@@ -39,7 +39,7 @@ Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **113198
 
 When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (hub **44957539** / Eth **11404235** on N4) in the same dual-chain reindex as other schema changes. HTTP custody is **fold-at-read** via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts) — smoke `GET /passports/:tokenId` for `custodyChain` or `custodyUnresolved` on a known bridged token.
 
-**S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Apply **`kargain_svm_raw`** + **`kargain_svm_projection`** (incl. `custody_determining_event`) schemas, smoke ingest `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill, and run bridge + EVM reindex obligations in the same cutover window. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`.
+**S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**) + **`kargain_svm_projection`** (incl. `passport` entity table, `custody_determining_event`, provenance tables), smoke ingest `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill (entity + provenance path parity), and run bridge + EVM reindex obligations in the same cutover window. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`. First catch-up may backfill metadata snapshots for URI events observed during ingest; projection rebuild reads snapshots from raw only (no HTTP in rebuild).
 
 ---
 

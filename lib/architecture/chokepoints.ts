@@ -322,6 +322,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "svm-raw-ingest-writer-policy.test.ts",
       "svm-raw-ingest-surface-policy.test.ts",
       "svm-projection-writer-policy.test.ts",
+      "svm-metadata-snapshot-policy.test.ts",
+      "svm-projection-passport-index-policy.test.ts",
       "ponder-reindex-svm-isolation-policy.test.ts",
       "ponder-passport-provenance-policy.test.ts",
     ],
@@ -331,6 +333,15 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "src/lib/ponder-passport-provenance.ts",
     rule: "Chain-sharded passport_record / uri_history UNION reads only via provenance owner SQL",
     guardTests: ["ponder-passport-provenance-policy.test.ts"],
+  },
+  {
+    id: "ponder-passport-entity",
+    owner: "src/lib/ponder-passport-entity.ts",
+    rule: "Chain-sharded passport entity UNION reads only via ponder-passport-entity owner SQL",
+    guardTests: [
+      "ponder-passport-entity-policy.test.ts",
+      "ponder-passport-entity-union.test.ts",
+    ],
   },
   {
     id: "passport-custody-fold",
