@@ -46,12 +46,13 @@ export function recordAppendedProgramDataLine(
 
 export function passportUriUpdatedProgramDataLine(
   tokenId: bigint = FIXTURE_TOKEN_ID,
+  newUri = "ar://svm-uri-v1",
 ): string {
   return buildProgramDataLine({
     discriminatorHex: PASSPORT_URI_UPDATED_DISC,
     body: buildPassportUriUpdatedBody({
       tokenId,
-      newUri: "ar://svm-uri-v1",
+      newUri,
     }),
   });
 }
@@ -81,6 +82,22 @@ export const FIXTURE_BLOCK_PROVENANCE = {
         `Program ${FIXTURE_PASSPORT_PROGRAM} invoke [1]`,
         recordAppendedProgramDataLine(),
         passportUriUpdatedProgramDataLine(),
+        `Program ${FIXTURE_PASSPORT_PROGRAM} success`,
+      ],
+    },
+  ],
+};
+
+/** Second URI update on the same token — exercises cross-block inline replay state. */
+export const FIXTURE_BLOCK_URI_V2 = {
+  slot: 500_011,
+  transactions: [
+    {
+      signature: "fixtureSigUriV2111111111111111111111111111111111111111111111111",
+      metaErr: null,
+      logMessages: [
+        `Program ${FIXTURE_PASSPORT_PROGRAM} invoke [1]`,
+        passportUriUpdatedProgramDataLine(FIXTURE_TOKEN_ID, "ar://svm-uri-v2"),
         `Program ${FIXTURE_PASSPORT_PROGRAM} success`,
       ],
     },
