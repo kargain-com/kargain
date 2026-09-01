@@ -254,6 +254,7 @@ dependencies = [
  "kargain-claimable-payouts",
  "kargain-consignment-base",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -571,6 +572,7 @@ dependencies = [
  "kargain-claimable-payouts",
  "kargain-consignment-base",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -583,6 +585,7 @@ dependencies = [
  "kargain-claimable-payouts",
  "kargain-consignment-base",
  "kargain-errors",
+ "kargain-events",
  "kargain-price",
  "solana-program",
 ]
@@ -594,6 +597,7 @@ dependencies = [
  "borsh 1.8.1",
  "kar-passport",
  "kargain-errors",
+ "kargain-events",
  "kargain-onft-codec",
  "mock-endpoint",
  "mpl-core",
@@ -606,7 +610,10 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kar-pro-staking",
+ "kargain-bonded-challenge",
+ "kargain-claimable-payouts",
  "kargain-errors",
+ "kargain-events",
  "mpl-core",
  "solana-program",
 ]
@@ -617,6 +624,7 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-errors",
+ "kargain-events",
  "mpl-core",
  "solana-program",
 ]
@@ -626,7 +634,9 @@ name = "kar-pro-staking"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "kargain-claimable-payouts",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -645,6 +655,7 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -654,6 +665,7 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -664,6 +676,7 @@ dependencies = [
  "borsh 1.8.1",
  "kargain-agented-split",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 
@@ -673,6 +686,14 @@ version = "0.1.0"
 dependencies = [
  "num_enum",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kargain-events"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "solana-program",
 ]
 
 [[package]]
@@ -830,6 +851,7 @@ dependencies = [
  "borsh 1.8.1",
  "kargain-claimable-payouts",
  "kargain-errors",
+ "kargain-events",
  "solana-program",
 ]
 

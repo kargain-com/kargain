@@ -278,6 +278,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand",
     guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
   },
+  {
+    id: "svm-program-events",
+    owner: "svm/crates/kargain-events",
+    rule: "Structured SVM program logs (D-28) encode + sol_log_data only via kargain-events; parity with handler census",
+    guardTests: ["svm-event-parity-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

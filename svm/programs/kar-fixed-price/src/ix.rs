@@ -9,6 +9,7 @@ use kargain_claimable_payouts::{
     spl_token_account_amount, verify_payout_recipient, withdraw_claim, ClaimAccount, CLAIM_ATA_SEED,
     CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg,
     SplReceiveReachability,
+    emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
     agent_withdraw_ok, asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda,
@@ -20,8 +21,14 @@ use kargain_consignment_base::{
     CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
     CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
+    emit::{
+        emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
+        event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
+        ConsignmentEvent,
+    },
 };
 use kargain_errors::KargainError;
+use kargain_events::generated;
 use kargain_price::{
     fiat_usd_1e8_to_token_amount, read_price_update, MAX_FEED_STALENESS, MIN_FEED_STALENESS,
     PRICE_UPDATE_V2_LEN,
@@ -44,6 +51,8 @@ fn token_program_id() -> Pubkey {
         237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
     ])
 }
+
+const COMMERCE_EMITTER: CommerceEmitter = CommerceEmitter::FixedPriceConsignment;
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum FixedPriceIx {
@@ -645,6 +654,19 @@ fn grant(
     record
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_mandate_granted(
+            token_id,
+            owner.key.to_bytes(),
+            record.agent,
+            record.expiry,
+            record.asset,
+            record.denomination,
+            record.floor,
+            record.compensation,
+        ),
+    );
     Ok(())
 }
 
@@ -667,6 +689,7 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
             .map(|c| c.is_live())
             .unwrap_or(false);
     revoke_mandate(&m, &a.owner, &owner.key.to_bytes(), is_live).map_err(into_pe)?;
+    let prior_agent = m.agent;
     // Zero active
     let mut cleared = m;
     cleared.active = false;
@@ -674,8 +697,15 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
     cleared
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::MandateRevoked {
+            token_id,
+            owner: owner.key.to_bytes(),
+            prior_agent,
+        },
+    );
     let _ = program_id;
-    let _ = token_id;
     Ok(())
 }
 
@@ -773,6 +803,7 @@ fn open_direct(
         bump,
     );
     save_consignment(consignment, &record)?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     let _ = cust_bump;
     Ok(())
 }
@@ -855,7 +886,9 @@ fn open_from_mandate(
         now,
         bump,
     );
-    save_consignment(consignment, &record)
+    save_consignment(consignment, &record)?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
+    Ok(())
 }
 
 fn set_price_ix(
@@ -876,7 +909,12 @@ fn set_price_ix(
     }
     let mut c = load_consignment(consignment)?;
     set_price(&mut c, &caller.key.to_bytes(), new_price).map_err(into_pe)?;
-    save_consignment(consignment, &c)
+    save_consignment(consignment, &c)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_price_set(token_id, caller.key.to_bytes(), new_price),
+    );
+    Ok(())
 }
 
 fn lower_floor_ix(
@@ -902,7 +940,12 @@ fn lower_floor_ix(
     }
     let mut c = c_check;
     lower_floor(&mut c, &passport_owner, &caller.key.to_bytes(), new_floor).map_err(into_pe)?;
-    save_consignment(consignment, &c)
+    save_consignment(consignment, &c)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_floor_lowered(token_id, new_floor),
+    );
+    Ok(())
 }
 
 fn lower_commission_ix(
@@ -923,7 +966,12 @@ fn lower_commission_ix(
     }
     let mut c = load_consignment(consignment)?;
     lower_commission(&mut c, &caller.key.to_bytes(), new_bps).map_err(into_pe)?;
-    save_consignment(consignment, &c)
+    save_consignment(consignment, &c)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_commission_lowered(token_id, new_bps),
+    );
+    Ok(())
 }
 
 fn request_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
@@ -967,6 +1015,14 @@ fn request_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u
     let mut data = recall_info.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::RecallRequested {
+            token_id,
+            seller: seller.key.to_bytes(),
+            requested_at,
+        },
+    );
     Ok(())
 }
 
@@ -1014,8 +1070,10 @@ fn force_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8;
     c.price = 0;
     c.floor = 0;
     save_consignment(consignment, &c)?;
-    let _ = program_id;
-    let _ = token_id;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::Recalled),
+    );
     Ok(())
 }
 
@@ -1069,7 +1127,10 @@ fn owner_withdraw_ix(
     write_may_open(asset_info, may)?;
     c.price = 0;
     save_consignment(consignment, &c)?;
-    let _ = (program_id, token_id);
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::Returned),
+    );
     Ok(())
 }
 
@@ -1098,7 +1159,10 @@ fn agent_withdraw_ix(
     write_may_open(asset_info, may)?;
     c.price = 0;
     save_consignment(consignment, &c)?;
-    let _ = (program_id, token_id);
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::Returned),
+    );
     Ok(())
 }
 
@@ -1133,7 +1197,14 @@ fn pause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     }
     let mut cfg = load_config(config)?;
     pause(&mut cfg, &guardian.key.to_bytes()).map_err(into_pe)?;
-    save_config(config, &cfg)
+    save_config(config, &cfg)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::Paused {
+            account: guardian.key.to_bytes(),
+        },
+    );
+    Ok(())
 }
 
 fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
@@ -1152,7 +1223,14 @@ fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::MissingRequiredSignature);
     }
     unpause(&mut cfg);
-    save_config(config, &cfg)
+    save_config(config, &cfg)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::Unpaused {
+            account: authority.key.to_bytes(),
+        },
+    );
+    Ok(())
 }
 
 /// Buy (asset denom): pull → custody to buyer → pay_split → Sold.
@@ -1395,7 +1473,28 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
     c.price = 0;
     c.floor = 0;
     save_consignment(consignment, &c)?;
-    let _ = (program_id, token_id);
+    let payment_asset = if native { [0u8; 32] } else { c.asset };
+    generated::emit_fixed_price_consignment_bought(
+        token_id,
+        buyer.key.to_bytes(),
+        payment_asset,
+        amount,
+    );
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_split_paid(
+            token_id,
+            c.asset,
+            cfg.platform_recipient,
+            c.seller,
+            c.agent,
+            &split,
+        ),
+    );
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::Sold),
+    );
     Ok(())
 }
 
@@ -1523,7 +1622,8 @@ fn pay_spl_leg_signed<'a>(
             )
         },
     )?;
-    if credited.is_some() {
+    if let Some(ev) = credited {
+        emit_payout(PayoutEmitter::FixedPriceConsignment, &ev);
         let mut data = claim_info.try_borrow_mut_data()?;
         claim
             .serialize(&mut &mut data[..])
@@ -1710,6 +1810,12 @@ fn approve_payment_token(
     let mut data = payment_token.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    generated::emit_fixed_price_consignment_payment_token_approved(
+        mint_key,
+        feed_id,
+        decimals,
+        if feed_zero { 0 } else { staleness_tolerance },
+    );
     Ok(())
 }
 
@@ -1740,6 +1846,7 @@ fn revoke_payment_token(
     let mut data = payment_token.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    generated::emit_fixed_price_consignment_payment_token_revoked(mint);
     Ok(())
 }
 
@@ -1797,6 +1904,10 @@ fn set_settlement_note(
     let mut data = note_info.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    generated::emit_fixed_price_consignment_settlement_note_set(
+        token_id,
+        caller.key.to_bytes(),
+    );
     Ok(())
 }
 
@@ -1853,7 +1964,15 @@ fn confirm_external(
     c.price = 0;
     c.floor = 0;
     save_consignment(consignment, &c)?;
-    let _ = (program_id, token_id);
+    generated::emit_fixed_price_consignment_external_payment_confirmed(
+        token_id,
+        buyer,
+        caller.key.to_bytes(),
+    );
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::ExternalConfirmed),
+    );
     Ok(())
 }
 
@@ -1894,7 +2013,7 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
     let claim_ata_key = *claim_ata.key;
     let dest_key = *dest_ata.key;
     let claim_key_copy = *claim_info.key;
-    withdraw_claim(&mut claim, |amount| {
+    let ev = withdraw_claim(&mut claim, |amount| {
         invoke_signed(
             &spl_transfer(token_program.key, &claim_ata_key, &dest_key, &claim_key_copy, amount),
             &[
@@ -1906,6 +2025,7 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
             &[seeds],
         )
     })?;
+    emit_payout(PayoutEmitter::FixedPriceConsignment, &ev);
     // D-23: close claim ATA then claim PDA — recipient reclaims rent.
     invoke_signed(
         &spl_close_account_ix(

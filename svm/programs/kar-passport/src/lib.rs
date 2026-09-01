@@ -10,11 +10,14 @@
 
 pub mod account;
 pub mod bridge;
+pub mod challenge;
+pub mod claims;
 pub mod core_asset;
 pub mod custody;
 pub mod entrypoint;
 pub mod instruction;
 pub mod may;
+pub mod records;
 pub mod seeds;
 pub mod state;
 pub mod uri;

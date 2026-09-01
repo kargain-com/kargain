@@ -6,8 +6,9 @@ members = [
   "crates/kargain-agented-split",
   "crates/kargain-claimable-payouts",
     "crates/kargain-bonded-challenge",
-    "crates/kargain-consignment-base",
-    "crates/kargain-price",
+  "crates/kargain-consignment-base",
+  "crates/kargain-price",
+  "crates/kargain-events",
     "programs/kar-passport",
   "programs/kar-gateway",
   "programs/mock-staking",
@@ -42,3 +43,4 @@ kargain-claimable-payouts = { path = "crates/kargain-claimable-payouts" }
 kargain-bonded-challenge = { path = "crates/kargain-bonded-challenge" }
 kargain-consignment-base = { path = "crates/kargain-consignment-base" }
 kargain-price = { path = "crates/kargain-price" }
+kargain-events = { path = "crates/kargain-events" }

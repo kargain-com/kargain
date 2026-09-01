@@ -18,3 +18,4 @@ borsh = { workspace = true }
 solana-program = { workspace = true }
 mpl-core = { workspace = true }
 kargain-errors = { workspace = true }
+kargain-events = { workspace = true }

@@ -10,6 +10,7 @@ description = "Shared consignment automaton — Mandate + Recall + ConsignmentBa
 borsh = { workspace = true }
 kargain-errors = { workspace = true }
 kargain-agented-split = { workspace = true }
+kargain-events = { workspace = true }
 solana-program = { workspace = true }
 
 [dev-dependencies]

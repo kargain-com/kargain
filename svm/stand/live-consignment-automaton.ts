@@ -184,6 +184,7 @@ export async function runLiveConsignmentAutomaton(opts?: {
     agentDelta: bigint;
     settled: bigint;
     feeBps: number;
+    signature: string;
   };
 }> {
   const conn = new Connection(opts?.rpc ?? RPC, "confirmed");
@@ -758,7 +759,7 @@ export async function runLiveConsignmentAutomaton(opts?: {
   const balS0 = BigInt(await conn.getBalance(seller.publicKey));
   const balA0 = BigInt(await conn.getBalance(agent.publicKey));
 
-  await sendAndConfirmTransaction(
+  const settleSig = await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -827,6 +828,7 @@ export async function runLiveConsignmentAutomaton(opts?: {
       agentDelta: balA1 - balA0,
       settled,
       feeBps: settleLot.feeBps,
+      signature: settleSig,
     },
   });
 }

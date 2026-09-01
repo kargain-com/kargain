@@ -17,3 +17,5 @@ no-entrypoint = []
 borsh = { workspace = true }
 solana-program = { workspace = true }
 kargain-errors = { workspace = true }
+kargain-events = { workspace = true }
+kargain-claimable-payouts = { workspace = true }

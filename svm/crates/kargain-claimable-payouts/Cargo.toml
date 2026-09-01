@@ -8,6 +8,7 @@ description = "ClaimablePayouts — SPL attempt+claim; one PDA per (recipient, m
 
 [dependencies]
 kargain-errors = { workspace = true }
+kargain-events = { workspace = true }
 borsh = { workspace = true }
 solana-program = { workspace = true }
 

@@ -22,3 +22,4 @@ kargain-claimable-payouts = { workspace = true }
 kargain-bonded-challenge = { workspace = true }
 kargain-agented-split = { workspace = true }
 kar-pro-staking = { path = "../kar-pro-staking", default-features = false, features = ["no-entrypoint"] }
+kargain-events = { workspace = true }

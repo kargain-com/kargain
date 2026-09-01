@@ -4,6 +4,8 @@
 //! settlement always moves lamports (cannot fail → claim). `JudgeOutcome` is the
 //! judge's choice (EVM parity), not a transfer-outcome parameter.
 
+pub mod emit;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_errors::KargainError;
 use solana_program::pubkey::Pubkey;

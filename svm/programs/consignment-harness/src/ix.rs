@@ -5,6 +5,7 @@ use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, pay_spl, verify_payout_recipient,
     ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED, SPL_TOKEN_ACCOUNT_LEN,
     PayoutAuthorities, PayoutLeg, SplReceiveReachability,
+    emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
     agent_withdraw_ok, asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda,
@@ -16,6 +17,11 @@ use kargain_consignment_base::{
     CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
     CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
+    emit::{
+        emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
+        event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
+        ConsignmentEvent,
+    },
 };
 use kargain_errors::KargainError;
 use solana_program::{
@@ -36,6 +42,8 @@ fn token_program_id() -> Pubkey {
         237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
     ])
 }
+
+const COMMERCE_EMITTER: CommerceEmitter = CommerceEmitter::FixedPriceConsignment;
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum HarnessIx {
@@ -498,6 +506,19 @@ fn grant(
     record
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_mandate_granted(
+            token_id,
+            owner.key.to_bytes(),
+            record.agent,
+            record.expiry,
+            record.asset,
+            record.denomination,
+            record.floor,
+            record.compensation,
+        ),
+    );
     Ok(())
 }
 
@@ -520,6 +541,7 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
             .map(|c| c.is_live())
             .unwrap_or(false);
     revoke_mandate(&m, &a.owner, &owner.key.to_bytes(), is_live).map_err(into_pe)?;
+    let prior_agent = m.agent;
     // Zero active
     let mut cleared = m;
     cleared.active = false;
@@ -527,8 +549,15 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
     cleared
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::MandateRevoked {
+            token_id,
+            owner: owner.key.to_bytes(),
+            prior_agent,
+        },
+    );
     let _ = program_id;
-    let _ = token_id;
     Ok(())
 }
 
@@ -620,6 +649,7 @@ fn open_direct(
         bump,
     );
     save_consignment(consignment, &record)?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     let _ = cust_bump;
     Ok(())
 }
@@ -695,7 +725,9 @@ fn open_from_mandate(
         now,
         bump,
     );
-    save_consignment(consignment, &record)
+    save_consignment(consignment, &record)?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
+    Ok(())
 }
 
 fn set_price_ix(
@@ -1134,7 +1166,21 @@ fn settle_three_leg(
     c.price = 0;
     c.floor = 0;
     save_consignment(consignment, &c)?;
-    let _ = (program_id, token_id);
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_split_paid(
+            token_id,
+            c.asset,
+            cfg.platform_recipient,
+            c.seller,
+            c.agent,
+            &split,
+        ),
+    );
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, CloseReason::Sold),
+    );
     Ok(())
 }
 
@@ -1241,7 +1287,8 @@ fn pay_spl_leg<'a>(
             )
         },
     )?;
-    if credited.is_some() {
+    if let Some(ev) = credited {
+        emit_payout(PayoutEmitter::FixedPriceConsignment, &ev);
         let mut data = claim_info.try_borrow_mut_data()?;
         claim
             .serialize(&mut &mut data[..])

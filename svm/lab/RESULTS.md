@@ -380,3 +380,15 @@ Fixtures: `lab-*.bin` + `local-five.json`. Decoder = same offsets as chain.
 - **No** SPEC / D-07 normative edit
 - **No** Devnet transaction that changed state (reads + local validator only)
 - Next product work (founder sequencing): **#3b** asset-only FixedPrice; **#5** fiat blocked until this measurement informs the form
+
+## S7a structured event budget (2026-09-01) — **MEASURED**
+
+**Host:** local stand `solana-test-validator` (`http://127.0.0.1:8899`, 4.3.0-beta.2). **Method:** `getTransaction` json `meta.logMessages` + `computeUnitsConsumed`; structured payload bytes from `Program data:` **base64** decode (fail-closed). **Gate:** D-28 log truncation must not be reachable; bridge receive CU must stay below S4b pin.
+
+| Path | Fixture | Instruction | Log bytes | Lines | Program-data bytes | CU | Headroom vs 10KB / 64 lines | vs pin |
+|------|---------|-------------|-----------|-------|-------------------|-----|------------------------------|--------|
+| Heaviest settle — kar-fixed-price Buy SPL agented Margin S=1000 p=250bps floor=700; seller ATA absent → ClaimRecorded + split + close | measure-heaviest-settle | Buy | 2180 | 28 | 425 | 56103 | 7820B / 36 lines | — |
+| Bridge foreign mint @ URI=160 | live-roundtrip | LzReceive | 2226 | 32 | 344 | 73159 | 7774B / 32 lines | pin **139638** (Δ 66479) |
+
+**Stop rule:** log msg bytes > **10000** or log lines > **64** → redesign encoding (never split settle). Bridge CU ≥ pin → S4b re-pin (report only).
+

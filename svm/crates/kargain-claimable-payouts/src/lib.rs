@@ -9,6 +9,8 @@
 //! **Forbidden:** inspecting a transfer CPI `Err` to decide whether to claim
 //! (attempt-then-catch). That branch is unreachable on Solana (§13.7a).
 
+pub mod emit;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_errors::KargainError;
 use solana_program::{

@@ -37,6 +37,7 @@ use kar_passport::core_asset::{is_live_core_asset, read_owner, read_uri, transfe
 use kar_passport::instruction::PassportIx;
 use kar_passport::may::may_leave_or_open;
 use kar_passport::state::is_home_token;
+use kargain_events::generated;
 use mock_endpoint::MockEndpointIx;
 
 pub fn process_instruction(
@@ -477,7 +478,14 @@ fn lz_receive(
             )?;
         }
     }
-    msg!("kar-gateway LzReceive ok");
+    let token_id = _decoded.token_id;
+    kargain_events::generated::emit_kar_passport_bridge_gateway_onftreceived(
+        guid,
+        src_eid,
+        to.key.to_bytes(),
+        token_id,
+    );
+    kargain_events::ops_log!("kar-gateway LzReceive ok");
     Ok(())
 }
 
@@ -634,7 +642,13 @@ fn send(
         let _ = (native_fee, options); // mock ignores fee/options
         solana_program::program::set_return_data(&message);
     }
-    msg!(
+    generated::emit_kar_passport_bridge_gateway_onftsent(
+        [0u8; 32],
+        dst_eid,
+        owner.key.to_bytes(),
+        token_id,
+    );
+    kargain_events::ops_log!(
         "kar-gateway Send ok dst_eid={} uri_len={} msg_len={}",
         dst_eid,
         uri_len,

@@ -18,4 +18,7 @@ borsh = { workspace = true }
 solana-program = { workspace = true }
 mpl-core = { workspace = true }
 kargain-errors = { workspace = true }
+kargain-events = { workspace = true }
+kargain-bonded-challenge = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
 kar-pro-staking = { path = "../kar-pro-staking", features = ["no-entrypoint"] }

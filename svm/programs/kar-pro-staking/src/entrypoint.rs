@@ -22,7 +22,10 @@ use crate::state::{
     StakeAccount, StakingConfig, STAKE_ACCOUNT_SPACE, STAKE_DISCRIMINATOR,
     STAKING_CONFIG_DISCRIMINATOR,
 };
+use kargain_claimable_payouts::emit::{emit_payout, PayoutEmitter};
+use kargain_claimable_payouts::PayoutEvent;
 use kargain_errors::KargainError;
+use kargain_events::generated;
 
 /// Wire-compatible with `kar_pro_pass::PassIx` (borsh enum order).
 #[derive(BorshSerialize)]
@@ -308,7 +311,8 @@ fn join(
         &[&[CONFIG_SEED, &[cfg.bump]]],
     )?;
 
-    msg!("kar-pro-staking Join ok amount={}", amount);
+    generated::emit_kar_pro_staking_verifier_joined(wallet, [0u8; 32], amount);
+    kargain_events::ops_log!("kar-pro-staking Join ok amount={}", amount);
     Ok(())
 }
 
@@ -333,7 +337,8 @@ fn leave(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     s.unlock_at = unlock_at;
     s.verification_fee = 0;
     write_stake(stake, &s)?;
-    msg!(
+    generated::emit_kar_pro_staking_verifier_left(wallet, amount, unlock_at);
+    kargain_events::ops_log!(
         "kar-pro-staking Leave amount={} unlock_at={}",
         amount,
         unlock_at
@@ -377,7 +382,15 @@ fn claim_stake(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     s.unlock_at = 0;
     s.staked_at = 0;
     write_stake(stake, &s)?;
-    msg!("kar-pro-staking ClaimStake amount={}", amount);
+    emit_payout(
+        PayoutEmitter::KarProStaking,
+        &PayoutEvent::ClaimWithdrawn {
+            account: wallet,
+            asset: [0u8; 32],
+            amount,
+        },
+    );
+    kargain_events::ops_log!("kar-pro-staking ClaimStake amount={}", amount);
     Ok(())
 }
 
@@ -401,6 +414,7 @@ fn set_verification_fee(
     }
     s.verification_fee = fee;
     write_stake(stake, &s)?;
+    generated::emit_kar_pro_staking_verification_fee_updated(wallet, fee);
     Ok(())
 }
 

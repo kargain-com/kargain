@@ -23,6 +23,7 @@ use crate::state::{
     PassConfig, PassMeta, MAX_CATEGORY, PASS_CONFIG_DISCRIMINATOR, PASS_META_DISCRIMINATOR,
 };
 use kargain_errors::{KargainError, PASSPORT_URI_CEILING_BYTES};
+use kargain_events::generated;
 
 pub fn process_instruction(
     program_id: &Pubkey,
@@ -221,7 +222,13 @@ fn mint(
         )?;
     }
     meta.try_borrow_mut_data()?[..encoded.len()].copy_from_slice(&encoded);
-    msg!("kar-pro-pass Mint ok");
+    generated::emit_kar_pro_pass_pro_pass_minted(
+        holder_bytes,
+        category,
+        record.name.clone(),
+        record.metadata_uri.clone(),
+    );
+    kargain_events::ops_log!("kar-pro-pass Mint ok");
     Ok(())
 }
 
@@ -282,6 +289,7 @@ fn close_pass(program_id: &Pubkey, accounts: &[AccountInfo], holder: [u8; 32]) -
         meta.assign(&system_program::ID);
     }
 
-    msg!("kar-pro-pass ClosePass ok");
+    generated::emit_kar_pro_pass_pro_pass_burned(holder);
+    kargain_events::ops_log!("kar-pro-pass ClosePass ok");
     Ok(())
 }

@@ -1,0 +1,34 @@
+[
+  {
+    "contract": "KarPassport",
+    "event": "VerificationLapsed",
+    "specId": "D-38",
+    "module": "passport_terminal",
+    "proof": "emit_verification_lapsed"
+  },
+  {
+    "contract": "KarPassport",
+    "event": "VerificationStood",
+    "specId": "D-39",
+    "module": "passport_terminal",
+    "proof": "emit_verification_stood"
+  },
+  {
+    "contract": "FixedPriceConsignment",
+    "event": "CurrencyFeedSet",
+    "specId": "D-40",
+    "reason": "SVM pins feed at payment-token admit (D-29); no EVM-style global currency feed emit"
+  },
+  {
+    "contract": "FixedPriceConsignment",
+    "event": "NativeUsdStalenessToleranceSet",
+    "specId": "D-41",
+    "reason": "SVM native USD staleness not configurable via mode admin emit surface"
+  },
+  {
+    "contract": "KarProPass",
+    "event": "ProfileUpdated",
+    "specId": "D-42",
+    "reason": "KarPro pass profile is projection-only on SVM; no ProfileUpdated log path"
+  }
+]

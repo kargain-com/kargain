@@ -5,6 +5,7 @@ use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, pay_spl, spl_close_account_ix,
     withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, SPL_TOKEN_ACCOUNT_LEN,
     SplReceiveReachability,
+    emit::{emit_payout, PayoutEmitter},
 };
 use kargain_errors::KargainError;
 use solana_program::{
@@ -157,7 +158,8 @@ fn pay_leg(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progra
         },
     )?;
 
-    if credited.is_some() {
+    if let Some(ev) = credited {
+        emit_payout(PayoutEmitter::FixedPriceConsignment, &ev);
         let mut data = claim_info.try_borrow_mut_data()?;
         claim
             .serialize(&mut &mut data[..])
@@ -273,7 +275,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let dest_key = *dest_ata.key;
     let claim_key_copy = *claim_info.key;
 
-    withdraw_claim(&mut claim, |amount| {
+    let ev = withdraw_claim(&mut claim, |amount| {
         invoke_signed(
             &spl_transfer(&claim_ata_key, &dest_key, &claim_key_copy, amount),
             &[
@@ -285,6 +287,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
             &[seeds],
         )
     })?;
+    emit_payout(PayoutEmitter::FixedPriceConsignment, &ev);
 
     // D-23: close claim ATA then claim PDA — recipient reclaims rent.
     invoke_signed(

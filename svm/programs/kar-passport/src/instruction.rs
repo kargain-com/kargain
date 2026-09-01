@@ -62,4 +62,36 @@ pub enum PassportIx {
     VerifyPassport {
         token_id: [u8; 32],
     },
+    // ---- S7a append-only ----
+    OpenChallenge {
+        token_id: [u8; 32],
+    },
+    WithdrawChallenge {
+        token_id: [u8; 32],
+    },
+    JudgeChallenge {
+        token_id: [u8; 32],
+        outcome: u8,
+    },
+    ConcludeChallenge {
+        token_id: [u8; 32],
+    },
+    WithdrawClaim,
+    SetDisputeDeposit {
+        dispute_deposit: u64,
+    },
+    ReportDiscrepancy {
+        token_id: [u8; 32],
+        description: String,
+        evidence_cid: String,
+    },
+    AppendAttestation {
+        token_id: [u8; 32],
+        description: String,
+        evidence_cid: String,
+    },
+    /// Owner-initiated Core transfer — emits `Transfer` (not mint-from-zero).
+    TransferPassport {
+        token_id: [u8; 32],
+    },
 }

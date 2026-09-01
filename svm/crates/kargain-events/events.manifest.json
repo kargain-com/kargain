@@ -1,0 +1,2038 @@
+{
+  "entries": [
+    {
+      "contract": "AscendingConsignment",
+      "event": "AscendingTermsSnapshotted",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "duration",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "extensionWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "protectionWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "abandonmentWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "minIncrementBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "reserve",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "AuctionRulesSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "minDuration",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "maxDuration",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "extensionWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "minIncrementBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "minProtectionWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "maxProtectionWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "abandonmentWindow",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        },
+        {
+          "name": "challengeBond",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "BidPlaced",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "bidder",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "endsAt",
+          "solidityType": "uint40",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "BidRefunded",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "bidder",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeConcluded",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeJudged",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "judge",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "outcome",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "bondRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeOpened",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeWithdrawn",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ClaimRecorded",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ClaimWithdrawn",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentClosed",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "reason",
+          "solidityType": "enum",
+          "encoding": "u8"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentCommissionLowered",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "newBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentFloorLowered",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "newFloor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentOpened",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "seller",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "denominationKind",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "currencyCode",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "floor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "compensationForm",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "commissionBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "price",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "platformFeeBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentPriceSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "setter",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "newPrice",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentSplitPaid",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "ownerRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "ownerAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "agentRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agentAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "platformRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "platformAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "FundsReleased",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "GuardianSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "previous",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "current",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "MandateGranted",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "owner",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "expiry",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "denominationKind",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "currencyCode",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "floor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "compensationForm",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "commissionBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "MandateRevoked",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "owner",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "priorAgent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Paused",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "PaymentTokenApproved",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "token",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "PaymentTokenRevoked",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "token",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "RecallRequested",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "seller",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "requestedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReceiptConfirmed",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalAbandoned",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalCompleted",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalStarted",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "abandonmentDeadline",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Settled",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "gross",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "protectionEndsAt",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Unpaused",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Bought",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ClaimRecorded",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ClaimWithdrawn",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentClosed",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "reason",
+          "solidityType": "enum",
+          "encoding": "u8"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentCommissionLowered",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "newBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentFloorLowered",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "newFloor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentOpened",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "seller",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "denominationKind",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "currencyCode",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "floor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "compensationForm",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "commissionBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "price",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "platformFeeBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentPriceSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "setter",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "newPrice",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentSplitPaid",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "ownerRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "ownerAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "agentRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agentAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "platformRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "platformAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "CurrencyFeedSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "currencyCode",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "feed",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "stalenessTolerance",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ExternalPaymentConfirmed",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "buyer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "confirmer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "GuardianSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "previous",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "current",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "MandateGranted",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "owner",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "agent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "expiry",
+          "solidityType": "uint64",
+          "encoding": "u64"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "denominationKind",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "currencyCode",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "floor",
+          "solidityType": "uint128",
+          "encoding": "u64"
+        },
+        {
+          "name": "compensationForm",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "commissionBps",
+          "solidityType": "uint16",
+          "encoding": "u16"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "MandateRevoked",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "owner",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "priorAgent",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "NativeUsdStalenessToleranceSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "previous",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        },
+        {
+          "name": "current",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Paused",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "PaymentTokenApproved",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "token",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "feed",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "decimals",
+          "solidityType": "uint8",
+          "encoding": "u8"
+        },
+        {
+          "name": "stalenessTolerance",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "PaymentTokenRevoked",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "token",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "RecallRequested",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "seller",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "requestedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "SettlementNoteSet",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "setter",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Unpaused",
+      "handlerFile": "src/commerce-handlers.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeConcluded",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeJudged",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "judge",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "outcome",
+          "solidityType": "enum",
+          "encoding": "u8"
+        },
+        {
+          "name": "bondRecipient",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeOpened",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeWithdrawn",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "subjectId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "challenger",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "bondAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "windowDuration",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "openedAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ClaimRecorded",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ClaimWithdrawn",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "CustodyLockSet",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "locked",
+          "solidityType": "bool",
+          "encoding": "u8"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "DisputeDepositUpdated",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": true,
+      "fields": [
+        {
+          "name": "previousAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "newAmount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportBridgeBurned",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": true,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportBridgeMinted",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "to",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "uri",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportDisputed",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "disputer",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportMinted",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "to",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "uri",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportURIUpdated",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "newURI",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        },
+        {
+          "name": "author",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportVerified",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "verifier",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "RecordAppended",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "author",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "recordType",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        },
+        {
+          "name": "description",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        },
+        {
+          "name": "evidenceCID",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "Transfer",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "from",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "to",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassport",
+      "event": "VerificationReset",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "author",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "ONFTReceived",
+      "handlerFile": "",
+      "handlerEmpty": true,
+      "fields": [
+        {
+          "name": "guid",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "srcEid",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        },
+        {
+          "name": "toAddress",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        }
+      ]
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "ONFTSent",
+      "handlerFile": "",
+      "handlerEmpty": true,
+      "fields": [
+        {
+          "name": "guid",
+          "solidityType": "bytes32",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "dstEid",
+          "solidityType": "uint32",
+          "encoding": "u32"
+        },
+        {
+          "name": "fromAddress",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "tokenId",
+          "solidityType": "uint256",
+          "encoding": "bytes32"
+        }
+      ]
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProfileUpdated",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "holder",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "category",
+          "solidityType": "uint8",
+          "encoding": "u8"
+        },
+        {
+          "name": "name",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        },
+        {
+          "name": "metadataURI",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        }
+      ]
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProPassBurned",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "holder",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        }
+      ]
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProPassMinted",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "holder",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "category",
+          "solidityType": "uint8",
+          "encoding": "u8"
+        },
+        {
+          "name": "name",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        },
+        {
+          "name": "metadataURI",
+          "solidityType": "string",
+          "encoding": "borsh_string"
+        }
+      ]
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "ClaimRecorded",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "ClaimWithdrawn",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "account",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerificationFeeUpdated",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "verifier",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "fee",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerifierJoined",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "verifier",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "asset",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerifierLeft",
+      "handlerFile": "src/index.ts",
+      "handlerEmpty": false,
+      "fields": [
+        {
+          "name": "verifier",
+          "solidityType": "address",
+          "encoding": "pubkey32"
+        },
+        {
+          "name": "amount",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        },
+        {
+          "name": "unlockAt",
+          "solidityType": "uint256",
+          "encoding": "u64"
+        }
+      ]
+    }
+  ]
+}

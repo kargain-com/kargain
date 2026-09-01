@@ -8,6 +8,8 @@
 //! Split arithmetic: sole owner `kargain-agented-split`.
 //! Payout / claims: caller wires `kargain-claimable-payouts` (not duplicated here).
 
+pub mod emit;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_agented_split::{
     compute_agented_split, compute_direct_split, AgentedSplit, CompensationForm as SplitForm,

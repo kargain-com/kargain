@@ -109,13 +109,28 @@ describe("svm-money-model-policy", () => {
     assert.ok(bond.includes('pub const CHALLENGE_SEED: &[u8] = b"challenge"'));
   });
 
-  it("kar-passport no longer depends on money crates", () => {
+  it("kar-passport money deps route only through claims + challenge owners", () => {
     const toml = fs.readFileSync(
       path.join(SVM, "programs/kar-passport/Cargo.toml"),
       "utf8",
     );
-    assert.ok(!toml.includes("kargain-claimable-payouts"));
-    assert.ok(!toml.includes("kargain-bonded-challenge"));
+    assert.ok(toml.includes("kargain-claimable-payouts"));
+    assert.ok(toml.includes("kargain-bonded-challenge"));
+    const claims = fs.readFileSync(
+      path.join(SVM, "programs/kar-passport/src/claims.rs"),
+      "utf8",
+    );
+    const challenge = fs.readFileSync(
+      path.join(SVM, "programs/kar-passport/src/challenge.rs"),
+      "utf8",
+    );
+    assert.ok(claims.includes("kargain_claimable_payouts"));
+    assert.ok(challenge.includes("kargain_bonded_challenge"));
+    const ep = fs.readFileSync(
+      path.join(SVM, "programs/kar-passport/src/entrypoint.rs"),
+      "utf8",
+    );
+    assert.ok(!ep.includes("pay_spl("), "passport entrypoint must not call pay_spl directly");
   });
 
   it("constructed violation: attempt-then-catch fixture would fail the Err→credit ban", () => {

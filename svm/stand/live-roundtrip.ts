@@ -58,6 +58,7 @@ const EP_CLEAR_SEED = Buffer.from("ep_clear");
 
 export type LiveRoundTripResult = {
   foreignMintCu: number | null;
+  foreignMintSignature: string | null;
   homeUnlockCu: number | null;
   /** Serialized foreign-mint tx byte length (mock 13-meta list + CU ix). */
   foreignMintTxSize: number | null;
@@ -677,6 +678,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
 
   return withStandArtifactBindings({
     foreignMintCu: foreignMint.cu,
+    foreignMintSignature: foreignMint.signature,
     homeUnlockCu: unlock.cu,
     foreignMintTxSize: foreignMint.serializedLen,
     foreignAssetLive,

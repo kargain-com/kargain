@@ -1,0 +1,488 @@
+{
+  "entries": [
+    {
+      "contract": "AscendingConsignment",
+      "event": "AscendingTermsSnapshotted",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_ascending_terms_snapshotted"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "AuctionRulesSet",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_auction_rules_set"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "BidPlaced",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_bid_placed"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "BidRefunded",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_bid_refunded"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeConcluded",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeJudged",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeOpened",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ChallengeWithdrawn",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ClaimRecorded",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ClaimWithdrawn",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::AscendingConsignment"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentClosed",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentCommissionLowered",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentFloorLowered",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentOpened",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentPriceSet",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ConsignmentSplitPaid",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "FundsReleased",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_funds_released"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "GuardianSet",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "MandateGranted",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "MandateRevoked",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Paused",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "PaymentTokenApproved",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_payment_token_approved"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "PaymentTokenRevoked",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_payment_token_revoked"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "RecallRequested",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReceiptConfirmed",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_receipt_confirmed"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalAbandoned",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_reversal_abandoned"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalCompleted",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_reversal_completed"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "ReversalStarted",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_reversal_started"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Settled",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_ascending_consignment_settled"
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Unpaused",
+      "ownerProgram": "kar-ascending",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Bought",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_bought"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ClaimRecorded",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::FixedPriceConsignment"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ClaimWithdrawn",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::FixedPriceConsignment"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentClosed",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentCommissionLowered",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentFloorLowered",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentOpened",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentPriceSet",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ConsignmentSplitPaid",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "CurrencyFeedSet",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_currency_feed_set"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "ExternalPaymentConfirmed",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_external_payment_confirmed"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "GuardianSet",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "MandateGranted",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "MandateRevoked",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "NativeUsdStalenessToleranceSet",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_native_usd_staleness_tolerance_set"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Paused",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "PaymentTokenApproved",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_payment_token_approved"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "PaymentTokenRevoked",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_payment_token_revoked"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "RecallRequested",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "SettlementNoteSet",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_fixed_price_consignment_settlement_note_set"
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Unpaused",
+      "ownerProgram": "kar-fixed-price",
+      "proof": "emit_commerce"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeConcluded",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeJudged",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeOpened",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ChallengeWithdrawn",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_challenge",
+      "proofTag": "ChallengeEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ClaimRecorded",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ClaimWithdrawn",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::KarPassport"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "CustodyLockSet",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_custody_lock_set"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "DisputeDepositUpdated",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_dispute_deposit_updated"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportBridgeBurned",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_bridge_burned"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportBridgeMinted",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_bridge_minted"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportDisputed",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_disputed"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportMinted",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_minted"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportURIUpdated",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_uriupdated"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "PassportVerified",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_passport_verified"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "RecordAppended",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_record_appended"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "Transfer",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_transfer"
+    },
+    {
+      "contract": "KarPassport",
+      "event": "VerificationReset",
+      "ownerProgram": "kar-passport",
+      "proof": "emit_kar_passport_verification_reset"
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "ONFTReceived",
+      "ownerProgram": "kar-gateway",
+      "proof": "emit_kar_passport_bridge_gateway_onftreceived"
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "ONFTSent",
+      "ownerProgram": "kar-gateway",
+      "proof": "emit_kar_passport_bridge_gateway_onftsent"
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProfileUpdated",
+      "ownerProgram": "kar-pro-pass",
+      "proof": "emit_kar_pro_pass_profile_updated"
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProPassBurned",
+      "ownerProgram": "kar-pro-pass",
+      "proof": "emit_kar_pro_pass_pro_pass_burned"
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ProPassMinted",
+      "ownerProgram": "kar-pro-pass",
+      "proof": "emit_kar_pro_pass_pro_pass_minted"
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "ClaimRecorded",
+      "ownerProgram": "kar-pro-staking",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::KarProStaking"
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "ClaimWithdrawn",
+      "ownerProgram": "kar-pro-staking",
+      "proof": "emit_payout",
+      "proofTag": "PayoutEmitter::KarProStaking"
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerificationFeeUpdated",
+      "ownerProgram": "kar-pro-staking",
+      "proof": "emit_kar_pro_staking_verification_fee_updated"
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerifierJoined",
+      "ownerProgram": "kar-pro-staking",
+      "proof": "emit_kar_pro_staking_verifier_joined"
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "VerifierLeft",
+      "ownerProgram": "kar-pro-staking",
+      "proof": "emit_kar_pro_staking_verifier_left"
+    }
+  ]
+}

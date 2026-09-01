@@ -7,6 +7,7 @@ use kargain_bonded_challenge::{
     challenge_pda, conclude_challenge, judge_challenge, open_challenge, transfer_bond_lamports,
     withdraw_challenge, ChallengeAccount, ChallengeConfig, ChallengeHooks, JudgeOutcome,
     CHALLENGE_SEED,
+    emit::{emit_challenge, ChallengeEmitter},
 };
 use kargain_claimable_payouts::{
     claim_ata_pda, claim_pda, classify_spl_receive_reachability, escrow_pda, pay_spl,
@@ -14,6 +15,7 @@ use kargain_claimable_payouts::{
     spl_token_account_amount, withdraw_claim, ClaimAccount, CLAIM_ATA_SEED, CLAIM_SEED, ESCROW_SEED,
     SPL_TOKEN_ACCOUNT_LEN, PayoutAuthorities, PayoutLeg, SplReceiveReachability,
     verify_payout_recipient,
+    emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
     asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda, custody_authority_pda,
@@ -24,8 +26,14 @@ use kargain_consignment_base::{
     CompensationForm, CONFIG_DISCRIMINATOR, ConsignmentRecord, Denomination, DenominationKind,
     HarnessAsset, MandateRecord, Phase, ASSET_DISCRIMINATOR, ASSET_SEED, CONFIG_SEED,
     CONSIGNMENT_SEED, MANDATE_SEED,
+    emit::{
+        emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
+        event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
+        ConsignmentEvent,
+    },
 };
 use kargain_errors::KargainError;
+use kargain_events::generated;
 use kar_pro_staking::prove_active_verifier;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -61,6 +69,9 @@ pub const PAYMENT_TOKEN_DISC: [u8; 8] = *b"kp_aptk\0";
 const ASSET_MAY_OPEN_OFF: usize = HarnessAsset::SPACE;
 const ASSET_VERIFIED_OFF: usize = HarnessAsset::SPACE + 1;
 const ASSET_ACCOUNT_SPACE: usize = HarnessAsset::SPACE + 2;
+
+const COMMERCE_EMITTER: CommerceEmitter = CommerceEmitter::AscendingConsignment;
+const CHALLENGE_EMITTER: ChallengeEmitter = ChallengeEmitter::AscendingConsignment;
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum AscendingIx {
@@ -866,7 +877,18 @@ fn init_config(
         challenge_configured: true,
         bump,
     };
-    save_asc_config(config, &cfg)
+    save_asc_config(config, &cfg)?;
+    generated::emit_ascending_consignment_auction_rules_set(
+        MIN_DURATION,
+        MAX_DURATION,
+        EXTENSION_WINDOW,
+        MIN_INCREMENT_BPS,
+        MIN_PROTECTION_WINDOW,
+        MAX_PROTECTION_WINDOW,
+        ABANDONMENT_WINDOW,
+        challenge_bond,
+    );
+    Ok(())
 }
 
 fn create_asset(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
@@ -1051,6 +1073,19 @@ fn grant(
     record
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_mandate_granted(
+            token_id,
+            owner.key.to_bytes(),
+            record.agent,
+            record.expiry,
+            record.asset,
+            record.denomination,
+            record.floor,
+            record.compensation,
+        ),
+    );
     Ok(())
 }
 
@@ -1073,13 +1108,22 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
             .map(|c| c.is_live())
             .unwrap_or(false);
     revoke_mandate(&m, &a.owner, &owner.key.to_bytes(), is_live).map_err(into_pe)?;
+    let prior_agent = m.agent;
     let mut cleared = m;
     cleared.active = false;
     let mut data = mandate_info.try_borrow_mut_data()?;
     cleared
         .serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
-    let _ = (program_id, token_id);
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::MandateRevoked {
+            token_id,
+            owner: owner.key.to_bytes(),
+            prior_agent,
+        },
+    );
+    let _ = program_id;
     Ok(())
 }
 
@@ -1210,7 +1254,18 @@ fn open_ascending_direct(
         token_id,
         duration,
         protection_window,
-    )
+    )?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
+    generated::emit_ascending_consignment_ascending_terms_snapshotted(
+        token_id,
+        duration,
+        EXTENSION_WINDOW,
+        protection_window,
+        ABANDONMENT_WINDOW,
+        MIN_INCREMENT_BPS,
+        reserve,
+    );
+    Ok(())
 }
 
 fn open_ascending_from_mandate(
@@ -1311,7 +1366,18 @@ fn open_ascending_from_mandate(
         token_id,
         duration,
         protection_window,
-    )
+    )?;
+    emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
+    generated::emit_ascending_consignment_ascending_terms_snapshotted(
+        token_id,
+        duration,
+        EXTENSION_WINDOW,
+        protection_window,
+        ABANDONMENT_WINDOW,
+        MIN_INCREMENT_BPS,
+        reserve,
+    );
+    Ok(())
 }
 
 // ---- Bid ----
@@ -1425,6 +1491,21 @@ fn bid(
     auction.highest_bid = amount;
     apply_extension(&mut auction, now);
     save_auction(auction_info, &auction)?;
+
+    if !first {
+        generated::emit_ascending_consignment_bid_refunded(
+            token_id,
+            prev,
+            c.asset,
+            prev_amt,
+        );
+    }
+    generated::emit_ascending_consignment_bid_placed(
+        token_id,
+        bidder.key.to_bytes(),
+        amount,
+        auction.ends_at,
+    );
 
     if !first {
         let prev_acc = next_account_info(iter)?;
@@ -1563,6 +1644,12 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
             return Err(ProgramError::InvalidAccountData);
         }
     }
+    generated::emit_ascending_consignment_settled(
+        token_id,
+        buyer,
+        gross,
+        protection_ends_at,
+    );
     Ok(())
 }
 
@@ -1603,8 +1690,10 @@ fn confirm_receipt(
         return Err(into_pe(KargainError::ReversalPending));
     }
     let gross = hold.gross;
+    let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    generated::emit_ascending_consignment_receipt_confirmed(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
         accounts,
@@ -1661,8 +1750,10 @@ fn release_funds(
         return Err(into_pe(KargainError::HoldNotReady));
     }
     let gross = hold.gross;
+    let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    generated::emit_ascending_consignment_funds_released(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
         accounts,
@@ -1757,6 +1848,7 @@ fn complete_reversal(
             gross,
         )?;
     }
+    generated::emit_ascending_consignment_reversal_completed(token_id, buyer.key.to_bytes());
     let _ = cfg;
     Ok(())
 }
@@ -1793,8 +1885,10 @@ fn abandon_reversal(
         return Err(into_pe(KargainError::AbandonmentNotReady));
     }
     let gross = hold.gross;
+    let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    generated::emit_ascending_consignment_reversal_abandoned(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
         accounts,
@@ -1958,7 +2052,23 @@ fn pay_split_and_close(
     close_lot(&mut c, reason);
     c.price = 0;
     c.floor = 0;
-    save_consignment(consignment, &c)
+    save_consignment(consignment, &c)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_split_paid(
+            token_id,
+            c.asset,
+            cfg.platform_recipient,
+            c.seller,
+            c.agent,
+            &split,
+        ),
+    );
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &event_closed(token_id, reason),
+    );
+    Ok(())
 }
 
 // ---- Challenge ----
@@ -2031,7 +2141,7 @@ fn open_challenge_ix(
         now,
         pending_split_gross: None,
     };
-    let (account, _ev) = open_challenge(
+    let (account, ev) = open_challenge(
         &cfg.challenge_config(),
         &hooks,
         token_id,
@@ -2041,6 +2151,7 @@ fn open_challenge_ix(
         chbump,
     )
     .map_err(into_pe)?;
+    emit_challenge(CHALLENGE_EMITTER, &ev);
     // Fund bond into challenge PDA.
     pay_native(challenger, challenge_info, cfg.challenge_bond, system)?;
     {
@@ -2081,13 +2192,14 @@ fn withdraw_challenge_ix(
         now,
         pending_split_gross: None,
     };
-    let (_ev, disposition) = withdraw_challenge(
+    let (ev, disposition) = withdraw_challenge(
         &mut account,
         &mut hooks,
         challenger.key.to_bytes(),
         now,
     )
     .map_err(into_pe)?;
+    emit_challenge(CHALLENGE_EMITTER, &ev);
     {
         let mut from = challenge_info.try_borrow_mut_lamports()?;
         let mut to = challenger.try_borrow_mut_lamports()?;
@@ -2154,7 +2266,7 @@ fn judge_challenge_ix(
         now,
         pending_split_gross: None,
     };
-    let (_ev, disposition) = judge_challenge(
+    let (ev, disposition) = judge_challenge(
         &mut account,
         &cfg.challenge_config(),
         &mut hooks,
@@ -2163,6 +2275,14 @@ fn judge_challenge_ix(
         now,
     )
     .map_err(into_pe)?;
+    emit_challenge(CHALLENGE_EMITTER, &ev);
+    if outcome == JudgeOutcome::Upheld {
+        generated::emit_ascending_consignment_reversal_started(
+            token_id,
+            hooks.hold.buyer,
+            hooks.hold.abandonment_deadline,
+        );
+    }
     if bond_recipient.key.to_bytes() != disposition.recipient {
         return Err(ProgramError::InvalidAccountData);
     }
@@ -2237,13 +2357,14 @@ fn conclude_challenge_ix(
         now,
         pending_split_gross: None,
     };
-    let (_ev, disposition) = conclude_challenge(
+    let (ev, disposition) = conclude_challenge(
         &mut account,
         &cfg.challenge_config(),
         &mut hooks,
         now,
     )
     .map_err(into_pe)?;
+    emit_challenge(CHALLENGE_EMITTER, &ev);
     if bond_recipient.key.to_bytes() != disposition.recipient {
         return Err(ProgramError::InvalidAccountData);
     }
@@ -2300,7 +2421,14 @@ fn pause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let mut commerce = asc.as_commerce_config();
     pause(&mut commerce, &guardian.key.to_bytes()).map_err(into_pe)?;
     asc.paused = commerce.paused;
-    save_asc_config(config, &asc)
+    save_asc_config(config, &asc)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::Paused {
+            account: guardian.key.to_bytes(),
+        },
+    );
+    Ok(())
 }
 
 fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
@@ -2321,7 +2449,14 @@ fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let mut commerce = asc.as_commerce_config();
     unpause(&mut commerce);
     asc.paused = commerce.paused;
-    save_asc_config(config, &asc)
+    save_asc_config(config, &asc)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::Unpaused {
+            account: authority.key.to_bytes(),
+        },
+    );
+    Ok(())
 }
 
 fn set_challenge_bond(
@@ -2393,6 +2528,7 @@ fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     let mut data = payment_token.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    generated::emit_ascending_consignment_payment_token_approved(mint_key);
     Ok(())
 }
 
@@ -2422,6 +2558,7 @@ fn revoke_payment_token(
     let mut data = payment_token.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    generated::emit_ascending_consignment_payment_token_revoked(mint);
     Ok(())
 }
 
@@ -2462,7 +2599,7 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
     let claim_ata_key = *claim_ata.key;
     let dest_key = *dest_ata.key;
     let claim_key_copy = *claim_info.key;
-    withdraw_claim(&mut claim, |amount| {
+    let ev = withdraw_claim(&mut claim, |amount| {
         invoke_signed(
             &spl_transfer(
                 token_program.key,
@@ -2480,6 +2617,7 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
             &[seeds],
         )
     })?;
+    emit_payout(PayoutEmitter::AscendingConsignment, &ev);
     // D-23: close claim ATA then claim PDA — recipient reclaims rent.
     invoke_signed(
         &spl_close_account_ix(
@@ -2730,7 +2868,8 @@ fn pay_spl_leg_signed<'a>(
             )
         },
     )?;
-    if credited.is_some() {
+    if let Some(ev) = credited {
+        emit_payout(PayoutEmitter::AscendingConsignment, &ev);
         let mut data = claim_info.try_borrow_mut_data()?;
         claim
             .serialize(&mut &mut data[..])
