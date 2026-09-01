@@ -17,6 +17,7 @@ import {
   indexPassportChallengeOpened,
   indexPassportChallengeTerminal,
 } from "./commerce-handlers";
+import "./bridge-handlers";
 import {
   bridgeMintArrivalTrustFields,
   disputeExpiredTrustFields,
@@ -33,6 +34,10 @@ import {
   originChainIdOf,
   resolveCustody,
 } from "./lib/ponder-custody";
+import {
+  notePassportCounterpartForTx,
+  type BridgeCrossingContext,
+} from "./lib/ponder-bridge-crossings";
 import {
   indexPassportMetadataFromUri,
 } from "./lib/ponder-passport-metadata";
@@ -200,6 +205,13 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
   });
 
   await indexPassportMetadataFromUri(context, tokenId, uri, ts);
+
+  await notePassportCounterpartForTx(context as BridgeCrossingContext, {
+    txHash: event.transaction.hash,
+    tokenId,
+    logIndex: event.log.logIndex,
+    eventName: "PassportBridgeMinted",
+  });
 });
 
 ponder.on("KarPassport:PassportBridgeBurned", async () => {
@@ -235,6 +247,13 @@ ponder.on("KarPassport:CustodyLockSet", async ({ event, context }) => {
     custodyChain: custody.custodyChain,
     custodyUpdatedAt: custody.custodyUpdatedAt,
     updatedAt: ts,
+  });
+
+  await notePassportCounterpartForTx(context as BridgeCrossingContext, {
+    txHash: event.transaction.hash,
+    tokenId,
+    logIndex: event.log.logIndex,
+    eventName: "CustodyLockSet",
   });
 });
 

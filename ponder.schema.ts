@@ -467,3 +467,40 @@ export const commerceCurrencyFeed = onchainTable("commerce_currency_feed", (t) =
   stalenessTolerance: t.integer().notNull().default(0),
   updatedAt: t.bigint().notNull(),
 }));
+
+/**
+ * Append-only guid-linked bridge crossings (S7b). One row per observed
+ * ONFTSent / ONFTReceived side. S7c folds custody from this stream + SVM analogs.
+ */
+export const bridgeCrossing = onchainTable(
+  "bridge_crossing",
+  (t) => ({
+    id: t.text().primaryKey(),
+    guid: t.text().notNull(),
+    direction: t.text().notNull(),
+    observingChainId: t.integer().notNull(),
+    peerLayerZeroEid: t.integer().notNull(),
+    peerNamespace: t.integer(),
+    peerNamespaceRefusal: t.text(),
+    tokenId: t.text().notNull(),
+    party: t.text().notNull(),
+    blockNumber: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    txHash: t.text().notNull(),
+    timestamp: t.bigint().notNull(),
+    /** Receive-side only — linked PassportBridgeMinted or CustodyLockSet unlock. */
+    passportCounterpartEvent: t.text(),
+    passportCounterpartLogIndex: t.integer(),
+    /** absent | ambiguous when receive-side link missing or unclear. */
+    passportCounterpartRefusal: t.text(),
+  }),
+  (table) => ({
+    guidIdx: index().on(table.guid),
+    tokenIdx: index().on(table.tokenId),
+    chainOrderIdx: index().on(
+      table.observingChainId,
+      table.blockNumber,
+      table.logIndex,
+    ),
+  }),
+);

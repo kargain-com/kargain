@@ -14,6 +14,7 @@
 | Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — live Nuclear #4 addresses; production reindex **done** after Nuclear #4 ([OPERATIONS.md](./OPERATIONS.md)) |
 | Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — included in Nuclear full reindex ([OPERATIONS.md](./OPERATIONS.md)) |
 | Passport browse filter indexes (August 2026) | ✅ Expression indexes on `passport` (column + `lower(col)` as in schema). **No index** for `colour` / `search` (`ILIKE '%…%'` — revisit ~50k rows / measured latency; no `pg_trgm` yet). **VPS reindex + B1 done** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)) |
+| **Bridge guid crossings (S7b · September 2026)** | ✅ `KarPassportBridgeGateway` indexed dual-chain; append-only `bridge_crossing` stream (`ONFTSent` / `ONFTReceived`); receive-side correlation with `PassportBridgeMinted` / `CustodyLockSet(unlock)` in same tx. **No HTTP consumer yet** — S7c fold. **Production reindex deferred to S9 cutover** ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)) |
 
 Generation v2 contracts emit different events and use different listing fields than v1.x. **Handlers and schema are implemented** (including phase-2 marketplace and dispute-deposit events). **July 2026:** the `MarketplaceEscrow` / `AuctionEscrow` schema and handlers described in §1–§3 below (`marketplace_listing`, `marketplace_sale`, `agent_authorization`, `auction*`, `currency_feed`) have been **removed** — commerce lives entirely in the FixedPrice/Ascending consignment surface (§3's commerce-modes note, and [indexer/README.md](./README.md)). This document remains as historical reference for the v1→v2 event mapping and for the FX display work (§6).
 
@@ -87,6 +88,20 @@ Generation v2 adds agent consignment fields:
 | `DisputeDepositUpdated` | Owner changed global deposit amount |
 
 Handlers in `src/index.ts` listen for `Challenge*` on live Nuclear #4 ABIs; legacy `Dispute*` names are historical only.
+
+### KarPassportBridgeGateway (S7b · September 2026)
+
+| Event | Indexed into | Notes |
+|-------|--------------|-------|
+| `ONFTSent` | `bridge_crossing` (`direction=sent`) | One row per observed side; `peerLayerZeroEid` = `dstEid` |
+| `ONFTReceived` | `bridge_crossing` (`direction=received`) | `peerLayerZeroEid` = `srcEid`; same-tx link to passport mint or unlock when unambiguous |
+| `RecoveredLockedHome` | — | **Not** in crossing stream (no `guid`; admin recovery path) |
+
+**Correlation (receive only):** `PassportBridgeMinted` or `CustodyLockSet(locked=false)` in the same transaction, matched by exact `tokenId`. Zero matches → `passportCounterpartRefusal=absent`; multiple → `ambiguous`. Unknown LayerZero EID → `peerNamespaceRefusal=unknown_endpoint_id` (row still recorded).
+
+**Custody:** `passport.custodyChain` writers unchanged (`PassportBridgeMinted` / unlock / monotonic gate). S7c replaces stored custody with a guid-fold over EVM + SVM streams.
+
+Handlers: [`src/bridge-handlers.ts`](../../src/bridge-handlers.ts) · pure helpers [`lib/bridge/crossing-stream.ts`](../../lib/bridge/crossing-stream.ts) · EID resolver [`lib/web3/commercial-eid-namespace.ts`](../../lib/web3/commercial-eid-namespace.ts).
 
 ### KarProStaking
 

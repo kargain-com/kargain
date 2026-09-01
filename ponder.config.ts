@@ -3,6 +3,7 @@ import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
   KarPassportAbi,
+  KarPassportBridgeGatewayAbi,
   KarProPassAbi,
   KarProStakingAbi,
 } from "./lib/contracts/abis.generated";
@@ -40,6 +41,7 @@ type DualContract =
   | "karPassport"
   | "karProPass"
   | "karProStaking"
+  | "bridgeGateway"
   | "fixedPriceConsignment"
   | "ascendingConsignment";
 
@@ -59,6 +61,8 @@ const fixedPriceAddress =
   addresses.fixedPriceConsignment ?? localAddresses?.fixedPriceConsignment;
 const ascendingAddress =
   addresses.ascendingConsignment ?? localAddresses?.ascendingConsignment;
+const gatewayAddress =
+  addresses.bridgeGateway ?? localAddresses?.bridgeGateway;
 
 export default createConfig({
   // Cross-chain consistency for owner/status/uri via global timestamp order.
@@ -104,6 +108,18 @@ export default createConfig({
               ascendingAddress,
               "ascendingConsignment",
               localAddresses?.ascendingConsignment,
+            ),
+          },
+        }
+      : {}),
+    ...(gatewayAddress
+      ? {
+          KarPassportBridgeGateway: {
+            abi: KarPassportBridgeGatewayAbi,
+            ...dualEntry(
+              gatewayAddress,
+              "bridgeGateway",
+              localAddresses?.bridgeGateway,
             ),
           },
         }

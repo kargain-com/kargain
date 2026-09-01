@@ -166,6 +166,7 @@ export function ponderAddressesFromStack(stack: ResolvedCommercialStack): Ponder
     ...(stack.ascendingConsignment
       ? { ascendingConsignment: stack.ascendingConsignment }
       : {}),
+    ...(stack.bridgeGateway ? { bridgeGateway: stack.bridgeGateway } : {}),
   };
 }
 

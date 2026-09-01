@@ -29,7 +29,15 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 Historical: June 2026 v2 **43399242** · July 21 Nuclear **44434865** / **11319840** · Nuclear #2 **44833462** / **11384136** · Nuclear #3 **44919727** / **11398068** — superseded by Nuclear #4 hub **44957457** / Eth **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md).
 
-**Handlers:** dual-chain event indexing in `src/index.ts` — deploy + **reindex required** when schema changes.
+**Handlers:** dual-chain event indexing in `src/index.ts` + gateway crossings in `src/bridge-handlers.ts` — deploy + **reindex required** when schema changes.
+
+---
+
+## S9 reindex obligation — bridge guid crossings (S7b)
+
+**September 2026:** `bridge_crossing` table + `KarPassportBridgeGateway` registration landed on the SVM port branch. **No VPS action until S9 cutover** — production stays on Nuclear #4 without historical `ONFTSent` / `ONFTReceived` backfill until the planned full `ponder-reindex.sql` at Solana commercial activation.
+
+When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (hub **44957539** / Eth **11404235** on N4) in the same dual-chain reindex as other schema changes. Until then, stored `passport.custodyChain` remains the HTTP read surface (unchanged by S7b).
 
 ---
 

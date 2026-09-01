@@ -7,7 +7,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications.
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)).
 
 ## Contract addresses for indexer
 

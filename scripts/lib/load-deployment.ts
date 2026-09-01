@@ -151,6 +151,8 @@ export type PonderAddressBundle = {
   karPassport: `0x${string}`;
   karProPass: `0x${string}`;
   karProStaking: `0x${string}`;
+  /** KarPassportBridgeGateway — live on Nuclear #4+. */
+  bridgeGateway?: `0x${string}`;
   /** Commerce modes — filled at Nuclear #2; absent until then. */
   fixedPriceConsignment?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
@@ -364,6 +366,12 @@ export function ponderLocalAddresses(): LocalStackAddresses {
             .PONDER_ASCENDING_CONSIGNMENT_ADDRESS as `0x${string}`,
         }
       : {}),
+    ...(process.env.PONDER_BRIDGE_GATEWAY_ADDRESS
+      ? {
+          bridgeGateway: process.env
+            .PONDER_BRIDGE_GATEWAY_ADDRESS as `0x${string}`,
+        }
+      : {}),
     deployedAt: "",
   };
 
@@ -462,5 +470,6 @@ export function ponderAddressesFromCommercialManifest(
     ...(manifest.ascendingConsignment
       ? { ascendingConsignment: manifest.ascendingConsignment }
       : {}),
+    ...(manifest.bridgeGateway ? { bridgeGateway: manifest.bridgeGateway } : {}),
   };
 }

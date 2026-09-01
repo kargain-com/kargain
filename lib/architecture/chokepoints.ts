@@ -242,6 +242,23 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["bridge-route-policy.test.ts"],
   },
   {
+    id: "layerzero-eid-namespace",
+    owner: "lib/web3/commercial-eid-namespace.ts",
+    rule: "LayerZero EID → commercial namespace only via commercialNamespaceFromLayerZeroEid; unknown EID fails closed",
+    guardTests: ["kargain-namespace-eid.test.ts"],
+  },
+  {
+    id: "bridge-crossing-stream",
+    owner:
+      "src/bridge-handlers.ts · src/lib/ponder-bridge-crossings.ts · lib/bridge/crossing-stream.ts",
+    rule: "Append-only bridge_crossing rows written only by gateway handlers + correlation owner; no HTTP consumer in S7b",
+    guardTests: [
+      "ponder-bridge-crossings.test.ts",
+      "ponder-gateway-index-policy.test.ts",
+      "ponder-bridge-crossing-surface-policy.test.ts",
+    ],
+  },
+  {
     id: "svm-money-model",
     owner:
       "svm/crates/kargain-claimable-payouts · svm/crates/kargain-bonded-challenge · svm/crates/kargain-agented-split",
