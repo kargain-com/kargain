@@ -1,0 +1,199 @@
+{
+  "reasonClasses": {
+    "upgradeability": "UUPS proxy Initialized/Upgraded; deploy/upgrade plumbing only — no product indexer projection.",
+    "ownership_transfer": "OpenZeppelin OwnershipTransferred; Timelock/governance handoff only.",
+    "erc721_standard": "Standard ERC-721 / OZ token surface (Approval, Transfer, MetadataUpdate); no Kargain trust/commerce projection.",
+    "oapp_config": "LayerZero OApp configuration setters; pathway wire tooling only.",
+    "governance_rescue": "Owner ETH rescue; not commerce/trust projection.",
+    "chain_read_registry": "Encumbrance registry mutated on-chain; UI reads encumbranceSourceCount/At views — not event-sourced history.",
+    "governance_one_shot_bind": "One-shot bridge gateway bind (D-18); Timelock governance — no Ponder handler.",
+    "governed_recovery_no_guid": "Admin recoverLockedHome; custody fold uses CustodyLockSet(unlock) — no guid/crossing correlation (MIGRATION-V2).",
+    "governance_program_link": "KarPro pass ↔ staking program pointer; deploy/config only.",
+    "governance_parameter": "Governance parameter update; read from chain / deploy evidence — no handler.",
+    "superseded_by_census_event": "EVM emits duplicate lifecycle signal; indexer uses sibling census event in the same transaction path."
+  },
+  "outOfScope": [
+    {
+      "contract": "AscendingConsignment",
+      "event": "Initialized",
+      "reasonClass": "upgradeability",
+      "rationale": "UUPS initialize; no commerce projection."
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Timelock ownership only."
+    },
+    {
+      "contract": "AscendingConsignment",
+      "event": "Upgraded",
+      "reasonClass": "upgradeability",
+      "rationale": "UUPS upgrade; no commerce projection."
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Initialized",
+      "reasonClass": "upgradeability",
+      "rationale": "UUPS initialize; no commerce projection."
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Timelock ownership only."
+    },
+    {
+      "contract": "FixedPriceConsignment",
+      "event": "Upgraded",
+      "reasonClass": "upgradeability",
+      "rationale": "UUPS upgrade; no commerce projection."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "Approval",
+      "reasonClass": "erc721_standard",
+      "rationale": "OZ ERC721 Approval; passport approval uses commerce encumbrance paths."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "ApprovalForAll",
+      "reasonClass": "erc721_standard",
+      "rationale": "OZ ERC721 operator approval surface."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "BatchMetadataUpdate",
+      "reasonClass": "erc721_standard",
+      "rationale": "ERC721URIStorage batch metadata extension."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "BridgeGatewaySet",
+      "reasonClass": "governance_one_shot_bind",
+      "rationale": "One-shot gateway bind (D-18); SVM SetBridgeGateway has no census emit."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "EncumbranceSourceAdded",
+      "reasonClass": "chain_read_registry",
+      "rationale": "Registry membership via encumbranceSourceCount/At chain reads — UI encumbrance registry."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "EncumbranceSourceRemoved",
+      "reasonClass": "chain_read_registry",
+      "rationale": "Same as EncumbranceSourceAdded; no event-sourced registry history."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "EthRescued",
+      "reasonClass": "governance_rescue",
+      "rationale": "Owner rescue of stray ETH; not product projection."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "MetadataUpdate",
+      "reasonClass": "erc721_standard",
+      "rationale": "ERC721URIStorage single-token metadata extension."
+    },
+    {
+      "contract": "KarPassport",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Immutable passport deployer/Timelock handoff only."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "EnforcedOptionSet",
+      "reasonClass": "oapp_config",
+      "rationale": "LayerZero enforced options admin."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "MsgInspectorSet",
+      "reasonClass": "oapp_config",
+      "rationale": "LayerZero msg inspector admin."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Gateway owner handoff only."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "PeerSet",
+      "reasonClass": "oapp_config",
+      "rationale": "LayerZero peer configuration."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "PreCrimeSet",
+      "reasonClass": "oapp_config",
+      "rationale": "LayerZero pre-crime admin."
+    },
+    {
+      "contract": "KarPassportBridgeGateway",
+      "event": "RecoveredLockedHome",
+      "reasonClass": "governed_recovery_no_guid",
+      "rationale": "Admin recovery; custody via CustodyLockSet(unlock) — not bridge_crossing stream."
+    },
+    {
+      "contract": "KarProPass",
+      "event": "Approval",
+      "reasonClass": "erc721_standard",
+      "rationale": "Soulbound pass; standard ERC721 surface unused in product."
+    },
+    {
+      "contract": "KarProPass",
+      "event": "ApprovalForAll",
+      "reasonClass": "erc721_standard",
+      "rationale": "Standard ERC721 operator surface."
+    },
+    {
+      "contract": "KarProPass",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Pass deployer/Timelock handoff only."
+    },
+    {
+      "contract": "KarProPass",
+      "event": "StakingSet",
+      "reasonClass": "governance_program_link",
+      "rationale": "Authority links pass program to staking program; deploy/config only."
+    },
+    {
+      "contract": "KarProPass",
+      "event": "Transfer",
+      "reasonClass": "erc721_standard",
+      "rationale": "Soulbound pass; Transfer blocked at contract — no product projection."
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "MinStakeNativeUpdated",
+      "reasonClass": "governance_parameter",
+      "rationale": "Timelock min-stake update; read from chain / deploy evidence (minStakePin)."
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "OwnershipTransferred",
+      "reasonClass": "ownership_transfer",
+      "rationale": "Staking deployer/Timelock handoff only."
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "StakeClaimed",
+      "reasonClass": "superseded_by_census_event",
+      "rationale": "EVM stake-claim signal; indexer uses ClaimRecorded payout path.",
+      "supersededBy": { "contract": "KarProStaking", "event": "ClaimRecorded" }
+    },
+    {
+      "contract": "KarProStaking",
+      "event": "UnbondStarted",
+      "reasonClass": "superseded_by_census_event",
+      "rationale": "EVM duplicate of VerifierLeft in same leave tx; census carries amount+unlockAt.",
+      "supersededBy": { "contract": "KarProStaking", "event": "VerifierLeft" }
+    }
+  ]
+}

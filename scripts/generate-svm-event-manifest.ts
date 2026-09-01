@@ -11,6 +11,11 @@ import {
   KarProPassAbi,
   KarProStakingAbi,
 } from "../lib/contracts/abis.generated.js";
+import {
+  assertEventDispositionCoverage,
+  listCommercialAbiEvents,
+  type EventDispositionsFile,
+} from "../lib/svm/commercial-abi-events.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -453,6 +458,31 @@ function main(): void {
   console.log(`Wrote ${manifest.entries.length} entries to ${path.relative(REPO_ROOT, manifestPath)}`);
   console.log(`Wrote generated Rust to ${path.relative(REPO_ROOT, generatedPath)}`);
   console.log(`Wrote emit requirements to ${path.relative(REPO_ROOT, requirementsPath)}`);
+
+  const divergencesPath = path.join(crateDir, "named-divergences.json");
+  const dispositionsPath = path.join(crateDir, "event-dispositions.json");
+  const divergences = JSON.parse(fs.readFileSync(divergencesPath, "utf8")) as Array<{
+    contract: string;
+    event: string;
+    specId: string;
+  }>;
+  const dispositions = JSON.parse(
+    fs.readFileSync(dispositionsPath, "utf8"),
+  ) as EventDispositionsFile;
+
+  assertEventDispositionCoverage({
+    abiEvents: listCommercialAbiEvents(),
+    manifestEntries: manifest.entries,
+    namedDivergences: divergences.map((d) => ({
+      contract: d.contract,
+      event: d.event,
+      specId: d.specId,
+    })),
+    dispositions,
+  });
+  console.log(
+    `Event disposition coverage OK (${listCommercialAbiEvents().length} ABI events)`,
+  );
 
   const disc = spawnSync(
     "node",

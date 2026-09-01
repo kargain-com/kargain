@@ -299,7 +299,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-program-events",
     owner: "svm/crates/kargain-events",
     rule: "Structured SVM program logs (D-28) encode + sol_log_data only via kargain-events; parity with handler census",
-    guardTests: ["svm-event-parity-policy.test.ts"],
+    guardTests: ["svm-event-parity-policy.test.ts", "svm-event-disposition-policy.test.ts"],
   },
   {
     id: "svm-raw-ingest",
