@@ -722,4 +722,19 @@ describe("error-name-truth-policy", () => {
       ],
     );
   });
+
+  it("D-43: EmptyField name parity does not imply parameter payload on SVM (SPEC §13.14)", () => {
+    const spec = fs.readFileSync(
+      path.join(ROOT, "docs/contracts/SPEC.md"),
+      "utf8",
+    );
+    assert.match(spec, /\|\s*D-43\s*\|/);
+    assert.ok(spec.includes("EmptyField(string fieldName)"));
+    assert.ok(spec.includes("parameters do not travel"));
+    const passportSol = fs.readFileSync(
+      path.join(CONTRACTS_DIR, "KarPassport.sol"),
+      "utf8",
+    );
+    assert.ok(passportSol.includes("error EmptyField(string fieldName)"));
+  });
 });

@@ -12,13 +12,10 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  AscendingConsignmentAbi,
-  FixedPriceConsignmentAbi,
-  KarPassportAbi,
-  KarPassportBridgeGatewayAbi,
-  KarProPassAbi,
-  KarProStakingAbi,
-} from "../lib/contracts/abis.generated.js";
+  COMMERCIAL_CONTRACT_ABIS,
+  commercialAbiEventFieldNames,
+  type CommercialContractName,
+} from "../lib/svm/commercial-abi-events.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST_PATH = path.join(ROOT, "svm/crates/kargain-events/events.manifest.json");
@@ -59,17 +56,6 @@ type NamedDivergence = {
   proof?: string;
 };
 
-type AbiEventInput = { name: string; type: string; indexed?: boolean };
-
-const CONTRACT_ABIS: Record<string, readonly { type?: string; name?: string; inputs?: AbiEventInput[] }[]> = {
-  KarPassport: KarPassportAbi,
-  KarProStaking: KarProStakingAbi,
-  KarProPass: KarProPassAbi,
-  FixedPriceConsignment: FixedPriceConsignmentAbi,
-  AscendingConsignment: AscendingConsignmentAbi,
-  KarPassportBridgeGateway: KarPassportBridgeGatewayAbi,
-};
-
 function rg(pattern: string, cwd: string, globs: string[]): string {
   try {
     return execFileSync(
@@ -96,11 +82,14 @@ function parseRegistryFromGenerated(source: string): Array<{ contract: string; e
 }
 
 function abiEventFields(contract: string, eventName: string): string[] {
-  const abi = CONTRACT_ABIS[contract];
-  assert.ok(abi, `missing ABI for ${contract}`);
-  const item = abi.find((x) => x.type === "event" && x.name === eventName);
-  assert.ok(item, `${contract}:${eventName} not in abis.generated.ts`);
-  return (item.inputs ?? []).map((i) => i.name);
+  assert.ok(
+    contract in COMMERCIAL_CONTRACT_ABIS,
+    `missing commercial ABI for ${contract}`,
+  );
+  return commercialAbiEventFieldNames(
+    contract as CommercialContractName,
+    eventName,
+  );
 }
 
 function key(contract: string, event: string): string {

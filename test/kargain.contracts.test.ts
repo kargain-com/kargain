@@ -375,12 +375,13 @@ describe("KarProStaking — leave", () => {
     );
   });
 
-  it("emits VerifierLeft and UnbondStarted", async () => {
+  it("emits VerifierLeft and UnbondStarted with identical amount and unlockAt", async () => {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const { verifier, staking } = await deployVerifierStack(viem);
     await joinVerifier(staking, verifier);
     const hash = await staking.write.leave([], { account: verifier.account });
+    const block = await publicClient.getBlock({ blockHash: (await publicClient.getTransactionReceipt({ hash })).blockHash });
     const logs = await receiptLogs(publicClient, hash, staking.abi);
     const left = logs.find((l) => l.eventName === "VerifierLeft");
     assert.ok(left);
@@ -388,6 +389,24 @@ describe("KarProStaking — leave", () => {
     const started = logs.find((l) => l.eventName === "UnbondStarted");
     assert.ok(started);
     assert.equal(started!.args.amount, MIN_STAKE);
+    assert.equal(left!.args.unlockAt, started!.args.unlockAt);
+    assert.equal(
+      left!.args.unlockAt,
+      BigInt(block.timestamp) + UNBONDING_PERIOD,
+    );
+  });
+
+  it("successful claimStake emits StakeClaimed and not ClaimRecorded", async () => {
+    const { viem } = connection;
+    const publicClient = await viem.getPublicClient();
+    const { verifier, staking } = await deployVerifierStack(viem);
+    await joinVerifier(staking, verifier);
+    await staking.write.leave([], { account: verifier.account });
+    await increaseTime(publicClient, UNBONDING_PERIOD);
+    const hash = await staking.write.claimStake([], { account: verifier.account });
+    const logs = await receiptLogs(publicClient, hash, staking.abi);
+    assert.ok(logs.some((l) => l.eventName === "StakeClaimed"));
+    assert.equal(logs.some((l) => l.eventName === "ClaimRecorded"), false);
   });
 
   it("cannot rejoin while unbonding; can rejoin after claimStake", async () => {
@@ -437,7 +456,10 @@ describe("KarProStaking — leave", () => {
     await recipient.write.leaveStaking([staking.address]);
     assert.equal(await staking.read.isActiveVerifier([recipient.address]), false);
     await increaseTime(publicClient, UNBONDING_PERIOD);
-    await recipient.write.claimStake([staking.address]);
+    const claimHash = await recipient.write.claimStake([staking.address]);
+    const claimLogs = await receiptLogs(publicClient, claimHash, staking.abi);
+    assert.ok(claimLogs.some((l) => l.eventName === "StakeClaimed"));
+    assert.ok(claimLogs.some((l) => l.eventName === "ClaimRecorded"));
     assert.equal(await staking.read.pendingClaims([recipient.address, ZERO]), MIN_STAKE);
     assert.equal(await publicClient.getBalance({ address: staking.address }), stakingBefore);
     await assert.rejects(

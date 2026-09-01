@@ -106,6 +106,21 @@ export function listCommercialAbiEvents(): AbiEventRef[] {
   );
 }
 
+/** ABI event input names in declaration order (parity / manifest field checks). */
+export function commercialAbiEventFieldNames(
+  contract: CommercialContractName,
+  eventName: string,
+): string[] {
+  const abi = COMMERCIAL_CONTRACT_ABIS[contract];
+  const item = abi.find((x) => x.type === "event" && x.name === eventName);
+  if (!item) {
+    throw new Error(`${contract}:${eventName} not in commercial ABI`);
+  }
+  type AbiEventInput = { name?: string };
+  const inputs = (item as { inputs?: AbiEventInput[] }).inputs ?? [];
+  return inputs.map((i) => i.name ?? "");
+}
+
 export function resolveEventDispositions(input: {
   abiEvents: readonly AbiEventRef[];
   manifestEntries: readonly ManifestEntryRef[];
@@ -187,6 +202,12 @@ export type DispositionCoverageProblem =
       type: "superseded_by_census_event_missing_pointer";
       contract: string;
       event: string;
+    }
+  | { type: "out_of_scope_overlaps_census"; contract: string; event: string }
+  | {
+      type: "out_of_scope_overlaps_divergence_only";
+      contract: string;
+      event: string;
     };
 
 export function validateEventDispositionCoverage(input: {
@@ -201,6 +222,11 @@ export function validateEventDispositionCoverage(input: {
   );
   const censusKeys = new Set(
     input.manifestEntries.map((e) => eventKey(e.contract, e.event)),
+  );
+  const divergenceOnlyKeys = new Set(
+    input.namedDivergences
+      .filter((d) => !censusKeys.has(eventKey(d.contract, d.event)))
+      .map((d) => eventKey(d.contract, d.event)),
   );
   const allowedReasonClasses = new Set(
     Object.keys(input.dispositions.reasonClasses),
@@ -220,6 +246,20 @@ export function validateEventDispositionCoverage(input: {
     if (!abiKeys.has(key)) {
       problems.push({
         type: "orphan_out_of_scope",
+        contract: row.contract,
+        event: row.event,
+      });
+    }
+    if (censusKeys.has(key)) {
+      problems.push({
+        type: "out_of_scope_overlaps_census",
+        contract: row.contract,
+        event: row.event,
+      });
+    }
+    if (divergenceOnlyKeys.has(key)) {
+      problems.push({
+        type: "out_of_scope_overlaps_divergence_only",
         contract: row.contract,
         event: row.event,
       });
@@ -288,6 +328,10 @@ export function assertEventDispositionCoverage(
         return `${p.contract}:${p.event} has supersededBy but reasonClass is not superseded_by_census_event`;
       case "superseded_by_census_event_missing_pointer":
         return `${p.contract}:${p.event} superseded_by_census_event requires supersededBy census pointer`;
+      case "out_of_scope_overlaps_census":
+        return `out_of_scope overlaps census: ${p.contract}:${p.event}`;
+      case "out_of_scope_overlaps_divergence_only":
+        return `out_of_scope overlaps divergence-only: ${p.contract}:${p.event}`;
     }
   });
   throw new Error(`Event disposition coverage failed:\n${lines.join("\n")}`);

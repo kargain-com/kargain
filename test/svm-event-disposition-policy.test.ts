@@ -41,6 +41,51 @@ function loadNamedDivergences(): Array<{
   ) as Array<{ contract: string; event: string; specId: string }>;
 }
 
+/** Pinned census of manual out_of_scope rows — ABI drift must update deliberately. */
+const PINNED_OUT_OF_SCOPE_KEYS = [
+  "AscendingConsignment:Initialized",
+  "AscendingConsignment:OwnershipTransferred",
+  "AscendingConsignment:Upgraded",
+  "FixedPriceConsignment:Initialized",
+  "FixedPriceConsignment:OwnershipTransferred",
+  "FixedPriceConsignment:Upgraded",
+  "KarPassport:Approval",
+  "KarPassport:ApprovalForAll",
+  "KarPassport:BatchMetadataUpdate",
+  "KarPassport:BridgeGatewaySet",
+  "KarPassport:EncumbranceSourceAdded",
+  "KarPassport:EncumbranceSourceRemoved",
+  "KarPassport:EthRescued",
+  "KarPassport:MetadataUpdate",
+  "KarPassport:OwnershipTransferred",
+  "KarPassportBridgeGateway:EnforcedOptionSet",
+  "KarPassportBridgeGateway:MsgInspectorSet",
+  "KarPassportBridgeGateway:OwnershipTransferred",
+  "KarPassportBridgeGateway:PeerSet",
+  "KarPassportBridgeGateway:PreCrimeSet",
+  "KarPassportBridgeGateway:RecoveredLockedHome",
+  "KarProPass:Approval",
+  "KarProPass:ApprovalForAll",
+  "KarProPass:OwnershipTransferred",
+  "KarProPass:StakingSet",
+  "KarProPass:Transfer",
+  "KarProStaking:MinStakeNativeUpdated",
+  "KarProStaking:OwnershipTransferred",
+  "KarProStaking:StakeClaimed",
+  "KarProStaking:UnbondStarted",
+] as const;
+
+const PINNED_REASON_CLASS_COUNTS: Record<string, number> = {
+  upgradeability: 4,
+  ownership_transfer: 6,
+  erc721_standard: 7,
+  oapp_config: 4,
+  chain_read: 3,
+  governance_admin: 4,
+  governed_recovery_no_guid: 1,
+  superseded_by_census_event: 1,
+};
+
 describe("svm event disposition policy", () => {
   const abiEvents = listCommercialAbiEvents();
   const manifestEntries = loadManifestEntries();
@@ -145,6 +190,18 @@ describe("svm event disposition policy", () => {
     assert.equal(census + namedDivergence + outOfScope, 110);
   });
 
+  it("pin: exact 30 outOfScope keys and reason-class member counts", () => {
+    const keys = dispositions.outOfScope
+      .map((r) => eventKey(r.contract, r.event))
+      .sort();
+    assert.deepEqual(keys, [...PINNED_OUT_OF_SCOPE_KEYS].sort());
+    const counts = new Map<string, number>();
+    for (const row of dispositions.outOfScope) {
+      counts.set(row.reasonClass, (counts.get(row.reasonClass) ?? 0) + 1);
+    }
+    assert.deepEqual(Object.fromEntries(counts), PINNED_REASON_CLASS_COUNTS);
+  });
+
   it("superseded_by_census_event: requires supersededBy pointing at a census row", () => {
     const rows = dispositions.outOfScope.filter(
       (r) => r.reasonClass === "superseded_by_census_event",
@@ -213,6 +270,130 @@ describe("svm event disposition policy", () => {
     });
     assert.ok(problems.some((p) => p.type === "orphan_out_of_scope"));
   });
+
+  it("constructed violation: out_of_scope overlaps census row", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: [
+          ...dispositions.outOfScope,
+          {
+            contract: "KarProStaking",
+            event: "VerifierJoined",
+            reasonClass: "erc721_standard",
+            rationale: "shadow census row",
+          },
+        ],
+      },
+    });
+    assert.ok(problems.some((p) => p.type === "out_of_scope_overlaps_census"));
+  });
+
+  it("constructed violation: out_of_scope overlaps divergence-only row", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: [
+          ...dispositions.outOfScope,
+          {
+            contract: "KarPassport",
+            event: "VerificationLapsed",
+            reasonClass: "erc721_standard",
+            rationale: "shadow D-38",
+          },
+        ],
+      },
+    });
+    assert.ok(
+      problems.some((p) => p.type === "out_of_scope_overlaps_divergence_only"),
+    );
+  });
+
+  it("constructed violation: invalid reasonClass fails coverage", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: dispositions.outOfScope.map((row, i) =>
+          i === 0 ? { ...row, reasonClass: "not_a_real_class" } : row,
+        ),
+      },
+    });
+    assert.ok(problems.some((p) => p.type === "invalid_reason_class"));
+  });
+
+  it("constructed violation: superseded_by_census_event without supersededBy", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: dispositions.outOfScope.map((row) =>
+          row.event === "UnbondStarted"
+            ? { ...row, supersededBy: undefined }
+            : row,
+        ),
+      },
+    });
+    assert.ok(
+      problems.some(
+        (p) => p.type === "superseded_by_census_event_missing_pointer",
+      ),
+    );
+  });
+
+  it("constructed violation: supersededBy with wrong reasonClass", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: dispositions.outOfScope.map((row) =>
+          row.event === "UnbondStarted"
+            ? { ...row, reasonClass: "chain_read" }
+            : row,
+        ),
+      },
+    });
+    assert.ok(
+      problems.some(
+        (p) => p.type === "superseded_by_census_event_missing_target",
+      ),
+    );
+  });
+
+  it("constructed violation: supersededBy target not in census", () => {
+    const problems = validateEventDispositionCoverage({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions: {
+        ...dispositions,
+        outOfScope: dispositions.outOfScope.map((row) =>
+          row.event === "UnbondStarted"
+            ? {
+                ...row,
+                supersededBy: {
+                  contract: "KarProStaking",
+                  event: "StakeClaimed",
+                },
+              }
+            : row,
+        ),
+      },
+    });
+    assert.ok(problems.some((p) => p.type === "superseded_by_not_in_census"));
+  });
 });
 
 function formatProblem(
@@ -231,5 +412,9 @@ function formatProblem(
       return `supersededBy without class on ${p.contract}:${p.event}`;
     case "superseded_by_census_event_missing_pointer":
       return `missing supersededBy on ${p.contract}:${p.event}`;
+    case "out_of_scope_overlaps_census":
+      return `shadow census: ${p.contract}:${p.event}`;
+    case "out_of_scope_overlaps_divergence_only":
+      return `shadow divergence: ${p.contract}:${p.event}`;
   }
 }

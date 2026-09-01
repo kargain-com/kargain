@@ -296,10 +296,23 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
   },
   {
+    id: "commercial-abi-events",
+    owner: "lib/svm/commercial-abi-events.ts",
+    rule: "Six commercial contract ABI event enumeration + disposition validation only via commercial-abi-events",
+    guardTests: [
+      "commercial-abi-events-policy.test.ts",
+      "svm-event-disposition-policy.test.ts",
+    ],
+  },
+  {
     id: "svm-program-events",
-    owner: "svm/crates/kargain-events",
-    rule: "Structured SVM program logs (D-28) encode + sol_log_data only via kargain-events; parity with handler census",
-    guardTests: ["svm-event-parity-policy.test.ts", "svm-event-disposition-policy.test.ts"],
+    owner: "lib/svm/commercial-abi-events.ts · svm/crates/kargain-events",
+    rule: "Commercial ABI census via commercial-abi-events; structured SVM logs (D-28) encode + sol_log_data only via kargain-events",
+    guardTests: [
+      "commercial-abi-events-policy.test.ts",
+      "svm-event-parity-policy.test.ts",
+      "svm-event-disposition-policy.test.ts",
+    ],
   },
   {
     id: "svm-raw-ingest",
