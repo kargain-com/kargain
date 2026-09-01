@@ -8,6 +8,7 @@ import {
   COMMERCIAL_ACTIVE,
   commercialActive,
   requireCommercialActive,
+  requireEvmCommercialActive,
 } from "../lib/web3/commercial-active.ts";
 import { kargainContractDenylist } from "../lib/web3/deployment-addresses.ts";
 import { ETHEREUM_SEPOLIA_SPOKE, SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
@@ -34,6 +35,16 @@ function withEmptyDeploymentsDir<T>(fn: () => T): T {
 }
 
 describe("COMMERCIAL_ACTIVE registry", () => {
+  it("requireEvmCommercialActive narrows to EVM stack with chainId", () => {
+    const hub = requireEvmCommercialActive(HUB);
+    assert.equal(hub.vm, "evm");
+    assert.equal(hub.chainId, HUB);
+    assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
+    const eth = requireEvmCommercialActive(ETH);
+    assert.equal(eth.vm, "evm");
+    assert.equal(eth.chainId, ETH);
+  });
+
   it("includes Nuclear #4 hub and Eth stacks with modes", () => {
     assert.equal(Object.keys(COMMERCIAL_ACTIVE).sort().join(","), `${ETH},${HUB}`);
     assert.equal(requireCommercialActive(HUB).karPassport, SEPOLIA_ACTIVE.karPassport);

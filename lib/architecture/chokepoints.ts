@@ -311,6 +311,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "ponder-reindex-svm-isolation-policy.test.ts",
     ],
   },
+  {
+    id: "lib-scripts-boundary",
+    owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
+    rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",
+    guardTests: ["lib-scripts-boundary-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

@@ -3,6 +3,11 @@ import { join } from "node:path";
 import { getAddress } from "viem";
 
 import { SEPOLIA_ACTIVE } from "../../lib/web3/sepolia-addresses.js";
+import type {
+  SvmDevnetEvidence,
+  SvmDevnetPathwayPeers,
+  SvmDevnetProgramEvidence,
+} from "../../lib/svm/devnet-evidence.js";
 import type { LocalStackAddresses } from "./local-stack.js";
 import type { ContractVersionName } from "./contract-versions.js";
 
@@ -397,48 +402,11 @@ export {
   sepoliaIndexFromBlock,
 } from "./resolve-sepolia-stack.js";
 
-/** Solana Devnet deploy evidence — `deployments/svm-{eid}.json` (gitignored). */
-export type SvmDevnetProgramEvidence = {
-  programId: string;
-  soSha256?: string;
-  soBytes?: number;
-  upgradeAuthority?: string;
-};
-
-export type SvmDevnetPathwayPeers = {
-  hubEid: 40245;
-  spokeEid: 40168;
-  hubOApp: `0x${string}`;
-  spokeOApp: string;
-};
-
-export type SvmDevnetEvidence = {
-  cluster: string;
-  eid: number;
-  namespace: number;
-  /** First slot svm-ingest follows (deploy boundary — no historical backfill). */
-  indexFromSlot?: number;
-  programs: {
-    kar_passport: SvmDevnetProgramEvidence;
-    kar_gateway: SvmDevnetProgramEvidence;
-    mock_staking?: SvmDevnetProgramEvidence;
-    kar_pro_staking?: SvmDevnetProgramEvidence;
-    kar_pro_pass?: SvmDevnetProgramEvidence;
-  };
-  /** S5 — stated testnet constant or mainnet observed-rate pin (join never quotes FX). */
-  minStakePin?: {
-    kind: "stated_testnet_constant" | "observed_mainnet_rate";
-    declaredEthWeightWei: string;
-    declaredEthFloorWei: string;
-    solLamports: string;
-    floorLamports: string;
-    source: string;
-    declaredAt: string;
-  } | null;
-  peers?: SvmDevnetPathwayPeers | null;
-  pathwayConfigHash?: `0x${string}` | null;
-  [key: string]: unknown;
-};
+export type {
+  SvmDevnetEvidence,
+  SvmDevnetPathwayPeers,
+  SvmDevnetProgramEvidence,
+} from "../../lib/svm/devnet-evidence.js";
 
 export function svmDevnetEvidencePath(eid: number = 40168): string {
   return join(deploymentsDirectory(), `svm-${eid}.json`);

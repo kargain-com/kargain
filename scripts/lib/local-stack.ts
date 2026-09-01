@@ -1,4 +1,4 @@
-import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicClient } from "viem";
+import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicClient, testActions } from "viem";
 
 import {
   DECLARED_DISPUTE_DEPOSIT_WEI,
@@ -219,14 +219,9 @@ export async function deployAscendingConsignment(
 
 /** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */
 export async function increaseTime(publicClient: PublicClient, seconds: bigint) {
-  await publicClient.request({
-    method: "evm_increaseTime",
-    params: [Number(seconds)],
-  });
-  await publicClient.request({
-    method: "evm_mine",
-    params: [],
-  });
+  const testClient = publicClient.extend(testActions({ mode: "hardhat" }));
+  await testClient.increaseTime({ seconds: Number(seconds) });
+  await testClient.mine({ blocks: 1 });
 }
 
 export async function mintPassport(

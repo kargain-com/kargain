@@ -1,8 +1,10 @@
 import { getAddress } from "viem";
 
 import {
+  isCommercialChainId,
   requireCommercialActive,
-  type CommercialActiveStack,
+  requireEvmCommercialActive,
+  type EvmCommercialActiveStack,
 } from "../../lib/web3/commercial-active.js";
 import {
   ETHEREUM_SEPOLIA_PUBLIC_RPC,
@@ -65,10 +67,15 @@ function parseStartBlockEnv(chainId: number): number | undefined {
 }
 
 function stackFromCommitted(chainId: number): ResolvedCommercialStack {
-  const active = requireCommercialActive(chainId);
+  if (!isCommercialChainId(chainId)) {
+    throw new Error(
+      `stackFromCommitted: chain ${chainId} is not a committed EVM commercial stack`,
+    );
+  }
+  const active = requireEvmCommercialActive(chainId);
   return {
     source: "committed",
-    chainId: active.chainId,
+    chainId,
     generation: "v2",
     karPassport: active.karPassport,
     karProPass: active.karProPass,
@@ -91,7 +98,7 @@ function stackFromCommitted(chainId: number): ResolvedCommercialStack {
 function stackFromManifest(
   manifest: DeploymentManifest,
   source: CommercialStackSource,
-  committed: CommercialActiveStack,
+  committed: EvmCommercialActiveStack,
 ): ResolvedCommercialStack {
   return {
     source,
@@ -125,7 +132,7 @@ function stackFromEnv84532(): ResolvedCommercialStack | null {
   const karProStaking = process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
   if (!karPassport || !karProPass || !karProStaking) return null;
 
-  const committed = requireCommercialActive(HUB_CHAIN_ID);
+  const committed = requireEvmCommercialActive(HUB_CHAIN_ID);
   const manifest = loadSepoliaDeployment();
   const base = manifest
     ? stackFromManifest(manifest, "env", committed)
@@ -179,7 +186,11 @@ export function resolveCommercialStack(chainId: number): ResolvedCommercialStack
     if (fromEnv) return fromEnv;
   }
 
-  const committed = requireCommercialActive(chainId);
+  if (!isCommercialChainId(chainId)) {
+    requireCommercialActive(chainId);
+    throw new Error(`resolveCommercialStack: unreachable after requireCommercialActive(${chainId})`);
+  }
+  const committed = requireEvmCommercialActive(chainId);
   const manifest = loadCommercialDeployment(chainId);
   if (manifest) return stackFromManifest(manifest, "manifest", committed);
 

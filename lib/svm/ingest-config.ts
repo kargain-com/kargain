@@ -2,7 +2,7 @@
  * Commercial BPF program IDs for SVM raw ingest — from deploy evidence only.
  */
 
-import type { SvmDevnetEvidence } from "../../scripts/lib/load-deployment.js";
+import type { SvmDevnetEvidence } from "./devnet-evidence.js";
 
 /** Slug → evidence `programs` key (six production BPF programs). */
 export const COMMERCIAL_PROGRAM_EVIDENCE_KEYS: Record<string, string> = {

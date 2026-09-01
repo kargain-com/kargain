@@ -5,7 +5,7 @@
 
 import {
   COMMERCIAL_ACTIVE,
-  requireCommercialActive,
+  requireEvmCommercialActive,
 } from "./commercial-active";
 
 export const SEPOLIA_CHAIN_ID = 84532;
@@ -123,7 +123,7 @@ export const ETHEREUM_SEPOLIA_CHAIN_ID = 11155111;
 export const ETHEREUM_SEPOLIA_PUBLIC_RPC =
   "https://ethereum-sepolia-rpc.publicnode.com";
 
-const ethActive = requireCommercialActive(ETHEREUM_SEPOLIA_CHAIN_ID);
+const ethActive = requireEvmCommercialActive(ETHEREUM_SEPOLIA_CHAIN_ID);
 
 export const ETHEREUM_SEPOLIA_SPOKE = {
   chainId: ETHEREUM_SEPOLIA_CHAIN_ID,
