@@ -66,47 +66,105 @@ describe("svm event disposition policy", () => {
     assert.deepEqual(orphans, []);
   });
 
-  it("census sync: every manifest row resolves as census (unless named divergence)", () => {
+  it("census sync: every manifest row resolves as census", () => {
     const resolved = resolveEventDispositions({
       abiEvents,
       manifestEntries,
       namedDivergences,
       dispositions,
     });
-    const divergenceKeys = new Set(
-      namedDivergences.map((d) => eventKey(d.contract, d.event)),
-    );
     for (const entry of manifestEntries) {
       const key = eventKey(entry.contract, entry.event);
       const row = resolved.get(key);
       assert.ok(row, `missing resolution for census row ${key}`);
-      if (divergenceKeys.has(key)) {
-        assert.equal(row.kind, "named_divergence");
-      } else {
-        assert.equal(row.kind, "census");
-      }
+      assert.equal(row.kind, "census");
     }
   });
 
-  it("named divergence sync: D-38…D-42 resolve with matching specId", () => {
+  it("named divergence sync: D-40–D-42 annotate census rows; D-38/D-39 are divergence-only", () => {
     const resolved = resolveEventDispositions({
       abiEvents,
       manifestEntries,
       namedDivergences,
       dispositions,
     });
+    const censusKeys = new Set(
+      manifestEntries.map((e) => eventKey(e.contract, e.event)),
+    );
     for (const div of namedDivergences) {
       const key = eventKey(div.contract, div.event);
       const row = resolved.get(key);
-      assert.equal(row?.kind, "named_divergence");
-      if (row?.kind === "named_divergence") {
-        assert.equal(row.specId, div.specId);
+      assert.ok(row);
+      if (censusKeys.has(key)) {
+        assert.equal(row.kind, "census");
+        if (row.kind === "census") {
+          assert.equal(row.divergenceSpecId, div.specId);
+        }
+      } else {
+        assert.equal(row.kind, "named_divergence");
+        if (row.kind === "named_divergence") {
+          assert.equal(row.specId, div.specId);
+        }
       }
     }
     assert.deepEqual(
       namedDivergences.map((d) => d.specId).sort(),
       ["D-38", "D-39", "D-40", "D-41", "D-42"],
     );
+  });
+
+  it("partition: 78 census + 2 divergence-only + 30 out_of_scope = 110 ABI events", () => {
+    const resolved = resolveEventDispositions({
+      abiEvents,
+      manifestEntries,
+      namedDivergences,
+      dispositions,
+    });
+    const censusKeys = new Set(
+      manifestEntries.map((e) => eventKey(e.contract, e.event)),
+    );
+    const divergenceOnly = namedDivergences.filter(
+      (d) => !censusKeys.has(eventKey(d.contract, d.event)),
+    );
+    let census = 0;
+    let namedDivergence = 0;
+    let outOfScope = 0;
+    for (const row of resolved.values()) {
+      if (row.kind === "census") census++;
+      else if (row.kind === "named_divergence") namedDivergence++;
+      else outOfScope++;
+    }
+    assert.equal(census, 78);
+    assert.equal(namedDivergence, 2);
+    assert.equal(outOfScope, 30);
+    assert.equal(divergenceOnly.length, 2);
+    assert.deepEqual(
+      divergenceOnly.map((d) => d.specId).sort(),
+      ["D-38", "D-39"],
+    );
+    assert.equal(census + namedDivergence + outOfScope, 110);
+  });
+
+  it("superseded_by_census_event: requires supersededBy pointing at a census row", () => {
+    const rows = dispositions.outOfScope.filter(
+      (r) => r.reasonClass === "superseded_by_census_event",
+    );
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0]?.supersededBy, {
+      contract: "KarProStaking",
+      event: "VerifierLeft",
+    });
+    const censusKeys = new Set(
+      manifestEntries.map((e) => eventKey(e.contract, e.event)),
+    );
+    for (const row of rows) {
+      assert.ok(row.supersededBy);
+      assert.ok(
+        censusKeys.has(
+          eventKey(row.supersededBy.contract, row.supersededBy.event),
+        ),
+      );
+    }
   });
 
   it("reason class pin: every outOfScope row uses a declared reasonClass", () => {
@@ -169,5 +227,9 @@ function formatProblem(
       return `bad class ${p.reasonClass} on ${p.contract}:${p.event}`;
     case "superseded_by_not_in_census":
       return `bad supersededBy on ${p.contract}:${p.event}`;
+    case "superseded_by_census_event_missing_target":
+      return `supersededBy without class on ${p.contract}:${p.event}`;
+    case "superseded_by_census_event_missing_pointer":
+      return `missing supersededBy on ${p.contract}:${p.event}`;
   }
 }

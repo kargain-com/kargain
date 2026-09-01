@@ -51,7 +51,13 @@ export type EventDispositionsFile = {
 export type EventDispositionKind = "census" | "named_divergence" | "out_of_scope";
 
 export type ResolvedEventDisposition =
-  | { kind: "census"; contract: string; event: string }
+  | {
+      kind: "census";
+      contract: string;
+      event: string;
+      /** When a named divergence annotates a census row (D-40–D-42). */
+      divergenceSpecId?: string;
+    }
   | { kind: "named_divergence"; contract: string; event: string; specId: string }
   | {
       kind: "out_of_scope";
@@ -123,6 +129,15 @@ export function resolveEventDispositions(input: {
   for (const { contract, event } of input.abiEvents) {
     const key = eventKey(contract, event);
     const divergence = divergenceByKey.get(key);
+    if (censusKeys.has(key)) {
+      resolved.set(key, {
+        kind: "census",
+        contract,
+        event,
+        ...(divergence ? { divergenceSpecId: divergence.specId } : {}),
+      });
+      continue;
+    }
     if (divergence) {
       resolved.set(key, {
         kind: "named_divergence",
@@ -130,10 +145,6 @@ export function resolveEventDispositions(input: {
         event,
         specId: divergence.specId,
       });
-      continue;
-    }
-    if (censusKeys.has(key)) {
-      resolved.set(key, { kind: "census", contract, event });
       continue;
     }
     const outOfScope = outOfScopeByKey.get(key);
@@ -166,6 +177,16 @@ export type DispositionCoverageProblem =
       contract: string;
       event: string;
       supersededBy: { contract: string; event: string };
+    }
+  | {
+      type: "superseded_by_census_event_missing_target";
+      contract: string;
+      event: string;
+    }
+  | {
+      type: "superseded_by_census_event_missing_pointer";
+      contract: string;
+      event: string;
     };
 
 export function validateEventDispositionCoverage(input: {
@@ -221,6 +242,23 @@ export function validateEventDispositionCoverage(input: {
           supersededBy: row.supersededBy,
         });
       }
+      if (row.reasonClass !== "superseded_by_census_event") {
+        problems.push({
+          type: "superseded_by_census_event_missing_target",
+          contract: row.contract,
+          event: row.event,
+        });
+      }
+    }
+    if (
+      row.reasonClass === "superseded_by_census_event" &&
+      !row.supersededBy
+    ) {
+      problems.push({
+        type: "superseded_by_census_event_missing_pointer",
+        contract: row.contract,
+        event: row.event,
+      });
     }
   }
 
@@ -246,6 +284,10 @@ export function assertEventDispositionCoverage(
         return `invalid reasonClass ${p.reasonClass} on ${p.contract}:${p.event}`;
       case "superseded_by_not_in_census":
         return `${p.contract}:${p.event} supersededBy ${p.supersededBy.contract}:${p.supersededBy.event} not in census`;
+      case "superseded_by_census_event_missing_target":
+        return `${p.contract}:${p.event} has supersededBy but reasonClass is not superseded_by_census_event`;
+      case "superseded_by_census_event_missing_pointer":
+        return `${p.contract}:${p.event} superseded_by_census_event requires supersededBy census pointer`;
     }
   });
   throw new Error(`Event disposition coverage failed:\n${lines.join("\n")}`);

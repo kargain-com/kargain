@@ -4,13 +4,10 @@
     "ownership_transfer": "OpenZeppelin OwnershipTransferred; Timelock/governance handoff only.",
     "erc721_standard": "Standard ERC-721 / OZ token surface (Approval, Transfer, MetadataUpdate); no Kargain trust/commerce projection.",
     "oapp_config": "LayerZero OApp configuration setters; pathway wire tooling only.",
-    "governance_rescue": "Owner ETH rescue; not commerce/trust projection.",
-    "chain_read_registry": "Encumbrance registry mutated on-chain; UI reads encumbranceSourceCount/At views — not event-sourced history.",
-    "governance_one_shot_bind": "One-shot bridge gateway bind (D-18); Timelock governance — no Ponder handler.",
+    "chain_read": "Authoritative state from chain views/mappings — not event-sourced history (encumbrance registry, stake balances).",
+    "governance_admin": "Timelock/owner admin, one-shot bind, rescue, or parameter — not product projection.",
     "governed_recovery_no_guid": "Admin recoverLockedHome; custody fold uses CustodyLockSet(unlock) — no guid/crossing correlation (MIGRATION-V2).",
-    "governance_program_link": "KarPro pass ↔ staking program pointer; deploy/config only.",
-    "governance_parameter": "Governance parameter update; read from chain / deploy evidence — no handler.",
-    "superseded_by_census_event": "EVM emits duplicate lifecycle signal; indexer uses sibling census event in the same transaction path."
+    "superseded_by_census_event": "EVM duplicate log in the same tx; indexer consumes the census sibling listed in supersededBy (must be in manifest)."
   },
   "outOfScope": [
     {
@@ -70,25 +67,25 @@
     {
       "contract": "KarPassport",
       "event": "BridgeGatewaySet",
-      "reasonClass": "governance_one_shot_bind",
+      "reasonClass": "governance_admin",
       "rationale": "One-shot gateway bind (D-18); SVM SetBridgeGateway has no census emit."
     },
     {
       "contract": "KarPassport",
       "event": "EncumbranceSourceAdded",
-      "reasonClass": "chain_read_registry",
+      "reasonClass": "chain_read",
       "rationale": "Registry membership via encumbranceSourceCount/At chain reads — UI encumbrance registry."
     },
     {
       "contract": "KarPassport",
       "event": "EncumbranceSourceRemoved",
-      "reasonClass": "chain_read_registry",
+      "reasonClass": "chain_read",
       "rationale": "Same as EncumbranceSourceAdded; no event-sourced registry history."
     },
     {
       "contract": "KarPassport",
       "event": "EthRescued",
-      "reasonClass": "governance_rescue",
+      "reasonClass": "governance_admin",
       "rationale": "Owner rescue of stray ETH; not product projection."
     },
     {
@@ -160,7 +157,7 @@
     {
       "contract": "KarProPass",
       "event": "StakingSet",
-      "reasonClass": "governance_program_link",
+      "reasonClass": "governance_admin",
       "rationale": "Authority links pass program to staking program; deploy/config only."
     },
     {
@@ -172,7 +169,7 @@
     {
       "contract": "KarProStaking",
       "event": "MinStakeNativeUpdated",
-      "reasonClass": "governance_parameter",
+      "reasonClass": "governance_admin",
       "rationale": "Timelock min-stake update; read from chain / deploy evidence (minStakePin)."
     },
     {
@@ -184,9 +181,8 @@
     {
       "contract": "KarProStaking",
       "event": "StakeClaimed",
-      "reasonClass": "superseded_by_census_event",
-      "rationale": "EVM stake-claim signal; indexer uses ClaimRecorded payout path.",
-      "supersededBy": { "contract": "KarProStaking", "event": "ClaimRecorded" }
+      "reasonClass": "chain_read",
+      "rationale": "Successful claimStake emits StakeClaimed only; ClaimRecorded census fires only when native push fails (_creditClaim). Stake cleared state read from stakes mapping — not log-indexed."
     },
     {
       "contract": "KarProStaking",
