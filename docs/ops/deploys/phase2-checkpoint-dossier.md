@@ -10,7 +10,7 @@ It does **not** authorize mainnet EIDs, peers, wire transactions, or production 
 | Prepared | July 21, 2026 |
 | Cleared | — (open) |
 | Normative | [SPEC §7.6](../../contracts/SPEC.md#76-layerzero-security-configuration-normative) |
-| Research | [layerzero-risk-2026.md](../../research/layerzero-risk-2026.md) |
+| Quiet-period gates | SPEC [§7.6 (d)](../../contracts/SPEC.md#76-layerzero-security-configuration-normative) — (d1) default migration, (d2) library-upgrade timelock, (d3) 6+ months without new incidents |
 | Recovery | [recovery-bridge.md](../recovery-bridge.md) |
 | Testnet pathway | [I.9.1](../../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) / [I.9.2](../../contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) |
 
@@ -61,7 +61,7 @@ Before any mainnet pathway: move gateway **delegate** and **owner** to Timelock4
 
 ### (d) Research quiet-period gates — open
 
-From [layerzero-risk-2026.md](../../research/layerzero-risk-2026.md) / SPEC §7.6 (d):
+From SPEC §7.6 (d):
 
 - [ ] (d1) LayerZero **default migration** to 5/5 (or documented floor) complete
 - [ ] (d2) **Timelock on library upgrades** in place (ecosystem / provider policy)

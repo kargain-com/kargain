@@ -2,7 +2,7 @@
 
 > **HISTORICAL.** AuctionEscrow retired; Modes replace auctions. Live: [nuclear-4.md](../nuclear-4.md) · SPEC I.5 / I.9.
 
-Point-in-time deploy log for the **additive** AuctionEscrow cutover. Design reference (archived): [auction-design.md §11](../../../research/archive/auction-design.md).
+Point-in-time deploy log for the **additive** AuctionEscrow cutover. Design reference: SPEC [I.11](../../../contracts/SPEC.md#i11-retired--auctionescrow) (retired).
 
 | | |
 |--|--|

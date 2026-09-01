@@ -29,8 +29,6 @@ import { fetchRegistryPublishers } from "@/lib/vincent-commons/registry-reads";
 import { explorerAddressUrl } from "@/lib/web3/wallet-account";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
-const FLYWHEEL_DOC_PATH = "docs/research/vincent-flywheel.md";
-
 const EMPTY_MANIFEST_HASHES: string[] = [];
 
 type RegistryPanelData = {
@@ -161,7 +159,7 @@ function PublishersPanel() {
             No community epochs published yet — any active verifier can be first.
           </p>
           <p className={`${monoTimestampTertiary} text-xs`}>
-            {FLYWHEEL_DOC_PATH} §9 F-3 — publisher tooling
+            Publisher tooling (F-3) — epoch assemble and on-chain anchor
           </p>
         </div>
       ) : (
@@ -297,7 +295,9 @@ function RoleExplainer() {
         <p className="text-text-primary">
           Every step is open to any active verifier individually.
         </p>
-        <p className={`${monoTimestampTertiary} text-xs`}>{FLYWHEEL_DOC_PATH}</p>
+        <p className={`${monoTimestampTertiary} text-xs`}>
+          Publisher tooling arrives with the assemble-and-anchor phase
+        </p>
       </div>
     </PanelShell>
   );

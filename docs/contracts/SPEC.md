@@ -194,7 +194,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.4.0-
 
 **Both generations:** protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
-**EIP-170:** Ascending deployed bytecode **23855** (limit 24576, headroom **721**) with linked **`AscendingHoldLib`** + **`AscendingOpenLib`** (Hardhat link → `DELEGATECALL`; bid stays on the mode). FixedPrice **18070** (headroom **6506**). Combined mode headroom **7227**. Accountability event surface unchanged. Headroom is hundreds of bytes — not a multi-KB buffer; next feature that does not fit remains a model-boundary question ([commerce-model §11](../research/commerce-model-2026.md)).
+**EIP-170:** Ascending deployed bytecode **23855** (limit 24576, headroom **721**) with linked **`AscendingHoldLib`** + **`AscendingOpenLib`** (Hardhat link → `DELEGATECALL`; bid stays on the mode). FixedPrice **18070** (headroom **6506**). Combined mode headroom **7227**. Accountability event surface unchanged. Headroom is hundreds of bytes — not a multi-KB buffer; next feature that does not fit remains a model-boundary question ([I.5 Mode authority](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment)).
 
 **Open gate:** `_requireCanOpen` refuses unless `IEncumbranceRegistry(passport).isEncumbranceSource(address(this))` — `ModeNotEncumbranceSource`. Registration is not answered inside `may` (previews stay bool / `SourceUnanswerable` only).
 
@@ -372,7 +372,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 **Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.4.0-rc.1`** (live on Nuclear #4 I.9).
 
-**Denomination invariants** (origin: [commerce-model-2026.md](../research/commerce-model-2026.md) P3 / M3 / N4 / P4):
+**Denomination invariants** (P3 / M3 / N4 / P4 — this subsection is the git-canonical statement):
 
 | Id | Rule | Enforcement |
 |----|------|-------------|
@@ -389,7 +389,7 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 
 **Nuclear admit tolerances (P4 rule; RPC gap + Chainlink directory 2026-07-30):** Base Sepolia **84532** — native ETH/USD **2444s** (obs max 1222, hb 1200; obs governs); USDC feed zero (asset-only). Ethereum Sepolia **11155111** — native ETH/USD **7392s** (obs 3696, hb 3600; obs governs); USDC/USD **172 992s** (obs 86496, hb 86400; obs governs). Live on commercial chains via **Nuclear #3** (August 1, 2026; same P4 numbers as Nuclear #2 admit). Timelock patch of any prior global max-staleness slot is rejected.
 
-**Normative product model:** [commerce-model-2026.md](../research/commerce-model-2026.md) (mandate, recall, splits, ascending lifecycle, G3, §15 cutover).
+**Normative product model (git):** this Part I (mandate, recall, splits, ascending lifecycle, G3 pause/revoke, commerce cutover). Local maintainer annexes are not linked from this file.
 
 **Ascending Nuclear initialize defaults** (normative model §11 / §7.3):
 
@@ -524,7 +524,7 @@ Wire tooling: `pnpm bridge:wire` / `pnpm bridge:wire:read-only` ([`scripts/bridg
 
 ### 7.6 LayerZero security configuration (normative)
 
-Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form incident context: [docs/research/layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. This section is the git-canonical rule set; Phase 2 ops live in [ops/deploys/phase2-checkpoint-dossier.md](../ops/deploys/phase2-checkpoint-dossier.md).
 
 - **No defaults.** Default send/receive library and DVN configurations are forbidden. Every OApp/ONFT deployment MUST explicitly pin send and receive libraries and the per-pathway DVN set (required + optional). Never depend on LayerZero Labs-controlled defaults.
 - **DVN quorum.** Minimum **2** required DVNs from independent operators on testnet pathways; **3–5** on any mainnet pathway. LayerZero Labs DVN MAY be one required DVN; it MUST NOT be the only one. **1-of-1** DVN configurations are forbidden permanently.
@@ -535,7 +535,7 @@ Normative rules for every LayerZero OApp/ONFT pathway used by Kargain. Long-form
 - **Config authority.** OApp delegate / config ownership follows the same governance pattern as other protocol contracts (Timelock48h upgrade authority). No EOA-held config ownership on mainnet.
 - **Provider isolation.** LayerZero imports are confined to bridge adapter modules (`ProxyONFT721Adapter`, `KarPassportONFT721`, and their deploy/config scripts). Core contracts, `app/`, `lib/`, and `hooks/` remain messaging-provider agnostic so the provider is swappable (e.g. CCIP / Hyperlane) at the adapter boundary.
 - **Monitoring.** Bridge config and ownership changes MUST be observable (LayerZero Console or equivalent alerting) before any mainnet pathway goes live.
-- **Phase 2 checkpoint.** Bridge remains **testnet-scope** until a maintainer re-assessment clears the gates below. Before any mainnet pathway, the following testnet→mainnet deltas **MUST** be re-derived (testnet values are not portable). Maintainer dossier (prepared, **not activated**): [ops/deploys/phase2-checkpoint-dossier.md](../ops/deploys/phase2-checkpoint-dossier.md). Research: [layerzero-risk-2026.md](../research/layerzero-risk-2026.md).
+- **Phase 2 checkpoint.** Bridge remains **testnet-scope** until a maintainer re-assessment clears the gates below. Before any mainnet pathway, the following testnet→mainnet deltas **MUST** be re-derived (testnet values are not portable). Maintainer dossier (prepared, **not activated**): [ops/deploys/phase2-checkpoint-dossier.md](../ops/deploys/phase2-checkpoint-dossier.md).
   - **(a) Confirmations.** Shipped testnet pathway uses confirmations **5/5** (explicit-fallback on 40245↔40161). Mainnet MUST re-derive confirmations from the pinned metadata snapshot for the mainnet EID pair — do not copy testnet 5/5.
   - **(b) Config delegate.** Testnet may use deployer EOA as OApp/ONFT / gateway config owner and recovery authority. Mainnet MUST move config ownership **and** gateway owner / `recoverLockedHome` to **Timelock48h** (no EOA-held config; see Config authority above and [recovery-bridge.md](../ops/recovery-bridge.md)).
   - **(c) DVN count.** Testnet minimum is **2** required DVNs (Labs + Nethermind). Mainnet MUST use **3–5** independent required DVNs.
@@ -718,20 +718,20 @@ After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps i
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + library + gateway addresses (`fixedPriceConsignment`, `ascendingHoldLib`, `ascendingOpenLib`, `ascendingConsignment`, `bridgeGateway`).
 
-**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · FixedPrice per-feed oracle tolerances from `CHAINLINK_FEEDS` (native + USDC at admit; bounds 60s–72h — see [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment)) · `minStakeNative` 0.05 ETH · Ascending Nuclear windows from model §11: extension **900s**, protection **bounds 7–45 days** (opener chooses at open), settlement challenge **14 days**, abandonment **30 days**, min increment **300 bps**, duration **3–30 days**, challenge bond **0.01 ETH** · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke · **FixedPrice `2.3.0-rc.1` full redeploy** (no in-place Timelock patch). Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment) · [commerce-model-2026.md](../research/commerce-model-2026.md). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
+**Parameters (both commercial chains):** `disputeDeposit` 0.01 ETH · `platformFeeBps` 10 · FixedPrice per-feed oracle tolerances from `CHAINLINK_FEEDS` (native + USDC at admit; bounds 60s–72h — see [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment)) · `minStakeNative` 0.05 ETH · Ascending Nuclear windows (this I.5 table): extension **900s**, protection **bounds 7–45 days** (opener chooses at open), settlement challenge **14 days**, abandonment **30 days**, min increment **300 bps**, duration **3–30 days**, challenge bond **0.01 ETH** · USD-only currency registry at mode deploy · USDC admitted at construction before handoff · same `platformRecipient` as prior 84532 deploy · `COMMERCE_GUARDIAN` for pause + soft-revoke · **FixedPrice `2.3.0-rc.1` full redeploy** (no in-place Timelock patch). Commerce behavior: [I.5](#i5-commerce-modes-fixedpriceconsignment--ascendingconsignment). Nuclear end-state: [§12.10](#1210-84532-hub-migration-testnet--nuclear).
 
 ---
 
 ### I.11. Retired — AuctionEscrow
 
-**Retired** with `MarketplaceEscrow` in commerce cutover §15.2 step 5 (July 2026). Replaced by **`AscendingConsignment`** for English reserve auctions with settlement hold. Product, app, and indexer no longer target `AuctionEscrow` events or legacy `GET /auctions*` routes. Historical design: [auction-design.md](../research/archive/auction-design.md). Denylisted proxy addresses: [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532). Ops log: [ops/deploys/archive/84532-auction.md](../ops/deploys/archive/84532-auction.md).
+**Retired** with `MarketplaceEscrow` in the commerce cutover (July 2026). Replaced by **`AscendingConsignment`** for English reserve auctions with settlement hold. Product, app, and indexer no longer target `AuctionEscrow` events or legacy `GET /auctions*` routes. Denylisted proxy addresses: [I.9.1 / I.9.2 retired escrows](#i91-active-deployment-base-sepolia-84532). Ops log: [ops/deploys/archive/84532-auction.md](../ops/deploys/archive/84532-auction.md).
 
 ---
 
 
 ### I.12. Multi-chain architecture (normative)
 
-> **Single source of truth** for bridge custody, trust, and metadata across chains. Supersedes the custody/trust wording in §7.1/§7.5. §7.4/§7.6 remain the LayerZero pathway and security reference. Research annexes: [multichain-architecture-decision-2026.md](../research/multichain-architecture-decision-2026.md), [multichain-security-model-2026.md](../research/multichain-security-model-2026.md).
+> **Single source of truth** for bridge custody, trust, and metadata across chains. Supersedes the custody/trust wording in §7.1/§7.5. §7.4/§7.6 remain the LayerZero pathway and security reference.
 
 ### 12.1 Model
 
