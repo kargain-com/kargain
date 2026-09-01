@@ -18,6 +18,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
 const {
@@ -797,7 +799,7 @@ export async function runLiveConsignmentAutomaton(opts?: {
   assert.equal(balS1 - balS0, ownerAmt);
   assert.equal(balA1 - balA0, agentAmt);
 
-  return {
+  return withStandArtifactBindings({
     directOpen: {
       phase: directOpenPhase,
       custodyOwner: directOpenCustodyOwner,
@@ -826,5 +828,5 @@ export async function runLiveConsignmentAutomaton(opts?: {
       settled,
       feeBps: settleLot.feeBps,
     },
-  };
+  });
 }

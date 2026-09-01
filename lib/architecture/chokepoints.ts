@@ -272,6 +272,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "LIVE proof return values for the outer suite must be chain observations — not PHASE/ERR catalogs, literals, or Keypair/PDA toBase58 in the return object",
     guardTests: ["svm-stand-live-proof-return-policy.test.ts"],
   },
+  {
+    id: "svm-stand-artifact-bindings",
+    owner: "svm/stand/stand-artifact-bindings.ts",
+    rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand",
+    guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

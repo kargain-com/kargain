@@ -25,6 +25,7 @@ import {
   testnetMinStakeFloorLamports,
   testnetMinStakeLamports,
 } from "../../lib/web3/min-stake-sol.ts";
+import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -3036,7 +3037,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const buyerOwns = assetAfterSettle.owner.toBase58();
   const assetToSeller = assetAfterRev.owner.toBase58();
 
-  return {
+  return withStandArtifactBindings({
     openRefuse: {
       passportNotVerified,
       badDuration,
@@ -3084,5 +3085,5 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     splOutbidClaim,
     splReversal,
     pause: { openCode: pauseOpenCode, bidCode: pauseBidCode },
-  };
+  });
 }

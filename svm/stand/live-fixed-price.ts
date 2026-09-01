@@ -23,6 +23,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
 const {
@@ -1916,7 +1918,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(platformDeltaAg + ownerDeltaAg + agentDeltaAg, amountAg);
   const floorAfter = expectedFloorAsset; // rewritten floor applied at settle (proven via owner leg)
 
-  return {
+  return withStandArtifactBindings({
     nativeBuy: {
       phase: closedN.phase,
       buyerOwns: buyerOwnsN,
@@ -1960,5 +1962,5 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     admittedDecimals,
     chainMintDecimals,
     transferFeeRefuseCode,
-  };
+  });
 }

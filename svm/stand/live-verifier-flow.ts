@@ -27,6 +27,7 @@ import {
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
+import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 import { tokenIdFromParts } from "../../lib/web3/bridge/onft-msg-codec.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -615,7 +616,7 @@ export async function runLiveVerifierFlow(opts?: {
   );
   const claimed = decodedBefore.amount > 0n && cleared.amount === 0n;
 
-  return {
+  return withStandArtifactBindings({
     joined,
     verified,
     left,
@@ -625,5 +626,5 @@ export async function runLiveVerifierFlow(opts?: {
     minStakePin: pin,
     joinCu: joinResult.cu,
     verifyCu: verifyResult.cu,
-  };
+  });
 }

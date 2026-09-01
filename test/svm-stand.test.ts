@@ -42,6 +42,11 @@ import {
   probeValidator as probeAscendingValidator,
   runLiveAscending,
 } from "../svm/stand/live-ascending.ts";
+import {
+  STAND_PRELOAD_FIXTURES,
+  STAND_PRELOAD_PROGRAMS,
+  type StandArtifactBindings,
+} from "../svm/stand/stand-artifact-bindings.ts";
 import { testnetMinStakeLamports } from "../lib/web3/min-stake-sol.ts";
 
 const LIVE = process.env.KARGAIN_SVM_STAND_LIVE === "1";
@@ -140,6 +145,8 @@ describe("svm-stand live Core CPI round trip", () => {
       }
 
       const result = await runLiveSvmRoundTrip();
+      assertStandArtifactBindings(result.artifacts);
+      logStandArtifacts("roundtrip", result.artifacts);
       assert.equal(result.relayIdentityOk, true);
       assert.equal(result.foreignAssetLive, true);
       assert.equal(result.homeUnlocked, true);
@@ -162,6 +169,8 @@ describe("svm-stand live Core CPI round trip", () => {
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });
+      assertStandArtifactBindings(verifier.artifacts);
+      assert.equal(verifier.artifacts.programs.kar_passport.sha256, result.artifacts.programs.kar_passport.sha256);
       assert.equal(verifier.joined, true);
       assert.equal(verifier.verified, true);
       assert.equal(verifier.left, true);
@@ -186,6 +195,8 @@ describe("svm-stand live Core CPI round trip", () => {
         throw new Error("validator lost health before money payout proof");
       }
       const money = await runLiveMoneyPayoutProof();
+      assertStandArtifactBindings(money.artifacts);
+      assert.equal(money.artifacts.gitHead, result.artifacts.gitHead);
       assert.equal(money.absentCase.settled, true);
       assert.equal(money.absentCase.claimAmount, 700n);
       assert.equal(money.absentCase.withdrawn, 700n);
@@ -201,6 +212,11 @@ describe("svm-stand live Core CPI round trip", () => {
         throw new Error("validator lost health before consignment automaton proof");
       }
       const consign = await runLiveConsignmentAutomaton();
+      assertStandArtifactBindings(consign.artifacts);
+      assert.equal(
+        consign.artifacts.programs.consignment_harness.sha256,
+        result.artifacts.programs.consignment_harness.sha256,
+      );
       assert.equal(consign.mandateOpen.phase, 1, "Offered");
       assert.equal(consign.mandateOpen.floor, 700n);
       assert.equal(consign.mandateOpen.feeBps, 250);
@@ -227,6 +243,11 @@ describe("svm-stand live Core CPI round trip", () => {
         throw new Error("validator lost health before FixedPrice proof");
       }
       const fp = await runLiveFixedPrice();
+      assertStandArtifactBindings(fp.artifacts);
+      assert.equal(
+        fp.artifacts.programs.kar_fixed_price.sha256,
+        result.artifacts.programs.kar_fixed_price.sha256,
+      );
       assert.equal(fp.nativeBuy.phase, 2, "Closed");
       assert.equal(fp.nativeBuy.platformDelta, 25n);
       assert.equal(fp.nativeBuy.sellerDelta, 975n);
@@ -281,6 +302,11 @@ describe("svm-stand live Core CPI round trip", () => {
         throw new Error("validator lost health before Ascending proof");
       }
       const asc = await runLiveAscending();
+      assertStandArtifactBindings(asc.artifacts);
+      assert.equal(
+        asc.artifacts.programs.kar_ascending.sha256,
+        result.artifacts.programs.kar_ascending.sha256,
+      );
       assert.equal(asc.openRefuse.passportNotVerified, 121);
       assert.equal(asc.openRefuse.badDuration, 102);
       assert.equal(asc.openRefuse.protectionOutOfBounds, 103);
@@ -425,5 +451,37 @@ function assertWithinSec(got: bigint, expected: bigint, tol = 2n) {
   assert.ok(
     d <= tol,
     `expected ${expected} ±${tol}, got ${got} (delta ${d})`,
+  );
+}
+
+function assertStandArtifactBindings(artifacts: StandArtifactBindings) {
+  assert.ok(artifacts.gitHead.length >= 7, "gitHead must be recorded");
+  assert.match(artifacts.gitHead, /^[0-9a-f]{7,40}$|^unknown$/, "gitHead shape");
+  assert.ok(typeof artifacts.gitDirty === "boolean");
+  assert.ok(artifacts.collectedAt.length > 10);
+  const expectedLoad =
+    process.env.KARGAIN_SVM_STAND_LOAD === "upgradeable" ? "upgradeable" : "preload";
+  assert.equal(artifacts.loadMode, expectedLoad);
+
+  for (const name of STAND_PRELOAD_PROGRAMS) {
+    const entry = artifacts.programs[name];
+    assert.ok(entry, `missing program artifact ${name}`);
+    assert.match(entry.sha256, /^[0-9a-f]{64}$/, `${name} sha256`);
+    assert.ok(entry.bytes > 0, `${name} bytes`);
+  }
+  for (const spec of STAND_PRELOAD_FIXTURES) {
+    const entry = artifacts.fixtures[spec.name];
+    assert.ok(entry, `missing fixture artifact ${spec.name}`);
+    assert.match(entry.sha256, /^[0-9a-f]{64}$/, `${spec.name} sha256`);
+    assert.ok(entry.bytes > 0, `${spec.name} bytes`);
+  }
+}
+
+function logStandArtifacts(label: string, artifacts: StandArtifactBindings) {
+  console.warn(
+    `\n[svm-stand] artifacts ${label} git=${artifacts.gitHead.slice(0, 12)}` +
+      ` dirty=${artifacts.gitDirty}` +
+      ` kar_ascending=${artifacts.programs.kar_ascending.sha256.slice(0, 16)}…` +
+      ` kar_fixed_price=${artifacts.programs.kar_fixed_price.sha256.slice(0, 16)}…\n`,
   );
 }

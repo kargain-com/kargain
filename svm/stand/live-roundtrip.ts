@@ -28,6 +28,7 @@ import {
   standLiveUri,
 } from "./constants.ts";
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
+import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Resolve @solana/web3.js from the lab package (not a root dependency). */
@@ -674,7 +675,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   void sendResult;
   void ROOT;
 
-  return {
+  return withStandArtifactBindings({
     foreignMintCu: foreignMint.cu,
     homeUnlockCu: unlock.cu,
     foreignMintTxSize: foreignMint.serializedLen,
@@ -684,5 +685,5 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     uriTravelled,
     relayIdentityOk,
     liveUriLen: liveUri.length,
-  };
+  });
 }
