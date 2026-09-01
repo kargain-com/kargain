@@ -769,7 +769,7 @@ LeaveChain is refused when: an intrinsic verification challenge is active; a reg
 
 ### 12.8 Records are chain-sharded, globally aggregated
 
-Each chain stores records appended while the token lived there, keyed by the same global tokenId. The **indexer** unions `passport_record`/`passport_uri_history` by global tokenId across chains and tracks each token's **custody chain** (distinct from origin), so provenance is continuous through moves. This is a correctness requirement.
+Each chain stores records appended while the token lived there, keyed by the same global tokenId. The **indexer** unions `passport_record`/`passport_uri_history` by global tokenId across chains. The **usable copy** lives on exactly one network (I1), distinct from origin. With a non-EVM spoke, that location is **not** stored by comparing wall clocks across VMs (D-05 clocks are incomparable). It is a **read-time fold** of guid-linked crossings: each hop is a departure carrying LayerZero `guid` on one stream plus the matching arrival on the other (`ONFTSent` / `ONFTReceived` and SVM analogs). A departure without an observed arrival leaves the usable copy on the source (in-flight = fail-closed, same as an unindexed `PassportBridgeBurned`). An incomplete fold — lagging stream, missing guid pair — is **unresolved**, never a silent fallback to origin. HTTP still returns `custodyChain` when the fold is complete; the read contract already fail-closes when that field is absent.
 
 ### 12.9 Unlock = crown-jewel
 
@@ -1006,6 +1006,8 @@ On every commercial chain: native gas token carries gas, verifier stake, challen
 
 A non-EVM projection is rebuilt from the indexer’s own append-only **raw** layer, never from chain history depth (public endpoints are not a production history guarantee; shipping model remains schema change → full reindex). Catch-up applies only within a bounded lag window; exceeding it is an incident. The raw layer has exactly one writer and is never rewritten.
 
+**Usable-copy location (I1).** Derive at read from guid-linked crossings across the EVM and SVM append-only streams (§12.8). Do not compare `block.timestamp` to Solana `Clock` to decide custody. Incomplete chain → unresolved (same fail-closed class as a missing `custodyChain` on the HTTP passport), not origin. One module owns the fold; routes do not recompute it.
+
 #### 13.13 §7.6 applied to a non-EVM pathway
 
 Every §7.6 rule binds unchanged. Additions: pathway refused if the pinned snapshot does not expose two independent DVN operators **present at both ends**; 1-of-1 has no non-EVM exception. §12.9 (unlock = crown-jewel) applies identically to a non-EVM home unlock.
@@ -1043,7 +1045,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-25 | Escrow **approval** carrier = Core `TransferDelegate` (or harness `approved_for`) toward the mode custody authority. Escrow **custody** = real ownership transfer (`TransferV1` / harness `owner` field move) to a program-owned custody PDA — never leaving the asset under seller+delegate as “in escrow.” Frozen Core assets refuse transfer (lab); open fails closed. | ERC-721 `approve` / `setApprovalForAll` then `transferFrom` | D-09 — custody before open; approval ≠ custody |
 | D-26 | Encumbrance answers are **cross-program PDAs** (`EncumbranceAnswer`); passport `may` reads them. Shared hooks `_may` / `_isSelfEncumbranceSource` are supplied by the mode/harness call site. | Same-contract `isEncumbranceSource` + `may` staticcall | E6 / D-08 — silence ≠ permission |
 | D-27 | Lot snapshot mutation at settle (FixedPrice fiat floor rewrite to asset units) is a **mode** call through shared `set_snapshot_floor` before split/pay. Shared layer never invents a second floor path. Scale via `agented_floor_scale_base` (Margin/Commission) then `floor_asset = base_asset * floor / base_fiat`. | FixedPrice `buy` mutates floor then `_paySplit` | One floor owner; settle uses lot snapshot fee bps + mode config `platformRecipient` |
-| D-28 | Commerce events: no EVM log bloom — programs emit fixed-name payloads (borsh/event logs) with **same field order** for S7. | Solidity `event` ABI | Indexer reconstructability |
+| D-28 | Programs emit **structured** payloads (`sol_log_data` / program-data logs — not `msg!` strings) with the **same event name and field order** as the Solidity `event` declaration (indexed EVM fields still appear in the body: SVM has no topics). Type widths follow the encoding table below — that table is **encoding**, not a behavioural divergence. **Log budget:** the runtime truncates a transaction’s logs; a truncated tail is silent loss (same class as D-20 unexecutable tx and D-01 aborted CPI). The heaviest instruction (three reachable split legs + `ClaimRecorded` + phase/close) must be **measured** on a local validator; if it can hit the cap, S7a chooses split encoding or account-state facts **before** ingest. | Solidity `event` ABI + log bloom | Indexer reconstructability; I5 outcomes visible |
 | D-29 | FixedPrice P4 two-layer: fiat offered **iff** payment-token feed path pinned at admit (`feed_id` non-zero). Asset-only admit (zeros) → Fiat open → `PaymentTokenFeedRequired`. Native fiat refused while config has no native USD feed → `CurrencyNotAvailableOnChain`. Ascending remains oracle-banned (`FiatDenominationRefused`). No Hermes/HTTP; price account in settling tx. | Fiat + Chainlink quote at buy | P4 asymmetry — no silent peg / no “fiat off because crank stopped” |
 | D-30 | **Two rules, one money crate.** (1) **Admit:** `require_admitted_spl_mint_account` proves mint (owner Token\|Token-2022; classic 82-byte OK; Token-2022 TLV@166 after AccountType@165; TransferFee → `TransferFeeExtensionForbidden`; decimals from mint byte 44 — never ix args). (2) **Pull delivery:** every SPL pull into mode escrow (FixedPrice buy now; Ascending bid in S6 #4) measures ATA balance delta via `require_full_delivery` → `ShortDelivery` if under-delivered. Not a second TransferFee parser — measured amount vs requested. Closes admit-regression class (e.g. wrong TLV walk that wrongly admitted a fee mint). Soft-revoke does not re-check `enabled` on buy. EVM: no FoT ban at admit, ShortDelivery is primary; SVM: FoT ban at admit **and** delivery measure on pull. | ERC-20 `balanceOf` delta | Admit properties + pull delivery; no dead `require_full_delivery` |
 | D-31 | Soft revoke clears `enabled` only; mint/decimals retained; in-flight buy settles after revoke. | Same | In-flight settle survives revoke |
@@ -1053,6 +1055,21 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-35 | Outbid unreachable prior bidder: classify → claim (D-01); claim PDA+ATA rent funded by **new bidder** (bid fee-payer); prior reclaim on withdraw (D-23). Not attempt-then-catch. | EVM `_payNative`/`_payErc20` → claim | Settlement completes; rent attributable |
 | D-36 | Ascending encumbrance `may`: unresolved Hold (`buyer != 0`) forbids **both** LeaveChain and OpenConsignment intents (same as EVM). Published for passport via mode/harness answer. | `AscendingConsignment.may` | E6 — hold blocks both intents |
 | D-37 | Frozen protection clock: challenge open sets `frozenRemaining = protectionEndsAt - now` without zeroing `protectionEndsAt`; withdraw restores `protectionEndsAt = now + frozenRemaining`; uphold atomically sets `reversalPending`, zeros protection+frozen, sets `abandonmentDeadline = now + abandonmentWindow`. No durable gap with protection 0 and abandonment unset. | HoldLib freeze/thaw/onUpheld | Observable before/after reads; no startReversal API |
+
+**Event payload encoding (not a divergence).** D-28 “same field order” is checkable only with one type map. SVM payloads use the **domain type already chosen for that value in account state**, not a second widening “to look like uint256”. HTTP / projection encoding of addresses (hex vs base58) is a later VM-aware layer; on-chain payload identity is:
+
+| Solidity ABI field | SVM payload | Rule |
+|--------------------|-------------|------|
+| `address` | `[u8; 32]` pubkey | Party on this VM. **Not** a left-padded 20-byte EVM address. |
+| `uint256 tokenId` / `subjectId` | `[u8; 32]` | Big-endian `(namespace \|\| local)` — same as the ONFT codec. |
+| `bytes32` (`guid`, `currencyCode`) | `[u8; 32]` | Identity copy. |
+| Money / price / floor / bond already `u64` in SVM accounts (`uint128`/`uint256` on EVM) | `u64` | Domain is u64 (D-04). Intermediate `u128` exists only inside split arithmetic, not in the log. |
+| Time / window already `u64` seconds (D-05) | `u64` | |
+| `uint16` bps | `u16` | |
+| Enum / `uint8` ordinal | `u8` | Same Solidity discriminant. |
+| `string` (URI, notes) | borsh `String` (u32 LE length + UTF-8) | Value still bound by the URI ceiling (D-20). |
+
+Declaration order includes fields that are `indexed` on EVM. Native settlement asset is `Pubkey::default()` (32 zero bytes), matching EVM `address(0)`.
 
 **SVM money account seeds** (mode / instance program id owns the PDA):
 
