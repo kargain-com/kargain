@@ -10,11 +10,11 @@ import {
   buildUnionPassportRecordsSql,
   loadAttestationsByAuthor,
   loadPassportRecordsByTokenId,
-  naiveMergeAttestations,
 } from "../src/lib/ponder-passport-provenance.js";
 import {
   attestationFromRecord,
   createProvenanceMemoryPool,
+  naiveMergeAttestations,
 } from "./fixtures/provenance-memory-pool.js";
 import {
   FIXTURE_NAMESPACE,

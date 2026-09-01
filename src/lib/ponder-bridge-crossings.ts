@@ -278,8 +278,3 @@ export async function insertOnftReceivedCrossing(
     passportCounterpartRefusal: correlation.passportCounterpartRefusal,
   });
 }
-
-/** Test-only reset for pending per-tx correlation state. */
-export function resetPendingBridgeTxStateForTests(): void {
-  pendingBridgeTx.clear();
-}

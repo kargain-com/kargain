@@ -62,11 +62,6 @@ function getProvenancePool(): pg.Pool {
   return poolSingleton;
 }
 
-/** Visible for tests — inject pool without singleton. */
-export function createProvenancePoolForTests(connectionString: string): pg.Pool {
-  return new pg.Pool({ connectionString });
-}
-
 export function resolveProvenanceNamespaces(
   opts?: ProvenanceQueryOptions,
 ): number[] {
@@ -278,17 +273,4 @@ export async function countAttestationsByAuthor(
     params,
   );
   return res.rows[0]?.total ?? 0;
-}
-
-export function naiveMergeAttestations(
-  evmRows: AttestationRow[],
-  svmRows: AttestationRow[],
-  limit: number,
-  offset: number,
-): AttestationRow[] {
-  const sortDesc = (rows: AttestationRow[]) =>
-    rows.slice().sort((a, b) => (a.timestamp > b.timestamp ? -1 : 1));
-  const evmPage = sortDesc(evmRows).slice(offset, offset + limit);
-  const svmPage = sortDesc(svmRows).slice(offset, offset + limit);
-  return sortDesc([...evmPage, ...svmPage]).slice(0, limit);
 }

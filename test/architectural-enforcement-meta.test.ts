@@ -134,6 +134,7 @@ describe("architectural enforcement meta", () => {
     // Pin the known non-choke-point enforcement suites so silence cannot grow.
     // These guard coverage / layer invariants that are not sole-module owners.
     const knownWithoutChokepoint = [
+      "gate-membership-policy.test.ts",
       "messaging-contract.test.ts",
       "kargain.contracts.test.ts",
       "notification-state-coverage.test.ts",

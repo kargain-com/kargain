@@ -135,3 +135,17 @@ export function attestationFromRecord(
     timestamp: row.timestamp,
   };
 }
+
+/** Deliberately wrong per-side pagination merge — negative control for UNION tests. */
+export function naiveMergeAttestations(
+  evmRows: AttestationRow[],
+  svmRows: AttestationRow[],
+  limit: number,
+  offset: number,
+): AttestationRow[] {
+  const sortDesc = (rows: AttestationRow[]) =>
+    rows.slice().sort((a, b) => (a.timestamp > b.timestamp ? -1 : 1));
+  const evmPage = sortDesc(evmRows).slice(offset, offset + limit);
+  const svmPage = sortDesc(svmRows).slice(offset, offset + limit);
+  return sortDesc([...evmPage, ...svmPage]).slice(0, limit);
+}

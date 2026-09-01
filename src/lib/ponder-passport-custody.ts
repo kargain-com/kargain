@@ -45,10 +45,6 @@ function getCustodyPool(): pg.Pool {
   return poolSingleton;
 }
 
-export function createCustodyPoolForTests(connectionString: string): pg.Pool {
-  return new pg.Pool({ connectionString });
-}
-
 function resolveNamespaces(opts?: CustodyQueryOptions): number[] {
   if (opts?.namespaces != null) return [...opts.namespaces];
   return [...registeredCommercialNamespaceIds()];
