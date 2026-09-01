@@ -530,3 +530,44 @@ export async function loadVerifiedPassportsByVerifier(
   const res = await pool.query<PassportEntityPgRow>(sql, params);
   return res.rows.map(mapPassportEntityRow);
 }
+
+export type PassportEntityStatusCounts = {
+  UNVERIFIED: number;
+  VERIFIED: number;
+  DISPUTED: number;
+};
+
+function emptyEntityStatusCounts(): PassportEntityStatusCounts {
+  return { UNVERIFIED: 0, VERIFIED: 0, DISPUTED: 0 };
+}
+
+function foldEntityStatusCounts(
+  rows: Array<{ status: string | null; total: number }>,
+): PassportEntityStatusCounts {
+  const counts = emptyEntityStatusCounts();
+  for (const row of rows) {
+    const status = row.status ?? "UNVERIFIED";
+    if (status in counts) {
+      counts[status as keyof PassportEntityStatusCounts] += Number(row.total);
+    }
+  }
+  return counts;
+}
+
+export async function loadPassportEntityStatusCounts(
+  opts?: PassportEntityQueryOptions,
+  pool: pg.Pool = getEntityPool(),
+): Promise<PassportEntityStatusCounts> {
+  const namespaces = resolveEntityNamespaces(opts);
+  const params: unknown[] = [];
+  const fromSql = buildEntityUnionFromClause({
+    namespaces,
+    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    params,
+  });
+  const sql = `SELECT status, COUNT(*)::int AS total
+    FROM ${fromSql} AS passport_union
+    GROUP BY status`;
+  const res = await pool.query<{ status: string | null; total: number }>(sql, params);
+  return foldEntityStatusCounts(res.rows);
+}
