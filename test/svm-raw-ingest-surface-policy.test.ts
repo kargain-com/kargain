@@ -48,7 +48,10 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 }
 
-describe("svm raw ingest surface policy", () => {
+describe("svm ingest surface policy", () => {
+  const PROJECTION_NEEDLE = /kargain_svm_projection/;
+  const PROVENANCE_OWNER = path.join(ROOT, "src/lib/ponder-passport-provenance.ts");
+
   for (const root of BANNED_ROOTS) {
     it(`${path.relative(ROOT, root)} does not read kargain_svm_raw`, () => {
       for (const file of listTsFiles(root)) {
@@ -69,6 +72,18 @@ describe("svm raw ingest surface policy", () => {
   it("constructed violation: api read fails policy", () => {
     const dirty = 'const x = "kargain_svm_raw.structured_payload"';
     assert.ok(NEEDLE.test(dirty));
+  });
+  it("api may only reach projection via provenance owner module", () => {
+    for (const file of listTsFiles(path.join(ROOT, "src/api"))) {
+      if (file === PROVENANCE_OWNER) continue;
+      const src = stripComments(fs.readFileSync(file, "utf8"));
+      assert.ok(
+        !PROJECTION_NEEDLE.test(src),
+        `${path.relative(ROOT, file)} must not read kargain_svm_projection directly`,
+      );
+    }
+    const owner = stripComments(fs.readFileSync(PROVENANCE_OWNER, "utf8"));
+    assert.ok(PROJECTION_NEEDLE.test(owner));
   });
 });
 

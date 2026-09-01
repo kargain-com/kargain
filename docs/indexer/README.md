@@ -7,7 +7,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)). **S7c-1 (September 2026):** append-only **`kargain_svm_raw`** via separate **`svm-ingest`** compose service — **no product HTTP reads** until S7c-2 ([SVM ingest](#svm-raw-ingest-s7c-1) below).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b (September 2026):** `bridge_crossing` guid stream indexed on branch — **not exposed on HTTP** until S7c-3 custody fold; production backfill at **S9** reindex ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)). **S7c-1/2 (September 2026):** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on [`GET /passports/:tokenId`](../../src/api/index.ts) `records[]` / `uriHistory[]`, attestations, notifications record loop ([SVM ingest](#svm-raw-ingest-s7c-1) below). **`passport.custodyChain` unchanged.** VPS enable deferred to **S9**.
 
 ## SVM raw ingest (S7c-1)
 
@@ -21,7 +21,20 @@ Separate Node service — **not** inside the Ponder image. Append-only Postgres 
 | Ordering key | `(slot, tx_index_in_block, log_index)` — writer-local total order |
 | Refusal kinds | `log_truncated` · `unknown_discriminator` · `payload_malformed` · `sequence_gap` |
 
-**S7c-1 non-goals:** no `kargain_svm_projection` tables; no reads from `src/api/`, `app/`, or `lib/web3/ponder-*`; `passport.custodyChain` unchanged. Replay proof: `pnpm svm-raw:replay-digest` (requires `SVM_INGEST_RPC_URL` unset). Ops: [OPERATIONS.md §SVM ingest](./OPERATIONS.md#svm-ingest-s7c-1). Env: [`.env.example`](../../.env.example) `SVM_INGEST_*` block.
+**S7c-1 non-goals (historical):** projection lived in S7c-2. **`passport.custodyChain` unchanged** through S7c-2.
+
+## SVM provenance projection (S7c-2)
+
+Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `passport_uri_history` (column shapes mirror Ponder). Sole writer: [`src/lib/svm-projection-writer.ts`](../../src/lib/svm-projection-writer.ts); inline projection on ingest + full rebuild via [`src/svm-ingest/projection-rebuild.ts`](../../src/svm-ingest/projection-rebuild.ts) (drop schema + replay from raw, no RPC).
+
+| Item | Value |
+|------|--------|
+| Read owner | [`src/lib/ponder-passport-provenance.ts`](../../src/lib/ponder-passport-provenance.ts) — one `UNION ALL` SQL per call |
+| Union routes | `GET /passports/:tokenId` (`records[]`, `uriHistory[]`); `GET /verifiers/:address/attestations`; notifications owned-passport record loop |
+| Namespace filter | Registered commercial namespaces only — unregistered SVM rows never surface |
+| Replay proof | `pnpm svm-projection:replay-digest` (requires `SVM_INGEST_RPC_URL` unset) |
+
+**S7c-2 non-goals:** no `passport` entity UNION; no custody fold; no production VPS action until **S9**.
 
 ## Contract addresses for indexer
 
@@ -99,7 +112,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /passports` | Browse/filter passports (`owner`, `verifier`, `status`, `vin`, `verifiedFirst`) |
-| `GET /passports/:tokenId` | Passport detail + `records[]` + `uriHistory[]` |
+| `GET /passports/:tokenId` | Passport detail + `records[]` + `uriHistory[]` (**provenance UNION** across EVM Ponder + SVM projection by global `tokenId`; per-row `chainId` = emitting network) |
 | `GET /passports/batch` | Batch passport lookup (`?ids=`) |
 | `GET /profile/:address/passports` | Passports owned by address |
 | `GET /notifications/:address` | Notification feed: passport/mandate/claims + commerce lifecycle (`commerce.*`) + approaching deadlines from obligation derivation; `claim.recorded` unions `claim_credit` + `commerce_claim_credit` |

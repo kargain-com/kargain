@@ -14,7 +14,12 @@ import {
 } from "../../lib/svm/ingest-config.js";
 import { loadSvmDevnetEvidence } from "../../scripts/lib/load-deployment.js";
 import { applySvmRawSchema, createSvmRawWriter } from "../lib/svm-raw-writer.js";
+import {
+  applySvmProjectionSchema,
+  createSvmProjectionWriter,
+} from "../lib/svm-projection-writer.js";
 import { createIngestLoop } from "./ingest-loop.js";
+import { createProjectionProjector } from "./projection-projector.js";
 import { createSvmIngestHealthServer } from "./http-health.js";
 import { createSolanaRpcClient } from "./rpc-client.js";
 
@@ -52,7 +57,10 @@ async function main(): Promise<void> {
 
   const pool = new pg.Pool({ connectionString: databaseUrl });
   await applySvmRawSchema(pool);
+  await applySvmProjectionSchema(pool);
   const writer = createSvmRawWriter(pool);
+  const projectionWriter = createSvmProjectionWriter(pool);
+  const projector = createProjectionProjector(pool, projectionWriter);
   const rpc = createSolanaRpcClient(rpcUrl);
   const loop = createIngestLoop({
     namespace,
@@ -61,6 +69,7 @@ async function main(): Promise<void> {
     followedPrograms,
     writer,
     rpc,
+    projector,
   });
 
   await loop.initCursor();

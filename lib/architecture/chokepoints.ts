@@ -304,12 +304,20 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-raw-ingest",
     owner: "src/lib/svm-raw-writer.ts · src/svm-ingest/",
-    rule: "Append-only kargain_svm_raw writes only via svm-raw-writer; no product HTTP consumer in S7c-1",
+    rule: "Append-only kargain_svm_raw writes only via svm-raw-writer; projection via svm-projection-writer; provenance reads via ponder-passport-provenance",
     guardTests: [
       "svm-raw-ingest-writer-policy.test.ts",
       "svm-raw-ingest-surface-policy.test.ts",
+      "svm-projection-writer-policy.test.ts",
       "ponder-reindex-svm-isolation-policy.test.ts",
+      "ponder-passport-provenance-policy.test.ts",
     ],
+  },
+  {
+    id: "ponder-passport-provenance",
+    owner: "src/lib/ponder-passport-provenance.ts",
+    rule: "Chain-sharded passport_record / uri_history UNION reads only via provenance owner SQL",
+    guardTests: ["ponder-passport-provenance-policy.test.ts"],
   },
   {
     id: "lib-scripts-boundary",

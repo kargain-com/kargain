@@ -4,8 +4,6 @@ import {
   commerceClaim,
   commerceClaimCredit,
   passport,
-  passportRecord,
-  passportUriHistory,
   pendingClaim,
   verifier,
 } from "ponder:schema";
@@ -21,6 +19,12 @@ import {
 import { buildNotificationFeed } from "./notifications-query";
 import { registerCommerceRoutes } from "./commerce-routes";
 import { normalizeVerifierId } from "../lib/ponder-verifier-lifecycle";
+import {
+  countAttestationsByAuthor,
+  loadAttestationsByAuthor,
+  loadPassportRecordsByTokenId,
+  loadPassportUriHistoryByTokenId,
+} from "../lib/ponder-passport-provenance";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
 const app = new Hono();
@@ -69,8 +73,6 @@ function parseIdList(raw: string | undefined, max = 50): string[] {
   if (!raw?.trim()) return [];
   return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))].slice(0, max);
 }
-
-const ATTESTATION_RECORD_TYPE = "attestation";
 
 function jsonBody<T>(value: T): T {
   return replaceBigInts(value, (v) => String(v)) as T;
@@ -302,16 +304,8 @@ app.get("/passports/:tokenId", async (c) => {
   }
 
   const [records, uriHistory] = await Promise.all([
-    db
-      .select()
-      .from(passportRecord)
-      .where(eq(passportRecord.tokenId, tokenId))
-      .orderBy(desc(passportRecord.timestamp)),
-    db
-      .select()
-      .from(passportUriHistory)
-      .where(eq(passportUriHistory.tokenId, tokenId))
-      .orderBy(desc(passportUriHistory.timestamp)),
+    loadPassportRecordsByTokenId(tokenId),
+    loadPassportUriHistoryByTokenId(tokenId),
   ]);
 
   return c.json(jsonBody({ ...row[0], records, uriHistory }));
@@ -510,31 +504,15 @@ app.get("/verifiers/:address/attestations", async (c) => {
   const limit = parseLimit(c.req.query("limit"));
   const offset = parseOffset(c.req.query("offset"));
 
-  const where = and(
-    eq(passportRecord.author, id),
-    eq(passportRecord.recordType, ATTESTATION_RECORD_TYPE),
-  );
-
-  const [attestations, totalRow] = await Promise.all([
-    db
-      .select({
-        tokenId: passportRecord.tokenId,
-        description: passportRecord.description,
-        evidenceCID: passportRecord.evidenceCID,
-        timestamp: passportRecord.timestamp,
-      })
-      .from(passportRecord)
-      .where(where)
-      .orderBy(desc(passportRecord.timestamp))
-      .limit(limit)
-      .offset(offset),
-    db.select({ total: count() }).from(passportRecord).where(where),
+  const [attestations, total] = await Promise.all([
+    loadAttestationsByAuthor(id, { limit, offset }),
+    countAttestationsByAuthor(id),
   ]);
 
   return c.json(
     jsonBody({
       attestations,
-      total: totalRow[0]?.total ?? 0,
+      total,
       limit,
       offset,
     }),

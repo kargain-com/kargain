@@ -6,6 +6,7 @@ import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
 import { ingestRefusalRowId } from "../../lib/svm/ingest-refusal.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
 import type { SvmRawWriter } from "../lib/svm-raw-writer.js";
+import type { ProjectionProjector } from "./projection-projector.js";
 import type { SvmRpcClient } from "./rpc-client.js";
 
 export type IngestLoopState = {
@@ -22,6 +23,7 @@ export type IngestLoopOptions = {
   followedPrograms: readonly FollowedProgram[];
   writer: SvmRawWriter;
   rpc: SvmRpcClient;
+  projector?: ProjectionProjector;
 };
 
 export function createIngestLoop(opts: IngestLoopOptions) {
@@ -134,6 +136,9 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       });
       await opts.writer.insertStructuredPayloads(parsed.payloads);
       await opts.writer.insertIngestRefusals(parsed.refusals);
+      if (opts.projector && parsed.payloads.length > 0) {
+        await opts.projector.projectPayloads(parsed.payloads);
+      }
     }
 
     state.lastContiguousSlot = slot;
@@ -187,6 +192,7 @@ export async function ingestBlockFromFixture(args: {
   }> };
   followedPrograms: readonly FollowedProgram[];
   writer: SvmRawWriter;
+  projector?: ProjectionProjector;
   lastContiguousSlot: number;
 }): Promise<number> {
   const { block, writer, namespace, followedPrograms } = args;
@@ -203,6 +209,9 @@ export async function ingestBlockFromFixture(args: {
     });
     await writer.insertStructuredPayloads(parsed.payloads);
     await writer.insertIngestRefusals(parsed.refusals);
+    if (args.projector && parsed.payloads.length > 0) {
+      await args.projector.projectPayloads(parsed.payloads);
+    }
   }
   await writer.upsertCursor({
     namespace,

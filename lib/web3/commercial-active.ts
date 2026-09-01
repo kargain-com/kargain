@@ -215,6 +215,14 @@ export function commercialEip155Ids(): readonly CommercialChainId[] {
     .sort((a, b) => a - b) as CommercialChainId[];
 }
 
+/**
+ * Namespace ids allowed to surface on provenance UNION reads (S7c-2).
+ * EVM rows use EIP-155; SVM rows use reserved-band namespace when registered.
+ */
+export function registeredCommercialNamespaceIds(): readonly number[] {
+  return commercialEip155Ids().map((id) => Number(COMMERCIAL_ACTIVE[id].namespace));
+}
+
 export function commercialActive(
   chainId: number,
 ): CommercialActiveStack | undefined {

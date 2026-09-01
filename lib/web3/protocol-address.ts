@@ -68,6 +68,14 @@ function base58Decode(encoded: string): Uint8Array | null {
   return out;
 }
 
+/** Canonical base58 for a 32-byte SVM pubkey (projection / HTTP provenance). */
+export function encodeSvmPubkeyBytes(bytes: Uint8Array): string {
+  if (bytes.length !== 32) {
+    throw new Error(`SVM pubkey must be 32 bytes, got ${bytes.length}`);
+  }
+  return base58Encode(bytes);
+}
+
 function base58Encode(bytes: Uint8Array): string {
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;

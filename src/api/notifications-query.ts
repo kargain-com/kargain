@@ -8,7 +8,6 @@ import {
   consignmentHold,
   mandate,
   passport,
-  passportRecord,
 } from "ponder:schema";
 import { and, desc, eq, gt, inArray } from "ponder";
 import { getAddress } from "viem";
@@ -24,6 +23,7 @@ import type { PonderFeedItem } from "../../lib/notifications/types";
 import { claimRecordedNotificationItems } from "../lib/ponder-claims";
 import { LIVE_PHASES } from "../lib/ponder-commerce";
 import { loadObligationFacts } from "./load-obligation-facts";
+import { loadPassportRecordsByTokenId } from "../lib/ponder-passport-provenance";
 
 export type PonderDb = typeof db;
 
@@ -99,11 +99,7 @@ export async function buildNotificationFeed(
   }
 
   for (const p of owned) {
-    const records = await ponderDb
-      .select()
-      .from(passportRecord)
-      .where(eq(passportRecord.tokenId, p.id))
-      .orderBy(desc(passportRecord.timestamp));
+    const records = await loadPassportRecordsByTokenId(p.id);
 
     const recent = records
       .filter((r) => r.timestamp > since)
