@@ -8,13 +8,18 @@ import {
   deriveChallengeSurface,
   isAvailable,
 } from "@/lib/challenge";
+import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
 import {
   derivePassportActionSurface,
   editMetadataRefusalCopy,
   resolvePassportEditAccess,
+  resolvePassportLocationRefusal,
   type DerivePassportActionSurfaceInput,
 } from "../lib/passport/action-surface.ts";
-import { derivePassportPresence } from "../lib/passport/presence.ts";
+import {
+  locationUnresolvedCauseCopy,
+  type DerivePassportPresenceInput,
+} from "../lib/passport/presence.ts";
 
 const OWNER = "0x1111111111111111111111111111111111111111";
 const VERIFIER = "0x2222222222222222222222222222222222222222";
@@ -34,15 +39,17 @@ function challengeHere(wallet: string = WALLET) {
   });
 }
 
+const HERE_FACTS: DerivePassportPresenceInput = {
+  viewChainId: 84532,
+  custodyLocked: false,
+  ponderCustodyChain: 84532,
+};
+
 function baseInput(
   overrides: Partial<DerivePassportActionSurfaceInput> = {},
 ): DerivePassportActionSurfaceInput {
   return {
-    presence: derivePassportPresence({
-      viewChainId: 84532,
-      custodyLocked: false,
-      ponderCustodyChain: 84532,
-    }),
+    presenceFacts: HERE_FACTS,
     challenge: challengeHere(),
     wallet: WALLET,
     isOwner: true,
@@ -71,11 +78,11 @@ describe("derivePassportActionSurface — presence", () => {
   it("blocks every contract-gated write with away when locked", () => {
     const surface = derivePassportActionSurface(
       baseInput({
-        presence: derivePassportPresence({
+        presenceFacts: {
           viewChainId: 84532,
           custodyLocked: true,
           ponderCustodyChain: 11155111,
-        }),
+        },
       }),
     );
     assert.equal(surface.presence.status, "away");
@@ -90,10 +97,10 @@ describe("derivePassportActionSurface — presence", () => {
   it("blocks every write with reads_unresolved when lock unread", () => {
     const surface = derivePassportActionSurface(
       baseInput({
-        presence: derivePassportPresence({
+        presenceFacts: {
           viewChainId: 84532,
           custodyLocked: undefined,
-        }),
+        },
       }),
     );
     for (const key of WRITE_KEYS) {
@@ -110,11 +117,11 @@ describe("derivePassportActionSurface — presence", () => {
   it("blocks every write with custody_unresolved when fold incomplete", () => {
     const surface = derivePassportActionSurface(
       baseInput({
-        presence: derivePassportPresence({
+        presenceFacts: {
           viewChainId: 84532,
           custodyLocked: false,
           custodyUnresolved: "incomplete_crossing_link",
-        }),
+        },
       }),
     );
     assert.equal(surface.presence.status, "location_unresolved");
@@ -184,29 +191,9 @@ describe("derivePassportActionSurface — presence", () => {
 });
 
 describe("resolvePassportEditAccess", () => {
-  const here = derivePassportPresence({
-    viewChainId: 84532,
-    custodyLocked: false,
-    ponderCustodyChain: 84532,
-  });
-  const away = derivePassportPresence({
-    viewChainId: 84532,
-    custodyLocked: true,
-    ponderCustodyChain: 11155111,
-  });
-  const unresolved = derivePassportPresence({
-    viewChainId: 84532,
-    custodyLocked: undefined,
-  });
-  const foldUnresolved = derivePassportPresence({
-    viewChainId: 84532,
-    custodyLocked: false,
-    custodyUnresolved: "empty_history",
-  });
-
   it("allows when here, configured, not disputed, not mode-held", () => {
     const access = resolvePassportEditAccess({
-      presence: here,
+      presenceFacts: HERE_FACTS,
       status: "VERIFIED",
       listingActive: false,
       configured: true,
@@ -216,7 +203,7 @@ describe("resolvePassportEditAccess", () => {
 
   it("refuses not_configured before presence causes", () => {
     const access = resolvePassportEditAccess({
-      presence: unresolved,
+      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
       status: "VERIFIED",
       listingActive: false,
       configured: false,
@@ -227,7 +214,11 @@ describe("resolvePassportEditAccess", () => {
 
   it("refuses away, reads_unresolved, and custody_unresolved from presence", () => {
     const a = resolvePassportEditAccess({
-      presence: away,
+      presenceFacts: {
+        viewChainId: 84532,
+        custodyLocked: true,
+        ponderCustodyChain: 11155111,
+      },
       status: "VERIFIED",
       listingActive: false,
       configured: true,
@@ -235,7 +226,7 @@ describe("resolvePassportEditAccess", () => {
     assert.equal(a.status === "refuse" && a.cause, "away");
 
     const u = resolvePassportEditAccess({
-      presence: unresolved,
+      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
       status: "VERIFIED",
       listingActive: false,
       configured: true,
@@ -243,7 +234,11 @@ describe("resolvePassportEditAccess", () => {
     assert.equal(u.status === "refuse" && u.cause, "reads_unresolved");
 
     const f = resolvePassportEditAccess({
-      presence: foldUnresolved,
+      presenceFacts: {
+        viewChainId: 84532,
+        custodyLocked: false,
+        custodyUnresolved: "empty_history",
+      },
       status: "VERIFIED",
       listingActive: false,
       configured: true,
@@ -253,7 +248,7 @@ describe("resolvePassportEditAccess", () => {
 
   it("refuses disputed and listing_active when here", () => {
     const d = resolvePassportEditAccess({
-      presence: here,
+      presenceFacts: HERE_FACTS,
       status: "DISPUTED",
       listingActive: false,
       configured: true,
@@ -261,7 +256,7 @@ describe("resolvePassportEditAccess", () => {
     assert.equal(d.status === "refuse" && d.cause, "disputed");
 
     const l = resolvePassportEditAccess({
-      presence: here,
+      presenceFacts: HERE_FACTS,
       status: "VERIFIED",
       listingActive: true,
       configured: true,
@@ -271,7 +266,11 @@ describe("resolvePassportEditAccess", () => {
 
   it("presence away wins over disputed and listing_active", () => {
     const access = resolvePassportEditAccess({
-      presence: away,
+      presenceFacts: {
+        viewChainId: 84532,
+        custodyLocked: true,
+        ponderCustodyChain: 11155111,
+      },
       status: "DISPUTED",
       listingActive: true,
       configured: true,
@@ -280,50 +279,130 @@ describe("resolvePassportEditAccess", () => {
   });
 });
 
-describe("editMetadataRefusalCopy", () => {
-  it("reuses presence copy and names other causes", () => {
-    const away = derivePassportPresence({
+describe("cause × surface — §4.21 lines and consequences", () => {
+  it("edit refusal copy and location refusal contain each cause line + consequence", () => {
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const expected = locationUnresolvedCauseCopy(cause);
+      const edit = resolvePassportEditAccess({
+        presenceFacts: {
+          viewChainId: 84532,
+          custodyLocked: false,
+          custodyUnresolved: cause,
+        },
+        status: "VERIFIED",
+        listingActive: false,
+        configured: true,
+      });
+      assert.equal(edit.status, "refuse");
+      if (edit.status === "refuse") {
+        assert.equal(edit.cause, "custody_unresolved");
+        const body = editMetadataRefusalCopy(edit.cause, edit.presence);
+        assert.equal(body, expected, cause);
+      }
+
+      const market = resolvePassportLocationRefusal({
+        viewChainId: 84532,
+        custodyLocked: undefined,
+        custodyUnresolved: cause,
+      });
+      assert.equal(market.status, "refuse");
+      if (market.status === "refuse") {
+        assert.equal(market.cause, "custody_unresolved");
+        assert.equal(market.description, expected, cause);
+        assert.equal(market.title, "Passport location is unresolved");
+      }
+    }
+  });
+
+  it("negative control: cause without its line fails the equality", () => {
+    const cause = "empty_history" as const;
+    const expected = locationUnresolvedCauseCopy(cause);
+    const market = resolvePassportLocationRefusal({
       viewChainId: 84532,
-      custodyLocked: true,
-      ponderCustodyChain: 11155111,
+      custodyLocked: undefined,
+      custodyUnresolved: cause,
     });
-    const unread = derivePassportPresence({
+    assert.equal(market.status, "refuse");
+    if (market.status === "refuse") {
+      // Perturb: drop the consequence — must not equal the owner string.
+      const withoutConsequence = expected.replace(
+        / Actions that depend on custody stay unavailable until the location resolves\./,
+        "",
+      );
+      assert.notEqual(market.description, withoutConsequence);
+      assert.equal(market.description, expected);
+    }
+  });
+
+  it("location refusal never returns a not-found sentinel for any cause", () => {
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const market = resolvePassportLocationRefusal({
+        viewChainId: 84532,
+        custodyLocked: undefined,
+        custodyUnresolved: cause,
+      });
+      assert.equal(market.status, "refuse");
+      assert.notEqual(market.status, "not_found" as string);
+    }
+    const unread = resolvePassportLocationRefusal({
       viewChainId: 84532,
       custodyLocked: undefined,
     });
-    const fold = derivePassportPresence({
-      viewChainId: 84532,
-      custodyLocked: false,
-      custodyUnresolved: "unknown_namespace",
-    });
-    const here: ReturnType<typeof derivePassportPresence> = { status: "here" };
+    assert.equal(unread.status, "refuse");
+    if (unread.status === "refuse") {
+      assert.equal(unread.cause, "reads_unresolved");
+      assert.match(unread.description, /chain to answer/i);
+    }
+  });
+});
 
-    assert.match(editMetadataRefusalCopy("away", away), /Return/);
-    assert.match(
-      editMetadataRefusalCopy("reads_unresolved", unread),
-      /chain to answer/i,
-    );
-    assert.match(
-      editMetadataRefusalCopy("custody_unresolved", fold),
-      /outside the served networks/,
-    );
+describe("editMetadataRefusalCopy", () => {
+  it("reuses presence copy and names other causes", () => {
+    const awayAccess = resolvePassportEditAccess({
+      presenceFacts: {
+        viewChainId: 84532,
+        custodyLocked: true,
+        ponderCustodyChain: 11155111,
+      },
+      status: "VERIFIED",
+      listingActive: false,
+      configured: true,
+    });
+    assert.equal(awayAccess.status, "refuse");
+    if (awayAccess.status === "refuse") {
+      assert.match(editMetadataRefusalCopy(awayAccess.cause, awayAccess.presence), /Return/);
+    }
+
+    const unreadAccess = resolvePassportEditAccess({
+      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
+      status: "VERIFIED",
+      listingActive: false,
+      configured: true,
+    });
+    assert.equal(unreadAccess.status, "refuse");
+    if (unreadAccess.status === "refuse") {
+      assert.match(
+        editMetadataRefusalCopy(unreadAccess.cause, unreadAccess.presence),
+        /chain to answer/i,
+      );
+    }
+
+    const here = { status: "here" as const };
     assert.match(editMetadataRefusalCopy("disputed", here), /challenge/);
     assert.match(editMetadataRefusalCopy("listing_active", here), /delisting/);
-    assert.match(
-      editMetadataRefusalCopy("not_configured", unread),
-      /not configured/i,
-    );
+    assert.match(editMetadataRefusalCopy("not_configured", here), /not configured/i);
   });
 });
 
 describe("actions panel consumes action-surface", () => {
-  it("panel imports derivePassportActionSurface and does not decide presence", () => {
+  it("panel imports derivePassportActionSurface and does not call the deriver", () => {
     const src = readFileSync(
       join(process.cwd(), "components/passport/passport-actions-panel.tsx"),
       "utf8",
     );
     assert.match(src, /derivePassportActionSurface/);
-    assert.match(src, /derivePassportPresence/);
+    assert.match(src, /presenceFacts/);
+    assert.doesNotMatch(src, /derivePassportPresence/);
     assert.match(src, /isAvailable\(actionSurface\./);
   });
 
@@ -337,19 +416,25 @@ describe("actions panel consumes action-surface", () => {
     assert.doesNotMatch(src, /recordAddedSuccess/);
   });
 
-  it("edit route names refusals via action-surface and reserves notFound for absence", () => {
+  it("edit route uses resolvePassportEditAccess for location and status refusals", () => {
     const src = readFileSync(
       join(process.cwd(), "app/(identity)/passport/[tokenId]/edit/page.tsx"),
       "utf8",
     );
     assert.match(src, /resolvePassportEditAccess/);
     assert.match(src, /editMetadataRefusalCopy/);
+    assert.match(src, /presenceFacts/);
+    assert.doesNotMatch(src, /derivePassportPresence/);
     assert.match(src, /NOT_FOUND/);
     assert.match(src, /PONDER_UNAVAILABLE/);
-    assert.doesNotMatch(
-      src,
-      /if \(passport\.status === "DISPUTED"\) notFound\(\)/,
+  });
+
+  it("marketplace route uses resolvePassportLocationRefusal", () => {
+    const src = readFileSync(
+      join(process.cwd(), "app/(identity)/marketplace/[tokenId]/page.tsx"),
+      "utf8",
     );
-    assert.doesNotMatch(src, /if \(presence\.status !== "here"\) notFound\(\)/);
+    assert.match(src, /resolvePassportLocationRefusal/);
+    assert.doesNotMatch(src, /derivePassportPresence/);
   });
 });

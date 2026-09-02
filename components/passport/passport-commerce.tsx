@@ -135,6 +135,7 @@ export function PassportCommerce({
         passportOwner={passportOwner}
         passportStatus={passportStatus}
         custodyUnresolved={custodyUnresolved}
+        custodyLocked={facts.custodyLocked}
         leaveChainPermission={facts.leaveChainPermission}
         liveConsignmentMode={facts.liveConsignmentMode}
         challengeOpen={facts.challengeOpen}

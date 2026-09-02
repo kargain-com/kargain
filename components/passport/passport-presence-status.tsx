@@ -2,12 +2,7 @@
 
 import { PassportPhotoGallery } from "@/components/passport/passport-photo-gallery";
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
-import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
-import {
-  derivePassportPresence,
-  derivePassportTrustDisplay,
-  passportAwayActionCopy,
-} from "@/lib/passport/presence";
+import { usePassportPresence } from "@/hooks/use-passport-presence";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { shortChainName } from "@/lib/web3/supported-chains";
 
@@ -34,20 +29,13 @@ export function PassportPresenceStatusBadge({
   sublabel,
   className,
 }: BadgeProps) {
-  const facts = usePassportCommerceFacts({
+  const { presence, presenceCopy, trustDisplay } = usePassportPresence({
     chainId,
     tokenId,
-    enabled: ponderCustodyChain != null && !custodyUnresolved,
-  });
-  const presence = derivePassportPresence({
-    viewChainId: chainId,
-    custodyLocked: custodyUnresolved
-      ? undefined
-      : facts.custodyLocked,
     ponderCustodyChain,
-    custodyUnresolved: custodyUnresolved ?? null,
+    custodyUnresolved,
   });
-  const display = derivePassportTrustDisplay(presence, recordedStatus);
+  const display = trustDisplay(recordedStatus);
 
   if (display.badgeStatus == null) {
     if (
@@ -62,7 +50,7 @@ export function PassportPresenceStatusBadge({
           }
           role="status"
         >
-          {passportAwayActionCopy(presence)}
+          {presenceCopy}
         </span>
       );
     }
@@ -116,20 +104,13 @@ export function PassportPresenceGallery({
   recordedStatus,
   photos,
 }: GalleryProps) {
-  const facts = usePassportCommerceFacts({
+  const { trustDisplay } = usePassportPresence({
     chainId,
     tokenId,
-    enabled: ponderCustodyChain != null && !custodyUnresolved,
-  });
-  const presence = derivePassportPresence({
-    viewChainId: chainId,
-    custodyLocked: custodyUnresolved
-      ? undefined
-      : facts.custodyLocked,
     ponderCustodyChain,
-    custodyUnresolved: custodyUnresolved ?? null,
+    custodyUnresolved,
   });
-  const display = derivePassportTrustDisplay(presence, recordedStatus);
+  const display = trustDisplay(recordedStatus);
   return (
     <PassportPhotoGallery
       photos={photos}

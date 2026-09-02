@@ -4,6 +4,12 @@ import {
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
 } from "@/lib/passport/encumbrance-permission";
+import {
+  derivePassportPresence,
+  passportAwayActionCopy,
+  presenceBlocksWrites,
+  type PassportPresence,
+} from "@/lib/passport/presence";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
 import type { Address } from "viem";
 
@@ -23,6 +29,13 @@ export type BridgeSurfaceResult = {
   blockReason: BridgeBlockReason | null;
   /** Set when `blockReason` is `source_unanswerable`. */
   unanswerableSource: Address | null;
+  /**
+   * Location answer from presence (§4.21). Null when here or when the panel
+   * is hidden. Fold gaps and lock-unread never become `blockReason: "unresolved"`.
+   */
+  location: PassportPresence | null;
+  /** §4.21 chrome when location blocks the send; empty when null/here. */
+  locationCopy: string | null;
 };
 
 export type BridgeSurfaceInput = {
@@ -42,6 +55,18 @@ export type BridgeSurfaceInput = {
    * own the NFT). Keeps the panel visible with canBridge false.
    */
   transitActive?: boolean;
+  /**
+   * Fold incomplete cause from the indexer. Honest input only — never invent
+   * a lock read or custody chain to accompany it.
+   */
+  custodyUnresolved?: string | null;
+  /**
+   * On-chain `custodyLocked` when a read answered. Omit / `undefined` when
+   * nothing was read — never invent `false`.
+   */
+  custodyLocked?: boolean;
+  /** Ponder custody when known — optional; omit when unread. */
+  ponderCustodyChain?: number | null;
 };
 
 const HIDDEN: BridgeSurfaceResult = {
@@ -50,6 +75,8 @@ const HIDDEN: BridgeSurfaceResult = {
   canBridge: false,
   blockReason: null,
   unanswerableSource: null,
+  location: null,
+  locationCopy: null,
 };
 
 /**
@@ -62,27 +89,78 @@ const TRANSIT_VISIBLE: BridgeSurfaceResult = {
   canBridge: false,
   blockReason: null,
   unanswerableSource: null,
+  location: null,
+  locationCopy: null,
 };
 
+function locationFields(
+  input: BridgeSurfaceInput,
+): Pick<BridgeSurfaceResult, "location" | "locationCopy"> {
+  const presence = derivePassportPresence({
+    viewChainId: input.chainId,
+    custodyLocked: input.custodyLocked,
+    ponderCustodyChain: input.ponderCustodyChain,
+    custodyUnresolved: input.custodyUnresolved ?? null,
+  });
+  if (!presenceBlocksWrites(presence)) {
+    return { location: presence, locationCopy: null };
+  }
+  return {
+    location: presence,
+    locationCopy: passportAwayActionCopy(presence),
+  };
+}
+
+function withLocation(
+  base: Omit<BridgeSurfaceResult, "location" | "locationCopy">,
+  input: BridgeSurfaceInput,
+): BridgeSurfaceResult {
+  const loc = locationFields(input);
+  const locationBlocks = loc.locationCopy != null;
+  return {
+    ...base,
+    ...loc,
+    canBridge: locationBlocks ? false : base.canBridge,
+  };
+}
+
+/**
+ * Sole owner bridge-surface policy — including §4.21 location.
+ * Fold gaps and leave-permission unread stay distinct.
+ */
 export function deriveBridgeSurface(
   input: BridgeSurfaceInput,
 ): BridgeSurfaceResult {
   if (!input.isOwner) {
     // In-flight: NFT may be burned/locked — keep transit chrome visible.
     if (input.transitActive) {
-      return { ...TRANSIT_VISIBLE };
+      return withLocation({ ...TRANSIT_VISIBLE }, input);
     }
     return { ...HIDDEN };
   }
 
   if (bridgeCounterpartChainId(input.chainId) == null) {
     if (input.transitActive) {
-      return { ...TRANSIT_VISIBLE };
+      return withLocation({ ...TRANSIT_VISIBLE }, input);
     }
     return { ...HIDDEN };
   }
 
   const gate = input.leaveChainPermission;
+  const loc = locationFields(input);
+  const locationBlocks = loc.locationCopy != null;
+
+  // Fold / lock-unread: named §4.21 copy; never leave-permission `unresolved`.
+  if (locationBlocks) {
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: null,
+      unanswerableSource: null,
+      ...loc,
+    };
+  }
 
   if (gate.status === "blocked" && gate.cause === "reads_unresolved") {
     return {
@@ -91,6 +169,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "unresolved",
       unanswerableSource: null,
+      ...loc,
     };
   }
 
@@ -101,6 +180,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "source_unanswerable",
       unanswerableSource: gate.source,
+      ...loc,
     };
   }
 
@@ -117,11 +197,15 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: reason,
       unanswerableSource: null,
+      ...loc,
     };
   }
 
   if (input.transitActive) {
-    return { ...TRANSIT_VISIBLE };
+    return {
+      ...TRANSIT_VISIBLE,
+      ...loc,
+    };
   }
 
   if (!isEncumbrancePermissionAvailable(gate)) {
@@ -131,6 +215,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "unresolved",
       unanswerableSource: null,
+      ...loc,
     };
   }
 
@@ -140,6 +225,7 @@ export function deriveBridgeSurface(
     canBridge: true,
     blockReason: null,
     unanswerableSource: null,
+    ...loc,
   };
 }
 

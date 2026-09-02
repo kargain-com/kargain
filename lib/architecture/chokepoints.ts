@@ -354,6 +354,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "passport-presence-deriver",
+    owner:
+      "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts",
+    rule: "derivePassportPresence only in named owners; components/routes consume answers",
+    guardTests: ["passport-presence-owner-policy.test.ts"],
+  },
+  {
     id: "ponder-passport-custody",
     owner: "src/lib/ponder-passport-custody.ts",
     rule: "HTTP custody load + fold only via ponder-passport-custody owner",

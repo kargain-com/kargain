@@ -228,39 +228,15 @@ describe("derivePassportTrustDisplay", () => {
   });
 });
 
-describe("notFound ban on location surfaces", () => {
-  it("marketplace detail does not notFound on custodyUnresolved", () => {
-    const src = readFileSync(
-      join(
-        process.cwd(),
-        "app/(identity)/marketplace/[tokenId]/page.tsx",
-      ),
-      "utf8",
-    );
-    assert.match(src, /custodyUnresolved/);
-    assert.match(src, /passportAwayActionCopy|EmptyState/);
-    // Old defect: if (…custodyUnresolved…) { notFound(); }
-    assert.doesNotMatch(
-      src,
-      /if\s*\([^)]*custodyUnresolved[^)]*\)\s*\{\s*notFound\s*\(\s*\)/,
-    );
-  });
-
-  it("edit route does not notFound on custodyUnresolved", () => {
-    const src = readFileSync(
-      join(
-        process.cwd(),
-        "app/(identity)/passport/[tokenId]/edit/page.tsx",
-      ),
-      "utf8",
-    );
-    assert.match(src, /EditRefusalShell/);
-    assert.match(src, /custody_unresolved|location_unresolved|custodyUnresolved/);
-    assert.doesNotMatch(
-      src,
-      /if\s*\([^)]*custodyUnresolved[^)]*\)\s*\{\s*notFound\s*\(\s*\)/,
-    );
-    assert.doesNotMatch(src, /status:\s*["']unresolved["']/);
+describe("location surface refusals — behaviour", () => {
+  it("marketplace and edit helpers refuse every fold cause with §4.21 copy", () => {
+    // Behaviour is owned by action-surface — see passport-action-surface suite.
+    // This pin keeps passport-ui covering the copy exhaustiveness path.
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const expected = locationUnresolvedCauseCopy(cause);
+      assert.match(expected, /./);
+      assert.doesNotMatch(expected, /Waiting for chain custody/);
+    }
   });
 });
 
@@ -271,8 +247,10 @@ describe("profile tile presence policy", () => {
       "utf8",
     );
     assert.match(src, /derivePassportTrustDisplay/);
+    assert.match(src, /resolvePassportPresence/);
     assert.match(src, /showVerifiedAccent/);
     assert.match(src, /passportAwayActionCopy/);
+    assert.doesNotMatch(src, /derivePassportPresence/);
     assert.doesNotMatch(src, /location unread/);
     assert.doesNotMatch(src, /status === ["']VERIFIED["']\s*\n\s*\? ["']border-accent-warm/);
   });
@@ -289,13 +267,15 @@ describe("detail gallery presence policy", () => {
     assert.doesNotMatch(src, /PassportPresenceVerified/);
   });
 
-  it("presence status module has no function-typed children render prop", () => {
+  it("presence status module uses the presence hook — no deriver", () => {
     const src = readFileSync(
       join(process.cwd(), "components/passport/passport-presence-status.tsx"),
       "utf8",
     );
     assert.match(src, /export function PassportPresenceGallery/);
+    assert.match(src, /usePassportPresence/);
     assert.match(src, /custodyUnresolved/);
+    assert.doesNotMatch(src, /derivePassportPresence/);
     assert.doesNotMatch(src, /PassportPresenceVerified/);
     assert.doesNotMatch(src, /children:\s*\([^)]*\)\s*=>/);
   });

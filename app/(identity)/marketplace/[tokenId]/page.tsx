@@ -9,10 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PassportDetailView } from "@/components/passport/passport-detail-view";
 import { fetchListingDetail, fetchPassportDetailCached } from "@/lib/passport/fetch-passport-detail";
 import { formatKarPassportTitle, parsePassportTokenId } from "@/lib/passport/passport-token-id";
-import {
-  derivePassportPresence,
-  passportAwayActionCopy,
-} from "@/lib/passport/presence";
+import { resolvePassportLocationRefusal } from "@/lib/passport/action-surface";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 
 /** RPC hint for Ponder-miss: URL chain, else origin from v2 tokenId — never invent hub. */
@@ -154,35 +151,33 @@ async function MarketplaceListingInner({
 
   // Location gap — named refusal, never notFound (§4.21).
   if (result.passport.custodyUnresolved || result.passport.custodyChain == null) {
-    const presence = derivePassportPresence({
+    const refusal = resolvePassportLocationRefusal({
       viewChainId: result.passport.chainId,
       custodyLocked: undefined,
       ponderCustodyChain: result.passport.custodyChain,
       custodyUnresolved: result.passport.custodyUnresolved ?? null,
     });
-    const title =
-      presence.status === "location_unread"
-        ? "Location could not be read"
-        : "Passport location is unresolved";
-    return (
-      <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
-        <div className="mx-auto max-w-lg">
-          <EmptyState
-            variant="content"
-            level="B"
-            title={title}
-            description={passportAwayActionCopy(presence)}
-            action={{
-              label: "← Back to marketplace",
-              href: marketplaceHref,
-            }}
-          />
+    if (refusal.status === "refuse") {
+      return (
+        <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
+          <div className="mx-auto max-w-lg">
+            <EmptyState
+              variant="content"
+              level="B"
+              title={refusal.title}
+              description={refusal.description}
+              action={{
+                label: "← Back to marketplace",
+                href: marketplaceHref,
+              }}
+            />
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
-  const commerceChainId = result.passport.custodyChain;
+  const commerceChainId = result.passport.custodyChain!;
   const originChainId = result.passport.chainId;
   const auctionResult = await getAuctionDetail(raw);
 

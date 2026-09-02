@@ -9,7 +9,9 @@ import type {
   ChallengeSurface,
 } from "@/lib/challenge/surface";
 import {
+  type DerivePassportPresenceInput,
   type PassportPresence,
+  derivePassportPresence,
   passportAwayActionCopy,
   presenceBlocksWrites,
 } from "@/lib/passport/presence";
@@ -56,14 +58,27 @@ export type PassportEditAccess =
     };
 
 export type ResolvePassportEditAccessInput = {
-  /** Already derived — this helper does not re-derive presence. */
-  readonly presence: PassportPresence;
+  readonly presenceFacts: DerivePassportPresenceInput;
   readonly status: PassportStatus;
   /** True when a selling mode holds the NFT (escrow / consigned). */
   readonly listingActive: boolean;
   /** False when `karPassportAddress(custodyChain)` is unset. */
   readonly configured: boolean;
 };
+
+/** Marketplace / detail location refusal — never a not-found outcome. */
+export type PassportLocationRefusal =
+  | {
+      readonly status: "ok";
+      readonly presence: PassportPresence;
+    }
+  | {
+      readonly status: "refuse";
+      readonly presence: PassportPresence;
+      readonly cause: "reads_unresolved" | "custody_unresolved";
+      readonly title: string;
+      readonly description: string;
+    };
 
 export type PassportActionSurface = {
   readonly presence: PassportPresence;
@@ -85,7 +100,7 @@ export type PassportActionSurface = {
 };
 
 export type DerivePassportActionSurfaceInput = {
-  readonly presence: PassportPresence;
+  readonly presenceFacts: DerivePassportPresenceInput;
   readonly challenge: ChallengeSurface;
   readonly wallet: string | undefined;
   readonly isOwner: boolean;
@@ -119,11 +134,45 @@ function mapChallengeGate(
 }
 
 /**
- * Sole owner of passport write availability for Actions.
- * Presence (custody lock / not here) gates every contract entrypoint that
- * `_requireNotBridgedAway` guards; challenge actions then compose
- * `deriveChallengeSurface`.
+ * Derive presence from honest facts — sole action-surface entry for location.
+ * Components and routes call this (or bridge-surface / the presence hook) instead
+ * of `derivePassportPresence`.
  */
+export function resolvePassportPresence(
+  facts: DerivePassportPresenceInput,
+): PassportPresence {
+  return derivePassportPresence(facts);
+}
+
+/**
+ * Marketplace / detail location refusal from indexer facts.
+ * Never returns a not-found sentinel — location gaps are named refusals.
+ */
+export function resolvePassportLocationRefusal(
+  facts: DerivePassportPresenceInput,
+): PassportLocationRefusal {
+  const presence = derivePassportPresence(facts);
+  if (presence.status === "location_unread") {
+    return {
+      status: "refuse",
+      presence,
+      cause: "reads_unresolved",
+      title: "Location could not be read",
+      description: passportAwayActionCopy(presence),
+    };
+  }
+  if (presence.status === "location_unresolved") {
+    return {
+      status: "refuse",
+      presence,
+      cause: "custody_unresolved",
+      title: "Passport location is unresolved",
+      description: passportAwayActionCopy(presence),
+    };
+  }
+  return { status: "ok", presence };
+}
+
 /**
  * Factual body copy for an edit-route refusal. Presence causes reuse
  * `passportAwayActionCopy`; other causes stay in this module’s vocabulary.
@@ -149,14 +198,12 @@ export function editMetadataRefusalCopy(
 }
 
 /**
- * Server edit-route access from already-derived presence + status + custody facts.
- * Same priority as `editMetadata` after presence: disputed → listing_active.
- * Does not re-derive presence.
+ * Server edit-route access — derives presence from facts inside this owner.
  */
 export function resolvePassportEditAccess(
   input: ResolvePassportEditAccessInput,
 ): PassportEditAccess {
-  const { presence } = input;
+  const presence = derivePassportPresence(input.presenceFacts);
   if (!input.configured) {
     return { status: "refuse", cause: "not_configured", presence };
   }
@@ -177,17 +224,24 @@ export function resolvePassportEditAccess(
   return { status: "allow", presence };
 }
 
+/**
+ * Sole owner of passport write availability for Actions.
+ * Presence (custody lock / not here) gates every contract entrypoint that
+ * `_requireNotBridgedAway` guards; challenge actions then compose
+ * `deriveChallengeSurface`.
+ */
 export function derivePassportActionSurface(
   input: DerivePassportActionSurfaceInput,
 ): PassportActionSurface {
-  const presenceBlock = presenceGate(input.presence);
-  const presenceCopy = presenceBlocksWrites(input.presence)
-    ? passportAwayActionCopy(input.presence)
+  const presence = derivePassportPresence(input.presenceFacts);
+  const presenceBlock = presenceGate(presence);
+  const presenceCopy = presenceBlocksWrites(presence)
+    ? passportAwayActionCopy(presence)
     : "";
 
   if (presenceBlock != null) {
     return {
-      presence: input.presence,
+      presence,
       presenceCopy,
       editMetadata: presenceBlock,
       verify: presenceBlock,
@@ -255,7 +309,7 @@ export function derivePassportActionSurface(
   })();
 
   return {
-    presence: input.presence,
+    presence,
     presenceCopy,
     editMetadata,
     verify,

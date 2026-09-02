@@ -12,8 +12,8 @@ import {
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
 import { isProfilePassportBridgedAway } from "@/lib/passport/map-profile-passport";
+import { resolvePassportPresence } from "@/lib/passport/action-surface";
 import {
-  derivePassportPresence,
   derivePassportTrustDisplay,
   passportAwayActionCopy,
 } from "@/lib/passport/presence";
@@ -71,7 +71,8 @@ export function ProfilePassportCard({
     !transitBadge &&
     isProfilePassportBridgedAway(chainId, custodyChain);
   // Inventory presence from indexer location — not escrow custody.
-  const presence = derivePassportPresence({
+  // Lock omitted when fold/unresolved custody — honest “not read”, never false.
+  const presence = resolvePassportPresence({
     viewChainId: chainId,
     custodyLocked:
       custodyUnresolved || custodyChain == null

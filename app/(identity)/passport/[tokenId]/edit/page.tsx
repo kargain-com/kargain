@@ -9,10 +9,7 @@ import {
 } from "@/lib/passport/action-surface";
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import {
-  derivePassportPresence,
-  type PassportPresence,
-} from "@/lib/passport/presence";
+import type { PassportPresence } from "@/lib/passport/presence";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import { commerceModeAddresses } from "@/lib/commerce/mode";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -116,14 +113,13 @@ export default async function EditPassportPage({
 
   // Location gap — named refusal, never notFound (§4.21).
   if (passport.custodyUnresolved || passport.custodyChain == null) {
-    const presence = derivePassportPresence({
-      viewChainId: originOrHint,
-      custodyLocked: undefined,
-      ponderCustodyChain: passport.custodyChain,
-      custodyUnresolved: passport.custodyUnresolved ?? null,
-    });
     const access = resolvePassportEditAccess({
-      presence,
+      presenceFacts: {
+        viewChainId: originOrHint,
+        custodyLocked: undefined,
+        ponderCustodyChain: passport.custodyChain,
+        custodyUnresolved: passport.custodyUnresolved ?? null,
+      },
       status: passport.status,
       listingActive: false,
       configured: true,
@@ -143,31 +139,54 @@ export default async function EditPassportPage({
 
   if (passport.custodyChain == null) {
     // Fail closed: unresolved without a refuse path must still not invent edit.
-    const presence: PassportPresence = { status: "location_unread" };
-    return (
-      <EditRefusalShell
-        tokenId={tokenId}
-        chainId={originOrHint}
-        cause="reads_unresolved"
-        presence={presence}
-        title={REFUSAL_TITLE.reads_unresolved}
-      />
-    );
+    const access = resolvePassportEditAccess({
+      presenceFacts: {
+        viewChainId: originOrHint,
+        custodyLocked: undefined,
+        ponderCustodyChain: null,
+        custodyUnresolved: null,
+      },
+      status: passport.status,
+      listingActive: false,
+      configured: true,
+    });
+    if (access.status === "refuse") {
+      return (
+        <EditRefusalShell
+          tokenId={tokenId}
+          chainId={originOrHint}
+          cause={access.cause}
+          presence={access.presence}
+          title={REFUSAL_TITLE[access.cause]}
+        />
+      );
+    }
   }
 
-  const chainId = passport.custodyChain;
+  const chainId = passport.custodyChain!;
 
   if (passport.status === "DISPUTED") {
-    const presence: PassportPresence = { status: "here" };
-    return (
-      <EditRefusalShell
-        tokenId={tokenId}
-        chainId={chainId}
-        cause="disputed"
-        presence={presence}
-        title={REFUSAL_TITLE.disputed}
-      />
-    );
+    const access = resolvePassportEditAccess({
+      presenceFacts: {
+        viewChainId: chainId,
+        custodyLocked: false,
+        ponderCustodyChain: chainId,
+      },
+      status: passport.status,
+      listingActive: false,
+      configured: true,
+    });
+    if (access.status === "refuse") {
+      return (
+        <EditRefusalShell
+          tokenId={tokenId}
+          chainId={chainId}
+          cause={access.cause}
+          presence={access.presence}
+          title={REFUSAL_TITLE[access.cause]}
+        />
+      );
+    }
   }
 
   const passportAddr = karPassportAddress(chainId);
@@ -176,55 +195,81 @@ export default async function EditPassportPage({
   );
 
   if (!passportAddr) {
-    const presence: PassportPresence = { status: "here" };
-    return (
-      <EditRefusalShell
-        tokenId={tokenId}
-        chainId={chainId}
-        cause="not_configured"
-        presence={presence}
-        title={REFUSAL_TITLE.not_configured}
-      />
-    );
+    const access = resolvePassportEditAccess({
+      presenceFacts: {
+        viewChainId: chainId,
+        custodyLocked: false,
+        ponderCustodyChain: chainId,
+      },
+      status: passport.status,
+      listingActive: false,
+      configured: false,
+    });
+    if (access.status === "refuse") {
+      return (
+        <EditRefusalShell
+          tokenId={tokenId}
+          chainId={chainId}
+          cause={access.cause}
+          presence={access.presence}
+          title={REFUSAL_TITLE[access.cause]}
+        />
+      );
+    }
   }
 
-  let presence: PassportPresence;
   let listingActive = false;
+  let presenceFacts: {
+    viewChainId: number;
+    custodyLocked: boolean | undefined;
+    ponderCustodyChain: number | null;
+    custodyUnresolved?: string | null;
+  } = {
+    viewChainId: chainId,
+    custodyLocked: undefined,
+    ponderCustodyChain: passport.custodyChain,
+    custodyUnresolved: passport.custodyUnresolved,
+  };
 
   try {
     const client = getPublicClient(chainId);
     const [owner, custodyLocked] = await Promise.all([
       client.readContract({
-        address: passportAddr,
+        address: passportAddr!,
         abi: KarPassportAbi,
         functionName: "ownerOf",
         args: [BigInt(tokenId)],
       }),
       client.readContract({
-        address: passportAddr,
+        address: passportAddr!,
         abi: KarPassportAbi,
         functionName: "custodyLocked",
         args: [BigInt(tokenId)],
       }),
     ]);
 
-    presence = derivePassportPresence({
+    presenceFacts = {
       viewChainId: chainId,
       custodyLocked: Boolean(custodyLocked),
       ponderCustodyChain: passport.custodyChain,
       custodyUnresolved: passport.custodyUnresolved,
-    });
+    };
     listingActive =
       modeCustodians.length > 0 &&
       modeCustodians.includes(owner.toLowerCase());
   } catch {
     // Fail closed: setPassportURI is gated by custody lock — unread → no edit.
-    presence = { status: "location_unread" };
+    presenceFacts = {
+      viewChainId: chainId,
+      custodyLocked: undefined,
+      ponderCustodyChain: passport.custodyChain,
+      custodyUnresolved: passport.custodyUnresolved,
+    };
     listingActive = false;
   }
 
   const access = resolvePassportEditAccess({
-    presence,
+    presenceFacts,
     status: passport.status,
     listingActive,
     configured: true,

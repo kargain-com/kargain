@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   CROSSING_TRUST_DISCLOSURE,
@@ -16,10 +17,9 @@ import {
   type BridgeSurfaceResult,
 } from "../lib/passport/bridge-surface.ts";
 import {
-  derivePassportPresence,
+  locationUnresolvedCauseCopy,
   passportAwayActionCopy,
 } from "../lib/passport/presence.ts";
-import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
 
 const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
 const REFUSED: EncumbrancePermissionGate = {
@@ -43,14 +43,26 @@ const HIDDEN: BridgeSurfaceResult = {
   canBridge: false,
   blockReason: null,
   unanswerableSource: null,
+  location: null,
+  locationCopy: null,
 };
 
+/** Happy-path facts: lock read answered unlocked — never invent this in product without a read. */
 function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput {
   return {
     isOwner: true,
     chainId: 84532,
     leaveChainPermission: AVAILABLE,
+    custodyLocked: false,
+    ponderCustodyChain: 84532,
     ...overrides,
+  };
+}
+
+function hereLoc() {
+  return {
+    location: { status: "here" as const },
+    locationCopy: null as string | null,
   };
 }
 
@@ -62,17 +74,24 @@ describe("deriveBridgeSurface", () => {
       canBridge: true,
       blockReason: null,
       unanswerableSource: null,
+      ...hereLoc(),
     });
   });
 
   it("allows bridge on spoke custody (return to hub)", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ chainId: 11155111 })), {
-      visible: true,
-      mode: "action",
-      canBridge: true,
-      blockReason: null,
-      unanswerableSource: null,
-    });
+    assert.deepEqual(
+      deriveBridgeSurface(
+        input({ chainId: 11155111, ponderCustodyChain: 11155111 }),
+      ),
+      {
+        visible: true,
+        mode: "action",
+        canBridge: true,
+        blockReason: null,
+        unanswerableSource: null,
+        ...hereLoc(),
+      },
+    );
   });
 
   it("hides for non-owner", () => {
@@ -84,42 +103,29 @@ describe("deriveBridgeSurface", () => {
   });
 
   it("fail-closes while may(LeaveChain) is unresolved", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ leaveChainPermission: UNRESOLVED })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "unresolved",
-        unanswerableSource: null,
-      },
+    const surface = deriveBridgeSurface(
+      input({ leaveChainPermission: UNRESOLVED }),
     );
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, "unresolved");
+    assert.equal(surface.locationCopy, null);
+    assert.match(bridgeBlockReasonCopy(surface.blockReason!), /Waiting for chain permission/);
   });
 
   it("disables when may refuses leave", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ leaveChainPermission: REFUSED })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "refused",
-        unanswerableSource: null,
-      },
+    const surface = deriveBridgeSurface(
+      input({ leaveChainPermission: REFUSED }),
     );
+    assert.equal(surface.blockReason, "refused");
+    assert.equal(surface.canBridge, false);
   });
 
   it("names the unanswerable source on SourceUnanswerable", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ leaveChainPermission: UNANSWERABLE })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: "source_unanswerable",
-        unanswerableSource: SOURCE,
-      },
+    const surface = deriveBridgeSurface(
+      input({ leaveChainPermission: UNANSWERABLE }),
     );
+    assert.equal(surface.blockReason, "source_unanswerable");
+    assert.equal(surface.unanswerableSource, SOURCE);
   });
 
   it("names consigned when leave is refused and a live consignment is known", () => {
@@ -160,26 +166,87 @@ describe("deriveBridgeSurface", () => {
   });
 
   it("keeps visible when transitActive even if not owner", () => {
-    assert.deepEqual(
-      deriveBridgeSurface(input({ isOwner: false, transitActive: true })),
-      {
-        visible: true,
-        mode: "action",
-        canBridge: false,
-        blockReason: null,
-        unanswerableSource: null,
-      },
+    const surface = deriveBridgeSurface(
+      input({ isOwner: false, transitActive: true }),
     );
+    assert.equal(surface.visible, true);
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, null);
   });
 
   it("disables canBridge when owner but transitActive", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ transitActive: true })), {
-      visible: true,
-      mode: "action",
-      canBridge: false,
-      blockReason: null,
-      unanswerableSource: null,
-    });
+    const surface = deriveBridgeSurface(input({ transitActive: true }));
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, null);
+  });
+});
+
+describe("deriveBridgeSurface — fold vs leave unread", () => {
+  it("each fold cause yields §4.21 locationCopy and never leave-unread blockReason", () => {
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const surface = deriveBridgeSurface(
+        input({
+          leaveChainPermission: AVAILABLE,
+          custodyUnresolved: cause,
+          custodyLocked: false,
+        }),
+      );
+      assert.equal(surface.canBridge, false, cause);
+      assert.equal(surface.blockReason, null, cause);
+      assert.equal(surface.location?.status, "location_unresolved", cause);
+      const expected = locationUnresolvedCauseCopy(cause);
+      assert.equal(surface.locationCopy, expected, cause);
+      assert.doesNotMatch(surface.locationCopy ?? "", /Waiting for chain permission/);
+      assert.doesNotMatch(surface.locationCopy ?? "", /leave permission/i);
+    }
+  });
+
+  it("negative control: fold must not be reported as leave-unread unresolved", () => {
+    const surface = deriveBridgeSurface(
+      input({
+        leaveChainPermission: AVAILABLE,
+        custodyUnresolved: "empty_history",
+      }),
+    );
+    // Perturbation that would pass under the old dual-path lie:
+    assert.notEqual(surface.blockReason, "unresolved");
+    assert.notEqual(
+      surface.locationCopy,
+      bridgeBlockReasonCopy("unresolved"),
+    );
+  });
+
+  it("lock unread is locationCopy, not leave-permission unresolved", () => {
+    const surface = deriveBridgeSurface(
+      input({
+        leaveChainPermission: AVAILABLE,
+        custodyLocked: undefined,
+        custodyUnresolved: null,
+      }),
+    );
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, null);
+    assert.equal(surface.location?.status, "location_unread");
+    assert.equal(
+      surface.locationCopy,
+      passportAwayActionCopy({ status: "location_unread" }),
+    );
+  });
+});
+
+describe("bridge panel consumes surface location — derives nothing", () => {
+  it("panel has no derivePassportPresence and uses surface.locationCopy", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /derivePassportPresence/);
+    assert.doesNotMatch(src, /passportAwayActionCopy/);
+    assert.match(src, /surface\.locationCopy/);
+    assert.match(src, /custodyUnresolved/);
+    const locationFirst = src.indexOf("surface.locationCopy != null");
+    const blockReason = src.indexOf("surface.blockReason != null");
+    assert.ok(locationFirst > 0 && blockReason > locationFirst);
   });
 });
 
@@ -220,41 +287,9 @@ describe("bridgeBlockReasonCopy", () => {
 
   it("encumbrance unread keeps leave-permission wording (not fold)", () => {
     const copy = bridgeBlockReasonCopy("unresolved");
-    assert.match(copy, /leave|permission|chain/i);
+    assert.match(copy, /Waiting for chain permission/);
     assert.doesNotMatch(copy, /No custody events/);
-    assert.doesNotMatch(copy, /departure has not been recorded/);
     assert.doesNotMatch(copy, /one side only/);
-  });
-});
-
-describe("bridge panel — fold gap vs encumbrance unread", () => {
-  it("panel prefers presence fold copy over leave-permission unread wording", () => {
-    const src = readFileSync(
-      join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
-      "utf8",
-    );
-    assert.match(src, /derivePassportPresence/);
-    assert.match(src, /passportAwayActionCopy/);
-    assert.match(src, /custodyUnresolved/);
-    assert.match(src, /locationGapCopy/);
-    // Fold chrome must win the disabledReason branch before surface.blockReason.
-    const locationFirst = src.indexOf("locationGapCopy != null");
-    const blockReason = src.indexOf("surface.blockReason != null");
-    assert.ok(locationFirst > 0 && blockReason > locationFirst);
-  });
-
-  it("fold unresolved copy never claims waiting for leave permission", () => {
-    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
-      const presence = derivePassportPresence({
-        viewChainId: 84532,
-        custodyLocked: false,
-        custodyUnresolved: cause,
-      });
-      const copy = passportAwayActionCopy(presence);
-      assert.doesNotMatch(copy, /leave permission/i);
-      assert.doesNotMatch(copy, /Waiting for leave/i);
-      assert.doesNotMatch(copy, /may\(LeaveChain\)/i);
-    }
   });
 });
 

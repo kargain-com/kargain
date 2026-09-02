@@ -47,7 +47,6 @@ import {
   derivePassportActionSurface,
   isAvailable,
 } from "@/lib/passport/action-surface";
-import { derivePassportPresence } from "@/lib/passport/presence";
 import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
@@ -264,14 +263,13 @@ export function PassportActionsPanel({
     tokenId,
     enabled: Boolean(passport),
   });
-  const presence = derivePassportPresence({
-    viewChainId: chainId,
-    custodyLocked: commerceFacts.custodyLocked,
-    ponderCustodyChain: ponderCustodyChain ?? chainId,
-    custodyUnresolved: custodyUnresolved ?? null,
-  });
   const actionSurface = derivePassportActionSurface({
-    presence,
+    presenceFacts: {
+      viewChainId: chainId,
+      custodyLocked: commerceFacts.custodyLocked,
+      ponderCustodyChain: ponderCustodyChain ?? chainId,
+      custodyUnresolved: custodyUnresolved ?? null,
+    },
     challenge: challengeSurface,
     wallet: address,
     isOwner,
