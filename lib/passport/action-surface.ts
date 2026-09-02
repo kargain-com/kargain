@@ -19,7 +19,10 @@ import type { PassportStatus } from "@/lib/types/ponder";
  * Presence causes for passport writes gated by `_requireNotBridgedAway`.
  * Distinct from challenge causes — a passport that is away is not "unverified".
  */
-export type PassportPresenceBlockCause = "away" | "reads_unresolved";
+export type PassportPresenceBlockCause =
+  | "away"
+  | "reads_unresolved"
+  | "custody_unresolved";
 
 export type PassportWriteBlockCause =
   | PassportPresenceBlockCause
@@ -96,8 +99,11 @@ export type DerivePassportActionSurfaceInput = {
 function presenceGate(
   presence: PassportPresence,
 ): ActionGate<PassportWriteBlockCause> | null {
-  if (presence.status === "unresolved") {
+  if (presence.status === "location_unread") {
     return blocked("reads_unresolved");
+  }
+  if (presence.status === "location_unresolved") {
+    return blocked("custody_unresolved");
   }
   if (presence.status === "away") {
     return blocked("away");
@@ -126,7 +132,11 @@ export function editMetadataRefusalCopy(
   cause: PassportEditRefusalCause,
   presence: PassportPresence,
 ): string {
-  if (cause === "away" || cause === "reads_unresolved") {
+  if (
+    cause === "away" ||
+    cause === "reads_unresolved" ||
+    cause === "custody_unresolved"
+  ) {
     return passportAwayActionCopy(presence);
   }
   if (cause === "disputed") {

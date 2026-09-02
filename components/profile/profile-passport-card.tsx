@@ -15,6 +15,7 @@ import { isProfilePassportBridgedAway } from "@/lib/passport/map-profile-passpor
 import {
   derivePassportPresence,
   derivePassportTrustDisplay,
+  passportAwayActionCopy,
 } from "@/lib/passport/presence";
 import { buildProfilePassportTitle } from "@/lib/passport/vehicle-label";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -72,8 +73,12 @@ export function ProfilePassportCard({
   // Inventory presence from indexer location — not escrow custody.
   const presence = derivePassportPresence({
     viewChainId: chainId,
-    // Profile tiles have no RPC lock read; custody mismatch means away.
-    custodyLocked: bridgedAway || Boolean(transitBadge) ? true : false,
+    custodyLocked:
+      custodyUnresolved || custodyChain == null
+        ? undefined
+        : bridgedAway || Boolean(transitBadge)
+          ? true
+          : false,
     ponderCustodyChain: custodyChain,
     custodyUnresolved: custodyUnresolved ?? null,
     locationChainId: custodyChain,
@@ -89,8 +94,9 @@ export function ProfilePassportCard({
   });
   const stateText = transitBadge
     ? transitBadge
-    : custodyUnresolved
-      ? "location unread"
+    : presence.status === "location_unread" ||
+        presence.status === "location_unresolved"
+      ? passportAwayActionCopy(presence)
       : bridgedAway && custodyChain != null
         ? `on ${shortChainName(custodyChain)}`
         : "";

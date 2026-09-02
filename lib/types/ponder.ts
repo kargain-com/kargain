@@ -1,5 +1,8 @@
 export type PassportStatus = "UNVERIFIED" | "VERIFIED" | "DISPUTED";
 
+export type { CustodyUnresolvedCause } from "@/lib/custody/normalized-event";
+import type { CustodyUnresolvedCause } from "@/lib/custody/normalized-event";
+
 export type ListingStatus = "active" | "sold";
 
 /** Denormalized passport fields shared across list/detail API rows. */
@@ -130,13 +133,6 @@ export type PonderUriHistoryEntry = {
   verificationReset: boolean;
   timestamp: string;
 };
-
-export type CustodyUnresolvedCause =
-  | "empty_history"
-  | "departure_without_arrival"
-  | "incomplete_crossing_link"
-  | "unknown_namespace"
-  | "conflicting_determination";
 
 export type PonderPassportDetail = {
   id: string;

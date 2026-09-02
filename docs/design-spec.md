@@ -244,6 +244,8 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 
 **Chain selector:** [`ChainSelector`](../components/shell/chain-selector.tsx) — Radix dropdown, full network name. Wrong-network only when the wallet is outside `kargainChains` or (when URL `?chain=` is set) mismatches that chain — never because a hub default is unset. Switch labels use `shortChainName`. Desktop only (`hidden md:flex`).
 
+**Wrong VM (third selector state).** The selector answers three states, not two: correct network · wrong network within the same virtual machine · **wrong virtual machine**. The third is not a network switch and must never offer one — a wallet on the wrong VM cannot be switched into the right one, it has to be replaced. Copy names the wallet family wanted, in sentence case: **Connect a Solana wallet to act on this network** / **Connect an Ethereum wallet to act on this network**, with the connect dialog as the action. Silent disabling of the affected control is forbidden; the reason is stated where the action was expected. The state is derived in [`chain-selector-state.ts`](../lib/web3/chain-selector-state.ts) from the active-account entry point, never from a component-level `vm` comparison.
+
 **Display currency:** [`CurrencySelector`](../components/shell/currency-selector.tsx) — first control in the right cluster (before Auctions / Verifiers). Desktop: Radix dropdown (`w-[308px]`, `p-3`); mobile: bottom sheet (`max-h-[90dvh]`) with fixed header + scrollable body. Both surfaces share client-side search filter (ISO code substring), **Fiat** / **Crypto** group eyebrows (`.eyebrow` / `narrativeEyebrow`), and a 2-column grid per group (`grid grid-cols-2 gap-0.5`); empty state when search matches nothing. Trigger shows active ISO code only (e.g. `USD`). Menu cells: fixed-width monospace symbol slot (`w-6`, `font-mono`, `text-right`, `text-text-secondary`) + ISO code (`gap-2`); selected row/cell → `text-accent-warm`. Mobile sheet cells use `min-h-11` touch rows in the same grid. AED uses an empty symbol slot (code shown once). ETH uses `Ξ` + `ETH`; BTC uses `₿` + `BTC`. KRW `₩`, RUB `₽`, JPY `¥` (CNY also `¥` — ISO code column disambiguates). Inline price displays ([`listing-display-price.tsx`](../components/marketplace/listing-display-price.tsx)) keep symbol+amount on one line — selector layout only.
 
 **Wallet:** [`WalletLoginButton`](../components/wallet-login-button.tsx) — identicon + ENS or short address + ChevronDown. Radix dropdown: View on Basescan, Copy address, Disconnect. Disconnected: opens connect dialog with **WalletConnect** (when `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set) and **Browser wallet** (injected extension or wallet in-app browser only). Mobile Safari/Chrome without an injected provider: hint to use WalletConnect or open the site in MetaMask/Coinbase Wallet; empty state when no connector is available. Dialog closes on successful connect only (`onSuccess`).
@@ -509,6 +511,10 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 | Empty inbox | Comment icon + title *No conversations yet* + description *Conversations with buyers and sellers appear here. Start one from any listing with Message seller.* + **Browse marketplace** → `/`; only when messaging is active |
 | User errors | Not registered: *This user has not enabled messages yet.* · Opted out: *This user is not accepting messages.* · Incomplete check: *Could not check whether this user can receive messages.* (not a peer-state claim) |
 
+| Account | User-facing line | Rule |
+|---------|------------------|------|
+| SVM account | Private messages are not available on this account. | Same class as the payer-side refusal ([SPEC §7.7](./contracts/SPEC.md#77-messaging-fee-payer-normative)): the messaging protocol has no identity space for this wallet family. Named at seller contact, verification request, inbox entry and messaging settings — the entry points stay visible with the reason, never removed |
+
 No per-message sender label in the bubble list. Publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 
 Address classification: [`wallet-account.ts`](../lib/web3/wallet-account.ts). Protocol contracts and bytecode `contract` accounts are not profile or messaging peers.
@@ -744,6 +750,8 @@ Private portfolios share one lifecycle vocabulary ([`lib/consignment/lifecycle.t
 | Owner list | Unified [`passport-sell-panel.tsx`](../components/passport/passport-sell-panel.tsx): **List for sale** → `/marketplace/{tokenId}/edit` when the connected viewer is confirmed by `ownerOf` and the chain listing is inactive |
 | Seller manage | **Manage listing** → same edit URL when viewer is listing seller (active listing) |
 | Seller delist | Handled on the edit page ([`listing-edit-client.tsx`](../components/marketplace/listing-edit-client.tsx)), not inline on listing detail; same `txErrorMessage` error pattern |
+
+**Quote asymmetry is stated, not omitted.** Where fiat denomination is unavailable because the network has no measured payment-token feed, the denomination control names the reason — **Fiat pricing needs a measured price feed, which this network does not have** — instead of silently offering fewer options. This is already true between the two live EVM networks and must be visible rather than inferred from a missing control. Applies to fixed-price open, ascending create, and both mandate grant dialogs.
 
 ---
 
@@ -996,6 +1004,8 @@ Custody-aware bidirectional bridge on the passport commerce rail (hub ↔ spoke)
 |---------|----------|
 | Mount | [`PassportBridgePanel`](../components/passport/passport-bridge-panel.tsx) after the sell/auction stack in [`passport-commerce.tsx`](../components/passport/passport-commerce.tsx); commerce `chainId` = Ponder `passport.custodyChain`; [`PassportEncumbranceRegistry`](../components/passport/passport-encumbrance-registry.tsx) after bridge |
 | Visibility | Pure [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts) — owner only; star custody chain (84532 or 11155111); leave permission from [`encumbrance-permission.ts`](../lib/passport/encumbrance-permission.ts) (`leaveChainPermission` gate); fail-closed on `reads_unresolved`; `source_unanswerable` carries the failing address; plain `refused` may refine to consigned / challenged when those facts are known |
+| Route hops | [`resolveBridgeRoute`](../lib/web3/bridge/bridge-config.ts) returns the ordered hop sequence, not a single pair. The panel lists every hop with its own state before the first send — a route that needs two crossings says so up front. After the first hop settles, the panel states that a second hop is required and keeps the operation open; it never renders an arrival that has not happened. Hop ids mono `tabular-nums` (`src → dst`) |
+| Wallet VM during transit | A route whose next hop is on another virtual machine names it: **The next hop is on {network}. Connect a {family} wallet to continue.** — the wrong-VM state of §4.7, not a network-switch prompt. Delivery polling is per hop and VM-aware; custody catch-up still waits on `custodyChain === dst` of the final hop, and an unresolved fold during transit is shown with its named cause (§4.21), never as a completed move |
 | Direction | `useBridge(custodyChain, counterpart, tokenId)`; **Move** when custody = origin (leave home); **Return** when custody ≠ origin (destination = home); idle button `Move to` / `Return to` \<dst\>; mono `tabular-nums` chain ids (`src → dst`) |
 | Transit | First-class in-flight lifecycle ([`bridge-transit.ts`](../lib/passport/bridge-transit.ts) + store + [`use-bridge-transit.ts`](../hooks/use-bridge-transit.ts)): persist intent on src receipt; keep panel visible after burn/lock (`transitActive` on [`deriveBridgeSurface`](../lib/passport/bridge-surface.ts)); stepper Sent → In transit → Arrived; dst `ownerOf` poll remains delivery gate; `router.replace(?chain=dst)` on delivery; **indexer catch-up** polls Ponder until `custodyChain === dst`, then [`useTxSync.syncReads`](../hooks/use-tx-sync.ts) (same invalidate + `router.refresh` as `runTx`) and clear transit so the idle Move/Return surface returns without a manual reload. Own profile passport tiles show **In transit to** / **Returning to** on the reserved state line and keep the tile |
 | Quote / fee | Mono `tabular-nums` (Instrument Layer); native fee reflects URI-length lzReceive `extraOptions` (pathway enforcedOptions remain the floor) |
@@ -1025,6 +1035,39 @@ Ops-only guardian reducing powers for FixedPrice / Ascending modes (G3 — SPEC 
 | Token rows | Level B `instrumentReadoutPanel`; mono token / guardian / owner (timelock) via `EnsWalletLink` + `serialLabel` mode·chain |
 | User notice | [`CommercePausedNotice`](../components/commerce/commerce-paused-notice.tsx) on open / bid / buy before the wallet attempt when chain `paused === true`; disable those CTAs. Pending/failed reads do not invent paused — `ContractPaused` remains the backstop |
 | Chrome | Informational §10.3: `border-border-default` + `text-text-secondary` on `bg-bg-surface` — not `accent-warm`, not `status-error` |
+
+### 4.21 Passport location vocabulary
+
+Cross-surface contract for the question "where does this passport live". Consumed by §4.11 profile, §4.14 passport detail, §4.16 listing detail, §4.19 bridge panel, and every write gate. On-chain and indexer truth: [SPEC §I.12](./contracts/SPEC.md#i12-multi-chain-architecture-normative). Custody itself is a fold over crossings — the indexer answers `{ custodyChain, custodyUnresolved }`, never a wall-clock comparison.
+
+**Four presence states, not three.** Two facts were previously collapsed into one `unresolved`: an unanswered chain read and an incomplete custody fold. They have different causes, different remedies, and different lifetimes, so they are different states.
+
+| State | Meaning | Source |
+|-------|---------|--------|
+| `here` | The usable copy is on the chain being viewed | lock read + custody agree |
+| `away` | The usable copy is on another network | lock read or custody |
+| `location_unread` | The chain read has not answered yet | `custodyLocked === undefined` — infrastructure, retryable |
+| `location_unresolved` | The custody fold returned a named cause | `custodyUnresolved` — carries the discriminant |
+
+`location_unread` and `location_unresolved` both block writes. They never share a sentence, and neither is ever rendered as an empty region, a silently disabled control, or `notFound()`.
+
+**Named causes.** Every cause in the fold reaches chrome. No surface collapses them into one string.
+
+| Cause | Line shown to the user |
+|-------|------------------------|
+| `empty_history` | No custody events are recorded for this passport yet. |
+| `departure_without_arrival` | This passport left its last network and its arrival has not been recorded yet. |
+| `incomplete_crossing_link` | A crossing for this passport is recorded on one side only. |
+| `unknown_namespace` | The last network recorded for this passport is not one Kargain serves. |
+| `conflicting_determination` | Two networks claim this passport at the same time. |
+
+Each line is followed by the same consequence sentence: **Actions that depend on custody stay unavailable until the location resolves.** `unknown_namespace` instead reads: **This passport cannot be acted on from Kargain while its location is outside the served networks.**
+
+**Absent location is never absent passport.** A passport whose location is unread or unresolved exists. Routes must refuse by name through the refusal surface they already own — [`EditRefusalShell`](../app/(identity)/passport/[tokenId]/edit/page.tsx) on the edit route, the detail shell on marketplace and passport detail — and must not call `notFound()`. `notFound()` stays reserved for a token that does not exist.
+
+**Write-block causes.** `reads_unresolved` keeps its literal meaning — a chain read has not answered. A block that originates in the custody fold is `custody_unresolved` and carries the cause. A surface that reports a fold gap as `reads_unresolved` is stating something untrue about where the gap is.
+
+**Typography.** The cause line and its consequence are sans, `text-text-secondary`. Chain ids, token ids and addresses inside them stay mono `tabular-nums` (§10.1). No accent-warm — an unresolved location is not a confirmed trust state.
 
 ---
 
@@ -1153,6 +1196,8 @@ All on-chain and factual fields render in `font-mono` with `tabular-nums` on num
 **Narrative eyebrows vs serials:** §3 **Caption / eyebrow** (`text-accent-warm`, global `.eyebrow`) applies to **narrative page and section labels** only (§4.6 page intros, form section headers) — not to on-chain serial numbers or factual metadata.
 
 **Relative time:** Canonical formatter: [`lib/format/relative-time.ts`](../lib/format/relative-time.ts) `formatRelativeTime`. Display output with `font-mono tabular-nums`. Local duplicate formatters (e.g. profile dispute cards) are Phase-2 technical debt — not part of this spec amendment.
+
+**Native unit comes from the network class.** Symbol and decimal count for a native amount are read from the `nativeUnit` of the commercial stack, never assumed. Eighteen decimals is a property of one wallet family, not of money: `parseEther` / `formatEther` and any literal `18` decimals are confined to the formatting owner and are not called from panels, cards or route files. Settlement disclosure names the same unit it formats. Presentation is unchanged — native amounts stay mono `tabular-nums` `text-text-primary`, never accent-warm.
 
 ---
 

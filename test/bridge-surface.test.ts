@@ -15,6 +15,11 @@ import {
   type BridgeSurfaceInput,
   type BridgeSurfaceResult,
 } from "../lib/passport/bridge-surface.ts";
+import {
+  derivePassportPresence,
+  passportAwayActionCopy,
+} from "../lib/passport/presence.ts";
+import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
 
 const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
 const REFUSED: EncumbrancePermissionGate = {
@@ -211,6 +216,45 @@ describe("bridgeBlockReasonCopy", () => {
       bridgeBlockReasonCopy("source_unanswerable", SOURCE),
       /0x1111/,
     );
+  });
+
+  it("encumbrance unread keeps leave-permission wording (not fold)", () => {
+    const copy = bridgeBlockReasonCopy("unresolved");
+    assert.match(copy, /leave|permission|chain/i);
+    assert.doesNotMatch(copy, /No custody events/);
+    assert.doesNotMatch(copy, /departure has not been recorded/);
+    assert.doesNotMatch(copy, /one side only/);
+  });
+});
+
+describe("bridge panel — fold gap vs encumbrance unread", () => {
+  it("panel prefers presence fold copy over leave-permission unread wording", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
+      "utf8",
+    );
+    assert.match(src, /derivePassportPresence/);
+    assert.match(src, /passportAwayActionCopy/);
+    assert.match(src, /custodyUnresolved/);
+    assert.match(src, /locationGapCopy/);
+    // Fold chrome must win the disabledReason branch before surface.blockReason.
+    const locationFirst = src.indexOf("locationGapCopy != null");
+    const blockReason = src.indexOf("surface.blockReason != null");
+    assert.ok(locationFirst > 0 && blockReason > locationFirst);
+  });
+
+  it("fold unresolved copy never claims waiting for leave permission", () => {
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const presence = derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: false,
+        custodyUnresolved: cause,
+      });
+      const copy = passportAwayActionCopy(presence);
+      assert.doesNotMatch(copy, /leave permission/i);
+      assert.doesNotMatch(copy, /Waiting for leave/i);
+      assert.doesNotMatch(copy, /may\(LeaveChain\)/i);
+    }
   });
 });
 

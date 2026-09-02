@@ -22,12 +22,35 @@ export type NormalizedCrossingLeg = {
   writerOrderKey: string;
 };
 
-export type CustodyUnresolvedCause =
-  | "empty_history"
-  | "departure_without_arrival"
-  | "incomplete_crossing_link"
-  | "unknown_namespace"
-  | "conflicting_determination";
+/**
+ * Sole runtime census of fold-incomplete causes (§4.21).
+ * Type and parsers must consume this list — do not duplicate the literals.
+ */
+export const CUSTODY_UNRESOLVED_CAUSES = [
+  "empty_history",
+  "departure_without_arrival",
+  "incomplete_crossing_link",
+  "unknown_namespace",
+  "conflicting_determination",
+] as const;
+
+export type CustodyUnresolvedCause = (typeof CUSTODY_UNRESOLVED_CAUSES)[number];
+
+export function isCustodyUnresolvedCause(
+  value: unknown,
+): value is CustodyUnresolvedCause {
+  return (
+    typeof value === "string" &&
+    (CUSTODY_UNRESOLVED_CAUSES as readonly string[]).includes(value)
+  );
+}
+
+/** Parse a fold cause string; unknown values refuse (null). */
+export function parseCustodyUnresolvedCause(
+  value: unknown,
+): CustodyUnresolvedCause | null {
+  return isCustodyUnresolvedCause(value) ? value : null;
+}
 
 export type CustodyFoldResult =
   | { status: "resolved"; custodyNamespace: number }

@@ -73,6 +73,8 @@ type Props = {
   chainId: number;
   /** Ponder usable-copy location — presence input. Defaults to `chainId`. */
   ponderCustodyChain?: number;
+  /** Fold incomplete cause from indexer. */
+  custodyUnresolved?: string | null;
   passportOwner: `0x${string}`;
   status: PassportStatus;
   lastDisputer: string;
@@ -96,6 +98,7 @@ export function PassportActionsPanel({
   tokenId,
   chainId,
   ponderCustodyChain,
+  custodyUnresolved,
   passportOwner,
   status,
   lastDisputer,
@@ -265,6 +268,7 @@ export function PassportActionsPanel({
     viewChainId: chainId,
     custodyLocked: commerceFacts.custodyLocked,
     ponderCustodyChain: ponderCustodyChain ?? chainId,
+    custodyUnresolved: custodyUnresolved ?? null,
   });
   const actionSurface = derivePassportActionSurface({
     presence,

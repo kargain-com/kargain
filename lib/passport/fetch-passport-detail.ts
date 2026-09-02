@@ -14,6 +14,7 @@ import {
   type PassportMetadata,
 } from "@/lib/passport/fetch-arweave-metadata";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
+import { parseCustodyUnresolvedCause } from "@/lib/custody/normalized-event";
 import type {
   CustodyUnresolvedCause,
   PassportStatus,
@@ -82,16 +83,7 @@ function parseChainIdField(value: unknown): number | null {
 function parseCustodyUnresolved(value: unknown): CustodyUnresolvedCause | null | undefined {
   if (value === null) return null;
   if (typeof value !== "string") return undefined;
-  const causes: CustodyUnresolvedCause[] = [
-    "empty_history",
-    "departure_without_arrival",
-    "incomplete_crossing_link",
-    "unknown_namespace",
-    "conflicting_determination",
-  ];
-  return causes.includes(value as CustodyUnresolvedCause)
-    ? (value as CustodyUnresolvedCause)
-    : undefined;
+  return parseCustodyUnresolvedCause(value) ?? undefined;
 }
 
 /** Exported for unit tests — fail-closed without custody answer. */

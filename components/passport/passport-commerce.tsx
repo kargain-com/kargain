@@ -26,6 +26,7 @@ type Props = {
   initialAuction: AuctionRow | null;
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
+  custodyUnresolved?: string | null;
   duplicateVin: boolean;
   hadDispute: boolean;
 };
@@ -41,6 +42,7 @@ export function PassportCommerce({
   initialAuction,
   passportOwner,
   passportStatus,
+  custodyUnresolved,
   duplicateVin,
   hadDispute,
 }: Props) {
@@ -132,6 +134,7 @@ export function PassportCommerce({
         tokenId={tokenId}
         passportOwner={passportOwner}
         passportStatus={passportStatus}
+        custodyUnresolved={custodyUnresolved}
         leaveChainPermission={facts.leaveChainPermission}
         liveConsignmentMode={facts.liveConsignmentMode}
         challengeOpen={facts.challengeOpen}

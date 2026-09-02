@@ -109,6 +109,7 @@ export function PassportDetailView({
       initialAuction={auction}
       passportOwner={passport.owner as `0x${string}`}
       passportStatus={passport.status}
+      custodyUnresolved={passport.custodyUnresolved}
       duplicateVin={passport.duplicateVin}
       hadDispute={passport.hadDispute}
     />
@@ -155,6 +156,7 @@ export function PassportDetailView({
       tokenId={tokenId}
       chainId={chainId}
       ponderCustodyChain={chainId}
+      custodyUnresolved={passport.custodyUnresolved}
       passportOwner={passport.owner as `0x${string}`}
       status={passport.status}
       lastDisputer={passport.lastDisputer}
@@ -194,6 +196,7 @@ export function PassportDetailView({
                 tokenId={tokenId}
                 chainId={chainId}
                 ponderCustodyChain={chainId}
+                custodyUnresolved={passport.custodyUnresolved}
                 recordedStatus={passport.status}
                 sublabel={statusSublabel}
                 className="shrink-0"
@@ -264,6 +267,7 @@ export function PassportDetailView({
                 tokenId={tokenId}
                 chainId={chainId}
                 ponderCustodyChain={chainId}
+                custodyUnresolved={passport.custodyUnresolved}
                 recordedStatus={passport.status}
                 photos={metadata?.photos ?? []}
               />

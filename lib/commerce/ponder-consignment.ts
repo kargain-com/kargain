@@ -13,6 +13,7 @@ import {
 } from "@/lib/commerce/denomination";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { CustodyUnresolvedCause } from "@/lib/types/ponder";
+import { parseCustodyUnresolvedCause } from "@/lib/custody/normalized-event";
 
 /** Indexed consignment phase — richer than the on-chain enum. */
 export type IndexedConsignmentPhase =
@@ -188,23 +189,6 @@ function toAddress(value: string | null | undefined): `0x${string}` | null {
   if (!value || !value.startsWith("0x")) return null;
   if (value.toLowerCase() === ZERO_ADDRESS) return null;
   return value as `0x${string}`;
-}
-
-const CUSTODY_UNRESOLVED_CAUSES = [
-  "empty_history",
-  "departure_without_arrival",
-  "incomplete_crossing_link",
-  "unknown_namespace",
-  "conflicting_determination",
-] as const satisfies readonly CustodyUnresolvedCause[];
-
-function parseCustodyUnresolvedCause(
-  value: unknown,
-): CustodyUnresolvedCause | null {
-  if (typeof value !== "string") return null;
-  return (CUSTODY_UNRESOLVED_CAUSES as readonly string[]).includes(value)
-    ? (value as CustodyUnresolvedCause)
-    : null;
 }
 
 /** Fail-closed row mapper: unknown mode or phase drops the row. */

@@ -57,7 +57,8 @@ function EditRefusalShell({
 
 const REFUSAL_TITLE: Record<PassportEditRefusalCause, string> = {
   away: "Passport is on another chain",
-  reads_unresolved: "Custody could not be read",
+  reads_unresolved: "Location could not be read",
+  custody_unresolved: "Passport location is unresolved",
   disputed: "Passport is under challenge",
   listing_active: "Passport is held for sale",
   not_configured: "Passport not available on this chain",
@@ -111,9 +112,47 @@ export default async function EditPassportPage({
   }
 
   const { passport, metadata } = result;
+  const originOrHint = passport.chainId;
 
+  // Location gap — named refusal, never notFound (§4.21).
   if (passport.custodyUnresolved || passport.custodyChain == null) {
-    notFound();
+    const presence = derivePassportPresence({
+      viewChainId: originOrHint,
+      custodyLocked: undefined,
+      ponderCustodyChain: passport.custodyChain,
+      custodyUnresolved: passport.custodyUnresolved ?? null,
+    });
+    const access = resolvePassportEditAccess({
+      presence,
+      status: passport.status,
+      listingActive: false,
+      configured: true,
+    });
+    if (access.status === "refuse") {
+      return (
+        <EditRefusalShell
+          tokenId={tokenId}
+          chainId={passport.custodyChain ?? originOrHint}
+          cause={access.cause}
+          presence={access.presence}
+          title={REFUSAL_TITLE[access.cause]}
+        />
+      );
+    }
+  }
+
+  if (passport.custodyChain == null) {
+    // Fail closed: unresolved without a refuse path must still not invent edit.
+    const presence: PassportPresence = { status: "location_unread" };
+    return (
+      <EditRefusalShell
+        tokenId={tokenId}
+        chainId={originOrHint}
+        cause="reads_unresolved"
+        presence={presence}
+        title={REFUSAL_TITLE.reads_unresolved}
+      />
+    );
   }
 
   const chainId = passport.custodyChain;
@@ -137,7 +176,7 @@ export default async function EditPassportPage({
   );
 
   if (!passportAddr) {
-    const presence: PassportPresence = { status: "unresolved" };
+    const presence: PassportPresence = { status: "here" };
     return (
       <EditRefusalShell
         tokenId={tokenId}
@@ -180,7 +219,7 @@ export default async function EditPassportPage({
       modeCustodians.includes(owner.toLowerCase());
   } catch {
     // Fail closed: setPassportURI is gated by custody lock — unread → no edit.
-    presence = { status: "unresolved" };
+    presence = { status: "location_unread" };
     listingActive = false;
   }
 

@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
 import {
   derivePassportPresence,
   derivePassportTrustDisplay,
   isPassportHere,
+  locationUnresolvedCauseCopy,
+  locationUnresolvedCauseCopyTable,
   passportAwayActionCopy,
   presenceBlocksWrites,
 } from "../lib/passport/presence.ts";
@@ -58,15 +61,50 @@ describe("derivePassportPresence", () => {
     }
   });
 
-  it("fail-closes unresolved when lock unread", () => {
+  it("location_unread when lock unread — distinct from fold", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
       custodyLocked: undefined,
       ponderCustodyChain: 84532,
     });
-    assert.equal(p.status, "unresolved");
+    assert.equal(p.status, "location_unread");
     assert.equal(presenceBlocksWrites(p), true);
-    assert.match(passportAwayActionCopy(p), /Waiting/);
+    const copy = passportAwayActionCopy(p);
+    assert.match(copy, /chain to answer/i);
+    assert.doesNotMatch(copy, /Waiting for chain custody/);
+  });
+
+  it("location_unresolved carries each fold cause and never shares unread copy", () => {
+    const unread = passportAwayActionCopy(
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: undefined,
+      }),
+    );
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const p = derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: undefined,
+        custodyUnresolved: cause,
+      });
+      assert.equal(p.status, "location_unresolved");
+      if (p.status === "location_unresolved") {
+        assert.equal(p.cause, cause);
+      }
+      const copy = passportAwayActionCopy(p);
+      assert.notEqual(copy, unread);
+      assert.equal(copy, locationUnresolvedCauseCopy(cause));
+    }
+  });
+
+  it("fold cause wins over unlocked here", () => {
+    const p = derivePassportPresence({
+      viewChainId: 84532,
+      custodyLocked: false,
+      ponderCustodyChain: 84532,
+      custodyUnresolved: "departure_without_arrival",
+    });
+    assert.equal(p.status, "location_unresolved");
   });
 
   it("away copy names the location chain", () => {
@@ -81,8 +119,75 @@ describe("derivePassportPresence", () => {
   });
 });
 
+describe("location unresolved copy exhaustiveness", () => {
+  it("copy table keys equal CUSTODY_UNRESOLVED_CAUSES sole enumerator", () => {
+    const table = locationUnresolvedCauseCopyTable();
+    assert.deepEqual(
+      Object.keys(table).sort(),
+      [...CUSTODY_UNRESOLVED_CAUSES].sort(),
+    );
+    for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
+      const copy = locationUnresolvedCauseCopy(cause);
+      assert.ok(copy.includes(table[cause]));
+      if (cause === "unknown_namespace") {
+        assert.match(copy, /outside the served networks/);
+        assert.doesNotMatch(copy, /until the location resolves/);
+      } else {
+        assert.match(copy, /until the location resolves/);
+      }
+    }
+  });
+
+  it("negative control: injecting a cause without copy fails closed", () => {
+    const table = locationUnresolvedCauseCopyTable() as Record<string, string>;
+    const phantom = "invented_cause_for_negative_control";
+    assert.equal(table[phantom], undefined);
+    assert.throws(() => {
+      // Simulate a gate that requires every enumerator key to have a line.
+      const required = [...CUSTODY_UNRESOLVED_CAUSES, phantom];
+      for (const key of required) {
+        if (table[key] == null || table[key] === "") {
+          throw new Error(`missing copy for ${key}`);
+        }
+      }
+    }, /missing copy for invented_cause_for_negative_control/);
+  });
+});
+
+describe("collapse ban — no single unresolved status", () => {
+  it("owner never returns status unresolved", () => {
+    const cases = [
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: undefined,
+      }),
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: false,
+        custodyUnresolved: "empty_history",
+      }),
+    ];
+    for (const p of cases) {
+      assert.notEqual(
+        (p as { status: string }).status,
+        "unresolved",
+        JSON.stringify(p),
+      );
+    }
+  });
+
+  it("presence module source does not declare collapsed unresolved status", () => {
+    const src = readFileSync(
+      join(process.cwd(), "lib/passport/presence.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /status:\s*["']unresolved["']/);
+    assert.doesNotMatch(src, /Waiting for chain custody/);
+  });
+});
+
 describe("derivePassportTrustDisplay", () => {
-  it("never asserts live VERIFIED while away or unresolved", () => {
+  it("never asserts live VERIFIED while away or location gap", () => {
     for (const presence of [
       derivePassportPresence({
         viewChainId: 84532,
@@ -92,6 +197,11 @@ describe("derivePassportTrustDisplay", () => {
       derivePassportPresence({
         viewChainId: 84532,
         custodyLocked: undefined,
+      }),
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLocked: false,
+        custodyUnresolved: "conflicting_determination",
       }),
     ] as const) {
       const d = derivePassportTrustDisplay(presence, "VERIFIED");
@@ -118,6 +228,42 @@ describe("derivePassportTrustDisplay", () => {
   });
 });
 
+describe("notFound ban on location surfaces", () => {
+  it("marketplace detail does not notFound on custodyUnresolved", () => {
+    const src = readFileSync(
+      join(
+        process.cwd(),
+        "app/(identity)/marketplace/[tokenId]/page.tsx",
+      ),
+      "utf8",
+    );
+    assert.match(src, /custodyUnresolved/);
+    assert.match(src, /passportAwayActionCopy|EmptyState/);
+    // Old defect: if (…custodyUnresolved…) { notFound(); }
+    assert.doesNotMatch(
+      src,
+      /if\s*\([^)]*custodyUnresolved[^)]*\)\s*\{\s*notFound\s*\(\s*\)/,
+    );
+  });
+
+  it("edit route does not notFound on custodyUnresolved", () => {
+    const src = readFileSync(
+      join(
+        process.cwd(),
+        "app/(identity)/passport/[tokenId]/edit/page.tsx",
+      ),
+      "utf8",
+    );
+    assert.match(src, /EditRefusalShell/);
+    assert.match(src, /custody_unresolved|location_unresolved|custodyUnresolved/);
+    assert.doesNotMatch(
+      src,
+      /if\s*\([^)]*custodyUnresolved[^)]*\)\s*\{\s*notFound\s*\(\s*\)/,
+    );
+    assert.doesNotMatch(src, /status:\s*["']unresolved["']/);
+  });
+});
+
 describe("profile tile presence policy", () => {
   it("profile-passport-card withholds verified accent via trust display", () => {
     const src = readFileSync(
@@ -126,6 +272,8 @@ describe("profile tile presence policy", () => {
     );
     assert.match(src, /derivePassportTrustDisplay/);
     assert.match(src, /showVerifiedAccent/);
+    assert.match(src, /passportAwayActionCopy/);
+    assert.doesNotMatch(src, /location unread/);
     assert.doesNotMatch(src, /status === ["']VERIFIED["']\s*\n\s*\? ["']border-accent-warm/);
   });
 });
@@ -137,6 +285,7 @@ describe("detail gallery presence policy", () => {
       "utf8",
     );
     assert.match(src, /PassportPresenceGallery/);
+    assert.match(src, /custodyUnresolved=\{passport\.custodyUnresolved\}/);
     assert.doesNotMatch(src, /PassportPresenceVerified/);
   });
 
@@ -146,6 +295,7 @@ describe("detail gallery presence policy", () => {
       "utf8",
     );
     assert.match(src, /export function PassportPresenceGallery/);
+    assert.match(src, /custodyUnresolved/);
     assert.doesNotMatch(src, /PassportPresenceVerified/);
     assert.doesNotMatch(src, /children:\s*\([^)]*\)\s*=>/);
   });

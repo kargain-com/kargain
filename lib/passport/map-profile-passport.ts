@@ -3,6 +3,7 @@ import {
   type ConsignmentRecord,
 } from "@/lib/commerce/ponder-consignment";
 import type { CustodyUnresolvedCause, PassportStatus } from "@/lib/types/ponder";
+import { parseCustodyUnresolvedCause } from "@/lib/custody/normalized-event";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 
 export type ProfilePassportRow = {
@@ -76,16 +77,7 @@ export function isProfilePassportBridgedAway(
 function parseCustodyUnresolved(value: unknown): CustodyUnresolvedCause | null | undefined {
   if (value === null) return null;
   if (typeof value !== "string") return undefined;
-  const causes: CustodyUnresolvedCause[] = [
-    "empty_history",
-    "departure_without_arrival",
-    "incomplete_crossing_link",
-    "unknown_namespace",
-    "conflicting_determination",
-  ];
-  return causes.includes(value as CustodyUnresolvedCause)
-    ? (value as CustodyUnresolvedCause)
-    : undefined;
+  return parseCustodyUnresolvedCause(value) ?? undefined;
 }
 
 /**

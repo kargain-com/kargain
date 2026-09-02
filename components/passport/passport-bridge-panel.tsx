@@ -20,6 +20,10 @@ import {
   deriveBridgeSurface,
 } from "@/lib/passport/bridge-surface";
 import {
+  derivePassportPresence,
+  passportAwayActionCopy,
+} from "@/lib/passport/presence";
+import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
@@ -35,6 +39,8 @@ type Props = {
   tokenId: string;
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
+  /** Fold incomplete cause — shown by name (§4.21); never mapped to encumbrance unread. */
+  custodyUnresolved?: string | null;
   /** `may(tokenId, LeaveChain)` gate from commerce facts. */
   leaveChainPermission: EncumbrancePermissionGate;
   /** Mode holding a live consignment, when one does — drives block copy. */
@@ -48,6 +54,7 @@ export function PassportBridgePanel({
   tokenId,
   passportOwner,
   passportStatus,
+  custodyUnresolved,
   leaveChainPermission,
   liveConsignmentMode,
   challengeOpen,
@@ -142,8 +149,22 @@ export function PassportBridgePanel({
 
   if (!surface.visible) return null;
 
+  const locationPresence = derivePassportPresence({
+    viewChainId: chainId,
+    custodyLocked: custodyUnresolved ? undefined : false,
+    ponderCustodyChain: chainId,
+    custodyUnresolved: custodyUnresolved ?? null,
+  });
+  const locationGapCopy =
+    locationPresence.status === "location_unread" ||
+    locationPresence.status === "location_unresolved"
+      ? passportAwayActionCopy(locationPresence)
+      : null;
+
   const disabledReason =
-    surface.blockReason != null
+    locationGapCopy != null
+      ? locationGapCopy
+      : surface.blockReason != null
       ? bridgeBlockReasonCopy(
           surface.blockReason,
           surface.unanswerableSource,
