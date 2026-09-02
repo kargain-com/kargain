@@ -6,8 +6,7 @@ import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
 } from "@/lib/web3/deployment-addresses";
-import { FX_RATE_CHAIN_ID, fxRateChainIdFor } from "@/lib/web3/chain-context";
-import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { hubFxRateChainId } from "@/lib/web3/chain-context";
 import {
   useKeyedReadContracts,
   type KeyedContract,
@@ -52,9 +51,7 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
 } {
   const enabled = options?.enabled ?? true;
   // Always read feeds on the FX reference pin — not the wallet's active chain.
-  const fxChain = fxRateChainIdFor(
-    requireCommercialActive(FX_RATE_CHAIN_ID),
-  );
+  const fxChain = hubFxRateChainId();
   const chainId = wagmiChainId(fxChain);
   const nativeFeed = chainlinkNativeUsdFeed(fxChain);
   const eurFeed = chainlinkEurUsdFeed(fxChain);

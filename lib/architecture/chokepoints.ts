@@ -236,6 +236,18 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["network-class-policy.test.ts"],
   },
   {
+    id: "explorer-origin",
+    owner: "lib/web3/explorer-origin.ts",
+    rule: "Sole mintExplorerOrigin for commercial explorer bases; empty refused at registry ingress",
+    guardTests: ["s8-1-consumer-wiring-policy.test.ts", "network-data-layer.test.ts"],
+  },
+  {
+    id: "commercial-native-unit",
+    owner: "lib/web3/commercial-native-unit.ts",
+    rule: "Sole mintCommercialNativeUnit for stack nativeUnit; invalid symbol/decimals refused at ingress",
+    guardTests: ["s8-1-consumer-wiring-policy.test.ts", "network-data-layer.test.ts"],
+  },
+  {
     id: "product-policy-scan",
     owner: "test/policy-scan-helpers.ts",
     rule: "Sole product ownership-policy walk (app|components|hooks|lib); policies supply predicate + owners only",

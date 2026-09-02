@@ -15,6 +15,7 @@
 import {
   commercialEip155Ids,
   isCommercialChainId,
+  requireCommercialActive,
   type CommercialActiveStack,
 } from "@/lib/web3/commercial-active";
 import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
@@ -113,6 +114,14 @@ export function fxRateChainIdFor(stack: CommercialActiveStack): number {
     );
   }
   return FX_RATE_CHAIN_ID;
+}
+
+/**
+ * FX pin for the hub env-class commercial stack (display rates).
+ * Sole composition used by Chainlink rate reads.
+ */
+export function hubFxRateChainId(): number {
+  return fxRateChainIdFor(requireCommercialActive(FX_RATE_CHAIN_ID));
 }
 
 /** @deprecated Prefer {@link fxRateChainIdFor} with an EVM commercial stack. */

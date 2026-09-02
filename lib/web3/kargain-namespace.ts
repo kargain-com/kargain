@@ -12,16 +12,11 @@ export type KargainNamespace = number & {
   readonly [kargainNamespaceBrand]: void;
 };
 
-/** Mint a namespace — registry / ingress only. */
+/** Mint a namespace — registry / ingress only. Sole entrance to the brand. */
 export function mintKargainNamespace(value: number): KargainNamespace {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`Invalid KargainNamespace: ${value}`);
   }
-  return value as KargainNamespace;
-}
-
-/** Narrow a number that is already known to be a registry key. */
-export function asKargainNamespace(value: number): KargainNamespace {
   return value as KargainNamespace;
 }
 

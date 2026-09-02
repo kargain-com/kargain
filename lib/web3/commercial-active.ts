@@ -15,11 +15,18 @@
  */
 
 import {
-  asKargainNamespace,
   isReservedNonEvmNamespace,
   mintKargainNamespace,
   type KargainNamespace,
 } from "@/lib/web3/kargain-namespace";
+import {
+  mintCommercialNativeUnit,
+  type CommercialNativeUnit,
+} from "@/lib/web3/commercial-native-unit";
+import { mintExplorerOrigin, type ExplorerOrigin } from "@/lib/web3/explorer-origin";
+
+export type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
+export type { ExplorerOrigin } from "@/lib/web3/explorer-origin";
 
 export type CommercialActiveBlocks = {
   timelock?: number;
@@ -32,12 +39,6 @@ export type CommercialActiveBlocks = {
   fixedPriceConsignmentImpl?: number;
   ascendingConsignment?: number;
   ascendingConsignmentImpl?: number;
-};
-
-/** Native gas-token unit metadata — declare only; formatters rewired in S8. */
-export type CommercialNativeUnit = {
-  symbol: string;
-  decimals: number;
 };
 
 /**
@@ -75,8 +76,8 @@ type EvmCommercialActiveStackShared = {
   indexFromBlock: number;
   blocks: CommercialActiveBlocks;
   nativeUnit: CommercialNativeUnit;
-  /** Block explorer origin (no trailing slash) — network-class data, not viem. */
-  explorerBaseUrl: string;
+  /** Block explorer origin — minted via {@link mintExplorerOrigin}. */
+  explorerBaseUrl: ExplorerOrigin;
 };
 
 /**
@@ -100,8 +101,8 @@ export type SvmCommercialActiveStack = {
   vm: "svm";
   namespace: KargainNamespace;
   nativeUnit: CommercialNativeUnit;
-  /** Block explorer origin (no trailing slash). */
-  explorerBaseUrl: string;
+  /** Block explorer origin — minted via {@link mintExplorerOrigin}. */
+  explorerBaseUrl: ExplorerOrigin;
   karPassport: string;
   karProPass: string;
   karProStaking: string;
@@ -129,7 +130,7 @@ export type SvmCommercialActiveStack = {
 /** Discriminated commercial stack — live registry is EVM-only; SVM shape is typed for S4b+. */
 export type CommercialActiveStack = EvmCommercialActiveStack | SvmCommercialActiveStack;
 
-const ETH_NATIVE_UNIT = { symbol: "ETH", decimals: 18 } as const satisfies CommercialNativeUnit;
+const ETH_NATIVE_UNIT = mintCommercialNativeUnit("ETH", 18);
 
 /** Base Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.1); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
 const BASE_SEPOLIA_84532 = {
@@ -137,7 +138,7 @@ const BASE_SEPOLIA_84532 = {
   namespace: mintKargainNamespace(84532),
   chainId: 84532,
   nativeUnit: ETH_NATIVE_UNIT,
-  explorerBaseUrl: "https://sepolia.basescan.org",
+  explorerBaseUrl: mintExplorerOrigin("https://sepolia.basescan.org"),
   karPassport: "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
   karProPass: "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
   karProStaking: "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
@@ -173,7 +174,7 @@ const ETHEREUM_SEPOLIA_11155111 = {
   namespace: mintKargainNamespace(11155111),
   chainId: 11155111,
   nativeUnit: ETH_NATIVE_UNIT,
-  explorerBaseUrl: "https://sepolia.etherscan.io",
+  explorerBaseUrl: mintExplorerOrigin("https://sepolia.etherscan.io"),
   karPassport: "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
   karProPass: "0xb83b89f4a7303f005dA8c0787e904104a1030128",
   karProStaking: "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
@@ -305,13 +306,10 @@ export function eip155Of(namespace: KargainNamespace | number): number {
 
 /** Namespace brand for a known commercial EIP-155 / registry key. */
 export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamespace {
-  return asKargainNamespace(requireCommercialActive(chainId).namespace);
+  return requireCommercialActive(chainId).namespace;
 }
 
-/**
- * Native unit from the network class (sole reader).
- * Presence and shape are type/registry invariants — no runtime re-check.
- */
+/** Native unit from the network class (sole reader). */
 export function nativeUnitOf(stack: CommercialActiveStack): CommercialNativeUnit {
   return stack.nativeUnit;
 }

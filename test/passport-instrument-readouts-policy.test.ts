@@ -1,32 +1,28 @@
 /**
- * Passport-ui consume pin: instrument readouts use network-explorer owner (S8-1-fix).
+ * Passport-ui: instrument readouts call commercialExplorerAddressUrl (S8-1-close).
+ * DOM href without render is not observed — behaviour covered is the pure producer.
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { getAddress } from "viem";
 
-import { instrumentReadoutsWiringOk } from "./s8-1-consumer-wiring-helpers.ts";
+import { commercialExplorerAddressUrl } from "../lib/web3/network-explorer.ts";
+import { mintExplorerOrigin } from "../lib/web3/explorer-origin.ts";
 
-const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
-const READOUTS = join(
-  ROOT,
-  "components/passport/passport-instrument-readouts.tsx",
-);
-
-describe("passport instrument readouts explorer wiring", () => {
-  it("imports explorerAddressUrl from network-explorer with commercial stack", () => {
-    const text = readFileSync(READOUTS, "utf8");
-    assert.equal(instrumentReadoutsWiringOk(text), true);
+describe("passport instrument readouts explorer producer", () => {
+  it("commercialExplorerAddressUrl builds Base Sepolia address URL", () => {
+    const addr = getAddress("0x0000000000000000000000000000000000000001");
+    assert.equal(
+      commercialExplorerAddressUrl(84532, addr),
+      `https://sepolia.basescan.org/address/${addr}`,
+    );
   });
 
-  it("constructed bare-chainId explorer call is red", () => {
-    const dirty = `
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
-explorerAddressUrl(84532, addr);
-`;
-    assert.equal(instrumentReadoutsWiringOk(dirty), false);
+  it("empty origin cannot be minted into a stack field", () => {
+    assert.throws(
+      () => mintExplorerOrigin(""),
+      /Invalid ExplorerOrigin: empty/,
+    );
   });
 });

@@ -4,6 +4,8 @@
  * stacks only via COMMERCIAL_ACTIVE.
  */
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import { mintCommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
+import { mintExplorerOrigin } from "@/lib/web3/explorer-origin";
 import {
   mintKargainNamespace,
   namespaceFromLayerZeroEid,
@@ -23,8 +25,8 @@ export const FIXTURE_SVM_ICON_URL =
 export const FIXTURE_SVM_STACK = {
   vm: "svm",
   namespace: mintKargainNamespace(FIXTURE_SVM_NAMESPACE),
-  nativeUnit: { symbol: "SOL", decimals: 9 },
-  explorerBaseUrl: "https://explorer.solana.com",
+  nativeUnit: mintCommercialNativeUnit("SOL", 9),
+  explorerBaseUrl: mintExplorerOrigin("https://explorer.solana.com"),
   karPassport: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   karProPass: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   karProStaking: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
