@@ -15,7 +15,6 @@ import {
   protocolAddressesEqual,
 } from "@/lib/web3/protocol-address";
 import { getPublicClient } from "@/lib/web3/public-client";
-import { getViemChain } from "@/lib/web3/supported-chains";
 
 export type WalletAccountKind = "eoa" | "eip7702" | "contract";
 
@@ -131,13 +130,6 @@ export async function readAccountKindFromProvider(
   } catch {
     return "eoa";
   }
-}
-
-export function explorerAddressUrl(chainId: number, address: string): string {
-  const normalized = normalizeProtocolAddress(chainId, address) ?? address;
-  const explorer =
-    getViemChain(chainId)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
-  return `${explorer}/address/${normalized}`;
 }
 
 export function messagingWalletError(kind: WalletAccountKind): string | null {

@@ -13,7 +13,8 @@ import {
 } from "@/lib/design/instrument-classes";
 import type { PassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -81,9 +82,7 @@ export function PassportInstrumentReadouts({
             Held in escrow{" "}
             <EnsWalletLink
               address={custody.custodyAddress ?? passportOwner}
-              externalHref={explorerAddressUrl(
-                chainId,
-                custody.custodyAddress ?? passportOwner,
+              externalHref={explorerAddressUrl(requireCommercialActive(chainId), custody.custodyAddress ?? passportOwner,
               )}
               className="hover:underline"
             />

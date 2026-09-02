@@ -10,7 +10,8 @@ import {
   parsePassportTokenId,
 } from "@/lib/passport/passport-token-id";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
-import { getViemChain } from "@/lib/web3/supported-chains";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerTxUrl } from "@/lib/web3/network-explorer";
 
 function CreatedFallback() {
   return (
@@ -69,7 +70,7 @@ async function MarketplaceCreatedInner({
   if (chainId == null) notFound();
 
   const scan = tx
-    ? `${getViemChain(chainId)?.blockExplorers?.default?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
+    ? explorerTxUrl(requireCommercialActive(chainId), tx)
     : null;
 
   const label = formatPassportShortLabel(tokenId, chainId);

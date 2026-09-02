@@ -9,7 +9,8 @@ import {
   isRegisteredEncumbranceSource,
   type EncumbranceRegistry,
 } from "@/lib/passport/encumbrance-registry";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { cn } from "@/lib/utils";
 import { getAddress, type Address } from "viem";
 
@@ -61,7 +62,7 @@ export function PassportEncumbranceRegistry({
               <li key={source} className="space-y-0.5">
                 <EnsWalletLink
                   address={source}
-                  externalHref={explorerAddressUrl(chainId, source)}
+                  externalHref={explorerAddressUrl(requireCommercialActive(chainId), source)}
                   className="font-mono text-sm tabular-nums"
                 />
                 {isBroken ? (

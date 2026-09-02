@@ -26,7 +26,8 @@ import {
 } from "@/lib/vincent-commons/registry-panel";
 import { VINCENT_REGISTRY } from "@/lib/vincent-commons/registry-config";
 import { fetchRegistryPublishers } from "@/lib/vincent-commons/registry-reads";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
 const EMPTY_MANIFEST_HASHES: string[] = [];
@@ -175,9 +176,7 @@ function PublishersPanel() {
                   className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
                 >
                   <a
-                    href={explorerAddressUrl(
-                      VINCENT_REGISTRY.chainId,
-                      publisher.address,
+                    href={explorerAddressUrl(requireCommercialActive(VINCENT_REGISTRY.chainId), publisher.address,
                     )}
                     target="_blank"
                     rel="noopener noreferrer"

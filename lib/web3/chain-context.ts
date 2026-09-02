@@ -1,6 +1,3 @@
-import { commercialEip155Ids, isCommercialChainId } from "@/lib/web3/commercial-active";
-import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
-
 /**
  * Explicit chain-role resolvers for multichain UI/commerce.
  * Missing or non-commercial → null — never invent a hub default.
@@ -14,6 +11,13 @@ import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
  * - Until then, reserved-band namespaces without a registry row fail closed
  *   via `requireCommercialActive` (not selectable).
  */
+
+import {
+  commercialEip155Ids,
+  isCommercialChainId,
+  type CommercialActiveStack,
+} from "@/lib/web3/commercial-active";
+import { isKargainWriteChain } from "@/lib/web3/chain-selector-state";
 
 /** Sorted commercial EIP-155 ids from COMMERCIAL_ACTIVE (UI lists, OR loops). */
 export function commercialChainIds(): readonly number[] {
@@ -98,6 +102,20 @@ export function resolveAuctionsNavChainId(input: {
  */
 export const FX_RATE_CHAIN_ID = 84532;
 
+/**
+ * FX env pin for a commercial stack. EVM → hub pin; non-EVM refuses by name
+ * (SVM has no Chainlink env class).
+ */
+export function fxRateChainIdFor(stack: CommercialActiveStack): number {
+  if (stack.vm !== "evm") {
+    throw new Error(
+      `fxRateChainIdFor: namespace ${stack.namespace} has no FX env pin (vm=${stack.vm})`,
+    );
+  }
+  return FX_RATE_CHAIN_ID;
+}
+
+/** @deprecated Prefer {@link fxRateChainIdFor} with an EVM commercial stack. */
 export function fxRateChainId(): number {
   return FX_RATE_CHAIN_ID;
 }
@@ -108,6 +126,20 @@ export function fxRateChainId(): number {
  */
 export const STORAGE_ENV_CHAIN_ID = 84532;
 
+/**
+ * Storage env pin for a commercial stack. EVM → testnet class pin; non-EVM
+ * refuses by name (SVM does not inherit Irys/gateway env by namespace).
+ */
+export function storageEnvChainIdFor(stack: CommercialActiveStack): number {
+  if (stack.vm !== "evm") {
+    throw new Error(
+      `storageEnvChainIdFor: namespace ${stack.namespace} has no storage env pin (vm=${stack.vm})`,
+    );
+  }
+  return STORAGE_ENV_CHAIN_ID;
+}
+
+/** @deprecated Prefer {@link storageEnvChainIdFor} with an EVM commercial stack. */
 export function storageEnvChainId(): number {
   return STORAGE_ENV_CHAIN_ID;
 }

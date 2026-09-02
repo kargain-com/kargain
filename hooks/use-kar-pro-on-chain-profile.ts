@@ -15,6 +15,7 @@ import {
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useKarProOnChainProfile(
@@ -91,7 +92,7 @@ export function useKarProOnChainProfile(
     readsEnabled && !reads.isPending && hasPass && stakeActive;
 
   const { data: slug, isPending: slugPending } = useQuery({
-    queryKey: ["kar-pro-slug", chainId ?? 0, metadataURI],
+    queryKey: indexerQueryKey("kar-pro-slug", chainId ?? 0, metadataURI),
     queryFn: () => resolveKarProSlugFromMetadataUri(metadataURI!),
     enabled: chainFieldsReady && Boolean(metadataURI?.trim()),
     staleTime: 60_000,

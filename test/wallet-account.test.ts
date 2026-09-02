@@ -5,7 +5,6 @@ import {
   allProtocolAddresses,
   supportsPersonalSignIdentity,
   classifyBytecode,
-  explorerAddressUrl,
   isMessageablePeer,
   isMessageablePeerOnCommercialChains,
   isProtocolAddress,
@@ -176,14 +175,5 @@ describe("supportsPersonalSignIdentity", () => {
 
   it("blocks contract accounts", () => {
     assert.equal(supportsPersonalSignIdentity("contract"), false);
-  });
-});
-
-describe("explorerAddressUrl", () => {
-  it("builds Base Sepolia explorer link", () => {
-    const legacyMarketplace = SEPOLIA_HISTORICAL_DENYLIST[1];
-    const url = explorerAddressUrl(84532, legacyMarketplace);
-    assert.ok(url.includes("sepolia.basescan.org"));
-    assert.ok(url.includes(legacyMarketplace));
   });
 });

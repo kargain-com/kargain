@@ -1,6 +1,7 @@
 /**
  * S4a T3 — SVM commercial stack shape + fail-closed reserved namespace.
  * No live Solana row in COMMERCIAL_ACTIVE.
+ * S8-1: shape probe lives in test/fixtures/commercial-svm-stack.ts.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -11,51 +12,29 @@ import {
   isCommercialChainId,
   requireCommercialActive,
   type CommercialActiveStack,
-  type SvmCommercialActiveStack,
 } from "../lib/web3/commercial-active.ts";
-import {
-  mintKargainNamespace,
-  namespaceFromLayerZeroEid,
-} from "../lib/web3/kargain-namespace.ts";
+import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
 import { normalizeProtocolAddressForVm } from "../lib/web3/protocol-address.ts";
+import {
+  FIXTURE_SVM_NAMESPACE,
+  FIXTURE_SVM_STACK,
+} from "./fixtures/commercial-svm-stack.ts";
 
-/** Solana Devnet LayerZero EID 40168 → reserved namespace (SPEC §13.1). */
 const SOLANA_DEVNET_NAMESPACE = namespaceFromLayerZeroEid(40168);
 
-/**
- * Type-level + runtime probe: an SVM-shaped object satisfies the commercial
- * stack union. Addresses are illustrative base58 (normalized); not a live row.
- */
-const SVM_SHAPE_PROBE = {
-  vm: "svm",
-  namespace: mintKargainNamespace(SOLANA_DEVNET_NAMESPACE),
-  nativeUnit: { symbol: "SOL", decimals: 9 },
-  karPassport: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  karProPass: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-  karProStaking: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-  usdc: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  nativeFeed: "",
-  timelock: "11111111111111111111111111111111",
-  bridgeGateway: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-  layerZeroEndpoint: "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
-  platformRecipient: "11111111111111111111111111111112",
-  deployer: "11111111111111111111111111111113",
-  upgradeAuthority: "11111111111111111111111111111114",
-  indexFromBlock: 0,
-  blocks: {},
-} as const satisfies SvmCommercialActiveStack;
-
 // Compile-time: SVM arm is a CommercialActiveStack member.
-const _unionProbe: CommercialActiveStack = SVM_SHAPE_PROBE;
+const _unionProbe: CommercialActiveStack = FIXTURE_SVM_STACK;
 void _unionProbe;
 
 describe("commercial-active SVM shape (S4a T3)", () => {
-  it("SVM shape satisfies CommercialActiveStack and normalizes base58", () => {
-    assert.equal(SVM_SHAPE_PROBE.vm, "svm");
-    assert.equal(Number(SVM_SHAPE_PROBE.namespace), SOLANA_DEVNET_NAMESPACE);
+  it("fixture SVM shape satisfies CommercialActiveStack and normalizes base58", () => {
+    assert.equal(FIXTURE_SVM_STACK.vm, "svm");
+    assert.equal(Number(FIXTURE_SVM_STACK.namespace), SOLANA_DEVNET_NAMESPACE);
+    assert.equal(Number(FIXTURE_SVM_NAMESPACE), SOLANA_DEVNET_NAMESPACE);
+    assert.ok(FIXTURE_SVM_STACK.explorerBaseUrl.length > 0);
     assert.equal(
-      normalizeProtocolAddressForVm("svm", SVM_SHAPE_PROBE.layerZeroEndpoint),
-      SVM_SHAPE_PROBE.layerZeroEndpoint,
+      normalizeProtocolAddressForVm("svm", FIXTURE_SVM_STACK.layerZeroEndpoint),
+      FIXTURE_SVM_STACK.layerZeroEndpoint,
     );
   });
 

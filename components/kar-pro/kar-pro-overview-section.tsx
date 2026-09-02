@@ -18,7 +18,8 @@ import { deriveSetupChecklist } from "@/lib/kar-pro/setup-checklist";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 
 type KarProOverviewSectionProps = {
   chainId: number;
@@ -124,7 +125,7 @@ export function KarProOverviewSection({
       {staking && (
         <p className="font-sans text-fluid-sm text-text-secondary">
           <a
-            href={explorerAddressUrl(chainId, staking)}
+            href={explorerAddressUrl(requireCommercialActive(chainId), staking)}
             target="_blank"
             rel="noopener noreferrer"
             className={monoLinkSm}

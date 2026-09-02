@@ -22,6 +22,7 @@ import type { MandateRecord } from "@/lib/commerce/ponder-consignment";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +68,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   });
 
   const awaitingQuery = useQuery({
-    queryKey: ["agent-mandates", wallet, targetChain, "awaiting"],
+    queryKey: indexerQueryKey("agent-mandates", targetChain, wallet, "awaiting"),
     queryFn: () =>
       getAgentMandates(wallet, {
         active: true,
@@ -79,7 +80,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   });
 
   const liveQuery = useQuery({
-    queryKey: ["agent-consignments", wallet, targetChain, "live"],
+    queryKey: indexerQueryKey("agent-consignments", targetChain, wallet, "live"),
     queryFn: () =>
       getConsignments({
         agent: wallet,

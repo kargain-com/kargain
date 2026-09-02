@@ -14,7 +14,8 @@ import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/
 import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 
 type KarProMembershipSectionProps = {
@@ -137,7 +138,7 @@ export function KarProMembershipSection({
         {staking && (
           <p className="font-sans text-fluid-sm text-text-secondary">
             <a
-              href={explorerAddressUrl(chainId, staking)}
+              href={explorerAddressUrl(requireCommercialActive(chainId), staking)}
               target="_blank"
               rel="noopener noreferrer"
               className={monoLinkSm}

@@ -41,6 +41,13 @@ export type CommercialNativeUnit = {
 };
 
 /**
+ * Sole runtime enumerator of commercial VM discriminants (S8-D cause-list precedent).
+ * Coverage proofs iterate this list; do not invent a parallel spelling.
+ */
+export const COMMERCIAL_VMS = ["evm", "svm"] as const;
+export type CommercialVm = (typeof COMMERCIAL_VMS)[number];
+
+/**
  * EVM address slots — checksum hex. Shared only by `vm: "evm"` rows.
  * Do not widen these fields to accept base58; SVM uses {@link SvmCommercialActiveStack}.
  */
@@ -68,6 +75,8 @@ type EvmCommercialActiveStackShared = {
   indexFromBlock: number;
   blocks: CommercialActiveBlocks;
   nativeUnit: CommercialNativeUnit;
+  /** Block explorer origin (no trailing slash) — network-class data, not viem. */
+  explorerBaseUrl: string;
 };
 
 /**
@@ -91,6 +100,8 @@ export type SvmCommercialActiveStack = {
   vm: "svm";
   namespace: KargainNamespace;
   nativeUnit: CommercialNativeUnit;
+  /** Block explorer origin (no trailing slash). */
+  explorerBaseUrl: string;
   karPassport: string;
   karProPass: string;
   karProStaking: string;
@@ -126,6 +137,7 @@ const BASE_SEPOLIA_84532 = {
   namespace: mintKargainNamespace(84532),
   chainId: 84532,
   nativeUnit: ETH_NATIVE_UNIT,
+  explorerBaseUrl: "https://sepolia.basescan.org",
   karPassport: "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
   karProPass: "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
   karProStaking: "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
@@ -161,6 +173,7 @@ const ETHEREUM_SEPOLIA_11155111 = {
   namespace: mintKargainNamespace(11155111),
   chainId: 11155111,
   nativeUnit: ETH_NATIVE_UNIT,
+  explorerBaseUrl: "https://sepolia.etherscan.io",
   karPassport: "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
   karProPass: "0xb83b89f4a7303f005dA8c0787e904104a1030128",
   karProStaking: "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
@@ -293,4 +306,22 @@ export function eip155Of(namespace: KargainNamespace | number): number {
 /** Namespace brand for a known commercial EIP-155 / registry key. */
 export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamespace {
   return asKargainNamespace(requireCommercialActive(chainId).namespace);
+}
+
+/**
+ * Native unit from the network class. Refuses when the stack omits a unit.
+ */
+export function nativeUnitOf(stack: CommercialActiveStack): CommercialNativeUnit {
+  const unit = stack.nativeUnit;
+  if (
+    unit == null ||
+    typeof unit.symbol !== "string" ||
+    unit.symbol.length === 0 ||
+    !Number.isFinite(unit.decimals)
+  ) {
+    throw new Error(
+      `nativeUnitOf: commercial stack namespace ${stack.namespace} has no native unit`,
+    );
+  }
+  return unit;
 }

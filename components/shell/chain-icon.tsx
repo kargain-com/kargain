@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import { GlobeIcon } from "@/components/ui/icons";
-import { chainIconUrl } from "@/lib/web3/chain-icon-url";
+import { commercialActive } from "@/lib/web3/commercial-active";
+import { networkIconUrl } from "@/lib/web3/chain-icon-url";
 import { cn } from "@/lib/utils";
 
 export function ChainIcon({
@@ -16,7 +17,8 @@ export function ChainIcon({
   /** CSS px */
   size?: number;
 }) {
-  const src = chainIconUrl(chainId);
+  const stack = commercialActive(chainId);
+  const src = stack != null ? networkIconUrl(stack) : undefined;
   const [failed, setFailed] = useState(false);
 
   if (!src || failed) {

@@ -12,6 +12,7 @@ import { useNow } from "@/hooks/use-now";
 import { LISTING_CARD_GRID_WIDE } from "@/lib/marketplace/listing-card-grid";
 import { MARKETPLACE_SHELL_CONTAINER } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 type Props = {
   initialPage?: AuctionBrowseResult;
@@ -23,7 +24,7 @@ export function AuctionBrowse({ initialPage, chainId }: Props) {
   const now = useNow(60_000);
 
   const { data, isPending } = useQuery({
-    queryKey: ["ascending-browse", chainId],
+    queryKey: indexerQueryKey("ascending-browse", chainId ?? 0),
     queryFn: () =>
       searchActiveAuctions({ chainId: chainId ?? undefined, limit: 48 }),
     initialData: initialPage,

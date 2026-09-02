@@ -8,11 +8,12 @@ import {
   deriveOpenableTerms,
   type OpenableTerms,
 } from "@/lib/commerce/openable-terms";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 export const openableTermsQueryKey = (
   chainId: number,
   mode: CommerceMode,
-) => ["commerce-open-options", chainId, mode] as const;
+) => indexerQueryKey("commerce-open-options", chainId, mode);
 
 const EMPTY_UNAVAILABLE = (mode: CommerceMode): OpenableTerms =>
   deriveOpenableTerms({

@@ -10,7 +10,8 @@ import {
 } from "@/lib/design/instrument-classes";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
-import { getViemChain } from "@/lib/web3/supported-chains";
+import { commercialActive } from "@/lib/web3/commercial-active";
+import { explorerTxUrl } from "@/lib/web3/network-explorer";
 
 function PurchasedFallback() {
   return (
@@ -62,11 +63,10 @@ async function MarketplacePurchasedInner({
     notFound();
   }
 
-  const explorer = chainId != null ? getViemChain(chainId)?.blockExplorers?.default : undefined;
-  const scan = tx
-    ? `${explorer?.url ?? "https://sepolia.basescan.org"}/tx/${tx}`
-    : null;
-  const explorerLabel = explorer?.name ?? "Block explorer";
+  const stack = chainId != null ? commercialActive(chainId) : undefined;
+  const scan =
+    tx && stack != null ? explorerTxUrl(stack, tx) : null;
+  const explorerLabel = "Block explorer";
   const passportHref =
     chainId != null
       ? `/marketplace/${tokenId}?chain=${chainId}`

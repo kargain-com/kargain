@@ -10,6 +10,7 @@ import {
   KAR_PRO_VERIFIER_POLL_MAX_ATTEMPTS,
   shouldPollKarProVerifierProfile,
 } from "@/lib/kar-pro/kar-pro-verifier-profile";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 type UseKarProVerifierProfileOptions = {
   isActiveVerifier: boolean;
@@ -35,7 +36,7 @@ export function useKarProVerifierProfile(
   const failureCount = pollKey === trackedPollKey ? nullFetchCount : 0;
 
   const ponderQuery = useQuery({
-    queryKey: ["kar-pro-verifier", address, chainId],
+    queryKey: indexerQueryKey("kar-pro-verifier", chainId ?? 0, address),
     queryFn: async () => {
       const profile = await fetchKarProVerifierProfile(
         address!,

@@ -1,3 +1,8 @@
+/**
+ * Network-scoped React Query keys must carry commercial namespace at [1]
+ * via indexerQueryKey (S8-1).
+ */
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,6 +11,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   INDEXER_QUERY_KEY_PREFIXES,
+  indexerQueryKey,
+  NETWORK_SCOPED_INDEXER_PREFIXES,
+  NETWORK_SCOPED_NON_INDEXER_PREFIXES,
   NON_INDEXER_QUERY_KEY_PREFIXES,
 } from "../lib/web3/indexer-query-keys.ts";
 
@@ -26,6 +34,11 @@ const CONST_DEF_RE =
 const ALLOWED = new Set<string>([
   ...INDEXER_QUERY_KEY_PREFIXES,
   ...NON_INDEXER_QUERY_KEY_PREFIXES,
+]);
+
+const NETWORK_SCOPED = new Set<string>([
+  ...NETWORK_SCOPED_INDEXER_PREFIXES,
+  ...NETWORK_SCOPED_NON_INDEXER_PREFIXES,
 ]);
 
 function listTsFiles(dir: string): string[] {
@@ -64,12 +77,43 @@ function collectPrefixes(text: string): string[] {
   CONST_QUERY_KEY_RE.lastIndex = 0;
   while ((match = CONST_QUERY_KEY_RE.exec(text)) !== null) {
     const name = match[1]!;
-    // Skip `queryKey: ["…"]` already handled (name would not match identifier-only).
     const resolved = consts.get(name);
     if (resolved) prefixes.push(resolved);
   }
 
   return prefixes;
+}
+
+/**
+ * Literal network-scoped keys that bypass indexerQueryKey.
+ * Allows `indexerQueryKey("prefix", …)` and helpers that return it.
+ */
+function networkScopedLiteralBypasses(text: string): string[] {
+  const hits: string[] = [];
+  const re =
+    /queryKey:\s*\[\s*["']([a-zA-Z0-9_-]+)["']\s*,/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const prefix = match[1]!;
+    if (NETWORK_SCOPED.has(prefix)) hits.push(prefix);
+  }
+  return hits;
+}
+
+/** Exported for constructed-violation proofs. */
+export function isNetworkScopedKeyMissingNamespaceSegment(
+  key: readonly unknown[],
+): boolean {
+  if (key.length < 2) return true;
+  const prefix = key[0];
+  if (typeof prefix !== "string" || !NETWORK_SCOPED.has(prefix)) return false;
+  // Namespace must be a stringified commercial id — not an address-shaped first part.
+  const ns = key[1];
+  if (typeof ns !== "string" && typeof ns !== "number") return true;
+  const s = String(ns);
+  // Address as segment 1 (old kar-pro-verifier order) is a violation.
+  if (s.startsWith("0x") || s.length > 20) return true;
+  return false;
 }
 
 describe("indexer query key coverage", () => {
@@ -106,5 +150,49 @@ describe("indexer query key coverage", () => {
   it("requires kar-pro-slug-availability in the indexer registry", () => {
     const set = new Set(INDEXER_QUERY_KEY_PREFIXES);
     assert.ok(set.has("kar-pro-slug-availability"));
+  });
+
+  it("network-scoped prefixes are a subset of registered prefixes", () => {
+    for (const p of NETWORK_SCOPED_INDEXER_PREFIXES) {
+      assert.ok(
+        (INDEXER_QUERY_KEY_PREFIXES as readonly string[]).includes(p),
+        `missing indexer prefix ${p}`,
+      );
+    }
+    for (const p of NETWORK_SCOPED_NON_INDEXER_PREFIXES) {
+      assert.ok(
+        (NON_INDEXER_QUERY_KEY_PREFIXES as readonly string[]).includes(p),
+        `missing non-indexer prefix ${p}`,
+      );
+    }
+  });
+
+  it("no client literal queryKey bypasses indexerQueryKey for network-scoped prefixes", () => {
+    const violations: string[] = [];
+    for (const dir of SCAN_DIRS) {
+      for (const file of listTsFiles(dir)) {
+        const rel = path.relative(ROOT, file);
+        const text = fs.readFileSync(file, "utf8");
+        for (const prefix of networkScopedLiteralBypasses(text)) {
+          violations.push(`${rel}: literal ${prefix}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("indexerQueryKey places namespace at segment 1", () => {
+    assert.deepEqual(indexerQueryKey("consignment-detail", 84532, "1"), [
+      "consignment-detail",
+      "84532",
+      "1",
+    ]);
+  });
+
+  it("negative: prefix + address-shaped segment without namespace builder is red", () => {
+    const dirty = ["kar-pro-verifier", "0xabc", 84532] as const;
+    assert.equal(isNetworkScopedKeyMissingNamespaceSegment(dirty), true);
+    const good = indexerQueryKey("kar-pro-verifier", 84532, "0xabc");
+    assert.equal(isNetworkScopedKeyMissingNamespaceSegment(good), false);
   });
 });

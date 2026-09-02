@@ -20,6 +20,7 @@ import { useAuctionChainReads } from "@/hooks/use-auction-chain-reads";
 import { useDocumentVisible } from "@/hooks/use-document-visible";
 import { useNow } from "@/hooks/use-now";
 import type { PassportStatus } from "@/lib/types/ponder";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 /** Default settlement dispute resolution timeout (30 days) when chain unread. */
 const DEFAULT_DISPUTE_RESOLUTION_TIMEOUT = 30n * 24n * 60n * 60n;
@@ -52,7 +53,7 @@ export function useAuctionDetail({
   });
 
   const ponderQuery = useQuery({
-    queryKey: ["consignment-detail", chainId, tokenId],
+    queryKey: indexerQueryKey("consignment-detail", chainId, tokenId),
     queryFn: async () => {
       const result = await getAuctionDetail(tokenId);
       if (!result.ok) throw new Error(result.error);

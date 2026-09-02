@@ -34,7 +34,8 @@ import { useClientMounted } from "@/hooks/use-client-mounted";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { endWalletSession } from "@/lib/auth/end-wallet-session";
 import { shellControlHover } from "@/lib/design/instrument-classes";
-import { getViemChain } from "@/lib/web3/supported-chains";
+import { commercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import {
   hasInjectedEthereumProvider,
   isMobileBrowser,
@@ -118,10 +119,10 @@ export function WalletLoginButton() {
     const normalized = checksumAddress;
     const hasEnsName = Boolean(!ensLoading && displayName && !displayName.startsWith("0x"));
 
-    const explorer =
-      getViemChain(walletChainId)?.blockExplorers?.default?.url ??
-      "https://sepolia.basescan.org";
-    const explorerUrl = `${explorer}/address/${normalized}`;
+    const stack =
+      walletChainId != null ? commercialActive(walletChainId) : undefined;
+    const explorerUrl =
+      stack != null ? explorerAddressUrl(stack, normalized) : null;
 
     return (
       <DropdownMenu>
@@ -163,12 +164,14 @@ export function WalletLoginButton() {
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator className="hidden md:block" />
-          <DropdownMenuItem asChild className="font-sans text-sm text-text-secondary">
-            <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLinkIcon size={14} aria-hidden />
-              View on Basescan
-            </a>
-          </DropdownMenuItem>
+          {explorerUrl != null ? (
+            <DropdownMenuItem asChild className="font-sans text-sm text-text-secondary">
+              <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLinkIcon size={14} aria-hidden />
+                View on explorer
+              </a>
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             className="font-sans text-sm text-text-secondary"
             onSelect={() => void onCopyAddress(normalized)}

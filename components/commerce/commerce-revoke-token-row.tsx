@@ -25,7 +25,8 @@ import {
   monoLinkSm,
   serialLabel,
 } from "@/lib/design/instrument-classes";
-import { explorerAddressUrl } from "@/lib/web3/wallet-account";
+import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -104,7 +105,7 @@ export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
             <EnsWalletLink
               address={row.token}
               className={monoLinkSm}
-              externalHref={explorerAddressUrl(row.chainId, row.token)}
+              externalHref={explorerAddressUrl(requireCommercialActive(row.chainId), row.token)}
             />
           </dd>
         </div>
@@ -115,7 +116,7 @@ export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
               <EnsWalletLink
                 address={row.guardian}
                 className={monoLinkSm}
-                externalHref={explorerAddressUrl(row.chainId, row.guardian)}
+                externalHref={explorerAddressUrl(requireCommercialActive(row.chainId), row.guardian)}
               />
             ) : (
               <span className="font-mono text-xs text-text-secondary">—</span>
@@ -129,7 +130,7 @@ export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
               <EnsWalletLink
                 address={row.owner}
                 className={monoLinkSm}
-                externalHref={explorerAddressUrl(row.chainId, row.owner)}
+                externalHref={explorerAddressUrl(requireCommercialActive(row.chainId), row.owner)}
               />
             ) : (
               <span className="font-mono text-xs text-text-secondary">—</span>

@@ -1,12 +1,23 @@
 /**
- * Chain logo URLs (Trust Wallet asset repo, raw). Used only for UI.
+ * Network icon URLs from the commercial network class (S8-1).
+ * Keyed by namespace — never invent a hub icon for an unknown network.
  */
-const TRUST = "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains";
 
-const byId: Record<number, string> = {
-  84532: `${TRUST}/base/info/logo.png`,
+import type { CommercialActiveStack } from "@/lib/web3/commercial-active";
+
+const TRUST =
+  "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains";
+
+/** Product icon map — live EVM namespaces only until S9. */
+const BY_NAMESPACE: Readonly<Record<string, string>> = {
+  "84532": `${TRUST}/base/info/logo.png`,
+  // Eth Sepolia has no Trust Wallet chain asset — refuse (caller shows globe).
 };
 
-export function chainIconUrl(chainId: number): string | undefined {
-  return byId[chainId];
+/**
+ * Icon URL for a commercial stack, or `undefined` when the network class has none.
+ * Does not fall back to another network's icon.
+ */
+export function networkIconUrl(stack: CommercialActiveStack): string | undefined {
+  return BY_NAMESPACE[String(stack.namespace)];
 }

@@ -23,6 +23,7 @@ import type {
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -147,7 +148,7 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
   const modesReady = Boolean(fixedPrice || ascending);
 
   const awaitingQuery = useQuery({
-    queryKey: ["owner-mandates", wallet, targetChain, "awaiting"],
+    queryKey: indexerQueryKey("owner-mandates", targetChain, wallet, "awaiting"),
     queryFn: () =>
       getOwnerMandates(wallet, {
         active: true,
@@ -159,7 +160,7 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
   });
 
   const liveQuery = useQuery({
-    queryKey: ["owner-consignments", wallet, targetChain, "live"],
+    queryKey: indexerQueryKey("owner-consignments", targetChain, wallet, "live"),
     queryFn: () =>
       getConsignments({
         seller: wallet,
@@ -172,7 +173,7 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
   });
 
   const pastQuery = useQuery({
-    queryKey: ["owner-consignments", wallet, targetChain, "past"],
+    queryKey: indexerQueryKey("owner-consignments", targetChain, wallet, "past"),
     queryFn: () =>
       getConsignments({
         seller: wallet,

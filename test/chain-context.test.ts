@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   commercialChainIds,
   fxRateChainId,
+  fxRateChainIdFor,
   parseOptionalChainParam,
   resolveAuctionsNavChainId,
   resolveCustodyCommerceChainId,
@@ -11,7 +12,10 @@ import {
   resolveUrlExpectedChainId,
   resolveWalletCommercialChainId,
   storageEnvChainId,
+  storageEnvChainIdFor,
 } from "../lib/web3/chain-context.ts";
+import { requireCommercialActive } from "../lib/web3/commercial-active.ts";
+import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 
 describe("parseOptionalChainParam", () => {
   it("returns null for missing / empty / invalid", () => {
@@ -136,5 +140,21 @@ describe("commercialChainIds / pins", () => {
   it("fx and storage pins are stable named constants (not commerce invent)", () => {
     assert.equal(fxRateChainId(), 84532);
     assert.equal(storageEnvChainId(), 84532);
+    assert.equal(
+      fxRateChainIdFor(requireCommercialActive(84532)),
+      84532,
+    );
+    assert.equal(
+      storageEnvChainIdFor(requireCommercialActive(84532)),
+      84532,
+    );
+    assert.throws(
+      () => fxRateChainIdFor(FIXTURE_SVM_STACK),
+      /has no FX env pin/,
+    );
+    assert.throws(
+      () => storageEnvChainIdFor(FIXTURE_SVM_STACK),
+      /has no storage env pin/,
+    );
   });
 });
