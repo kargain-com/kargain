@@ -236,15 +236,31 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["network-class-policy.test.ts"],
   },
   {
+    id: "product-policy-scan",
+    owner: "test/policy-scan-helpers.ts",
+    rule: "Sole product ownership-policy walk (app|components|hooks|lib); policies supply predicate + owners only",
+    guardTests: [
+      "network-explorer-owner-policy.test.ts",
+      "network-vm-component-policy.test.ts",
+      "passport-presence-owner-policy.test.ts",
+      "s8-1-consumer-wiring-policy.test.ts",
+    ],
+  },
+  {
     id: "network-explorer",
     owner: "lib/web3/network-explorer.ts",
     rule: "Sole commercial explorer address/tx URL owner; no viem explorer map or hub invent in product",
-    guardTests: ["network-explorer-owner-policy.test.ts", "network-data-layer.test.ts"],
+    guardTests: [
+      "network-explorer-owner-policy.test.ts",
+      "network-data-layer.test.ts",
+      "passport-instrument-readouts-policy.test.ts",
+      "s8-1-consumer-wiring-policy.test.ts",
+    ],
   },
   {
     id: "network-vm-components",
     owner: "lib/web3/* network-class entry points",
-    rule: "app/components must not branch on vm / stack.vm",
+    rule: "Product tree must not branch on commercial VM discriminant except allowlisted lib owners",
     guardTests: ["network-vm-component-policy.test.ts"],
   },
   {

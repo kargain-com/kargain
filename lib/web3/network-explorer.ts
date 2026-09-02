@@ -2,30 +2,25 @@
  * Sole owner of commercial-network explorer URL construction (S8-1).
  * Base URL comes from the network class (`stack.explorerBaseUrl`) — never
  * invent a hub explorer or read viem `blockExplorers`.
+ * Empty base is a type/registry invariant, not a runtime refusal.
  */
 
 import type { CommercialActiveStack } from "@/lib/web3/commercial-active";
 import { normalizeProtocolAddressForVm } from "@/lib/web3/protocol-address";
 
-function requireExplorerBase(stack: CommercialActiveStack): string {
-  const base = stack.explorerBaseUrl?.trim() ?? "";
-  if (base.length === 0) {
-    throw new Error(
-      `explorerBaseUrl: commercial stack namespace ${stack.namespace} has no explorer`,
-    );
-  }
-  return base.replace(/\/$/, "");
+function explorerBase(stack: CommercialActiveStack): string {
+  return stack.explorerBaseUrl.replace(/\/$/, "");
 }
 
 /**
  * Address page on the stack's explorer.
- * Normalizes via the stack VM; refuses when the stack has no explorer base.
+ * Normalizes via the stack VM.
  */
 export function explorerAddressUrl(
   stack: CommercialActiveStack,
   address: string,
 ): string {
-  const base = requireExplorerBase(stack);
+  const base = explorerBase(stack);
   const normalized =
     normalizeProtocolAddressForVm(stack.vm, address) ?? address;
   return `${base}/address/${normalized}`;
@@ -33,13 +28,13 @@ export function explorerAddressUrl(
 
 /**
  * Transaction (or signature) page on the stack's explorer.
- * Refuses when the stack has no explorer base.
+ * Refuses empty transaction id (parameter, not a stack field).
  */
 export function explorerTxUrl(
   stack: CommercialActiveStack,
   txId: string,
 ): string {
-  const base = requireExplorerBase(stack);
+  const base = explorerBase(stack);
   const id = txId.trim();
   if (id.length === 0) {
     throw new Error("explorerTxUrl: empty transaction id");

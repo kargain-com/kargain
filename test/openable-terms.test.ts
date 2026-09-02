@@ -426,3 +426,32 @@ describe("openable terms / grant form policy", () => {
     assert.doesNotMatch(text, /usdcAddress/);
   });
 });
+
+describe("openableTermsQueryKey namespace segment (S8-1-fix)", () => {
+  it("places commercial namespace as string at [1]", async () => {
+    const { openableTermsQueryKey } = await import(
+      "../hooks/use-openable-terms.ts"
+    );
+    assert.deepEqual(openableTermsQueryKey(84532, "fixedPrice"), [
+      "commerce-open-options",
+      "84532",
+      "fixedPrice",
+    ]);
+    assert.deepEqual(openableTermsQueryKey(11155111, "ascending"), [
+      "commerce-open-options",
+      "11155111",
+      "ascending",
+    ]);
+  });
+
+  it("constructed key with mode before namespace is not the builder shape", async () => {
+    const { openableTermsQueryKey } = await import(
+      "../hooks/use-openable-terms.ts"
+    );
+    const good = openableTermsQueryKey(84532, "fixedPrice");
+    const dirty = ["commerce-open-options", "fixedPrice", 84532] as const;
+    assert.notDeepEqual([...dirty], [...good]);
+    assert.equal(good[1], "84532");
+    assert.notEqual(String(dirty[1]), "84532");
+  });
+});

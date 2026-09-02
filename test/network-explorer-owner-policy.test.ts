@@ -1,22 +1,24 @@
 /**
- * S8-1 — explorer URL assembly lives only in network-explorer.
+ * S8-1-fix — explorer URL assembly lives only in network-explorer.
+ * Uses the sole product policy scanner (app|components|hooks|lib).
  */
 
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
-const ROOT = process.cwd();
+import {
+  POLICY_SCAN_ROOT,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const OWNER = "lib/web3/network-explorer.ts";
 /** Registry may declare explorerBaseUrl literals; assembly stays in OWNER. */
-const ALLOWLIST = new Set([
+const ALLOWLIST = [
   OWNER,
   "lib/web3/commercial-active.ts",
-]);
-
-const SCAN_ROOTS = ["app", "components", "hooks", "lib"] as const;
+] as const;
 
 const FORBIDDEN = [
   /blockExplorers/,
@@ -27,59 +29,31 @@ const FORBIDDEN = [
   /["'][^"']*\/tx\/\$\{/,
 ] as const;
 
-function walkTsFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (name === "node_modules" || name === ".next") continue;
-      walkTsFiles(full, out);
-    } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
 export function explorerOwnerViolationInSource(
   relPath: string,
   source: string,
 ): boolean {
   const norm = relPath.replace(/\\/g, "/");
-  if (ALLOWLIST.has(norm)) return false;
+  if ((ALLOWLIST as readonly string[]).includes(norm)) return false;
   return FORBIDDEN.some((re) => re.test(source));
 }
 
-function findExplorerViolations(): { path: string; reason: string }[] {
-  const violations: { path: string; reason: string }[] = [];
-  for (const root of SCAN_ROOTS) {
-    for (const file of walkTsFiles(join(ROOT, root))) {
-      const rel = relative(ROOT, file).replace(/\\/g, "/");
-      if (ALLOWLIST.has(rel)) continue;
-      const src = readFileSync(file, "utf8");
-      for (const re of FORBIDDEN) {
-        if (re.test(src)) {
-          violations.push({
-            path: rel,
-            reason: `matches ${re}`,
-          });
-          break;
-        }
-      }
-    }
+function explorerPredicate(
+  rel: string,
+  source: string,
+): string | false {
+  if (!explorerOwnerViolationInSource(rel, source)) return false;
+  for (const re of FORBIDDEN) {
+    if (re.test(source)) return `matches ${re}`;
   }
-  return violations;
+  return "explorer invent";
 }
 
-describe("network explorer owner policy (S8-1)", () => {
+describe("network explorer owner policy (S8-1-fix)", () => {
   it("no product path assembles explorer URLs outside network-explorer", () => {
-    const violations = findExplorerViolations();
+    const violations = scanProductSources(explorerPredicate, {
+      owners: ALLOWLIST,
+    });
     assert.deepEqual(
       violations,
       [],
@@ -98,21 +72,30 @@ const url = \`\${explorer}/address/\${addr}\`;
     );
   });
 
+  it("constructed invent under hooks/ (old scope miss) is red, live tree green", () => {
+    const dirty = `
+export function bad() {
+  return \`https://sepolia.basescan.org/tx/\${hash}\`;
+}
+`;
+    assert.equal(
+      explorerOwnerViolationInSource("hooks/use-bridge.ts", dirty),
+      true,
+    );
+    const live = scanProductSources(explorerPredicate, { owners: ALLOWLIST });
+    assert.deepEqual(live, []);
+  });
+
   it("owner module itself is exempt", () => {
-    const ownerSrc = readFileSync(join(ROOT, OWNER), "utf8");
+    const ownerSrc = readFileSync(join(POLICY_SCAN_ROOT, OWNER), "utf8");
     assert.equal(explorerOwnerViolationInSource(OWNER, ownerSrc), false);
   });
 
   it("product tree must not import the tests-only SVM fixture", () => {
     const ban = /fixtures\/commercial-svm-stack|commercial-svm-stack/;
-    const hits: string[] = [];
-    for (const root of ["app", "components", "hooks", "lib"] as const) {
-      for (const file of walkTsFiles(join(ROOT, root))) {
-        const rel = relative(ROOT, file).replace(/\\/g, "/");
-        const src = readFileSync(file, "utf8");
-        if (ban.test(src)) hits.push(rel);
-      }
-    }
+    const hits = scanProductSources((_rel, source) =>
+      ban.test(source) ? "imports commercial-svm-stack fixture" : false,
+    );
     assert.deepEqual(hits, []);
   });
 });

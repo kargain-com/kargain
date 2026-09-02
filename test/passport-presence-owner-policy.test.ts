@@ -1,13 +1,20 @@
+/**
+ * §4.21 — derivePassportPresence only in named owners.
+ * Uses the sole product policy scanner (app|components|hooks|lib).
+ */
+
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
-const ROOT = process.cwd();
+import {
+  POLICY_SCAN_ROOT,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 /**
  * Modules allowed to call `derivePassportPresence` (§4.21 ownership).
- * Everything under app/components/hooks outside this list is a violation.
  */
 export const PASSPORT_PRESENCE_DERIVER_OWNERS = [
   "lib/passport/presence.ts",
@@ -16,73 +23,25 @@ export const PASSPORT_PRESENCE_DERIVER_OWNERS = [
   "hooks/use-passport-presence.ts",
 ] as const;
 
-const SCAN_ROOTS = ["app", "components", "hooks"] as const;
-
-const DERIVER_IMPORT =
-  /derivePassportPresence\s*[,}]|derivePassportPresence\s+from|from\s+["'][^"']*passport\/presence["'][^;]*derivePassportPresence/;
-
-const DERIVER_CALL = /\bderivePassportPresence\s*\(/;
-
-function walkTsFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (name === "node_modules" || name === ".next") continue;
-      walkTsFiles(full, out);
-    } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
-function isOwnerPath(rel: string): boolean {
-  return (PASSPORT_PRESENCE_DERIVER_OWNERS as readonly string[]).includes(rel);
-}
-
-function findDeriverViolations(): { path: string; reason: string }[] {
-  const violations: { path: string; reason: string }[] = [];
-  for (const root of SCAN_ROOTS) {
-    for (const file of walkTsFiles(join(ROOT, root))) {
-      const rel = relative(ROOT, file).replace(/\\/g, "/");
-      if (isOwnerPath(rel)) continue;
-      const src = readFileSync(file, "utf8");
-      if (DERIVER_CALL.test(src) || DERIVER_IMPORT.test(src)) {
-        // Narrow: only flag if the symbol appears as an import or call.
-        if (
-          /\bderivePassportPresence\b/.test(src) &&
-          (src.includes("derivePassportPresence(") ||
-            /import\s*\{[^}]*\bderivePassportPresence\b/.test(src))
-        ) {
-          violations.push({
-            path: rel,
-            reason: "calls or imports derivePassportPresence outside owners",
-          });
-        }
-      }
-    }
-  }
-  return violations;
-}
-
 /** Exported for constructed-violation tests — same predicate as the scan. */
 export function presenceDeriverViolationInSource(
   relPath: string,
   source: string,
 ): boolean {
-  if (isOwnerPath(relPath.replace(/\\/g, "/"))) return false;
+  const norm = relPath.replace(/\\/g, "/");
+  if ((PASSPORT_PRESENCE_DERIVER_OWNERS as readonly string[]).includes(norm)) {
+    return false;
+  }
   return (
     /\bderivePassportPresence\b/.test(source) &&
     (source.includes("derivePassportPresence(") ||
       /import\s*\{[^}]*\bderivePassportPresence\b/.test(source))
   );
+}
+
+function presencePredicate(rel: string, source: string): string | false {
+  if (!presenceDeriverViolationInSource(rel, source)) return false;
+  return "calls or imports derivePassportPresence outside owners";
 }
 
 describe("passport presence deriver ownership", () => {
@@ -95,8 +54,10 @@ describe("passport presence deriver ownership", () => {
     ]);
   });
 
-  it("no app/components/hooks file outside owners calls the deriver", () => {
-    const violations = findDeriverViolations();
+  it("no product file outside owners calls the deriver", () => {
+    const violations = scanProductSources(presencePredicate, {
+      owners: PASSPORT_PRESENCE_DERIVER_OWNERS,
+    });
     assert.deepEqual(
       violations,
       [],
@@ -123,7 +84,7 @@ export function PassportBridgePanel() {
       true,
     );
     const clean = readFileSync(
-      join(ROOT, "components/passport/passport-bridge-panel.tsx"),
+      join(POLICY_SCAN_ROOT, "components/passport/passport-bridge-panel.tsx"),
       "utf8",
     );
     assert.equal(
@@ -135,10 +96,27 @@ export function PassportBridgePanel() {
     );
   });
 
+  it("constructed dirty lib/ non-owner (old scope miss) is red, live tree green", () => {
+    const dirty = `
+import { derivePassportPresence } from "@/lib/passport/presence";
+export function invent() {
+  return derivePassportPresence({ viewChainId: 1, custodyLocked: false });
+}
+`;
+    assert.equal(
+      presenceDeriverViolationInSource("lib/marketplace/invent-presence.ts", dirty),
+      true,
+    );
+    const live = scanProductSources(presencePredicate, {
+      owners: PASSPORT_PRESENCE_DERIVER_OWNERS,
+    });
+    assert.deepEqual(live, []);
+  });
+
   it("owners may call the deriver", () => {
     for (const owner of PASSPORT_PRESENCE_DERIVER_OWNERS) {
       if (owner === "lib/passport/presence.ts") continue;
-      const src = readFileSync(join(ROOT, owner), "utf8");
+      const src = readFileSync(join(POLICY_SCAN_ROOT, owner), "utf8");
       assert.match(src, /derivePassportPresence/, owner);
       assert.equal(
         presenceDeriverViolationInSource(owner, src),

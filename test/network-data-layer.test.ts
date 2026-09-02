@@ -61,17 +61,6 @@ describe("network data layer (S8-1)", () => {
     );
   });
 
-  it("empty explorerBaseUrl refuses by name", () => {
-    const empty = {
-      ...FIXTURE_SVM_STACK,
-      explorerBaseUrl: "",
-    };
-    assert.throws(
-      () => explorerAddressUrl(empty, FIXTURE_SVM_STACK.karPassport),
-      /has no explorer/,
-    );
-  });
-
   it("product icon map has Base; Eth Sepolia and fixture SVM have none", () => {
     const hub = requireCommercialActive(84532);
     const eth = requireCommercialActive(11155111);

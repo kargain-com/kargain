@@ -309,19 +309,9 @@ export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamesp
 }
 
 /**
- * Native unit from the network class. Refuses when the stack omits a unit.
+ * Native unit from the network class (sole reader).
+ * Presence and shape are type/registry invariants — no runtime re-check.
  */
 export function nativeUnitOf(stack: CommercialActiveStack): CommercialNativeUnit {
-  const unit = stack.nativeUnit;
-  if (
-    unit == null ||
-    typeof unit.symbol !== "string" ||
-    unit.symbol.length === 0 ||
-    !Number.isFinite(unit.decimals)
-  ) {
-    throw new Error(
-      `nativeUnitOf: commercial stack namespace ${stack.namespace} has no native unit`,
-    );
-  }
-  return unit;
+  return stack.nativeUnit;
 }

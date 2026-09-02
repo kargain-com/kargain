@@ -1,17 +1,26 @@
 /**
- * S8-1 — no VM branching in app/components (forks stay in lib owners).
+ * S8-1-fix — no VM branching in product code outside allowlisted lib owners.
+ * Uses the sole product policy scanner (app|components|hooks|lib).
  */
 
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
-const ROOT = process.cwd();
+import { scanProductSources } from "./policy-scan-helpers.ts";
 
-const SCAN_ROOTS = ["app", "components"] as const;
+/**
+ * Lib modules allowed to fork on `vm` / `stack.vm` (network-class entry points).
+ * app / components / hooks allowlist is empty.
+ */
+export const VM_BRANCH_ALLOWLIST = [
+  "lib/web3/chain-context.ts",
+  "lib/web3/commercial-active.ts",
+  "lib/web3/deployment-addresses.ts",
+  "lib/web3/protocol-address.ts",
+  "lib/web3/network-explorer.ts",
+] as const;
 
-/** VM / stack.vm branching patterns that belong in lib entry points only. */
+/** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */
 const VM_BRANCH_PATTERNS = [
   /\bvm\s*===\s*["'](?:evm|svm)["']/,
   /\bvm\s*!==\s*["'](?:evm|svm)["']/,
@@ -21,50 +30,20 @@ const VM_BRANCH_PATTERNS = [
   /["']\.vm["']/,
 ] as const;
 
-function walkTsFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      if (name === "node_modules" || name === ".next") continue;
-      walkTsFiles(full, out);
-    } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
 export function vmBranchViolationInSource(source: string): boolean {
   return VM_BRANCH_PATTERNS.some((re) => re.test(source));
 }
 
-function findVmBranchViolations(): { path: string; reason: string }[] {
-  const violations: { path: string; reason: string }[] = [];
-  for (const root of SCAN_ROOTS) {
-    for (const file of walkTsFiles(join(ROOT, root))) {
-      const rel = relative(ROOT, file).replace(/\\/g, "/");
-      const src = readFileSync(file, "utf8");
-      if (vmBranchViolationInSource(src)) {
-        violations.push({
-          path: rel,
-          reason: "vm / stack.vm branch in app or components",
-        });
-      }
-    }
-  }
-  return violations;
+function vmPredicate(rel: string, source: string): string | false {
+  if (!vmBranchViolationInSource(source)) return false;
+  return `vm / stack.vm branch outside allowlist (${rel})`;
 }
 
-describe("network VM component policy (S8-1)", () => {
-  it("no app/components file branches on vm or stack.vm", () => {
-    const violations = findVmBranchViolations();
+describe("network VM component policy (S8-1-fix)", () => {
+  it("no product file outside allowlist branches on vm or stack.vm", () => {
+    const violations = scanProductSources(vmPredicate, {
+      owners: VM_BRANCH_ALLOWLIST,
+    });
     assert.deepEqual(
       violations,
       [],
@@ -80,6 +59,23 @@ export function Bad({ stack }: { stack: { vm: string } }) {
 }
 `;
     assert.equal(vmBranchViolationInSource(dirty), true);
+  });
+
+  it("constructed dirty hook (old scope miss) is red, live tree green", () => {
+    const dirty = `
+export function useBad(stack: { vm: string }) {
+  return stack.vm === "evm";
+}
+`;
+    assert.equal(vmBranchViolationInSource(dirty), true);
+    assert.equal(
+      vmPredicate("hooks/use-invented-vm.ts", dirty),
+      `vm / stack.vm branch outside allowlist (hooks/use-invented-vm.ts)`,
+    );
+    const live = scanProductSources(vmPredicate, {
+      owners: VM_BRANCH_ALLOWLIST,
+    });
+    assert.deepEqual(live, []);
   });
 
   it("clean consumer without vm branch is green", () => {
