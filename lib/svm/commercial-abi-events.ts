@@ -10,14 +10,6 @@ import {
   KarProStakingAbi,
 } from "@/lib/contracts/abis.generated";
 
-export type CommercialContractName =
-  | "KarPassport"
-  | "KarProStaking"
-  | "KarProPass"
-  | "FixedPriceConsignment"
-  | "AscendingConsignment"
-  | "KarPassportBridgeGateway";
-
 export type AbiEventRef = {
   contract: CommercialContractName;
   event: string;
@@ -68,19 +60,17 @@ export type ResolvedEventDisposition =
       supersededBy?: { contract: string; event: string };
     };
 
-type AbiItem = { type?: string; name?: string };
-
-export const COMMERCIAL_CONTRACT_ABIS: Record<
-  CommercialContractName,
-  readonly AbiItem[]
-> = {
+/** Sole commercial ABI set — const so consumers can derive typed subsets. */
+export const COMMERCIAL_CONTRACT_ABIS = {
   KarPassport: KarPassportAbi,
   KarProStaking: KarProStakingAbi,
   KarProPass: KarProPassAbi,
   FixedPriceConsignment: FixedPriceConsignmentAbi,
   AscendingConsignment: AscendingConsignmentAbi,
   KarPassportBridgeGateway: KarPassportBridgeGatewayAbi,
-};
+} as const;
+
+export type CommercialContractName = keyof typeof COMMERCIAL_CONTRACT_ABIS;
 
 export const COMMERCIAL_CONTRACT_NAMES = Object.keys(
   COMMERCIAL_CONTRACT_ABIS,

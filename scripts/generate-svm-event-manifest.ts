@@ -4,15 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  AscendingConsignmentAbi,
-  FixedPriceConsignmentAbi,
-  KarPassportAbi,
-  KarPassportBridgeGatewayAbi,
-  KarProPassAbi,
-  KarProStakingAbi,
-} from "../lib/contracts/abis.generated.js";
-import {
   assertEventDispositionCoverage,
+  COMMERCIAL_CONTRACT_ABIS,
   listCommercialAbiEvents,
   type EventDispositionsFile,
 } from "../lib/svm/commercial-abi-events.js";
@@ -51,15 +44,6 @@ type PonderRegistration = {
   event: string;
   handlerFile: string;
   handlerEmpty: boolean;
-};
-
-const CONTRACT_ABIS: Record<string, readonly AbiItem[]> = {
-  KarPassport: KarPassportAbi,
-  KarProStaking: KarProStakingAbi,
-  KarProPass: KarProPassAbi,
-  FixedPriceConsignment: FixedPriceConsignmentAbi,
-  AscendingConsignment: AscendingConsignmentAbi,
-  KarPassportBridgeGateway: KarPassportBridgeGatewayAbi,
 };
 
 const GATEWAY_REQUIRED_EVENTS = ["ONFTSent", "ONFTReceived"] as const;
@@ -139,7 +123,7 @@ function parsePonderRegistrations(relativeFile: string): PonderRegistration[] {
     const contract = contractEvent.slice(0, splitAt);
     const event = contractEvent.slice(splitAt + 1);
 
-    if (!Object.hasOwn(CONTRACT_ABIS, contract) || !/^[A-Za-z0-9_]+$/.test(event)) {
+    if (!Object.hasOwn(COMMERCIAL_CONTRACT_ABIS, contract) || !/^[A-Za-z0-9_]+$/.test(event)) {
       searchFrom = quoteEnd + 1;
       continue;
     }
@@ -213,16 +197,18 @@ function mapEncoding(fieldName: string, solidityType: string): string {
 }
 
 function lookupEventAbi(contract: string, eventName: string): AbiItem {
-  const abi = CONTRACT_ABIS[contract];
-  if (!abi) {
+  if (!Object.hasOwn(COMMERCIAL_CONTRACT_ABIS, contract)) {
     throw new Error(`No ABI export mapped for contract ${contract}`);
   }
+  const abi = COMMERCIAL_CONTRACT_ABIS[
+    contract as keyof typeof COMMERCIAL_CONTRACT_ABIS
+  ];
 
   const item = abi.find((entry) => entry.type === "event" && entry.name === eventName);
   if (!item) {
     throw new Error(`Event ${contract}:${eventName} not found in ABI`);
   }
-  return item;
+  return item as AbiItem;
 }
 
 function buildEntry(registration: PonderRegistration): ManifestEntry {

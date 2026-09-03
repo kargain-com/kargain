@@ -338,7 +338,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-abi-events",
     owner: "lib/svm/commercial-abi-events.ts",
-    rule: "Six commercial contract ABI event enumeration + disposition validation only via commercial-abi-events",
+    rule: "Sole enumerator of the commercial ABI set (COMMERCIAL_CONTRACT_ABIS); assembling a parallel collection from abis.generated is banned except named owners (ponder.config = Ponder registration map)",
     guardTests: [
       "commercial-abi-events-policy.test.ts",
       "svm-event-disposition-policy.test.ts",

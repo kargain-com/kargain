@@ -5,16 +5,9 @@ import {
   type Abi,
 } from "viem";
 
-import {
-  AscendingConsignmentAbi,
-  FixedPriceConsignmentAbi,
-  KarPassportAbi,
-  KarPassportBridgeGatewayAbi,
-  KarProPassAbi,
-  KarProStakingAbi,
-} from "@/lib/contracts/abis.generated";
 import { sourceUnanswerableCopy } from "@/lib/passport/encumbrance-permission";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
+import { COMMERCIAL_CONTRACT_ABIS } from "@/lib/svm/commercial-abi-events";
 import {
   decodeCustomError,
   type DecodedCustomError,
@@ -184,12 +177,12 @@ const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length)
 
 /** Production contract ABIs tried in order for write-path custom-error decode. */
 const PRODUCTION_DECODE_ABIS: readonly Abi[] = [
-  KarPassportAbi as Abi,
-  FixedPriceConsignmentAbi as Abi,
-  AscendingConsignmentAbi as Abi,
-  KarProStakingAbi as Abi,
-  KarProPassAbi as Abi,
-  KarPassportBridgeGatewayAbi as Abi,
+  COMMERCIAL_CONTRACT_ABIS.KarPassport as Abi,
+  COMMERCIAL_CONTRACT_ABIS.FixedPriceConsignment as Abi,
+  COMMERCIAL_CONTRACT_ABIS.AscendingConsignment as Abi,
+  COMMERCIAL_CONTRACT_ABIS.KarProStaking as Abi,
+  COMMERCIAL_CONTRACT_ABIS.KarProPass as Abi,
+  COMMERCIAL_CONTRACT_ABIS.KarPassportBridgeGateway as Abi,
 ];
 
 /**

@@ -1,7 +1,7 @@
 /**
  * ABI-derived event name → decoded args for address-conditional Ponder
  * contracts (FixedPriceConsignment, AscendingConsignment,
- * KarPassportBridgeGateway). Same generated ABIs as commercial-abi-events.
+ * KarPassportBridgeGateway). Values derive from COMMERCIAL_CONTRACT_ABIS.
  *
  * Registration lives in ponder-optional-contract-on.ts (sole ponder.on cast).
  */
@@ -11,17 +11,13 @@ import type {
   ContractEventName,
 } from "viem";
 
-import {
-  AscendingConsignmentAbi,
-  FixedPriceConsignmentAbi,
-  KarPassportBridgeGatewayAbi,
-} from "@/lib/contracts/abis.generated";
+import { COMMERCIAL_CONTRACT_ABIS } from "@/lib/svm/commercial-abi-events";
 
 /** Runtime-enumerable ABI table — sole name→args source for optional contracts. */
 export const OPTIONAL_CONTRACT_ABIS = {
-  FixedPriceConsignment: FixedPriceConsignmentAbi,
-  AscendingConsignment: AscendingConsignmentAbi,
-  KarPassportBridgeGateway: KarPassportBridgeGatewayAbi,
+  FixedPriceConsignment: COMMERCIAL_CONTRACT_ABIS.FixedPriceConsignment,
+  AscendingConsignment: COMMERCIAL_CONTRACT_ABIS.AscendingConsignment,
+  KarPassportBridgeGateway: COMMERCIAL_CONTRACT_ABIS.KarPassportBridgeGateway,
 } as const;
 
 export type OptionalContractName = keyof typeof OPTIONAL_CONTRACT_ABIS;
