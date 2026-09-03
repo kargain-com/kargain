@@ -1,7 +1,5 @@
 "use client";
 
-import { useWriteContract } from "wagmi";
-
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useClaimAssetMeta } from "@/hooks/use-claim-asset-meta";
@@ -15,9 +13,10 @@ import { monoNumeric } from "@/lib/design/instrument-classes";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { CreditCardIcon } from "@/components/ui/icons";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 function ClaimRow({ claim }: { claim: PendingClaimView }) {
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, busy, error, syncLagged } = useTxSync(claim.chainId);
   const meta = useClaimAssetMeta({
     chainId: claim.chainId,

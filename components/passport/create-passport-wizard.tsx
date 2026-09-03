@@ -5,7 +5,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
-import { useSignMessage, useWriteContract } from "wagmi";
+import { useSignMessage } from "wagmi";
 
 import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
@@ -39,6 +39,7 @@ import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
@@ -67,7 +68,7 @@ export function CreatePassportWizard() {
   const walletChain = evm.ok ? evm.chainId : undefined;
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
-    useWriteContract();
+    useEvmWriteContract();
 
   const chainId = resolveKarProTargetChainId(walletChain);
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;

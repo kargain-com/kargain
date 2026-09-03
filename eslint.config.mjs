@@ -112,7 +112,8 @@ const eslintConfig = [
     },
   },
   {
-    files: ["hooks/use-tx-sync.ts"],
+    // Sole product door for waitForTransactionReceipt (S8-3) — use-tx-sync calls this.
+    files: ["lib/web3/evm-tx-confirm.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

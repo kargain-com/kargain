@@ -3,7 +3,6 @@
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
 
 import { useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -51,6 +50,7 @@ import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -98,7 +98,7 @@ export function AuctionSettlementPanel({
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-        const { writeContractAsync, isPending: isWriting } = useWriteContract();
+        const { writeContractAsync, isPending: isWriting } = useEvmWriteContract();
   const { runTx, awaitReceipt, busy, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 

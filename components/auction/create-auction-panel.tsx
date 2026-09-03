@@ -4,7 +4,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 
 import { useEffect, useMemo, useState } from "react";
 import { parseUnits, zeroAddress } from "viem";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -38,6 +38,7 @@ import {
 } from "@/lib/design/instrument-classes";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -60,7 +61,7 @@ export function CreateAuctionPanel({
   const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
-      const { writeContractAsync } = useWriteContract();
+      const { writeContractAsync } = useEvmWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const { options: openOptions, pending: openOptionsPending } =

@@ -4,7 +4,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, stringToHex } from "viem";
-import { useBalance, useReadContract, useSendTransaction, useWriteContract } from "wagmi";
+import { useBalance, useReadContract } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract, useEvmSendTransaction } from "@/lib/web3/evm-write-adapter";
 
 const ERC20_ABI = [
   {
@@ -143,8 +144,8 @@ export function VerificationPaymentModal({
     (membershipChainId == null || walletChainId === membershipChainId);
   const syncChainId = chainId ?? walletChainId ?? 84532;
   const wc = wagmiChainId(syncChainId);
-  const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
-  const { writeContractAsync, isPending: isWritePending } = useWriteContract();
+  const { sendTransactionAsync, isPending: isEthPending } = useEvmSendTransaction();
+  const { writeContractAsync, isPending: isWritePending } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(syncChainId);
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {

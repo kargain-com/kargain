@@ -3,7 +3,7 @@
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
 
 import { useCallback, useMemo, useState } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import {
   ReturnCooldownDisplay,
@@ -16,6 +16,7 @@ import { commerceModeAbi, commerceModeAddress } from "@/lib/commerce/mode";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   mode: CommerceMode;
@@ -60,7 +61,7 @@ export function OwnerRecallPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-      const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 

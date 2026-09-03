@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ import {
   formatFeeWeiInDisplayCurrency,
 } from "@/lib/verifier/fee-composer-math";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type KarProFeeSectionProps = {
   chainId: number;
@@ -37,7 +38,7 @@ function displayCurrencyLabel(currency: string): string {
 }
 
 export function KarProFeeSection({ chainId, address, staking }: KarProFeeSectionProps) {
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);
 

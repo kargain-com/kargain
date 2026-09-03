@@ -3,7 +3,7 @@
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
 import { useState } from "react";
-import { useBalance, useReadContract, useWriteContract } from "wagmi";
+import { useBalance, useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -29,6 +29,7 @@ import {
 } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 const ERC20_ABI = [
   {
@@ -93,7 +94,7 @@ export function AuctionBidPanel({
   const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
-      const { writeContractAsync, isPending: isWriting } = useWriteContract();
+      const { writeContractAsync, isPending: isWriting } = useEvmWriteContract();
   const { runTx, awaitReceipt, runFlow, phase, busy, error, syncLagged } =
     useTxSync(chainId);
 

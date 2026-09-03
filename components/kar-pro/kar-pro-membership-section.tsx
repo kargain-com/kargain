@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
@@ -17,6 +17,7 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { requireCommercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type KarProMembershipSectionProps = {
   chainId: number;
@@ -31,7 +32,7 @@ export function KarProMembershipSection({
   address,
   onLeft,
 }: KarProMembershipSectionProps) {
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const { stakeLabel } = useMinStakeNative(chainId);
   const wc = wagmiChainId(chainId);

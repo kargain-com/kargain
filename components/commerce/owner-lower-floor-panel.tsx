@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useCallback, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +30,7 @@ import {
 } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   mode: CommerceMode;
@@ -80,7 +80,7 @@ export function OwnerLowerFloorPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-      const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

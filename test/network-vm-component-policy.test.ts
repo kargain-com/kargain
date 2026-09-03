@@ -19,11 +19,13 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/web3/commercial-active.ts",
   "lib/web3/deployment-addresses.ts",
   "lib/web3/evm-account-adapter.ts",
+  "lib/web3/keyed-multicall.ts",
   "lib/web3/protocol-address.ts",
   "lib/web3/network-explorer.ts",
   "lib/web3/svm-account-adapter.ts",
   "lib/web3/svm-account-session.tsx",
   "lib/web3/svm-wallet-discovery.ts",
+  "lib/web3/tx-write-availability.ts",
 ] as const;
 
 /** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */

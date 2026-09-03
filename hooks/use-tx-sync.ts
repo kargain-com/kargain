@@ -5,18 +5,25 @@ import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import type { TransactionReceipt } from "viem";
 import { useConfig } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { getIndexerBlockNumber } from "@/app/actions/indexer-status";
 import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
-import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import {
+  useActiveAccount,
+  evmSwitchChainAvailability,
+} from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { confirmEvmTransaction } from "@/lib/web3/evm-tx-confirm";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   TX_SYNC_LAG_ADVISORY,
   waitForIndexerBlock,
 } from "@/lib/web3/tx-sync";
+import {
+  txWriteAvailability,
+  txWriteRefusalMessage,
+} from "@/lib/web3/tx-write-availability";
 
 export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
@@ -39,13 +46,19 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isEvmTxHash(value: string): value is `0x${string}` {
+  return /^0x[0-9a-fA-F]{64}$/.test(value);
+}
+
 export function useTxSync(chainId: number) {
   const config = useConfig();
   const queryClient = useQueryClient();
   const router = useRouter();
   const { account, switchChain } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const writeAvail = txWriteAvailability(account, chainId);
+  const walletChainId = writeAvail.available
+    ? writeAvail.walletChainId
+    : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
   const [phase, setPhase] = useState<TxSyncPhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +86,15 @@ export function useTxSync(chainId: number) {
         setError(null);
         setSyncLagged(false);
       }
+      const avail = txWriteAvailability(account, chainId);
+      if (!avail.available) {
+        const message = txWriteRefusalMessage(avail.cause);
+        setError(message);
+        throw new Error(message);
+      }
       setPhase("confirming");
       try {
-        return await waitForTransactionReceipt(config, { hash });
+        return await confirmEvmTransaction(config, hash);
       } catch (err) {
         const message = (options?.mapError ?? txErrorMessage)(err);
         setError(message);
@@ -84,7 +103,7 @@ export function useTxSync(chainId: number) {
         setPhase(nested ? "wallet" : "idle");
       }
     },
-    [config],
+    [account, chainId, config],
   );
 
   /**
@@ -114,7 +133,7 @@ export function useTxSync(chainId: number) {
 
   const runTx = useCallback(
     async (
-      writeFn: () => Promise<`0x${string}`>,
+      writeFn: () => Promise<string>,
       options?: TxSyncOptions,
     ): Promise<TxSyncResult> => {
       setError(null);
@@ -123,6 +142,11 @@ export function useTxSync(chainId: number) {
       activeRunDepthRef.current += 1;
 
       try {
+        const avail = txWriteAvailability(account, chainId);
+        if (!avail.available) {
+          throw new Error(txWriteRefusalMessage(avail.cause));
+        }
+
         const targetChainId = wagmiChainId(chainId);
         if (walletChainId !== targetChainId) {
           if (!switchAvail.available) {
@@ -132,8 +156,11 @@ export function useTxSync(chainId: number) {
         }
 
         const hash = await writeFn();
+        if (!isEvmTxHash(hash)) {
+          throw new Error("Transaction hash is not a valid EVM hash.");
+        }
         setPhase("confirming");
-        const receipt = await waitForTransactionReceipt(config, { hash });
+        const receipt = await confirmEvmTransaction(config, hash);
 
         setPhase("indexing");
         const { synced } = await waitForIndexerBlock({
@@ -153,7 +180,7 @@ export function useTxSync(chainId: number) {
         setPhase("idle");
       }
     },
-    [chainId, config, syncReads, switchChain, walletChainId, switchAvail],
+    [account, chainId, config, syncReads, switchChain, walletChainId, switchAvail],
   );
 
   const busy = phase !== "idle" || flowActive;

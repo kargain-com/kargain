@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
-import { useWriteContract } from "wagmi";
 
 import { getVerifierDirectory } from "@/app/actions/verifier-directory";
 import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
@@ -54,6 +53,7 @@ import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Step = "approval" | "agent" | "terms";
 
@@ -101,7 +101,7 @@ export function AuthorizeAgentDialog({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

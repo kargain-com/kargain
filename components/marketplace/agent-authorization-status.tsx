@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
@@ -18,6 +17,7 @@ import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -52,7 +52,7 @@ export function AgentAuthorizationStatus({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-      const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

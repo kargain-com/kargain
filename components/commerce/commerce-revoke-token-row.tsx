@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +27,7 @@ import {
 import { requireCommercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   row: CommerceRevokeTokenRow;
@@ -36,7 +36,7 @@ type Props = {
 
 export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
   const { runTx, busy, error, syncLagged } = useTxSync(row.chainId);
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const confirm = revokePaymentTokenConfirmCopy({

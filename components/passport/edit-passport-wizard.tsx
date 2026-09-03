@@ -5,7 +5,7 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 import Link from "next/link";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSignMessage, useWriteContract } from "wagmi";
+import { useSignMessage } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { MetadataChangeConfirmDialog } from "@/components/passport/metadata-change-confirm-dialog";
@@ -70,6 +70,7 @@ import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type EditPhotoItem =
   | { id: string; kind: "existing"; uri: string }
@@ -104,7 +105,7 @@ export function EditPassportWizard({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync, isPending, reset: resetWrite } = useWriteContract();
+  const { writeContractAsync, isPending, reset: resetWrite } = useEvmWriteContract();
   const {
     runTx,
     phase: txPhase,

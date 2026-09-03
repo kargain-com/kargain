@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatEther } from "viem";
-import { useReadContract, useSignMessage, useWriteContract } from "wagmi";
+import { useReadContract, useSignMessage } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
@@ -62,6 +62,7 @@ import {
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   tokenId: string;
@@ -119,7 +120,7 @@ export function PassportActionsPanel({
   const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");

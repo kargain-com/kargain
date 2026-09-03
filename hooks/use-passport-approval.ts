@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 /**
  * Sole owner of ERC-721 passport approval reads/writes for any spender
@@ -12,7 +13,6 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { addressesMatch } from "@/lib/commerce/consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -41,7 +41,7 @@ export function usePassportApproval({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const [approvalBusy, setApprovalBusy] = useState(false);
 
   const passport = karPassportAddress(chainId);

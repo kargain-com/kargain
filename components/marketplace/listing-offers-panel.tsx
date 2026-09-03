@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,6 +19,7 @@ import type { ListingOffer } from "@/lib/nostr/listing-offers";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { formatRelativeTime } from "@/lib/format/relative-time";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -141,7 +141,7 @@ export function ListingOffersPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-      const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

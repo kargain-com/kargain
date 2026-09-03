@@ -4,7 +4,7 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseUnits } from "viem";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { AgentLowerCommissionPanel } from "@/components/commerce/agent-lower-commission-panel";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 /** Native-only stub so the settlement-note chrome can render without open pairings. */
 const SETTLEMENT_NOTE_ONLY_OPTIONS = deriveOpenableTerms({
@@ -87,7 +88,7 @@ export function AgentUpdateListingPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useCallback, useMemo, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -25,6 +24,7 @@ import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { SETTLEMENT_NOTE_WRITE_DISCLOSURE } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -68,7 +68,7 @@ export function AgentListOnBehalfPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

@@ -3,7 +3,6 @@
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
 import { useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
@@ -24,6 +23,7 @@ import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type LoadingPhase = "idle" | "uploading";
 
@@ -65,7 +65,7 @@ export function KarProJoinForm({
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);
 

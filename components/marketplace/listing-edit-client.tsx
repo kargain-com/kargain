@@ -5,7 +5,6 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import { useWriteContract } from "wagmi";
 
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
@@ -41,6 +40,7 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   tokenId: string;
@@ -61,7 +61,7 @@ export function ListingEditClient({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
     useTxSync(chainId);
   const { options: openOptions, pending: openOptionsPending } =

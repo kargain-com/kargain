@@ -5,7 +5,7 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { erc20Abi, isAddressEqual, zeroAddress } from "viem";
-import { useBalance, useReadContract, useSimulateContract, useWriteContract } from "wagmi";
+import { useBalance, useReadContract, useSimulateContract } from "wagmi";
 
 import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -33,6 +33,7 @@ import type { PassportStatus } from "@/lib/types/ponder";
 import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -90,7 +91,7 @@ export function ListingBuyPanel({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const router = useRouter();
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const [riskOpen, setRiskOpen] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);

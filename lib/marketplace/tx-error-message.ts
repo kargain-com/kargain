@@ -12,6 +12,7 @@ import {
   decodeCustomError,
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
+import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
 
 /**
  * Exact error-name → user copy. Every production custom error must appear here with a
@@ -171,6 +172,19 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   AbandonmentNotReady: "The abandonment window has not finished yet.",
   ProtectionElapsed: "The protection window has ended. Confirm or release instead.",
   NotPassportHolder: "Return the passport to this wallet before completing the reversal.",
+  // SVM-only names (SPEC D-43 — ordinal carries no parameters; copy is name-only).
+  ComposeRequired: "This bridge message is missing required compose data.",
+  ComposeUndecodable: "This bridge message could not be decoded.",
+  ArithmeticOverflow: "An on-chain amount overflowed. Try a smaller value.",
+  WrongPlatformRecipient: "The platform fee recipient account is wrong for this settlement.",
+  MissingPlatformRecipient: "The platform fee recipient account is missing.",
+  WrongSellerRecipient: "The seller recipient account is wrong for this settlement.",
+  MissingSellerRecipient: "The seller recipient account is missing.",
+  WrongAgentRecipient: "The agent recipient account is wrong for this settlement.",
+  MissingAgentRecipient: "The agent recipient account is missing.",
+  TransferFeeExtensionForbidden: "This payment mint has a transfer-fee extension that is not allowed.",
+  FiatDenominationRefused: "Fiat denomination is not available on this network.",
+  ConfidenceTooWide: "The oracle price confidence interval is too wide.",
 };
 
 const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);
@@ -285,6 +299,68 @@ export function formatPassportBridgeBlockedMessage(): string {
   return "Resolve the open challenge before bridging.";
 }
 
+/**
+ * Extract a Solana custom-program error ordinal from a thrown value.
+ * Matches Anchor / kit shapes: `Custom(N)`, `custom program error: 0x…`, or `{ InstructionError: [_, { Custom: N }] }`.
+ * Returns null when no ordinal is present (fail closed — no invented name).
+ */
+export function extractSvmProgramErrorOrdinal(error: unknown): number | null {
+  if (error == null) return null;
+
+  if (typeof error === "object") {
+    const rec = error as Record<string, unknown>;
+    const direct = rec.Custom ?? rec.custom;
+    if (typeof direct === "number" && Number.isInteger(direct) && direct >= 0) {
+      return direct;
+    }
+    const instructionError = rec.InstructionError;
+    if (Array.isArray(instructionError) && instructionError.length >= 2) {
+      const inner = instructionError[1];
+      if (inner && typeof inner === "object") {
+        const custom = (inner as Record<string, unknown>).Custom;
+        if (typeof custom === "number" && Number.isInteger(custom) && custom >= 0) {
+          return custom;
+        }
+      }
+    }
+  }
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (!message) return null;
+
+  const customParen = message.match(/\bCustom\((\d+)\)/);
+  if (customParen) return Number(customParen[1]);
+
+  const hex = message.match(/custom program error:\s*0x([0-9a-fA-F]+)/i);
+  if (hex) {
+    const n = Number.parseInt(hex[1]!, 16);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  }
+
+  const decimal = message.match(/custom program error:\s*(\d+)/i);
+  if (decimal) return Number(decimal[1]);
+
+  return null;
+}
+
+/**
+ * Map an SVM program failure to the shared error name (no args — D-43).
+ */
+export function decodeSvmProgramError(
+  error: unknown,
+): DecodedCustomError | null {
+  const ordinal = extractSvmProgramErrorOrdinal(error);
+  if (ordinal == null) return null;
+  const name = svmProgramErrorName(ordinal);
+  if (name == null) return null;
+  return { name, args: [] };
+}
+
 export function txErrorMessage(err: unknown): string {
   if (
     err instanceof UserRejectedRequestError ||
@@ -294,7 +370,8 @@ export function txErrorMessage(err: unknown): string {
     return "Wallet signature cancelled.";
   }
 
-  const decoded = decodeProductionCustomError(err);
+  const decoded =
+    decodeProductionCustomError(err) ?? decodeSvmProgramError(err);
   if (decoded != null) {
     const enriched = formatDecodedRevert(decoded);
     if (enriched != null) return enriched;

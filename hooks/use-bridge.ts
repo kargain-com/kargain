@@ -8,7 +8,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { usePublicClient, useWriteContract } from "wagmi";
+import { usePublicClient } from "wagmi";
 
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { useTxSync } from "@/hooks/use-tx-sync";
@@ -46,6 +46,7 @@ import {
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 export type BridgePhase =
   | "idle"
@@ -118,7 +119,7 @@ export function useBridge(
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const publicClient = usePublicClient({ chainId: wagmiChainId(srcChainId) });
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, awaitReceipt, runFlow, busy: syncBusy, error: syncError } =
     useTxSync(srcChainId);
 

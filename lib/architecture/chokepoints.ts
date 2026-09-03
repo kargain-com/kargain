@@ -26,8 +26,18 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "tx-sync-writes",
     owner: "hooks/use-tx-sync.ts",
-    rule: "Post-truth invalidate + router.refresh only via syncReads / runTx",
-    guardTests: ["tx-sync-write-policy.test.ts"],
+    rule: "Post-truth invalidate + router.refresh only via syncReads / runTx; VM confirm dispatch inside owner",
+    guardTests: [
+      "tx-sync-write-policy.test.ts",
+      "evm-write-adapter-policy.test.ts",
+      "s8-3-write-path.test.ts",
+    ],
+  },
+  {
+    id: "evm-write-adapter",
+    owner: "lib/web3/evm-write-adapter.ts",
+    rule: "wagmi useWriteContract / useSendTransaction only inside the EVM write adapter",
+    guardTests: ["evm-write-adapter-policy.test.ts"],
   },
   {
     id: "ponder-tagged-read",
@@ -55,9 +65,9 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "keyed-multicall",
-    owner: "lib/web3/keyed-multicall.ts",
-    rule: "useReadContracts only inside keyed-multicall; consumers use named keys",
-    guardTests: ["keyed-multicall-policy.test.ts"],
+    owner: "lib/web3/keyed-multicall.ts · lib/web3/svm-keyed-read.ts",
+    rule: "useReadContracts + SVM batch sibling only inside keyed-multicall; consumers use named keys",
+    guardTests: ["keyed-multicall-policy.test.ts", "s8-3-write-path.test.ts"],
   },
   {
     id: "passport-approval",

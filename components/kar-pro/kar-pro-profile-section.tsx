@@ -4,7 +4,6 @@ import { useActiveAccount } from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
@@ -20,6 +19,7 @@ import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type KarProProfileSectionProps = {
   chainId: number;
@@ -66,7 +66,7 @@ export function KarProProfileSection({
 }: KarProProfileSectionProps) {
   const { signingBinding } = useActiveAccount();
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);
 

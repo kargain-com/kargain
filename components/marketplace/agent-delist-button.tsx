@@ -3,7 +3,6 @@
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
 
 import { useCallback, useState } from "react";
-import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -11,6 +10,7 @@ import { commerceModeAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -29,7 +29,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
   const switchAvail = evmSwitchChainAvailability(account);
 
   const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 

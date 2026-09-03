@@ -3,7 +3,7 @@
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
 import { useMemo, useState } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -38,6 +38,7 @@ import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -61,7 +62,7 @@ export function AgentCreateAuctionPanel({
   const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
-      const { writeContractAsync, isPending: isWriting } = useWriteContract();
+      const { writeContractAsync, isPending: isWriting } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
   const [reserveStr, setReserveStr] = useState("");

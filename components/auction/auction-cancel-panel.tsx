@@ -2,8 +2,6 @@
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
-import { useWriteContract } from "wagmi";
-
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
@@ -14,6 +12,7 @@ import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
   chainId: number;
@@ -33,7 +32,7 @@ export function AuctionCancelPanel({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
   const busy = phase !== "idle";
