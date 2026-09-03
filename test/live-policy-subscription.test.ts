@@ -69,14 +69,28 @@ function fakePool() {
 function collect() {
   const emissions: string[][] = [];
   let initialDoneCount = 0;
+  let resolveFirstEntries: (() => void) | null = null;
+  let resolveInitialDone: (() => void) | null = null;
+  const whenFirstEntries = new Promise<void>((resolve) => {
+    resolveFirstEntries = resolve;
+  });
+  const whenInitialDone = new Promise<void>((resolve) => {
+    resolveInitialDone = resolve;
+  });
   return {
     emissions,
+    whenFirstEntries,
+    whenInitialDone,
     callbacks: {
       onEntries: (entries: string[]) => {
         emissions.push(entries);
+        resolveFirstEntries?.();
+        resolveFirstEntries = null;
       },
       onInitialLoadDone: () => {
         initialDoneCount += 1;
+        resolveInitialDone?.();
+        resolveInitialDone = null;
       },
     },
     get initialDoneCount() {
@@ -85,6 +99,7 @@ function collect() {
   };
 }
 
+/** Resolves after `ms` — only to prove a progressive timer did not fire after close. */
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -181,13 +196,15 @@ describe("subscribeLatestPerAuthorPerD — emission cadence", () => {
   it("progressively flushes before EOSE", async () => {
     const { pool, state } = fakePool();
     const out = collect();
+    // Settle budget must not race progressive flush — fixture owns the window.
+    const timing = { progressiveFlushMs: 5, initialLoadTimeoutMs: 60_000 };
     const close = subscribeLatestPerAuthorPerD(
-      pool, ["wss://r"], FILTER, POLICY, mapOkContent, out.callbacks, FAST_TIMING,
+      pool, ["wss://r"], FILTER, POLICY, mapOkContent, out.callbacks, timing,
     );
 
     state.handlers?.onevent(makeEvent());
     assert.equal(out.emissions.length, 0);
-    await wait(15);
+    await out.whenFirstEntries;
     assert.deepEqual(out.emissions, [["ok:v1"]]);
     assert.equal(out.initialDoneCount, 0);
     close();
@@ -200,7 +217,7 @@ describe("subscribeLatestPerAuthorPerD — emission cadence", () => {
       pool, ["wss://r"], FILTER, POLICY, mapOkContent, out.callbacks, FAST_TIMING,
     );
 
-    await wait(60);
+    await out.whenInitialDone;
     assert.equal(out.initialDoneCount, 1);
     assert.deepEqual(out.emissions, [[]]);
     close();
@@ -227,15 +244,23 @@ describe("subscribeLatestPerAuthorPerD — emission cadence", () => {
   it("stops emitting and closes the subscription on teardown", async () => {
     const { pool, state } = fakePool();
     const out = collect();
+    const progressiveFlushMs = 5;
+    const timing = { progressiveFlushMs, initialLoadTimeoutMs: 60_000 };
     const close = subscribeLatestPerAuthorPerD(
-      pool, ["wss://r"], FILTER, POLICY, mapOkContent, out.callbacks, FAST_TIMING,
+      pool, ["wss://r"], FILTER, POLICY, mapOkContent, out.callbacks, timing,
     );
 
     state.handlers?.onevent(makeEvent());
     close();
     assert.equal(state.closeCount, 1);
 
-    await wait(60);
+    // If close failed to clear the progressive timer, whenFirstEntries wins.
+    const leakedFlush = await Promise.race([
+      out.whenFirstEntries.then(() => true),
+      wait(progressiveFlushMs + 15).then(() => false),
+    ]);
+    assert.equal(leakedFlush, false, "progressive flush must not fire after close");
+
     state.handlers?.onevent(makeEvent({ id: "e2", created_at: 1_700_000_100 }));
     state.handlers?.oneose?.();
     assert.equal(out.emissions.length, 0);
