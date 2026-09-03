@@ -2,12 +2,17 @@
  * Sole resolver for settlement-asset display identity (native / USDC / unknown).
  * Openable-terms labels, listing asking price, and auction ETH|USDC wrappers
  * consume this — never invent a second address→symbol map in UI.
+ *
+ * Native symbol/decimals come from the commercial stack's nativeUnit (S8-4).
  */
 
 import { getAddress, zeroAddress } from "viem";
 
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { usdcAddress } from "@/lib/web3/deployment-addresses";
-import { getViemChain } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
 export type SettlementAssetIdentity = "native" | "usdc" | "unknown";
@@ -31,6 +36,7 @@ function isZero(asset: string): boolean {
 /**
  * Resolve label + decimals for a settlement asset on a chain.
  * Unknown ERC-20s stay fail-visible (`shortAddress`, decimals null).
+ * Native on a non-commercial chainId → unknown (no invented ETH/18).
  */
 export function resolveSettlementAssetMeta(input: {
   chainId: number;
@@ -38,10 +44,18 @@ export function resolveSettlementAssetMeta(input: {
 }): SettlementAssetMeta {
   const raw = input.asset?.trim() ?? "";
   if (!raw || isZero(raw)) {
-    const chain = getViemChain(input.chainId);
+    const stack = commercialActive(input.chainId);
+    if (!stack) {
+      return {
+        label: shortAddress(raw || zeroAddress),
+        decimals: null,
+        identity: "unknown",
+      };
+    }
+    const unit = nativeUnitOf(stack);
     return {
-      label: chain?.nativeCurrency.symbol ?? "ETH",
-      decimals: chain?.nativeCurrency.decimals ?? 18,
+      label: unit.symbol,
+      decimals: unit.decimals,
       identity: "native",
     };
   }

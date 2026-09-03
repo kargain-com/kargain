@@ -23,6 +23,10 @@ import type {
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -63,12 +67,14 @@ function useFloorUnits(row: MoneyRow) {
     chainId: wagmiChainId(row.chainId),
     query: { enabled: needsErc20 },
   });
+  const stack = commercialActive(row.chainId);
   return floorDisplayUnits({
     denominationKind: row.denominationKind,
     currencyCode: row.currencyCode,
     asset: row.asset,
     erc20Decimals:
       typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    nativeUnit: stack ? nativeUnitOf(stack) : null,
     assetLabel: resolveSettlementAssetMeta({
       chainId: row.chainId,
       asset: row.asset,

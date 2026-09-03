@@ -26,7 +26,6 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useMandate } from "@/hooks/use-mandate";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { endsAtDateTimeAttr } from "@/lib/auction/format-auction";
-import { isZeroAddress } from "@/lib/commerce/consignment";
 import {
   buildCompensation,
   compensationFormDef,
@@ -40,6 +39,7 @@ import {
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
+import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   elevatedAdvisoryPanel,
@@ -450,19 +450,17 @@ export function AuthorizeAuctionAgentDialog({
       : null;
   const compensationConsequence = compensationFormDef(compensationForm).consequence;
 
-  const revokeAsset = chainAuth
-    ? openOptions.assets.find(
-        (a) => a.token.toLowerCase() === chainAuth.asset.toLowerCase(),
-      )
-    : undefined;
-  const revokeFloorLabel = chainAuth
-    ? formatFloorAmount(
-        chainAuth.floor,
-        revokeAsset?.decimals ?? (isZeroAddress(chainAuth.asset) ? 18 : 6),
-        revokeAsset?.label ??
-          (isZeroAddress(chainAuth.asset) ? "ETH" : "token"),
-      )
+  const revokeMeta = chainAuth
+    ? resolveSettlementAssetMeta({ chainId, asset: chainAuth.asset })
     : null;
+  const revokeFloorLabel =
+    chainAuth && revokeMeta?.decimals != null
+      ? formatFloorAmount(
+          chainAuth.floor,
+          revokeMeta.decimals,
+          revokeMeta.label,
+        )
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

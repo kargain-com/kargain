@@ -162,6 +162,6 @@ describe("svm tx confirm owner", () => {
   });
 
   it("fixture namespace is tests-only (not a product invent)", () => {
-    assert.ok(String(FIXTURE_SVM_NAMESPACE).includes("40168") || FIXTURE_SVM_NAMESPACE.length > 0);
+    assert.ok(String(FIXTURE_SVM_NAMESPACE).includes("40168"));
   });
 });

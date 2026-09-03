@@ -11,6 +11,10 @@ import {
   formatAuctionAmount,
 } from "@/lib/auction/format-auction";
 import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 
 type Props = {
   authorization: AuctionAgentAuth;
@@ -33,6 +37,7 @@ export function AuctionAgentAuthorizationStatus({
   onManage,
 }: Props) {
   const assetLabel = auctionAssetLabelFromAddress(authorization.asset, chainId);
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const expired = isAuctionAuthExpired(authorization.expiry, now);
 
   return (
@@ -62,6 +67,7 @@ export function AuctionAgentAuthorizationStatus({
             {formatAuctionAmount(
               authorization.ownerMinAsset,
               assetLabel,
+              nativeUnit,
             )}
           </dd>
         </div>

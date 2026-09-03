@@ -47,6 +47,10 @@ import {
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -170,11 +174,14 @@ export function AuctionSettlementPanel({
 
   const isBuyer =
     Boolean(address && hold && addressesMatch(hold.buyer, address));
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const grossLabel = hold
-    ? formatAuctionAmount(hold.gross, auction.assetLabel)
+    ? formatAuctionAmount(hold.gross, auction.assetLabel, nativeUnit)
     : null;
   const bondLabel =
-    challengeBond != null ? formatAuctionAmount(challengeBond, "ETH") : null;
+    challengeBond != null
+      ? formatAuctionAmount(challengeBond, "ETH", nativeUnit)
+      : null;
   const actionBusy = busy || isWriting;
 
   async function run(
@@ -311,14 +318,16 @@ export function AuctionSettlementPanel({
   if (auctionUiState === "S8") {
     const fees = auction.settlement;
     const gross = fees
-      ? formatAuctionAmount(fees.gross, auction.assetLabel)
+      ? formatAuctionAmount(fees.gross, auction.assetLabel, nativeUnit)
       : (grossLabel ?? "—");
-    const net = fees ? formatAuctionAmount(fees.net, auction.assetLabel) : "—";
+    const net = fees
+      ? formatAuctionAmount(fees.net, auction.assetLabel, nativeUnit)
+      : "—";
     const agentFee = fees
-      ? formatAuctionAmount(fees.agentFee, auction.assetLabel)
+      ? formatAuctionAmount(fees.agentFee, auction.assetLabel, nativeUnit)
       : "—";
     const platformFee = fees
-      ? formatAuctionAmount(fees.platformFee, auction.assetLabel)
+      ? formatAuctionAmount(fees.platformFee, auction.assetLabel, nativeUnit)
       : "—";
 
     return (

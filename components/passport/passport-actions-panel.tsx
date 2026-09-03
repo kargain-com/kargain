@@ -5,7 +5,6 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { formatEther } from "viem";
 import { useReadContract, useSignMessage } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
@@ -59,6 +58,11 @@ import {
   karPassportAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
+import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
@@ -605,7 +609,12 @@ export function PassportActionsPanel({
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
           ) : disputeDeposit != null ? (
             <p className="text-xs text-text-secondary">
-              Opening locks a {formatEther(disputeDeposit)} ETH deposit for the challenge
+              Opening locks a{" "}
+              {formatNativeAmountLabeled(
+                disputeDeposit,
+                nativeUnitOf(commercialActive(chainId)!),
+              )}{" "}
+              deposit for the challenge
               window. Withdraw before the window ends returns it to you. Uphold returns it to
               the opener. Reject or expiry sends it to the platform. If a return cannot be
               delivered, it waits under Claims.

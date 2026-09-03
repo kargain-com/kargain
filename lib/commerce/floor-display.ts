@@ -1,6 +1,7 @@
 /**
  * Display units for a snapshotted consignment floor — fiat 1e8 or asset
  * decimals. ERC-20 decimals are injected (caller reads chain when needed).
+ * Native decimals/label come from {@link CommercialNativeUnit} (S8-4).
  */
 
 import {
@@ -10,6 +11,7 @@ import {
   type DenominationKind,
 } from "@/lib/commerce/denomination";
 import { isZeroAddress } from "@/lib/commerce/consignment";
+import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 
 export type FloorDisplayUnits = {
   decimals: number;
@@ -20,6 +22,7 @@ export type FloorDisplayUnits = {
  * Resolve floor display units. When asset-denominated and non-native, pass
  * `erc20Decimals` from a successful chain read; omit while unread so the
  * concession surface stays fail-closed.
+ * Native asset requires `nativeUnit` from the commercial stack.
  */
 export function floorDisplayUnits(input: {
   denominationKind: DenominationKind | undefined;
@@ -27,7 +30,9 @@ export function floorDisplayUnits(input: {
   asset?: string | null;
   /** Required when denomination is Asset and asset is a non-zero ERC-20. */
   erc20Decimals?: number | null;
-  /** Label when asset is native (default ETH) or for ERC-20 when known. */
+  /** Native unit from the commercial stack (required for native asset floors). */
+  nativeUnit?: CommercialNativeUnit | null;
+  /** Label for ERC-20 when known (ignored for native — use nativeUnit.symbol). */
   assetLabel?: string;
 }): FloorDisplayUnits | null {
   if (input.denominationKind === undefined) return null;
@@ -46,9 +51,10 @@ export function floorDisplayUnits(input: {
 
   const asset = input.asset ?? "";
   if (!asset || isZeroAddress(asset)) {
+    if (!input.nativeUnit) return null;
     return {
-      decimals: 18,
-      unitLabel: input.assetLabel ?? "ETH",
+      decimals: input.nativeUnit.decimals,
+      unitLabel: input.nativeUnit.symbol,
     };
   }
 

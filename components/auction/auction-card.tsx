@@ -22,6 +22,10 @@ import {
   LISTING_CARD_IMAGE_PLACEHOLDER,
 } from "@/lib/marketplace/listing-card-media";
 import { cn } from "@/lib/utils";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
 type Props = {
@@ -37,9 +41,10 @@ export function AuctionCard({ row, now, index }: Props) {
     index !== undefined ? isListingCardFirstViewport(index) : false;
   const hasBid = row.highestBid > 0n && row.startedAt > 0n;
   const awaitingFirstBid = row.startedAt === 0n;
+  const nativeUnit = nativeUnitOf(commercialActive(row.chainId)!);
   const priceLabel = hasBid
-    ? formatAuctionAmount(row.highestBid, row.assetLabel)
-    : formatAuctionAmount(row.reserve, row.assetLabel);
+    ? formatAuctionAmount(row.highestBid, row.assetLabel, nativeUnit)
+    : formatAuctionAmount(row.reserve, row.assetLabel, nativeUnit);
   const countdown = awaitingFirstBid
     ? null
     : formatAuctionCountdownMinutes(row.endsAt, now);

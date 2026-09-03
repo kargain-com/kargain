@@ -35,6 +35,10 @@ import {
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -128,9 +132,10 @@ export function AgentCreateAuctionPanel({
   });
 
   const assetLabel = auctionAssetLabelFromAddress(mandate?.asset, chainId);
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const reserve = useMemo(
-    () => parseOwnerMinAsset(reserveStr, assetLabel),
-    [reserveStr, assetLabel],
+    () => parseOwnerMinAsset(reserveStr, assetLabel, nativeUnit),
+    [reserveStr, assetLabel, nativeUnit],
   );
 
   const meetsFloor = agentedPriceMeetsFloor({
@@ -248,7 +253,7 @@ export function AgentCreateAuctionPanel({
           </span>
           . Owner floor{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(mandate.floor, assetLabel)}
+            {formatAuctionAmount(mandate.floor, assetLabel, nativeUnit)}
           </span>
           . Compensation{" "}
           <span className="text-text-primary">
@@ -357,15 +362,15 @@ export function AgentCreateAuctionPanel({
         <p className="rounded-md border border-border-default bg-bg-primary p-3 font-sans text-sm text-text-secondary">
           At reserve{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(reserve, assetLabel)}
+            {formatAuctionAmount(reserve, assetLabel, nativeUnit)}
           </span>
           : you receive{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(breakdown.agentAmount, assetLabel)}
+            {formatAuctionAmount(breakdown.agentAmount, assetLabel, nativeUnit)}
           </span>
           , owner receives{" "}
           <span className="font-mono tabular-nums text-text-primary">
-            {formatAuctionAmount(breakdown.ownerAmount, assetLabel)}
+            {formatAuctionAmount(breakdown.ownerAmount, assetLabel, nativeUnit)}
           </span>
           .
         </p>

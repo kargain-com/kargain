@@ -1,11 +1,18 @@
-import { formatEther, formatUnits } from "viem";
+import { formatUnits } from "viem";
+
+import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
+import {
+  formatNativeAmount,
+  formatNativeAmountLabeled,
+} from "@/lib/web3/native-amount";
 
 const USDC_DECIMALS = 6;
 
-/** Format auction amount for display (ETH or USDC). Mono substitutions. */
+/** Format auction amount for display (native unit or USDC). Mono substitutions. */
 export function formatAuctionAmount(
   amount: bigint,
   assetLabel: "ETH" | "USDC",
+  nativeUnit: CommercialNativeUnit,
 ): string {
   if (assetLabel === "USDC") {
     const raw = formatUnits(amount, USDC_DECIMALS);
@@ -13,14 +20,16 @@ export function formatAuctionAmount(
     if (!Number.isFinite(n)) return `${raw} USDC`;
     return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC`;
   }
-  const eth = formatEther(amount);
-  const n = Number.parseFloat(eth);
-  if (!Number.isFinite(n)) return `${eth} ETH`;
-  const trimmed =
+  const raw = formatNativeAmount(amount, nativeUnit);
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) {
+    return formatNativeAmountLabeled(amount, nativeUnit);
+  }
+  const grouped =
     n >= 1
       ? n.toLocaleString("en-US", { maximumFractionDigits: 4 })
       : n.toLocaleString("en-US", { maximumFractionDigits: 6 });
-  return `${trimmed} ETH`;
+  return `${grouped} ${nativeUnit.symbol}`;
 }
 
 /** Remaining time at minute granularity for browse cards. */

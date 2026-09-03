@@ -258,6 +258,18 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["s8-1-consumer-wiring-policy.test.ts", "network-data-layer.test.ts"],
   },
   {
+    id: "native-amount",
+    owner: "lib/web3/native-amount.ts",
+    rule: "Sole product parse/format of commercial native amounts; unit from CommercialNativeUnit; wallet-family ether helpers and literal eighteen confined here",
+    guardTests: ["native-amount-policy.test.ts", "native-amount.test.ts"],
+  },
+  {
+    id: "irys-upload-plan",
+    owner: "lib/storage/irys-upload-plan.ts",
+    rule: "Sole Irys payment/bundler plan; takes commercial stack; named Result refusal (wrong_vm/unsupported_network/no_rpc); no throw",
+    guardTests: ["irys-upload-plan.test.ts", "native-amount-policy.test.ts"],
+  },
+  {
     id: "product-policy-scan",
     owner: "test/policy-scan-helpers.ts",
     rule: "Sole product ownership-policy walk (app|components|hooks|lib); policies supply predicate + owners only",
@@ -269,6 +281,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "active-account-owner-policy.test.ts",
       "solana-web3-app-graph-policy.test.ts",
       "svm-wallet-adapter-policy.test.ts",
+      "native-amount-policy.test.ts",
     ],
   },
   {

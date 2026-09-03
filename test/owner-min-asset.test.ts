@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseEther, parseUnits } from "viem";
+import { parseUnits } from "viem";
 
 import {
   auctionAssetLabelFromAddress,
@@ -8,39 +8,56 @@ import {
   isValidOwnerMinAsset,
   parseOwnerMinAsset,
 } from "../lib/auction/owner-min-asset.ts";
+import {
+  COMMERCIAL_ACTIVE,
+  nativeUnitOf,
+} from "../lib/web3/commercial-active.ts";
+import { parseNativeAmount } from "../lib/web3/native-amount.ts";
+
+const ethUnit = nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
 
 describe("parseOwnerMinAsset", () => {
   it("parses ETH to wei", () => {
-    assert.equal(parseOwnerMinAsset("1.5", "ETH"), parseEther("1.5"));
+    assert.equal(
+      parseOwnerMinAsset("1.5", "ETH", ethUnit),
+      parseNativeAmount("1.5", ethUnit),
+    );
   });
 
   it("parses USDC to 6 decimals", () => {
-    assert.equal(parseOwnerMinAsset("100.50", "USDC"), parseUnits("100.50", 6));
+    assert.equal(
+      parseOwnerMinAsset("100.50", "USDC", ethUnit),
+      parseUnits("100.50", 6),
+    );
   });
 
   it("returns null for empty or invalid", () => {
-    assert.equal(parseOwnerMinAsset("", "ETH"), null);
-    assert.equal(parseOwnerMinAsset("  ", "USDC"), null);
-    assert.equal(parseOwnerMinAsset("abc", "ETH"), null);
+    assert.equal(parseOwnerMinAsset("", "ETH", ethUnit), null);
+    assert.equal(parseOwnerMinAsset("  ", "USDC", ethUnit), null);
+    assert.equal(parseOwnerMinAsset("abc", "ETH", ethUnit), null);
   });
 });
 
 describe("formatOwnerMinAsset", () => {
   it("formats ETH without suffix", () => {
-    assert.equal(formatOwnerMinAsset(parseEther("1.5"), "ETH"), "1.5");
+    const amount = parseNativeAmount("1.5", ethUnit)!;
+    assert.equal(formatOwnerMinAsset(amount, "ETH", ethUnit), "1.5");
   });
 
   it("formats USDC without suffix", () => {
-    assert.equal(formatOwnerMinAsset(parseUnits("100.5", 6), "USDC"), "100.5");
+    assert.equal(
+      formatOwnerMinAsset(parseUnits("100.5", 6), "USDC", ethUnit),
+      "100.5",
+    );
   });
 });
 
 describe("isValidOwnerMinAsset", () => {
   it("requires positive amount", () => {
-    assert.equal(isValidOwnerMinAsset("0", "ETH"), false);
-    assert.equal(isValidOwnerMinAsset("0.01", "ETH"), true);
-    assert.equal(isValidOwnerMinAsset("1", "USDC"), true);
-    assert.equal(isValidOwnerMinAsset("", "USDC"), false);
+    assert.equal(isValidOwnerMinAsset("0", "ETH", ethUnit), false);
+    assert.equal(isValidOwnerMinAsset("0.01", "ETH", ethUnit), true);
+    assert.equal(isValidOwnerMinAsset("1", "USDC", ethUnit), true);
+    assert.equal(isValidOwnerMinAsset("", "USDC", ethUnit), false);
   });
 });
 

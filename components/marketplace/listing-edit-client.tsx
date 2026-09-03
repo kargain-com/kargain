@@ -179,7 +179,7 @@ export function ListingEditClient({
   );
   const priceDecimals =
     denominationKind === DENOMINATION_KIND.Asset
-      ? (selectedAsset?.decimals ?? 18)
+      ? (selectedAsset?.decimals ?? null)
       : 8;
 
   const saveSettlementNote = useCallback(
@@ -341,6 +341,7 @@ export function ListingEditClient({
   const runUpdatePrice = useCallback(async () => {
     await runFlow(async () => {
       if (!canDelist || !market) return;
+      if (priceDecimals == null) return;
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         await switchChain(wc );
@@ -525,7 +526,7 @@ export function ListingEditClient({
             showOpenPairingFields={false}
             disabled={actionsPending}
           />
-          <Button type="button" disabled={actionsPending} onClick={() => void runUpdatePrice()}>
+          <Button type="button" disabled={actionsPending || priceDecimals == null} onClick={() => void runUpdatePrice()}>
             {actionsPending ? "Confirming…" : "Update asking price"}
           </Button>
         </section>

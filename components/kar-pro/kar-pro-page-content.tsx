@@ -6,9 +6,14 @@ import { useState } from "react";
 import { useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
-import { formatStakeEth } from "@/lib/kar-pro/stake-format";
+import { formatStakeNative } from "@/lib/kar-pro/stake-format";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import {
+  COMMERCIAL_ACTIVE,
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -46,7 +51,11 @@ export function KarProPageContent() {
     query: { enabled: Boolean(staking && chainId != null) },
   });
 
-  const stakeLabel = formatStakeEth(minStake);
+  const stack = chainId != null ? commercialActive(chainId) : undefined;
+  const unit = stack
+    ? nativeUnitOf(stack)
+    : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
+  const stakeLabel = formatStakeNative(minStake, unit);
 
   const [prevIdentity, setPrevIdentity] = useState(`${address}:${isConnected}:${chainId}`);
   const identity = `${address}:${isConnected}:${chainId}`;

@@ -7,12 +7,25 @@ import { CRYPTO_DISPLAY_CONFIG, type PartialFxRates } from "@/lib/marketplace/fx
 import { fiatCurrencySymbol } from "@/lib/marketplace/fiat-format";
 import {
   displayAmountToUsd1e8,
-  ETH_SCALE,
   FIAT_SCALE,
   ratesReadyForPriceCurrency,
   usd1e8ToFiat1e8,
   type PriceCurrency,
 } from "@/lib/marketplace/price-normalize";
+import {
+  FX_RATE_CHAIN_ID,
+} from "@/lib/web3/chain-context";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
+import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
+import {
+  formatNativeAmount,
+  formatNativeAmountLabeled,
+  nativeAmountScale,
+  parseNativeAmountRoundUp,
+} from "@/lib/web3/native-amount";
 
 function roundUpDivision(numerator: bigint, denominator: bigint): bigint {
   if (denominator <= 0n) return 0n;
@@ -22,31 +35,23 @@ function roundUpDivision(numerator: bigint, denominator: bigint): bigint {
   return quotient + 1n;
 }
 
-/** Parse decimal ETH string to wei; round up on nonzero fractional tail beyond 18 digits. */
-export function parseEthAmountToWei(input: string): bigint | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  const negative = trimmed.startsWith("-");
-  const raw = negative ? trimmed.slice(1) : trimmed;
-  if (!raw || raw === ".") return null;
-
-  const [wholePart, fracPart = ""] = raw.split(".");
-  if (!/^\d*$/.test(wholePart) || !/^\d*$/.test(fracPart)) return null;
-
-  const whole = BigInt(wholePart || "0");
-  const padded = (fracPart + "0".repeat(18)).slice(0, 18);
-  const extra = fracPart.length > 18 ? fracPart.slice(18) : "";
-  let wei = whole * ETH_SCALE + BigInt(padded || "0");
-  if (extra.split("").some((d) => d !== "0")) wei += 1n;
-
-  if (negative) return null;
-  return wei;
+/** Hub FX native unit — display-currency ETH ≡ hub commercial native. */
+function hubNativeUnit(): CommercialNativeUnit {
+  return nativeUnitOf(requireCommercialActive(FX_RATE_CHAIN_ID));
 }
 
-function feeWeiToUsd1e8(feeWei: bigint, ethUsd: bigint): bigint | null {
+/** Parse decimal native string to base units; round up on nonzero fractional tail beyond decimals. */
+export function parseEthAmountToWei(input: string): bigint | null {
+  return parseNativeAmountRoundUp(input, hubNativeUnit());
+}
+
+function feeWeiToUsd1e8(
+  feeWei: bigint,
+  ethUsd: bigint,
+  unit: CommercialNativeUnit,
+): bigint | null {
   if (feeWei <= 0n || ethUsd <= 0n) return feeWei === 0n ? 0n : null;
-  return (feeWei * ethUsd) / ETH_SCALE;
+  return (feeWei * ethUsd) / nativeAmountScale(unit);
 }
 
 function formatFiat1e8WithSymbol(value: bigint, symbol: string): string {
@@ -84,16 +89,6 @@ function formatCryptoUnits(units: bigint, suffix: string, fracDigits: number): s
   return `${neg ? `-${core}` : core} ${suffix}`;
 }
 
-function formatEthWei(feeWei: bigint): string {
-  const neg = feeWei < 0n;
-  const v = neg ? -feeWei : feeWei;
-  const whole = v / ETH_SCALE;
-  const fracRaw = v % ETH_SCALE;
-  const fracStr = fracRaw.toString().padStart(18, "0").replace(/0+$/, "");
-  const core = fracStr ? `${whole.toString()}.${fracStr}` : whole.toString();
-  return `${neg ? `-${core}` : core} ETH`;
-}
-
 /** Convert nav display-currency amount to fee wei (margin only; gas added at save). */
 export function displayAmountToFeeWei(
   amount: string,
@@ -103,8 +98,10 @@ export function displayAmountToFeeWei(
   const trimmed = amount.trim();
   if (!trimmed || trimmed === "0") return 0n;
 
+  const unit = hubNativeUnit();
+
   if (displayCurrency === "ETH") {
-    const wei = parseEthAmountToWei(trimmed);
+    const wei = parseNativeAmountRoundUp(trimmed, unit);
     return wei != null && wei >= 0n ? wei : null;
   }
 
@@ -114,7 +111,7 @@ export function displayAmountToFeeWei(
   const ethUsd = rates.ethUsd;
   if (ethUsd == null || ethUsd <= 0n) return null;
 
-  return roundUpDivision(usd1e8 * ETH_SCALE, ethUsd);
+  return roundUpDivision(usd1e8 * nativeAmountScale(unit), ethUsd);
 }
 
 /** Format stored fee wei for read-only display in nav display currency. */
@@ -125,14 +122,16 @@ export function formatFeeWeiInDisplayCurrency(
 ): string | null {
   if (feeWei === 0n) return "0";
 
+  const unit = hubNativeUnit();
+
   if (displayCurrency === "ETH") {
-    return formatEthWei(feeWei).replace(/ ETH$/, "");
+    return formatNativeAmount(feeWei, unit);
   }
 
   const ethUsd = rates.ethUsd;
   if (ethUsd == null || ethUsd <= 0n) return null;
 
-  const usd1e8 = feeWeiToUsd1e8(feeWei, ethUsd);
+  const usd1e8 = feeWeiToUsd1e8(feeWei, ethUsd, unit);
   if (usd1e8 == null) return null;
 
   if (isCryptoDisplayCurrency(displayCurrency)) {
@@ -149,9 +148,9 @@ export function formatFeeWeiInDisplayCurrency(
   return formatFiat1e8WithSymbol(fiat1e8, fiatCurrencySymbol(fiatCode));
 }
 
-/** Mono ETH secondary line for fee readouts. */
+/** Mono native secondary line for fee readouts. */
 export function formatFeeWeiEth(feeWei: bigint): string {
-  return formatEthWei(feeWei);
+  return formatNativeAmountLabeled(feeWei, hubNativeUnit());
 }
 
 export function canComposeFeeInDisplayCurrency(

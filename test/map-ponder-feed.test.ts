@@ -73,6 +73,7 @@ describe("mapPonderFeedItems delegation grants", () => {
             asset: "0x0000000000000000000000000000000000000000",
             amount: "50000000000000000",
             reasonCode: "staking.stake_refund",
+            chainId: 84532,
           },
         },
       ],

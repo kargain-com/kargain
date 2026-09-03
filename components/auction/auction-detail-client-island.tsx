@@ -26,6 +26,10 @@ import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
@@ -145,11 +149,13 @@ export function AuctionDetailClientIsland({
     chainId: wagmiChainId(chainId),
     query: { enabled: Boolean(needsErc20Decimals) },
   });
+  const stack = commercialActive(chainId);
   const floorUnits = floorDisplayUnits({
     denominationKind: DENOMINATION_KIND.Asset,
     asset: assetAddr,
     erc20Decimals:
       typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    nativeUnit: stack ? nativeUnitOf(stack) : null,
     assetLabel: auction?.assetLabel ?? "ETH",
   });
   const showOwnerFloor = Boolean(
@@ -288,6 +294,7 @@ export function AuctionDetailClientIsland({
           <AuctionBidHistory
             bids={bids.bids}
             assetLabel={auction.assetLabel}
+            chainId={chainId}
           />
         </>
       )}

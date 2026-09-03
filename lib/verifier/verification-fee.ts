@@ -1,26 +1,40 @@
-import { formatEther } from "viem";
-
-import { ETH_SCALE, FIAT_SCALE } from "@/lib/marketplace/price-normalize";
+import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
+import {
+  formatNativeAmountLabeled,
+  nativeAmountScale,
+} from "@/lib/web3/native-amount";
+import { FIAT_SCALE } from "@/lib/marketplace/price-normalize";
 
 const USDC_SCALE = 1_000_000n;
 
-export function formatVerificationFee(fee: bigint): string {
+export function formatVerificationFee(
+  fee: bigint,
+  unit: CommercialNativeUnit,
+): string {
   if (fee === 0n) return "Contact for quote";
-  return `${formatEther(fee)} ETH`;
+  return formatNativeAmountLabeled(fee, unit);
 }
 
-/** Display-only: wei fee → USD at 1e8 scale (round down). */
-export function verificationFeeToUsd1e8(feeWei: bigint, ethUsd1e8: bigint): bigint {
+/** Display-only: native fee → USD at 1e8 scale (round down). */
+export function verificationFeeToUsd1e8(
+  feeWei: bigint,
+  ethUsd1e8: bigint,
+  unit: CommercialNativeUnit,
+): bigint {
   if (feeWei <= 0n || ethUsd1e8 <= 0n) return 0n;
-  return (feeWei * ethUsd1e8) / ETH_SCALE;
+  return (feeWei * ethUsd1e8) / nativeAmountScale(unit);
 }
 
 export function verificationFeeInUsdc(
   feeWei: bigint,
   ethUsd1e8: bigint,
+  unit: CommercialNativeUnit,
 ): bigint {
   if (feeWei === 0n || ethUsd1e8 === 0n) return 0n;
-  return (feeWei * ethUsd1e8 * USDC_SCALE) / (ETH_SCALE * FIAT_SCALE);
+  return (
+    (feeWei * ethUsd1e8 * USDC_SCALE) /
+    (nativeAmountScale(unit) * FIAT_SCALE)
+  );
 }
 
 const BTC_WEI_PER_SAT = 10n ** 10n;

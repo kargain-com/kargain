@@ -38,6 +38,10 @@ import {
   isPassportHolder,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
@@ -200,12 +204,14 @@ export function ListingDetailClientIsland({
     chainId: wagmiChainId(chainId),
     query: { enabled: needsErc20Decimals },
   });
+  const stack = commercialActive(chainId);
   const floorUnits = floorDisplayUnits({
     denominationKind: commerce.denominationKind,
     currencyCode: commerce.currencyCode,
     asset: commerce.asset,
     erc20Decimals:
       typeof erc20Decimals === "number" ? erc20Decimals : undefined,
+    nativeUnit: stack ? nativeUnitOf(stack) : null,
     assetLabel: resolveSettlementAssetMeta({
       chainId,
       asset: commerce.asset,

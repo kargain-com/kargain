@@ -15,6 +15,10 @@ import {
 } from "@/lib/auction/map-ponder-auction";
 import { instrumentReadoutPanel } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 
 type Props = {
   auction: AuctionRow;
@@ -60,6 +64,7 @@ export function AuctionReadoutPanel({
     auction.endsAt > 0n
       ? formatAuctionCountdownSeconds(auction.endsAt, now)
       : null;
+  const nativeUnit = nativeUnitOf(commercialActive(auction.chainId)!);
 
   return (
     <div className={cn(instrumentReadoutPanel, className)}>
@@ -75,16 +80,20 @@ export function AuctionReadoutPanel({
       <dl className="divide-y divide-border-default">
         <ReadoutRow label="Phase">{auctionPhaseLabel(uiState)}</ReadoutRow>
         <ReadoutRow label="Reserve">
-          {formatAuctionAmount(auction.reserve, auction.assetLabel)}
+          {formatAuctionAmount(auction.reserve, auction.assetLabel, nativeUnit)}
         </ReadoutRow>
         <ReadoutRow label="Current bid">
           {hasBid
-            ? formatAuctionAmount(auction.highestBid, auction.assetLabel)
+            ? formatAuctionAmount(
+                auction.highestBid,
+                auction.assetLabel,
+                nativeUnit,
+              )
             : "—"}
         </ReadoutRow>
         {(uiState === "S1" || uiState === "S3" || uiState === "S4") && (
           <ReadoutRow label="Min next bid">
-            {formatAuctionAmount(minNext, auction.assetLabel)}
+            {formatAuctionAmount(minNext, auction.assetLabel, nativeUnit)}
           </ReadoutRow>
         )}
         <ReadoutRow label="Asset">{auction.assetLabel}</ReadoutRow>

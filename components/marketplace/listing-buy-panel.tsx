@@ -326,7 +326,8 @@ export function ListingBuyPanel({
   const youPay = (() => {
     if (isQuoteLoading) return "—";
     if (quoteUnavailable || quote == null) return "Unavailable";
-    const decimals = assetMeta.decimals ?? 18;
+    if (assetMeta.decimals == null) return "Unavailable";
+    const decimals = assetMeta.decimals;
     const symbol = assetMeta.symbol ?? assetMeta.nativeSymbol;
     return formatListingAssetAsking(quote, decimals, symbol);
   })();

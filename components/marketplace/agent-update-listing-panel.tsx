@@ -28,18 +28,25 @@ import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 /** Native-only stub so the settlement-note chrome can render without open pairings. */
-const SETTLEMENT_NOTE_ONLY_OPTIONS = deriveOpenableTerms({
-  mode: "fixedPrice",
-  modeAvailable: true,
-  configResolved: true,
-  native: { label: "ETH", decimals: 18 },
-  paymentTokens: [],
-  currencyFeeds: [],
-});
+function settlementNoteOnlyOptions(chainId: number) {
+  const unit = nativeUnitOf(commercialActive(chainId)!);
+  return deriveOpenableTerms({
+    mode: "fixedPrice",
+    modeAvailable: true,
+    configResolved: true,
+    native: { label: unit.symbol, decimals: unit.decimals },
+    paymentTokens: [],
+    currencyFeeds: [],
+  });
+}
 
 type Props = {
   chainId: number;
@@ -251,7 +258,7 @@ export function AgentUpdateListingPanel({
           Shown to buyers who want to pay outside Kargain checkout.
         </p>
         <ListingSellerSettlementPanel
-          openOptions={SETTLEMENT_NOTE_ONLY_OPTIONS}
+          openOptions={settlementNoteOnlyOptions(chainId)}
           settlementAsset={ZERO_ADDRESS}
           onSettlementAssetChange={() => {}}
           denominationKind={DENOMINATION_KIND.Fiat}

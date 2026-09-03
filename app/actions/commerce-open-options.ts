@@ -13,8 +13,11 @@ import {
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
-import { getViemChain } from "@/lib/web3/supported-chains";
 
 export type OpenableTermsResult = {
   ok: true;
@@ -41,8 +44,11 @@ type CurrencyFeedsResponse = {
   }>;
 };
 
-function nativeLabel(chainId: number): string {
-  return getViemChain(chainId)?.nativeCurrency.symbol ?? "ETH";
+function nativeFromChain(chainId: number): { label: string; decimals: number } {
+  const stack = commercialActive(chainId);
+  if (!stack) throw new Error(`nativeFromChain: no commercial stack for ${chainId}`);
+  const u = nativeUnitOf(stack);
+  return { label: u.symbol, decimals: u.decimals };
 }
 
 function parsePaymentTokens(
@@ -72,7 +78,8 @@ function parsePaymentTokens(
     const decimals =
       ponderDecimals != null && ponderDecimals > 0
         ? ponderDecimals
-        : (meta.decimals ?? 18);
+        : meta.decimals;
+    if (decimals == null) continue;
     out.push({
       token,
       feed: row.feed?.trim() ?? "",
@@ -109,7 +116,7 @@ function unresolved(mode: CommerceMode, chainId: number): OpenableTermsResult {
       mode,
       modeAvailable: true,
       configResolved: false,
-      native: { label: nativeLabel(chainId), decimals: 18 },
+      native: nativeFromChain(chainId),
       paymentTokens: [],
       currencyFeeds: [],
     }),
@@ -133,7 +140,7 @@ export async function getOpenableTerms(
         mode,
         modeAvailable: false,
         configResolved: true,
-        native: { label: nativeLabel(chainId), decimals: 18 },
+        native: nativeFromChain(chainId),
         paymentTokens: [],
         currencyFeeds: [],
       }),
@@ -162,7 +169,7 @@ export async function getOpenableTerms(
           mode,
           modeAvailable: true,
           configResolved: true,
-          native: { label: nativeLabel(chainId), decimals: 18 },
+          native: nativeFromChain(chainId),
           paymentTokens: parsePaymentTokens(
             tokensJson.paymentTokens,
             modeAddress,
@@ -197,7 +204,7 @@ export async function getOpenableTerms(
         mode,
         modeAvailable: true,
         configResolved: true,
-        native: { label: nativeLabel(chainId), decimals: 18 },
+        native: nativeFromChain(chainId),
         paymentTokens: parsePaymentTokens(
           tokensJson.paymentTokens,
           modeAddress,

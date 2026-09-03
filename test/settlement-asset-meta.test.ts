@@ -9,7 +9,7 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 const UNKNOWN = "0x1111111111111111111111111111111111111111";
 
 describe("resolveSettlementAssetMeta", () => {
-  it("maps native zero to ETH with 18 decimals", () => {
+  it("maps native zero to stack nativeUnit (ETH/18 on Base)", () => {
     const meta = resolveSettlementAssetMeta({ chainId: BASE, asset: ZERO });
     assert.equal(meta.identity, "native");
     assert.equal(meta.label, "ETH");
@@ -20,6 +20,12 @@ describe("resolveSettlementAssetMeta", () => {
     const meta = resolveSettlementAssetMeta({ chainId: BASE, asset: null });
     assert.equal(meta.identity, "native");
     assert.equal(meta.label, "ETH");
+  });
+
+  it("refuses invented native on non-commercial chainId", () => {
+    const meta = resolveSettlementAssetMeta({ chainId: 31337, asset: ZERO });
+    assert.equal(meta.identity, "unknown");
+    assert.equal(meta.decimals, null);
   });
 
   it("maps registered USDC to USDC with 6 decimals", () => {

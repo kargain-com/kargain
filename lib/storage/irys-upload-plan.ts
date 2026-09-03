@@ -1,11 +1,12 @@
+import type { CommercialActiveStack } from "@/lib/web3/commercial-active";
 import { rpcUrlForChain } from "@/lib/web3/supported-chains";
 
 /**
- * Pure Irys upload session plan — payment token + bundler class by wallet chainId.
+ * Pure Irys upload session plan — payment token + bundler class by commercial stack.
  * `irys-client` executes this plan; it must not re-declare allowlists or invent tokens.
  *
- * Commercial testnets only. No mainnet rows until Phase 2 + RPC defaults.
- * No `@irys/*` imports here.
+ * Commercial EVM testnets only. SVM is staged: named `wrong_vm` until a Solana
+ * payment adapter and registry row exist (S9). No `@irys/*` imports here.
  */
 
 export type IrysPaymentToken = "base-eth" | "ethereum";
@@ -25,10 +26,19 @@ export type IrysUploadPlan = {
   devnet: boolean;
 };
 
+export type IrysUploadPlanCause =
+  | "wrong_vm"
+  | "unsupported_network"
+  | "no_rpc";
+
+export type IrysUploadPlanResult =
+  | { ok: true; plan: IrysUploadPlan }
+  | { ok: false; cause: IrysUploadPlanCause };
+
 export const IRYS_DEVNET_BUNDLER_URL = "https://devnet.irys.xyz";
 export const IRYS_MAINNET_BUNDLER_URL = "https://node2.irys.xyz";
 
-const IRYS_CHAINS: Readonly<Record<number, IrysChainConfig>> = {
+const IRYS_EVM_CHAINS: Readonly<Record<number, IrysChainConfig>> = {
   84532: { paymentToken: "base-eth", network: "devnet" },
   11155111: { paymentToken: "ethereum", network: "devnet" },
 };
@@ -38,26 +48,54 @@ function bundlerUrlForNetwork(network: IrysNetworkClass): string {
 }
 
 export function isIrysSupportedChain(chainId: number): boolean {
-  return IRYS_CHAINS[chainId] != null;
+  return IRYS_EVM_CHAINS[chainId] != null;
 }
 
 export function supportedIrysChainIds(): readonly number[] {
-  return Object.keys(IRYS_CHAINS).map(Number);
+  return Object.keys(IRYS_EVM_CHAINS).map(Number);
+}
+
+export function irysUploadPlanRefusalMessage(cause: IrysUploadPlanCause): string {
+  switch (cause) {
+    case "wrong_vm":
+      return "Irys uploads are not available on this wallet family yet.";
+    case "unsupported_network":
+      return "Irys uploads are not configured for this network.";
+    case "no_rpc":
+      return "No RPC is configured for Irys uploads on this network.";
+  }
 }
 
 /**
- * Fail-closed plan for a wallet `eth_chainId`.
- * Throws when the chain is not in the registry or has no RPC.
+ * Fail-closed plan for a commercial stack.
+ * Never throws — refusals are named causes.
  */
-export function planIrysUpload(chainId: number): IrysUploadPlan {
-  const config = IRYS_CHAINS[chainId];
-  if (!config) {
-    throw new Error(`Unsupported chain for Irys uploads: ${chainId}`);
+export function planIrysUpload(
+  stack: CommercialActiveStack,
+): IrysUploadPlanResult {
+  if (stack.vm !== "evm") {
+    return { ok: false, cause: "wrong_vm" };
   }
+
+  const config = IRYS_EVM_CHAINS[stack.chainId];
+  if (!config) {
+    return { ok: false, cause: "unsupported_network" };
+  }
+
+  let rpcUrl: string;
+  try {
+    rpcUrl = rpcUrlForChain(stack.chainId);
+  } catch {
+    return { ok: false, cause: "no_rpc" };
+  }
+
   return {
-    paymentToken: config.paymentToken,
-    bundlerUrl: bundlerUrlForNetwork(config.network),
-    rpcUrl: rpcUrlForChain(chainId),
-    devnet: config.network === "devnet",
+    ok: true,
+    plan: {
+      paymentToken: config.paymentToken,
+      bundlerUrl: bundlerUrlForNetwork(config.network),
+      rpcUrl,
+      devnet: config.network === "devnet",
+    },
   };
 }

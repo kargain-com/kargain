@@ -3,7 +3,11 @@
 import { useReadContract } from "wagmi";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import { formatStakeEth } from "@/lib/kar-pro/stake-format";
+import { formatStakeNative } from "@/lib/kar-pro/stake-format";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -20,9 +24,15 @@ export function useMinStakeNative(chainId: number | undefined) {
     query: { enabled: Boolean(staking && chainId != null) },
   });
 
+  const stack = chainId != null ? commercialActive(chainId) : undefined;
+  const stakeLabel =
+    stack != null
+      ? formatStakeNative(minStake, nativeUnitOf(stack))
+      : "0.05";
+
   return {
     minStake,
-    stakeLabel: formatStakeEth(minStake),
+    stakeLabel,
     isPending: Boolean(staking) && isPending,
   };
 }

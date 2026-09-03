@@ -39,6 +39,11 @@ import {
 import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
+import {
+  COMMERCIAL_ACTIVE,
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -156,6 +161,11 @@ export function VerificationPaymentModal({
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
+  const feeStack = chainId != null ? commercialActive(chainId) : undefined;
+  const feeNativeUnit = feeStack
+    ? nativeUnitOf(feeStack)
+    : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
+
   const { data: chainFeeWei } = useReadContract({
     address: staking,
     abi: KarProStakingAbi,
@@ -210,7 +220,7 @@ export function VerificationPaymentModal({
 
   const usdcAmount =
     ethUsd != null && ethUsd > 0n
-      ? verificationFeeInUsdc(effectiveFeeWei, ethUsd)
+      ? verificationFeeInUsdc(effectiveFeeWei, ethUsd, feeNativeUnit)
       : 0n;
   const usdcOptionDisabled =
     !usdcSegmentVisible ||
@@ -672,7 +682,7 @@ export function VerificationPaymentModal({
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
                           <span className="font-mono text-xs text-text-secondary">
-                            {formatVerificationFee(effectiveFeeWei)}
+                            {formatVerificationFee(effectiveFeeWei, feeNativeUnit)}
                           </span>
                         </div>
                         <p className="font-sans text-xs text-text-secondary">
@@ -720,7 +730,7 @@ export function VerificationPaymentModal({
                           </span>
                         </div>
                         <p className="font-mono text-xs text-text-secondary">
-                          {formatVerificationFee(effectiveFeeWei)}
+                          {formatVerificationFee(effectiveFeeWei, feeNativeUnit)}
                         </p>
                         {hasTokenId && (
                           <p className="font-sans text-xs text-text-secondary">

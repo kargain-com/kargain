@@ -13,6 +13,10 @@ import {
 } from "@/lib/auction/auction-live-signals";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionUiState } from "@/lib/auction/map-ponder-auction";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 
 const FLASH_CLEAR_MS = 7_000;
 
@@ -102,9 +106,13 @@ export function useAuctionLiveSignals({
       });
       if (!hasOutbidBeenNotified(key)) {
         markOutbidNotified(key);
-        setOutbidToast(
-          formatOutbidToastMessage(formatAuctionAmount(lostBid, assetLabel)),
-        );
+        const stack = commercialActive(chainId);
+        const amountLabel = stack
+          ? formatAuctionAmount(lostBid, assetLabel, nativeUnitOf(stack))
+          : null;
+        if (amountLabel != null) {
+          setOutbidToast(formatOutbidToastMessage(amountLabel));
+        }
       }
     }
     prevHighestBidderRef.current = highestBidder;

@@ -8,6 +8,11 @@ import {
   deriveOpenableTerms,
   type OpenableTerms,
 } from "@/lib/commerce/openable-terms";
+import {
+  COMMERCIAL_ACTIVE,
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 export const openableTermsQueryKey = (
@@ -15,12 +20,18 @@ export const openableTermsQueryKey = (
   mode: CommerceMode,
 ) => indexerQueryKey("commerce-open-options", chainId, mode);
 
+function nativePairing(chainId: number) {
+  const stack = commercialActive(chainId) ?? COMMERCIAL_ACTIVE[84532]!;
+  const u = nativeUnitOf(stack);
+  return { label: u.symbol, decimals: u.decimals };
+}
+
 const EMPTY_UNAVAILABLE = (mode: CommerceMode): OpenableTerms =>
   deriveOpenableTerms({
     mode,
     modeAvailable: false,
     configResolved: true,
-    native: { label: "ETH", decimals: 18 },
+    native: nativePairing(84532),
     paymentTokens: [],
     currencyFeeds: [],
   });
@@ -48,7 +59,7 @@ export function useOpenableTerms(
           mode,
           modeAvailable: true,
           configResolved: false,
-          native: { label: "ETH", decimals: 18 },
+          native: nativePairing(chainId!),
           paymentTokens: [],
           currencyFeeds: [],
         })

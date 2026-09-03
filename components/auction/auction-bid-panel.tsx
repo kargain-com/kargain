@@ -27,6 +27,10 @@ import {
   formatBidTooLowMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -110,6 +114,7 @@ export function AuctionBidPanel({
       ? (auction.asset as `0x${string}`)
       : undefined;
   const assetLabel = auction.assetLabel;
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
 
   const { data: ethBalance } = useBalance({
     address,
@@ -135,7 +140,7 @@ export function AuctionBidPanel({
     query: { enabled: Boolean(address && usdc && mode && isUsdcAuction) },
   });
 
-  const parsedAmount = parseOwnerMinAsset(amountStr, assetLabel);
+  const parsedAmount = parseOwnerMinAsset(amountStr, assetLabel, nativeUnit);
   const needsUsdcApproval =
     isUsdcAuction &&
     parsedAmount != null &&
@@ -155,7 +160,7 @@ export function AuctionBidPanel({
   const wrongChain = walletChainId !== wagmiChainId(chainId);
 
   const minNext = minNextBid(auction.highestBid, minIncrementBps, auction.reserve);
-  const minLabel = formatAuctionAmount(minNext, assetLabel);
+  const minLabel = formatAuctionAmount(minNext, assetLabel, nativeUnit);
   const placeholderSuffix = assetLabel === "USDC" ? " USDC" : " ETH";
 
   const disputed = uiState === "S4";
@@ -203,7 +208,7 @@ export function AuctionBidPanel({
       setTxError(null);
       if (!mode || !address) return;
 
-      const amount = parseOwnerMinAsset(amountStr, assetLabel);
+      const amount = parseOwnerMinAsset(amountStr, assetLabel, nativeUnit);
       if (amount == null) {
         setTxError(
           `Bid at least ${minLabel} — enter a valid ${assetLabel} amount.`,

@@ -7,10 +7,15 @@ import {
 } from "@/lib/auction/format-auction";
 import type { AuctionBid } from "@/lib/auction/map-ponder-auction";
 import { cn } from "@/lib/utils";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 
 type Props = {
   bids: AuctionBid[];
   assetLabel: "ETH" | "USDC";
+  chainId: number;
   className?: string;
 };
 
@@ -24,7 +29,12 @@ function formatBidTime(ts: bigint): string {
   }).format(new Date(sec * 1000));
 }
 
-export function AuctionBidHistory({ bids, assetLabel, className }: Props) {
+export function AuctionBidHistory({
+  bids,
+  assetLabel,
+  chainId,
+  className,
+}: Props) {
   if (bids.length === 0) {
     return (
       <p className={cn("font-sans text-sm text-text-secondary", className)}>
@@ -32,6 +42,8 @@ export function AuctionBidHistory({ bids, assetLabel, className }: Props) {
       </p>
     );
   }
+
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
 
   // Newest first (API + filter preserve order; sort defensively)
   const sorted = [...bids].sort((a, b) => {
@@ -62,7 +74,7 @@ export function AuctionBidHistory({ bids, assetLabel, className }: Props) {
                 className="font-mono text-xs text-text-secondary"
               />
               <span className="font-mono text-sm tabular-nums text-text-primary">
-                {formatAuctionAmount(bid.amount, assetLabel)}
+                {formatAuctionAmount(bid.amount, assetLabel, nativeUnit)}
               </span>
             </div>
           </InstrumentTimeline.Item>

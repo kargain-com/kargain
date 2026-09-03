@@ -3,6 +3,10 @@ import { passportGroupKey, ponderNotifId } from "@/lib/notifications/id";
 import type { NotificationItem, NotificationType, PonderFeedItem } from "@/lib/notifications/types";
 import { claimNotificationBody } from "@/lib/claims/explain-credits";
 import { isClaimReasonCode } from "@/lib/claims/reason";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { zeroAddress } from "viem";
 
 const PONDER_TYPE_CONFIG: Record<
@@ -101,13 +105,23 @@ function claimBody(item: PonderFeedItem): string {
   }
 
   try {
+    const chainRaw = meta.chainId;
+    const chainId =
+      typeof chainRaw === "number"
+        ? chainRaw
+        : typeof chainRaw === "string"
+          ? Number(chainRaw)
+          : NaN;
+    const stack = Number.isFinite(chainId) ? commercialActive(chainId) : null;
+    const unit = stack ? nativeUnitOf(stack) : null;
+    const isNative = asset.toLowerCase() === zeroAddress;
     return claimNotificationBody({
       amount,
       asset,
       reasonCode,
-      // Feed has no token metadata — native uses 18; ERC-20 fail-closed raw via null decimals.
-      decimals: asset.toLowerCase() === zeroAddress ? 18 : null,
-      nativeSymbol: "ETH",
+      // Native: stack unit when chainId known; else fail-closed raw. ERC-20: null decimals.
+      decimals: isNative ? (unit?.decimals ?? null) : null,
+      nativeSymbol: unit?.symbol,
     });
   } catch {
     return PONDER_TYPE_CONFIG["claim.recorded"]!.body;

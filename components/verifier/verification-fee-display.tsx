@@ -12,7 +12,13 @@ import {
   formatVerificationFee,
   verificationFeeToUsd1e8,
 } from "@/lib/verifier/verification-fee";
+import {
+  COMMERCIAL_ACTIVE,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { cn } from "@/lib/utils";
+
+const hubNativeUnit = nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
 
 type VerificationFeeDisplayProps = {
   feeWei: bigint;
@@ -71,7 +77,7 @@ export function VerificationFeeDisplay({
     if (!needsConversion) return null;
     if (ethUsd == null || ethUsd <= 0n) return null;
 
-    const usd1e8 = verificationFeeToUsd1e8(feeWei, ethUsd);
+    const usd1e8 = verificationFeeToUsd1e8(feeWei, ethUsd, hubNativeUnit);
     if (usd1e8 <= 0n) return null;
 
     const converted = convertPrice(usd1e8, 0);
@@ -84,7 +90,7 @@ export function VerificationFeeDisplay({
     <span className={cn("inline-flex flex-col gap-0.5", className)}>
       <span className={primaryClassName}>
         {prefix}
-        {formatVerificationFee(feeWei)}
+        {formatVerificationFee(feeWei, hubNativeUnit)}
       </span>
       {secondaryLine != null && (
         <span className="font-mono text-xs text-text-tertiary tabular-nums">

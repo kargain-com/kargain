@@ -2,8 +2,12 @@
 
 import { erc20Abi } from "viem";
 
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { getViemChain } from "@/lib/web3/supported-chains";
+import { shortAddress } from "@/lib/web3/wallet-display";
 
 export type ClaimAssetMeta = {
   decimals: number | null;
@@ -11,15 +15,16 @@ export type ClaimAssetMeta = {
   nativeSymbol: string;
 };
 
-/** Read ERC-20 decimals/symbol from the asset itself; native uses chain currency. */
+/** Read ERC-20 decimals/symbol from the asset itself; native uses commercial stack unit. */
 export function useClaimAssetMeta(params: {
   chainId: number;
   asset: `0x${string}`;
   isNative: boolean;
 }): ClaimAssetMeta {
   const { chainId, asset, isNative } = params;
-  const chain = getViemChain(chainId);
-  const nativeSymbol = chain?.nativeCurrency.symbol ?? "ETH";
+  const stack = commercialActive(chainId);
+  const unit = stack ? nativeUnitOf(stack) : null;
+  const nativeSymbol = unit?.symbol ?? (shortAddress(asset) || "native");
 
   const reads = useKeyedReadContracts({
     allowFailure: true,
@@ -46,7 +51,7 @@ export function useClaimAssetMeta(params: {
 
   if (isNative) {
     return {
-      decimals: chain?.nativeCurrency.decimals ?? 18,
+      decimals: unit?.decimals ?? null,
       symbol: nativeSymbol,
       nativeSymbol,
     };

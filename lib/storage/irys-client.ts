@@ -6,9 +6,11 @@ import { BrowserProvider } from "ethers";
 
 import { estimateIrysUploadBytes } from "@/lib/storage/irys-upload-estimate";
 import {
+  irysUploadPlanRefusalMessage,
   planIrysUpload,
   type IrysPaymentToken,
 } from "@/lib/storage/irys-upload-plan";
+import { commercialActive } from "@/lib/web3/commercial-active";
 
 export const IRYS_GATEWAY = "https://arweave.net";
 
@@ -144,7 +146,15 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
       return cachedUploader.uploader;
     }
 
-    const plan = planIrysUpload(chainId);
+    const stack = commercialActive(chainId);
+    if (!stack) {
+      throw new Error(irysUploadPlanRefusalMessage("unsupported_network"));
+    }
+    const planned = planIrysUpload(stack);
+    if (!planned.ok) {
+      throw new Error(irysUploadPlanRefusalMessage(planned.cause));
+    }
+    const plan = planned.plan;
     const ethersProvider = new BrowserProvider(eip1193);
     const Token = irysTokenConstructable(plan.paymentToken);
 

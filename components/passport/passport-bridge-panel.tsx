@@ -4,7 +4,6 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatEther } from "viem";
 import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +27,12 @@ import {
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -255,7 +259,10 @@ export function PassportBridgePanel({
             Estimated fee
           </dt>
           <dd className="font-mono tabular-nums text-text-primary">
-            {formatEther(feeWei)} ETH
+            {formatNativeAmountLabeled(
+              feeWei,
+              nativeUnitOf(commercialActive(chainId)!),
+            )}
           </dd>
         </dl>
       )}

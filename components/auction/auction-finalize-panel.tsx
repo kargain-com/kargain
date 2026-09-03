@@ -10,6 +10,10 @@ import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import {
+  commercialActive,
+  nativeUnitOf,
+} from "@/lib/web3/commercial-active";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -43,9 +47,10 @@ export function AuctionFinalizePanel({
   const busy = phase !== "idle";
 
   const mode = commerceModeAddress("ascending", chainId);
+  const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const finalBid =
     auction.highestBid > 0n
-      ? formatAuctionAmount(auction.highestBid, auction.assetLabel)
+      ? formatAuctionAmount(auction.highestBid, auction.assetLabel, nativeUnit)
       : null;
   const lead = finalizeProtectionCopy(protectionWindowSec);
 

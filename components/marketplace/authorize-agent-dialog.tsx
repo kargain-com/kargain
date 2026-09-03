@@ -154,7 +154,7 @@ export function AuthorizeAgentDialog({
 
   const floorDecimals =
     denominationKind === DENOMINATION_KIND.Asset
-      ? (selectedAsset?.decimals ?? 18)
+      ? (selectedAsset?.decimals ?? null)
       : FIAT_PRICE_DECIMALS;
 
   const floorUnitLabel =
@@ -295,6 +295,7 @@ export function AuthorizeAgentDialog({
 
   const floorParsed = useMemo(() => {
     if (!minPriceInput.trim()) return null;
+    if (floorDecimals == null) return null;
     try {
       const amount = parseUnits(minPriceInput, floorDecimals);
       return amount > 0n ? amount : null;
@@ -396,7 +397,7 @@ export function AuthorizeAgentDialog({
 
   const agentName = selectedAgent ? agentDisplayName(selectedAgent) : "";
   const formattedFloor =
-    floorParsed != null
+    floorParsed != null && floorDecimals != null
       ? `${formatUnits(floorParsed, floorDecimals)} ${floorUnitLabel}`
       : null;
   const compensationConsequence = compensationFormDef(compensationForm).consequence;
