@@ -48,6 +48,10 @@ import {
   type DeployedContract,
   type ViemSuite,
   ZERO,
+  asReadTuple,
+  asReadHex,
+  asWallet,
+  hardhatRequest,
 } from "../scripts/lib/local-stack.js";
 import {
   ASCENDING_ABANDONMENT_WINDOW,
@@ -223,18 +227,20 @@ async function captureOutboundOnftMessage(params: {
   }).filter((ev) => getAddress(ev.address) === getAddress(params.endpoint.address));
 
   if (packetSent.length >= 1) {
-    const encodedPayload = packetSent[packetSent.length - 1]!.args.encodedPayload as Hex;
+    const last = packetSent[packetSent.length - 1]!;
+    const encodedPayload = (last.args as { encodedPayload: Hex }).encodedPayload;
     return extractPacketFields(encodedPayload);
   }
 
-  const trace = (await params.publicClient.request({
-    method: "debug_traceTransaction",
-    params: [params.sendHash, { tracer: "callTracer" }],
-  })) as CallFrame;
+  const trace = (await hardhatRequest(params.publicClient, "debug_traceTransaction", [
+    params.sendHash,
+    { tracer: "callTracer" },
+  ])) as CallFrame;
   const sendInput = findCallInput(trace, params.endpoint.address, "send");
   assert.ok(sendInput, "endpoint.send call missing from send trace");
   const decoded = decodeFunctionData({ abi: endpointArtifact.abi, data: sendInput });
   assert.equal(decoded.functionName, "send");
+  assert.ok(decoded.args, "endpoint.send decode missing args");
   const messagingParams = decoded.args[0] as {
     message: Hex;
   };
@@ -273,7 +279,7 @@ async function deployEndpointMock(
     abi: endpointArtifact.abi,
     bytecode: endpointArtifact.bytecode,
     args: [eid],
-  });
+  } as unknown as Parameters<typeof wallet.deployContract>[0]);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   assert.ok(receipt.contractAddress, "EndpointV2Mock deploy missing address");
   return getContract({
@@ -290,22 +296,13 @@ async function impersonateAs(
   viem: ViemSuite & { getWalletClient: (address: Address) => Promise<WalletClient> },
   address: Address,
 ): Promise<WalletClient> {
-  await publicClient.request({
-    method: "hardhat_impersonateAccount",
-    params: [address],
-  });
-  await publicClient.request({
-    method: "hardhat_setBalance",
-    params: [address, toHex(parseEther("10"))],
-  });
-  return viem.getWalletClient(address);
+  await hardhatRequest(publicClient, "hardhat_impersonateAccount", [address]);
+  await hardhatRequest(publicClient, "hardhat_setBalance", [address, toHex(parseEther("10"))]);
+  return asWallet(await viem.getWalletClient(address));
 }
 
 async function stopImpersonating(publicClient: PublicClient, address: Address) {
-  await publicClient.request({
-    method: "hardhat_stopImpersonatingAccount",
-    params: [address],
-  });
+  await hardhatRequest(publicClient, "hardhat_stopImpersonatingAccount", [address]);
 }
 
 type ChainSide = {
@@ -331,7 +328,9 @@ async function deploySide(
   const connection = await hardhat.network.connect(networkName);
   const viem = connection.viem as ViemSuite;
   const stack = await deployCommerceBaseStack(viem);
-  const [wallet] = await viem.getWalletClients();
+  const [walletRaw] = await viem.getWalletClients();
+  assert.ok(walletRaw, `${networkName} missing wallet`);
+  const wallet = asWallet(walletRaw);
   const publicClient = await viem.getPublicClient();
 
   const chainIdOnNet = await publicClient.getChainId();
@@ -463,7 +462,7 @@ async function relaySend(params: {
   const expected = expectedOnftMessage({
     to: recipient,
     tokenId: params.tokenId,
-    sender: params.senderAccount.address,
+    sender: params.senderAccount!.address,
     uri: params.uri,
   });
   assertOnftMessagesEqual(captured.message, expected);
@@ -594,15 +593,15 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     });
 
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(hub.gateway.address),
     );
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
     assert.equal(
-      getAddress(await spoke.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await spoke.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
-    const [spokeStatus] = await spoke.stack.passport.read.getPassportStatus([tokenId]);
+    const [spokeStatus] = asReadTuple(await spoke.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(spokeStatus, STATUS_UNVERIFIED);
 
     // Return spoke → hub
@@ -611,12 +610,12 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     const spokeWallets = await spoke.viem.getWalletClients();
     const hubWallets = await hub.viem.getWalletClients();
     const sellerIdx = hubWallets.findIndex(
-      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+      (w) => w.account && getAddress(w.account.address) === getAddress(seller.account.address),
     );
     const spokeSender = spokeWallets[sellerIdx]!;
 
     // Rep lives on spoke under hub seller address; transfer to matching spoke account if needed
-    const repOwner = getAddress(await spoke.stack.passport.read.ownerOf([tokenId]));
+    const repOwner = getAddress(asReadHex(await spoke.stack.passport.read.ownerOf([tokenId])));
     assert.equal(repOwner, getAddress(seller.account.address));
 
     await relaySend({
@@ -629,7 +628,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     });
 
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
@@ -653,7 +652,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     await hub.stack.passport.write.verifyPassport([tokenId], {
       account: hub.stack.verifier.account,
     });
-    let [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    let [status] = asReadTuple(await hub.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, STATUS_VERIFIED);
 
     await relaySend({
@@ -668,7 +667,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     const hubWallets = await hub.viem.getWalletClients();
     const spokeWallets = await spoke.viem.getWalletClients();
     const sellerIdx = hubWallets.findIndex(
-      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+      (w) => w.account && getAddress(w.account.address) === getAddress(seller.account.address),
     );
     const spokeSender = spokeWallets[sellerIdx]!;
 
@@ -687,7 +686,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     });
 
     assert.equal(await hub.stack.passport.read.tokenURI([tokenId]), "ar://edited-on-spoke");
-    [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    [status] = asReadTuple(await hub.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, STATUS_UNVERIFIED);
   });
 
@@ -907,7 +906,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     const hubWallets = await hub.viem.getWalletClients();
     const spokeWallets = await spoke.viem.getWalletClients();
     const sellerIdx = hubWallets.findIndex(
-      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+      (w) => w.account && getAddress(w.account.address) === getAddress(seller.account.address),
     );
     await relaySend({
       src: spoke,
@@ -918,7 +917,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       senderAccount: spokeWallets[sellerIdx]!.account,
     });
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
   });
@@ -949,13 +948,13 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     });
 
     assert.equal(await spoke.stack.passport.read.custodyLocked([tokenId]), true);
-    const [hubStatus] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    const [hubStatus] = asReadTuple(await hub.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(hubStatus, STATUS_UNVERIFIED);
 
     const hubWallets = await hub.viem.getWalletClients();
     const spokeWallets = await spoke.viem.getWalletClients();
     const idx = spokeWallets.findIndex(
-      (w) => getAddress(w.account.address) === getAddress(spokeSeller.account.address),
+      (w) => w.account && getAddress(w.account.address) === getAddress(spokeSeller.account.address),
     );
     await relaySend({
       src: hub,
@@ -967,7 +966,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     });
 
     assert.equal(await spoke.stack.passport.read.custodyLocked([tokenId]), false);
-    const [spokeStatus] = await spoke.stack.passport.read.getPassportStatus([tokenId]);
+    const [spokeStatus] = asReadTuple(await spoke.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(spokeStatus, STATUS_UNVERIFIED);
   });
 
@@ -1065,7 +1064,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       viem: hub.viem,
     });
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([foreignId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([foreignId]))),
       getAddress(seller.account.address),
     );
 
@@ -1083,7 +1082,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       (err: unknown) => err instanceof Error && err.message.includes("ERC721NonexistentToken"),
     );
     assert.equal(
-      getAddress(await spoke.stack.passport.read.ownerOf([foreignId])),
+      getAddress(asReadHex(await spoke.stack.passport.read.ownerOf([foreignId]))),
       getAddress(seller.account.address),
     );
     // Third-origin: never home on hub or spoke
@@ -1117,7 +1116,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
 
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(hub.gateway.address),
     );
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), true);
@@ -1157,11 +1156,11 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     );
 
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
-    const [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await hub.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, STATUS_UNVERIFIED);
     await assert.rejects(
       spoke.stack.passport.read.ownerOf([tokenId]),
@@ -1209,7 +1208,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     const hubWallets = await hub.viem.getWalletClients();
     const spokeWallets = await spoke.viem.getWalletClients();
     const sellerIdx = hubWallets.findIndex(
-      (w) => getAddress(w.account.address) === getAddress(seller.account.address),
+      (w) => w.account && getAddress(w.account.address) === getAddress(seller.account.address),
     );
     await relaySend({
       src: spoke,
@@ -1220,7 +1219,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       senderAccount: spokeWallets[sellerIdx]!.account,
     });
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([roundId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([roundId]))),
       getAddress(seller.account.address),
     );
     await assert.rejects(
@@ -1269,7 +1268,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
     assert.equal(await hub.stack.passport.read.challengeBondAmount([tokenId]), depositBefore);
     assert.equal(Number(await hub.stack.passport.read.passportStatus([tokenId])), STATUS_DISPUTED);
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
   });
@@ -1355,7 +1354,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       revertsWith("UriExceedsBridgeCeiling"),
     );
     assert.equal(
-      getAddress(await hub.stack.passport.read.ownerOf([tokenId])),
+      getAddress(asReadHex(await hub.stack.passport.read.ownerOf([tokenId]))),
       getAddress(seller.account.address),
     );
     assert.equal(await hub.stack.passport.read.custodyLocked([tokenId]), false);
@@ -1407,7 +1406,7 @@ describe("KarPassportBridgeGateway — dual-chain EndpointV2Mock", () => {
       seller.account.address,
       "ar://idle-unverified",
     );
-    const [status] = await hub.stack.passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await hub.stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, STATUS_UNVERIFIED);
     await relaySend({
       src: hub,

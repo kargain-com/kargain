@@ -75,12 +75,16 @@ const config: HardhatUserConfig = {
       name: "Base Sepolia",
       chainType: "op",
       blockExplorers: {
+        // Tip uses the Basescan product name as the explorer key. Hardhat's
+        // BlockExplorersUserConfig only lists etherscan|blockscout; keep the
+        // runtime key and assert the published shape at the config boundary.
         basescan: {
           name: "BaseScan",
           url: "https://sepolia.basescan.org",
           apiUrl: "https://api.etherscan.io/v2/api",
         },
-      },
+      } as import("hardhat/types/config").BlockExplorersUserConfig,
+
     },
     11155111: {
       name: "Ethereum Sepolia",

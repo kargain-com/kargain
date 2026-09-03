@@ -16,6 +16,9 @@ import {
   MIN_STAKE,
   receiptLogs,
   ZERO,
+  asReadHex,
+  asReadTuple,
+  type ViemSuite,
 } from "../scripts/lib/local-stack.js";
 
 const TOKEN_ID_BASE = 31337n << 128n;
@@ -221,7 +224,7 @@ describe("KarProStaking — becomeVerifierNative", () => {
     const { verifier, staking } = await deployVerifierStack(viem);
     const extra = MIN_STAKE + 10_000_000_000_000_000n;
     await joinVerifier(staking, verifier, { value: extra });
-    const stake = await staking.read.stakes([verifier.account.address]);
+    const stake = asReadTuple(await staking.read.stakes([verifier.account.address]));
     assert.equal(stake[1], extra);
     const balance = await publicClient.getBalance({ address: staking.address });
     assert.equal(balance, extra);
@@ -276,7 +279,7 @@ describe("KarProStaking — becomeVerifierNative", () => {
       metadataURI: "ar://broker",
     });
     const tokenId = BigInt(verifier.account.address);
-    const [, category, name, metadataURI] = await proPass.read.getProPassData([tokenId]);
+    const [, category, name, metadataURI] = asReadTuple(await proPass.read.getProPassData([tokenId]));
     assert.equal(category, Category.BROKER);
     assert.equal(name, "Broker Inc");
     assert.equal(metadataURI, "ar://broker");
@@ -552,7 +555,7 @@ describe("KarProStaking — params", () => {
     const { admin, verifier, staking } = await deployVerifierStack(viem);
     await joinVerifier(staking, verifier, { value: MIN_STAKE });
     await staking.write.setMinStakeNative([100_000_000_000_000_000n], { account: admin.account });
-    const stake = await staking.read.stakes([verifier.account.address]);
+    const stake = asReadTuple(await staking.read.stakes([verifier.account.address]));
     assert.equal(stake[1], MIN_STAKE);
     assert.equal(stake[3], true);
   });
@@ -739,7 +742,7 @@ describe("KarPassport — mintPassport", () => {
     const uri = "ar://passport-1";
     const tokenId = await mintPassport(passport, owner, owner.account.address, uri);
     assert.equal(tokenId, TOKEN_ID_BASE);
-    const [status] = await passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 0);
     assert.equal(await passport.read.tokenURI([tokenId]), uri);
   });
@@ -802,9 +805,9 @@ describe("KarPassport — setPassportURI", () => {
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://new"], { account: owner.account });
     assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://new");
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status, recordedVerifier, verifiedAt] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 0);
-    assert.equal(getAddress(recordedVerifier), getAddress("0x0000000000000000000000000000000000000000"));
+    assert.equal(getAddress(asReadHex(recordedVerifier)), getAddress("0x0000000000000000000000000000000000000000"));
     assert.equal(verifiedAt, 0n);
   });
 
@@ -820,7 +823,7 @@ describe("KarPassport — setPassportURI", () => {
       passport.write.setPassportURI([TOKEN_ID_BASE, "ar://v"], { account: owner.account }),
       revertsWith("SameURI"),
     );
-    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
   });
 
@@ -898,7 +901,7 @@ describe("KarPassport — setPassportURI", () => {
     await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
     await passport.write.setPassportURI([TOKEN_ID_BASE, "ar://fixed"], { account: owner.account });
     assert.equal(await passport.read.tokenURI([TOKEN_ID_BASE]), "ar://fixed");
-    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 0);
   });
 
@@ -929,7 +932,7 @@ describe("KarPassport — setPassportURI", () => {
     const reset = logs.find((l) => l.eventName === "VerificationReset");
     assert.ok(reset);
     assert.equal(reset!.args.tokenId, TOKEN_ID_BASE);
-    assert.equal(getAddress(reset!.args.author), getAddress(owner.account.address));
+    assert.equal(getAddress(asReadHex(reset!.args.author)), getAddress(owner.account.address));
   });
 });
 
@@ -954,9 +957,9 @@ describe("KarPassport — verifyPassport", () => {
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    const [status, recordedVerifier] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status, recordedVerifier] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
-    assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
+    assert.equal(getAddress(asReadHex(recordedVerifier)), getAddress(verifier.account.address));
   });
 
   it("reverts: not active verifier", async () => {
@@ -1040,10 +1043,10 @@ describe("KarPassport — verifyPassport", () => {
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
     await staking.write.leave([], { account: verifier.account });
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status, recordedVerifier, verifiedAt] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
-    assert.equal(getAddress(recordedVerifier), getAddress(verifier.account.address));
-    assert.ok(verifiedAt > 0n);
+    assert.equal(getAddress(asReadHex(recordedVerifier)), getAddress(verifier.account.address));
+    assert.ok((verifiedAt as bigint) > 0n);
   });
 });
 
@@ -1074,7 +1077,7 @@ describe("KarPassport — dispute and resolve", () => {
     const { viem } = connection;
     const { owner, stranger, passport } = await setupVerified(viem);
     await passport.write.open([TOKEN_ID_BASE], { account: stranger.account, value: DISPUTE_DEPOSIT });
-    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 2);
     void owner;
   });
@@ -1100,7 +1103,7 @@ describe("KarPassport — dispute and resolve", () => {
       value: DISPUTE_DEPOSIT,
     });
     await passport.write.judge([TOKEN_ID_BASE, 1], { account: stranger.account });
-    const [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
   });
 
@@ -1113,9 +1116,9 @@ describe("KarPassport — dispute and resolve", () => {
       value: DISPUTE_DEPOSIT,
     });
     await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
-    const [status, recordedVerifier, verifiedAt] = await passport.read.getPassportStatus([
+    const [status, recordedVerifier, verifiedAt] = asReadTuple(await passport.read.getPassportStatus([
       TOKEN_ID_BASE,
-    ]);
+    ]));
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
     assert.equal(verifiedAt, 0n);
@@ -1213,12 +1216,12 @@ describe("KarPassport — records", () => {
     });
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    let [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    let [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
     await passport.write.appendRecord([TOKEN_ID_BASE, "service", "Oil change", "cid-t10"], {
       account: owner.account,
     });
-    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
     assert.equal(await passport.read.recordCount([TOKEN_ID_BASE]), 1n);
   });
@@ -1264,24 +1267,24 @@ describe("KarPassport — getPassportStatus", () => {
     await passport.write.mintPassport([owner.account.address, "ar://s"], {
       account: owner.account,
     });
-    let [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    let [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 0);
 
     await joinVerifier(staking, verifier);
     await passport.write.verifyPassport([TOKEN_ID_BASE], { account: verifier.account });
-    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 1);
 
     await passport.write.open([TOKEN_ID_BASE], {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 2);
 
     await joinVerifier(staking, stranger);
     await passport.write.judge([TOKEN_ID_BASE, 0], { account: stranger.account });
-    [status] = await passport.read.getPassportStatus([TOKEN_ID_BASE]);
+    [status] = asReadTuple(await passport.read.getPassportStatus([TOKEN_ID_BASE]));
     assert.equal(status, 0);
   });
 });

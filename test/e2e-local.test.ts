@@ -9,9 +9,16 @@ import {
   DISPUTE_DEPOSIT,
   increaseTime,
   joinVerifier,
+  paymentTokenField,
   receiptLogs,
   THREE_DAYS,
   ZERO,
+  asReadHex,
+  asReadObject,
+  asReadString,
+  asReadTuple,
+  asWallet,
+  type DeployedContract,
 } from "../scripts/lib/local-stack.js";
 import { requireLocalDeployment } from "../scripts/lib/load-deployment.js";
 import {
@@ -62,11 +69,11 @@ function failPonderChecks(reason: string): never {
 }
 
 async function assertChainStatus(
-  passport: { read: { getPassportStatus: (args: [bigint]) => Promise<[number, string, bigint]> } },
+  passport: DeployedContract,
   tokenId: bigint,
   expected: number,
 ) {
-  const [status] = await passport.read.getPassportStatus([tokenId]);
+  const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
   assert.equal(status, expected, `expected passport status ${expected}, got ${status}`);
 }
 
@@ -202,10 +209,10 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       );
 
       const wallets = await viem.getWalletClients();
-      const owner = wallets[1]!;
-      const verifier = wallets[2]!;
-      const buyer = wallets[2]!;
-      const resolver = wallets[3]!;
+      const owner = asWallet(wallets[1]!);
+      const verifier = asWallet(wallets[2]!);
+      const buyer = asWallet(wallets[2]!);
+      const resolver = asWallet(wallets[3]!);
 
       // 1 — becomeVerifierNative
       await joinVerifier(staking, verifier, {
@@ -233,7 +240,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       const resetLogs = await receiptLogs(publicClient, resetHash, passport.abi);
       assert.ok(resetLogs.some((l) => l.eventName === "VerificationReset"));
       await assertChainStatus(passport, firstTokenId, 0);
-      assert.equal(await passport.read.tokenURI([firstTokenId]), URI_EDIT_1);
+      assert.equal(asReadString(await passport.read.tokenURI([firstTokenId])), URI_EDIT_1);
 
       // 5 — verify again
       await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
@@ -259,7 +266,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       await passport.write.setPassportURI([firstTokenId, URI_POST_DISPUTE], {
         account: owner.account,
       });
-      assert.equal(await passport.read.tokenURI([firstTokenId]), URI_POST_DISPUTE);
+      assert.equal(asReadString(await passport.read.tokenURI([firstTokenId])), URI_POST_DISPUTE);
 
       // Re-verify before consignment + appendRecord (T10 requires VERIFIED)
       await passport.write.verifyPassport([firstTokenId], { account: verifier.account });
@@ -281,7 +288,7 @@ describeE2e("localhost 31337 passport lifecycle E2E", () => {
       // Phase.Closed = 2 after buy.
       assert.equal(await fixedPrice.read.consignmentPhase([firstTokenId]), 2);
       assert.equal(
-        getAddress(await passport.read.ownerOf([firstTokenId])),
+        getAddress(asReadHex(await passport.read.ownerOf([firstTokenId]))),
         getAddress(buyer.account.address),
       );
 
@@ -353,12 +360,12 @@ describeE2e("localhost commerce modes E2E", () => {
       );
 
       const wallets = await viem.getWalletClients();
-      const funder = wallets[0]!;
-      const owner = wallets[1]!;
-      const agent = wallets[2]!;
-      const buyer = wallets[3]!;
-      const bidder2 = wallets[4]!;
-      const judge = wallets[5]!;
+      const funder = asWallet(wallets[0]!);
+      const owner = asWallet(wallets[1]!);
+      const agent = asWallet(wallets[2]!);
+      const buyer = asWallet(wallets[3]!);
+      const bidder2 = asWallet(wallets[4]!);
+      const judge = asWallet(wallets[5]!);
 
       const BYTES32_ZERO =
         "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
@@ -396,19 +403,12 @@ describeE2e("localhost commerce modes E2E", () => {
         return tokenId;
       }
 
-      async function fundRejecting(
-        rejecting: {
-          address: `0x${string}`;
-          write: { setAcceptEth: (args: [boolean]) => Promise<unknown> };
-        },
-        value: bigint,
-      ) {
+      async function fundRejecting(rejecting: DeployedContract, value: bigint) {
         await rejecting.write.setAcceptEth([true]);
         await funder.sendTransaction({
           to: rejecting.address,
           value,
-          account: funder.account,
-        });
+        } as unknown as Parameters<typeof funder.sendTransaction>[0]);
         await rejecting.write.setAcceptEth([false]);
       }
 
@@ -423,16 +423,7 @@ describeE2e("localhost commerce modes E2E", () => {
         return tokenId;
       }
 
-      async function settleAfterSingleBid(
-        tokenId: bigint,
-        rejecting: {
-          address: `0x${string}`;
-          write: {
-            setAcceptEth: (args: [boolean]) => Promise<unknown>;
-            bidNative: (args: [bigint], opts: { value: bigint }) => Promise<unknown>;
-          };
-        },
-      ) {
+      async function settleAfterSingleBid(tokenId: bigint, rejecting: DeployedContract) {
         await fundRejecting(rejecting, reserve);
         await rejecting.write.bidNative([tokenId], { value: reserve });
         await increaseTime(publicClient, duration + 2n);
@@ -453,7 +444,7 @@ describeE2e("localhost commerce modes E2E", () => {
       });
       await fixedPrice.write.buy([fpToken], { account: buyer.account, value: fpPrice });
       assert.equal(
-        getAddress(await passport.read.ownerOf([fpToken])),
+        getAddress(asReadHex(await passport.read.ownerOf([fpToken]))),
         getAddress(buyer.account.address),
       );
 
@@ -809,10 +800,10 @@ describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
       const sink = await viem.getContractAt("RevertingRecipient", deployment.commercePayoutSink!);
 
       const wallets = await viem.getWalletClients();
-      const admin = wallets[0]!;
-      const owner = wallets[1]!;
-      const agent = wallets[2]!;
-      const buyer = wallets[3]!;
+      const admin = asWallet(wallets[0]!);
+      const owner = asWallet(wallets[1]!);
+      const agent = asWallet(wallets[2]!);
+      const buyer = asWallet(wallets[3]!);
 
       const DENOM_ASSET = { kind: 0, currencyCode: zeroHash } as const;
       const feeBps = BigInt((await fixedPrice.read.platformFeeBps()) as number);
@@ -842,10 +833,10 @@ describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
         await nativeFeed.write.setAnswer([answer]);
       }
       async function refreshUsdcFeed() {
-        const raw = (await fixedPrice.read.paymentTokens([usdc.address])) as
-          | { feed: `0x${string}`; decimals: number; enabled: boolean; stalenessTolerance: number }
-          | readonly [`0x${string}`, number, boolean, number];
-        const feed = Array.isArray(raw) ? raw[0] : raw.feed;
+        const feed = paymentTokenField(
+          await fixedPrice.read.paymentTokens([usdc.address]),
+          "feed",
+        ) as `0x${string}`;
         assert.ok(feed && feed !== ZERO, "USDC must have an admitted feed");
         // deploy:local admits with MockV3Aggregator; ChainlinkV3TestFeed also has setAnswer.
         const usdcFeed = await viem.getContractAt("MockV3Aggregator", feed);
@@ -942,7 +933,7 @@ describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
           legs.agent,
         );
         assert.equal(
-          getAddress(await passport.read.ownerOf([nativeToken])),
+          getAddress(asReadHex(await passport.read.ownerOf([nativeToken]))),
           getAddress(buyer.account.address),
         );
         assert.ok(

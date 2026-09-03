@@ -41,9 +41,11 @@ describe("I3 release path and acquisition serialisation", () => {
   it("behavioural: acquisition waits for whenLocalIdle before build", async () => {
     const clock = createControlledClock();
     let buildStarted = 0;
-    let releaseGate: (() => void) | null = null;
+    const release = { gate: null as (() => void) | null };
     const gate = new Promise<void>((resolve) => {
-      releaseGate = resolve;
+      release.gate = () => {
+        resolve();
+      };
     });
     const { session, xmtp } = openSession(clock, {
       nostr: { readIntent: async () => answeredIntent(true) },
@@ -59,7 +61,7 @@ describe("I3 release path and acquisition serialisation", () => {
     });
     await settleAsync(clock);
     assert.equal(buildStarted, 0);
-    releaseGate?.();
+    release.gate?.();
     await settleAsync(clock);
     assert.ok(buildStarted >= 1);
     assert.equal(session.getSnapshot().state, "active");
@@ -69,9 +71,11 @@ describe("I3 release path and acquisition serialisation", () => {
   it("behavioural: idle wait does not consume BUILD_DEADLINE_MS", async () => {
     const clock = createControlledClock();
     let buildStartedAt: number | null = null;
-    let releaseGate: (() => void) | null = null;
+    const release = { gate: null as (() => void) | null };
     const gate = new Promise<void>((resolve) => {
-      releaseGate = resolve;
+      release.gate = () => {
+        resolve();
+      };
     });
     openSession(clock, {
       nostr: { readIntent: async () => answeredIntent(true) },
@@ -89,7 +93,7 @@ describe("I3 release path and acquisition serialisation", () => {
     const idleStarted = clock.nowMs();
     await advanceAndSettle(clock, BUILD_DEADLINE_MS + 2_000);
     assert.equal(buildStartedAt, null);
-    releaseGate?.();
+    release.gate?.();
     await settleAsync(clock);
     assert.ok(buildStartedAt != null);
     assert.ok((buildStartedAt as number) >= idleStarted + BUILD_DEADLINE_MS);

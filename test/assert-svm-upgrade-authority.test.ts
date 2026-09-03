@@ -92,7 +92,7 @@ describe("assertSvmUpgradeAuthority", () => {
   it("refuses plannedFinalUpgradeAuthority leftover", async () => {
     const evidence = baseEvidence({
       plannedFinalUpgradeAuthority: "BSuJ…",
-    } as SvmDevnetEvidence);
+    } as unknown as SvmDevnetEvidence);
     const result = await assertSvmUpgradeAuthority(
       evidence,
       async () => "Auth111111111111111111111111111111111111111",

@@ -413,7 +413,7 @@ describe("BondedChallenge (CH1–CH6)", () => {
       revertsWith("CannotRouteBondToJudge"),
     );
 
-    assert.ok((await misconfiguredSettlement.read.challengeOpenedAt([subject])) > 0n);
+    assert.ok((await misconfiguredSettlement.read.challengeOpenedAt([subject]) as bigint) > 0n);
     assert.equal(await misconfiguredSettlement.read.pendingClaims([rejectJudge.address, ZERO]), 0n);
   });
 

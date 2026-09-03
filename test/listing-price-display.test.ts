@@ -15,7 +15,7 @@ import {
   toAskingDisplaySource,
 } from "../lib/commerce/listing-price-display.ts";
 import { FIAT_SCALE } from "../lib/marketplace/price-normalize.ts";
-import { COMMERCIAL_ACTIVE } from "../lib/web3/commercial-active.ts";
+import { COMMERCIAL_ACTIVE, type CommercialChainId } from "../lib/web3/commercial-active.ts";
 
 const BASE = 84532;
 const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -174,7 +174,7 @@ describe("askingUsdcFacts", () => {
     for (const fact of facts) {
       assert.equal(fact.decimals, 6);
       assert.equal(
-        COMMERCIAL_ACTIVE[fact.chainId]?.usdc.toLowerCase(),
+        COMMERCIAL_ACTIVE[fact.chainId as CommercialChainId]?.usdc.toLowerCase(),
         fact.address.toLowerCase(),
       );
     }

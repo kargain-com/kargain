@@ -20,6 +20,7 @@ import {
   MARKETPLACE_FEE_BPS,
 } from "./verify-constructor-args.js";
 import {
+  asWallet,
   deployAscendingConsignment,
   deployCommerceBaseStack,
   deployFixedPriceConsignment,
@@ -85,7 +86,7 @@ async function deployEndpointMock(viem: ViemSuite, deployer: WalletClient) {
     abi: endpointArtifact.abi,
     bytecode: endpointArtifact.bytecode,
     args: [REHEARSAL_LZ_EID],
-  });
+  } as unknown as Parameters<typeof deployer.deployContract>[0]);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (!receipt.contractAddress) {
     throw new Error("EndpointV2Mock deploy missing address");
@@ -105,10 +106,26 @@ export async function deployNuclearRehearsalStack(
   viem: ViemSuite,
 ): Promise<NuclearRehearsalStack> {
   const wallets = await viem.getWalletClients();
-  const [deployer, guardian, seller, verifier, bidder, bidder2, stranger] = wallets;
-  if (!deployer || !guardian || !seller || !verifier || !bidder || !bidder2 || !stranger) {
+  const [deployerRaw, guardianRaw, sellerRaw, verifierRaw, bidderRaw, bidder2Raw, strangerRaw] =
+    wallets;
+  if (
+    !deployerRaw ||
+    !guardianRaw ||
+    !sellerRaw ||
+    !verifierRaw ||
+    !bidderRaw ||
+    !bidder2Raw ||
+    !strangerRaw
+  ) {
     throw new Error("deployNuclearRehearsalStack needs ≥7 Hardhat wallet clients");
   }
+  const deployer = asWallet(deployerRaw);
+  const guardian = asWallet(guardianRaw);
+  const seller = asWallet(sellerRaw);
+  const verifier = asWallet(verifierRaw);
+  const bidder = asWallet(bidderRaw);
+  const bidder2 = asWallet(bidder2Raw);
+  const stranger = asWallet(strangerRaw);
 
   const base = await deployCommerceBaseStack(viem);
   const { passport, staking, proPass, usdc, nativeFeed, timelock } = base;

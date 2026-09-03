@@ -80,6 +80,8 @@ export const SNAPSHOT_DVN_IDS: readonly DvnId[] = [
 ] as const;
 
 export type LayerZeroEvmChainSnapshot = {
+  /** Absent or `"evm"` — historical JSON omits the field. */
+  vm?: "evm";
   chainKey: string;
   chainId: number;
   eid: number;
@@ -164,9 +166,7 @@ const DVN_ID_MAP: Record<string, DvnId> = {
  * Classify snapshot chain VM. Missing `vm` or `"evm"` → EVM (historical JSON).
  * `"svm"` → SVM. Any other value is a named refusal (never a silent EVM default).
  */
-export function classifyLayerZeroVm(chain: {
-  vm?: string;
-}): "evm" | "svm" {
+export function classifyLayerZeroVm(chain: { vm?: string }): "evm" | "svm" {
   const vm = chain.vm;
   if (vm === undefined || vm === "evm") return "evm";
   if (vm === "svm") return "svm";

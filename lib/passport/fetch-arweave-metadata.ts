@@ -17,7 +17,10 @@ export async function fetchArweaveMetadata(
   if (!url) return { ok: false };
 
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const init: RequestInit & { next?: { revalidate: number } } = {
+      next: { revalidate: 300 },
+    };
+    const res = await fetch(url, init);
     if (!res.ok) return { ok: false };
     const json: unknown = await res.json();
     const metadata = parseMetadataJson(json);

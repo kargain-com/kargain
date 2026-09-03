@@ -7,7 +7,8 @@ export function onftSentGuidFromLogs(abi: Abi, logs: readonly Log[]): Hex {
     eventName: "ONFTSent",
     logs: [...logs],
   });
-  const guid = parsed[0]?.args?.guid;
+  const first = parsed[0] as { args?: { guid?: unknown } } | undefined;
+  const guid = first?.args?.guid;
   if (typeof guid !== "string" || !guid.startsWith("0x")) {
     throw new Error("ONFTSent guid missing from transaction logs");
   }

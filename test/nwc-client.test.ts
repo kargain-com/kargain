@@ -38,7 +38,8 @@ type MockPool = {
     filter: Record<string, unknown>,
     handlers: { onevent: (event: Event) => void },
   ) => { close: () => void };
-  publish: (relays: string[], event: Event) => Promise<string[]>;
+  /** nostr-tools SimplePool.publish returns per-relay promises (not Promise<string[]>). */
+  publish: (relays: string[], event: Event) => Promise<string>[];
 };
 
 function makeInfoEvent(content: string, encryptionTag?: string): Event {
@@ -69,7 +70,7 @@ describe("nwc info parsing", () => {
     const pool: MockPool = {
       querySync: async () => [],
       subscribe: () => ({ close: () => {} }),
-      publish: async () => [],
+      publish: () => [],
     };
     const info = await fetchWalletInfo(conn, { pool: pool as never, timeoutMs: 50 });
     assert.equal(info.supportsPayInvoice, false);
@@ -80,7 +81,7 @@ describe("nwc info parsing", () => {
     const pool: MockPool = {
       querySync: async () => [makeInfoEvent("pay_invoice get_balance", "nip44_v2")],
       subscribe: () => ({ close: () => {} }),
-      publish: async () => [],
+      publish: () => [],
     };
     const info = await fetchWalletInfo(conn, { pool: pool as never, timeoutMs: 50 });
     assert.equal(info.supportsPayInvoice, true);

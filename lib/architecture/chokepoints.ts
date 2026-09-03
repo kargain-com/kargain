@@ -415,6 +415,18 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",
     guardTests: ["lib-scripts-boundary-policy.test.ts"],
   },
+  {
+    id: "typecheck-project-membership",
+    owner: "lib/architecture/typecheck-projects.ts",
+    rule: "Every TypeScript file is a root of exactly one typecheck project; typecheck runs all",
+    guardTests: ["typecheck-project-membership-policy.test.ts"],
+  },
+  {
+    id: "ponder-optional-contract-on",
+    owner: "src/lib/ponder-optional-contract-on.ts",
+    rule: "FixedPrice/Ascending/Gateway handlers register via onOptionalContractEvent when createConfig keys are address-conditional",
+    guardTests: ["ponder-optional-contract-on-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

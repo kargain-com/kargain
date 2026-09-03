@@ -15,7 +15,8 @@ const GATEWAY_CONTRACT = "KarPassportBridgeGateway";
 const REQUIRED_EVENTS = ["ONFTSent", "ONFTReceived"] as const;
 
 function listGatewayHandlers(source: string): string[] {
-  const re = /ponder\.on\("KarPassportBridgeGateway:([^"]+)"/g;
+  const re =
+    /(?:ponder\.on|onOptionalContractEvent)\(\s*"KarPassportBridgeGateway:([^"]+)"/g;
   const events: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = re.exec(source)) !== null) {
@@ -68,8 +69,8 @@ describe("ponder gateway index policy", () => {
 
   it("constructed violation: registration without ONFTReceived handler fails", () => {
     const dirtyHandlers = handlerSrc.replace(
-      'ponder.on("KarPassportBridgeGateway:ONFTReceived"',
-      'ponder.on("KarPassportBridgeGateway:ONFTReceived_REMOVED"',
+      /onOptionalContractEvent\(\s*"KarPassportBridgeGateway:ONFTReceived"/,
+      'onOptionalContractEvent("KarPassportBridgeGateway:ONFTReceived_REMOVED"',
     );
     assert.throws(
       () => assertGatewayPolicy(configSrc, dirtyHandlers),

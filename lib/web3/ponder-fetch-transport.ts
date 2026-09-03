@@ -6,6 +6,17 @@
 
 const DEFAULT_PONDER_BASE_URL = "http://localhost:42069";
 
+/** Fetch init that may set `cache` (DOM / undici); Node `@types` omit it. */
+type PonderFetchInit = RequestInit & {
+  cache?:
+    | "default"
+    | "force-cache"
+    | "no-cache"
+    | "no-store"
+    | "only-if-cached"
+    | "reload";
+};
+
 /** Trimmed `PONDER_SQL_API_URL`, or local Ponder default. */
 export function ponderBaseUrl(
   envValue: string | undefined = process.env.PONDER_SQL_API_URL,
@@ -16,8 +27,8 @@ export function ponderBaseUrl(
 
 /** Bare `fetch` — no Next Data Cache policy. */
 export function ponderTransportFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
+  input: string | URL,
+  init?: PonderFetchInit,
 ): Promise<Response> {
   return fetch(input, init);
 }

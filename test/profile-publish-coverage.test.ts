@@ -161,7 +161,7 @@ describe("publishNostrProfile sole kind:0 writer", () => {
     assert.ok(!targets.includes(KARGAIN_RELAY));
     assert.equal(targets.length, NOSTR_RELAYS.length - 1);
     for (const url of targets) {
-      assert.ok(NOSTR_RELAYS.includes(url));
+      assert.ok(NOSTR_RELAYS.includes(url as (typeof NOSTR_RELAYS)[number]));
     }
   });
 

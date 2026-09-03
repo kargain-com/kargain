@@ -4,6 +4,7 @@
 
 import { metadataSnapshotsForPayloads } from "../../lib/svm/ingest-metadata-capture.js";
 import type { MetadataFetcher } from "../../lib/svm/capture-metadata-at-ingest.js";
+import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
 import { ingestRefusalRowId } from "../../lib/svm/ingest-refusal.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
 import type { SvmRawWriter } from "../lib/svm-raw-writer.js";

@@ -10,6 +10,9 @@ import {
   joinVerifier,
   mintPassport,
   ZERO,
+  asReadTuple,
+  asReadHex,
+  hardhatRequest,
 } from "../scripts/lib/local-stack.js";
 import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling.js";
 
@@ -64,18 +67,12 @@ describe("KarPassport v2 — tokenId offset", () => {
     // BondedChallenge storage + __gap (was immutable) shifts KarPassport slots; scan wide.
     for (let slot = 0; slot < 256; slot++) {
       const slotHex = padHex(toHex(slot), { size: 32 });
-      await publicClient.request({
-        method: "hardhat_setStorageAt",
-        params: [passport.address, slotHex, padHex(toHex(penultimate), { size: 32 })],
-      });
+      await hardhatRequest(publicClient, "hardhat_setStorageAt", [passport.address, slotHex, padHex(toHex(penultimate), { size: 32 })]);
       if (((await passport.read.nextTokenId()) as bigint) === penultimate) {
         slotFound = true;
         break;
       }
-      await publicClient.request({
-        method: "hardhat_setStorageAt",
-        params: [passport.address, slotHex, padHex(toHex(baseline), { size: 32 })],
-      });
+      await hardhatRequest(publicClient, "hardhat_setStorageAt", [passport.address, slotHex, padHex(toHex(baseline), { size: 32 })]);
     }
     assert.ok(slotFound, "_nextTokenId storage slot not found");
     await passport.write.mintPassport([owner.account.address, "ar://last"], {
@@ -141,7 +138,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     assert.equal(await passport.read.totalLockedBonds(), DISPUTE_DEPOSIT);
     assert.equal(await passport.read.challengeBondAmount([tokenId]), DISPUTE_DEPOSIT);
     assert.equal(
-      getAddress(await passport.read.challengeChallenger([tokenId])),
+      getAddress(asReadHex(await passport.read.challengeChallenger([tokenId]))),
       getAddress(owner.account.address),
     );
     assert.ok(((await passport.read.challengeOpenedAt([tokenId])) as bigint) > 0n);
@@ -161,7 +158,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     const after = await publicClient.getBalance({ address: owner.account.address });
     const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
     assert.equal(after + gas - before, DISPUTE_DEPOSIT);
-    const [status] = await passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 1);
     assert.equal(await passport.read.totalLockedBonds(), 0n);
     assert.equal(await passport.read.challengeBondAmount([tokenId]), 0n);
@@ -182,7 +179,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     await stack.passport.write.judge([stack.tokenId, 0], { account: judge.account });
     const after = await publicClient.getBalance({ address: stack.owner.account.address });
     assert.equal(after - before, DISPUTE_DEPOSIT);
-    const [status, recordedVerifier] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    const [status, recordedVerifier] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
   });
@@ -192,7 +189,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     const publicClient = await viem.getPublicClient();
     const stack = await verified(viem);
     const judge = await joinIndependent(stack);
-    const platform = getAddress(await stack.passport.read.platformRecipient());
+    const platform = getAddress(asReadHex(await stack.passport.read.platformRecipient()));
     assert.equal(platform, getAddress(stack.admin.account.address));
     await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
@@ -209,7 +206,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     const judgeAfter = await publicClient.getBalance({ address: judge.account.address });
     assert.equal(platformAfter - platformBefore, DISPUTE_DEPOSIT);
     assert.equal(judgeAfter + gas, judgeBefore);
-    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    const [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 1);
     assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
   });
@@ -268,7 +265,7 @@ describe("KarPassport v2 — bonded challenge", () => {
       value: DISPUTE_DEPOSIT,
     });
     await stack.passport.write.judge([stack.tokenId, 1], { account: hired.account });
-    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    const [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 1);
   });
 
@@ -294,16 +291,16 @@ describe("KarPassport v2 — bonded challenge", () => {
       value: DISPUTE_DEPOSIT,
     });
     await increaseTime(publicClient, DISPUTE_WINDOW);
-    const platform = getAddress(await stack.passport.read.platformRecipient());
+    const platform = getAddress(asReadHex(await stack.passport.read.platformRecipient()));
     const platformBefore = await publicClient.getBalance({ address: platform });
     await stack.passport.write.conclude([stack.tokenId], {
       account: stack.owner.account,
     });
     const platformAfter = await publicClient.getBalance({ address: platform });
     assert.equal(platformAfter - platformBefore, DISPUTE_DEPOSIT);
-    const [status, recordedVerifier] = await stack.passport.read.getPassportStatus([
+    const [status, recordedVerifier] = asReadTuple(await stack.passport.read.getPassportStatus([
       stack.tokenId,
-    ]);
+    ]));
     assert.equal(status, 0);
     assert.equal(recordedVerifier, ZERO);
     assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
@@ -342,7 +339,7 @@ describe("KarPassport v2 — bonded challenge", () => {
     await stack.passport.write.conclude([stack.tokenId], {
       account: stack.stranger.account,
     });
-    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    const [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 0);
   });
 
@@ -355,7 +352,7 @@ describe("KarPassport v2 — bonded challenge", () => {
       value: DISPUTE_DEPOSIT,
     });
     await stack.passport.write.judge([stack.tokenId, 1], { account: judge.account });
-    const [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    const [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 1);
   });
 
@@ -407,14 +404,14 @@ describe("KarPassport v2 — bonded challenge", () => {
       value: DISPUTE_DEPOSIT,
     });
     await stack.passport.write.withdraw([stack.tokenId], { account: stack.owner.account });
-    let [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    let [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 1);
     assert.equal(await stack.passport.read.totalLockedBonds(), 0n);
     await stack.passport.write.open([stack.tokenId], {
       account: stack.owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    [status] = await stack.passport.read.getPassportStatus([stack.tokenId]);
+    [status] = asReadTuple(await stack.passport.read.getPassportStatus([stack.tokenId]));
     assert.equal(status, 2);
     assert.equal(await stack.passport.read.totalLockedBonds(), DISPUTE_DEPOSIT);
     await stack.passport.write.judge([stack.tokenId, 1], { account: judge.account });
@@ -451,7 +448,7 @@ describe("KarPassport v2 — bonded challenge", () => {
       account: owner.account,
       value: DISPUTE_DEPOSIT,
     });
-    const [status] = await passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 2);
     assert.equal(await passport.read.challengeBondAmount([tokenId]), DISPUTE_DEPOSIT);
   });

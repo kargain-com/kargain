@@ -17,6 +17,7 @@ import {
   commercialNamespaceFromLayerZeroEid,
   type PeerNamespaceRefusalReason,
 } from "../../lib/web3/commercial-eid-namespace";
+import type { IndexingContext } from "./ponder-optional-contract-on";
 
 type Hash = `0x${string}`;
 
@@ -33,33 +34,9 @@ export {
   peerLayerZeroEidForDirection,
 } from "../../lib/bridge/crossing-stream";
 
-export type BridgeCrossingContext = {
-  db: {
-    insert: (table: typeof bridgeCrossing) => {
-      values: (row: Record<string, unknown>) => Promise<unknown>;
-    };
-    update: (
-      table: typeof bridgeCrossing,
-      key: { id: string },
-    ) => {
-      set: (patch: Record<string, unknown>) => Promise<unknown>;
-    };
-    sql: {
-      select: () => {
-        from: (table: typeof bridgeCrossing) => {
-          where: (cond: unknown) => Promise<
-            Array<{
-              id: string;
-              tokenId: string;
-              direction: string;
-              passportCounterpartRefusal: string | null;
-            }>
-          >;
-        };
-      };
-    };
-  };
-};
+/** Indexing context — structural IndexingContext (not EventNames-tied). */
+export type BridgeCrossingContext = IndexingContext;
+
 
 type PendingBridgeTxState = {
   passportCandidates: Array<{

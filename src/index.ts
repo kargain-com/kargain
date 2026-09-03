@@ -32,7 +32,6 @@ import {
 } from "./lib/ponder-g1-fields";
 import {
   notePassportCounterpartForTx,
-  type BridgeCrossingContext,
 } from "./lib/ponder-bridge-crossings";
 import { insertCustodyDeterminingEvent } from "./lib/ponder-custody-events";
 import {
@@ -186,7 +185,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
 
   await indexPassportMetadataFromUri(context, tokenId, uri, ts);
 
-  await notePassportCounterpartForTx(context as BridgeCrossingContext, {
+  await notePassportCounterpartForTx(context, {
     txHash: event.transaction.hash,
     tokenId,
     logIndex: event.log.logIndex,
@@ -223,7 +222,7 @@ ponder.on("KarPassport:CustodyLockSet", async ({ event, context }) => {
     });
   }
 
-  await notePassportCounterpartForTx(context as BridgeCrossingContext, {
+  await notePassportCounterpartForTx(context, {
     txHash: event.transaction.hash,
     tokenId,
     logIndex: event.log.logIndex,

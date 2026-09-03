@@ -8,9 +8,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   encodeAbiParameters,
-  type AbiConstructor,
+  type Abi,
   type AbiParameter,
 } from "viem";
+
+type AbiConstructorFragment = Extract<Abi[number], { type: "constructor" }>;
 
 import { assertDeployEvidence } from "./assert-deploy-evidence.js";
 import {
@@ -49,7 +51,7 @@ type StoredBuildInfo = {
 };
 
 type ArtifactJson = {
-  abi: Array<AbiConstructor | { type: string }>;
+  abi: Abi;
 };
 
 function compilerVersionFromBuildInfo(bi: StoredBuildInfo): string {
@@ -87,7 +89,9 @@ function readConstructorInputs(
     raw = readFileSync(cwd, "utf8");
   }
   const artifact = JSON.parse(raw) as ArtifactJson;
-  const ctor = artifact.abi.find((x): x is AbiConstructor => x.type === "constructor");
+  const ctor = artifact.abi.find(
+    (x): x is AbiConstructorFragment => x.type === "constructor",
+  );
   return ctor?.inputs ?? [];
 }
 

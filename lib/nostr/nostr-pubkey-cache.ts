@@ -4,6 +4,9 @@
  * Memoises a *verified* address→pubkey binding (self or peer).
  * Not a trust store: cold cache must produce the same outcome as warm, only slower.
  * Write only after attestation verification succeeds (or the local key is derived).
+ *
+ * Storage access goes through {@link browserLocalStorage} so Node tooling that
+ * transitively typechecks this module does not require the DOM lib.
  */
 
 const PUBKEY_CACHE_PREFIX = "kargain_nostr_pubkey_v1:";
@@ -14,12 +17,21 @@ export type CachedPubkeyBinding = {
   boundCreatedAt: number;
 };
 
+type BrowserLocalStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
+
 function cacheKey(address: `0x${string}`): string {
   return `${PUBKEY_CACHE_PREFIX}${address.toLowerCase()}`;
 }
 
-function requireBrowser(): boolean {
-  return typeof window !== "undefined" && Boolean(window.localStorage);
+function browserLocalStorage(): BrowserLocalStorage | null {
+  const g = globalThis as typeof globalThis & {
+    window?: { localStorage?: BrowserLocalStorage };
+  };
+  return g.window?.localStorage ?? null;
 }
 
 function parseBinding(raw: string): CachedPubkeyBinding | null {
@@ -53,8 +65,9 @@ function parseBinding(raw: string): CachedPubkeyBinding | null {
 export function loadCachedPubkeyBinding(
   address: `0x${string}`,
 ): CachedPubkeyBinding | null {
-  if (!requireBrowser()) return null;
-  const raw = window.localStorage.getItem(cacheKey(address));
+  const storage = browserLocalStorage();
+  if (!storage) return null;
+  const raw = storage.getItem(cacheKey(address));
   if (raw == null) return null;
   return parseBinding(raw);
 }
@@ -73,15 +86,17 @@ export function saveCachedPubkey(
   pubkey: string,
   boundCreatedAt: number = Math.floor(Date.now() / 1000),
 ): void {
-  if (!requireBrowser() || !pubkey.trim()) return;
+  const storage = browserLocalStorage();
+  if (!storage || !pubkey.trim()) return;
   const binding: CachedPubkeyBinding = {
     pubkey: pubkey.trim(),
     boundCreatedAt: Number.isFinite(boundCreatedAt) ? boundCreatedAt : 0,
   };
-  window.localStorage.setItem(cacheKey(address), JSON.stringify(binding));
+  storage.setItem(cacheKey(address), JSON.stringify(binding));
 }
 
 export function clearCachedPubkey(address: `0x${string}`): void {
-  if (!requireBrowser()) return;
-  window.localStorage.removeItem(cacheKey(address));
+  const storage = browserLocalStorage();
+  if (!storage) return;
+  storage.removeItem(cacheKey(address));
 }

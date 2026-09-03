@@ -25,7 +25,10 @@ import {
   testnetMinStakeFloorLamports,
   testnetMinStakeLamports,
 } from "../../lib/web3/min-stake-sol.ts";
-import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+import {
+  withStandArtifactBindings,
+  type StandArtifactBindings,
+} from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -843,6 +846,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     escrowSplAfterComplete: bigint;
   };
   pause: { openCode: number; bidCode: number };
+  artifacts: StandArtifactBindings;
 }> {
   for (const name of ["kar_ascending", "kar_pro_staking", "kar_pro_pass"] as const) {
     if (!existsSync(path.join(DEPLOY, `${name}.so`))) {

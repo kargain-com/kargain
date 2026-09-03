@@ -238,7 +238,7 @@ describe("AscendingConsignment", () => {
       toBlock: "latest",
     });
     assert.ok(logs.length >= 1, "expected AuctionRulesSet at initialize");
-    const initLog = logs[0]!;
+    const initLog = logs[0]! as { args: Record<string, unknown> };
     const args = initLog.args as {
       minDuration: number | bigint;
       maxDuration: number | bigint;
@@ -738,7 +738,7 @@ describe("AscendingConsignment", () => {
   // ---- Challenge outcomes + window resume ----
 
   it("CH4: withdrawn challenge resumes remaining protection (measured)", async () => {
-    await deployMode({ minProtectionWindow: 1_000n, maxProtectionWindow: 10_000n, challengeWindow: 500n });
+    await deployMode({ challengeWindow: 500n });
     await openDirect();
     await firstBid();
     await settleAfterEnd();
@@ -1288,7 +1288,7 @@ describe("AscendingConsignment", () => {
         toBlock: "latest",
       });
       assert.ok(logs.length > 0, `expected ${eventName}`);
-      return logs[logs.length - 1]!;
+      return logs[logs.length - 1]! as { args: Record<string, unknown> };
     }
 
     it("ConsignmentOpened + AscendingTermsSnapshotted match open snapshot", async () => {

@@ -20,14 +20,16 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 
+type AbiParam = {
+  readonly name?: string;
+  readonly type: string;
+  readonly internalType?: string;
+};
+
 type AbiItem = {
-  type?: string;
-  name?: string;
-  inputs?: Array<{
-    name: string;
-    type: string;
-    internalType?: string;
-  }>;
+  readonly type?: string;
+  readonly name?: string;
+  readonly inputs?: readonly AbiParam[];
 };
 
 type ManifestField = {
@@ -168,7 +170,7 @@ function parsePonderRegistrations(relativeFile: string): PonderRegistration[] {
   return registrations;
 }
 
-function normalizeSolidityType(input: AbiItem["inputs"] extends Array<infer T> ? T : never): string {
+function normalizeSolidityType(input: AbiParam): string {
   const internal = input.internalType?.trim();
   const type = input.type.trim();
   if (internal?.startsWith("enum ")) return "enum";
@@ -226,11 +228,12 @@ function lookupEventAbi(contract: string, eventName: string): AbiItem {
 function buildEntry(registration: PonderRegistration): ManifestEntry {
   const abiEvent = lookupEventAbi(registration.contract, registration.event);
   const fields = (abiEvent.inputs ?? []).map((input) => {
+    const name = input.name ?? "";
     const solidityType = normalizeSolidityType(input);
     return {
-      name: input.name,
+      name,
       solidityType,
-      encoding: mapEncoding(input.name, solidityType),
+      encoding: mapEncoding(name, solidityType),
     };
   });
 
@@ -246,11 +249,12 @@ function buildEntry(registration: PonderRegistration): ManifestEntry {
 function buildGatewayRequiredEntry(eventName: (typeof GATEWAY_REQUIRED_EVENTS)[number]): ManifestEntry {
   const abiEvent = lookupEventAbi("KarPassportBridgeGateway", eventName);
   const fields = (abiEvent.inputs ?? []).map((input) => {
+    const name = input.name ?? "";
     const solidityType = normalizeSolidityType(input);
     return {
-      name: input.name,
+      name,
       solidityType,
-      encoding: mapEncoding(input.name, solidityType),
+      encoding: mapEncoding(name, solidityType),
     };
   });
 

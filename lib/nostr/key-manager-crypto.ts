@@ -12,7 +12,7 @@ export type StoredEncryptedV2 = {
   createdAt: number;
 };
 
-function requireSubtleCrypto(): SubtleCrypto {
+function requireSubtleCrypto(): NonNullable<typeof globalThis.crypto>["subtle"] {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
     throw new Error("Web Crypto subtle API is required.");
@@ -59,7 +59,11 @@ export function isIdentityBlob(blob: unknown): blob is StoredEncryptedV2 {
   );
 }
 
-async function importAesKey(seed: Uint8Array): Promise<CryptoKey> {
+type AesCryptoKey = Awaited<
+  ReturnType<NonNullable<typeof globalThis.crypto>["subtle"]["importKey"]>
+>;
+
+async function importAesKey(seed: Uint8Array): Promise<AesCryptoKey> {
   const raw = new Uint8Array(seed);
   return requireSubtleCrypto().importKey("raw", raw, { name: "AES-GCM" }, false, [
     "encrypt",
@@ -70,12 +74,12 @@ async function importAesKey(seed: Uint8Array): Promise<CryptoKey> {
 async function deriveAesKeyFromSignature(
   signature: `0x${string}`,
   salt: string,
-): Promise<CryptoKey> {
+): Promise<AesCryptoKey> {
   const seed = keccak256(toHex(`${signature}${salt}`));
   return importAesKey(new Uint8Array(hexToBytes(seed)));
 }
 
-async function deriveAesKeyV2(signature: `0x${string}`): Promise<CryptoKey> {
+async function deriveAesKeyV2(signature: `0x${string}`): Promise<AesCryptoKey> {
   return deriveAesKeyFromSignature(signature, AES_V2_SALT);
 }
 

@@ -71,7 +71,7 @@ describe("messaging session registry", () => {
   it("two acquires share one session; refCount is 2", () => {
     const { clock } = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(clock);
+    const registry = createSessionRegistry<FakeSession>(clock);
     const first = registry.acquire(ADDR_A, factory.create);
     const second = registry.acquire(ADDR_A, factory.create);
     assert.equal(first, second);
@@ -82,7 +82,7 @@ describe("messaging session registry", () => {
   it("last release schedules destroy; flush disposes", () => {
     const manual = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     registry.acquire(ADDR_A, factory.create);
     registry.release(ADDR_A);
     assert.equal(registry.pendingDestroy(ADDR_A), true);
@@ -96,7 +96,7 @@ describe("messaging session registry", () => {
   it("flicker: release then acquire before destroy reuses session", () => {
     const manual = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     const first = registry.acquire(ADDR_A, factory.create);
     registry.release(ADDR_A);
     assert.equal(registry.pendingDestroy(ADDR_A), true);
@@ -112,7 +112,7 @@ describe("messaging session registry", () => {
   it("A → B → A creates distinct sessions; A is destroyed after leave", () => {
     const manual = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     const sessionA1 = registry.acquire(ADDR_A, factory.create);
     registry.release(ADDR_A);
     const sessionB = registry.acquire(ADDR_B, factory.create);
@@ -126,7 +126,7 @@ describe("messaging session registry", () => {
 
   it("idempotent release of unknown address is a no-op", () => {
     const manual = createManualClock();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     registry.release(ADDR_A);
     assert.equal(manual.pendingCount(), 0);
   });
@@ -134,7 +134,7 @@ describe("messaging session registry", () => {
   it("acquire is case-insensitive for the same address", () => {
     const { clock } = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(clock);
+    const registry = createSessionRegistry<FakeSession>(clock);
     const first = registry.acquire(ADDR_A, factory.create);
     const second = registry.acquire(ADDR_A.toLowerCase(), factory.create);
     assert.equal(first, second);
@@ -144,7 +144,7 @@ describe("messaging session registry", () => {
   it("RC-5: same-turn dispatch after acquire reaches the live session", () => {
     const manual = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     const session = registry.acquire(ADDR_A, factory.create);
     const log = session.dispatch("enable");
     assert.deepEqual(log, ["enable"]);
@@ -161,7 +161,7 @@ describe("messaging session registry", () => {
   it("genuine disconnect: destroy fires with refcount still 0", () => {
     const manual = createManualClock();
     const factory = createFakeFactory();
-    const registry = createSessionRegistry(manual.clock);
+    const registry = createSessionRegistry<FakeSession>(manual.clock);
     const session = registry.acquire(ADDR_A, factory.create);
     registry.release(ADDR_A);
     assert.equal(registry.refCount(ADDR_A), 0);

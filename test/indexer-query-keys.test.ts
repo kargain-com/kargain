@@ -58,7 +58,7 @@ describe("INDEXER_QUERY_KEY_PREFIXES", () => {
   });
 
   it("does not overlap NON_INDEXER_QUERY_KEY_PREFIXES", () => {
-    const indexer = new Set(INDEXER_QUERY_KEY_PREFIXES);
+    const indexer = new Set<string>(INDEXER_QUERY_KEY_PREFIXES);
     for (const prefix of NON_INDEXER_QUERY_KEY_PREFIXES) {
       assert.equal(indexer.has(prefix), false, `overlap: ${prefix}`);
     }

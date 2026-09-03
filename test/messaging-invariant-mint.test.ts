@@ -336,20 +336,21 @@ describe("I2 preserve-current revoke consumes mint authorisation", () => {
 describe("I2 companion: late-ok orphan after timeout is closed", () => {
   it("behavioural: late ok client after build timeout is closed", async () => {
     const clock = createControlledClock();
-    let releaseBuild: ((result: { ok: true; client: XmtpLocalClient }) => void) | null = null;
+    let releaseBuild: { fn: ((result: { ok: true; client: XmtpLocalClient }) => void) | null } =
+      { fn: null };
     const { session, xmtp } = openSession(clock, {
       nostr: { readIntent: async () => answeredIntent(true) },
       xmtp: {
         buildLocal: async () =>
-          new Promise((resolve) => {
-            releaseBuild = resolve;
+          new Promise<{ ok: true; client: XmtpLocalClient }>((resolve) => {
+            releaseBuild.fn = resolve;
           }),
       },
     });
     await advanceAndSettle(clock, BUILD_DEADLINE_MS);
     assert.equal(session.getSnapshot().state, "error");
     const closesBefore = xmtp.calls.closeLocal;
-    releaseBuild?.({ ok: true, client: brandClient(99) });
+    releaseBuild.fn?.({ ok: true, client: brandClient(99) });
     await settleAsync(clock);
     assert.ok(xmtp.calls.closeLocal > closesBefore);
   });

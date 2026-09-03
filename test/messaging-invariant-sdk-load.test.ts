@@ -47,7 +47,7 @@ describe("I1 module load never inside a deadline", () => {
 
   it("behavioural: slow ensureModule past BUILD_DEADLINE_MS never times out as setup", async () => {
     const clock = createControlledClock();
-    let resolveEnsure: (() => void) | null = null;
+    const release = { ensure: null as (() => void) | null };
     const { session, xmtp } = openSession(clock, {
       nostr: { readIntent: async () => answeredIntent(true) },
       xmtp: {
@@ -57,7 +57,9 @@ describe("I1 module load never inside a deadline", () => {
               reject(new DOMException("Aborted", "AbortError"));
               return;
             }
-            resolveEnsure = () => resolve();
+            release.ensure = () => {
+              resolve();
+            };
             signal?.addEventListener(
               "abort",
               () => reject(new DOMException("Aborted", "AbortError")),
@@ -72,7 +74,7 @@ describe("I1 module load never inside a deadline", () => {
     await advanceAndSettle(clock, BUILD_DEADLINE_MS + 5_000);
     const mid = session.getSnapshot();
     assert.equal(mid.state === "error" && mid.reason === "timeout", false);
-    resolveEnsure?.();
+    release.ensure?.();
     await settleAsync(clock);
     assert.equal(session.getSnapshot().state, "active");
     assert.ok(xmtp.calls.buildLocal >= 1);

@@ -179,6 +179,7 @@ describe("validators", () => {
         horizen: A,
       },
       deadDvn: null,
+      pathways: {},
     };
     const errs = assertLibrariesPinned(chain, {
       sendLibrary: A,
@@ -242,6 +243,7 @@ describe("snapshot hash validation", () => {
     const { pathways: _p, ...fileShaped } = snap;
     const drifted: LayerZeroMetadataSnapshot = {
       ...fileShaped,
+      pathways: {},
       sha256: "0".repeat(64),
     };
     writeFileSync(path, `${JSON.stringify(drifted)}\n`);

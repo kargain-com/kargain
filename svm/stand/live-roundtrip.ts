@@ -29,6 +29,13 @@ import {
 } from "./constants.ts";
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
 import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
+import type {
+  StandConnection,
+  StandKeypair,
+  StandPublicKey,
+  StandTransactionInstruction,
+} from "./solana-web3-types.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Resolve @solana/web3.js from the lab package (not a root dependency). */
@@ -68,19 +75,20 @@ export type LiveRoundTripResult = {
   uriTravelled: boolean;
   relayIdentityOk: boolean;
   liveUriLen: number;
+  artifacts: StandArtifactBindings;
 };
 
-function loadKeypair(p: string): Keypair {
+function loadKeypair(p: string): StandKeypair {
   const raw = JSON.parse(fs.readFileSync(p, "utf8")) as number[];
   return Keypair.fromSecretKey(Uint8Array.from(raw));
 }
 
-function programIdFromDeploy(name: string): PublicKey {
+function programIdFromDeploy(name: string): StandPublicKey {
   const kp = loadKeypair(path.join(DEPLOY, `${name}-keypair.json`));
   return kp.publicKey;
 }
 
-function pda(seeds: Buffer[], programId: PublicKey): [PublicKey, number] {
+function pda(seeds: Buffer[], programId: StandPublicKey): [StandPublicKey, number] {
   return PublicKey.findProgramAddressSync(seeds, programId);
 }
 
@@ -113,10 +121,10 @@ function encodeVecU8(data: Uint8Array): Buffer {
 function passportInitializeData(args: {
   namespace: bigint;
   localEid: number;
-  endpoint: PublicKey;
+  endpoint: StandPublicKey;
   disputeDeposit: bigint;
-  staking: PublicKey;
-  forfeit: PublicKey;
+  staking: StandPublicKey;
+  forfeit: StandPublicKey;
 }): Buffer {
   return Buffer.concat([
     Buffer.from([0]),
@@ -137,7 +145,7 @@ function passportInitializeData(args: {
   ]);
 }
 
-function passportSetGatewayData(gateway: PublicKey): Buffer {
+function passportSetGatewayData(gateway: StandPublicKey): Buffer {
   return Buffer.concat([Buffer.from([1]), Buffer.from(gateway.toBytes())]);
 }
 
@@ -147,8 +155,8 @@ function passportMintData(uri: string): Buffer {
 
 function gatewayInitializeData(args: {
   localEid: number;
-  endpoint: PublicKey;
-  passport: PublicKey;
+  endpoint: StandPublicKey;
+  passport: StandPublicKey;
   namespace: bigint;
 }): Buffer {
   return Buffer.concat([
@@ -221,15 +229,15 @@ function parsePassportState(data: Buffer): {
   return { status, custodyLocked, burned, recordCount };
 }
 
-function isLiveCoreAsset(info: { owner: PublicKey; data: Buffer } | null): boolean {
+function isLiveCoreAsset(info: { owner: StandPublicKey; data: Buffer } | null): boolean {
   if (!info) return false;
   return info.owner.equals(CORE_ID) && info.data.length > 1;
 }
 
 async function sendIx(
-  connection: Connection,
-  payer: Keypair,
-  ixs: TransactionInstruction[],
+  connection: StandConnection,
+  payer: StandKeypair,
+  ixs: StandTransactionInstruction[],
   label: string,
 ): Promise<{ signature: string; cu: number | null; serializedLen: number }> {
   const tx = new Transaction().add(

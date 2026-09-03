@@ -553,11 +553,11 @@ describe("messaging contract — scenarios", () => {
     const clock = createControlledClock();
     const fakeClient = { __brand: "XmtpLocalClient" as const };
     const handlers = {
-      nostr: { readIntent: async () => ({ status: "answered", intent: true }) },
+      nostr: { readIntent: async () => ({ status: "answered" as const, intent: true as const }) },
       xmtp: {
-        buildLocal: async () => ({ ok: true, client: fakeClient }),
+        buildLocal: async () => ({ ok: true as const, client: fakeClient }),
       },
-    };
+    } satisfies Parameters<typeof openSession>[1];
     const cold = openSession(clock, handlers);
     await settleAsync(clock);
     const coldSnap = cold.session.getSnapshot();
@@ -958,8 +958,9 @@ describe("messaging contract — invariants", () => {
     assert.ok(trueAfter > falseIdx);
     assert.equal(published, true);
     assert.equal(session.getSnapshot().state, "active");
-    if (session.getSnapshot().state === "active") {
-      assert.equal(session.getSnapshot().publiclyReachable, true);
+    const activeSnap = session.getSnapshot();
+    if (activeSnap.state === "active") {
+      assert.equal(activeSnap.publiclyReachable, true);
     }
     assert.equal(xmtp.liveCount, 1);
   });

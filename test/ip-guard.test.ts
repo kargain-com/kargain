@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import { describe, it } from "node:test";
 
 import { __testing } from "../lib/lightning/guarded-fetch.ts";
@@ -20,9 +21,18 @@ function runPinnedLookup(
   address: string | ResolvedEntry[] | null;
   family?: number;
 }> {
-  const lookup = createPinnedLookup((_hostname, _options, callback) => {
-    callback(opts?.err ?? null, resolved);
-  });
+  const lookup = createPinnedLookup(((
+    _hostname,
+    _options,
+    callback,
+  ) => {
+    (
+      callback as (
+        err: NodeJS.ErrnoException | null,
+        addresses: ResolvedEntry[],
+      ) => void
+    )(opts?.err ?? null, resolved);
+  }) as typeof dns.lookup);
 
   const requestOptions = opts?.requestAll ? { all: true as const } : {};
 

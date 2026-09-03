@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { newDb, type IMemoryDb } from "pg-mem";
+import { newDb, type IMemoryDb, DataType } from "pg-mem";
 import type pg from "pg";
 
 import type { PassportEntityRow } from "../../src/lib/ponder-passport-entity.js";
@@ -72,8 +72,8 @@ function svmProjectionPassportDdl(): string {
 function registerPgMemFunctions(db: IMemoryDb): void {
   db.public.registerFunction({
     name: "lower",
-    args: ["text"],
-    returns: "text",
+    args: [DataType.text],
+    returns: DataType.text,
     implementation: (value: string | null) =>
       value == null ? null : value.toLowerCase(),
   });

@@ -86,7 +86,7 @@ describe("passport browse index ↔ predicate policy", () => {
     }
 
     for (const col of lowerCols) {
-      const entry = byColumn.get(col);
+      const entry = byColumn.get(col as (typeof PASSPORT_BROWSE_INDEXES)[number]["column"]);
       assert.ok(
         entry,
         `predicate lower(${col}) has no PASSPORT_BROWSE_INDEXES entry`,

@@ -9,7 +9,6 @@ import {
 import { mapVerifierDetailToProfile } from "../lib/verifier/map-verifier-profile.ts";
 
 const ADDRESS = "0x1234567890123456789012345678901234567890";
-const BASE = "http://localhost:42069";
 
 describe("buildVerifierPassportsQueryUrl", () => {
   it("requests VERIFIED passports for the verifier only", () => {
@@ -31,13 +30,13 @@ describe("buildVerifierAttestationsQueryUrl", () => {
 
 describe("buildVerifierDetailQueryUrl", () => {
   it("omits chainId when unset", () => {
-    const url = new URL(buildVerifierDetailQueryUrl(ADDRESS, undefined, BASE));
+    const url = new URL(buildVerifierDetailQueryUrl(ADDRESS));
     assert.equal(url.pathname, `/verifiers/${ADDRESS}`);
     assert.equal(url.searchParams.get("chainId"), null);
   });
 
   it("appends chainId when set", () => {
-    const url = new URL(buildVerifierDetailQueryUrl(ADDRESS, 84532, BASE));
+    const url = new URL(buildVerifierDetailQueryUrl(ADDRESS, 84532));
     assert.equal(url.pathname, `/verifiers/${ADDRESS}`);
     assert.equal(url.searchParams.get("chainId"), "84532");
   });

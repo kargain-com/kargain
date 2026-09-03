@@ -193,7 +193,9 @@ describe("nostr querySync write policy", () => {
       "flag read must not go through resolveAttestedProfile",
     );
     assert.ok(
-      !KNOWN_QUERY_SYNC_READ_ONLY.includes("lib/nostr/messaging-intent.ts"),
+      !([...KNOWN_QUERY_SYNC_READ_ONLY] as readonly string[]).includes(
+        "lib/nostr/messaging-intent.ts",
+      ),
       "messaging-intent must not be classified as read-only querySync",
     );
   });

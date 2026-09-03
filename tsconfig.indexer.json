@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    // bundler + allowImportingTsExtensions: Ponder/tsx load .ts suffixes;
+    // ponder virtual modules via ponder-env.d.ts.
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "ponder-env.d.ts",
+    "ponder.config.ts",
+    "ponder.schema.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "test",
+    "scripts"
+  ]
+}

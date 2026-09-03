@@ -1,8 +1,42 @@
-import { eq, type ReadonlyDrizzle } from "ponder";
+import { eq } from "ponder";
 
 import type { IndexedPassportMetadata } from "../../lib/passport/index-passport-metadata";
 import { fetchMetadataFromUri } from "../../lib/passport/index-passport-metadata";
 import { passport, vinIndex } from "../../ponder.schema";
+
+/**
+ * Structural minimum of Ponder handler `context` for metadata helpers.
+ * Method syntax keeps parameters bivariant so the real `ponder.on` context
+ * remains assignable without importing `ponder:registry` into the node graph.
+ * Query row shapes are opaque here — narrowed at the call after await.
+ */
+type IndexerContext = {
+  db: {
+    sql: {
+      select(fields: unknown): {
+        from(table: unknown): {
+          where(condition: unknown): Promise<unknown>;
+        };
+      };
+    };
+    find(
+      table: unknown,
+      key: { id: string },
+    ): Promise<{ vin?: string } | null>;
+    update(
+      table: unknown,
+      key: { id: string },
+    ): {
+      set(values: unknown): Promise<unknown>;
+    };
+    delete(table: unknown, key: { id: string }): Promise<unknown>;
+    insert(table: unknown): {
+      values(values: unknown): {
+        onConflictDoUpdate(values: unknown): Promise<unknown>;
+      };
+    };
+  };
+};
 
 export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
   return {
@@ -24,46 +58,19 @@ export function passportMetadataDenorm(indexed: IndexedPassportMetadata) {
   };
 }
 
-/** Ponder 0.16 indexing `context` — use `db.find` / `db.sql`, not `db.select`. */
-type IndexerContext = {
-  db: {
-    find: (
-      table: typeof vinIndex,
-      key: { id: string },
-    ) => Promise<{ vin: string } | null>;
-    insert: (table: typeof vinIndex) => {
-      values: (values: {
-        id: string;
-        vin: string;
-        tokenId: string;
-        updatedAt: bigint;
-      }) => {
-        onConflictDoUpdate: (values: {
-          vin: string;
-          updatedAt: bigint;
-        }) => Promise<unknown>;
-      };
-    };
-    update: (
-      table: typeof passport,
-      key: { id: string },
-    ) => {
-      set: (values: Record<string, unknown>) => Promise<unknown>;
-    };
-    delete: (table: typeof vinIndex, key: { id: string }) => Promise<boolean>;
-    sql: ReadonlyDrizzle;
-  };
-};
-
 export async function recomputeDuplicateVin(
   context: IndexerContext,
   vin: string,
 ): Promise<void> {
   if (!vin) return;
-  const rows = await context.db.sql
+  const rowsUnknown = await context.db.sql
     .select({ tokenId: vinIndex.tokenId })
     .from(vinIndex)
     .where(eq(vinIndex.vin, vin));
+  if (!Array.isArray(rowsUnknown)) {
+    throw new Error("vinIndex select returned non-array");
+  }
+  const rows = rowsUnknown as Array<{ tokenId: string | null }>;
   const isDuplicate = rows.length > 1;
   for (const row of rows) {
     if (!row.tokenId) continue;

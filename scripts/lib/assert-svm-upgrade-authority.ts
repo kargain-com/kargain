@@ -53,10 +53,12 @@ export async function assertSvmUpgradeAuthority(
     return { ok: false, reasons: ["Evidence missing programs"] };
   }
 
-  const entries = Object.entries(programs).filter(
-    (row): row is [string, { programId?: string; upgradeAuthority?: string }] =>
-      row[1] != null && typeof row[1] === "object",
-  );
+  const entries: Array<[string, { programId?: string; upgradeAuthority?: string }]> = [];
+  for (const [name, row] of Object.entries(programs)) {
+    if (row != null && typeof row === "object") {
+      entries.push([name, row]);
+    }
+  }
 
   if (entries.length === 0) {
     reasons.push("Evidence programs is empty");

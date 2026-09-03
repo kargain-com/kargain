@@ -3,26 +3,43 @@
  * from gateway events (S7b). Passport custody handlers stay in src/index.ts.
  */
 
-import { ponder } from "ponder:registry";
 import { getAddress } from "viem";
 
 import {
   insertOnftReceivedCrossing,
   insertOnftSentCrossing,
-  type BridgeCrossingContext,
 } from "./lib/ponder-bridge-crossings";
+import {
+  eventArgs,
+  onOptionalContractEvent,
+} from "./lib/ponder-optional-contract-on";
 
 function indexingChainId(context: { chain: { id: number } }): number {
   return Number(context.chain.id);
 }
 
-ponder.on("KarPassportBridgeGateway:ONFTSent", async ({ event, context }) => {
-  await insertOnftSentCrossing(context as BridgeCrossingContext, {
+type OnftSentArgs = {
+  guid: `0x${string}`;
+  dstEid: number | bigint;
+  fromAddress: `0x${string}`;
+  tokenId: bigint;
+};
+
+type OnftReceivedArgs = {
+  guid: `0x${string}`;
+  srcEid: number | bigint;
+  toAddress: `0x${string}`;
+  tokenId: bigint;
+};
+
+onOptionalContractEvent("KarPassportBridgeGateway:ONFTSent", async ({ event, context }) => {
+  const args = eventArgs<OnftSentArgs>(event);
+  await insertOnftSentCrossing(context, {
     observingChainId: indexingChainId(context),
-    guid: event.args.guid,
-    dstEid: Number(event.args.dstEid),
-    fromAddress: getAddress(event.args.fromAddress),
-    tokenId: event.args.tokenId.toString(),
+    guid: args.guid,
+    dstEid: Number(args.dstEid),
+    fromAddress: getAddress(args.fromAddress),
+    tokenId: args.tokenId.toString(),
     blockNumber: Number(event.block.number),
     logIndex: event.log.logIndex,
     txHash: event.transaction.hash,
@@ -30,16 +47,20 @@ ponder.on("KarPassportBridgeGateway:ONFTSent", async ({ event, context }) => {
   });
 });
 
-ponder.on("KarPassportBridgeGateway:ONFTReceived", async ({ event, context }) => {
-  await insertOnftReceivedCrossing(context as BridgeCrossingContext, {
-    observingChainId: indexingChainId(context),
-    guid: event.args.guid,
-    srcEid: Number(event.args.srcEid),
-    toAddress: getAddress(event.args.toAddress),
-    tokenId: event.args.tokenId.toString(),
-    blockNumber: Number(event.block.number),
-    logIndex: event.log.logIndex,
-    txHash: event.transaction.hash,
-    timestamp: event.block.timestamp,
-  });
-});
+onOptionalContractEvent(
+  "KarPassportBridgeGateway:ONFTReceived",
+  async ({ event, context }) => {
+    const args = eventArgs<OnftReceivedArgs>(event);
+    await insertOnftReceivedCrossing(context, {
+      observingChainId: indexingChainId(context),
+      guid: args.guid,
+      srcEid: Number(args.srcEid),
+      toAddress: getAddress(args.toAddress),
+      tokenId: args.tokenId.toString(),
+      blockNumber: Number(event.block.number),
+      logIndex: event.log.logIndex,
+      txHash: event.transaction.hash,
+      timestamp: event.block.timestamp,
+    });
+  },
+);

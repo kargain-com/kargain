@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { PaymentMethodId } from "../lib/nostr/parse-profile-content.ts";
 import { describe, it } from "node:test";
 
 import type { VerifierDirectoryEntry } from "../lib/verifier/parse-directory-entry.ts";
@@ -247,11 +248,11 @@ describe("filterVerifiers", () => {
     const profiles = new Map([
       [
         "0x1111111111111111111111111111111111111111",
-        { lud16: "pay@example.com", verifierPaymentMethods: ["eth", "lightning"] as const },
+        { lud16: "pay@example.com", verifierPaymentMethods: ["eth", "lightning"] satisfies PaymentMethodId[] },
       ],
       [
         "0x2222222222222222222222222222222222222222",
-        { lud16: "bad", verifierPaymentMethods: ["eth", "lightning"] as const },
+        { lud16: "bad", verifierPaymentMethods: ["eth", "lightning"] satisfies PaymentMethodId[] },
       ],
     ]);
 

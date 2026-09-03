@@ -207,7 +207,8 @@ app.get("/accounts/:address/claims", async (c) => {
     account: string;
     asset: string;
     amount: bigint;
-    reasonCode: string;
+    /** Present on legacy `pending_claim`; absent on `commerce_claim`. */
+    reasonCode?: string;
     updatedAt: bigint;
     firstCreditedAt: bigint;
   };

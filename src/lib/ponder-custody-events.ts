@@ -2,17 +2,16 @@
  * Append-only stream B writer for custody_determining_event (S7c-3).
  */
 
+import { ponder } from "ponder:registry";
 import { custodyDeterminingEvent } from "ponder:schema";
 
 import type { CustodyDeterminationKind } from "../../lib/custody/normalized-event.js";
 
-export type CustodyEventInsertContext = {
-  db: {
-    insert: (table: typeof custodyDeterminingEvent) => {
-      values: (row: Record<string, unknown>) => Promise<unknown>;
-    };
-  };
-};
+/** Indexing `context` from `ponder.on` — same shape handlers already hold. */
+export type CustodyEventInsertContext = Parameters<
+  Parameters<typeof ponder.on>[1]
+>[0]["context"];
+
 
 export async function insertCustodyDeterminingEvent(
   context: CustodyEventInsertContext,

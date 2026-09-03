@@ -64,6 +64,9 @@ export type StandArtifactBindings = {
   fixtures: Record<(typeof STAND_PRELOAD_FIXTURES)[number]["name"], StandProgramArtifact>;
 };
 
+/** Proof result plus attested BPF/git envelope from {@link withStandArtifactBindings}. */
+export type WithStandArtifacts<T extends object> = T & { artifacts: StandArtifactBindings };
+
 function sha256File(filePath: string): StandProgramArtifact {
   const buf = fs.readFileSync(filePath);
   return {

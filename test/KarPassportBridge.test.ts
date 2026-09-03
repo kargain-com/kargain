@@ -10,6 +10,8 @@ import {
   mintPassport,
   receiptLogs,
   ZERO,
+  asReadTuple,
+  asReadHex,
 } from "../scripts/lib/local-stack.js";
 import { DECLARED_PASSPORT_URI_CEILING_BYTES } from "../lib/web3/declared-uri-ceiling.js";
 
@@ -111,7 +113,7 @@ describe("KarPassport v1.3 — bridge gateway authority", () => {
     assert.ok(ev);
     assert.equal(getAddress(ev!.args.gateway as `0x${string}`), getAddress(gateway.address));
     assert.equal(
-      getAddress(await stack.passport.read.bridgeGateway()),
+      getAddress(asReadHex(await stack.passport.read.bridgeGateway())),
       getAddress(gateway.address),
     );
   });
@@ -240,10 +242,10 @@ describe("KarPassport v1.3 — G6/G8 bridgeMint and bridgeBurn guards", () => {
     });
     assert.equal(await passport.read.nextTokenId(), before);
     assert.equal(
-      getAddress(await passport.read.ownerOf([FOREIGN_TOKEN_ID])),
+      getAddress(asReadHex(await passport.read.ownerOf([FOREIGN_TOKEN_ID]))),
       getAddress(owner.account.address),
     );
-    const [status] = await passport.read.getPassportStatus([FOREIGN_TOKEN_ID]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([FOREIGN_TOKEN_ID]));
     assert.equal(status, 0);
     assert.equal(await passport.read.tokenURI([FOREIGN_TOKEN_ID]), "ar://rep");
   });
@@ -403,10 +405,10 @@ describe("KarPassport v1.3 — G4/G5 bridgeResetOnUnlock", () => {
     await stack.passport.write.verifyPassport([tokenId], {
       account: stack.verifier.account,
     });
-    let [status, verifier, verifiedAt] = await stack.passport.read.getPassportStatus([tokenId]);
+    let [status, verifier, verifiedAt] = asReadTuple(await stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 1);
     assert.notEqual(verifier, ZERO);
-    assert.ok(verifiedAt > 0n);
+    assert.ok((verifiedAt as bigint) > 0n);
 
     const hash = (await stack.gateway.write.bridgeResetOnUnlock([tokenId, "ar://returned"], {
       account: stack.admin.account,
@@ -420,7 +422,7 @@ describe("KarPassport v1.3 — G4/G5 bridgeResetOnUnlock", () => {
     assert.ok(uriUpdated);
     assert.equal(uriUpdated.args.newURI, "ar://returned");
 
-    [status, verifier, verifiedAt] = await stack.passport.read.getPassportStatus([tokenId]);
+    [status, verifier, verifiedAt] = asReadTuple(await stack.passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 0);
     assert.equal(verifier, ZERO);
     assert.equal(verifiedAt, 0n);
@@ -575,7 +577,7 @@ describe("KarPassport v1.3 — G4/G5 bridgeResetOnUnlock", () => {
           l.args.locked === false,
       ),
     );
-    const [status] = await passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 0);
   });
 });

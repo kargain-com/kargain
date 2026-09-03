@@ -188,6 +188,7 @@ function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
     ...(raw.ascendingConsignmentImpl
       ? { ascendingConsignmentImpl: getAddress(raw.ascendingConsignmentImpl) }
       : {}),
+    ...(raw.bridgeGateway ? { bridgeGateway: getAddress(raw.bridgeGateway) } : {}),
     ...(raw.commercePayoutSink
       ? { commercePayoutSink: getAddress(raw.commercePayoutSink) }
       : {}),

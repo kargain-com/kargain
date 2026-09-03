@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAddress } from "viem";
 
 import { commercialActive } from "../lib/web3/commercial-active.ts";
 import {
@@ -59,8 +60,8 @@ describe("pathwayConfigHash 40245↔40161", () => {
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
-      hubOApp: hub.bridgeGateway,
-      spokeOApp: spoke.bridgeGateway,
+      hubOApp: getAddress(hub.bridgeGateway),
+      spokeOApp: getAddress(spoke.bridgeGateway),
     });
     const mid = hashAppliedPathwayConfig({
       ...applied,
@@ -78,8 +79,8 @@ describe("pathwayConfigHash 40245↔40161", () => {
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
-      hubOApp: hub.bridgeGateway,
-      spokeOApp: spoke.bridgeGateway,
+      hubOApp: getAddress(hub.bridgeGateway),
+      spokeOApp: getAddress(spoke.bridgeGateway),
     });
     const hash = hashAppliedPathwayConfig(applied);
     assert.equal(hash, H2);
@@ -95,8 +96,8 @@ describe("pathwayConfigHash 40245↔40161", () => {
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
-      hubOApp: hub.bridgeGateway,
-      spokeOApp: spoke.bridgeGateway,
+      hubOApp: getAddress(hub.bridgeGateway),
+      spokeOApp: getAddress(spoke.bridgeGateway),
     });
     assert.equal(hashAppliedPathwayConfig(applied), H2);
   });
@@ -129,8 +130,8 @@ describe("pathwayConfigHash enforced budget class", () => {
     return buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
-      hubOApp: hub.bridgeGateway,
-      spokeOApp: spoke.bridgeGateway,
+      hubOApp: getAddress(hub.bridgeGateway),
+      spokeOApp: getAddress(spoke.bridgeGateway),
     });
   }
 

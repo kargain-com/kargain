@@ -44,8 +44,9 @@ const info = await conn.getAccountInfo(new PublicKey(asset.publicKey));
 console.log("account owner", info?.owner.toBase58(), "len", info?.data.length, "first bytes", info?.data.slice(0, 8));
 
 try {
+  // transfer expects a loaded asset account shape (owner + publicKey + plugins)
   await transfer(umi, {
-    asset: asset.publicKey,
+    asset: fetched,
     newOwner: newOwner.publicKey,
   }).sendAndConfirm(umi);
   console.log("transfer OK");

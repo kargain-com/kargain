@@ -20,6 +20,7 @@ import {
   generateAddressLookupTable,
   txWithAddressLookupTable,
 } from "@layerzerolabs/lz-solana-sdk-v2";
+import { asLzSdkConnection } from "./lib/solana-lz-connection.ts";
 import {
   getAddress,
   padHex,
@@ -300,7 +301,7 @@ async function main(): Promise<void> {
   const peerConfig = pda(
     [
       PEER_SEED,
-      gatewayConfig.toBytes(),
+      Buffer.from(gatewayConfig.toBytes()),
       (() => {
         const b = Buffer.alloc(4);
         b.writeUInt32BE(EID_HUB, 0);
@@ -402,6 +403,9 @@ async function main(): Promise<void> {
     );
     const solPayer = Keypair.fromSecretKey(secret);
     const connection = new Connection(rpc, "confirmed");
+    const lzConnection = asLzSdkConnection<
+      Parameters<SendHelper["getSendAccounts"]>[0]
+    >(connection);
     const solRecipient = solPayer.publicKey;
     const toBytes32 = padHex(`0x${Buffer.from(solRecipient.toBytes()).toString("hex")}`, {
       size: 32,
@@ -481,7 +485,7 @@ async function main(): Promise<void> {
     );
 
     const sendAccounts = await new SendHelper().getSendAccounts(
-      connection,
+      lzConnection,
       solPayer.publicKey,
       gatewayConfig,
       EID_HUB,
@@ -531,7 +535,7 @@ async function main(): Promise<void> {
     console.log(`  creating ALT for ${altAddrs.length} accounts…`);
     const { instructions: altIxs, address: altAddress } =
       await generateAddressLookupTable(
-        connection,
+        lzConnection,
         solPayer.publicKey,
         solPayer.publicKey,
         altAddrs,
@@ -551,17 +555,20 @@ async function main(): Promise<void> {
     const { blockhash, lastValidBlockHeight } =
       await connection.getLatestBlockhash("confirmed");
     const vtx = await txWithAddressLookupTable(
-      connection,
+      lzConnection,
       solPayer.publicKey,
       [cuIx, ix],
       blockhash,
       altAddress,
     );
     vtx.sign([solPayer]);
-    const returnSig = await connection.sendTransaction(vtx, {
-      skipPreflight: false,
-      maxRetries: 5,
-    });
+    const returnSig = await connection.sendTransaction(
+      vtx as unknown as Parameters<typeof connection.sendTransaction>[0],
+      {
+        skipPreflight: false,
+        maxRetries: 5,
+      },
+    );
     await connection.confirmTransaction(
       { signature: returnSig, blockhash, lastValidBlockHeight },
       "confirmed",

@@ -159,14 +159,14 @@ async function ingestInlineProjection(
   let inlineState = emptyInlineProjectionState();
   const projector = {
     projectPayloads: async (
-      payloads: typeof rawWriter.payloads,
-      snapshots?: typeof rawWriter.metadataSnapshots,
+      payloads: readonly (typeof rawWriter.payloads)[number][],
+      snapshots?: readonly (typeof rawWriter.metadataSnapshots)[number][],
     ) => {
       inlineState = await projectPayloadsIntoWriter(
         inlineWriter,
-        payloads,
+        [...payloads],
         inlineState,
-        snapshots ?? [],
+        snapshots ? [...snapshots] : [],
       );
     },
   };

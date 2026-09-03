@@ -1,4 +1,14 @@
-import { encodeFunctionData, getAddress, parseEventLogs, type Hash, type PublicClient, testActions } from "viem";
+import {
+  encodeFunctionData,
+  getAddress,
+  parseEventLogs,
+  type Abi,
+  type Account,
+  type Hash,
+  type PublicClient,
+  type WalletClient as ViemWalletClient,
+  testActions,
+} from "viem";
 
 import {
   DECLARED_DISPUTE_DEPOSIT_WEI,
@@ -31,33 +41,127 @@ export type AscendingLibraries = {
   AscendingOpenLib: `0x${string}`;
 };
 
+/**
+ * Method-position bivariance so Hardhat's typed write/read overloads remain
+ * assignable to this structural minimum under `strictFunctionTypes`.
+ */
+type BivariantFn<R> = { bivarianceHack(...args: unknown[]): R }["bivarianceHack"];
+
+/**
+ * Declared shape of contract `.read` results after {@link asReadTuple} /
+ * {@link asReadObject}. Hardhat's generic contract index returns `unknown`, so
+ * `DeployedContract.read` is typed `Promise<unknown>` for assignability; helpers
+ * narrow at the call site.
+ */
+export type ContractReadResult = readonly unknown[] | Record<string, unknown>;
+
+/**
+ * Hardhat wallet clients always carry an account; this intersection matches that
+ * runtime and avoids optional-account noise at test call sites.
+ */
+export type WalletClient = ViemWalletClient & { account: Account };
+
+export type DeployedContract = {
+  address: `0x${string}`;
+  abi: Abi;
+  write: { readonly [method: string]: BivariantFn<Promise<Hash>> };
+  /** `unknown` — Hardhat's ABI-generic read index is `Promise<unknown>`. */
+  read: { readonly [method: string]: BivariantFn<Promise<unknown>> };
+};
+
+/**
+ * Structural minimum that Hardhat toolbox-viem `connection.viem` satisfies.
+ * `deployContract` args are mutable `unknown[]` (Hardhat constructorArgs) — not
+ * `readonly` — so Hardhat remains assignable under parameter contravariance.
+ */
 export type ViemSuite = {
   deployContract: (
     name: string,
-    args?: readonly unknown[],
+    args?: unknown[],
     config?: { libraries?: Record<string, `0x${string}`> },
-  ) => Promise<{
-    address: `0x${string}`;
-    abi: readonly unknown[];
-    write: Record<string, (...args: unknown[]) => Promise<Hash>>;
-    read: Record<string, (...args: unknown[]) => Promise<unknown>>;
-  }>;
-  getContractAt: (
-    name: string,
-    address: `0x${string}`,
-  ) => Promise<{
-    address: `0x${string}`;
-    abi: readonly unknown[];
-    write: Record<string, (...args: unknown[]) => Promise<Hash>>;
-    read: Record<string, (...args: unknown[]) => Promise<unknown>>;
-  }>;
-  getWalletClients: () => Promise<
-    Array<{
-      account: { address: `0x${string}` };
-    }>
-  >;
+  ) => Promise<DeployedContract>;
+  getContractAt: (name: string, address: `0x${string}`) => Promise<DeployedContract>;
+  getWalletClients: () => Promise<ViemWalletClient[]>;
   getPublicClient: () => Promise<PublicClient>;
+  /** Present on Hardhat viem; optional so structural assignability stays open. */
+  getWalletClient?: (address: `0x${string}`) => Promise<ViemWalletClient>;
 };
+
+/** Fail-closed: Hardhat local wallets must expose an account. */
+export function asWallet(client: ViemWalletClient): WalletClient {
+  if (!client.account) {
+    throw new Error("wallet client missing account");
+  }
+  return client as WalletClient;
+}
+
+/** Fail-closed: read result must be a tuple/array before destructuring. */
+export function asReadTuple(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error("contract read: expected tuple/array result");
+  }
+  return value;
+}
+
+/** Fail-closed: read result must be a non-array object (named Solidity struct). */
+export function asReadObject(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value) || value === null || typeof value !== "object") {
+    throw new Error("contract read: expected object/struct result");
+  }
+  return value as Record<string, unknown>;
+}
+
+/** Read a payment-token config field whether viem returned a struct or tuple. */
+export function paymentTokenField(
+  cfg: unknown,
+  field: "feed" | "decimals" | "enabled" | "stalenessTolerance",
+): unknown {
+  const idx = { feed: 0, decimals: 1, enabled: 2, stalenessTolerance: 3 }[field];
+  if (Array.isArray(cfg)) return cfg[idx];
+  if (cfg && typeof cfg === "object") return (cfg as Record<string, unknown>)[field];
+  throw new Error(`contract read: expected payment token config for ${field}`);
+}
+
+/** Fail-closed: scalar address/bytes32/string read. */
+export function asReadHex(value: unknown): `0x${string}` {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]*$/.test(value)) {
+    throw new Error("contract read: expected hex string");
+  }
+  return value as `0x${string}`;
+}
+
+/** Fail-closed: scalar string read (URIs, names). */
+export function asReadString(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("contract read: expected string");
+  }
+  return value;
+}
+export async function readPassportStatus(
+  passport: DeployedContract,
+  tokenId: bigint,
+): Promise<readonly [number, `0x${string}`, bigint]> {
+  const row = asReadTuple(await passport.read.getPassportStatus([tokenId]));
+  const status = row[0];
+  const recordedVerifier = row[1];
+  const verifiedAt = row[2];
+  if (
+    typeof status !== "number" ||
+    typeof recordedVerifier !== "string" ||
+    typeof verifiedAt !== "bigint"
+  ) {
+    throw new Error("contract read: malformed getPassportStatus tuple");
+  }
+  return [status, recordedVerifier as `0x${string}`, verifiedAt];
+}
+
+/** KarProPass data tuple (tokenId → fields). */
+export async function readProPassData(
+  proPass: DeployedContract,
+  tokenId: bigint,
+): Promise<readonly unknown[]> {
+  return asReadTuple(await proPass.read.getProPassData([tokenId]));
+}
 
 /** Deploy Ascending linked libraries (no ctor deps). Order: Hold → Open. */
 export async function deployAscendingLibraries(viem: ViemSuite): Promise<AscendingLibraries> {
@@ -68,9 +172,6 @@ export async function deployAscendingLibraries(viem: ViemSuite): Promise<Ascendi
     AscendingOpenLib: openLib.address,
   };
 }
-
-export type WalletClient = Awaited<ReturnType<ViemSuite["getWalletClients"]>>[number];
-export type DeployedContract = Awaited<ReturnType<ViemSuite["deployContract"]>>;
 
 export type LocalStackAddresses = {
   chainId: number;
@@ -88,6 +189,8 @@ export type LocalStackAddresses = {
   ascendingOpenLib?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
+  /** KarPassportBridgeGateway (local / ponder dual-chain). */
+  bridgeGateway?: `0x${string}`;
   /**
    * RevertingRecipient used as FixedPrice/Ascending platformRecipient and
    * Ascending forfeitRecipient — toggle acceptEth in E2E to force ClaimRecorded.
@@ -101,7 +204,15 @@ export async function deployTimelock(viem: ViemSuite, admin: `0x${string}`) {
 }
 
 export async function deployVerifierStack(viem: ViemSuite) {
-  const [admin, owner, verifier, stranger] = await viem.getWalletClients();
+  const wallets = await viem.getWalletClients();
+  const [adminRaw, ownerRaw, verifierRaw, strangerRaw] = wallets;
+  if (!adminRaw || !ownerRaw || !verifierRaw || !strangerRaw) {
+    throw new Error("deployVerifierStack needs ≥4 Hardhat wallet clients");
+  }
+  const admin = asWallet(adminRaw);
+  const owner = asWallet(ownerRaw);
+  const verifier = asWallet(verifierRaw);
+  const stranger = asWallet(strangerRaw);
   const proPass = await viem.deployContract("KarProPass", [admin.account.address]);
   const staking = await viem.deployContract("KarProStaking", [
     proPass.address,
@@ -217,6 +328,18 @@ export async function deployAscendingConsignment(
   return { impl, proxy, mode, libraries };
 }
 
+/** Hardhat-only JSON-RPC (impersonation / setBalance) on a viem public client. */
+export async function hardhatRequest(
+  client: PublicClient,
+  method: string,
+  params?: readonly unknown[],
+): Promise<unknown> {
+  type HardhatRpc = {
+    request(args: { method: string; params?: readonly unknown[] }): Promise<unknown>;
+  };
+  return (client as HardhatRpc).request({ method, params });
+}
+
 /** Hardhat-only time travel (`evm_increaseTime` + `evm_mine`). */
 export async function increaseTime(publicClient: PublicClient, seconds: bigint) {
   const testClient = publicClient.extend(testActions({ mode: "hardhat" }));
@@ -255,13 +378,11 @@ export async function joinVerifier(
   });
 }
 
-export async function receiptLogs(
-  publicClient: PublicClient,
-  hash: Hash,
-  abi: readonly unknown[],
-) {
+export async function receiptLogs(publicClient: PublicClient, hash: Hash, abi: Abi) {
   const receipt = await publicClient.getTransactionReceipt({ hash });
-  return parseEventLogs({ abi, logs: receipt.logs });
+  const logs = parseEventLogs({ abi, logs: receipt.logs });
+  // Generic `Abi` makes viem type `args` as tuple|object; our events use named fields.
+  return logs as Array<(typeof logs)[number] & { eventName: string; args: Record<string, unknown> }>;
 }
 
 export function stackToDeploymentAddresses(
@@ -272,6 +393,7 @@ export function stackToDeploymentAddresses(
     ascendingOpenLib?: `0x${string}`;
     ascendingConsignment?: `0x${string}`;
     ascendingConsignmentImpl?: `0x${string}`;
+    bridgeGateway?: `0x${string}`;
     commercePayoutSink?: `0x${string}`;
   },
   chainId: number,
@@ -299,6 +421,7 @@ export function stackToDeploymentAddresses(
     ...(stack.ascendingConsignmentImpl
       ? { ascendingConsignmentImpl: getAddress(stack.ascendingConsignmentImpl) }
       : {}),
+    ...(stack.bridgeGateway ? { bridgeGateway: getAddress(stack.bridgeGateway) } : {}),
     ...(stack.commercePayoutSink
       ? { commercePayoutSink: getAddress(stack.commercePayoutSink) }
       : {}),

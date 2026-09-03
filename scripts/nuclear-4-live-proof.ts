@@ -6,7 +6,7 @@
 import { parseEventLogs, zeroAddress } from "viem";
 
 import { KarPassportAbi } from "../lib/contracts/abis.generated.ts";
-import { requireCommercialActive } from "../lib/web3/commercial-active.ts";
+import { requireEvmCommercialActive } from "../lib/web3/commercial-active.ts";
 
 async function main() {
   const hardhat = (await import("hardhat")).default;
@@ -18,7 +18,7 @@ async function main() {
     throw new Error(`Expected baseSepolia 84532, got ${chainId}`);
   }
 
-  const stack = requireCommercialActive(84532);
+  const stack = requireEvmCommercialActive(84532);
   const [wallet] = await viem.getWalletClients();
   const account = wallet.account;
   if (!account) throw new Error("No wallet account");

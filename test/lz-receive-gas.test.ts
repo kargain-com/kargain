@@ -127,7 +127,7 @@ describe("non-EVM receive budget (injected params)", () => {
     const params = { ...INJECTED_NON_EVM, computeCap: 10_000, rentCap: 8 };
     const r = requiredNonEvmReceiveBudgetForByteLength(4, params);
     assert.equal(r.ok, false);
-    if (!r.ok) {
+    if (!r.ok && r.reason === "exceeds_cap") {
       assert.equal(r.dimension, "rent");
       assert.equal(r.cap, 8);
       assert.ok(r.required > 8);

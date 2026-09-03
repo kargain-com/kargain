@@ -16,7 +16,10 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+import {
+  withStandArtifactBindings,
+  type StandArtifactBindings,
+} from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Resolve Solana packages from the lab package (not a root dependency). */
@@ -160,6 +163,7 @@ export async function runLiveMoneyPayoutProof(opts?: {
 }): Promise<{
   absentCase: { settled: boolean; claimAmount: bigint; withdrawn: bigint };
   frozenCase: { inboundBlocked: boolean; claimAmount: bigint; withdrawn: bigint };
+  artifacts: StandArtifactBindings;
 }> {
   const rpc = opts?.rpc ?? RPC;
   const conn = new Connection(rpc, "confirmed");

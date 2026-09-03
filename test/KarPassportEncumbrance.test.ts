@@ -10,6 +10,8 @@ import {
   joinVerifier,
   mintPassport,
   ZERO,
+  asReadTuple,
+  asReadHex,
 } from "../scripts/lib/local-stack.js";
 
 const DISPUTE_WINDOW = 14n * 24n * 60n * 60n;
@@ -78,7 +80,7 @@ describe("KarPassport encumbrance + verification challenge", () => {
     assert.equal(await passport.read.windowDuration(), DISPUTE_WINDOW);
     assert.equal(await passport.read.DISPUTE_WINDOW(), DISPUTE_WINDOW);
     assert.equal(
-      getAddress(await passport.read.forfeitRecipient()),
+      getAddress(asReadHex(await passport.read.forfeitRecipient())),
       getAddress(admin.account.address),
     );
   });
@@ -315,8 +317,8 @@ describe("KarPassport encumbrance + verification challenge", () => {
     // Anyone may open (stranger).
     await passport.write.open([tokenId], { account: stranger.account, value: DISPUTE_DEPOSIT });
     assert.equal(await passport.read.totalLockedBonds(), DISPUTE_DEPOSIT);
-    assert.equal(getAddress(await passport.read.challengeChallenger([tokenId])), getAddress(stranger.account.address));
-    const [disputed] = await passport.read.getPassportStatus([tokenId]);
+    assert.equal(getAddress(asReadHex(await passport.read.challengeChallenger([tokenId]))), getAddress(stranger.account.address));
+    const [disputed] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(disputed, 2);
 
     // Exclusion: opener (even if KarPro) cannot judge.
@@ -329,14 +331,14 @@ describe("KarPassport encumbrance + verification challenge", () => {
     // Independent KarPro rejects → stand VERIFIED.
     await joinVerifier(staking, resolver);
     await passport.write.judge([tokenId, 1], { account: resolver.account });
-    const [stood] = await passport.read.getPassportStatus([tokenId]);
+    const [stood] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(stood, 1);
     assert.equal(await passport.read.totalLockedBonds(), 0n);
 
     // Upheld → lapse.
     await passport.write.open([tokenId], { account: stranger.account, value: DISPUTE_DEPOSIT });
     await passport.write.judge([tokenId, 0], { account: resolver.account });
-    const [lapsed, recordedVerifier] = await passport.read.getPassportStatus([tokenId]);
+    const [lapsed, recordedVerifier] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(lapsed, 0);
     assert.equal(recordedVerifier, ZERO);
 
@@ -345,7 +347,7 @@ describe("KarPassport encumbrance + verification challenge", () => {
     await passport.write.open([tokenId], { account: stranger.account, value: DISPUTE_DEPOSIT });
     await increaseTime(publicClient, DISPUTE_WINDOW + 1n);
     await passport.write.conclude([tokenId], { account: owner.account });
-    const [expired] = await passport.read.getPassportStatus([tokenId]);
+    const [expired] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(expired, 0);
   });
 
@@ -358,7 +360,7 @@ describe("KarPassport encumbrance + verification challenge", () => {
       revertsWith("NotQualifiedJudge"),
     );
     await passport.write.withdraw([tokenId], { account: owner.account });
-    const [status] = await passport.read.getPassportStatus([tokenId]);
+    const [status] = asReadTuple(await passport.read.getPassportStatus([tokenId]));
     assert.equal(status, 1);
     assert.equal(await passport.read.totalLockedBonds(), 0n);
   });

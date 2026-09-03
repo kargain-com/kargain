@@ -15,7 +15,7 @@ import {
   lte,
   or,
   sql,
-  type SQL,
+  type AnyPgColumn,
 } from "ponder";
 
 import { DENOMINATION_KIND } from "../../lib/commerce/denomination";
@@ -52,10 +52,12 @@ export {
 /** Empty / impossible predicate — used when FX conversion fail-closes. */
 export const BROWSE_EMPTY_RESULT = sql`false`;
 
+type BrowseSql = ReturnType<typeof sql>;
+
 function csvColumnMatch(
-  column: typeof passport.fuelType,
+  column: AnyPgColumn,
   selected: string[],
-): SQL | undefined {
+): BrowseSql | undefined {
   if (selected.length === 0) return undefined;
   const lowered = selected.map((s) => s.toLowerCase());
   return inArray(sql`lower(${column})`, lowered);
@@ -66,7 +68,7 @@ function csvColumnMatch(
  * Asset conversion facts come from listing-price-display (USDC peg, native ETH).
  * Unknown Asset / unpriced / missing rate → NULL.
  */
-export function consignmentPriceUsdSql(rates: PartialFxRates | null): SQL {
+export function consignmentPriceUsdSql(rates: PartialFxRates | null): BrowseSql {
   const fiatScale = FIAT_SCALE.toString();
   const nativeScale = askingAssetUsdScale(askingNativeDecimals()).toString();
   const rateLit = (v: bigint | null | undefined) =>
@@ -136,8 +138,8 @@ export const PASSPORT_STATUS_ORDER = sql`CASE ${passport.status}
  */
 export function buildBrowseFilterConditions(
   filters: ConsignmentBrowseFilters,
-): { conditions: SQL[]; empty: boolean; rates: PartialFxRates } {
-  const conditions: SQL[] = [];
+): { conditions: BrowseSql[]; empty: boolean; rates: PartialFxRates } {
+  const conditions: BrowseSql[] = [];
   const rates = parseFxRatesFromQuery(filters);
 
   if (filters.make) {
@@ -220,8 +222,8 @@ export function buildBrowseFilterConditions(
 export function buildBrowseOrderBy(
   filters: ConsignmentBrowseFilters,
   rates: PartialFxRates,
-): SQL[] {
-  const order: SQL[] = [];
+): BrowseSql[] {
+  const order: BrowseSql[] = [];
   if (filters.verifiedFirst) {
     order.push(PASSPORT_STATUS_ORDER);
   }
@@ -275,9 +277,9 @@ export function foldStatusCounts(
 
 /** Combine base commerce predicates with browse filter predicates. */
 export function mergeBrowseWhere(
-  base: SQL[],
-  filterResult: { conditions: SQL[]; empty: boolean },
-): SQL | undefined {
+  base: BrowseSql[],
+  filterResult: { conditions: BrowseSql[]; empty: boolean },
+): BrowseSql | undefined {
   if (filterResult.empty) return BROWSE_EMPTY_RESULT;
   const all = [...base, ...filterResult.conditions];
   if (all.length === 0) return undefined;

@@ -13,7 +13,6 @@ import {
   advanceAndSettle,
   createControlledClock,
   createFakeNostrPolicyPort,
-  createFakeWalletPort,
   createFakeXmtpPort,
   disposeAllOpenSessions,
   hangUntilAbort,
@@ -126,8 +125,7 @@ describe("messaging simulation — seeded invariants", () => {
         },
       });
 
-      const wallet = createFakeWalletPort();
-      const { session, xmtp: sessionXmtp } = openSession(clock, {
+      const { session, wallet, xmtp: sessionXmtp } = openSession(clock, {
         xmtp: {
           ensureModule: xmtp.ensureModule.bind(xmtp),
           isModuleReady: xmtp.isModuleReady.bind(xmtp),
@@ -143,7 +141,6 @@ describe("messaging simulation — seeded invariants", () => {
           readIntent: nostr.readIntent.bind(nostr),
           publishIntent: nostr.publishIntent.bind(nostr),
         },
-        wallet,
       });
 
       await settleAsync(clock);

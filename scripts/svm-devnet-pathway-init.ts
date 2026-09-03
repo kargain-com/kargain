@@ -17,9 +17,10 @@ import {
 import { getAddress } from "viem";
 
 import { protocolAddressToBytes32 } from "../lib/web3/protocol-address.ts";
-import { loadLayerZeroMetadataSnapshot } from "./lib/layerzero-metadata.ts";
+import { loadLayerZeroMetadataSnapshot, isSvmLayerZeroChain } from "./lib/layerzero-metadata.ts";
 import { requireSvmDevnetEvidence } from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
+import { asLzSdkConnection } from "./lib/solana-lz-connection.ts";
 
 const require = createRequire(import.meta.url);
 try {
@@ -33,7 +34,14 @@ function loadWeb3(): typeof import("@solana/web3.js") {
     return require("@solana/web3.js");
   } catch {
     const root = join(process.cwd(), "node_modules/.pnpm");
-    const hit = readdirSync(root).find((d) => d.startsWith("@solana+web3.js@"));
+    const hits = readdirSync(root)
+      .filter((d) => d.startsWith("@solana+web3.js@"))
+      .sort();
+    // Prefer root-aligned 1.98.x over transitive 1.95.x when both exist.
+    const hit =
+      hits.find((d) => d.includes("@1.98.")) ??
+      hits.find((d) => d.includes("@1.")) ??
+      hits[0];
     if (!hit) throw new Error("@solana/web3.js not found");
     return require(join(root, hit, "node_modules/@solana/web3.js"));
   }
@@ -74,7 +82,7 @@ async function main(): Promise<void> {
 
   const snapshot = loadLayerZeroMetadataSnapshot();
   const svm = snapshot.chains[SVM_EID];
-  if (!svm || svm.vm !== "svm") throw new Error("40168 SVM snapshot missing");
+  if (!svm || !isSvmLayerZeroChain(svm)) throw new Error("40168 SVM snapshot missing");
   const pathway = snapshot.pathways["40168-40245"];
   if (!pathway) throw new Error("40168-40245 pathway missing");
 
@@ -123,6 +131,10 @@ async function main(): Promise<void> {
     const connection = new Connection(rpc, "confirmed");
     const endpoint = new EndpointProgram.Endpoint(endpointId);
     const uln = new UlnProgram.Uln(ulnProgram);
+    // Root web3.js vs lz-solana-sdk nested web3.js — same runtime, dual types.
+    const lzConnection = asLzSdkConnection<Parameters<typeof endpoint.setOappConfig>[0]>(
+      connection,
+    );
 
     const send = async (
       label: string,
@@ -209,7 +221,7 @@ async function main(): Promise<void> {
 
     await trySend("setOappConfig SEND_ULN", async () =>
       endpoint.setOappConfig(
-        connection,
+        lzConnection,
         payer.publicKey,
         gatewayConfig,
         ulnProgram,
@@ -219,7 +231,7 @@ async function main(): Promise<void> {
     );
     await trySend("setOappConfig RECEIVE_ULN", async () =>
       endpoint.setOappConfig(
-        connection,
+        lzConnection,
         payer.publicKey,
         gatewayConfig,
         ulnProgram,
@@ -229,7 +241,7 @@ async function main(): Promise<void> {
     );
     await trySend("setOappConfig EXECUTOR", async () =>
       endpoint.setOappConfig(
-        connection,
+        lzConnection,
         payer.publicKey,
         gatewayConfig,
         ulnProgram,
@@ -243,8 +255,8 @@ async function main(): Promise<void> {
       ),
     );
 
-    const sendLib = await endpoint.getSendLibrary(connection, gatewayConfig, HUB_EID);
-    const recvLib = await endpoint.getReceiveLibrary(connection, gatewayConfig, HUB_EID);
+    const sendLib = await endpoint.getSendLibrary(lzConnection, gatewayConfig, HUB_EID);
+    const recvLib = await endpoint.getReceiveLibrary(lzConnection, gatewayConfig, HUB_EID);
     console.log(
       `  sendLib default=${sendLib?.isDefault} program=${sendLib?.programId?.toBase58?.()}`,
     );
@@ -254,7 +266,7 @@ async function main(): Promise<void> {
 
     try {
       const recvCfg = await uln.getReceiveConfigState(
-        connection,
+        lzConnection,
         gatewayConfig,
         HUB_EID,
       );

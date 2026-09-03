@@ -10,6 +10,7 @@ import {
   deployFixedPriceConsignment,
   increaseTime,
   ZERO,
+  paymentTokenField,
 } from "../../scripts/lib/local-stack.js";
 import { encodeFunctionData } from "viem";
 import { FixedPriceConsignmentAbi } from "../../lib/contracts/abis.generated.js";
@@ -960,13 +961,9 @@ describe("FixedPriceConsignment", () => {
       account: owner.account,
     });
     await mode.write.revokePaymentToken([usdc.address], { account: guardian.account });
-    const cfg = (await mode.read.paymentTokens([usdc.address])) as
-      | { feed: string; decimals: number; enabled: boolean }
-      | readonly [string, number, boolean];
-    const enabled = Array.isArray(cfg) ? cfg[2] : cfg.enabled;
-    const decimals = Array.isArray(cfg) ? cfg[1] : cfg.decimals;
-    assert.equal(enabled, false);
-    assert.equal(Number(decimals), 6);
+    const cfg = await mode.read.paymentTokens([usdc.address]);
+    assert.equal(paymentTokenField(cfg, "enabled"), false);
+    assert.equal(Number(paymentTokenField(cfg, "decimals")), 6);
 
     const quote = (await mode.read.quoteBuy([TOKEN])) as bigint;
     assert.equal(quote, 100n * 10n ** 6n);
@@ -990,13 +987,8 @@ describe("FixedPriceConsignment", () => {
       account: owner.account,
     });
     await mode.write.revokePaymentToken([usdc.address], { account: owner.account });
-    const afterOwnerRevoke = (await mode.read.paymentTokens([usdc.address])) as
-      | { enabled: boolean }
-      | readonly unknown[];
-    assert.equal(
-      Array.isArray(afterOwnerRevoke) ? afterOwnerRevoke[2] : afterOwnerRevoke.enabled,
-      false,
-    );
+    const afterOwnerRevoke = await mode.read.paymentTokens([usdc.address]);
+    assert.equal(paymentTokenField(afterOwnerRevoke, "enabled"), false);
   });
 
   describe("accountability event surface (args vs chain state)", () => {
@@ -1009,7 +1001,7 @@ describe("FixedPriceConsignment", () => {
         toBlock: "latest",
       });
       assert.ok(logs.length > 0, `expected ${eventName}`);
-      return logs[logs.length - 1]!;
+      return logs[logs.length - 1]! as { args: Record<string, unknown> };
     }
 
     it("ConsignmentOpened matches open storage; buy emits SplitPaid + Closed Sold", async () => {
@@ -1500,11 +1492,11 @@ describe("FixedPriceConsignment", () => {
       mode.write.approvePaymentToken([usdc.address, ZERO, 0], { account: owner.account }),
       revertsWith("CannotClearPaymentTokenFeed"),
     );
-    const cfg = (await mode.read.paymentTokens([usdc.address])) as
-      | { feed: string }
-      | readonly [string, number, boolean];
-    const feedAddr = Array.isArray(cfg) ? cfg[0] : cfg.feed;
-    assert.equal(getAddress(feedAddr as string), getAddress(usdcFeed.address));
+    const cfg = await mode.read.paymentTokens([usdc.address]);
+    assert.equal(
+      getAddress(paymentTokenField(cfg, "feed") as string),
+      getAddress(usdcFeed.address),
+    );
     assert.equal(await mode.read.quoteBuy([TOKEN]), 100n * 10n ** 6n);
   });
 

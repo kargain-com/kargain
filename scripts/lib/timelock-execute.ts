@@ -4,27 +4,12 @@
 
 import { getAddress, keccak256, toBytes, toHex, type Hex } from "viem";
 
+import type { DeployedContract } from "./local-stack.js";
+
 export const TIMELOCK_ZERO_PREDECESSOR = toHex(new Uint8Array(32)) as Hex;
 
-export type TimelockClient = {
-  address: `0x${string}`;
-  read: {
-    getMinDelay: (args?: readonly []) => Promise<unknown>;
-    hashOperation: (
-      args: readonly [string, bigint, Hex, Hex, Hex],
-    ) => Promise<unknown>;
-  };
-  write: {
-    schedule: (
-      args: readonly [string, bigint, Hex, Hex, Hex, bigint],
-      opts?: { account: { address: `0x${string}` }; value?: bigint },
-    ) => Promise<unknown>;
-    execute: (
-      args: readonly [string, bigint, Hex, Hex, Hex],
-      opts?: { account: { address: `0x${string}` }; value?: bigint },
-    ) => Promise<unknown>;
-  };
-};
+/** Structural Timelock surface — Hardhat/viem contract clients satisfy DeployedContract. */
+export type TimelockClient = DeployedContract;
 
 export type TimelockOp = {
   target: `0x${string}`;

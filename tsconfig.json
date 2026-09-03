@@ -30,10 +30,13 @@
   },
   "include": [
     "next-env.d.ts",
+    "next.config.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
     "lib/**/*.ts",
     "lib/**/*.tsx",
     "types/**/*.ts",

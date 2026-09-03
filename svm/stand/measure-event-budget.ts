@@ -25,6 +25,7 @@ import {
   SOLANA_LOG_LIMITS,
   type TxLogBudget,
 } from "./measure-tx-logs.ts";
+import type { StandConnection } from "./solana-web3-types.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -53,7 +54,7 @@ export type EventBudgetReport = {
 };
 
 async function budgetForSignature(
-  connection: Connection,
+  connection: StandConnection,
   signature: string | undefined | null,
   label: string,
 ): Promise<TxLogBudget | null> {

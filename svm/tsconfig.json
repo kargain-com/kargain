@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    // bundler + allowImportingTsExtensions: stand imports use explicit .ts
+    // suffixes (tsx / NODE_PATH=svm/lab/node_modules).
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../*"],
+      "@solana/web3.js": ["./lab/node_modules/@solana/web3.js"],
+      "@solana/web3.js/*": ["./lab/node_modules/@solana/web3.js/*"],
+      "@solana/spl-token": ["./lab/node_modules/@solana/spl-token"],
+      "@solana/spl-token/*": ["./lab/node_modules/@solana/spl-token/*"],
+      "@metaplex-foundation/*": ["./lab/node_modules/@metaplex-foundation/*"]
+    }
+  },
+  "include": [
+    "stand/**/*.ts",
+    "lab/scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "lab/node_modules",
+    "**/target"
+  ]
+}

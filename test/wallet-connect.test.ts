@@ -14,7 +14,6 @@ function withGlobalProperty<T>(
 ): void {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
   if (value === undefined) {
-    // @ts-expect-error test shim
     delete globalThis[key];
   } else {
     Object.defineProperty(globalThis, key, {
@@ -30,7 +29,6 @@ function withGlobalProperty<T>(
     if (descriptor) {
       Object.defineProperty(globalThis, key, descriptor);
     } else {
-      // @ts-expect-error test cleanup
       delete globalThis[key];
     }
   }

@@ -28,7 +28,14 @@ import {
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
 import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
 import { tokenIdFromParts } from "../../lib/web3/bridge/onft-msg-codec.ts";
+import type {
+  StandConnection,
+  StandKeypair,
+  StandPublicKey,
+  StandTransactionInstruction,
+} from "./solana-web3-types.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -73,18 +80,19 @@ export type LiveVerifierFlowResult = {
   minStakePin: ReturnType<typeof testnetMinStakePinRecord>;
   joinCu: number | null;
   verifyCu: number | null;
+  artifacts: StandArtifactBindings;
 };
 
-function loadKeypair(p: string): Keypair {
+function loadKeypair(p: string): StandKeypair {
   const raw = JSON.parse(fs.readFileSync(p, "utf8")) as number[];
   return Keypair.fromSecretKey(Uint8Array.from(raw));
 }
 
-function programIdFromDeploy(name: string): PublicKey {
+function programIdFromDeploy(name: string): StandPublicKey {
   return loadKeypair(path.join(DEPLOY, `${name}-keypair.json`)).publicKey;
 }
 
-function pda(seeds: Buffer[], programId: PublicKey): [PublicKey, number] {
+function pda(seeds: Buffer[], programId: StandPublicKey): [StandPublicKey, number] {
   return PublicKey.findProgramAddressSync(seeds, programId);
 }
 
@@ -113,9 +121,9 @@ function encodeU128Le(n: bigint): Buffer {
 }
 
 async function sendIx(
-  connection: InstanceType<typeof Connection>,
-  payer: Keypair,
-  ixs: InstanceType<typeof TransactionInstruction>[],
+  connection: StandConnection,
+  payer: StandKeypair,
+  ixs: StandTransactionInstruction[],
   label: string,
 ): Promise<{ cu: number | null; signature: string }> {
   const tx = new Transaction().add(...ixs);

@@ -104,10 +104,10 @@ describe("svm metadata snapshot raw semantics", () => {
     assert.equal(await writer.insertMetadataSnapshot(v1), true);
     assert.equal(await writer.insertMetadataSnapshot(v2), true);
 
-    const rows = await pool.query<{ id: string; content_sha256: string }>(
+    const rows = (await pool.query(
       `SELECT id, content_sha256 FROM kargain_svm_raw.metadata_snapshot WHERE uri = $1 ORDER BY slot`,
       [uri],
-    );
+    )) as { rows: { id: string; content_sha256: string }[] };
     assert.equal(rows.rows.length, 2);
     assert.notEqual(rows.rows[0]!.content_sha256, rows.rows[1]!.content_sha256);
   });
@@ -138,9 +138,9 @@ describe("svm metadata snapshot raw semantics", () => {
     assert.equal(await writer.insertMetadataSnapshot(row), true);
     await writer.insertMetadataSnapshot(row);
 
-    const count = await pool.query<{ n: number }>(
+    const count = (await pool.query(
       `SELECT COUNT(*)::int AS n FROM kargain_svm_raw.metadata_snapshot`,
-    );
+    )) as { rows: { n: number }[] };
     assert.equal(count.rows[0]?.n, 1);
   });
 
@@ -165,10 +165,10 @@ describe("svm metadata snapshot raw semantics", () => {
     const writer = createSvmRawWriter(pool);
     assert.equal(await writer.insertMetadataSnapshot(draft!), true);
 
-    const row = await pool.query<{ status: string; parsed_json: unknown }>(
+    const row = (await pool.query(
       `SELECT status, parsed_json FROM kargain_svm_raw.metadata_snapshot WHERE id = $1`,
       [draft!.id],
-    );
+    )) as { rows: { status: string; parsed_json: unknown }[] };
     assert.equal(row.rows[0]?.status, "unavailable");
     assert.equal(row.rows[0]?.parsed_json, null);
   });
